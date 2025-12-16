@@ -1,30 +1,29 @@
 import sys
 import time
 import threading
+import io
 import json
 import os
 import datetime
 from datetime import datetime as dt, timedelta
 from flask import Flask, jsonify, request
 import requests
+from PIL import Image, ImageDraw, ImageFont
 
 # ================= CONFIGURATION =================
 TIMEZONE_OFFSET = -5 # EST
 CONFIG_FILE = "ticker_config.json"
 
-# DEFAULT STATE
+# ================= STATE =================
 default_state = {
-    'active_sports': {
-        'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True,
-        'mlb': True, 'nhl': True, 'nba': True
-    },
+    'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True },
     'mode': 'all', 'my_teams': [], 'current_games': [],
-    'debug_mode': False, 'custom_date': None
+    'all_teams_data': {}, 'debug_mode': False, 'custom_date': None, 'debug_games': [],
+    'resolution': {'w': 64, 'h': 32} 
 }
-
 state = default_state.copy()
 
-# ================= DATA FETCHING LOGIC =================
+# ================= DATA FETCHING =================
 class SportsFetcher:
     def __init__(self):
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
@@ -78,24 +77,21 @@ class SportsFetcher:
         except: return {'powerPlay': False}
 
     def get_real_games(self):
+        # DEBUG OVERRIDES
         if state['debug_mode']:
             if state['custom_date'] == 'TEST_PP':
-                return [{
-                    "sport": "nhl", "id": "test_pp", "status": "P2 14:20", "state": "in",
-                    "home_abbr": "NYR", "home_id": "h", "home_score": "3", "home_logo": "",
-                    "away_abbr": "BOS", "away_id": "a", "away_score": "2", "away_logo": "",
-                    "situation": {"powerPlay": True, "possession": "a"}
-                }]
+                return [{ "sport": "nhl", "id": "test_pp", "status": "P2 14:20", "state": "in", "home_abbr": "NYR", "home_id": "h", "home_score": "3", "home_logo": "", "away_abbr": "BOS", "away_id": "a", "away_score": "2", "away_logo": "", "situation": {"powerPlay": True, "possession": "a"} }]
             if state['custom_date'] == 'TEST_RZ':
-                return [{
-                    "sport": "nfl", "id": "test_rz", "status": "3rd 4:20", "state": "in",
-                    "home_abbr": "KC", "home_id": "h", "home_score": "21", "home_logo": "",
-                    "away_abbr": "BUF", "away_id": "a", "away_score": "17", "away_logo": "",
-                    "situation": {"isRedZone": True, "downDist": "2nd & 5", "possession": "a"}
-                }]
+                return [{ "sport": "nfl", "id": "test_rz", "status": "3rd 4:20", "state": "in", "home_abbr": "KC", "home_id": "h", "home_score": "21", "home_logo": "", "away_abbr": "BUF", "away_id": "a", "away_score": "17", "away_logo": "", "situation": {"isRedZone": True, "downDist": "2nd & 5", "possession": "a"} }]
 
         games = []
-        target_date = state['custom_date'] if (state['debug_mode'] and state['custom_date']) else (dt.utcnow() + timedelta(hours=TIMEZONE_OFFSET)).strftime("%Y-%m-%d")
+        
+        # Calculate "Today" in Local Time (EST)
+        local_now = dt.utcnow() + timedelta(hours=TIMEZONE_OFFSET)
+        today_str = local_now.strftime("%Y-%m-%d")
+        
+        # Determine Target Date (Debug Mode or Today)
+        target_date = state['custom_date'] if (state['debug_mode'] and state['custom_date']) else today_str
         is_history = (state['debug_mode'] and state['custom_date'])
 
         for league_key, config in self.leagues.items():
@@ -103,22 +99,37 @@ class SportsFetcher:
             try:
                 params = config['scoreboard_params'].copy()
                 if is_history: params['dates'] = target_date.replace('-', '')
+                
+                # Fetch Scoreboard
                 r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=params, timeout=3)
                 data = r.json()
                 
                 for event in data.get('events', []):
                     status = event['status']['type']['state']
-                    if not is_history and status != 'in' and league_key == 'mlb': continue 
-                    if not is_history and status != 'in' and event['date'][:10] != target_date: continue
+                    
+                    # --- TIMEZONE FIX ---
+                    # Convert ESPN UTC string (2023-10-27T23:00Z) to Local Datetime object
+                    utc_str = event['date'].replace('Z', '')
+                    game_local_dt = dt.fromisoformat(utc_str) + timedelta(hours=TIMEZONE_OFFSET)
+                    game_local_date = game_local_dt.strftime("%Y-%m-%d")
 
+                    # Filter Logic:
+                    # 1. If History Mode: Date must match target.
+                    # 2. If Live Mode: Include if game is LIVE ('in') OR if game is TODAY (in local time).
+                    if is_history:
+                        if game_local_date != target_date: continue
+                    else:
+                        is_today = (game_local_date == today_str)
+                        is_live = (status == 'in')
+                        if not (is_today or is_live): continue
+
+                    # Process Game Data
                     comp = event['competitions'][0]
                     home = comp['competitors'][0]
                     away = comp['competitors'][1]
                     sit = comp.get('situation', {})
-                    h_id = home.get('id', '0')
-                    a_id = away.get('id', '0')
-                    h_abbr = home['team']['abbreviation']
-                    a_abbr = away['team']['abbreviation']
+                    h_id, a_id = home.get('id', '0'), away.get('id', '0')
+                    h_abbr, a_abbr = home['team']['abbreviation'], away['team']['abbreviation']
 
                     game_obj = {
                         'sport': league_key, 'id': event['id'], 
@@ -132,20 +143,12 @@ class SportsFetcher:
                     if status == 'in':
                         if 'football' in config['path']:
                             game_obj['situation'] = {
-                                'possession': sit.get('possession', ''), 
-                                'downDist': sit.get('downDistanceText', ''), 
-                                'isRedZone': sit.get('isRedZone', False)
+                                'possession': sit.get('possession', ''), 'downDist': sit.get('downDistanceText', ''), 'isRedZone': sit.get('isRedZone', False)
                             }
                         elif league_key == 'nhl':
-                            game_obj['situation'] = self.analyze_nhl_power_play(
-                                game_obj['id'], event['status']['period'], event['status']['displayClock'], 
-                                h_id, a_id, h_abbr, a_abbr
-                            )
+                            game_obj['situation'] = self.analyze_nhl_power_play(game_obj['id'], event['status']['period'], event['status']['displayClock'], h_id, a_id, h_abbr, a_abbr)
                         elif league_key == 'mlb':
-                            game_obj['situation'] = {
-                                'balls': sit.get('balls',0), 'strikes': sit.get('strikes',0), 'outs': sit.get('outs',0),
-                                'onFirst': sit.get('onFirst',False), 'onSecond': sit.get('onSecond',False), 'onThird': sit.get('onThird',False)
-                            }
+                            game_obj['situation'] = { 'balls': sit.get('balls',0), 'strikes': sit.get('strikes',0), 'outs': sit.get('outs',0), 'onFirst': sit.get('onFirst',False), 'onSecond': sit.get('onSecond',False), 'onThird': sit.get('onThird',False) }
                     
                     games.append(game_obj)
             except: continue
@@ -167,7 +170,7 @@ t.daemon = True
 t.start()
 
 @app.route('/')
-def index(): return "Sports Ticker Data Server"
+def index(): return "Sports Ticker Data Server (Timezone Fixed)"
 
 @app.route('/client_data')
 def get_client_data():
