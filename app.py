@@ -1,21 +1,14 @@
 import sys
 import time
 import threading
-import io
 import json
 import os
-import re
 import datetime
 from datetime import datetime as dt, timedelta
 from flask import Flask, jsonify, request
 import requests
-from PIL import Image, ImageDraw, ImageFont
 
 # ================= CONFIGURATION =================
-PANEL_W = 64   
-PANEL_H = 32   
-TRANSITION_SPEED = 0.02
-HOLD_TIME = 5.0
 TIMEZONE_OFFSET = -5 # EST
 CONFIG_FILE = "ticker_config.json"
 
@@ -26,9 +19,7 @@ default_state = {
         'mlb': True, 'nhl': True, 'nba': True
     },
     'mode': 'all', 'my_teams': [], 'current_games': [],
-    'all_teams_data': {}, 'debug_mode': False,
-    'custom_date': None, 'debug_games': [],
-    'resolution': {'w': 64, 'h': 32} 
+    'debug_mode': False, 'custom_date': None
 }
 
 state = default_state.copy()
@@ -46,7 +37,6 @@ class SportsFetcher:
             'nba': { 'path': 'basketball/nba', 'scoreboard_params': {} }
         }
 
-    # --- POWER PLAY ANALYSIS ---
     def analyze_nhl_power_play(self, game_id, current_period, current_clock_str, home_id, away_id, home_abbr, away_abbr):
         try:
             url = f"https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/playbyplay?event={game_id}"
@@ -88,7 +78,6 @@ class SportsFetcher:
         except: return {'powerPlay': False}
 
     def get_real_games(self):
-        # DEBUG OVERRIDES
         if state['debug_mode']:
             if state['custom_date'] == 'TEST_PP':
                 return [{
@@ -119,14 +108,13 @@ class SportsFetcher:
                 
                 for event in data.get('events', []):
                     status = event['status']['type']['state']
-                    if not is_history and status != 'in' and league_key == 'mlb': continue # Skip old MLB
-                    if not is_history and status != 'in' and event['date'][:10] != target_date: continue # Skip non-today
+                    if not is_history and status != 'in' and league_key == 'mlb': continue 
+                    if not is_history and status != 'in' and event['date'][:10] != target_date: continue
 
                     comp = event['competitions'][0]
                     home = comp['competitors'][0]
                     away = comp['competitors'][1]
                     sit = comp.get('situation', {})
-                    
                     h_id = home.get('id', '0')
                     a_id = away.get('id', '0')
                     h_abbr = home['team']['abbreviation']
@@ -168,35 +156,23 @@ fetcher = SportsFetcher()
 # ================= FLASK SERVER =================
 app = Flask(__name__)
 
-# Background Thread
-def run_logic():
+def run_fetcher():
     while True:
-        try:
-            state['current_games'] = fetcher.get_real_games()
+        try: state['current_games'] = fetcher.get_real_games()
         except: pass
         time.sleep(10)
 
-t = threading.Thread(target=run_logic)
+t = threading.Thread(target=run_fetcher)
 t.daemon = True
 t.start()
 
-# --- ROUTES ---
-
 @app.route('/')
-def index():
-    return "Sports Ticker Backend is Running."
+def index(): return "Sports Ticker Data Server"
 
-# This is what your python simulation script is looking for
-@app.route('/get_state')
-def get_state():
+@app.route('/client_data')
+def get_client_data():
     return jsonify({ 'games': state['current_games'], 'settings': state })
 
-# This is what your ESP32 will look for
-@app.route('/esp32')
-def get_esp32():
-    return jsonify({ 'games': state['current_games'] })
-
-# Configuration endpoints
 @app.route('/set_config', methods=['POST'])
 def set_config():
     d = request.json
