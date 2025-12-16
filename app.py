@@ -77,20 +77,19 @@ class SportsFetcher:
         except: return {'powerPlay': False}
 
     def get_real_games(self):
-        # DEBUG OVERRIDES
+        # 1. HANDLE DEBUG OVERRIDES IMMEDIATELY
         if state['debug_mode']:
             if state['custom_date'] == 'TEST_PP':
+                print("[DEBUG] Returning Fake Hockey Game")
                 return [{ "sport": "nhl", "id": "test_pp", "status": "P2 14:20", "state": "in", "home_abbr": "NYR", "home_id": "h", "home_score": "3", "home_logo": "", "away_abbr": "BOS", "away_id": "a", "away_score": "2", "away_logo": "", "situation": {"powerPlay": True, "possession": "a"} }]
             if state['custom_date'] == 'TEST_RZ':
+                print("[DEBUG] Returning Fake Football Game")
                 return [{ "sport": "nfl", "id": "test_rz", "status": "3rd 4:20", "state": "in", "home_abbr": "KC", "home_id": "h", "home_score": "21", "home_logo": "", "away_abbr": "BUF", "away_id": "a", "away_score": "17", "away_logo": "", "situation": {"isRedZone": True, "downDist": "2nd & 5", "possession": "a"} }]
 
         games = []
-        
-        # Calculate "Today" in Local Time (EST)
         local_now = dt.utcnow() + timedelta(hours=TIMEZONE_OFFSET)
         today_str = local_now.strftime("%Y-%m-%d")
         
-        # Determine Target Date (Debug Mode or Today)
         target_date = state['custom_date'] if (state['debug_mode'] and state['custom_date']) else today_str
         is_history = (state['debug_mode'] and state['custom_date'])
 
@@ -100,22 +99,15 @@ class SportsFetcher:
                 params = config['scoreboard_params'].copy()
                 if is_history: params['dates'] = target_date.replace('-', '')
                 
-                # Fetch Scoreboard
                 r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=params, timeout=3)
                 data = r.json()
                 
                 for event in data.get('events', []):
                     status = event['status']['type']['state']
-                    
-                    # --- TIMEZONE FIX ---
-                    # Convert ESPN UTC string (2023-10-27T23:00Z) to Local Datetime object
                     utc_str = event['date'].replace('Z', '')
                     game_local_dt = dt.fromisoformat(utc_str) + timedelta(hours=TIMEZONE_OFFSET)
                     game_local_date = game_local_dt.strftime("%Y-%m-%d")
 
-                    # Filter Logic:
-                    # 1. If History Mode: Date must match target.
-                    # 2. If Live Mode: Include if game is LIVE ('in') OR if game is TODAY (in local time).
                     if is_history:
                         if game_local_date != target_date: continue
                     else:
@@ -123,7 +115,6 @@ class SportsFetcher:
                         is_live = (status == 'in')
                         if not (is_today or is_live): continue
 
-                    # Process Game Data
                     comp = event['competitions'][0]
                     home = comp['competitors'][0]
                     away = comp['competitors'][1]
@@ -159,6 +150,7 @@ fetcher = SportsFetcher()
 # ================= FLASK SERVER =================
 app = Flask(__name__)
 
+# Background Thread
 def run_fetcher():
     while True:
         try: state['current_games'] = fetcher.get_real_games()
@@ -169,8 +161,10 @@ t = threading.Thread(target=run_fetcher)
 t.daemon = True
 t.start()
 
+# --- ROUTES ---
+
 @app.route('/')
-def index(): return "Sports Ticker Data Server (Timezone Fixed)"
+def index(): return "Sports Ticker Data Server"
 
 @app.route('/client_data')
 def get_client_data():
@@ -182,16 +176,22 @@ def set_config():
     if 'mode' in d: state['mode'] = d['mode']
     if 'active_sports' in d: state['active_sports'] = d['active_sports']
     if 'my_teams' in d: state['my_teams'] = d['my_teams']
+    # FORCE UPDATE
+    state['current_games'] = fetcher.get_real_games()
     return "OK"
 
 @app.route('/toggle_debug')
 def toggle_debug():
     state['debug_mode'] = not state['debug_mode']
+    # FORCE UPDATE
+    state['current_games'] = fetcher.get_real_games()
     return jsonify({'status': state['debug_mode']})
 
 @app.route('/set_custom_date', methods=['POST'])
 def set_custom_date():
     state['custom_date'] = request.json.get('date')
+    # FORCE UPDATE
+    state['current_games'] = fetcher.get_real_games()
     return "OK"
 
 if __name__ == "__main__":
