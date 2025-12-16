@@ -1,38 +1,53 @@
-import threading
+import sys
 import time
-import requests
+import threading
+import io
 import json
+import os
+import re
+import datetime
 from datetime import datetime as dt, timedelta
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
+import requests
+from PIL import Image, ImageDraw, ImageFont
 
 # ================= CONFIGURATION =================
+PANEL_W = 64   
+PANEL_H = 32   
+TRANSITION_SPEED = 0.02
+HOLD_TIME = 5.0
 TIMEZONE_OFFSET = -5 # EST
+CONFIG_FILE = "ticker_config.json"
 
-# ================= GLOBAL STATE =================
-state = {
-    'current_games': [],
+# DEFAULT STATE
+default_state = {
     'active_sports': {
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True,
         'mlb': True, 'nhl': True, 'nba': True
     },
-    'debug_mode': False,
-    'custom_date': None
+    'mode': 'all', 'my_teams': [], 'current_games': [],
+    'all_teams_data': {}, 'debug_mode': False,
+    'custom_date': None, 'debug_games': [],
+    'resolution': {'w': 64, 'h': 32} 
 }
 
-# ================= DATA FETCHER LOGIC =================
+state = default_state.copy()
+
+# ================= DATA FETCHING LOGIC =================
 class SportsFetcher:
     def __init__(self):
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.leagues = {
-            'nfl': 'football/nfl',
-            'ncf_fbs': 'football/college-football', # Special logic needed for groups in real app, simplified here
-            'mlb': 'baseball/mlb',
-            'nhl': 'hockey/nhl',
-            'nba': 'basketball/nba'
+            'nfl': { 'path': 'football/nfl', 'scoreboard_params': {} },
+            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100} },
+            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81,22,20', 'limit': 300} },
+            'mlb': { 'path': 'baseball/mlb', 'scoreboard_params': {} },
+            'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {} },
+            'nba': { 'path': 'basketball/nba', 'scoreboard_params': {} }
         }
 
+    # --- POWER PLAY ANALYSIS ---
     def analyze_nhl_power_play(self, game_id, current_period, current_clock_str, home_id, away_id, home_abbr, away_abbr):
-        """ Scans play-by-play data to find active penalties """
         try:
             url = f"https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/playbyplay?event={game_id}"
             r = requests.get(url, timeout=2)
@@ -40,10 +55,7 @@ class SportsFetcher:
             
             def get_seconds_elapsed(period, clock_str):
                 parts = clock_str.split(':')
-                remaining_seconds = int(parts[0]) * 60 + int(parts[1])
-                period_length = 300 if period > 3 else 1200
-                elapsed_in_period = period_length - remaining_seconds
-                return ((period - 1) * 1200) + elapsed_in_period
+                return ((period - 1) * 1200) + (1200 - (int(parts[0]) * 60 + int(parts[1])))
 
             try: current_total = get_seconds_elapsed(current_period, current_clock_str)
             except: return {'powerPlay': False}
@@ -55,132 +67,153 @@ class SportsFetcher:
                     text = play.get('text', '').lower()
                     if 'penalty' in text and 'shot' not in text:
                         if 'misconduct' in text and 'game' not in text: continue
-                        
                         duration = 120
                         if 'double minor' in text or '4 minutes' in text: duration = 240
                         elif 'major' in text or '5 minutes' in text: duration = 300
-                        
                         try:
-                            p_per = play['period']['number']
-                            p_clk = play['clock']['displayValue']
-                            start_time = get_seconds_elapsed(p_per, p_clk)
-                            if (start_time + duration) > current_total:
-                                team = play.get('team', {})
-                                tid = team.get('id')
+                            start = get_seconds_elapsed(play['period']['number'], play['clock']['displayValue'])
+                            if (start + duration) > current_total:
+                                tid = play.get('team', {}).get('id')
                                 if not tid:
                                     if home_abbr.lower() in text: tid = home_id
                                     elif away_abbr.lower() in text: tid = away_id
-                                if tid and tid in active_penalties:
-                                    active_penalties[tid] += 1
+                                if tid in active_penalties: active_penalties[tid] += 1
                         except: continue
 
             if active_penalties.get(home_id, 0) > active_penalties.get(away_id, 0):
                 return {'powerPlay': True, 'possession': away_id}
             elif active_penalties.get(away_id, 0) > active_penalties.get(home_id, 0):
                 return {'powerPlay': True, 'possession': home_id}
-            
             return {'powerPlay': False}
         except: return {'powerPlay': False}
 
-    def get_games(self):
-        games_list = []
-        # Simplified date logic for server environment
-        target_date = (dt.utcnow() + timedelta(hours=TIMEZONE_OFFSET)).strftime("%Y-%m-%d")
-        
-        for league_key, path in self.leagues.items():
+    def get_real_games(self):
+        # DEBUG OVERRIDES
+        if state['debug_mode']:
+            if state['custom_date'] == 'TEST_PP':
+                return [{
+                    "sport": "nhl", "id": "test_pp", "status": "P2 14:20", "state": "in",
+                    "home_abbr": "NYR", "home_id": "h", "home_score": "3", "home_logo": "",
+                    "away_abbr": "BOS", "away_id": "a", "away_score": "2", "away_logo": "",
+                    "situation": {"powerPlay": True, "possession": "a"}
+                }]
+            if state['custom_date'] == 'TEST_RZ':
+                return [{
+                    "sport": "nfl", "id": "test_rz", "status": "3rd 4:20", "state": "in",
+                    "home_abbr": "KC", "home_id": "h", "home_score": "21", "home_logo": "",
+                    "away_abbr": "BUF", "away_id": "a", "away_score": "17", "away_logo": "",
+                    "situation": {"isRedZone": True, "downDist": "2nd & 5", "possession": "a"}
+                }]
+
+        games = []
+        target_date = state['custom_date'] if (state['debug_mode'] and state['custom_date']) else (dt.utcnow() + timedelta(hours=TIMEZONE_OFFSET)).strftime("%Y-%m-%d")
+        is_history = (state['debug_mode'] and state['custom_date'])
+
+        for league_key, config in self.leagues.items():
+            if not state['active_sports'].get(league_key, False): continue 
             try:
-                # Basic Scoreboard Fetch
-                url = f"{self.base_url}{path}/scoreboard"
-                params = {'limit': 100}
-                if league_key == 'ncf_fbs': params['groups'] = '80'
-                
-                r = requests.get(url, params=params, timeout=3)
+                params = config['scoreboard_params'].copy()
+                if is_history: params['dates'] = target_date.replace('-', '')
+                r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=params, timeout=3)
                 data = r.json()
                 
                 for event in data.get('events', []):
-                    status_state = event['status']['type']['state']
-                    # Filter: Only Live games OR games today
-                    game_date = event['date'][:10]
-                    if status_state != 'in' and game_date != target_date: continue
+                    status = event['status']['type']['state']
+                    if not is_history and status != 'in' and league_key == 'mlb': continue # Skip old MLB
+                    if not is_history and status != 'in' and event['date'][:10] != target_date: continue # Skip non-today
 
                     comp = event['competitions'][0]
                     home = comp['competitors'][0]
                     away = comp['competitors'][1]
+                    sit = comp.get('situation', {})
                     
+                    h_id = home.get('id', '0')
+                    a_id = away.get('id', '0')
+                    h_abbr = home['team']['abbreviation']
+                    a_abbr = away['team']['abbreviation']
+
                     game_obj = {
-                        'sport': league_key,
-                        'id': event['id'],
-                        'status': event['status']['type']['shortDetail'].replace(" EST","").replace(" EDT","").replace("Final","FINAL"),
-                        'state': status_state,
-                        'h_abbr': home['team']['abbreviation'],
-                        'h_score': home.get('score', '0'),
-                        'a_abbr': away['team']['abbreviation'],
-                        'a_score': away.get('score', '0'),
-                        'sit': "",
-                        'sit_color': "#FFFFFF", # Default White
-                        'poss': ""
+                        'sport': league_key, 'id': event['id'], 
+                        'status': event['status']['type']['shortDetail'].replace(" EST","").replace(" EDT","").replace("Final","FINAL"), 
+                        'state': status,
+                        'home_abbr': h_abbr, 'home_id': h_id, 'home_score': home.get('score', '0'), 'home_logo': home['team'].get('logo', ''),
+                        'away_abbr': a_abbr, 'away_id': a_id, 'away_score': away.get('score', '0'), 'away_logo': away['team'].get('logo', ''),
+                        'situation': {}
                     }
 
-                    # --- SITUATION LOGIC ---
-                    if status_state == 'in':
-                        sit = comp.get('situation', {})
-                        
-                        # Football Logic
-                        if 'football' in path:
-                            game_obj['sit'] = sit.get('downDistanceText', '')
-                            game_obj['sit_color'] = "#00FF00" # Bright Green for Downs
-                            if sit.get('isRedZone'):
-                                game_obj['sit_color'] = "#FF0000" # Red for RedZone (Handled by border in ESP32, but useful here)
-                                game_obj['is_rz'] = True
-                            game_obj['poss'] = sit.get('possession', '')
-
-                        # NHL Logic
+                    if status == 'in':
+                        if 'football' in config['path']:
+                            game_obj['situation'] = {
+                                'possession': sit.get('possession', ''), 
+                                'downDist': sit.get('downDistanceText', ''), 
+                                'isRedZone': sit.get('isRedZone', False)
+                            }
                         elif league_key == 'nhl':
-                            try:
-                                h_id = home['id']
-                                a_id = away['id']
-                                curr_per = event['status']['period']
-                                curr_clk = event['status']['displayClock']
-                                
-                                pp_data = self.analyze_nhl_power_play(
-                                    game_obj['id'], curr_per, curr_clk, 
-                                    h_id, a_id, game_obj['h_abbr'], game_obj['a_abbr']
-                                )
-                                
-                                if pp_data['powerPlay']:
-                                    game_obj['sit'] = "PP"
-                                    game_obj['sit_color'] = "#FFFF00" # Yellow
-                                    game_obj['poss'] = pp_data['possession']
-                            except: pass
-
-                    games_list.append(game_obj)
+                            game_obj['situation'] = self.analyze_nhl_power_play(
+                                game_obj['id'], event['status']['period'], event['status']['displayClock'], 
+                                h_id, a_id, h_abbr, a_abbr
+                            )
+                        elif league_key == 'mlb':
+                            game_obj['situation'] = {
+                                'balls': sit.get('balls',0), 'strikes': sit.get('strikes',0), 'outs': sit.get('outs',0),
+                                'onFirst': sit.get('onFirst',False), 'onSecond': sit.get('onSecond',False), 'onThird': sit.get('onThird',False)
+                            }
+                    
+                    games.append(game_obj)
             except: continue
-        return games_list
+        return games
+
+fetcher = SportsFetcher()
 
 # ================= FLASK SERVER =================
 app = Flask(__name__)
-fetcher = SportsFetcher()
 
-def background_loop():
+# Background Thread
+def run_logic():
     while True:
         try:
-            state['current_games'] = fetcher.get_games()
+            state['current_games'] = fetcher.get_real_games()
         except: pass
-        time.sleep(10) # Refresh every 10s
+        time.sleep(10)
 
-# Start background thread
-t = threading.Thread(target=background_loop)
+t = threading.Thread(target=run_logic)
 t.daemon = True
 t.start()
 
-@app.route('/')
-def home():
-    return "Sports Ticker Server is Running."
+# --- ROUTES ---
 
+@app.route('/')
+def index():
+    return "Sports Ticker Backend is Running."
+
+# This is what your python simulation script is looking for
+@app.route('/get_state')
+def get_state():
+    return jsonify({ 'games': state['current_games'], 'settings': state })
+
+# This is what your ESP32 will look for
 @app.route('/esp32')
-def esp32_api():
-    """ Optimized JSON for ESP32 """
-    return jsonify({"games": state['current_games']})
+def get_esp32():
+    return jsonify({ 'games': state['current_games'] })
+
+# Configuration endpoints
+@app.route('/set_config', methods=['POST'])
+def set_config():
+    d = request.json
+    if 'mode' in d: state['mode'] = d['mode']
+    if 'active_sports' in d: state['active_sports'] = d['active_sports']
+    if 'my_teams' in d: state['my_teams'] = d['my_teams']
+    return "OK"
+
+@app.route('/toggle_debug')
+def toggle_debug():
+    state['debug_mode'] = not state['debug_mode']
+    return jsonify({'status': state['debug_mode']})
+
+@app.route('/set_custom_date', methods=['POST'])
+def set_custom_date():
+    state['custom_date'] = request.json.get('date')
+    return "OK"
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
