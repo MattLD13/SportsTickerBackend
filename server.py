@@ -14,6 +14,7 @@ from PIL import Image
 try:
     from valid_teams import FBS_TEAMS, FCS_TEAMS
 except ImportError:
+    print("Warning: valid_teams.py not found. College filtering will be disabled.")
     FBS_TEAMS = []
     FCS_TEAMS = []
 
@@ -54,7 +55,7 @@ class TickerState:
     def __init__(self):
         self.settings = self.load_config()
         self.game_data = []
-        self.all_teams_data = {} # Stores team lists for UI
+        self.all_teams_data = {} 
         self.last_fetch_time = 0
         self.is_fetching = False
 
@@ -91,9 +92,9 @@ class SportsFetcher:
 
     # --- 1. Populate Team List for "My Teams" UI ---
     def fetch_all_teams(self):
+        print("Fetching full team list...")
         teams_catalog = {k: [] for k in ['nfl', 'ncf_fbs', 'ncf_fcs', 'mlb', 'nhl', 'nba']}
         
-        # Helper to fetch and parse
         def fetch_league_teams(league_key, path, params):
             try:
                 r = requests.get(f"{self.base_url}/{path}/teams", params=params, timeout=10)
@@ -106,16 +107,21 @@ class SportsFetcher:
                             logo = t.get('logos', [{}])[0].get('href', '')
                             if abbr:
                                 entry = {'abbr': abbr, 'logo': logo}
-                                # Special handling for college split
+                                # FIX: If validation lists are empty, default to FBS so they appear somewhere
                                 if league_key == 'ncf_fbs':
-                                    if abbr in FBS_TEAMS: teams_catalog['ncf_fbs'].append(entry)
-                                    elif abbr in FCS_TEAMS: teams_catalog['ncf_fcs'].append(entry)
+                                    if FBS_TEAMS and abbr in FBS_TEAMS: 
+                                        teams_catalog['ncf_fbs'].append(entry)
+                                    elif FCS_TEAMS and abbr in FCS_TEAMS: 
+                                        teams_catalog['ncf_fcs'].append(entry)
+                                    else:
+                                        # Fallback if lists missing or team new
+                                        teams_catalog['ncf_fbs'].append(entry) 
                                 else:
                                     teams_catalog[league_key].append(entry)
                                 
-                                # Pre-populate logo map
                                 if logo: logo_url_map[abbr] = logo
-            except: pass
+            except Exception as e: 
+                print(f"Error fetching teams for {league_key}: {e}")
 
         for key in ['nfl', 'mlb', 'nhl', 'nba']:
             fetch_league_teams(key, self.leagues[key]['path'], self.leagues[key]['team_params'])
@@ -124,10 +130,10 @@ class SportsFetcher:
         fetch_league_teams('ncf_fbs', 'football/college-football', {'limit': 1000})
         
         ticker_state.all_teams_data = teams_catalog
+        print("Team list updated.")
 
     # --- 2. NATIVE NHL FETCHING (Official NHL API) ---
     def fetch_nhl_native(self, target_date_str):
-        # Format date for NHL API (YYYY-MM-DD)
         formatted_date = f"{target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}"
         games = []
         try:
@@ -138,7 +144,6 @@ class SportsFetcher:
                 if day['date'] != formatted_date: continue
                 for game in day.get('games', []):
                     try:
-                        # Fetch Game Details
                         g_r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game['id']}/play-by-play", timeout=2)
                         if g_r.status_code != 200: continue
                         gd = g_r.json()
@@ -146,20 +151,17 @@ class SportsFetcher:
                         h_abbr = gd['homeTeam']['abbrev']
                         a_abbr = gd['awayTeam']['abbrev']
                         
-                        # --- Logo Mapping ---
                         h_code = NHL_LOGO_MAP.get(h_abbr, h_abbr.lower())
                         a_code = NHL_LOGO_MAP.get(a_abbr, a_abbr.lower())
                         h_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_code}.png"
                         a_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_code}.png"
                         
-                        # Caps Override
                         if h_abbr == 'WSH': h_logo = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
                         if a_abbr == 'WSH': a_logo = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
                         
                         logo_url_map[h_abbr] = h_logo
                         logo_url_map[a_abbr] = a_logo
 
-                        # --- State Logic ---
                         state = gd.get('gameState', 'OFF')
                         mapped_state = 'in' if state in ['LIVE', 'CRIT'] else 'pre'
                         if state in ['FINAL', 'OFF']: mapped_state = 'post'
@@ -167,7 +169,6 @@ class SportsFetcher:
                         status_disp = state
                         clock = gd.get('clock', {})
                         if state in ['PRE', 'FUT']:
-                            # Parse UTC Time
                             utc_t = dt.strptime(gd['startTimeUTC'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
                             status_disp = utc_t.astimezone(timezone(timedelta(hours=TIMEZONE_OFFSET))).strftime("%I:%M %p").lstrip('0')
                         elif state in ['LIVE', 'CRIT']:
@@ -176,35 +177,28 @@ class SportsFetcher:
                             status_disp = f"P{per} - {rem}"
                             if clock.get('inIntermission'): status_disp = "INT"
 
-                        # --- Situation ---
                         sit = gd.get('situation', {})
                         sit_code = sit.get('situationCode', '1551')
-                        pp = False
-                        poss = ""
-                        # Simple skaters count check for PP
+                        pp = False; poss = ""
                         if len(sit_code) == 4:
-                            if sit_code[1] > sit_code[2]: 
-                                pp = True; poss = a_abbr
-                            elif sit_code[2] > sit_code[1]: 
-                                pp = True; poss = h_abbr
+                            if sit_code[1] > sit_code[2]: pp = True; poss = a_abbr
+                            elif sit_code[2] > sit_code[1]: pp = True; poss = h_abbr
 
-                        game_obj = {
+                        games.append({
                             'game_id': str(game['id']), 'sport': 'nhl',
                             'state': mapped_state, 'status': status_disp,
                             'away_abbr': a_abbr, 'away_score': gd['awayTeam'].get('score', 0), 'away_logo': a_logo,
                             'home_abbr': h_abbr, 'home_score': gd['homeTeam'].get('score', 0), 'home_logo': h_logo,
                             'situation': {'powerPlay': pp, 'possession': poss, 'isRedZone': False},
                             'is_shown': True
-                        }
-                        games.append(game_obj)
+                        })
                     except: continue
-        except: pass
+        except Exception as e: print(f"NHL Fetch Error: {e}")
         return games
 
-    # --- 3. GENERIC ESPN FETCHING (Other Sports) ---
+    # --- 3. GENERIC ESPN FETCHING ---
     def fetch_espn_generic(self, sport, date_str):
         base = f"{self.base_url}/{self.leagues[sport]['path']}/scoreboard"
-        # College groups
         if sport == 'ncf_fbs': base += "?group=80"
         elif sport == 'ncf_fcs': base += "?group=81"
         else: base += "?"
@@ -218,23 +212,13 @@ class SportsFetcher:
             data = r.json()
             
             for event in data.get('events', []):
-                # Date Check (Strict)
-                if 'date' not in event: continue
-                utc_str = event['date'].replace('Z', '')
-                local_time = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=TIMEZONE_OFFSET)))
-                game_date = local_time.strftime("%Y%m%d")
-                
                 status = event.get('status', {})
                 state = status.get('type', {}).get('state', 'pre')
-                
-                # Filter: Must match date OR be live/halftime
-                if state not in ['in', 'half'] and game_date != date_str: continue
                 
                 comp = event['competitions'][0]
                 home = next(c for c in comp['competitors'] if c['homeAway'] == 'home')
                 away = next(c for c in comp['competitors'] if c['homeAway'] == 'away')
                 
-                # Logos
                 h_url = home['team'].get('logo', '')
                 a_url = away['team'].get('logo', '')
                 h_abbr = home['team']['abbreviation']
@@ -242,7 +226,7 @@ class SportsFetcher:
                 if h_url: logo_url_map[h_abbr] = h_url
                 if a_url: logo_url_map[a_abbr] = a_url
                 
-                # Status Text
+                # Status Text Logic
                 raw_s = status.get('type', {}).get('shortDetail', 'Scheduled')
                 if state == 'half': s_disp = "HALFTIME"
                 elif state == 'in':
@@ -252,7 +236,6 @@ class SportsFetcher:
                     else: s_disp = raw_s
                 else: s_disp = raw_s.replace("Final", "FINAL").replace(" EST", "")
                 
-                # Situation
                 sit = comp.get('situation', {})
                 is_rz = sit.get('isRedZone', False) if state == 'in' else False
                 
@@ -270,44 +253,48 @@ class SportsFetcher:
                     } if state == 'in' else {},
                     'is_shown': True
                 })
-        except: pass
+        except Exception as e: print(f"ESPN Fetch Error {sport}: {e}")
         return games
 
 fetcher = SportsFetcher()
 
 def background_loop():
-    # 1. Initial Team Fetch (Fixes "My Teams")
+    # Initial Team Fetch
     fetcher.fetch_all_teams()
     
     while True:
         try:
             ticker_state.is_fetching = True
             
-            # Date Logic
+            # Date Calculation
             if ticker_state.settings.get('debug_mode') and ticker_state.settings.get('custom_date'):
                 date_str = ticker_state.settings['custom_date'].replace('-', '')
             else:
                 tz = timezone(timedelta(hours=TIMEZONE_OFFSET))
                 now = dt.now(timezone.utc).astimezone(tz)
+                # If it's 2 AM, show yesterday's late games. If it's 4 AM, show today's.
                 if now.hour < 3: date_str = (now - timedelta(days=1)).strftime("%Y%m%d")
                 else: date_str = now.strftime("%Y%m%d")
 
             all_games = []
             
-            # Fetch loop
             for sport, enabled in ticker_state.settings['active_sports'].items():
                 if not enabled: continue
                 
+                fetched = []
                 if sport == 'nhl':
-                    all_games.extend(fetcher.fetch_nhl_native(date_str))
+                    fetched = fetcher.fetch_nhl_native(date_str)
                 elif sport == 'ncf_fbs':
-                    all_games.extend(fetcher.fetch_espn_generic('ncf_fbs', date_str))
+                    fetched = fetcher.fetch_espn_generic('ncf_fbs', date_str)
                 elif sport == 'ncf_fcs':
-                    all_games.extend(fetcher.fetch_espn_generic('ncf_fcs', date_str))
+                    fetched = fetcher.fetch_espn_generic('ncf_fcs', date_str)
                 elif sport in ['nfl', 'mlb', 'nba']:
-                    all_games.extend(fetcher.fetch_espn_generic(sport, date_str))
+                    fetched = fetcher.fetch_espn_generic(sport, date_str)
+                
+                print(f"Fetched {len(fetched)} games for {sport}") # DEBUG
+                all_games.extend(fetched)
 
-            # Apply Visibility Filters
+            # Filtering
             mode = ticker_state.settings['mode']
             my_teams = ticker_state.settings['my_teams']
             
@@ -316,7 +303,7 @@ def background_loop():
                 if mode == 'live' and g['state'] not in ['in', 'half']: 
                     should_show = False
                 elif mode == 'my_teams':
-                    if not my_teams: should_show = True # Show all if list empty
+                    if not my_teams: should_show = True 
                     elif g['away_abbr'] not in my_teams and g['home_abbr'] not in my_teams:
                         should_show = False
                 
