@@ -8,7 +8,7 @@ import datetime
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from flask import Flask, jsonify, request, send_file, Response, redirect
-from PIL import Image # Image processing
+from PIL import Image
 
 # IMPORT TEAMS
 try:
@@ -20,48 +20,28 @@ except ImportError:
 # ================= CONFIGURATION =================
 TIMEZONE_OFFSET = -5  
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 10 
+UPDATE_INTERVAL = 15 # Increased slightly to prevent rate limits
 
-# --- NHL LOGO FIXES ---
-NHL_LOGO_MAP = {
-    "SJS": "sj",  "NJD": "nj",  "TBL": "tb", 
-    "LAK": "la",  "VGK": "vgs", "VEG": "vgs"
-}
-
-# ================= IMAGE PROCESSING ENGINE =================
-# Cache to store processed RGB565 bytes: {'NYY': b'\x00...', ...}
+# ================= IMAGE PROCESSING =================
 logo_blob_cache = {} 
-# Map Abbreviation -> URL (Populated during fetch)
 logo_url_map = {}
 
 def process_logo_to_rgb565(url, size=(24, 24)):
-    """Downloads image, resizes, and converts to 16-bit RGB565 raw bytes"""
     try:
         r = requests.get(url, timeout=2)
         if r.status_code != 200: return None
-        
-        # Load and Convert
         img = Image.open(io.BytesIO(r.content)).convert("RGBA")
         img = img.resize(size, Image.Resampling.LANCZOS)
-        
-        # Create black background for transparency handling
         bg = Image.new("RGBA", size, (0, 0, 0))
         img = Image.alpha_composite(bg, img).convert("RGB")
-        
-        # Convert to 565 Byte Array (Little Endian for ESP32)
         output = io.BytesIO()
         for y in range(size[1]):
             for x in range(size[0]):
                 r, g, b = img.getpixel((x, y))
-                # RGB565 Formula: R(5bits) G(6bits) B(5bits)
-                # ((R & 0xF8) << 8) | ((G & 0xFC) << 3) | (B >> 3)
                 c = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
                 output.write(struct.pack('<H', c))
-                
         return output.getvalue()
-    except Exception as e:
-        print(f"Logo Process Error {url}: {e}")
-        return None
+    except: return None
 
 # ================= STATE MANAGEMENT =================
 class TickerState:
@@ -72,55 +52,40 @@ class TickerState:
         self.is_fetching = False
 
     def load_config(self):
-        default_settings = {
-            "active_sports": {"nfl": True, "ncf_fbs": True, "ncf_fcs": False, "mlb": False, "nhl": True, "nba": False},
+        default = {
+            "active_sports": {"nfl": True, "ncf_fbs": True, "ncf_fcs": True, "mlb": True, "nhl": True, "nba": True},
             "my_teams": [], "mode": "all", "scroll_seamless": False, "debug_mode": False, "custom_date": None
         }
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, 'r') as f:
-                    config = json.load(f)
-                    default_settings.update(config)
+                    default.update(json.load(f))
             except: pass
-        return default_settings
+        return default
 
     def save_config(self, settings):
         self.settings = settings
         with open(CONFIG_FILE, 'w') as f: json.dump(self.settings, f, indent=4)
 
-    def should_show_game(self, game):
-        if not self.settings['active_sports'].get(game['sport'], False): return False
-        mode = self.settings['mode']
-        if mode == 'live' and game['state'] not in ('in', 'half'): return False
-        elif mode == 'my_teams':
-            if not self.settings['my_teams']: return True
-            if game['away_abbr'] not in self.settings['my_teams'] and game['home_abbr'] not in self.settings['my_teams']: return False
-        return True
-
 ticker_state = TickerState()
 
 # ================= DATA FETCHING =================
 def get_espn_url(sport, date_str):
-    urls = {
-        'nfl': f"http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates={date_str}",
-        'ncf_fbs': f"http://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?group=80&dates={date_str}",
-        'ncf_fcs': f"http://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?group=81&dates={date_str}",
-        'mlb': f"http://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates={date_str}",
-        'nhl': f"http://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates={date_str}",
-        'nba': f"http://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates={date_str}"
+    base = "http://site.api.espn.com/apis/site/v2/sports"
+    paths = {
+        'nfl': f"{base}/football/nfl/scoreboard",
+        'ncf_fbs': f"{base}/football/college-football/scoreboard?group=80",
+        'ncf_fcs': f"{base}/football/college-football/scoreboard?group=81",
+        'mlb': f"{base}/baseball/mlb/scoreboard",
+        'nhl': f"{base}/hockey/nhl/scoreboard",
+        'nba': f"{base}/basketball/nba/scoreboard"
     }
-    return urls.get(sport)
+    if sport in paths:
+        return f"{paths[sport]}&dates={date_str}"
+    return None
 
-def get_fetch_date():
-    if ticker_state.settings.get('debug_mode') and ticker_state.settings.get('custom_date'):
-        return ticker_state.settings['custom_date'].replace('-', '')
-    tz = timezone(timedelta(hours=TIMEZONE_OFFSET))
-    now = dt.now(timezone.utc).astimezone(tz)
-    if now.hour < 3: return (now - timedelta(days=1)).strftime("%Y%m%d")
-    return now.strftime("%Y%m%d")
-
-def clean_game_data(game_data):
-    games_list = []
+def clean_game_data(game_data, sport_key):
+    games = []
     for event in game_data.get('events', []):
         try:
             comp = event['competitions'][0]
@@ -130,13 +95,25 @@ def clean_game_data(game_data):
             
             # --- Status Logic ---
             raw_status = status_type.get('shortDetail', 'Scheduled')
-            if status_state == 'half': status_display = "HALFTIME"
+            
+            # 1. Halftime Override
+            if status_state == 'half': 
+                status_display = "HALFTIME"
+            
+            # 2. Live Game Logic
             elif status_state == 'in':
                 clock = status_obj.get('displayClock', '')
                 period = status_obj.get('period', 1)
-                # Football Clock Fix: "Q1 - 12:45"
-                if clock: status_display = f"Q{period} - {clock}"
-                else: status_display = raw_status 
+                
+                # Football Clock Fix
+                if 'football' in sport_key:
+                    prefix = f"Q{period}" 
+                    if clock: status_display = f"{prefix} - {clock}"
+                    else: status_display = prefix
+                else:
+                    status_display = raw_status 
+            
+            # 3. Default/Final
             else:
                 status_display = raw_status.replace("Final", "FINAL").replace(" EST", "").replace(" EDT", "").replace("/OT", "")
                 if " - " in status_display: status_display = status_display.split(" - ")[-1]
@@ -144,25 +121,25 @@ def clean_game_data(game_data):
             home = next(c for c in comp['competitors'] if c['homeAway'] == 'home')
             away = next(c for c in comp['competitors'] if c['homeAway'] == 'away')
             
-            # --- Logo Map Population ---
-            # Save URLs to global map for the image processor to find later
+            # Cache URLs for logo API
             h_abbr = home['team']['abbreviation']
             a_abbr = away['team']['abbreviation']
             if 'logo' in home['team']: logo_url_map[h_abbr] = home['team']['logo']
             if 'logo' in away['team']: logo_url_map[a_abbr] = away['team']['logo']
 
             # NHL Fixes
-            if event['name'].split(' ')[0].lower() == 'hockey':
+            if sport_key == 'nhl':
                 if h_abbr == 'WSH': logo_url_map[h_abbr] = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
                 if a_abbr == 'WSH': logo_url_map[a_abbr] = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
 
             sit = comp.get('situation', {})
+            # RedZone Fix: Only true if live and API says so
             is_rz = sit.get('isRedZone', False) if status_state == 'in' else False
 
             game_obj = {
                 'game_id': event['id'],
-                'sport': event['name'].split(' ')[0].lower(),
-                'state': status_state if status_state != 'half' else 'half',
+                'sport': sport_key,
+                'state': status_state if status_state != 'half' else 'half', # Keep 'half' for filters
                 'status': status_display,
                 'away_abbr': a_abbr, 'away_score': int(away.get('score', 0)),
                 'home_abbr': h_abbr, 'home_score': int(home.get('score', 0)),
@@ -174,48 +151,74 @@ def clean_game_data(game_data):
                     'onFirst': sit.get('onFirst', False),
                     'onSecond': sit.get('onSecond', False),
                     'onThird': sit.get('onThird', False)
-                } if status_state == 'in' else {},
-                'is_shown': False
+                } if status_state == 'in' else {}, # Empty situation if not live
+                'is_shown': True 
             }
             
-            if game_obj['sport'] == 'college':
-                game_obj['sport'] = 'ncf_fbs' if (a_abbr in FBS_TEAMS or h_abbr in FBS_TEAMS) else 'ncf_fcs'
-            
-            games_list.append(game_obj)
-        except Exception: continue
-    return games_list
+            # Filter Check
+            mode = ticker_state.settings['mode']
+            if mode == 'live' and game_obj['state'] not in ('in', 'half'): 
+                game_obj['is_shown'] = False
+            elif mode == 'my_teams' and ticker_state.settings['my_teams']:
+                if h_abbr not in ticker_state.settings['my_teams'] and a_abbr not in ticker_state.settings['my_teams']:
+                    game_obj['is_shown'] = False
+
+            games.append(game_obj)
+        except Exception as e:
+            print(f"Parse Error {sport_key}: {e}")
+            continue
+    return games
 
 def fetch_data():
     while True:
-        ticker_state.is_fetching = True
-        current_date = get_fetch_date()
-        all_games = []
-        for sport in ['nfl', 'ncf_fbs', 'ncf_fcs', 'mlb', 'nhl', 'nba']:
-            if not ticker_state.settings['active_sports'].get(sport, True): continue
-            url = get_espn_url(sport, current_date)
-            if url:
+        try:
+            ticker_state.is_fetching = True
+            
+            # Date Logic
+            if ticker_state.settings.get('debug_mode') and ticker_state.settings.get('custom_date'):
+                date_str = ticker_state.settings['custom_date'].replace('-', '')
+            else:
+                tz = timezone(timedelta(hours=TIMEZONE_OFFSET))
+                now = dt.now(timezone.utc).astimezone(tz)
+                # Rollback date if before 3AM (for late night games)
+                if now.hour < 3: date_str = (now - timedelta(days=1)).strftime("%Y%m%d")
+                else: date_str = now.strftime("%Y%m%d")
+
+            all_games = []
+            
+            # Sport Loop
+            for sport in ['nfl', 'ncf_fbs', 'ncf_fcs', 'mlb', 'nhl', 'nba']:
+                if not ticker_state.settings['active_sports'].get(sport, True): continue
+                
+                url = get_espn_url(sport, date_str)
+                if not url: continue
+
                 try:
                     r = requests.get(url, timeout=5)
-                    all_games.extend(clean_game_data(r.json()))
-                except: pass
-        
-        for game in all_games:
-            game['is_shown'] = ticker_state.should_show_game(game)
+                    if r.status_code == 200:
+                        all_games.extend(clean_game_data(r.json(), sport))
+                    else:
+                        print(f"HTTP {r.status_code} for {sport}")
+                except Exception as e:
+                    print(f"Fetch Fail {sport}: {e}")
+
+            ticker_state.game_data = all_games
+            ticker_state.last_fetch_time = time.time()
             
-        ticker_state.game_data = all_games
-        ticker_state.last_fetch_time = time.time()
+        except Exception as e:
+            print(f"CRITICAL LOOP ERROR: {e}")
+        
         ticker_state.is_fetching = False
         time.sleep(UPDATE_INTERVAL)
 
 threading.Thread(target=fetch_data, daemon=True).start()
 
-# ================= API ROUTES =================
+# ================= FLASK & UI =================
 app = Flask(__name__)
 
 @app.route('/')
 def root(): return redirect('/control')
 
-# Insert your DASHBOARD_HTML string here (same as before)
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -288,9 +291,7 @@ DASHBOARD_HTML = """
         <div class="header-row"> <h1 class="app-title">Ticker Control</h1> <button class="hamburger-btn" onclick="toggleSettings()">☰</button> </div>
         <div class="control-row"> <span class="section-title">Display Filter</span> <div class="mode-switch"> <div id="mode_all" class="mode-opt" onclick="setMode('all')">Show All</div> <div id="mode_live" class="mode-opt" onclick="setMode('live')">Live Only</div> <div id="mode_my" class="mode-opt" onclick="setMode('my_teams')">My Teams</div> </div> </div>
         <div class="control-row"> <span class="section-title">Scroll Style</span> <div class="mode-switch"> <div id="scroll_paged" class="mode-opt" onclick="setScroll(false)">Paged (Slide)</div> <div id="scroll_seamless" class="mode-opt" onclick="setScroll(true)">Seamless (Marquee)</div> </div> </div>
-        
         <button class="action-btn btn-save" onclick="saveConfig()">SAVE SETTINGS</button>
-
         <div id="settingsArea" class="settings-hidden"> <span class="section-title">Enabled Sports</span> <div class="sports-grid"> <div id="btn_nfl" class="sport-btn" onclick="toggleSport('nfl')">NFL</div> <div id="btn_ncf_fbs" class="sport-btn" onclick="toggleSport('ncf_fbs')">FBS</div> <div id="btn_ncf_fcs" class="sport-btn" onclick="toggleSport('ncf_fcs')">FCS</div> <div id="btn_mlb" class="sport-btn" onclick="toggleSport('mlb')">MLB</div> <div id="btn_nhl" class="sport-btn" onclick="toggleSport('nhl')">NHL</div> <div id="btn_nba" class="sport-btn" onclick="toggleSport('nba')">NBA</div> </div> <button class="action-btn btn-teams" onclick="openTeamModal()">Manage My Teams (<span id="team_count">0</span>)</button> <div style="text-align:center; margin-top:15px;"> <a href="#" onclick="toggleDebug()" style="color:#555; font-size:0.75em; text-decoration:none;">Debug / Time Machine</a> </div> <div id="debugControls" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid #333;"> <div style="display:flex; gap:10px;"> <input type="date" id="custom_date" style="padding:8px; flex:1; background:#111; color:#fff; border:1px solid #555; border-radius:4px;"> <button style="width:auto; background:#fff; color:#000; margin:0; padding:0 15px;" onclick="setDate()">Go</button> </div> <button style="background:#333; color:#aaa; margin-top:8px; width:100%; padding:8px; border:none; cursor:pointer;" onclick="resetDate()">Reset to Live</button> </div> </div>
     </div>
     <div class="panel" style="padding-top:5px;"> <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:5px;"> <span class="section-title" style="margin:0;">Active Feed (<span id="game_count">0</span>)</span> <div style="font-size:0.7em; color:#666;">Updates every 5s</div> </div> <table class="game-table"> <thead> <tr> <th class="th-league">LGE</th> <th>Matchup</th> <th style="text-align:center;">Score</th> <th style="text-align:right;">Status</th> <th style="text-align:right;">Sit.</th> </tr> </thead> <tbody id="gameTableBody"></tbody> </table> </div>
@@ -307,7 +308,17 @@ DASHBOARD_HTML = """
                 if(g.state === 'in' || g.state === 'half') { if(g.sport === 'nfl' || g.sport.includes('ncf')) { if(g.status === 'HALFTIME') { sitHTML = ''; } else if(g.situation.downDist) { sitHTML = `<span class="sit-football">${g.situation.downDist}</span>`; } else if(g.situation.isRedZone) { sitHTML = `<span class="sit-football">RedZone</span>`; } } else if(g.sport === 'nhl' && g.situation.powerPlay) { let poss = g.situation.possession ? ` (${g.situation.possession})` : ''; sitHTML = `<span class="sit-hockey">PP${poss}</span>`; } else if(g.sport === 'mlb' && g.situation.outs !== undefined) { sitHTML = `<span class="sit-baseball">${g.situation.balls}-${g.situation.strikes}, ${g.situation.outs} Out</span>`; } }
                 tr.innerHTML = `<td class="col-league"><span class="league-label">${leagueLabel}</span></td> <td><div class="col-matchup"> ${awayLogo} ${g.away_abbr} <span class="at-symbol">@</span> ${homeLogo} ${g.home_abbr} </div></td> <td class="col-score">${g.away_score}-${g.home_score}</td> <td class="col-status">${g.status}</td> <td class="col-situation">${sitHTML}</td>`; tbody.appendChild(tr); }); }
         function toggleSport(s) { currentState.active_sports[s] = !currentState.active_sports[s]; renderUI(); } function setMode(m) { currentState.mode = m; renderUI(); } function setScroll(isSeamless) { currentState.scroll_seamless = isSeamless; renderUI(); }
-        async function saveConfig() { await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(currentState)}); let btn = document.querySelector('.btn-save'); let oldText = btn.innerText; btn.innerText = "SAVED!"; btn.style.background = "#1c1f2e"; btn.style.color = "white"; setTimeout(() => { btn.innerText = oldText; btn.style.background = ""; btn.style.color = ""; }, 1500); }
+        
+        async function saveConfig() { 
+            await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(currentState)}); 
+            let btn = document.querySelector('.btn-save'); 
+            let oldText = btn.innerText; 
+            btn.innerText = "SAVED!"; 
+            btn.style.background = "#1c1f2e"; 
+            btn.style.color = "white"; 
+            setTimeout(() => { btn.innerText = oldText; btn.style.background = ""; btn.style.color = ""; }, 1500); 
+        }
+
         function openTeamModal() { document.getElementById('teamModal').style.display = 'block'; showTab(currentTabLeague); } function closeTeamModal() { document.getElementById('teamModal').style.display = 'none'; renderUI(); }
         function showTab(league) { currentTabLeague = league; document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); let activeTab = document.getElementById('tab_' + league); if(activeTab) activeTab.classList.add('active'); const grid = document.getElementById('teamGrid'); grid.innerHTML = ''; if (!allTeams[league] || allTeams[league].length === 0) { grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#666;">No teams found.</div>'; return; } allTeams[league].forEach(team => { let isSelected = currentState.my_teams.includes(team.abbr); let card = document.createElement('div'); card.className = `team-card ${isSelected ? 'selected' : ''}`; card.onclick = () => toggleTeamSelection(team.abbr, card); let logoImg = team.logo ? `<img src="${team.logo}">` : '<div style="width:35px;height:35px;"></div>'; card.innerHTML = `${logoImg} <span>${team.abbr}</span>`; grid.appendChild(card); }); }
         function toggleTeamSelection(abbr, cardElement) { if(currentState.my_teams.includes(abbr)) { currentState.my_teams = currentState.my_teams.filter(t => t !== abbr); cardElement.classList.remove('selected'); } else { currentState.my_teams.push(abbr); cardElement.classList.add('selected'); } document.getElementById('team_count').innerText = currentState.my_teams.length; }
@@ -321,8 +332,7 @@ DASHBOARD_HTML = """
 """
 
 @app.route('/control')
-def dashboard():
-    return DASHBOARD_HTML
+def dashboard(): return DASHBOARD_HTML
 
 @app.route('/api/ticker')
 def get_ticker():
@@ -335,12 +345,10 @@ def get_ticker():
 def serve_logo(abbr):
     url = logo_url_map.get(abbr)
     if not url: return Response(status=404)
-    
     if abbr not in logo_blob_cache:
         blob = process_logo_to_rgb565(url)
         if blob: logo_blob_cache[abbr] = blob
         else: return Response(status=404)
-        
     return send_file(io.BytesIO(logo_blob_cache[abbr]), mimetype='application/octet-stream')
 
 @app.route('/api/all_games')
@@ -352,6 +360,7 @@ def get_state(): return jsonify({'settings': ticker_state.settings, 'games': tic
 @app.route('/api/config', methods=['POST'])
 def update_config():
     ticker_state.save_config(request.json)
+    threading.Thread(target=fetch_data).start() # Force update
     return jsonify({"status": "success"})
 
 @app.route('/api/teams')
