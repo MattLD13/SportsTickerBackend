@@ -18,7 +18,7 @@ except ImportError:
     FCS_TEAMS = []
 
 # ================= CONFIGURATION =================
-TIMEZONE_OFFSET = -5  # Set to -5 for EST/EDT
+TIMEZONE_OFFSET = -5 
 CONFIG_FILE = "ticker_config.json"
 UPDATE_INTERVAL = 10 
 
@@ -28,14 +28,16 @@ NHL_LOGO_MAP = {
     "LAK": "la",  "VGK": "vgs", "VEG": "vgs"
 }
 
-# --- LOGO OVERRIDES (For Image Generation) ---
+# --- LOGO OVERRIDES ---
+# Fixes for teams with missing/bad default logos in the API
 LOGO_OVERRIDES = {
     "WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
     "WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+    "NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png", # Explicit fix for Devils
     "LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
 }
 
-# ================= WEB UI =================
+# ================= WEB UI (Same as before) =================
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -698,7 +700,7 @@ def set_debug():
     fetcher.get_real_games()
     return jsonify({"status": "ok"})
 
-# ================= IMAGE ENDPOINT (Auto-Crop + League Fix) =================
+# ================= IMAGE ENDPOINT (Padding + League Fix) =================
 @app.route('/api/logo/<league>/<abbr>')
 def serve_logo(league, abbr):
     url = None
@@ -725,11 +727,24 @@ def serve_logo(league, abbr):
     try:
         r = requests.get(url, timeout=3)
         img = Image.open(io.BytesIO(r.content)).convert("RGBA")
+        
+        # 1. AUTO-CROP (Remove Whitespace)
         bbox = img.getbbox() 
-        if bbox: img = img.crop(bbox) # Auto-Crop
-        img = img.resize((24, 24), Image.Resampling.LANCZOS)
-        bg = Image.new("RGBA", img.size, (0, 0, 0, 255))
-        combined = Image.alpha_composite(bg, img).convert("RGB")
+        if bbox: img = img.crop(bbox) 
+        
+        # 2. RESIZE WITH PADDING (Fit inside 20x20)
+        img.thumbnail((20, 20), Image.Resampling.LANCZOS)
+        
+        # 3. CENTER ON 24x24 CANVAS
+        bg = Image.new("RGBA", (24, 24), (0, 0, 0, 255))
+        
+        # Calculate offset to center the 20x20 (or smaller) image
+        offset_x = (24 - img.width) // 2
+        offset_y = (24 - img.height) // 2
+        
+        bg.paste(img, (offset_x, offset_y), img)
+        combined = bg.convert("RGB")
+
         pixels = list(combined.getdata())
         byte_arr = bytearray()
         for r, g, b in pixels:
