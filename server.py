@@ -6,6 +6,9 @@ import datetime
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from flask import Flask, jsonify, request
+import struct # <--- ADDED
+import io     # <--- ADDED
+from PIL import Image # <--- ADDED
 
 # IMPORT TEAMS
 try:
@@ -24,6 +27,13 @@ UPDATE_INTERVAL = 10
 NHL_LOGO_MAP = {
     "SJS": "sj",  "NJD": "nj",  "TBL": "tb", 
     "LAK": "la",  "VGK": "vgs", "VEG": "vgs"
+}
+
+# --- LOGO OVERRIDES (For Image Generation) ---
+LOGO_OVERRIDES = {
+    "WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+    "WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+    "LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
 }
 
 # ================= WEB UI =================
@@ -782,6 +792,51 @@ def set_debug():
     if 'custom_date' in d: state['custom_date'] = d['custom_date']
     fetcher.get_real_games()
     return jsonify({"status": "ok"})
+
+# ================= NEW: IMAGE PROCESSING ENDPOINT =================
+@app.route('/api/logo/<abbr>')
+def serve_logo(abbr):
+    # 1. Look for URL in OVERRIDES, then in state['all_teams_data']
+    url = None
+    if abbr in LOGO_OVERRIDES: 
+        url = LOGO_OVERRIDES[abbr]
+    else:
+        # Search efficiently through loaded teams
+        found = False
+        for league_data in state['all_teams_data'].values():
+            for t in league_data:
+                if t['abbr'] == abbr:
+                    url = t['logo']
+                    found = True
+                    break
+            if found: break
+    
+    if not url: return "Not found", 404
+
+    try:
+        # 2. Download and Resize
+        r = requests.get(url, timeout=3)
+        img = Image.open(io.BytesIO(r.content))
+        img = img.resize((24, 24), Image.Resampling.LANCZOS).convert("RGBA")
+
+        # 3. Handle Transparency (Composite over black)
+        bg = Image.new("RGBA", img.size, (0, 0, 0, 255))
+        combined = Image.alpha_composite(bg, img).convert("RGB")
+
+        # 4. Convert to RGB565 (Little Endian for ESP32)
+        pixels = list(combined.getdata())
+        byte_arr = bytearray()
+        for r, g, b in pixels:
+            # RGB565: RRRRRGGG GGGBBBBB
+            val = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+            # Pack as unsigned short (2 bytes), Little Endian
+            byte_arr.extend(struct.pack('<H', val))
+
+        return bytes(byte_arr), 200, {'Content-Type': 'application/octet-stream'}
+
+    except Exception as e:
+        print(f"Logo Processing Error: {e}")
+        return "Error", 500
 
 if __name__ == "__main__":
     t = threading.Thread(target=background_updater)
