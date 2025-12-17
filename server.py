@@ -22,34 +22,44 @@ TIMEZONE_OFFSET = -5
 CONFIG_FILE = "ticker_config.json"
 UPDATE_INTERVAL = 10 
 
-# ================= LEAGUE-SPECIFIC LOGO OVERRIDES =================
-# Structure: { "LEAGUE_CODE": { "ABBR": "URL" } }
-LEAGUE_OVERRIDES = {
-    "nhl": {
-        "NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
-        "LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/lak.png",
-        "LA":  "https://a.espncdn.com/i/teamlogos/nhl/500/lak.png",
-        "UTA": "https://assets.nhle.com/logos/nhl/svg/UTA_light.svg",
-        "UTAH": "https://assets.nhle.com/logos/nhl/svg/UTA_light.svg",
-        "STL": "https://a.espncdn.com/i/teamlogos/nhl/500/stl.png",
-        "WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
-        "WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
-    },
-    "ncf_fbs": {
-        "UL":  "https://a.espncdn.com/i/teamlogos/ncaa/500/309.png", 
-        "ULL": "https://a.espncdn.com/i/teamlogos/ncaa/500/309.png",
-        "LOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/97.png",
-        "LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
-    },
-    "nba": {
-        "UTA": "https://a.espncdn.com/i/teamlogos/nba/500/utah.png",
-        "NOP": "https://a.espncdn.com/i/teamlogos/nba/500/no.png",
-        "NYK": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
-        "GS":  "https://a.espncdn.com/i/teamlogos/nba/500/gs.png",
-        "GSW": "https://a.espncdn.com/i/teamlogos/nba/500/gs.png",
-        "SA":  "https://a.espncdn.com/i/teamlogos/nba/500/sas.png",
-        "SAS": "https://a.espncdn.com/i/teamlogos/nba/500/sas.png"
-    }
+# ================= MASTER LOGO OVERRIDES =================
+# Simple flat list. Checks here first, regardless of league.
+LOGO_OVERRIDES = {
+    # NHL
+    "NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
+    "LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/lak.png",
+    "LA":  "https://a.espncdn.com/i/teamlogos/nhl/500/lak.png",
+    "UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+    "UTAH": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+    "STL": "https://a.espncdn.com/i/teamlogos/nhl/500/stl.png",
+    "WSH": "https://a.espncdn.com/i/teamlogos/nhl/500/wsh.png",
+    "WAS": "https://a.espncdn.com/i/teamlogos/nhl/500/wsh.png",
+    
+    # College (Add any problem teams here)
+    "UL":  "https://a.espncdn.com/i/teamlogos/ncaa/500/309.png", 
+    "ULL": "https://a.espncdn.com/i/teamlogos/ncaa/500/309.png",
+    "LOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/97.png",
+    "LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png",
+    
+    # NBA (Fixes generic scoreboard logos)
+    "UTA": "https://a.espncdn.com/i/teamlogos/nba/500/utah.png",
+    "NOP": "https://a.espncdn.com/i/teamlogos/nba/500/no.png",
+    "NYK": "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+    "GS":  "https://a.espncdn.com/i/teamlogos/nba/500/gs.png",
+    "GSW": "https://a.espncdn.com/i/teamlogos/nba/500/gs.png",
+    "SA":  "https://a.espncdn.com/i/teamlogos/nba/500/sas.png",
+    "SAS": "https://a.espncdn.com/i/teamlogos/nba/500/sas.png"
+}
+
+# Common abbreviation variations
+ABBR_ALIASES = {
+    # NHL variations
+    "NJ": "NJD", "TB": "TBL",
+    # NBA variations  
+    "GS": "GSW", "SA": "SAS", "NO": "NOP", "NY": "NYK",
+    # NFL variations
+    "KC": "KAN", "NE": "NWE", "SF": "SFO",
+    "GB": "GNB", "NO": "NOR", "LA": "LAR"
 }
 
 # ================= WEB UI =================
@@ -532,6 +542,133 @@ class SportsFetcher:
 
 fetcher = SportsFetcher()
 
+# ================= IMPROVED LOGO SYSTEM =================
+
+def normalize_league_for_cdn(league):
+    """Convert internal league codes to ESPN CDN format"""
+    if "ncf" in league:
+        return "ncaa"
+    return league
+
+def get_logo_url_candidates(league, abbr):
+    """
+    Generate multiple URL candidates for a team logo.
+    Returns list of (url, description) tuples to try in order.
+    """
+    abbr_upper = abbr.upper()
+    abbr_lower = abbr.lower()
+    cdn_league = normalize_league_for_cdn(league)
+    
+    candidates = []
+    
+    # 1. Check hardcoded overrides first
+    if abbr_upper in LOGO_OVERRIDES:
+        candidates.append((LOGO_OVERRIDES[abbr_upper], "override"))
+    
+    # 2. Check if there's an alias
+    if abbr_upper in ABBR_ALIASES:
+        alias = ABBR_ALIASES[abbr_upper]
+        if alias in LOGO_OVERRIDES:
+            candidates.append((LOGO_OVERRIDES[alias], "alias_override"))
+    
+    # 3. Check current games cache
+    for g in state['current_games']:
+        if g['home_abbr'] == abbr_upper and g['home_logo']:
+            candidates.append((g['home_logo'], "game_cache_home"))
+            break
+        if g['away_abbr'] == abbr_upper and g['away_logo']:
+            candidates.append((g['away_logo'], "game_cache_away"))
+            break
+    
+    # 4. Try ESPN CDN with lowercase abbreviation
+    candidates.append((
+        f"https://a.espncdn.com/i/teamlogos/{cdn_league}/500/{abbr_lower}.png",
+        "cdn_lower"
+    ))
+    
+    # 5. Try ESPN CDN with uppercase abbreviation
+    if abbr_lower != abbr_upper.lower():
+        candidates.append((
+            f"https://a.espncdn.com/i/teamlogos/{cdn_league}/500/{abbr_upper.lower()}.png",
+            "cdn_upper"
+        ))
+    
+    # 6. For college teams, try with team ID if available
+    if "ncf" in league:
+        # Try to find team ID from all_teams_data
+        team_data = state.get('all_teams_data', {}).get(league, [])
+        for team in team_data:
+            if team.get('abbr') == abbr_upper and team.get('logo'):
+                candidates.append((team['logo'], "team_data_cache"))
+                break
+    
+    # 7. League-specific fallback patterns
+    if league == "nhl":
+        # NHL sometimes uses full team names
+        candidates.append((
+            f"https://a.espncdn.com/i/teamlogos/nhl/500/{abbr_lower}.png",
+            "nhl_standard"
+        ))
+    elif league == "nba":
+        # NBA sometimes needs special handling
+        special_nba = {
+            "UTA": "utah", "NOP": "no", "NYK": "ny", 
+            "GSW": "gs", "SAS": "sa"
+        }
+        if abbr_upper in special_nba:
+            candidates.append((
+                f"https://a.espncdn.com/i/teamlogos/nba/500/{special_nba[abbr_upper]}.png",
+                "nba_special"
+            ))
+    
+    return candidates
+
+def fetch_and_process_logo(url):
+    """
+    Fetch and process a logo URL into 24x24 RGB565 format.
+    Returns (byte_array, success) tuple.
+    """
+    try:
+        r = requests.get(url, timeout=5, allow_redirects=True)
+        if r.status_code != 200:
+            return None, False
+        
+        # Handle SVG differently (convert to PNG first if needed)
+        if url.endswith('.svg') or 'svg' in r.headers.get('Content-Type', ''):
+            # For SVG, try to get PNG version or skip
+            return None, False
+        
+        img = Image.open(io.BytesIO(r.content)).convert("RGBA")
+        
+        # Auto-crop to remove whitespace
+        bbox = img.getbbox()
+        if bbox:
+            img = img.crop(bbox)
+        
+        # Resize to fit within 20x20 while maintaining aspect ratio
+        img.thumbnail((20, 20), Image.Resampling.LANCZOS)
+        
+        # Create 24x24 canvas and center the image
+        bg = Image.new("RGBA", (24, 24), (0, 0, 0, 255))
+        offset_x = (24 - img.width) // 2
+        offset_y = (24 - img.height) // 2
+        bg.paste(img, (offset_x, offset_y), img)
+        
+        # Convert to RGB565
+        combined = bg.convert("RGB")
+        pixels = list(combined.getdata())
+        byte_arr = bytearray()
+        
+        for r_val, g_val, b_val in pixels:
+            # RGB565 encoding: RRRRRGGG GGGBBBBB
+            val = ((r_val & 0xF8) << 8) | ((g_val & 0xFC) << 3) | (b_val >> 3)
+            byte_arr.extend(struct.pack('<H', val))
+        
+        return bytes(byte_arr), True
+        
+    except Exception as e:
+        return None, False
+
 def background_updater():
     fetcher.fetch_all_teams()
     while True:
@@ -579,6 +716,7 @@ def update_config():
     except Exception as e:
         print(f"[WARNING] Could not save config file (File Locked). Settings active in memory only. Error: {e}")
     
+    # INSTANT REFRESH
     threading.Thread(target=fetcher.get_real_games).start()
     return jsonify({"status": "ok"})
 
@@ -590,54 +728,62 @@ def set_debug():
     fetcher.get_real_games()
     return jsonify({"status": "ok"})
 
-# ================= IMAGE ENDPOINT (Auto-Crop + Universal Fallback) =================
+# ================= IMPROVED LOGO ENDPOINT =================
 @app.route('/api/logo/<league>/<abbr>')
 def serve_logo(league, abbr):
-    abbr = abbr.upper()
-    url = None
+    """
+    Serve team logo as 24x24 RGB565 pixel art.
+    Tries multiple URL sources until one succeeds.
+    """
+    candidates = get_logo_url_candidates(league, abbr)
     
-    # 1. CHECK OVERRIDES (Scoped by League)
-    if league in LEAGUE_OVERRIDES and abbr in LEAGUE_OVERRIDES[league]:
-        url = LEAGUE_OVERRIDES[league][abbr]
+    # Try each candidate URL in order
+    for url, source in candidates:
+        if not url:
+            continue
+            
+        print(f"[LOGO] Trying {abbr} from {source}: {url}")
+        result, success = fetch_and_process_logo(url)
+        
+        if success and result:
+            print(f"[LOGO] ✓ Success for {abbr} from {source}")
+            return result, 200, {'Content-Type': 'application/octet-stream'}
     
-    # 2. UNIVERSAL FALLBACK: Construct ESPN CDN URL directly
-    if not url:
-        cdn_league = league
-        if "ncf" in league: cdn_league = "ncaa"
-        url = f"https://a.espncdn.com/i/teamlogos/{cdn_league}/500/{abbr.lower()}.png"
+    # If all attempts failed, return error
+    print(f"[LOGO] ✗ All attempts failed for {league}/{abbr}")
+    return "Logo not found", 404
 
-    try:
-        r = requests.get(url, timeout=3)
-        if r.status_code != 200: return "Not found", 404
+# ================= LOGO TESTING ENDPOINT =================
+@app.route('/api/logo/test/<league>/<abbr>')
+def test_logo(league, abbr):
+    """Debug endpoint to see all attempted URLs and their results"""
+    candidates = get_logo_url_candidates(league, abbr)
+    results = []
+    
+    for url, source in candidates:
+        if not url:
+            continue
         
-        img = Image.open(io.BytesIO(r.content)).convert("RGBA")
-
-        # 1. AUTO-CROP
-        bbox = img.getbbox() 
-        if bbox: img = img.crop(bbox) 
+        try:
+            r = requests.head(url, timeout=3, allow_redirects=True)
+            status = r.status_code
+            accessible = status == 200
+        except:
+            status = "error"
+            accessible = False
         
-        # 2. RESIZE WITH PADDING
-        img.thumbnail((20, 20), Image.Resampling.LANCZOS)
-        
-        # 3. CENTER
-        bg = Image.new("RGBA", (24, 24), (0, 0, 0, 255))
-        offset_x = (24 - img.width) // 2
-        offset_y = (24 - img.height) // 2
-        bg.paste(img, (offset_x, offset_y), img)
-        
-        # 4. RGB565
-        combined = bg.convert("RGB")
-        pixels = list(combined.getdata())
-        byte_arr = bytearray()
-        for r, g, b in pixels:
-            val = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-            byte_arr.extend(struct.pack('<H', val))
-
-        return bytes(byte_arr), 200, {'Content-Type': 'application/octet-stream'}
-
-    except Exception as e:
-        print(f"Logo Processing Error: {e}")
-        return "Error", 500
+        results.append({
+            "source": source,
+            "url": url,
+            "status": status,
+            "accessible": accessible
+        })
+    
+    return jsonify({
+        "team": abbr.upper(),
+        "league": league,
+        "candidates": results
+    })
 
 if __name__ == "__main__":
     t = threading.Thread(target=background_updater)
