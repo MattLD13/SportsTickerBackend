@@ -18,27 +18,27 @@ except ImportError:
     FCS_TEAMS = []
 
 # ================= CONFIGURATION =================
-TIMEZONE_OFFSET = -5  # EST/EDT
+TIMEZONE_OFFSET = -5  # Set to -5 for EST/EDT
 CONFIG_FILE = "ticker_config.json"
 UPDATE_INTERVAL = 10 
 
-# --- LOGO OVERRIDES & MISSING TEAMS FIX ---
+# ================= LOGO OVERRIDES (Hardcoded) =================
+# These URLs are used by the /api/logo endpoint to fix missing/bad logos
 LOGO_OVERRIDES = {
     # NHL Fixes
     "NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
-    "LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/lak.png", # LA Kings
+    "LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/lak.png",
     "LA":  "https://a.espncdn.com/i/teamlogos/nhl/500/lak.png",
-    "UTA": "https://assets.nhle.com/logos/nhl/svg/UTA_light.svg", # Utah Mammoth (Generic/New)
+    "UTA": "https://assets.nhle.com/logos/nhl/svg/UTA_light.svg",
     "UTAH": "https://assets.nhle.com/logos/nhl/svg/UTA_light.svg",
-    
-    # College/FBS Fixes
-    "UL":  "https://a.espncdn.com/i/teamlogos/ncaa/500/309.png", # Louisiana (Ragin Cajuns)
-    "ULL": "https://a.espncdn.com/i/teamlogos/ncaa/500/309.png",
-    "LOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/97.png",  # Louisville
-    
-    # Other
+    "STL": "https://a.espncdn.com/i/teamlogos/nhl/500/stl.png",
     "WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
     "WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+    
+    # College/FBS Fixes
+    "UL":  "https://a.espncdn.com/i/teamlogos/ncaa/500/309.png", # Louisiana
+    "ULL": "https://a.espncdn.com/i/teamlogos/ncaa/500/309.png",
+    "LOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/97.png",
 }
 
 # ================= WEB UI =================
@@ -148,6 +148,7 @@ if os.path.exists(CONFIG_FILE):
 class SportsFetcher:
     def __init__(self):
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
+        # Original simple config that worked reliably
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'params': {} },
             'ncf_fbs': { 'path': 'football/college-football', 'params': {'groups': '80', 'limit': 100} },
@@ -157,29 +158,63 @@ class SportsFetcher:
         }
 
     def fetch_teams(self):
-        # (Simplified for brevity - logic remains similar to before)
-        pass 
+        try:
+            teams_catalog = {k: [] for k in self.leagues.keys()}
+            # Simple fetch for college teams only as they are static
+            url = f"{self.base_url}football/college-football/teams"
+            r = requests.get(url, params={'limit': 1000}, timeout=10)
+            data = r.json()
+            if 'sports' in data:
+                for sport in data['sports']:
+                    for league in sport['leagues']:
+                        for item in league.get('teams', []):
+                            try:
+                                t_abbr = item['team'].get('abbreviation', 'unk')
+                                t_logo = item['team'].get('logos', [{}])[0].get('href', '')
+                                team_obj = {'abbr': t_abbr, 'logo': t_logo}
+                                if t_abbr in FBS_TEAMS: teams_catalog['ncf_fbs'].append(team_obj)
+                            except: continue
+            state['all_teams_data'] = teams_catalog
+        except: pass
 
     def get_games(self):
         games = []
-        # Debug override
-        if state['debug_mode'] and state['custom_date'] == 'TEST':
-             games.append({"sport":"nhl","id":"1","status":"P1 12:00","state":"in","is_shown":True,"home_abbr":"UTA","home_score":"2","away_abbr":"LAK","away_score":"1","situation":{"powerPlay":True,"possession":"UTA"}})
-             state['current_games'] = games
-             return
+        
+        # Calculate Date for Filtering
+        local_now = dt.now(timezone.utc) + timedelta(hours=TIMEZONE_OFFSET)
+        target_date_str = local_now.strftime("%Y-%m-%d")
+        
+        # DEBUG OVERRIDE
+        if state['debug_mode'] and state['custom_date']:
+            target_date_str = state['custom_date']
 
         for league, cfg in self.leagues.items():
             if not state['active_sports'].get(league, True): continue
             
             try:
+                # Add date param if debugging history
+                params = cfg['params'].copy()
+                if state['debug_mode']: params['dates'] = target_date_str.replace('-','')
+
                 url = f"{self.base_url}{cfg['path']}/scoreboard"
-                r = requests.get(url, params=cfg['params'], timeout=3)
+                r = requests.get(url, params=params, timeout=3)
                 data = r.json()
                 
                 for event in data.get('events', []):
+                    # DATE FILTERING LOGIC
+                    # Parse UTC date from event
+                    if 'date' not in event: continue
+                    utc_str = event['date'].replace('Z', '')
+                    game_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+                    local_game_time = game_utc + timedelta(hours=TIMEZONE_OFFSET)
+                    game_date_str = local_game_time.strftime("%Y-%m-%d")
+
                     status = event.get('status', {})
                     state_code = status.get('type', {}).get('state', 'pre')
-                    
+
+                    # Keep if: Active OR Matches Today's Date
+                    if state_code != 'in' and game_date_str != target_date_str: continue
+
                     # Filter: If Mode=Live, skip non-live
                     is_shown = True
                     if state['mode'] == 'live' and state_code != 'in': is_shown = False
@@ -188,14 +223,10 @@ class SportsFetcher:
                     home = comp['competitors'][0]
                     away = comp['competitors'][1]
                     
-                    # Fix Abbrs (Louisiana, Utah, etc)
+                    # Fix Abbrs
                     h_abbr = home['team']['abbreviation'].upper()
                     a_abbr = away['team']['abbreviation'].upper()
                     
-                    # Manual fixes for API quirks
-                    if h_abbr == "WSH": h_abbr = "WSH" 
-                    if a_abbr == "WSH": a_abbr = "WSH"
-
                     sit = comp.get('situation', {})
                     
                     # Construct Game Object
@@ -225,18 +256,35 @@ class SportsFetcher:
                                 'isRedZone': sit.get('isRedZone', False)
                             }
                         elif league == 'nhl':
-                            # Utah / LAK Logic handled here implicitly by ID/Abbr
-                            # Calculate Power Play
-                            pass # (Logic same as previous, omitted for length)
+                            # Basic Power Play logic
+                             # (Use try/catch as API formats vary)
+                             try:
+                                 # 1551 code logic
+                                 # This is a simplification; for full PP data we need the other endpoint
+                                 # But for "getting games back", we stick to basic scoreboard data
+                                 pass 
+                             except: pass
+
+                        elif league == 'mlb':
+                             g['situation'] = {
+                                 'balls': sit.get('balls', 0),
+                                 'strikes': sit.get('strikes', 0),
+                                 'outs': sit.get('outs', 0),
+                                 'onFirst': sit.get('onFirst', False),
+                                 'onSecond': sit.get('onSecond', False),
+                                 'onThird': sit.get('onThird', False)
+                             }
                     
                     games.append(g)
-            except: pass
+            except Exception as e: 
+                print(f"Error fetching {league}: {e}")
             
         state['current_games'] = games
 
 fetcher = SportsFetcher()
 
 def bg_loop():
+    fetcher.fetch_teams()
     while True:
         fetcher.get_games()
         time.sleep(UPDATE_INTERVAL)
@@ -278,16 +326,31 @@ def logo(league, abbr):
     abbr = abbr.upper()
     url = None
     
-    # Check Overrides
-    if abbr in LOGO_OVERRIDES: url = LOGO_OVERRIDES[abbr]
+    # 1. Check Hardcoded Overrides First
+    if abbr in LOGO_OVERRIDES: 
+        url = LOGO_OVERRIDES[abbr]
     
-    # If not in overrides, use the URL from the game data (stored in state)
+    # 2. If not overridden, find in current games list
     if not url:
         for g in state['current_games']:
             if g['home_abbr'] == abbr: url = g['home_logo']
             if g['away_abbr'] == abbr: url = g['away_logo']
             if url: break
-            
+
+    # 3. Fallback to loaded teams data
+    if not url:
+        # Check standard lists
+        target_leagues = []
+        if 'ncf' in league: target_leagues = ['ncf_fbs']
+        elif league in state['all_teams_data']: target_leagues = [league]
+        
+        for l_key in target_leagues:
+            if l_key in state['all_teams_data']:
+                for t in state['all_teams_data'][l_key]:
+                    if t['abbr'] == abbr:
+                        url = t['logo']
+                        break
+    
     if not url: return "Not Found", 404
 
     try:
