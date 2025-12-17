@@ -18,9 +18,9 @@ except ImportError:
     FCS_TEAMS = []
 
 # ================= CONFIGURATION =================
-TIMEZONE_OFFSET = -5  # Set to -5 for EST/EDT
+TIMEZONE_OFFSET = -5  
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 15 # Seconds
+UPDATE_INTERVAL = 20 # Seconds
 
 # --- NHL LOGO FIXES ---
 NHL_LOGO_MAP = {
@@ -28,7 +28,7 @@ NHL_LOGO_MAP = {
     "LAK": "la",  "VGK": "vgs", "VEG": "vgs"
 }
 
-# ================= IMAGE PROCESSING (For ESP32) =================
+# ================= IMAGE PROCESSING =================
 logo_blob_cache = {} 
 logo_url_map = {}
 
@@ -54,6 +54,7 @@ class TickerState:
     def __init__(self):
         self.settings = self.load_config()
         self.game_data = []
+        self.all_teams_data = {} # Stores team lists for UI
         self.last_fetch_time = 0
         self.is_fetching = False
 
@@ -76,130 +77,213 @@ class TickerState:
 ticker_state = TickerState()
 
 # ================= DATA FETCHING =================
-def get_espn_url(sport, date_str):
-    base = "http://site.api.espn.com/apis/site/v2/sports"
-    paths = {
-        'nfl': f"{base}/football/nfl/scoreboard",
-        'ncf_fbs': f"{base}/football/college-football/scoreboard?group=80",
-        'ncf_fcs': f"{base}/football/college-football/scoreboard?group=81",
-        'mlb': f"{base}/baseball/mlb/scoreboard",
-        'nhl': f"{base}/hockey/nhl/scoreboard",
-        'nba': f"{base}/basketball/nba/scoreboard"
-    }
-    if sport in paths:
-        # Append date to ensure we get the specific day
-        return f"{paths[sport]}&dates={date_str}"
-    return None
 
-def clean_game_data(game_data, sport_key, target_date_str):
-    games = []
-    for event in game_data.get('events', []):
+class SportsFetcher:
+    def __init__(self):
+        self.base_url = 'http://site.api.espn.com/apis/site/v2/sports'
+        self.leagues = {
+            'nfl': {'path': 'football/nfl', 'team_params': {'limit': 100}},
+            'ncf_fbs': {'path': 'football/college-football', 'team_params': {'limit': 1000}},
+            'mlb': {'path': 'baseball/mlb', 'team_params': {'limit': 100}},
+            'nhl': {'path': 'hockey/nhl', 'team_params': {'limit': 100}},
+            'nba': {'path': 'basketball/nba', 'team_params': {'limit': 100}}
+        }
+
+    # --- 1. Populate Team List for "My Teams" UI ---
+    def fetch_all_teams(self):
+        teams_catalog = {k: [] for k in ['nfl', 'ncf_fbs', 'ncf_fcs', 'mlb', 'nhl', 'nba']}
+        
+        # Helper to fetch and parse
+        def fetch_league_teams(league_key, path, params):
+            try:
+                r = requests.get(f"{self.base_url}/{path}/teams", params=params, timeout=10)
+                data = r.json()
+                for sport in data.get('sports', []):
+                    for league in sport.get('leagues', []):
+                        for item in league.get('teams', []):
+                            t = item.get('team', {})
+                            abbr = t.get('abbreviation')
+                            logo = t.get('logos', [{}])[0].get('href', '')
+                            if abbr:
+                                entry = {'abbr': abbr, 'logo': logo}
+                                # Special handling for college split
+                                if league_key == 'ncf_fbs':
+                                    if abbr in FBS_TEAMS: teams_catalog['ncf_fbs'].append(entry)
+                                    elif abbr in FCS_TEAMS: teams_catalog['ncf_fcs'].append(entry)
+                                else:
+                                    teams_catalog[league_key].append(entry)
+                                
+                                # Pre-populate logo map
+                                if logo: logo_url_map[abbr] = logo
+            except: pass
+
+        for key in ['nfl', 'mlb', 'nhl', 'nba']:
+            fetch_league_teams(key, self.leagues[key]['path'], self.leagues[key]['team_params'])
+        
+        # College fetch
+        fetch_league_teams('ncf_fbs', 'football/college-football', {'limit': 1000})
+        
+        ticker_state.all_teams_data = teams_catalog
+
+    # --- 2. NATIVE NHL FETCHING (Official NHL API) ---
+    def fetch_nhl_native(self, target_date_str):
+        # Format date for NHL API (YYYY-MM-DD)
+        formatted_date = f"{target_date_str[:4]}-{target_date_str[4:6]}-{target_date_str[6:]}"
+        games = []
         try:
-            # --- STRICT DATE FILTERING ---
-            # Parse the game date from UTC string (e.g., "2025-12-17T18:00Z")
-            if 'date' not in event: continue
-            utc_str = event['date'].replace('Z', '')
-            game_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-            local_game_time = game_utc + timedelta(hours=TIMEZONE_OFFSET)
+            r = requests.get("https://api-web.nhle.com/v1/schedule/now", timeout=5)
+            data = r.json()
             
-            # Format to YYYYMMDD (No Dashes) to match target_date_str
-            game_date_str = local_game_time.strftime("%Y%m%d")
-            
-            status_obj = event.get('status', {})
-            status_type = status_obj.get('type', {})
-            status_state = status_type.get('state', 'pre')
+            for day in data.get('gameWeek', []):
+                if day['date'] != formatted_date: continue
+                for game in day.get('games', []):
+                    try:
+                        # Fetch Game Details
+                        g_r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game['id']}/play-by-play", timeout=2)
+                        if g_r.status_code != 200: continue
+                        gd = g_r.json()
 
-            # CRITICAL CHECK: 
-            # Only keep if: Live, Halftime, OR Date Matches Target
-            if status_state not in ['in', 'half'] and game_date_str != target_date_str:
-                continue
+                        h_abbr = gd['homeTeam']['abbrev']
+                        a_abbr = gd['awayTeam']['abbrev']
+                        
+                        # --- Logo Mapping ---
+                        h_code = NHL_LOGO_MAP.get(h_abbr, h_abbr.lower())
+                        a_code = NHL_LOGO_MAP.get(a_abbr, a_abbr.lower())
+                        h_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_code}.png"
+                        a_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_code}.png"
+                        
+                        # Caps Override
+                        if h_abbr == 'WSH': h_logo = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
+                        if a_abbr == 'WSH': a_logo = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
+                        
+                        logo_url_map[h_abbr] = h_logo
+                        logo_url_map[a_abbr] = a_logo
 
-            comp = event['competitions'][0]
+                        # --- State Logic ---
+                        state = gd.get('gameState', 'OFF')
+                        mapped_state = 'in' if state in ['LIVE', 'CRIT'] else 'pre'
+                        if state in ['FINAL', 'OFF']: mapped_state = 'post'
+                        
+                        status_disp = state
+                        clock = gd.get('clock', {})
+                        if state in ['PRE', 'FUT']:
+                            # Parse UTC Time
+                            utc_t = dt.strptime(gd['startTimeUTC'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                            status_disp = utc_t.astimezone(timezone(timedelta(hours=TIMEZONE_OFFSET))).strftime("%I:%M %p").lstrip('0')
+                        elif state in ['LIVE', 'CRIT']:
+                            per = gd.get('periodDescriptor', {}).get('number', 1)
+                            rem = clock.get('timeRemaining', '00:00')
+                            status_disp = f"P{per} - {rem}"
+                            if clock.get('inIntermission'): status_disp = "INT"
+
+                        # --- Situation ---
+                        sit = gd.get('situation', {})
+                        sit_code = sit.get('situationCode', '1551')
+                        pp = False
+                        poss = ""
+                        # Simple skaters count check for PP
+                        if len(sit_code) == 4:
+                            if sit_code[1] > sit_code[2]: 
+                                pp = True; poss = a_abbr
+                            elif sit_code[2] > sit_code[1]: 
+                                pp = True; poss = h_abbr
+
+                        game_obj = {
+                            'game_id': str(game['id']), 'sport': 'nhl',
+                            'state': mapped_state, 'status': status_disp,
+                            'away_abbr': a_abbr, 'away_score': gd['awayTeam'].get('score', 0), 'away_logo': a_logo,
+                            'home_abbr': h_abbr, 'home_score': gd['homeTeam'].get('score', 0), 'home_logo': h_logo,
+                            'situation': {'powerPlay': pp, 'possession': poss, 'isRedZone': False},
+                            'is_shown': True
+                        }
+                        games.append(game_obj)
+                    except: continue
+        except: pass
+        return games
+
+    # --- 3. GENERIC ESPN FETCHING (Other Sports) ---
+    def fetch_espn_generic(self, sport, date_str):
+        base = f"{self.base_url}/{self.leagues[sport]['path']}/scoreboard"
+        # College groups
+        if sport == 'ncf_fbs': base += "?group=80"
+        elif sport == 'ncf_fcs': base += "?group=81"
+        else: base += "?"
+        
+        url = f"{base}&dates={date_str}"
+        games = []
+        
+        try:
+            r = requests.get(url, timeout=5)
+            if r.status_code != 200: return []
+            data = r.json()
             
-            # --- Status Text Logic ---
-            raw_status = status_type.get('shortDetail', 'Scheduled')
-            
-            if status_state == 'half': 
-                status_display = "HALFTIME"
-            elif status_state == 'in':
-                clock = status_obj.get('displayClock', '')
-                period = status_obj.get('period', 1)
+            for event in data.get('events', []):
+                # Date Check (Strict)
+                if 'date' not in event: continue
+                utc_str = event['date'].replace('Z', '')
+                local_time = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=TIMEZONE_OFFSET)))
+                game_date = local_time.strftime("%Y%m%d")
                 
-                # Football Clock Fix: "Q1 - 12:45"
-                if 'football' in sport_key:
-                    prefix = f"Q{period}" 
-                    if clock: status_display = f"{prefix} - {clock}"
-                    else: status_display = prefix
-                else:
-                    status_display = raw_status 
-            else:
-                status_display = raw_status.replace("Final", "FINAL").replace(" EST", "").replace(" EDT", "").replace("/OT", "")
-                if " - " in status_display: status_display = status_display.split(" - ")[-1]
+                status = event.get('status', {})
+                state = status.get('type', {}).get('state', 'pre')
+                
+                # Filter: Must match date OR be live/halftime
+                if state not in ['in', 'half'] and game_date != date_str: continue
+                
+                comp = event['competitions'][0]
+                home = next(c for c in comp['competitors'] if c['homeAway'] == 'home')
+                away = next(c for c in comp['competitors'] if c['homeAway'] == 'away')
+                
+                # Logos
+                h_url = home['team'].get('logo', '')
+                a_url = away['team'].get('logo', '')
+                h_abbr = home['team']['abbreviation']
+                a_abbr = away['team']['abbreviation']
+                if h_url: logo_url_map[h_abbr] = h_url
+                if a_url: logo_url_map[a_abbr] = a_url
+                
+                # Status Text
+                raw_s = status.get('type', {}).get('shortDetail', 'Scheduled')
+                if state == 'half': s_disp = "HALFTIME"
+                elif state == 'in':
+                    clock = status.get('displayClock', '')
+                    per = status.get('period', 1)
+                    if 'football' in sport: s_disp = f"Q{per} - {clock}" if clock else f"Q{per}"
+                    else: s_disp = raw_s
+                else: s_disp = raw_s.replace("Final", "FINAL").replace(" EST", "")
+                
+                # Situation
+                sit = comp.get('situation', {})
+                is_rz = sit.get('isRedZone', False) if state == 'in' else False
+                
+                games.append({
+                    'game_id': event['id'], 'sport': sport,
+                    'state': state, 'status': s_disp,
+                    'away_abbr': a_abbr, 'away_score': int(away.get('score', 0)), 'away_logo': a_url,
+                    'home_abbr': h_abbr, 'home_score': int(home.get('score', 0)), 'home_logo': h_url,
+                    'situation': {
+                        'possession': sit.get('possession'),
+                        'downDist': sit.get('downDistanceText', ''),
+                        'isRedZone': is_rz,
+                        'powerPlay': sit.get('powerPlay', False),
+                        'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)
+                    } if state == 'in' else {},
+                    'is_shown': True
+                })
+        except: pass
+        return games
 
-            home = next(c for c in comp['competitors'] if c['homeAway'] == 'home')
-            away = next(c for c in comp['competitors'] if c['homeAway'] == 'away')
-            
-            # --- Logo Handling ---
-            # 1. Get CDN URLs
-            h_url = home['team'].get('logo', '')
-            a_url = away['team'].get('logo', '')
-            
-            # 2. Store for API (Proxy)
-            h_abbr = home['team']['abbreviation']
-            a_abbr = away['team']['abbreviation']
-            if h_url: logo_url_map[h_abbr] = h_url
-            if a_url: logo_url_map[a_abbr] = a_url
+fetcher = SportsFetcher()
 
-            # 3. NHL Fixes (Caps)
-            if sport_key == 'nhl':
-                if h_abbr == 'WSH': 
-                    h_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
-                    logo_url_map[h_abbr] = h_url
-                if a_abbr == 'WSH': 
-                    a_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
-                    logo_url_map[a_abbr] = a_url
-
-            sit = comp.get('situation', {})
-            is_rz = sit.get('isRedZone', False) if status_state == 'in' else False
-
-            game_obj = {
-                'game_id': event['id'],
-                'sport': sport_key,
-                'state': status_state if status_state != 'half' else 'half',
-                'status': status_display,
-                'away_abbr': a_abbr, 'away_score': int(away.get('score', 0)), 'away_logo': a_url,
-                'home_abbr': h_abbr, 'home_score': int(home.get('score', 0)), 'home_logo': h_url,
-                'situation': {
-                    'possession': sit.get('possession'),
-                    'downDist': sit.get('downDistanceText', ''),
-                    'isRedZone': is_rz,
-                    'powerPlay': sit.get('powerPlay', False),
-                    'onFirst': sit.get('onFirst', False),
-                    'onSecond': sit.get('onSecond', False),
-                    'onThird': sit.get('onThird', False)
-                } if status_state == 'in' else {},
-                'is_shown': True 
-            }
-            
-            # Filter Logic
-            mode = ticker_state.settings['mode']
-            if mode == 'live' and game_obj['state'] not in ('in', 'half'): 
-                game_obj['is_shown'] = False
-            elif mode == 'my_teams' and ticker_state.settings['my_teams']:
-                if h_abbr not in ticker_state.settings['my_teams'] and a_abbr not in ticker_state.settings['my_teams']:
-                    game_obj['is_shown'] = False
-
-            games.append(game_obj)
-        except Exception as e:
-            continue
-    return games
-
-def fetch_data():
+def background_loop():
+    # 1. Initial Team Fetch (Fixes "My Teams")
+    fetcher.fetch_all_teams()
+    
     while True:
         try:
             ticker_state.is_fetching = True
             
-            # Date Logic (Format: YYYYMMDD)
+            # Date Logic
             if ticker_state.settings.get('debug_mode') and ticker_state.settings.get('custom_date'):
                 date_str = ticker_state.settings['custom_date'].replace('-', '')
             else:
@@ -210,18 +294,33 @@ def fetch_data():
 
             all_games = []
             
-            for sport in ['nfl', 'ncf_fbs', 'ncf_fcs', 'mlb', 'nhl', 'nba']:
-                if not ticker_state.settings['active_sports'].get(sport, True): continue
+            # Fetch loop
+            for sport, enabled in ticker_state.settings['active_sports'].items():
+                if not enabled: continue
                 
-                url = get_espn_url(sport, date_str)
-                if not url: continue
+                if sport == 'nhl':
+                    all_games.extend(fetcher.fetch_nhl_native(date_str))
+                elif sport == 'ncf_fbs':
+                    all_games.extend(fetcher.fetch_espn_generic('ncf_fbs', date_str))
+                elif sport == 'ncf_fcs':
+                    all_games.extend(fetcher.fetch_espn_generic('ncf_fcs', date_str))
+                elif sport in ['nfl', 'mlb', 'nba']:
+                    all_games.extend(fetcher.fetch_espn_generic(sport, date_str))
 
-                try:
-                    r = requests.get(url, timeout=5)
-                    if r.status_code == 200:
-                        # Pass the target date to clean_game_data for filtering
-                        all_games.extend(clean_game_data(r.json(), sport, date_str))
-                except: pass
+            # Apply Visibility Filters
+            mode = ticker_state.settings['mode']
+            my_teams = ticker_state.settings['my_teams']
+            
+            for g in all_games:
+                should_show = True
+                if mode == 'live' and g['state'] not in ['in', 'half']: 
+                    should_show = False
+                elif mode == 'my_teams':
+                    if not my_teams: should_show = True # Show all if list empty
+                    elif g['away_abbr'] not in my_teams and g['home_abbr'] not in my_teams:
+                        should_show = False
+                
+                g['is_shown'] = should_show
 
             ticker_state.game_data = all_games
             ticker_state.last_fetch_time = time.time()
@@ -232,7 +331,7 @@ def fetch_data():
         ticker_state.is_fetching = False
         time.sleep(UPDATE_INTERVAL)
 
-threading.Thread(target=fetch_data, daemon=True).start()
+threading.Thread(target=background_loop, daemon=True).start()
 
 # ================= FLASK & UI =================
 app = Flask(__name__)
@@ -315,7 +414,7 @@ DASHBOARD_HTML = """
         <button class="action-btn btn-save" onclick="saveConfig()">SAVE SETTINGS</button>
         <div id="settingsArea" class="settings-hidden"> <span class="section-title">Enabled Sports</span> <div class="sports-grid"> <div id="btn_nfl" class="sport-btn" onclick="toggleSport('nfl')">NFL</div> <div id="btn_ncf_fbs" class="sport-btn" onclick="toggleSport('ncf_fbs')">FBS</div> <div id="btn_ncf_fcs" class="sport-btn" onclick="toggleSport('ncf_fcs')">FCS</div> <div id="btn_mlb" class="sport-btn" onclick="toggleSport('mlb')">MLB</div> <div id="btn_nhl" class="sport-btn" onclick="toggleSport('nhl')">NHL</div> <div id="btn_nba" class="sport-btn" onclick="toggleSport('nba')">NBA</div> </div> <button class="action-btn btn-teams" onclick="openTeamModal()">Manage My Teams (<span id="team_count">0</span>)</button> <div style="text-align:center; margin-top:15px;"> <a href="#" onclick="toggleDebug()" style="color:#555; font-size:0.75em; text-decoration:none;">Debug / Time Machine</a> </div> <div id="debugControls" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid #333;"> <div style="display:flex; gap:10px;"> <input type="date" id="custom_date" style="padding:8px; flex:1; background:#111; color:#fff; border:1px solid #555; border-radius:4px;"> <button style="width:auto; background:#fff; color:#000; margin:0; padding:0 15px;" onclick="setDate()">Go</button> </div> <button style="background:#333; color:#aaa; margin-top:8px; width:100%; padding:8px; border:none; cursor:pointer;" onclick="resetDate()">Reset to Live</button> </div> </div>
     </div>
-    <div class="panel" style="padding-top:5px;"> <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:5px;"> <span class="section-title" style="margin:0;">Active Feed (<span id="game_count">0</span>)</span> <div style="font-size:0.7em; color:#666;">Updates every 15s</div> </div> <table class="game-table"> <thead> <tr> <th class="th-league">LGE</th> <th>Matchup</th> <th style="text-align:center;">Score</th> <th style="text-align:right;">Status</th> <th style="text-align:right;">Sit.</th> </tr> </thead> <tbody id="gameTableBody"></tbody> </table> </div>
+    <div class="panel" style="padding-top:5px;"> <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:5px;"> <span class="section-title" style="margin:0;">Active Feed (<span id="game_count">0</span>)</span> <div style="font-size:0.7em; color:#666;">Updates every 20s</div> </div> <table class="game-table"> <thead> <tr> <th class="th-league">LGE</th> <th>Matchup</th> <th style="text-align:center;">Score</th> <th style="text-align:right;">Status</th> <th style="text-align:right;">Sit.</th> </tr> </thead> <tbody id="gameTableBody"></tbody> </table> </div>
     <div id="teamModal" class="modal"> <div class="modal-content"> <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"> <h3 style="margin:0; color:white;">Select Teams</h3> <button onclick="closeTeamModal()" style="background:#444; color:white; border:none; padding:5px 15px; border-radius:4px; cursor:pointer;">Done</button> </div> <div class="tabs"> <div id="tab_nfl" class="tab active" onclick="showTab('nfl')">NFL</div> <div id="tab_ncf_fbs" class="tab" onclick="showTab('ncf_fbs')">FBS</div> <div id="tab_ncf_fcs" class="tab" onclick="showTab('ncf_fcs')">FCS</div> <div id="tab_mlb" class="tab" onclick="showTab('mlb')">MLB</div> <div id="tab_nhl" class="tab" onclick="showTab('nhl')">NHL</div> <div id="tab_nba" class="tab" onclick="showTab('nba')">NBA</div> </div> <div id="teamGrid" class="team-grid"><div style="text-align:center; padding:20px; color:#666; grid-column: 1/-1;">Loading...</div></div> </div> </div>
     <script>
         let currentState = { active_sports: {}, mode: 'all', my_teams: [], scroll_seamless: false }; let allTeams = {}; let currentTabLeague = 'nfl'; let settingsVisible = false;
@@ -326,7 +425,6 @@ DASHBOARD_HTML = """
         function formatLeague(key) { if(key === 'ncf_fbs') return 'FBS'; if(key === 'ncf_fcs') return 'FCS'; return key.toUpperCase(); }
         function renderGames(games) { const tbody = document.getElementById('gameTableBody'); document.getElementById('game_count').innerText = games.length; tbody.innerHTML = ''; if(games.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#555;">No active games found.</td></tr>'; return; }
             games.forEach(g => { let tr = document.createElement('tr'); tr.className = g.is_shown ? 'game-row' : 'game-row filtered-out'; let leagueLabel = formatLeague(g.sport); 
-                // Ensure Logos are rendered correctly if URL exists
                 let awayLogo = g.away_logo ? `<img src="${g.away_logo}" class="mini-logo">` : ''; 
                 let homeLogo = g.home_logo ? `<img src="${g.home_logo}" class="mini-logo">` : ''; 
                 let sitHTML = '';
@@ -375,7 +473,7 @@ def get_state(): return jsonify({'settings': ticker_state.settings, 'games': tic
 @app.route('/api/config', methods=['POST'])
 def update_config():
     ticker_state.save_config(request.json)
-    threading.Thread(target=fetch_data).start()
+    threading.Thread(target=background_loop).start() # Force refresh
     return jsonify({"status": "success"})
 
 @app.route('/api/teams')
