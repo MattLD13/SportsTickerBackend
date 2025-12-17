@@ -18,11 +18,17 @@ except ImportError:
     FCS_TEAMS = []
 
 # ================= CONFIGURATION =================
-TIMEZONE_OFFSET = -5  
+TIMEZONE_OFFSET = -5  # Set to -5 for EST/EDT
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 15 # Increased slightly to prevent rate limits
+UPDATE_INTERVAL = 15 # Seconds
 
-# ================= IMAGE PROCESSING =================
+# --- NHL LOGO FIXES ---
+NHL_LOGO_MAP = {
+    "SJS": "sj",  "NJD": "nj",  "TBL": "tb", 
+    "LAK": "la",  "VGK": "vgs", "VEG": "vgs"
+}
+
+# ================= IMAGE PROCESSING (For ESP32) =================
 logo_blob_cache = {} 
 logo_url_map = {}
 
@@ -81,39 +87,51 @@ def get_espn_url(sport, date_str):
         'nba': f"{base}/basketball/nba/scoreboard"
     }
     if sport in paths:
+        # Append date to ensure we get the specific day
         return f"{paths[sport]}&dates={date_str}"
     return None
 
-def clean_game_data(game_data, sport_key):
+def clean_game_data(game_data, sport_key, target_date_str):
     games = []
     for event in game_data.get('events', []):
         try:
-            comp = event['competitions'][0]
+            # --- STRICT DATE FILTERING ---
+            # Parse the game date from UTC string (e.g., "2025-12-17T18:00Z")
+            if 'date' not in event: continue
+            utc_str = event['date'].replace('Z', '')
+            game_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+            local_game_time = game_utc + timedelta(hours=TIMEZONE_OFFSET)
+            
+            # Format to YYYYMMDD (No Dashes) to match target_date_str
+            game_date_str = local_game_time.strftime("%Y%m%d")
+            
             status_obj = event.get('status', {})
             status_type = status_obj.get('type', {})
             status_state = status_type.get('state', 'pre')
+
+            # CRITICAL CHECK: 
+            # Only keep if: Live, Halftime, OR Date Matches Target
+            if status_state not in ['in', 'half'] and game_date_str != target_date_str:
+                continue
+
+            comp = event['competitions'][0]
             
-            # --- Status Logic ---
+            # --- Status Text Logic ---
             raw_status = status_type.get('shortDetail', 'Scheduled')
             
-            # 1. Halftime Override
             if status_state == 'half': 
                 status_display = "HALFTIME"
-            
-            # 2. Live Game Logic
             elif status_state == 'in':
                 clock = status_obj.get('displayClock', '')
                 period = status_obj.get('period', 1)
                 
-                # Football Clock Fix
+                # Football Clock Fix: "Q1 - 12:45"
                 if 'football' in sport_key:
                     prefix = f"Q{period}" 
                     if clock: status_display = f"{prefix} - {clock}"
                     else: status_display = prefix
                 else:
                     status_display = raw_status 
-            
-            # 3. Default/Final
             else:
                 status_display = raw_status.replace("Final", "FINAL").replace(" EST", "").replace(" EDT", "").replace("/OT", "")
                 if " - " in status_display: status_display = status_display.split(" - ")[-1]
@@ -121,28 +139,36 @@ def clean_game_data(game_data, sport_key):
             home = next(c for c in comp['competitors'] if c['homeAway'] == 'home')
             away = next(c for c in comp['competitors'] if c['homeAway'] == 'away')
             
-            # Cache URLs for logo API
+            # --- Logo Handling ---
+            # 1. Get CDN URLs
+            h_url = home['team'].get('logo', '')
+            a_url = away['team'].get('logo', '')
+            
+            # 2. Store for API (Proxy)
             h_abbr = home['team']['abbreviation']
             a_abbr = away['team']['abbreviation']
-            if 'logo' in home['team']: logo_url_map[h_abbr] = home['team']['logo']
-            if 'logo' in away['team']: logo_url_map[a_abbr] = away['team']['logo']
+            if h_url: logo_url_map[h_abbr] = h_url
+            if a_url: logo_url_map[a_abbr] = a_url
 
-            # NHL Fixes
+            # 3. NHL Fixes (Caps)
             if sport_key == 'nhl':
-                if h_abbr == 'WSH': logo_url_map[h_abbr] = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
-                if a_abbr == 'WSH': logo_url_map[a_abbr] = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
+                if h_abbr == 'WSH': 
+                    h_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
+                    logo_url_map[h_abbr] = h_url
+                if a_abbr == 'WSH': 
+                    a_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
+                    logo_url_map[a_abbr] = a_url
 
             sit = comp.get('situation', {})
-            # RedZone Fix: Only true if live and API says so
             is_rz = sit.get('isRedZone', False) if status_state == 'in' else False
 
             game_obj = {
                 'game_id': event['id'],
                 'sport': sport_key,
-                'state': status_state if status_state != 'half' else 'half', # Keep 'half' for filters
+                'state': status_state if status_state != 'half' else 'half',
                 'status': status_display,
-                'away_abbr': a_abbr, 'away_score': int(away.get('score', 0)),
-                'home_abbr': h_abbr, 'home_score': int(home.get('score', 0)),
+                'away_abbr': a_abbr, 'away_score': int(away.get('score', 0)), 'away_logo': a_url,
+                'home_abbr': h_abbr, 'home_score': int(home.get('score', 0)), 'home_logo': h_url,
                 'situation': {
                     'possession': sit.get('possession'),
                     'downDist': sit.get('downDistanceText', ''),
@@ -151,11 +177,11 @@ def clean_game_data(game_data, sport_key):
                     'onFirst': sit.get('onFirst', False),
                     'onSecond': sit.get('onSecond', False),
                     'onThird': sit.get('onThird', False)
-                } if status_state == 'in' else {}, # Empty situation if not live
+                } if status_state == 'in' else {},
                 'is_shown': True 
             }
             
-            # Filter Check
+            # Filter Logic
             mode = ticker_state.settings['mode']
             if mode == 'live' and game_obj['state'] not in ('in', 'half'): 
                 game_obj['is_shown'] = False
@@ -165,7 +191,6 @@ def clean_game_data(game_data, sport_key):
 
             games.append(game_obj)
         except Exception as e:
-            print(f"Parse Error {sport_key}: {e}")
             continue
     return games
 
@@ -174,19 +199,17 @@ def fetch_data():
         try:
             ticker_state.is_fetching = True
             
-            # Date Logic
+            # Date Logic (Format: YYYYMMDD)
             if ticker_state.settings.get('debug_mode') and ticker_state.settings.get('custom_date'):
                 date_str = ticker_state.settings['custom_date'].replace('-', '')
             else:
                 tz = timezone(timedelta(hours=TIMEZONE_OFFSET))
                 now = dt.now(timezone.utc).astimezone(tz)
-                # Rollback date if before 3AM (for late night games)
                 if now.hour < 3: date_str = (now - timedelta(days=1)).strftime("%Y%m%d")
                 else: date_str = now.strftime("%Y%m%d")
 
             all_games = []
             
-            # Sport Loop
             for sport in ['nfl', 'ncf_fbs', 'ncf_fcs', 'mlb', 'nhl', 'nba']:
                 if not ticker_state.settings['active_sports'].get(sport, True): continue
                 
@@ -196,17 +219,15 @@ def fetch_data():
                 try:
                     r = requests.get(url, timeout=5)
                     if r.status_code == 200:
-                        all_games.extend(clean_game_data(r.json(), sport))
-                    else:
-                        print(f"HTTP {r.status_code} for {sport}")
-                except Exception as e:
-                    print(f"Fetch Fail {sport}: {e}")
+                        # Pass the target date to clean_game_data for filtering
+                        all_games.extend(clean_game_data(r.json(), sport, date_str))
+                except: pass
 
             ticker_state.game_data = all_games
             ticker_state.last_fetch_time = time.time()
             
         except Exception as e:
-            print(f"CRITICAL LOOP ERROR: {e}")
+            print(f"Loop Error: {e}")
         
         ticker_state.is_fetching = False
         time.sleep(UPDATE_INTERVAL)
@@ -260,7 +281,7 @@ DASHBOARD_HTML = """
         .col-status { width: 90px; color: #888; font-size: 0.75em; text-align: right; line-height: 1.2; }
         .col-situation { width: 120px; text-align: right; font-weight: bold; font-size: 0.8em; }
         .league-label { display: block; } 
-        .mini-logo { width: 24px; height: 24px; object-fit: contain; }
+        .mini-logo { width: 24px; height: 24px; object-fit: contain; vertical-align: middle; }
         .at-symbol { color: #555; font-size: 0.8em; margin: 0 2px; }
         .sit-football { color: var(--success); }
         .sit-hockey { color: var(--warn); }
@@ -271,7 +292,7 @@ DASHBOARD_HTML = """
             tr.game-row td:nth-child(2) { border-left-width: 4px; border-left-style: solid; border-top-left-radius: 6px; border-bottom-left-radius: 6px; padding-left: 8px; }
             tr.game-row.filtered-out td:nth-child(2) { border-left-color: var(--inactive) !important; }
             tr.game-row:not(.filtered-out) td:nth-child(2) { border-left-color: var(--success); }
-            tr.game-row td { padding: 8px 5px; } .mini-logo { width: 20px; height: 20px; }
+            tr.game-row td { padding: 8px 5px; } 
             .col-matchup { font-size: 0.9em; gap: 4px; } .col-score { width: 45px; font-size: 1em; }
             .col-status { width: 70px; font-size: 0.7em; } .col-situation { width: 80px; font-size: 0.7em; }
         }
@@ -294,7 +315,7 @@ DASHBOARD_HTML = """
         <button class="action-btn btn-save" onclick="saveConfig()">SAVE SETTINGS</button>
         <div id="settingsArea" class="settings-hidden"> <span class="section-title">Enabled Sports</span> <div class="sports-grid"> <div id="btn_nfl" class="sport-btn" onclick="toggleSport('nfl')">NFL</div> <div id="btn_ncf_fbs" class="sport-btn" onclick="toggleSport('ncf_fbs')">FBS</div> <div id="btn_ncf_fcs" class="sport-btn" onclick="toggleSport('ncf_fcs')">FCS</div> <div id="btn_mlb" class="sport-btn" onclick="toggleSport('mlb')">MLB</div> <div id="btn_nhl" class="sport-btn" onclick="toggleSport('nhl')">NHL</div> <div id="btn_nba" class="sport-btn" onclick="toggleSport('nba')">NBA</div> </div> <button class="action-btn btn-teams" onclick="openTeamModal()">Manage My Teams (<span id="team_count">0</span>)</button> <div style="text-align:center; margin-top:15px;"> <a href="#" onclick="toggleDebug()" style="color:#555; font-size:0.75em; text-decoration:none;">Debug / Time Machine</a> </div> <div id="debugControls" style="display:none; margin-top:10px; padding-top:10px; border-top:1px solid #333;"> <div style="display:flex; gap:10px;"> <input type="date" id="custom_date" style="padding:8px; flex:1; background:#111; color:#fff; border:1px solid #555; border-radius:4px;"> <button style="width:auto; background:#fff; color:#000; margin:0; padding:0 15px;" onclick="setDate()">Go</button> </div> <button style="background:#333; color:#aaa; margin-top:8px; width:100%; padding:8px; border:none; cursor:pointer;" onclick="resetDate()">Reset to Live</button> </div> </div>
     </div>
-    <div class="panel" style="padding-top:5px;"> <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:5px;"> <span class="section-title" style="margin:0;">Active Feed (<span id="game_count">0</span>)</span> <div style="font-size:0.7em; color:#666;">Updates every 5s</div> </div> <table class="game-table"> <thead> <tr> <th class="th-league">LGE</th> <th>Matchup</th> <th style="text-align:center;">Score</th> <th style="text-align:right;">Status</th> <th style="text-align:right;">Sit.</th> </tr> </thead> <tbody id="gameTableBody"></tbody> </table> </div>
+    <div class="panel" style="padding-top:5px;"> <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:5px;"> <span class="section-title" style="margin:0;">Active Feed (<span id="game_count">0</span>)</span> <div style="font-size:0.7em; color:#666;">Updates every 15s</div> </div> <table class="game-table"> <thead> <tr> <th class="th-league">LGE</th> <th>Matchup</th> <th style="text-align:center;">Score</th> <th style="text-align:right;">Status</th> <th style="text-align:right;">Sit.</th> </tr> </thead> <tbody id="gameTableBody"></tbody> </table> </div>
     <div id="teamModal" class="modal"> <div class="modal-content"> <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;"> <h3 style="margin:0; color:white;">Select Teams</h3> <button onclick="closeTeamModal()" style="background:#444; color:white; border:none; padding:5px 15px; border-radius:4px; cursor:pointer;">Done</button> </div> <div class="tabs"> <div id="tab_nfl" class="tab active" onclick="showTab('nfl')">NFL</div> <div id="tab_ncf_fbs" class="tab" onclick="showTab('ncf_fbs')">FBS</div> <div id="tab_ncf_fcs" class="tab" onclick="showTab('ncf_fcs')">FCS</div> <div id="tab_mlb" class="tab" onclick="showTab('mlb')">MLB</div> <div id="tab_nhl" class="tab" onclick="showTab('nhl')">NHL</div> <div id="tab_nba" class="tab" onclick="showTab('nba')">NBA</div> </div> <div id="teamGrid" class="team-grid"><div style="text-align:center; padding:20px; color:#666; grid-column: 1/-1;">Loading...</div></div> </div> </div>
     <script>
         let currentState = { active_sports: {}, mode: 'all', my_teams: [], scroll_seamless: false }; let allTeams = {}; let currentTabLeague = 'nfl'; let settingsVisible = false;
@@ -304,21 +325,15 @@ DASHBOARD_HTML = """
         function renderUI() { ['nfl','ncf_fbs','ncf_fcs','mlb','nhl','nba'].forEach(sport => { let btn = document.getElementById('btn_' + sport); if(btn) btn.className = currentState.active_sports[sport] ? 'sport-btn active' : 'sport-btn'; }); document.querySelectorAll('.mode-opt').forEach(m => m.classList.remove('active')); if(currentState.mode === 'all') document.getElementById('mode_all').classList.add('active'); else if(currentState.mode === 'live') document.getElementById('mode_live').classList.add('active'); else if(currentState.mode === 'my_teams') document.getElementById('mode_my').classList.add('active'); if(currentState.scroll_seamless) document.getElementById('scroll_seamless').classList.add('active'); else document.getElementById('scroll_paged').classList.add('active'); document.getElementById('team_count').innerText = currentState.my_teams.length; if(currentState.debug_mode) { document.getElementById('debugControls').style.display = 'block'; if(currentState.custom_date) document.getElementById('custom_date').value = currentState.custom_date; } else { document.getElementById('debugControls').style.display = 'none'; } }
         function formatLeague(key) { if(key === 'ncf_fbs') return 'FBS'; if(key === 'ncf_fcs') return 'FCS'; return key.toUpperCase(); }
         function renderGames(games) { const tbody = document.getElementById('gameTableBody'); document.getElementById('game_count').innerText = games.length; tbody.innerHTML = ''; if(games.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#555;">No active games found.</td></tr>'; return; }
-            games.forEach(g => { let tr = document.createElement('tr'); tr.className = g.is_shown ? 'game-row' : 'game-row filtered-out'; let leagueLabel = formatLeague(g.sport); let awayLogo = g.away_logo ? `<img src="${g.away_logo}" class="mini-logo">` : ''; let homeLogo = g.home_logo ? `<img src="${g.home_logo}" class="mini-logo">` : ''; let sitHTML = '';
+            games.forEach(g => { let tr = document.createElement('tr'); tr.className = g.is_shown ? 'game-row' : 'game-row filtered-out'; let leagueLabel = formatLeague(g.sport); 
+                // Ensure Logos are rendered correctly if URL exists
+                let awayLogo = g.away_logo ? `<img src="${g.away_logo}" class="mini-logo">` : ''; 
+                let homeLogo = g.home_logo ? `<img src="${g.home_logo}" class="mini-logo">` : ''; 
+                let sitHTML = '';
                 if(g.state === 'in' || g.state === 'half') { if(g.sport === 'nfl' || g.sport.includes('ncf')) { if(g.status === 'HALFTIME') { sitHTML = ''; } else if(g.situation.downDist) { sitHTML = `<span class="sit-football">${g.situation.downDist}</span>`; } else if(g.situation.isRedZone) { sitHTML = `<span class="sit-football">RedZone</span>`; } } else if(g.sport === 'nhl' && g.situation.powerPlay) { let poss = g.situation.possession ? ` (${g.situation.possession})` : ''; sitHTML = `<span class="sit-hockey">PP${poss}</span>`; } else if(g.sport === 'mlb' && g.situation.outs !== undefined) { sitHTML = `<span class="sit-baseball">${g.situation.balls}-${g.situation.strikes}, ${g.situation.outs} Out</span>`; } }
                 tr.innerHTML = `<td class="col-league"><span class="league-label">${leagueLabel}</span></td> <td><div class="col-matchup"> ${awayLogo} ${g.away_abbr} <span class="at-symbol">@</span> ${homeLogo} ${g.home_abbr} </div></td> <td class="col-score">${g.away_score}-${g.home_score}</td> <td class="col-status">${g.status}</td> <td class="col-situation">${sitHTML}</td>`; tbody.appendChild(tr); }); }
         function toggleSport(s) { currentState.active_sports[s] = !currentState.active_sports[s]; renderUI(); } function setMode(m) { currentState.mode = m; renderUI(); } function setScroll(isSeamless) { currentState.scroll_seamless = isSeamless; renderUI(); }
-        
-        async function saveConfig() { 
-            await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(currentState)}); 
-            let btn = document.querySelector('.btn-save'); 
-            let oldText = btn.innerText; 
-            btn.innerText = "SAVED!"; 
-            btn.style.background = "#1c1f2e"; 
-            btn.style.color = "white"; 
-            setTimeout(() => { btn.innerText = oldText; btn.style.background = ""; btn.style.color = ""; }, 1500); 
-        }
-
+        async function saveConfig() { await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(currentState)}); let btn = document.querySelector('.btn-save'); let oldText = btn.innerText; btn.innerText = "SAVED!"; btn.style.background = "#1c1f2e"; btn.style.color = "white"; setTimeout(() => { btn.innerText = oldText; btn.style.background = ""; btn.style.color = ""; }, 1500); }
         function openTeamModal() { document.getElementById('teamModal').style.display = 'block'; showTab(currentTabLeague); } function closeTeamModal() { document.getElementById('teamModal').style.display = 'none'; renderUI(); }
         function showTab(league) { currentTabLeague = league; document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); let activeTab = document.getElementById('tab_' + league); if(activeTab) activeTab.classList.add('active'); const grid = document.getElementById('teamGrid'); grid.innerHTML = ''; if (!allTeams[league] || allTeams[league].length === 0) { grid.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:20px; color:#666;">No teams found.</div>'; return; } allTeams[league].forEach(team => { let isSelected = currentState.my_teams.includes(team.abbr); let card = document.createElement('div'); card.className = `team-card ${isSelected ? 'selected' : ''}`; card.onclick = () => toggleTeamSelection(team.abbr, card); let logoImg = team.logo ? `<img src="${team.logo}">` : '<div style="width:35px;height:35px;"></div>'; card.innerHTML = `${logoImg} <span>${team.abbr}</span>`; grid.appendChild(card); }); }
         function toggleTeamSelection(abbr, cardElement) { if(currentState.my_teams.includes(abbr)) { currentState.my_teams = currentState.my_teams.filter(t => t !== abbr); cardElement.classList.remove('selected'); } else { currentState.my_teams.push(abbr); cardElement.classList.add('selected'); } document.getElementById('team_count').innerText = currentState.my_teams.length; }
@@ -360,7 +375,7 @@ def get_state(): return jsonify({'settings': ticker_state.settings, 'games': tic
 @app.route('/api/config', methods=['POST'])
 def update_config():
     ticker_state.save_config(request.json)
-    threading.Thread(target=fetch_data).start() # Force update
+    threading.Thread(target=fetch_data).start()
     return jsonify({"status": "success"})
 
 @app.route('/api/teams')
