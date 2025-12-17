@@ -6,13 +6,12 @@ import datetime
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from flask import Flask, jsonify, request
-import struct # <--- ADDED
-import io     # <--- ADDED
-from PIL import Image # <--- ADDED
+import struct 
+import io     
+from PIL import Image 
 
 # IMPORT TEAMS
 try:
-    # Ensure you have a 'valid_teams.py' file if you use it for college team filtering
     from valid_teams import FBS_TEAMS, FCS_TEAMS
 except ImportError:
     FBS_TEAMS = []
@@ -46,107 +45,51 @@ DASHBOARD_HTML = """
     <style>
         :root { --bg: #0f111a; --card: #1c1f2e; --accent: #ff5722; --text: #e0e0e0; --success: #4caf50; --inactive: #f44336; --warn: #ffeb3b; }
         body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; padding-bottom: 40px; }
-        
         .panel { background: var(--card); padding: 15px; border-radius: 12px; max-width: 800px; margin: 0 auto 15px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        
-        /* HEADER & HAMBURGER */
         .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .app-title { font-size: 1.2em; font-weight: bold; letter-spacing: 1px; color: white; margin: 0; }
         .hamburger-btn { background: none; border: none; color: #fff; font-size: 1.5em; cursor: pointer; padding: 0 5px; }
-        
-        /* SETTINGS CONTAINER (Collapsible) */
         #settingsArea { display: block; overflow: hidden; transition: max-height 0.3s ease-out; margin-top: 5px; padding-top: 15px; border-top: 1px solid #333; }
         .settings-hidden { display: none !important; }
-
         .section-title { color: #888; text-transform: uppercase; font-size: 0.75em; display: block; margin: 0 0 8px 0; font-weight: bold; letter-spacing: 1px; }
-        
-        /* VISIBLE CONTROLS (Filters/Scroll) */
         .control-row { margin-bottom: 15px; }
-        
-        /* SETTINGS CONTROLS (Sports/Teams) */
-        .sports-grid { 
-            display: grid; 
-            grid-template-columns: repeat(3, 1fr); /* 3x2 Grid */
-            gap: 8px; 
-            margin-bottom: 15px; 
-        }
+        .sports-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 15px; }
         .sport-btn { padding: 10px; border-radius: 6px; background: #252836; color: #888; cursor: pointer; text-align: center; transition: 0.2s; font-weight: bold; font-size: 0.85em; }
         .sport-btn.active { background: var(--success); color: white; box-shadow: 0 0 8px rgba(76,175,80,0.3); }
-        
         .mode-switch { display: flex; background: #252836; padding: 4px; border-radius: 8px; }
         .mode-opt { flex: 1; text-align: center; padding: 8px; cursor: pointer; border-radius: 6px; color: #888; font-size: 0.85em; }
         .mode-opt.active { background: #3d4150; color: white; font-weight: bold; }
-
         button.action-btn { padding: 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; width: 100%; margin-bottom: 10px; font-size: 0.9em; }
         .btn-teams { background: #3d4150; color: white; }
-        
-        /* SAVE BUTTON STYLING */
-        .btn-save { 
-            background: #3d4150; 
-            color: #ccc; 
-            font-size: 1em; 
-            margin-bottom: 0; 
-            transition: background 0.3s, color 0.3s;
-        }
+        .btn-save { background: #3d4150; color: #ccc; font-size: 1em; margin-bottom: 0; transition: background 0.3s, color 0.3s; }
         .btn-save:hover { background: #4a4e60; color: white; }
-
-        /* --- RESPONSIVE TABLE --- */
         table.game-table { width: 100%; border-collapse: separate; border-spacing: 0 6px; }
-        th { 
-            text-align: center; 
-            color: #666; font-size: 0.7em; text-transform: uppercase; padding: 0 8px 4px 8px; font-weight: 600; 
-        }
+        th { text-align: center; color: #666; font-size: 0.7em; text-transform: uppercase; padding: 0 8px 4px 8px; font-weight: 600; }
         th:first-child { text-align: left; } 
-        
         tr.game-row td { background: #252836; padding: 10px 8px; border-top: 1px solid #333; border-bottom: 1px solid #333; font-size: 0.9em; vertical-align: middle; }
-        
-        /* BORDER RADIUS & INDICATORS (Desktop Default) */
         tr.game-row td:first-child { border-left: 4px solid var(--success); border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
         tr.game-row td:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; border-right: 1px solid #333; }
-        
         tr.game-row.filtered-out td:first-child { border-left-color: var(--inactive); }
         tr.game-row.filtered-out { opacity: 0.6; }
-
-        /* COLUMN WIDTHS (Desktop Default) */
         .col-league { width: 50px; font-weight: bold; color: #aaa; font-size: 0.75em; text-align: center; }
         .col-matchup { color: white; font-weight: 500; display: flex; align-items: center; gap: 6px; white-space: nowrap; text-align: left; }
         .col-score { width: 60px; font-weight: bold; color: white; text-align: center; font-size: 1.1em; }
         .col-status { width: 90px; color: #888; font-size: 0.75em; text-align: right; line-height: 1.2; }
         .col-situation { width: 120px; text-align: right; font-weight: bold; font-size: 0.8em; }
         .league-label { display: block; } 
-
         .mini-logo { width: 24px; height: 24px; object-fit: contain; }
         .at-symbol { color: #555; font-size: 0.8em; margin: 0 2px; }
-
         .sit-football { color: var(--success); }
         .sit-hockey { color: var(--warn); }
         .sit-baseball { color: #aaa; }
-
-        /* --- MOBILE TWEAKS (Fixes Indicator Gap) --- */
         @media (max-width: 600px) {
             body { padding: 5px; }
             .panel { padding: 12px; margin-bottom: 10px; }
-            
-            /* Hide League Column Header */
             th.th-league { display: none; }
-            
-            /* Hide League Column CONTENT and reset padding/width */
             td.col-league { display: none; }
-            
-            /* Apply the indicator border to the Matchup column (the new first visible column) */
-            tr.game-row td:nth-child(2) { 
-                border-left-width: 4px; 
-                border-left-style: solid; 
-                border-top-left-radius: 6px; 
-                border-bottom-left-radius: 6px; 
-                padding-left: 8px; /* Reset padding to keep match-up close to the line */
-            }
-            
-            /* Ensure the indicator line color is correct on mobile */
+            tr.game-row td:nth-child(2) { border-left-width: 4px; border-left-style: solid; border-top-left-radius: 6px; border-bottom-left-radius: 6px; padding-left: 8px; }
             tr.game-row.filtered-out td:nth-child(2) { border-left-color: var(--inactive) !important; }
             tr.game-row:not(.filtered-out) td:nth-child(2) { border-left-color: var(--success); }
-            
-            /* Compact Columns */
             tr.game-row td { padding: 8px 5px; }
             .mini-logo { width: 20px; height: 20px; }
             .col-matchup { font-size: 0.9em; gap: 4px; }
@@ -154,8 +97,6 @@ DASHBOARD_HTML = """
             .col-status { width: 70px; font-size: 0.7em; }
             .col-situation { width: 80px; font-size: 0.7em; }
         }
-
-        /* MODAL */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 999; backdrop-filter: blur(3px); }
         .modal-content { background: var(--card); margin: 2% auto; padding: 20px; width: 95%; max-width: 800px; height: 90vh; border-radius: 12px; display: flex; flex-direction: column; }
         .tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; border-bottom: 1px solid #333; margin-bottom: 15px; -webkit-overflow-scrolling: touch; }
@@ -173,7 +114,6 @@ DASHBOARD_HTML = """
             <h1 class="app-title">Ticker Control</h1>
             <button class="hamburger-btn" onclick="toggleSettings()">☰</button>
         </div>
-
         <div class="control-row">
             <span class="section-title">Display Filter</span>
             <div class="mode-switch">
@@ -182,7 +122,6 @@ DASHBOARD_HTML = """
                 <div id="mode_my" class="mode-opt" onclick="setMode('my_teams')">My Teams</div>
             </div>
         </div>
-
         <div class="control-row">
             <span class="section-title">Scroll Style</span>
             <div class="mode-switch">
@@ -190,9 +129,7 @@ DASHBOARD_HTML = """
                 <div id="scroll_seamless" class="mode-opt" onclick="setScroll(true)">Seamless (Marquee)</div>
             </div>
         </div>
-
         <button class="action-btn btn-save" onclick="saveConfig()">SAVE SETTINGS</button>
-
         <div id="settingsArea" class="settings-hidden">
             <span class="section-title">Enabled Sports</span>
             <div class="sports-grid">
@@ -203,9 +140,7 @@ DASHBOARD_HTML = """
                 <div id="btn_nhl" class="sport-btn" onclick="toggleSport('nhl')">NHL</div>
                 <div id="btn_nba" class="sport-btn" onclick="toggleSport('nba')">NBA</div>
             </div>
-
             <button class="action-btn btn-teams" onclick="openTeamModal()">Manage My Teams (<span id="team_count">0</span>)</button>
-            
             <div style="text-align:center; margin-top:15px;">
                 <a href="#" onclick="toggleDebug()" style="color:#555; font-size:0.75em; text-decoration:none;">Debug / Time Machine</a>
             </div>
@@ -218,13 +153,11 @@ DASHBOARD_HTML = """
             </div>
         </div>
     </div>
-
     <div class="panel" style="padding-top:5px;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:5px;">
             <span class="section-title" style="margin:0;">Active Feed (<span id="game_count">0</span>)</span>
             <div style="font-size:0.7em; color:#666;">Updates every 5s</div>
         </div>
-        
         <table class="game-table">
             <thead>
                 <tr>
@@ -238,7 +171,6 @@ DASHBOARD_HTML = """
             <tbody id="gameTableBody"></tbody>
         </table>
     </div>
-
     <div id="teamModal" class="modal">
         <div class="modal-content">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -256,7 +188,6 @@ DASHBOARD_HTML = """
             <div id="teamGrid" class="team-grid"><div style="text-align:center; padding:20px; color:#666; grid-column: 1/-1;">Loading...</div></div>
         </div>
     </div>
-
     <script>
         let currentState = { active_sports: {}, mode: 'all', my_teams: [], scroll_seamless: false };
         let allTeams = {};
@@ -271,8 +202,6 @@ DASHBOARD_HTML = """
             renderUI();
             renderGames(data.games);
             setInterval(fetchLiveTicker, 5000);
-            
-            // Set initial visibility based on screen size (default hidden on small screens)
             if (window.innerWidth >= 600) { settingsVisible = true; document.getElementById('settingsArea').classList.remove('settings-hidden'); }
         }
 
@@ -319,30 +248,19 @@ DASHBOARD_HTML = """
             const tbody = document.getElementById('gameTableBody');
             document.getElementById('game_count').innerText = games.length;
             tbody.innerHTML = '';
-            
-            if(games.length === 0) { 
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#555;">No active games found.</td></tr>'; 
-                return; 
-            }
-
+            if(games.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#555;">No active games found.</td></tr>'; return; }
             games.forEach(g => {
                 let tr = document.createElement('tr');
                 tr.className = g.is_shown ? 'game-row' : 'game-row filtered-out';
-                
                 let leagueLabel = formatLeague(g.sport);
                 let awayLogo = g.away_logo ? `<img src="${g.away_logo}" class="mini-logo">` : '';
                 let homeLogo = g.home_logo ? `<img src="${g.home_logo}" class="mini-logo">` : '';
-                
                 let sitHTML = '';
                 if(g.state === 'in' || g.state === 'half') {
                     if(g.sport === 'nfl' || g.sport.includes('ncf')) {
-                        if(g.status === 'HALFTIME') {
-                            sitHTML = '';
-                        } else if(g.situation.downDist) {
-                            sitHTML = `<span class="sit-football">${g.situation.downDist}</span>`;
-                        } else if(g.situation.isRedZone) {
-                            sitHTML = `<span class="sit-football">RedZone</span>`;
-                        }
+                        if(g.status === 'HALFTIME') { sitHTML = ''; } 
+                        else if(g.situation.downDist) { sitHTML = `<span class="sit-football">${g.situation.downDist}</span>`; } 
+                        else if(g.situation.isRedZone) { sitHTML = `<span class="sit-football">RedZone</span>`; }
                     } else if(g.sport === 'nhl' && g.situation.powerPlay) {
                         let poss = g.situation.possession ? ` (${g.situation.possession})` : '';
                         sitHTML = `<span class="sit-hockey">PP${poss}</span>`;
@@ -350,12 +268,9 @@ DASHBOARD_HTML = """
                         sitHTML = `<span class="sit-baseball">${g.situation.balls}-${g.situation.strikes}, ${g.situation.outs} Out</span>`;
                     }
                 }
-
                 tr.innerHTML = `
                     <td class="col-league"><span class="league-label">${leagueLabel}</span></td>
-                    <td><div class="col-matchup">
-                        ${awayLogo} ${g.away_abbr} <span class="at-symbol">@</span> ${homeLogo} ${g.home_abbr}
-                    </div></td>
+                    <td><div class="col-matchup"> ${awayLogo} ${g.away_abbr} <span class="at-symbol">@</span> ${homeLogo} ${g.home_abbr} </div></td>
                     <td class="col-score">${g.away_score}-${g.home_score}</td>
                     <td class="col-status">${g.status}</td>
                     <td class="col-situation">${sitHTML}</td>
@@ -363,28 +278,22 @@ DASHBOARD_HTML = """
                 tbody.appendChild(tr);
             });
         }
-        
         function toggleSport(s) { currentState.active_sports[s] = !currentState.active_sports[s]; renderUI(); }
         function setMode(m) { currentState.mode = m; renderUI(); }
         function setScroll(isSeamless) { currentState.scroll_seamless = isSeamless; renderUI(); }
-        
         async function saveConfig() {
             await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(currentState)});
             let btn = document.querySelector('.btn-save');
             let oldText = btn.innerText;
             btn.innerText = "SAVED!";
-            
-            // CHANGED: Uses exact hex requested for active state
             btn.style.background = "#1c1f2e"; 
             btn.style.color = "white";
-            
             setTimeout(() => { 
                 btn.innerText = oldText; 
-                btn.style.background = ""; // Revert to CSS default (Grey)
+                btn.style.background = ""; 
                 btn.style.color = "";
             }, 1500);
         }
-
         function openTeamModal() { document.getElementById('teamModal').style.display = 'block'; showTab(currentTabLeague); }
         function closeTeamModal() { document.getElementById('teamModal').style.display = 'none'; renderUI(); }
         function showTab(league) {
@@ -742,7 +651,6 @@ app = Flask(__name__)
 @app.route('/')
 def dashboard(): return DASHBOARD_HTML
 
-# --- TICKER API: ONLY RETURNS GREEN GAMES (for Simulator) ---
 @app.route('/api/ticker')
 def get_ticker_data():
     visible_games = [g for g in state['current_games'] if g.get('is_shown', True)]
@@ -751,10 +659,8 @@ def get_ticker_data():
         'games': visible_games
     })
 
-# --- DASHBOARD API: RETURNS ALL GAMES (for Web UI) ---
 @app.route('/api/all_games')
-def get_all_games():
-    return jsonify({ 'games': state['current_games'] })
+def get_all_games(): return jsonify({ 'games': state['current_games'] })
 
 @app.route('/api/state')
 def get_full_state(): return jsonify({'settings': state, 'games': state['current_games']})
@@ -781,7 +687,6 @@ def update_config():
     except Exception as e:
         print(f"[WARNING] Could not save config file (File Locked). Settings active in memory only. Error: {e}")
     
-    # INSTANT REFRESH
     threading.Thread(target=fetcher.get_real_games).start()
     return jsonify({"status": "ok"})
 
@@ -793,47 +698,44 @@ def set_debug():
     fetcher.get_real_games()
     return jsonify({"status": "ok"})
 
-# ================= NEW: IMAGE PROCESSING ENDPOINT =================
-@app.route('/api/logo/<abbr>')
-def serve_logo(abbr):
-    # 1. Look for URL in OVERRIDES, then in state['all_teams_data']
+# ================= IMAGE ENDPOINT (Auto-Crop + League Fix) =================
+@app.route('/api/logo/<league>/<abbr>')
+def serve_logo(league, abbr):
     url = None
-    if abbr in LOGO_OVERRIDES: 
-        url = LOGO_OVERRIDES[abbr]
+    override_key = f"{league}_{abbr}".upper()
+    if override_key in LOGO_OVERRIDES: url = LOGO_OVERRIDES[override_key]
+    elif abbr in LOGO_OVERRIDES: url = LOGO_OVERRIDES[abbr]
     else:
-        # Search efficiently through loaded teams
+        target_leagues = []
+        if 'ncf' in league: target_leagues = ['ncf_fbs', 'ncf_fcs']
+        elif league in state['all_teams_data']: target_leagues = [league]
+        
         found = False
-        for league_data in state['all_teams_data'].values():
-            for t in league_data:
-                if t['abbr'] == abbr:
-                    url = t['logo']
-                    found = True
-                    break
+        for l_key in target_leagues:
+            if l_key in state['all_teams_data']:
+                for t in state['all_teams_data'][l_key]:
+                    if t['abbr'] == abbr:
+                        url = t['logo']
+                        found = True
+                        break
             if found: break
     
     if not url: return "Not found", 404
 
     try:
-        # 2. Download and Resize
         r = requests.get(url, timeout=3)
-        img = Image.open(io.BytesIO(r.content))
-        img = img.resize((24, 24), Image.Resampling.LANCZOS).convert("RGBA")
-
-        # 3. Handle Transparency (Composite over black)
+        img = Image.open(io.BytesIO(r.content)).convert("RGBA")
+        bbox = img.getbbox() 
+        if bbox: img = img.crop(bbox) # Auto-Crop
+        img = img.resize((24, 24), Image.Resampling.LANCZOS)
         bg = Image.new("RGBA", img.size, (0, 0, 0, 255))
         combined = Image.alpha_composite(bg, img).convert("RGB")
-
-        # 4. Convert to RGB565 (Little Endian for ESP32)
         pixels = list(combined.getdata())
         byte_arr = bytearray()
         for r, g, b in pixels:
-            # RGB565: RRRRRGGG GGGBBBBB
             val = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-            # Pack as unsigned short (2 bytes), Little Endian
             byte_arr.extend(struct.pack('<H', val))
-
         return bytes(byte_arr), 200, {'Content-Type': 'application/octet-stream'}
-
     except Exception as e:
         print(f"Logo Processing Error: {e}")
         return "Error", 500
@@ -842,6 +744,5 @@ if __name__ == "__main__":
     t = threading.Thread(target=background_updater)
     t.daemon = True
     t.start()
-    # Railway PORT logic included here:
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
