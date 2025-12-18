@@ -9,7 +9,6 @@ from flask import Flask, jsonify, request
 
 # IMPORT TEAMS
 try:
-    # Ensure you have a 'valid_teams.py' file if you use it for college team filtering
     from valid_teams import FBS_TEAMS, FCS_TEAMS
 except ImportError:
     FBS_TEAMS = []
@@ -18,11 +17,11 @@ except ImportError:
 # ================= CONFIGURATION =================
 TIMEZONE_OFFSET = -5  # Set to -5 for EST/EDT
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 10 
+UPDATE_INTERVAL = 8  # Slight increase to prevent rate limiting
 
 # --- NHL LOGO FIXES ---
 NHL_LOGO_MAP = {
-    "SJS": "sj",  "NJD": "nj",  "TBL": "tb", 
+    "SJS": "sj",  "NJD": "nj",  "TBL": "tb",  
     "LAK": "la",  "VGK": "vgs", "VEG": "vgs"
 }
 
@@ -34,7 +33,7 @@ DASHBOARD_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ticker Controller</title>
     <style>
-        :root { --bg: #0f111a; --card: #1c1f2e; --accent: #ff5722; --text: #e0e0e0; --success: #4caf50; --inactive: #f44336; --warn: #ffeb3b; }
+        :root { --bg: #0f111a; --card: #1c1f2e; --accent: #ff5722; --text: #e0e0e0; --success: #4caf50; --inactive: #f44336; --warn: #ffeb3b; --unique: #ce93d8; }
         body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; padding-bottom: 40px; }
         
         .panel { background: var(--card); padding: 15px; border-radius: 12px; max-width: 800px; margin: 0 auto 15px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
@@ -110,6 +109,7 @@ DASHBOARD_HTML = """
 
         .sit-football { color: var(--success); }
         .sit-hockey { color: var(--warn); }
+        .sit-empty-net { color: var(--unique); border: 1px solid var(--unique); border-radius: 4px; padding: 0 4px; font-size: 0.85em; display: inline-block; margin-left: 4px; }
         .sit-baseball { color: #aaa; }
 
         /* --- MOBILE TWEAKS (Fixes Indicator Gap) --- */
@@ -333,9 +333,17 @@ DASHBOARD_HTML = """
                         } else if(g.situation.isRedZone) {
                             sitHTML = `<span class="sit-football">RedZone</span>`;
                         }
-                    } else if(g.sport === 'nhl' && g.situation.powerPlay) {
-                        let poss = g.situation.possession ? ` (${g.situation.possession})` : '';
-                        sitHTML = `<span class="sit-hockey">PP${poss}</span>`;
+                    } else if(g.sport === 'nhl') {
+                        let parts = [];
+                        // Power Play Logic
+                        if(g.situation.powerPlay) {
+                             parts.push(`<span class="sit-hockey">PP</span>`);
+                        }
+                        // Empty Net Logic
+                        if(g.situation.emptyNet) {
+                            parts.push(`<span class="sit-empty-net">EN</span>`);
+                        }
+                        sitHTML = parts.join(' ');
                     } else if(g.sport === 'mlb' && g.situation.outs !== undefined) {
                         sitHTML = `<span class="sit-baseball">${g.situation.balls}-${g.situation.strikes}, ${g.situation.outs} Out</span>`;
                     }
@@ -569,29 +577,44 @@ class SportsFetcher:
         elif clock.get('inIntermission'): status_disp = f"P{period} INT"
         else: status_disp = f"P{period} {time_rem}"
 
+        # --- POWER PLAY & EMPTY NET LOGIC ---
+        # code format: [awayGoalie][awaySkaters][homeSkaters][homeGoalie]
+        # example: 1551 (Normal), 1541 (Away PP), 1560 (Home EN)
         sit_code = data.get('situation', {}).get('situationCode', '1551')
+        
         try:
+            # Parse digits safely
+            away_goalie = int(sit_code[0])
             away_skaters = int(sit_code[1])
             home_skaters = int(sit_code[2])
+            home_goalie = int(sit_code[3])
         except:
-            away_skaters = 5
-            home_skaters = 5
+            away_goalie, away_skaters, home_skaters, home_goalie = 1, 5, 5, 1
 
         is_pp = False
         possession = ""
+        is_empty_net = False
+        
+        # 1. Check Power Play (Skater Differential)
         if away_skaters > home_skaters:
             is_pp = True
             possession = away_abbr 
         elif home_skaters > away_skaters:
             is_pp = True
             possession = home_abbr
+            
+        # 2. Check Empty Net (Goalie Count is 0)
+        if away_goalie == 0 or home_goalie == 0:
+            is_empty_net = True
+            # Optional: You could determine *who* pulled the goalie here
+            # if away_goalie == 0: pulled_team = away_abbr
 
         game_obj = {
             'sport': 'nhl', 'id': str(game_id), 'status': status_disp, 'state': mapped_state,
             'is_shown': is_shown, 
             'home_abbr': home_abbr, 'home_score': home_score, 'home_logo': home_logo, 'home_id': home_abbr, 
             'away_abbr': away_abbr, 'away_score': away_score, 'away_logo': away_logo, 'away_id': away_abbr,
-            'situation': { 'powerPlay': is_pp, 'possession': possession }
+            'situation': { 'powerPlay': is_pp, 'possession': possession, 'emptyNet': is_empty_net }
         }
         
         games_list.append(game_obj)
@@ -601,7 +624,7 @@ class SportsFetcher:
         games = []
         
         if state['debug_mode'] and state['custom_date'] == 'TEST_PP':
-             games.append({ "sport": "nhl", "id": "test_pp", "status": "P2 14:20", "state": "in", "is_shown": True, "home_abbr": "NYR", "home_id": "NYR", "home_score": "3", "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png", "away_abbr": "BOS", "away_id": "BOS", "away_score": "2", "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png", "situation": {"powerPlay": True, "possession": "BOS"} })
+             games.append({ "sport": "nhl", "id": "test_pp", "status": "P3 1:20", "state": "in", "is_shown": True, "home_abbr": "NYR", "home_id": "NYR", "home_score": "3", "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png", "away_abbr": "BOS", "away_id": "BOS", "away_score": "2", "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png", "situation": {"powerPlay": True, "possession": "BOS", "emptyNet": True} })
              state['current_games'] = games
              return
 
