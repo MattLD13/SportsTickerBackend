@@ -540,12 +540,12 @@ class SportsFetcher:
         home_code = NHL_LOGO_MAP.get(home_abbr, home_abbr.lower())
         
         # Apply Capitals logo override for WSH
-        if away_abbr.upper() == 'WSH':
+        if away_abbr.upper() in ['WSH', 'WAS']:
             away_logo = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
         else:
             away_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{away_code}.png"
             
-        if home_abbr.upper() == 'WSH':
+        if home_abbr.upper() in ['WSH', 'WAS']:
             home_logo = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
         else:
             home_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{home_code}.png"
@@ -712,10 +712,14 @@ class SportsFetcher:
                         # Apply Capitals logo override
                         home_logo_url = home['team'].get('logo', '')
                         away_logo_url = away['team'].get('logo', '')
-                        if home['team']['abbreviation'].upper() == 'WSH':
-                            home_logo_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
-                        if away['team']['abbreviation'].upper() == 'WSH':
-                            away_logo_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
+
+                        # CORRECTED LOGIC: Check for NHL specific league_key before applying Capitals override
+                        # This prevents the NBA Wizards (WAS) from getting the Capitals logo
+                        if league_key == 'nhl':
+                            if home['team']['abbreviation'].upper() in ['WSH', 'WAS']:
+                                home_logo_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
+                            if away['team']['abbreviation'].upper() in ['WSH', 'WAS']:
+                                away_logo_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
                             
                         game_obj = {
                             'sport': league_key, 'id': event['id'], 'status': status_display, 'state': status_state,
