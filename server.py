@@ -509,6 +509,10 @@ class SportsFetcher:
 
     # ================= NHL NATIVE FETCHING =================
     def _fetch_nhl_native(self, games_list, target_date_str):
+        # We must ALWAYS fetch NHL data, even if disabled, so we can show it as 'red' in UI
+        # Check if enabled for 'is_shown' logic, but proceed with fetch regardless.
+        is_nhl_enabled = state['active_sports'].get('nhl', False)
+        
         schedule_url = "https://api-web.nhle.com/v1/schedule/now"
         try:
             response = requests.get(schedule_url, timeout=5)
@@ -520,9 +524,9 @@ class SportsFetcher:
             if date_entry.get('date') != target_date_str: continue 
             
             for game in date_entry.get('games', []):
-                self._process_single_nhl_game(game['id'], games_list)
+                self._process_single_nhl_game(game['id'], games_list, is_nhl_enabled)
 
-    def _process_single_nhl_game(self, game_id, games_list):
+    def _process_single_nhl_game(self, game_id, games_list, is_enabled):
         pbp_url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
         try:
             r = requests.get(pbp_url, timeout=3)
@@ -555,10 +559,14 @@ class SportsFetcher:
         if game_state in ['PRE', 'FUT']: mapped_state = 'pre'
 
         # FILTER LOGIC: Calculate 'is_shown'
-        is_shown = True
-        if state['mode'] == 'live' and mapped_state != 'in': is_shown = False
-        if state['mode'] == 'my_teams':
-            if (home_abbr not in state['my_teams']) and (away_abbr not in state['my_teams']): is_shown = False
+        # 1. Start with whether the sport is enabled globally
+        is_shown = is_enabled
+
+        # 2. If enabled, check specific display modes
+        if is_shown:
+            if state['mode'] == 'live' and mapped_state != 'in': is_shown = False
+            if state['mode'] == 'my_teams':
+                if (home_abbr not in state['my_teams']) and (away_abbr not in state['my_teams']): is_shown = False
 
         clock = data.get('clock', {})
         time_rem = clock.get('timeRemaining', '00:00')
@@ -578,12 +586,8 @@ class SportsFetcher:
         else: status_disp = f"P{period} {time_rem}"
 
         # --- POWER PLAY & EMPTY NET LOGIC ---
-        # code format: [awayGoalie][awaySkaters][homeSkaters][homeGoalie]
-        # example: 1551 (Normal), 1541 (Away PP), 1560 (Home EN)
         sit_code = data.get('situation', {}).get('situationCode', '1551')
-        
         try:
-            # Parse digits safely
             away_goalie = int(sit_code[0])
             away_skaters = int(sit_code[1])
             home_skaters = int(sit_code[2])
@@ -595,7 +599,6 @@ class SportsFetcher:
         possession = ""
         is_empty_net = False
         
-        # 1. Check Power Play (Skater Differential)
         if away_skaters > home_skaters:
             is_pp = True
             possession = away_abbr 
@@ -603,11 +606,8 @@ class SportsFetcher:
             is_pp = True
             possession = home_abbr
             
-        # 2. Check Empty Net (Goalie Count is 0)
         if away_goalie == 0 or home_goalie == 0:
             is_empty_net = True
-            # Optional: You could determine *who* pulled the goalie here
-            # if away_goalie == 0: pulled_team = away_abbr
 
         game_obj = {
             'sport': 'nhl', 'id': str(game_id), 'status': status_disp, 'state': mapped_state,
@@ -639,7 +639,10 @@ class SportsFetcher:
             is_history = False
         
         for league_key, config in self.leagues.items():
-            if not state['active_sports'].get(league_key, False): continue 
+            # REMOVED: The old check that skipped fetching if sport was disabled.
+            # Now we fetch everything so the UI can show it (in red).
+            
+            is_sport_enabled = state['active_sports'].get(league_key, False)
 
             if league_key == 'nhl':
                 self._fetch_nhl_native(games, target_date_str)
@@ -672,49 +675,40 @@ class SportsFetcher:
                         sit = comp.get('situation', {})
                         
                         raw_status = status_type.get('shortDetail', 'Scheduled')
-                        
-                        # --- HALFTIME & FOOTBALL CLOCK LOGIC ---
-                        status_display = raw_status # Default
+                        status_display = raw_status 
                         
                         period = status_obj.get('period', 1)
                         clock = status_obj.get('displayClock', '')
 
-                        # 1. FORCE HALFTIME STATE if Q2 and clock is 0:00 or state is 'half'
                         is_halftime = (status_state == 'half') or (period == 2 and clock == '0:00')
                         
                         if is_halftime:
                             status_display = "HALFTIME"
-                            status_state = 'half' # Ensure state matches logic
-                        
+                            status_state = 'half' 
                         elif status_state == 'in' and 'football' in config['path']:
-                            # 2. FOOTBALL LIVE CLOCK: "Q# - 12:45"
-                            if clock:
-                                status_display = f"Q{period} - {clock}"
-                            else:
-                                status_display = f"Q{period}" # Fallback
-                        
+                            if clock: status_display = f"Q{period} - {clock}"
+                            else: status_display = f"Q{period}" 
                         else:
-                            # Standard cleanup for other sports/states
                             status_display = raw_status.replace("Final", "FINAL").replace(" EST", "").replace(" EDT", "").replace("/OT", "")
-                            if " - " in status_display:
-                                status_display = status_display.split(" - ")[-1]
+                            if " - " in status_display: status_display = status_display.split(" - ")[-1]
                         
                         # --- FILTER LOGIC (Calculate is_shown) ---
-                        is_shown = True
-                        if state['mode'] == 'live':
-                            if status_state not in ['in', 'half']: is_shown = False
-                        elif state['mode'] == 'my_teams':
-                            h_abbr = home['team']['abbreviation']
-                            a_abbr = away['team']['abbreviation']
-                            if (h_abbr not in state['my_teams']) and (a_abbr not in state['my_teams']):
-                                is_shown = False
+                        # 1. Global Sport Enable Check
+                        is_shown = is_sport_enabled
+
+                        # 2. Mode Checks (only if sport is enabled)
+                        if is_shown:
+                            if state['mode'] == 'live':
+                                if status_state not in ['in', 'half']: is_shown = False
+                            elif state['mode'] == 'my_teams':
+                                h_abbr = home['team']['abbreviation']
+                                a_abbr = away['team']['abbreviation']
+                                if (h_abbr not in state['my_teams']) and (a_abbr not in state['my_teams']):
+                                    is_shown = False
                         
-                        # Apply Capitals logo override
                         home_logo_url = home['team'].get('logo', '')
                         away_logo_url = away['team'].get('logo', '')
 
-                        # CORRECTED LOGIC: Check for NHL specific league_key before applying Capitals override
-                        # This prevents the NBA Wizards (WAS) from getting the Capitals logo
                         if league_key == 'nhl':
                             if home['team']['abbreviation'].upper() in ['WSH', 'WAS']:
                                 home_logo_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
@@ -731,10 +725,8 @@ class SportsFetcher:
                             'situation': {}
                         }
 
-                        # 3. SITUATION DATA: Only show if LIVE (not Halftime)
                         if status_state == 'in' and not is_halftime:
                             if 'football' in config['path']:
-                                # RedZone Fix: Only show if API actively reports it (clears on score)
                                 is_rz = sit.get('isRedZone', False)
                                 game_obj['situation'] = { 'possession': sit.get('possession', ''), 'downDist': sit.get('downDistanceText', ''), 'isRedZone': is_rz }
                             elif league_key == 'mlb':
