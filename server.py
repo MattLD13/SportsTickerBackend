@@ -274,6 +274,12 @@ def background_updater():
 
 app = Flask(__name__)
 
+# START BACKGROUND THREAD (Safe for Gunicorn w/ workers=1)
+if not any(t.name == "TickerUpdater" for t in threading.enumerate()):
+    t = threading.Thread(target=background_updater, name="TickerUpdater")
+    t.daemon = True
+    t.start()
+
 # --- API ENDPOINTS ---
 
 @app.route('/')
@@ -311,6 +317,7 @@ def update_config():
         if k in d: state[k] = d[k]
     
     save_state_to_disk()
+    # Trigger instant refresh
     threading.Thread(target=fetcher.get_real_games).start()
     return jsonify({"status": "ok"})
 
@@ -346,8 +353,6 @@ def save_state_to_disk():
     except: pass
 
 if __name__ == "__main__":
-    t = threading.Thread(target=background_updater)
-    t.daemon = True
-    t.start()
+    # This block usually only runs in local development
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
