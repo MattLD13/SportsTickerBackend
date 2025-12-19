@@ -3,6 +3,7 @@ import threading
 import json
 import os
 import datetime
+import subprocess 
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from flask import Flask, jsonify, request
@@ -21,7 +22,7 @@ UPDATE_INTERVAL = 8  # Slight increase to prevent rate limiting
 
 # --- NHL LOGO FIXES ---
 NHL_LOGO_MAP = {
-    "SJS": "sj",  "NJD": "nj",  "TBL": "tb",   
+    "SJS": "sj",  "NJD": "nj",  "TBL": "tb",    
     "LAK": "la",  "VGK": "vgs", "VEG": "vgs"
 }
 
@@ -437,7 +438,12 @@ default_state = {
     'current_games': [],
     'all_teams_data': {}, 
     'debug_mode': False,
-    'custom_date': None
+    'custom_date': None,
+    # --- NEW HARDWARE SETTINGS ---
+    'brightness': 0.5,
+    'inverted': False,
+    'panel_count': 2,
+    'test_pattern': False
 }
 
 state = default_state.copy()
@@ -450,6 +456,10 @@ if os.path.exists(CONFIG_FILE):
             if 'mode' in loaded: state['mode'] = loaded['mode']
             if 'scroll_seamless' in loaded: state['scroll_seamless'] = loaded['scroll_seamless']
             if 'my_teams' in loaded: state['my_teams'] = loaded['my_teams']
+            # --- LOAD HARDWARE SETTINGS ---
+            if 'brightness' in loaded: state['brightness'] = loaded['brightness']
+            if 'inverted' in loaded: state['inverted'] = loaded['inverted']
+            if 'panel_count' in loaded: state['panel_count'] = loaded['panel_count']
     except: pass
 
 class SportsFetcher:
@@ -758,7 +768,16 @@ def dashboard(): return DASHBOARD_HTML
 def get_ticker_data():
     visible_games = [g for g in state['current_games'] if g.get('is_shown', True)]
     return jsonify({
-        'meta': { 'time': dt.now(timezone.utc).strftime("%I:%M %p"), 'count': len(visible_games), 'speed': 0.02, 'scroll_seamless': state.get('scroll_seamless', False) },
+        'meta': { 
+            'time': dt.now(timezone.utc).strftime("%I:%M %p"), 
+            'count': len(visible_games), 
+            'speed': 0.02, 
+            'scroll_seamless': state.get('scroll_seamless', False),
+            'brightness': state.get('brightness', 0.5),
+            'inverted': state.get('inverted', False),
+            'panel_count': state.get('panel_count', 2),
+            'test_pattern': state.get('test_pattern', False)
+        },
         'games': visible_games
     })
 
@@ -781,13 +800,21 @@ def update_config():
     if 'scroll_seamless' in d: state['scroll_seamless'] = d['scroll_seamless']
     if 'my_teams' in d: state['my_teams'] = d['my_teams']
     
+    # --- HARDWARE SETTINGS (if sent via standard config) ---
+    if 'brightness' in d: state['brightness'] = float(d['brightness'])
+    if 'inverted' in d: state['inverted'] = bool(d['inverted'])
+    if 'panel_count' in d: state['panel_count'] = int(d['panel_count'])
+    
     try:
         with open(CONFIG_FILE, 'w') as f:
             json.dump({
                 'active_sports': state['active_sports'], 
                 'mode': state['mode'], 
                 'scroll_seamless': state['scroll_seamless'], 
-                'my_teams': state['my_teams']
+                'my_teams': state['my_teams'],
+                'brightness': state.get('brightness', 0.5),
+                'inverted': state.get('inverted', False),
+                'panel_count': state.get('panel_count', 2)
             }, f)
     except Exception as e:
         print(f"[WARNING] Could not save config file (File Locked). Settings active in memory only. Error: {e}")
@@ -803,6 +830,64 @@ def set_debug():
     if 'custom_date' in d: state['custom_date'] = d['custom_date']
     fetcher.get_real_games()
     return jsonify({"status": "ok"})
+
+@app.route('/api/hardware', methods=['POST'])
+def hardware_control():
+    """
+    Handles hardware-specific actions: Reboot, Test Pattern,
+    and direct hardware setting updates.
+    """
+    data = request.json
+    action = data.get('action')
+
+    # 1. HANDLE REBOOT
+    if action == 'reboot':
+        def perform_reboot():
+            print("Rebooting system in 3 seconds...")
+            time.sleep(3)
+            # This is primarily for physical servers (Pi). 
+            # On Railway/Docker containers, this might just restart the container.
+            try:
+                subprocess.run(["sudo", "reboot"])
+            except Exception as e:
+                print(f"Reboot command failed: {e}")
+
+        threading.Thread(target=perform_reboot).start()
+        return jsonify({"status": "rebooting", "message": "System will reboot in 3 seconds"})
+
+    # 2. HANDLE TEST PATTERN
+    elif action == 'test_pattern':
+        state['test_pattern'] = not state.get('test_pattern', False)
+        print(f"Test Pattern Set To: {state['test_pattern']}")
+        return jsonify({"status": "ok", "test_pattern": state['test_pattern']})
+
+    # 3. HANDLE SETTINGS UPDATES (Brightness, Inverted, Panels)
+    updated = False
+    if 'brightness' in data: 
+        state['brightness'] = float(data['brightness'])
+        updated = True
+    if 'inverted' in data: 
+        state['inverted'] = bool(data['inverted'])
+        updated = True
+    if 'panel_count' in data: 
+        state['panel_count'] = int(data['panel_count'])
+        updated = True
+
+    if updated:
+        try:
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump({
+                    'active_sports': state['active_sports'], 
+                    'mode': state['mode'], 
+                    'scroll_seamless': state['scroll_seamless'], 
+                    'my_teams': state['my_teams'],
+                    'brightness': state['brightness'],
+                    'inverted': state['inverted'],
+                    'panel_count': state['panel_count']
+                }, f)
+        except: pass
+
+    return jsonify({"status": "ok", "settings": state})
 
 if __name__ == "__main__":
     t = threading.Thread(target=background_updater)
