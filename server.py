@@ -35,108 +35,52 @@ DASHBOARD_HTML = """
     <style>
         :root { --bg: #0f111a; --card: #1c1f2e; --accent: #ff5722; --text: #e0e0e0; --success: #4caf50; --inactive: #f44336; --warn: #ffeb3b; --unique: #ce93d8; }
         body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; padding-bottom: 40px; }
-        
         .panel { background: var(--card); padding: 15px; border-radius: 12px; max-width: 800px; margin: 0 auto 15px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        
-        /* HEADER & HAMBURGER */
         .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .app-title { font-size: 1.2em; font-weight: bold; letter-spacing: 1px; color: white; margin: 0; }
         .hamburger-btn { background: none; border: none; color: #fff; font-size: 1.5em; cursor: pointer; padding: 0 5px; }
-        
-        /* SETTINGS CONTAINER (Collapsible) */
         #settingsArea { display: block; overflow: hidden; transition: max-height 0.3s ease-out; margin-top: 5px; padding-top: 15px; border-top: 1px solid #333; }
         .settings-hidden { display: none !important; }
-
         .section-title { color: #888; text-transform: uppercase; font-size: 0.75em; display: block; margin: 0 0 8px 0; font-weight: bold; letter-spacing: 1px; }
-        
-        /* VISIBLE CONTROLS (Filters/Scroll) */
         .control-row { margin-bottom: 15px; }
-        
-        /* SETTINGS CONTROLS (Sports/Teams) */
-        .sports-grid { 
-            display: grid; 
-            grid-template-columns: repeat(3, 1fr); /* 3x2 Grid */
-            gap: 8px; 
-            margin-bottom: 15px; 
-        }
+        .sports-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 15px; }
         .sport-btn { padding: 10px; border-radius: 6px; background: #252836; color: #888; cursor: pointer; text-align: center; transition: 0.2s; font-weight: bold; font-size: 0.85em; }
         .sport-btn.active { background: var(--success); color: white; box-shadow: 0 0 8px rgba(76,175,80,0.3); }
-        
         .mode-switch { display: flex; background: #252836; padding: 4px; border-radius: 8px; }
         .mode-opt { flex: 1; text-align: center; padding: 8px; cursor: pointer; border-radius: 6px; color: #888; font-size: 0.85em; }
         .mode-opt.active { background: #3d4150; color: white; font-weight: bold; }
-
         button.action-btn { padding: 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; width: 100%; margin-bottom: 10px; font-size: 0.9em; }
         .btn-teams { background: #3d4150; color: white; }
-        
-        /* SAVE BUTTON STYLING */
-        .btn-save { 
-            background: #3d4150; 
-            color: #ccc; 
-            font-size: 1em; 
-            margin-bottom: 0; 
-            transition: background 0.3s, color 0.3s;
-        }
+        .btn-save { background: #3d4150; color: #ccc; font-size: 1em; margin-bottom: 0; transition: background 0.3s, color 0.3s; }
         .btn-save:hover { background: #4a4e60; color: white; }
-
-        /* --- RESPONSIVE TABLE --- */
         table.game-table { width: 100%; border-collapse: separate; border-spacing: 0 6px; }
-        th { 
-            text-align: center; 
-            color: #666; font-size: 0.7em; text-transform: uppercase; padding: 0 8px 4px 8px; font-weight: 600; 
-        }
+        th { text-align: center; color: #666; font-size: 0.7em; text-transform: uppercase; padding: 0 8px 4px 8px; font-weight: 600; }
         th:first-child { text-align: left; } 
-        
         tr.game-row td { background: #252836; padding: 10px 8px; border-top: 1px solid #333; border-bottom: 1px solid #333; font-size: 0.9em; vertical-align: middle; }
-        
-        /* BORDER RADIUS & INDICATORS (Desktop Default) */
         tr.game-row td:first-child { border-left: 4px solid var(--success); border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
         tr.game-row td:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; border-right: 1px solid #333; }
-        
         tr.game-row.filtered-out td:first-child { border-left-color: var(--inactive); }
         tr.game-row.filtered-out { opacity: 0.6; }
-
-        /* COLUMN WIDTHS (Desktop Default) */
         .col-league { width: 50px; font-weight: bold; color: #aaa; font-size: 0.75em; text-align: center; }
         .col-matchup { color: white; font-weight: 500; display: flex; align-items: center; gap: 6px; white-space: nowrap; text-align: left; }
         .col-score { width: 60px; font-weight: bold; color: white; text-align: center; font-size: 1.1em; }
         .col-status { width: 90px; color: #888; font-size: 0.75em; text-align: right; line-height: 1.2; }
         .col-situation { width: 120px; text-align: right; font-weight: bold; font-size: 0.8em; }
         .league-label { display: block; } 
-
         .mini-logo { width: 24px; height: 24px; object-fit: contain; }
         .at-symbol { color: #555; font-size: 0.8em; margin: 0 2px; }
-
         .sit-football { color: var(--success); }
         .sit-hockey { color: var(--warn); }
         .sit-empty-net { color: var(--unique); border: 1px solid var(--unique); border-radius: 4px; padding: 0 4px; font-size: 0.85em; display: inline-block; margin-left: 4px; }
         .sit-baseball { color: #aaa; }
-
-        /* --- MOBILE TWEAKS (Fixes Indicator Gap) --- */
         @media (max-width: 600px) {
             body { padding: 5px; }
             .panel { padding: 12px; margin-bottom: 10px; }
-            
-            /* Hide League Column Header */
             th.th-league { display: none; }
-            
-            /* Hide League Column CONTENT and reset padding/width */
             td.col-league { display: none; }
-            
-            /* Apply the indicator border to the Matchup column (the new first visible column) */
-            tr.game-row td:nth-child(2) { 
-                border-left-width: 4px; 
-                border-left-style: solid; 
-                border-top-left-radius: 6px; 
-                border-bottom-left-radius: 6px; 
-                padding-left: 8px; /* Reset padding to keep match-up close to the line */
-            }
-            
-            /* Ensure the indicator line color is correct on mobile */
+            tr.game-row td:nth-child(2) { border-left-width: 4px; border-left-style: solid; border-top-left-radius: 6px; border-bottom-left-radius: 6px; padding-left: 8px; }
             tr.game-row.filtered-out td:nth-child(2) { border-left-color: var(--inactive) !important; }
             tr.game-row:not(.filtered-out) td:nth-child(2) { border-left-color: var(--success); }
-            
-            /* Compact Columns */
             tr.game-row td { padding: 8px 5px; }
             .mini-logo { width: 20px; height: 20px; }
             .col-matchup { font-size: 0.9em; gap: 4px; }
@@ -144,8 +88,6 @@ DASHBOARD_HTML = """
             .col-status { width: 70px; font-size: 0.7em; }
             .col-situation { width: 80px; font-size: 0.7em; }
         }
-
-        /* MODAL */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 999; backdrop-filter: blur(3px); }
         .modal-content { background: var(--card); margin: 2% auto; padding: 20px; width: 95%; max-width: 800px; height: 90vh; border-radius: 12px; display: flex; flex-direction: column; }
         .tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; border-bottom: 1px solid #333; margin-bottom: 15px; -webkit-overflow-scrolling: touch; }
@@ -163,7 +105,6 @@ DASHBOARD_HTML = """
             <h1 class="app-title">Ticker Control</h1>
             <button class="hamburger-btn" onclick="toggleSettings()">☰</button>
         </div>
-
         <div class="control-row">
             <span class="section-title">Display Filter</span>
             <div class="mode-switch">
@@ -172,7 +113,6 @@ DASHBOARD_HTML = """
                 <div id="mode_my" class="mode-opt" onclick="setMode('my_teams')">My Teams</div>
             </div>
         </div>
-
         <div class="control-row">
             <span class="section-title">Scroll Style</span>
             <div class="mode-switch">
@@ -180,9 +120,7 @@ DASHBOARD_HTML = """
                 <div id="scroll_seamless" class="mode-opt" onclick="setScroll(true)">Seamless (Marquee)</div>
             </div>
         </div>
-
         <button class="action-btn btn-save" onclick="saveConfig()">SAVE SETTINGS</button>
-
         <div id="settingsArea" class="settings-hidden">
             <span class="section-title">Enabled Sports</span>
             <div class="sports-grid">
@@ -193,9 +131,7 @@ DASHBOARD_HTML = """
                 <div id="btn_nhl" class="sport-btn" onclick="toggleSport('nhl')">NHL</div>
                 <div id="btn_nba" class="sport-btn" onclick="toggleSport('nba')">NBA</div>
             </div>
-
             <button class="action-btn btn-teams" onclick="openTeamModal()">Manage My Teams (<span id="team_count">0</span>)</button>
-            
             <div style="text-align:center; margin-top:15px;">
                 <a href="#" onclick="toggleDebug()" style="color:#555; font-size:0.75em; text-decoration:none;">Debug / Time Machine</a>
             </div>
@@ -208,13 +144,11 @@ DASHBOARD_HTML = """
             </div>
         </div>
     </div>
-
     <div class="panel" style="padding-top:5px;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:5px;">
             <span class="section-title" style="margin:0;">Active Feed (<span id="game_count">0</span>)</span>
             <div style="font-size:0.7em; color:#666;">Updates every 5s</div>
         </div>
-        
         <table class="game-table">
             <thead>
                 <tr>
@@ -228,7 +162,6 @@ DASHBOARD_HTML = """
             <tbody id="gameTableBody"></tbody>
         </table>
     </div>
-
     <div id="teamModal" class="modal">
         <div class="modal-content">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -246,13 +179,11 @@ DASHBOARD_HTML = """
             <div id="teamGrid" class="team-grid"><div style="text-align:center; padding:20px; color:#666; grid-column: 1/-1;">Loading...</div></div>
         </div>
     </div>
-
     <script>
         let currentState = { active_sports: {}, mode: 'all', my_teams: [], scroll_seamless: false };
         let allTeams = {};
         let currentTabLeague = 'nfl';
         let settingsVisible = false;
-
         async function init() {
             let r = await fetch('/api/state');
             let data = await r.json();
@@ -261,18 +192,14 @@ DASHBOARD_HTML = """
             renderUI();
             renderGames(data.games);
             setInterval(fetchLiveTicker, 5000);
-            
-            // Set initial visibility based on screen size (default hidden on small screens)
             if (window.innerWidth >= 600) { settingsVisible = true; document.getElementById('settingsArea').classList.remove('settings-hidden'); }
         }
-
         function toggleSettings() {
             const area = document.getElementById('settingsArea');
             if (settingsVisible) area.classList.add('settings-hidden');
             else area.classList.remove('settings-hidden');
             settingsVisible = !settingsVisible;
         }
-
         async function fetchLiveTicker() {
             try {
                 let r = await fetch('/api/all_games');
@@ -280,7 +207,6 @@ DASHBOARD_HTML = """
                 renderGames(data.games);
             } catch(e) {}
         }
-
         function renderUI() {
             ['nfl','ncf_fbs','ncf_fcs','mlb','nhl','nba'].forEach(sport => {
                 let btn = document.getElementById('btn_' + sport);
@@ -298,57 +224,40 @@ DASHBOARD_HTML = """
                 if(currentState.custom_date) document.getElementById('custom_date').value = currentState.custom_date;
             } else { document.getElementById('debugControls').style.display = 'none'; }
         }
-
         function formatLeague(key) {
             if(key === 'ncf_fbs') return 'FBS';
             if(key === 'ncf_fcs') return 'FCS';
             return key.toUpperCase();
         }
-        
         function renderGames(games) {
             const tbody = document.getElementById('gameTableBody');
             document.getElementById('game_count').innerText = games.length;
             tbody.innerHTML = '';
-            
             if(games.length === 0) { 
                 tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#555;">No active games found.</td></tr>'; 
                 return; 
             }
-
             games.forEach(g => {
                 let tr = document.createElement('tr');
                 tr.className = g.is_shown ? 'game-row' : 'game-row filtered-out';
-                
                 let leagueLabel = formatLeague(g.sport);
                 let awayLogo = g.away_logo ? `<img src="${g.away_logo}" class="mini-logo">` : '';
                 let homeLogo = g.home_logo ? `<img src="${g.home_logo}" class="mini-logo">` : '';
-                
                 let sitHTML = '';
                 if(g.state === 'in' || g.state === 'half') {
                     if(g.sport === 'nfl' || g.sport.includes('ncf')) {
-                        if(g.status === 'HALFTIME') {
-                            sitHTML = '';
-                        } else if(g.situation.downDist) {
-                            sitHTML = `<span class="sit-football">${g.situation.downDist}</span>`;
-                        } else if(g.situation.isRedZone) {
-                            sitHTML = `<span class="sit-football">RedZone</span>`;
-                        }
+                        if(g.status === 'HALFTIME') sitHTML = '';
+                        else if(g.situation.downDist) sitHTML = `<span class="sit-football">${g.situation.downDist}</span>`;
+                        else if(g.situation.isRedZone) sitHTML = `<span class="sit-football">RedZone</span>`;
                     } else if(g.sport === 'nhl') {
                         let parts = [];
-                        // Power Play Logic
-                        if(g.situation.powerPlay) {
-                             parts.push(`<span class="sit-hockey">PP</span>`);
-                        }
-                        // Empty Net Logic
-                        if(g.situation.emptyNet) {
-                            parts.push(`<span class="sit-empty-net">EN</span>`);
-                        }
+                        if(g.situation.powerPlay) parts.push(`<span class="sit-hockey">PP</span>`);
+                        if(g.situation.emptyNet) parts.push(`<span class="sit-empty-net">EN</span>`);
                         sitHTML = parts.join(' ');
                     } else if(g.sport === 'mlb' && g.situation.outs !== undefined) {
                         sitHTML = `<span class="sit-baseball">${g.situation.balls}-${g.situation.strikes}, ${g.situation.outs} Out</span>`;
                     }
                 }
-
                 tr.innerHTML = `
                     <td class="col-league"><span class="league-label">${leagueLabel}</span></td>
                     <td><div class="col-matchup">
@@ -361,28 +270,17 @@ DASHBOARD_HTML = """
                 tbody.appendChild(tr);
             });
         }
-        
         function toggleSport(s) { currentState.active_sports[s] = !currentState.active_sports[s]; renderUI(); }
         function setMode(m) { currentState.mode = m; renderUI(); }
         function setScroll(isSeamless) { currentState.scroll_seamless = isSeamless; renderUI(); }
-        
         async function saveConfig() {
             await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(currentState)});
             let btn = document.querySelector('.btn-save');
             let oldText = btn.innerText;
             btn.innerText = "SAVED!";
-            
-            // CHANGED: Uses exact hex requested for active state
-            btn.style.background = "#1c1f2e"; 
-            btn.style.color = "white";
-            
-            setTimeout(() => { 
-                btn.innerText = oldText; 
-                btn.style.background = ""; // Revert to CSS default (Grey)
-                btn.style.color = "";
-            }, 1500);
+            btn.style.background = "#1c1f2e"; btn.style.color = "white";
+            setTimeout(() => { btn.innerText = oldText; btn.style.background = ""; btn.style.color = ""; }, 1500);
         }
-
         function openTeamModal() { document.getElementById('teamModal').style.display = 'block'; showTab(currentTabLeague); }
         function closeTeamModal() { document.getElementById('teamModal').style.display = 'none'; renderUI(); }
         function showTab(league) {
@@ -574,6 +472,11 @@ class SportsFetcher:
         time_rem = clock.get('timeRemaining', '00:00')
         period = data.get('periodDescriptor', {}).get('number', 1)
         
+        # --- OT / PERIOD LOGIC ---
+        period_label = f"P{period}"
+        if period == 4: period_label = "OT"
+        elif period > 4: period_label = "2OT" if is_playoff else "S/O"
+        
         if game_state == 'FINAL' or game_state == 'OFF': status_disp = "FINAL"
         elif game_state in ['PRE', 'FUT']: 
             raw_time = data.get('startTimeUTC', '')
@@ -584,8 +487,8 @@ class SportsFetcher:
                     status_disp = local_dt.strftime("%I:%M %p").lstrip('0') 
                 except: status_disp = "Scheduled"
             else: status_disp = "Scheduled"
-        elif clock.get('inIntermission'): status_disp = f"P{period} INT"
-        else: status_disp = f"P{period} {time_rem}"
+        elif clock.get('inIntermission'): status_disp = f"{period_label} INT"
+        else: status_disp = f"{period_label} {time_rem}"
 
         # --- POWER PLAY & EMPTY NET LOGIC ---
         sit_code = data.get('situation', {}).get('situationCode', '1551')
@@ -615,7 +518,7 @@ class SportsFetcher:
         
         # --- DEBUG TEST GAME ---
         if state['debug_mode'] and state['custom_date'] == 'TEST_PP':
-             games.append({ "sport": "nhl", "id": "test_pp", "status": "P3 1:20", "state": "in", "is_shown": True, "home_abbr": "NYR", "home_id": "NYR", "home_score": "3", "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png", "away_abbr": "BOS", "away_id": "BOS", "away_score": "2", "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png", "situation": {"powerPlay": True, "possession": "BOS", "emptyNet": True}, "is_playoff": False, "period": 3 })
+             games.append({ "sport": "nhl", "id": "test_pp", "status": "OT 1:20", "state": "in", "is_shown": True, "home_abbr": "NYR", "home_id": "NYR", "home_score": "3", "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png", "away_abbr": "BOS", "away_id": "BOS", "away_score": "2", "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png", "situation": {"powerPlay": True, "possession": "BOS", "emptyNet": True}, "is_playoff": False, "period": 4 })
              state['current_games'] = games
              return
 
@@ -660,12 +563,7 @@ class SportsFetcher:
                         away = comp['competitors'][1]
                         sit = comp.get('situation', {})
                         
-                        # --- NEW: Playoff Detection (Season Type 3 = Post) ---
-                        season_type = event.get('season', {}).get('type', 2)
-                        is_playoff = (season_type == 3)
-                        
                         raw_status = status_type.get('shortDetail', 'Scheduled')
-                        status_display = raw_status 
                         period = status_obj.get('period', 1)
                         clock = status_obj.get('displayClock', '')
 
@@ -675,8 +573,16 @@ class SportsFetcher:
                             status_display = "HALFTIME"
                             status_state = 'half' 
                         elif status_state == 'in' and ('football' in config['path'] or league_key == 'nba'):
-                            if clock: status_display = f"Q{period} - {clock}"
-                            else: status_display = f"Q{period}" 
+                            # --- OVERTIME / QUARTER LOGIC ---
+                            prefix = f"Q{period}"
+                            if 'football' in config['path']:
+                                if period == 5: prefix = "OT"
+                                elif period > 5: prefix = f"{period-4}OT"
+                            elif league_key == 'nba':
+                                if period >= 5: prefix = f"OT{period-4}" # OT1, OT2...
+                            
+                            if clock: status_display = f"{prefix} - {clock}"
+                            else: status_display = f"{prefix}" 
                         else:
                             status_display = raw_status.replace("Final", "FINAL").replace(" EST", "").replace(" EDT", "").replace("/OT", "")
                             if " - " in status_display: status_display = status_display.split(" - ")[-1]
@@ -700,7 +606,7 @@ class SportsFetcher:
                             
                         game_obj = {
                             'sport': league_key, 'id': event['id'], 'status': status_display, 'state': status_state,
-                            'is_shown': is_shown, 'is_playoff': is_playoff,
+                            'is_shown': is_shown, 
                             'home_abbr': home['team']['abbreviation'], 'home_score': home.get('score', '0'), 
                             'home_logo': home_logo_url, 'home_id': home.get('id'),
                             'away_abbr': away['team']['abbreviation'], 'away_score': away.get('score', '0'), 
