@@ -7,13 +7,6 @@ from datetime import datetime as dt, timezone, timedelta
 import requests
 from flask import Flask, jsonify, request
 
-# IMPORT TEAMS
-try:
-    from valid_teams import FBS_TEAMS, FCS_TEAMS
-except ImportError:
-    FBS_TEAMS = []
-    FCS_TEAMS = []
-
 # ================= CONFIGURATION =================
 TIMEZONE_OFFSET = -5  # Set to -5 for EST/EDT
 CONFIG_FILE = "ticker_config.json"
@@ -35,10 +28,10 @@ default_state = {
     'all_teams_data': {}, 
     'debug_mode': False,
     'custom_date': None,
-    # --- NEW HARDWARE SETTINGS ---
-    'brightness': 0.5,   # 0.0 to 1.0
-    'inverted': False,   # True = flip 180
-    'test_pattern': False # True = show rainbow/test
+    # --- HARDWARE SETTINGS ---
+    'brightness': 0.5,   
+    'inverted': False,   
+    'test_pattern': False 
 }
 
 state = default_state.copy()
@@ -48,7 +41,6 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # Load existing keys
             for key in ['active_sports', 'mode', 'scroll_seamless', 'my_teams', 'brightness', 'inverted']:
                 if key in loaded: state[key] = loaded[key]
     except: pass
@@ -162,7 +154,7 @@ class SportsFetcher:
         period = data.get('periodDescriptor', {}).get('number', 1)
         
         if game_state == 'FINAL' or game_state == 'OFF': status_disp = "FINAL"
-        elif game_state in ['PRE', 'FUT']: status_disp = "Scheduled" # Simplified for brevity
+        elif game_state in ['PRE', 'FUT']: status_disp = "Scheduled" 
         elif clock.get('inIntermission'): status_disp = f"P{period} INT"
         else: status_disp = f"P{period} {time_rem}"
 
@@ -296,7 +288,6 @@ def get_ticker_data():
             'time': dt.now(timezone.utc).strftime("%I:%M %p"), 
             'count': len(visible_games), 
             'scroll_seamless': state.get('scroll_seamless', False),
-            # NEW HARDWARE FIELDS
             'brightness': state.get('brightness', 0.5),
             'inverted': state.get('inverted', False),
             'test_pattern': state.get('test_pattern', False)
@@ -315,7 +306,6 @@ def get_teams(): return jsonify(state['all_teams_data'])
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
-    """Handles sports config AND simple hardware settings"""
     d = request.json
     for k in ['mode', 'active_sports', 'scroll_seamless', 'my_teams', 'brightness', 'inverted']:
         if k in d: state[k] = d[k]
@@ -326,7 +316,6 @@ def update_config():
 
 @app.route('/api/hardware', methods=['POST'])
 def update_hardware():
-    """Dedicated endpoint for hardware-specific actions"""
     d = request.json
     if 'brightness' in d: state['brightness'] = float(d['brightness'])
     if 'inverted' in d: state['inverted'] = bool(d['inverted'])
