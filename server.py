@@ -21,7 +21,7 @@ UPDATE_INTERVAL = 8  # Slight increase to prevent rate limiting
 
 # --- NHL LOGO FIXES ---
 NHL_LOGO_MAP = {
-    "SJS": "sj",  "NJD": "nj",  "TBL": "tb",  
+    "SJS": "sj",  "NJD": "nj",  "TBL": "tb",   
     "LAK": "la",  "VGK": "vgs", "VEG": "vgs"
 }
 
@@ -682,15 +682,17 @@ class SportsFetcher:
 
                         is_halftime = (status_state == 'half') or (period == 2 and clock == '0:00')
                         
+                        # --- START OF BASKETBALL/FOOTBALL STATUS FIX ---
                         if is_halftime:
                             status_display = "HALFTIME"
                             status_state = 'half' 
-                        elif status_state == 'in' and 'football' in config['path']:
+                        elif status_state == 'in' and ('football' in config['path'] or league_key == 'nba'):
                             if clock: status_display = f"Q{period} - {clock}"
                             else: status_display = f"Q{period}" 
                         else:
                             status_display = raw_status.replace("Final", "FINAL").replace(" EST", "").replace(" EDT", "").replace("/OT", "")
                             if " - " in status_display: status_display = status_display.split(" - ")[-1]
+                        # --- END OF BASKETBALL/FOOTBALL STATUS FIX ---
                         
                         # --- FILTER LOGIC (Calculate is_shown) ---
                         # 1. Global Sport Enable Check
