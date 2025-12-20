@@ -15,9 +15,7 @@ UPDATE_INTERVAL = 15
 # Thread Lock for safety
 data_lock = threading.Lock()
 
-# --- LOAD VALID TEAMS (STRICT SORTING IMPROVEMENT) ---
-# This checks if the file exists. If it does, it uses strict sorting.
-# If not, it falls back to ESPN's default grouping.
+# --- VALID TEAMS LOADER (STRICT SORTING) ---
 try:
     from valid_teams import FBS_TEAMS, FCS_TEAMS
     VALID_TEAMS_LOADED = True
@@ -206,9 +204,7 @@ class SportsFetcher:
                 r = requests.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], timeout=10)
                 data = r.json()
                 
-                # Handle College Data Structure vs Pro
                 if 'college-football' in config['path']:
-                    # College structure is Sports -> Leagues -> Teams
                     if 'sports' in data:
                         for sport in data['sports']:
                             for league in sport['leagues']:
@@ -218,17 +214,13 @@ class SportsFetcher:
                                     logo = t.get('logos', [{}])[0].get('href', '')
                                     logo = self.get_corrected_logo(league_key, abbr, logo)
                                     
-                                    # --- STRICT SORTING IMPROVEMENT ---
-                                    # If valid_teams.py is loaded, reject teams that don't belong in this group
+                                    # --- STRICT SORTING ---
                                     if VALID_TEAMS_LOADED:
-                                        if league_key == 'ncf_fbs' and abbr not in FBS_TEAMS:
-                                            continue
-                                        if league_key == 'ncf_fcs' and abbr not in FCS_TEAMS:
-                                            continue
+                                        if league_key == 'ncf_fbs' and abbr not in FBS_TEAMS: continue
+                                        if league_key == 'ncf_fcs' and abbr not in FCS_TEAMS: continue
 
                                     teams_catalog[league_key].append({'abbr': abbr, 'logo': logo})
                 else:
-                    # Pro structure is Sports -> Leagues -> Teams
                     if 'sports' in data:
                         for sport in data['sports']:
                             for league in sport['leagues']:
@@ -287,8 +279,7 @@ class SportsFetcher:
                     h = e['competitions'][0]['competitors'][0]; a = e['competitions'][0]['competitors'][1]
                     h_ab = h['team']['abbreviation']; a_ab = a['team']['abbreviation']
 
-                    # --- STRICT FILTERING IMPROVEMENT ---
-                    # Ensure game belongs in the requested bucket
+                    # --- STRICT FILTERING FOR GAMES ---
                     if VALID_TEAMS_LOADED:
                         if league_key == 'ncf_fbs':
                             if h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
@@ -306,7 +297,6 @@ class SportsFetcher:
                     h_logo = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo', ''))
                     a_logo = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo', ''))
                     
-                    # --- DATE FORMAT FIX ---
                     raw_status = type_s.get('shortDetail', 'TBD')
                     if state_game == 'pre' and ' - ' not in raw_status:
                         try:
@@ -334,7 +324,7 @@ class SportsFetcher:
         with data_lock: state['current_games'] = games
 
     def _fetch_nhl_native(self, games_list, target_date_str):
-        # Native NHL logic preserved for speed/accuracy if desired
+        # Native NHL logic preserved
         with data_lock:
             mode = state['mode']; my_teams = state['my_teams']
             
@@ -361,7 +351,6 @@ class SportsFetcher:
                         
                         if mode == 'live' and state_game != 'in': continue
 
-                        # Status
                         if state_game == 'pre':
                             try:
                                 utc_dt = dt.strptime(gd['startTimeUTC'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -378,9 +367,11 @@ class SportsFetcher:
                         h_logo = self.get_corrected_logo('nhl', h_ab, h.get('logo', ''))
                         a_logo = self.get_corrected_logo('nhl', a_ab, a.get('logo', ''))
                         
+                        # Fallbacks
                         if not h_logo or 'http' not in h_logo: h_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png"
                         if not a_logo or 'http' not in a_logo: a_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png"
                         
+                        # Apply overrides
                         h_logo = self.get_corrected_logo('nhl', h_ab, h_logo)
                         a_logo = self.get_corrected_logo('nhl', a_ab, a_logo)
 
