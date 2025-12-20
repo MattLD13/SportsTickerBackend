@@ -12,7 +12,6 @@ TIMEZONE_OFFSET = -5  # Set to -5 for EST/EDT
 CONFIG_FILE = "ticker_config.json"
 UPDATE_INTERVAL = 8
 
-# Try to import teams, default to empty if file missing
 try:
     from valid_teams import FBS_TEAMS, FCS_TEAMS
 except ImportError:
@@ -27,7 +26,7 @@ NHL_LOGO_MAP = {
 
 # ================= DEFAULT STATE =================
 default_state = {
-    'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 'weather': False },
+    'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 'weather': False, 'clock': False },
     'mode': 'all', 
     'scroll_seamless': False,
     'my_teams': [], 
@@ -35,14 +34,12 @@ default_state = {
     'all_teams_data': {}, 
     'debug_mode': False,
     'custom_date': None,
-    # Hardware Settings
     'brightness': 0.5,
     'inverted': False,
     'panel_count': 2,
     'test_pattern': False,
     'reboot_requested': False,
-    # Weather Settings
-    'weather_location': "New York" # Default
+    'weather_location': "New York"
 }
 
 state = default_state.copy()
@@ -71,7 +68,6 @@ class WeatherFetcher:
 
     def update_coords(self, location_query):
         try:
-            # Geocoding via Open-Meteo
             url = f"https://geocoding-api.open-meteo.com/v1/search?name={location_query}&count=1&language=en&format=json"
             r = requests.get(url, timeout=5)
             data = r.json()
@@ -92,20 +88,19 @@ class WeatherFetcher:
             r = requests.get(url, timeout=5)
             d = r.json().get('current', {})
             
-            # Map WMO codes to simple icons
             code = d.get('weather_code', 0)
             is_day = d.get('is_day', 1)
             icon = "cloud"
             status_text = "Cloudy"
             
-            # Simple WMO Mapping
+            # Expanded Mapping
             if code in [0, 1]: icon = "sun" if is_day else "moon"; status_text = "Clear"
             elif code in [2]: icon = "partly_cloudy"; status_text = "Partly Cld"
             elif code in [3]: icon = "cloud"; status_text = "Cloudy"
-            elif code in [45, 48]: icon = "cloud"; status_text = "Fog"
+            elif code in [45, 48]: icon = "fog"; status_text = "Fog"
             elif code in [51, 53, 55, 61, 63, 65, 80, 81, 82]: icon = "rain"; status_text = "Rain"
             elif code in [71, 73, 75, 77, 85, 86]: icon = "snow"; status_text = "Snow"
-            elif code in [95, 96, 99]: icon = "thunder"; status_text = "Storm"
+            elif code in [95, 96, 99]: icon = "storm"; status_text = "Storm"
 
             weather_obj = {
                 "sport": "weather",
@@ -153,10 +148,9 @@ class SportsFetcher:
                             for item in league.get('teams', []):
                                 try:
                                     t_abbr = item['team'].get('abbreviation', 'unk')
-                                    t_short = item['team'].get('shortDisplayName', '') 
                                     logos = item['team'].get('logos', [])
                                     t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
-                                    team_obj = {'abbr': t_abbr, 'logo': t_logo, 'name': t_short}
+                                    team_obj = {'abbr': t_abbr, 'logo': t_logo}
                                     if t_abbr in FBS_TEAMS: teams_catalog['ncf_fbs'].append(team_obj)
                                     elif t_abbr in FCS_TEAMS: teams_catalog['ncf_fcs'].append(team_obj)
                                 except: continue
@@ -251,10 +245,8 @@ class SportsFetcher:
         elif clock.get('inIntermission'): status_disp = f"{period_label} INT"
         else:
             if period > 4 and not is_playoff:
-                so_away = 0
-                so_home = 0
-                away_id_num = data['awayTeam']['id']
-                home_id_num = data['homeTeam']['id']
+                so_away = 0; so_home = 0
+                away_id_num = data['awayTeam']['id']; home_id_num = data['homeTeam']['id']
                 for play in data.get('plays', []):
                     if play.get("typeDescKey") == "shootout-shot":
                         if play["details"].get("shotResult") == "Goal":
@@ -290,8 +282,14 @@ class SportsFetcher:
     def get_real_games(self):
         games = []
         
-        # === EXCLUSIVE WEATHER LOGIC ===
-        # If Weather is enabled, ONLY return weather. Ignore Sports.
+        # --- CLOCK MODE CHECK ---
+        if state['active_sports'].get('clock', False):
+            # Pass a dummy object so ticker knows to draw clock
+            games.append({'sport': 'clock', 'id': 'clock_widget', 'is_shown': True})
+            state['current_games'] = games
+            return
+
+        # --- WEATHER MODE CHECK ---
         if state['active_sports'].get('weather', False):
             if state['weather_location'] != self.last_weather_loc:
                 self.weather.update_coords(state['weather_location'])
@@ -299,16 +297,10 @@ class SportsFetcher:
             
             w_obj = self.weather.get_weather()
             if w_obj: games.append(w_obj)
-            
-            # --- DEBUG TEST GAME IN WEATHER MODE TOO ---
-            if state['debug_mode'] and state['custom_date'] == 'TEST_PP':
-                 games.append({ "sport": "nhl", "id": "test_pp", "status": "OT 1:20", "state": "in", "is_shown": True, "home_abbr": "NYR", "home_id": "NYR", "home_score": "3", "home_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png", "away_abbr": "BOS", "away_id": "BOS", "away_score": "2", "away_logo": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png", "situation": {"powerPlay": True, "possession": "BOS", "emptyNet": True}, "is_playoff": False, "period": 4 })
-
             state['current_games'] = games
-            return # <--- EXIT EARLY, NO SPORTS
-        # =================================
-
-        # ... Else, fetch sports as normal ...
+            return
+        
+        # --- SPORTS MODE ---
         req_params = {}
         if state['debug_mode'] and state['custom_date']:
             target_date_str = state['custom_date']
@@ -356,9 +348,7 @@ class SportsFetcher:
 
                         is_halftime = (status_state == 'half') or (period == 2 and clock == '0:00')
                         
-                        if is_halftime:
-                            status_display = "HALFTIME"
-                            status_state = 'half' 
+                        if is_halftime: status_display = "HALFTIME"; status_state = 'half' 
                         elif status_state == 'in' and ('football' in config['path'] or league_key == 'nba'):
                             prefix = f"Q{period}"
                             if 'football' in config['path']:
@@ -384,7 +374,6 @@ class SportsFetcher:
                         
                         home_logo_url = home['team'].get('logo', '')
                         away_logo_url = away['team'].get('logo', '')
-
                         if league_key == 'nhl':
                             if home['team']['abbreviation'].upper() in ['WSH', 'WAS']: home_logo_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
                             if away['team']['abbreviation'].upper() in ['WSH', 'WAS']: away_logo_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
@@ -420,7 +409,6 @@ def background_updater():
     while True:
         fetcher.get_real_games()
         time.sleep(UPDATE_INTERVAL)
-        # Clear reboot flag after 15 seconds to prevent loop
         if state.get('reboot_requested'):
              time.sleep(15)
              state['reboot_requested'] = False
@@ -492,7 +480,6 @@ def hardware_control():
     data = request.json
     action = data.get('action')
 
-    # Handle Cloud-to-Pi Reboot command
     if action == 'reboot':
         state['reboot_requested'] = True
         return jsonify({"status": "ok", "message": "Reboot command sent to Ticker"})
@@ -501,7 +488,6 @@ def hardware_control():
         state['test_pattern'] = not state.get('test_pattern', False)
         return jsonify({"status": "ok", "test_pattern": state['test_pattern']})
 
-    # Update Settings
     updated = False
     if 'brightness' in data: 
         state['brightness'] = float(data['brightness']); updated = True
