@@ -449,6 +449,11 @@ class SportsFetcher:
                         self.possession_cache[e['id']] = ''
                         curr_poss = '' 
                     
+                    # === NEW: CLEAR DOWN/DIST ON HALFTIME ===
+                    down_text = sit.get('downDistanceText', '')
+                    if is_halftime:
+                        down_text = ''
+
                     game_obj = {
                         'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
                         'home_abbr': h_ab, 'home_score': h.get('score','0'), 'home_logo': h_lg,
@@ -459,7 +464,7 @@ class SportsFetcher:
                         'situation': { 
                             'possession': curr_poss, 
                             'isRedZone': sit.get('isRedZone', False), 
-                            'downDist': sit.get('downDistanceText', '') 
+                            'downDist': down_text 
                         }
                     }
                     if league_key == 'mlb':
