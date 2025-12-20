@@ -1,601 +1,724 @@
-import time
-import threading
-import json
-import os
-import subprocess 
-from datetime import datetime as dt, timezone, timedelta
-import requests
-from flask import Flask, jsonify, request
+import SwiftUI
+import Combine
 
-# ================= CONFIGURATION =================
-TIMEZONE_OFFSET = -5  # Set to -5 for EST/EDT
-CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 15 # Increased slightly to reduce load
+// ==========================================
+// MARK: - 1. DATA MODELS
+// ==========================================
 
-# Thread Lock for safety
-data_lock = threading.Lock()
-
-try:
-    from valid_teams import FBS_TEAMS, FCS_TEAMS
-except ImportError:
-    FBS_TEAMS = []
-    FCS_TEAMS = []
-
-# --- LOGO OVERRIDES (Server-Side) ---
-LOGO_OVERRIDES = {
-    # NHL Fixes
-    "SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
-    "NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
-    "TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png",
-    "LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
-    "VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", 
-    "VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png",
-    "WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
-    "WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
-    "UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+struct Situation: Decodable, Hashable, Sendable {
+    let possession: String?
+    let downDist: String?
+    let isRedZone: Bool?
+    let balls: Int?
+    let strikes: Int?
+    let outs: Int?
+    let onFirst: Bool?
+    let onSecond: Bool?
+    let onThird: Bool?
+    let powerPlay: Bool?
+    let emptyNet: Bool?
+    let icon: String?
     
-    # NCAA Fixes
-    "CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png",
-    "OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
-    "ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
-    "LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
-    "LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png",
-    "IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
-    "HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
-    "MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
-    "MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png"
+    enum CodingKeys: String, CodingKey {
+        case possession, downDist, isRedZone, balls, strikes, outs, onFirst, onSecond, onThird, powerPlay, emptyNet, icon
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let stringPoss = try? container.decode(String.self, forKey: .possession) {
+            possession = stringPoss
+        } else if let intPoss = try? container.decode(Int.self, forKey: .possession) {
+            possession = String(intPoss)
+        } else {
+            possession = nil
+        }
+        downDist = try? container.decode(String.self, forKey: .downDist)
+        isRedZone = try? container.decode(Bool.self, forKey: .isRedZone)
+        balls = try? container.decode(Int.self, forKey: .balls)
+        strikes = try? container.decode(Int.self, forKey: .strikes)
+        outs = try? container.decode(Int.self, forKey: .outs)
+        onFirst = try? container.decode(Bool.self, forKey: .onFirst)
+        onSecond = try? container.decode(Bool.self, forKey: .onSecond)
+        onThird = try? container.decode(Bool.self, forKey: .onThird)
+        powerPlay = try? container.decode(Bool.self, forKey: .powerPlay)
+        emptyNet = try? container.decode(Bool.self, forKey: .emptyNet)
+        icon = try? container.decode(String.self, forKey: .icon)
+    }
 }
 
-# ================= DEFAULT STATE =================
-default_state = {
-    'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 'weather': False, 'clock': False },
-    'mode': 'all', 
-    'scroll_seamless': False,
-    'my_teams': [], 
-    'current_games': [],
-    'all_teams_data': {}, 
-    'debug_mode': False,
-    'custom_date': None,
-    'brightness': 0.5,
-    'inverted': False,
-    'panel_count': 2,
-    'test_pattern': False,
-    'reboot_requested': False,
-    'weather_location': "New York"
-}
-
-state = default_state.copy()
-
-# Load Config Safely
-if os.path.exists(CONFIG_FILE):
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            loaded = json.load(f)
-            # Only update keys that exist to prevent state corruption
-            for k, v in loaded.items():
-                if k in state:
-                    if isinstance(state[k], dict) and isinstance(v, dict):
-                        state[k].update(v)
-                    else:
-                        state[k] = v
-    except: pass
-
-def save_config_file():
-    """Helper to save config thread-safely"""
-    try:
-        with data_lock:
-            export_data = {
-                'active_sports': state['active_sports'], 
-                'mode': state['mode'], 
-                'scroll_seamless': state['scroll_seamless'], 
-                'my_teams': state['my_teams'],
-                'brightness': state['brightness'],
-                'inverted': state['inverted'],
-                'panel_count': state['panel_count'],
-                'weather_location': state['weather_location']
-            }
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(export_data, f)
-    except Exception as e:
-        print(f"Save Config Error: {e}")
-
-class WeatherFetcher:
-    def __init__(self):
-        self.lat = 40.7128 # Default NY
-        self.lon = -74.0060
-        self.location_name = "New York"
-        self.last_fetch = 0
-        self.cache = None
-
-    def update_coords(self, location_query):
-        try:
-            url = f"https://geocoding-api.open-meteo.com/v1/search?name={location_query}&count=1&language=en&format=json"
-            r = requests.get(url, timeout=5)
-            data = r.json()
-            if 'results' in data and len(data['results']) > 0:
-                res = data['results'][0]
-                self.lat = res['latitude']
-                self.lon = res['longitude']
-                self.location_name = res['name']
-                self.last_fetch = 0 
-        except: pass
-
-    def get_icon(self, code, is_day=1):
-        if code in [0, 1]: return "sun" if is_day else "moon"
-        elif code in [2]: return "partly_cloudy"
-        elif code in [3]: return "cloud"
-        elif code in [45, 48]: return "fog"
-        elif code in [51, 53, 55, 61, 63, 65, 80, 81, 82]: return "rain"
-        elif code in [71, 73, 75, 77, 85, 86]: return "snow"
-        elif code in [95, 96, 99]: return "storm"
-        return "cloud"
-
-    def get_weather(self):
-        if time.time() - self.last_fetch < 900 and self.cache: return self.cache
+struct Game: Identifiable, Decodable, Hashable, Sendable {
+    let id: String
+    let sport: String
+    let status: String
+    let home_abbr: String
+    let home_id: String?
+    let home_score: String
+    let home_logo: String
+    let away_abbr: String
+    let away_id: String?
+    let away_score: String
+    let away_logo: String
+    let is_shown: Bool
+    let situation: Situation?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, sport, status, home_abbr, home_id, home_score, home_logo, away_abbr, away_id, away_score, away_logo, is_shown, situation
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        try:
-            url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto"
-            r = requests.get(url, timeout=5)
-            data = r.json()
-            
-            curr = data.get('current', {})
-            daily = data.get('daily', {})
-            
-            cur_temp = int(curr.get('temperature_2m', 0))
-            cur_code = curr.get('weather_code', 0)
-            is_day = curr.get('is_day', 1)
-            cur_icon = self.get_icon(cur_code, is_day)
-            
-            high = int(daily['temperature_2m_max'][0])
-            low = int(daily['temperature_2m_min'][0])
-            uv = float(daily['uv_index_max'][0])
-            
-            forecast = []
-            days = daily.get('time', [])
-            codes = daily.get('weather_code', [])
-            maxs = daily.get('temperature_2m_max', [])
-            mins = daily.get('temperature_2m_min', [])
-            
-            for i in range(1, 4):
-                if i < len(days):
-                    dt_obj = dt.strptime(days[i], "%Y-%m-%d")
-                    day_name = dt_obj.strftime("%a").upper()
-                    f_icon = self.get_icon(codes[i], 1)
-                    forecast.append({
-                        "day": day_name,
-                        "high": int(maxs[i]),
-                        "low": int(mins[i]),
-                        "icon": f_icon
-                    })
+        id = try container.decode(String.self, forKey: .id)
+        sport = try container.decode(String.self, forKey: .sport)
+        status = try container.decode(String.self, forKey: .status)
+        home_abbr = try container.decode(String.self, forKey: .home_abbr)
+        home_logo = try container.decode(String.self, forKey: .home_logo)
+        away_abbr = try container.decode(String.self, forKey: .away_abbr)
+        away_logo = try container.decode(String.self, forKey: .away_logo)
+        is_shown = try container.decode(Bool.self, forKey: .is_shown)
+        situation = try? container.decode(Situation.self, forKey: .situation)
+        
+        if let hid = try? container.decode(String.self, forKey: .home_id) { home_id = hid }
+        else if let hidInt = try? container.decode(Int.self, forKey: .home_id) { home_id = String(hidInt) }
+        else { home_id = nil }
+        
+        if let aid = try? container.decode(String.self, forKey: .away_id) { away_id = aid }
+        else if let aidInt = try? container.decode(Int.self, forKey: .away_id) { away_id = String(aidInt) }
+        else { away_id = nil }
+        
+        if let hs = try? container.decode(String.self, forKey: .home_score) { home_score = hs }
+        else if let hsInt = try? container.decode(Int.self, forKey: .home_score) { home_score = String(hsInt) }
+        else { home_score = "0" }
+        
+        if let `as` = try? container.decode(String.self, forKey: .away_score) { away_score = `as` }
+        else if let asInt = try? container.decode(Int.self, forKey: .away_score) { away_score = String(asInt) }
+        else { away_score = "0" }
+    }
+}
 
-            weather_obj = {
-                "sport": "weather",
-                "id": "weather_widget",
-                "status": "Live",
-                "home_abbr": f"{cur_temp}°",
-                "away_abbr": self.location_name,
-                "home_score": "", "away_score": "",
-                "is_shown": True,
-                "home_logo": "", "away_logo": "",
-                "situation": {
-                    "icon": cur_icon,
-                    "is_day": is_day,
-                    "stats": { "high": high, "low": low, "uv": uv, "aqi": "MOD" },
-                    "forecast": forecast
+struct TeamData: Decodable, Identifiable, Hashable, Sendable {
+    var id: String { abbr }
+    let abbr: String
+    let logo: String?
+}
+
+struct TickerState: Codable, Sendable {
+    var active_sports: [String: Bool]
+    var mode: String
+    var scroll_seamless: Bool
+    var my_teams: [String]
+    var debug_mode: Bool
+    var custom_date: String?
+    var weather_location: String?
+}
+
+struct APIResponse: Decodable, Sendable {
+    let settings: TickerState
+    let games: [Game]
+}
+
+// ==========================================
+// MARK: - 2. VIEW MODEL
+// ==========================================
+
+@MainActor
+class TickerViewModel: ObservableObject {
+    @Published var games: [Game] = []
+    @Published var allTeams: [String: [TeamData]] = [:]
+    
+    @Published var state: TickerState = TickerState(
+        active_sports: ["nfl": true], mode: "all", scroll_seamless: false,
+        my_teams: [], debug_mode: false, custom_date: nil, weather_location: "New York"
+    )
+    
+    @Published var serverURL: String { didSet { UserDefaults.standard.set(serverURL, forKey: "serverURL") } }
+    @Published var tickerIP: String { didSet { UserDefaults.standard.set(tickerIP, forKey: "tickerIP") } }
+    @Published var panelCount: Int { didSet { UserDefaults.standard.set(panelCount, forKey: "panelCount") } }
+    @Published var brightness: Double { didSet { UserDefaults.standard.set(brightness, forKey: "brightness") } }
+    @Published var inverted: Bool { didSet { UserDefaults.standard.set(inverted, forKey: "inverted") } }
+    @Published var weatherLoc: String = "New York"
+    
+    @Published var connectionStatus: String = "Connecting..."
+    @Published var isEditing: Bool = false
+    
+    private var timer: Timer?
+
+    init() {
+        let savedURL = UserDefaults.standard.string(forKey: "serverURL") ?? "https://sportstickerbackend-production.up.railway.app"
+        let savedIP = UserDefaults.standard.string(forKey: "tickerIP") ?? "192.168.1.90"
+        var savedPanel = UserDefaults.standard.integer(forKey: "panelCount"); if savedPanel == 0 { savedPanel = 2 }
+        var savedBright = UserDefaults.standard.double(forKey: "brightness"); if savedBright == 0 { savedBright = 0.5 }
+        let savedInv = UserDefaults.standard.bool(forKey: "inverted")
+
+        self.serverURL = savedURL
+        self.tickerIP = savedIP
+        self.panelCount = savedPanel
+        self.brightness = savedBright
+        self.inverted = savedInv
+        
+        fetchData()
+        fetchAllTeams()
+        
+        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            Task { @MainActor in
+                if !self.isEditing { self.fetchData() }
+            }
+        }
+    }
+    
+    func fetchData() {
+        let cleanURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
+        if cleanURL.isEmpty { self.connectionStatus = "Invalid URL"; return }
+        
+        guard let url = URL(string: "\(cleanURL)/api/state") else { self.connectionStatus = "Bad URL"; return }
+        
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let _ = error { DispatchQueue.main.async { self.connectionStatus = "Offline" }; return }
+            guard let data = data else { return }
+            do {
+                let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
+                DispatchQueue.main.async {
+                    self.games = decoded.games
+                    if !self.isEditing { 
+                        self.state = decoded.settings 
+                        self.weatherLoc = decoded.settings.weather_location ?? "New York"
+                    }
+                    self.connectionStatus = "Connected • \(self.games.count) Items"
                 }
+            } catch {
+                print("Decode Error: \(error)")
+                DispatchQueue.main.async { self.connectionStatus = "Data Error" }
             }
-            self.cache = weather_obj
-            self.last_fetch = time.time()
-            return weather_obj
-        except Exception as e: 
-            return None
-
-class SportsFetcher:
-    def __init__(self):
-        self.weather = WeatherFetcher()
-        self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
-        self.leagues = {
-            'nfl': { 'path': 'football/nfl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
-            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'limit': 1000} },
-            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81', 'limit': 100}, 'team_params': {'limit': 1000} },
-            'mlb': { 'path': 'baseball/mlb', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
-            'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
-            'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100} }
-        }
-        self.last_weather_loc = ""
-
-    def fetch_all_teams(self):
-        try:
-            teams_catalog = {k: [] for k in self.leagues.keys()}
-            for league_key in ['nfl', 'mlb', 'nhl', 'nba']:
-                self._fetch_simple_league(league_key, teams_catalog)
-
-            url = f"{self.base_url}football/college-football/teams"
-            try:
-                r = requests.get(url, params={'limit': 1000}, timeout=10)
-                data = r.json()
-                if 'sports' in data:
-                    for sport in data['sports']:
-                        for league in sport['leagues']:
-                            for item in league.get('teams', []):
-                                try:
-                                    t_abbr = item['team'].get('abbreviation', 'unk')
-                                    logos = item['team'].get('logos', [])
-                                    t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
-                                    
-                                    if t_abbr in LOGO_OVERRIDES:
-                                        t_logo = LOGO_OVERRIDES[t_abbr]
-
-                                    team_obj = {'abbr': t_abbr, 'logo': t_logo}
-                                    if t_abbr in FBS_TEAMS: teams_catalog['ncf_fbs'].append(team_obj)
-                                    elif t_abbr in FCS_TEAMS: teams_catalog['ncf_fcs'].append(team_obj)
-                                except: continue
-            except: pass
-            with data_lock:
-                state['all_teams_data'] = teams_catalog
-        except Exception as e: print(e)
-
-    def _fetch_simple_league(self, league_key, catalog):
-        config = self.leagues[league_key]
-        url = f"{self.base_url}{config['path']}/teams"
-        try:
-            r = requests.get(url, params=config['team_params'], timeout=10)
-            data = r.json()
-            if 'sports' in data:
-                for sport in data['sports']:
-                    for league in sport['leagues']:
-                        for item in league.get('teams', []):
-                            abbr = item['team'].get('abbreviation', 'unk')
-                            logo = item['team'].get('logos', [{}])[0].get('href', '')
-                            if abbr in LOGO_OVERRIDES: logo = LOGO_OVERRIDES[abbr]
-                            catalog[league_key].append({'abbr': abbr, 'logo': logo})
-        except: pass
-
-    def _fetch_nhl_native(self, games_list, target_date_str):
-        with data_lock:
-            is_nhl_enabled = state['active_sports'].get('nhl', False)
-        
-        schedule_url = "https://api-web.nhle.com/v1/schedule/now"
-        try:
-            response = requests.get(schedule_url, timeout=5)
-            if response.status_code != 200: return
-            schedule_data = response.json()
-        except: return
-
-        for date_entry in schedule_data.get('gameWeek', []):
-            if date_entry.get('date') != target_date_str: continue 
-            for game in date_entry.get('games', []):
-                self._process_single_nhl_game(game['id'], games_list, is_nhl_enabled)
-
-    def _process_single_nhl_game(self, game_id, games_list, is_enabled):
-        pbp_url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
-        try:
-            r = requests.get(pbp_url, timeout=3)
-            if r.status_code != 200: return
-            data = r.json()
-        except: return
-
-        away_abbr = data['awayTeam']['abbrev']
-        home_abbr = data['homeTeam']['abbrev']
-        away_score = str(data['awayTeam'].get('score', 0))
-        home_score = str(data['homeTeam'].get('score', 0))
-        
-        game_type = data.get('gameType', 2)
-        is_playoff = (game_type == 3)
-
-        # Apply Overrides (RESTORED FIX)
-        if away_abbr in LOGO_OVERRIDES: away_logo = LOGO_OVERRIDES[away_abbr]
-        else: away_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{away_abbr.lower()}.png"
-
-        if home_abbr in LOGO_OVERRIDES: home_logo = LOGO_OVERRIDES[home_abbr]
-        else: home_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{home_abbr.lower()}.png"
-
-        game_state = data.get('gameState', 'OFF') 
-        mapped_state = 'in' if game_state in ['LIVE', 'CRIT'] else 'post'
-        if game_state in ['PRE', 'FUT']: mapped_state = 'pre'
-
-        # Filter Logic
-        with data_lock:
-            mode = state['mode']
-            my_teams = state['my_teams']
-        
-        is_shown = is_enabled
-        if is_shown:
-            if mode == 'live' and mapped_state != 'in': is_shown = False
-            if mode == 'my_teams':
-                if (home_abbr not in my_teams) and (away_abbr not in my_teams): is_shown = False
-
-        clock = data.get('clock', {})
-        time_rem = clock.get('timeRemaining', '00:00')
-        period = data.get('periodDescriptor', {}).get('number', 1)
-        
-        period_label = f"P{period}"
-        if period == 4: period_label = "OT"
-        elif period > 4: period_label = "2OT" if is_playoff else "S/O"
-        
-        if game_state == 'FINAL' or game_state == 'OFF': status_disp = "FINAL"
-        elif game_state in ['PRE', 'FUT']: 
-            raw_time = data.get('startTimeUTC', '')
-            if raw_time:
-                try:
-                    utc_dt = dt.strptime(raw_time, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                    local_dt = utc_dt + timedelta(hours=TIMEZONE_OFFSET)
-                    status_disp = local_dt.strftime("%I:%M %p").lstrip('0') 
-                except: status_disp = "Scheduled"
-            else: status_disp = "Scheduled"
-        elif clock.get('inIntermission'): status_disp = f"{period_label} INT"
-        else:
-            if period > 4 and not is_playoff:
-                so_away = 0; so_home = 0
-                away_id_num = data['awayTeam']['id']; home_id_num = data['homeTeam']['id']
-                for play in data.get('plays', []):
-                    if play.get("typeDescKey") == "shootout-shot":
-                        if play["details"].get("shotResult") == "Goal":
-                            oid = play["details"].get("eventOwnerTeamId")
-                            if oid == away_id_num: so_away += 1
-                            elif oid == home_id_num: so_home += 1
-                status_disp = f"S/O {so_away}-{so_home}"
-            else:
-                status_disp = f"{period_label} {time_rem}"
-
-        sit_code = data.get('situation', {}).get('situationCode', '1551')
-        try:
-            away_goalie = int(sit_code[0]); away_skaters = int(sit_code[1])
-            home_skaters = int(sit_code[2]); home_goalie = int(sit_code[3])
-        except: away_goalie, away_skaters, home_skaters, home_goalie = 1, 5, 5, 1
-
-        is_pp = False; possession = ""; is_empty_net = False
-        if away_skaters > home_skaters: is_pp = True; possession = away_abbr 
-        elif home_skaters > away_skaters: is_pp = True; possession = home_abbr
-        if away_goalie == 0 or home_goalie == 0: is_empty_net = True
-
-        game_obj = {
-            'sport': 'nhl', 'id': str(game_id), 'status': status_disp, 'state': mapped_state,
-            'is_shown': is_shown, 'is_playoff': is_playoff,
-            'home_abbr': home_abbr, 'home_score': home_score, 'home_logo': home_logo, 'home_id': home_abbr, 
-            'away_abbr': away_abbr, 'away_score': away_score, 'away_logo': away_logo, 'away_id': away_abbr,
-            'period': period, 
-            'situation': { 'powerPlay': is_pp, 'possession': possession, 'emptyNet': is_empty_net }
-        }
-        games_list.append(game_obj)
-
-    def get_real_games(self):
-        games = []
-        
-        with data_lock:
-            local_config = state.copy() # Thread safe read
-        
-        # --- CLOCK MODE CHECK ---
-        if local_config['active_sports'].get('clock', False):
-            games.append({'sport': 'clock', 'id': 'clock_widget', 'is_shown': True})
-            with data_lock: state['current_games'] = games
-            return
-
-        # --- WEATHER MODE CHECK ---
-        if local_config['active_sports'].get('weather', False):
-            if local_config['weather_location'] != self.last_weather_loc:
-                self.weather.update_coords(local_config['weather_location'])
-                self.last_weather_loc = local_config['weather_location']
-            
-            w_obj = self.weather.get_weather()
-            if w_obj: games.append(w_obj)
-            with data_lock: state['current_games'] = games
-            return
-        
-        # --- SPORTS MODE ---
-        req_params = {}
-        if local_config['debug_mode'] and local_config['custom_date']:
-            target_date_str = local_config['custom_date']
-            req_params['dates'] = target_date_str.replace('-', '')
-        else:
-            local_now = dt.now(timezone.utc) + timedelta(hours=TIMEZONE_OFFSET)
-            target_date_str = local_now.strftime("%Y-%m-%d")
-        
-        for league_key, config in self.leagues.items():
-            is_sport_enabled = local_config['active_sports'].get(league_key, False)
-
-            if league_key == 'nhl':
-                self._fetch_nhl_native(games, target_date_str)
-                continue
-
-            try:
-                current_params = config['scoreboard_params'].copy()
-                current_params.update(req_params)
-                r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=current_params, timeout=3)
-                data = r.json()
-                
-                for event in data.get('events', []):
-                    if 'date' not in event: continue
-                    utc_str = event['date'].replace('Z', '')
-                    game_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                    local_game_time = game_utc + timedelta(hours=TIMEZONE_OFFSET)
-                    game_date_str = local_game_time.strftime("%Y-%m-%d")
-                    
-                    status_obj = event.get('status', {})
-                    status_type = status_obj.get('type', {})
-                    status_state = status_type.get('state', 'pre')
-                    
-                    keep_date = (status_state == 'in') or (game_date_str == target_date_str)
-                    if league_key == 'mlb' and not keep_date: continue
-
-                    if keep_date:
-                        comp = event['competitions'][0]
-                        home = comp['competitors'][0]
-                        away = comp['competitors'][1]
-                        sit = comp.get('situation', {})
-                        
-                        raw_status = status_type.get('shortDetail', 'Scheduled')
-                        period = status_obj.get('period', 1)
-                        clock = status_obj.get('displayClock', '')
-
-                        is_halftime = (status_state == 'half') or (period == 2 and clock == '0:00')
-                        
-                        if is_halftime: status_display = "HALFTIME"; status_state = 'half' 
-                        elif status_state == 'in' and ('football' in config['path'] or league_key == 'nba'):
-                            prefix = f"Q{period}"
-                            if 'football' in config['path']:
-                                if period == 5: prefix = "OT"
-                                elif period > 5: prefix = f"{period-4}OT"
-                            elif league_key == 'nba':
-                                if period >= 5: prefix = f"OT{period-4}"
-                            if clock: status_display = f"{prefix} - {clock}"
-                            else: status_display = f"{prefix}" 
-                        else:
-                            status_display = raw_status.replace("Final", "FINAL").replace(" EST", "").replace(" EDT", "").replace("/OT", "")
-                            if " - " in status_display: status_display = status_display.split(" - ")[-1]
-                        
-                        is_shown = is_sport_enabled
-                        if is_shown:
-                            if local_config['mode'] == 'live':
-                                if status_state not in ['in', 'half']: is_shown = False
-                            elif local_config['mode'] == 'my_teams':
-                                h_abbr = home['team']['abbreviation']; a_abbr = away['team']['abbreviation']
-                                if (h_abbr not in local_config['my_teams']) and (a_abbr not in local_config['my_teams']):
-                                    is_shown = False
-                        
-                        home_logo_url = home['team'].get('logo', '')
-                        away_logo_url = away['team'].get('logo', '')
-                        
-                        if home['team']['abbreviation'] in LOGO_OVERRIDES:
-                            home_logo_url = LOGO_OVERRIDES[home['team']['abbreviation']]
-                        if away['team']['abbreviation'] in LOGO_OVERRIDES:
-                            away_logo_url = LOGO_OVERRIDES[away['team']['abbreviation']]
-
-                        game_obj = {
-                            'sport': league_key, 'id': event['id'], 'status': status_display, 'state': status_state,
-                            'is_shown': is_shown, 
-                            'home_abbr': home['team']['abbreviation'], 'home_score': home.get('score', '0'), 
-                            'home_logo': home_logo_url, 'home_id': home.get('id'),
-                            'away_abbr': away['team']['abbreviation'], 'away_score': away.get('score', '0'), 
-                            'away_logo': away_logo_url, 'away_id': away.get('id'),
-                            'period': period,
-                            'situation': {}
-                        }
-
-                        if status_state == 'in' and not is_halftime:
-                            if 'football' in config['path']:
-                                is_rz = sit.get('isRedZone', False)
-                                game_obj['situation'] = { 'possession': sit.get('possession', ''), 'downDist': sit.get('downDistanceText', ''), 'isRedZone': is_rz }
-                            elif league_key == 'mlb':
-                                game_obj['situation'] = { 'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False) }
-                        
-                        games.append(game_obj)
-
-            except Exception as e: print(f"Fetch Error {league_key}: {e}")
-            
-        with data_lock:
-            state['current_games'] = games
-
-fetcher = SportsFetcher()
-
-def background_updater():
-    fetcher.fetch_all_teams()
-    while True:
-        fetcher.get_real_games()
-        time.sleep(UPDATE_INTERVAL)
-        # Clear reboot flag securely
-        with data_lock:
-            if state.get('reboot_requested'):
-                 # We keep it true for a bit so ticker sees it
-                 pass 
-
-app = Flask(__name__)
-
-@app.route('/')
-def dashboard(): return "Ticker Server is Running"
-
-@app.route('/api/ticker')
-def get_ticker_data():
-    with data_lock:
-        local_state = state.copy()
-        
-    visible_games = [g for g in local_state['current_games'] if g.get('is_shown', True)]
-    return jsonify({
-        'meta': { 
-            'time': dt.now(timezone.utc).strftime("%I:%M %p"), 
-            'count': len(visible_games), 
-            'speed': 0.02, 
-            'scroll_seamless': local_state.get('scroll_seamless', False),
-            'brightness': local_state.get('brightness', 0.5),
-            'inverted': local_state.get('inverted', False),
-            'panel_count': local_state.get('panel_count', 2),
-            'test_pattern': local_state.get('test_pattern', False),
-            'reboot_requested': local_state.get('reboot_requested', False)
-        },
-        'games': visible_games
-    })
-
-@app.route('/api/state')
-def get_full_state():
-    with data_lock:
-        return jsonify({'settings': state, 'games': state['current_games']})
-
-@app.route('/api/teams')
-def get_teams():
-    with data_lock:
-        return jsonify(state['all_teams_data'])
-
-@app.route('/api/config', methods=['POST'])
-def update_config():
-    d = request.json
-    with data_lock:
-        if 'mode' in d: state['mode'] = d['mode']
-        if 'active_sports' in d: state['active_sports'] = d['active_sports']
-        if 'scroll_seamless' in d: state['scroll_seamless'] = d['scroll_seamless']
-        if 'my_teams' in d: state['my_teams'] = d['my_teams']
-        if 'weather_location' in d: state['weather_location'] = d['weather_location']
+        }.resume()
+    }
     
-    save_config_file()
-    threading.Thread(target=fetcher.get_real_games).start()
-    return jsonify({"status": "ok", "settings": state})
-
-@app.route('/api/debug', methods=['POST'])
-def set_debug():
-    d = request.json
-    with data_lock:
-        if 'debug_mode' in d: state['debug_mode'] = d['debug_mode']
-        if 'custom_date' in d: state['custom_date'] = d['custom_date']
-    fetcher.get_real_games()
-    return jsonify({"status": "ok"})
-
-@app.route('/api/hardware', methods=['POST'])
-def hardware_control():
-    data = request.json
-    action = data.get('action')
-
-    if action == 'reboot':
-        with data_lock: state['reboot_requested'] = True
+    func fetchAllTeams() {
+        let cleanURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
+        guard let url = URL(string: "\(cleanURL)/api/teams") else { return }
         
-        # Auto-clear reboot flag after 10 seconds to prevent infinite reboot loop
-        def clear_reboot():
-            time.sleep(10)
-            with data_lock: state['reboot_requested'] = False
-        threading.Thread(target=clear_reboot).start()
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            guard let data = data else { return }
+            do {
+                let decoded = try JSONDecoder().decode([String: [TeamData]].self, from: data)
+                DispatchQueue.main.async { self.allTeams = decoded }
+            } catch { print("Teams Decode Error: \(error)") }
+        }.resume()
+    }
+    
+    func saveSettings() {
+        let cleanURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
+        guard let url = URL(string: "\(cleanURL)/api/config") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        do {
+            state.weather_location = weatherLoc
+            let body = try JSONEncoder().encode(state)
+            request.httpBody = body
+            URLSession.shared.dataTask(with: request).resume()
+        } catch { print("Save Error: \(error)") }
+    }
+    
+    func sendDebug() {
+        let cleanURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
+        guard let url = URL(string: "\(cleanURL)/api/debug") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = ["debug_mode": state.debug_mode, "custom_date": state.custom_date ?? NSNull()]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: request).resume()
+    }
+    
+    func updateHardware() {
+        let cleanURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
+        guard let url = URL(string: "\(cleanURL)/api/hardware") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "brightness": brightness,
+            "inverted": inverted,
+            "weather_location": weatherLoc
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: request).resume()
+    }
+    
+    func reboot() {
+        let cleanURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
+        guard let url = URL(string: "\(cleanURL)/api/hardware") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["action": "reboot"])
+        URLSession.shared.dataTask(with: request).resume()
+    }
+    
+    func testPattern() {
+        let cleanURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
+        guard let url = URL(string: "\(cleanURL)/api/hardware") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["action": "test_pattern"])
+        URLSession.shared.dataTask(with: request).resume()
+    }
+    
+    func toggleTeam(_ teamAbbr: String, league: String) {
+        // Construct namespaced ID
+        let teamID = "\(league):\(teamAbbr)"
         
-        return jsonify({"status": "ok", "message": "Reboot command sent to Ticker"})
+        if let index = state.my_teams.firstIndex(of: teamID) {
+            state.my_teams.remove(at: index)
+        } else {
+            state.my_teams.append(teamID)
+        }
+        saveSettings()
+    }
+}
 
-    if action == 'test_pattern':
-        with data_lock: state['test_pattern'] = not state.get('test_pattern', False)
-        return jsonify({"status": "ok", "test_pattern": state['test_pattern']})
+// ==========================================
+// MARK: - 3. UI COMPONENTS
+// ==========================================
 
-    updated = False
-    with data_lock:
-        if 'brightness' in data: 
-            state['brightness'] = float(data['brightness']); updated = True
-        if 'inverted' in data: 
-            state['inverted'] = bool(data['inverted']); updated = True
-        if 'panel_count' in data: 
-            state['panel_count'] = int(data['panel_count']); updated = True
-        if 'weather_location' in data:
-            state['weather_location'] = data['weather_location']; updated = True
+struct NativeLiquidGlass: ViewModifier {
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+        return content
+            .background(shape.fill(.regularMaterial).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5))
+            .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
+            .clipShape(shape)
+    }
+}
+extension View { func liquidGlass() -> some View { modifier(NativeLiquidGlass()) } }
 
-    if updated: save_config_file()
+struct SituationPill: View {
+    let text: String
+    let color: Color
+    
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .black))
+            .foregroundColor(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.2))
+            .cornerRadius(4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(color.opacity(0.3), lineWidth: 1))
+    }
+}
 
-    return jsonify({"status": "ok", "settings": state})
+// ==========================================
+// MARK: - 4. MAIN VIEW
+// ==========================================
 
-if __name__ == "__main__":
-    t = threading.Thread(target=background_updater)
-    t.daemon = True
-    t.start()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+struct ContentView: View {
+    @StateObject var vm = TickerViewModel()
+    @State private var selectedTab = 0
+    init() { UITabBar.appearance().isHidden = true }
+    
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            LinearGradient(gradient: Gradient(colors: [Color(red: 0.22, green: 0.28, blue: 0.35), Color(red: 0.05, green: 0.07, blue: 0.10)]), startPoint: .top, endPoint: .bottom).ignoresSafeArea()
+            
+            TabView(selection: $selectedTab) {
+                HomeView(vm: vm).tag(0)
+                ModesView(vm: vm).tag(1)
+                DebugSettingsView(vm: vm).tag(2)
+                HardwareSettingsView(vm: vm).tag(3)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .ignoresSafeArea(.container, edges: .bottom)
+            
+            HStack {
+                TabButton(icon: "house.fill", label: "Home", idx: 0, sel: $selectedTab)
+                TabButton(icon: "slider.horizontal.3", label: "Modes", idx: 1, sel: $selectedTab)
+                TabButton(icon: "ant.fill", label: "Debug", idx: 2, sel: $selectedTab)
+                TabButton(icon: "cpu", label: "Ticker", idx: 3, sel: $selectedTab)
+            }
+            .padding(12).background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 35, style: .continuous))
+            .padding(.horizontal, 20).padding(.bottom, 20)
+            .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+        }.preferredColorScheme(.dark)
+    }
+}
+
+// ==========================================
+// MARK: - 5. TAB 1: DASHBOARD
+// ==========================================
+
+struct HomeView: View {
+    @ObservedObject var vm: TickerViewModel
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Ticker Dashboard").font(.system(size: 34, weight: .bold, design: .rounded)).foregroundColor(.white)
+                    HStack { Circle().fill(vm.connectionStatus.contains("Connected") ? Color.green : Color.red).frame(width: 8, height: 8); Text(vm.connectionStatus).font(.caption).foregroundColor(.gray) }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).padding(.top, 60)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("DISPLAY FILTER").font(.caption).bold().foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                        FilterBtn(title: "Show All", val: "all", cur: vm.state.mode) { vm.state.mode = "all"; vm.saveSettings() }
+                        FilterBtn(title: "Live Only", val: "live", cur: vm.state.mode) { vm.state.mode = "live"; vm.saveSettings() }
+                        FilterBtn(title: "My Teams", val: "my_teams", cur: vm.state.mode) { vm.state.mode = "my_teams"; vm.saveSettings() }
+                    }
+                }.padding(.horizontal)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("SCROLL STYLE").font(.caption).bold().foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                        ScrollBtn(title: "Paged", val: false, cur: vm.state.scroll_seamless) { vm.state.scroll_seamless = false; vm.saveSettings() }
+                        ScrollBtn(title: "Seamless", val: true, cur: vm.state.scroll_seamless) { vm.state.scroll_seamless = true; vm.saveSettings() }
+                    }
+                }.padding(.horizontal)
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("ACTIVE FEED").font(.caption).bold().foregroundStyle(.secondary)
+                    if vm.games.isEmpty { Text("No active games found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary) }
+                    else { ForEach(vm.games) { game in GameRow(game: game) } }
+                }.padding(.horizontal)
+                Spacer(minLength: 120)
+            }
+        }
+    }
+}
+
+// ==========================================
+// MARK: - 6. TAB 2: MODES
+// ==========================================
+
+struct ModesView: View {
+    @ObservedObject var vm: TickerViewModel
+    @State private var selectedLeague = "nfl"
+    
+    var currentMode: String {
+        if vm.state.active_sports["weather"] == true { return "weather" }
+        if vm.state.active_sports["clock"] == true { return "clock" }
+        return "sports"
+    }
+
+    let leagues = [("nfl", "NFL"), ("ncf_fbs", "FBS"), ("ncf_fcs", "FCS"), ("mlb", "MLB"), ("nhl", "NHL"), ("nba", "NBA")]
+    
+    let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 5) // FORCE 5 COLUMNS
+
+    func setMode(_ mode: String) {
+        vm.state.active_sports["weather"] = false
+        vm.state.active_sports["clock"] = false
+        if mode == "weather" { vm.state.active_sports["weather"] = true }
+        else if mode == "clock" { vm.state.active_sports["clock"] = true }
+        vm.saveSettings()
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                HStack { Text("Modes").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80)
+                
+                HStack(spacing: 12) {
+                    FilterBtn(title: "Sports", val: "sports", cur: currentMode) { setMode("sports") }
+                    FilterBtn(title: "Weather", val: "weather", cur: currentMode) { setMode("weather") }
+                    FilterBtn(title: "Clock", val: "clock", cur: currentMode) { setMode("clock") }
+                }.padding(.horizontal)
+
+                if currentMode == "weather" {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("WEATHER CONFIGURATION").font(.caption).bold().foregroundStyle(.secondary)
+                        HStack {
+                            Text("Location:")
+                            Spacer()
+                            TextField("City or Zip", text: $vm.weatherLoc)
+                                .multilineTextAlignment(.trailing)
+                                .foregroundColor(.white)
+                                .onSubmit { vm.saveSettings() }
+                        }.padding().liquidGlass()
+                    }.padding(.horizontal)
+                }
+
+                if currentMode == "clock" {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("CLOCK MODE").font(.caption).bold().foregroundStyle(.secondary)
+                        Text("Displaying large 12-hour time and date.")
+                            .frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
+                    }.padding(.horizontal)
+                }
+
+                if currentMode == "sports" {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 12) {
+                            ForEach(leagues, id: \.0) { key, name in
+                                let isActive = vm.state.active_sports[key] ?? false
+                                Button { vm.state.active_sports[key] = !isActive; vm.saveSettings() } label: {
+                                    Text(name).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+                                        .background(isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+                    }.padding(.horizontal)
+                    
+                    VStack(alignment: .leading, spacing: 15) {
+                        Text("MANAGE TEAMS").font(.caption).bold().foregroundStyle(.secondary)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack {
+                                ForEach(leagues, id: \.0) { key, name in
+                                    Button { selectedLeague = key } label: {
+                                        Text(name).bold().padding(.horizontal, 16).padding(.vertical, 8)
+                                            .background(selectedLeague == key ? Color.blue : Color.white.opacity(0.1))
+                                            .foregroundColor(.white).cornerRadius(20)
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if let teams = vm.allTeams[selectedLeague], !teams.isEmpty {
+                            // === DEDUPLICATION LOGIC ===
+                            let uniqueTeams = Dictionary(grouping: teams, by: { $0.abbr })
+                                .compactMap { $0.value.first } 
+                                .filter { !$0.abbr.trimmingCharacters(in: .whitespaces).isEmpty && $0.abbr != "TBD" && $0.abbr != "null" }
+                                .sorted { $0.abbr < $1.abbr }
+                            
+                            LazyVGrid(columns: columns, spacing: 10) {
+                                ForEach(uniqueTeams, id: \.id) { team in
+                                    // Check NAMESPACED ID
+                                    let teamID = "\(selectedLeague):\(team.abbr)"
+                                    let isSelected = vm.state.my_teams.contains(teamID)
+                                    
+                                    Button { 
+                                        vm.isEditing = true
+                                        vm.toggleTeam(team.abbr, league: selectedLeague)
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { vm.isEditing = false } 
+                                    } label: {
+                                        // === CARD UI ===
+                                        VStack(spacing: 4) {
+                                            TeamLogoView(url: team.logo, abbr: team.abbr, size: 30)
+                                            Text(team.abbr.trimmingCharacters(in: .whitespaces))
+                                                .font(.system(size: 10, weight: .bold))
+                                                .lineLimit(1)
+                                                .minimumScaleFactor(0.8)
+                                                .foregroundColor(isSelected ? .white : .gray)
+                                        }
+                                        .frame(height: 65)
+                                        .frame(maxWidth: .infinity) 
+                                        .background(isSelected ? Color.blue.opacity(0.3) : Color.white.opacity(0.05))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2))
+                                    }
+                                }
+                            }.padding(10).liquidGlass()
+                        } else { Text("Loading teams...").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary) }
+                    }.padding(.horizontal)
+                }
+                
+                Spacer(minLength: 120)
+            }
+        }
+    }
+}
+
+// ... (Rest of App file is unchanged) ...
+struct DebugSettingsView: View {
+    @ObservedObject var vm: TickerViewModel
+    @State private var tempDate = Date(); @State private var showRawJSON = false
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                HStack { Text("Debug").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80)
+                VStack(spacing: 0) {
+                    Toggle("Debug Mode", isOn: Binding(get: { vm.state.debug_mode }, set: { vm.state.debug_mode = $0; vm.sendDebug() })).padding().toggleStyle(SwitchToggleStyle(tint: .orange))
+                    Divider().background(Color.white.opacity(0.1))
+                    Button("View Raw Server JSON") { showRawJSON = true }.padding().foregroundColor(.blue)
+                }.liquidGlass().padding(.horizontal)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("TIME MACHINE").font(.caption).bold().foregroundStyle(.secondary)
+                    VStack(spacing: 0) {
+                        DatePicker("Simulate Date", selection: $tempDate, displayedComponents: .date).padding().colorScheme(.dark)
+                        HStack(spacing: 0) {
+                            Button { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; vm.state.custom_date = f.string(from: tempDate); vm.sendDebug() } label: { Text("Apply Date").frame(maxWidth: .infinity).padding().background(Color.orange.opacity(0.2)).foregroundColor(.orange) }
+                            Divider().background(Color.white.opacity(0.1))
+                            Button { vm.state.custom_date = nil; vm.sendDebug() } label: { Text("Reset to Live").frame(maxWidth: .infinity).padding().background(Color.white.opacity(0.05)).foregroundColor(.white) }
+                        }.frame(height: 50)
+                    }.liquidGlass().clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }.padding(.horizontal)
+                Spacer(minLength: 120)
+            }.sheet(isPresented: $showRawJSON) { ScrollView { Text(String(describing: vm.games)).font(.caption.monospaced()).padding() }.presentationDetents([.medium]) }
+        }
+    }
+}
+
+struct HardwareSettingsView: View {
+    @ObservedObject var vm: TickerViewModel
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                HStack { Text("Ticker").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("HARDWARE CONFIG").font(.caption).bold().foregroundStyle(.secondary)
+                    VStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Server URL").font(.caption).foregroundColor(.gray)
+                            TextField("https://...", text: $vm.serverURL).textFieldStyle(.plain).padding(10).background(Color.black.opacity(0.2)).cornerRadius(8).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1))).foregroundColor(.white)
+                                .onSubmit { vm.fetchData(); vm.fetchAllTeams() }
+                        }.padding()
+                        Divider().background(Color.white.opacity(0.1))
+                        
+                        Toggle("Inverted (180°)", isOn: Binding(get: { vm.inverted }, set: { vm.inverted = $0; vm.updateHardware() })).padding()
+                        Divider().background(Color.white.opacity(0.1))
+                        VStack(alignment: .leading) { Text("Brightness: \(Int(vm.brightness * 100))%"); Slider(value: Binding(get: { vm.brightness }, set: { vm.brightness = $0; vm.updateHardware() }), in: 0...1).tint(.green) }.padding()
+                    }.liquidGlass().clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }.padding(.horizontal)
+                
+                VStack(spacing: 12) {
+                    Button { vm.testPattern() } label: { Label("Test LED Pattern", systemImage: "sparkles").frame(maxWidth: .infinity).padding().liquidGlass().foregroundColor(.white) }
+                    Button { vm.reboot() } label: { Label("Reboot Ticker", systemImage: "power").frame(maxWidth: .infinity).padding().background(Color.red.opacity(0.2)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous)).foregroundColor(.red) }
+                }.padding(.horizontal)
+                Spacer(minLength: 120)
+            }
+        }
+    }
+}
+
+struct TabButton: View {
+    let icon: String; let label: String; let idx: Int; @Binding var sel: Int
+    var body: some View {
+        Button { sel = idx } label: {
+            VStack(spacing: 4) { Image(systemName: icon).font(.system(size: 20)); Text(label).font(.caption2) }
+                .frame(maxWidth: .infinity).foregroundColor(sel == idx ? .white : .gray).padding(.vertical, 8)
+                .background(sel == idx ? Color.white.opacity(0.15) : Color.clear).cornerRadius(12)
+        }
+    }
+}
+
+struct FilterBtn: View {
+    let title: String; let val: String; let cur: String; let act: () -> Void
+    var body: some View {
+        Button(action: act) {
+            Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
+                .background(cur == val ? Color(red: 0.0, green: 0.47, blue: 1.0) : Color.white.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(cur == val ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
+                .foregroundColor(.white)
+        }
+    }
+}
+
+struct ScrollBtn: View {
+    let title: String; let val: Bool; let cur: Bool; let act: () -> Void
+    var body: some View {
+        Button(action: act) {
+            Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
+                .background(cur == val ? Color(red: 0.0, green: 0.47, blue: 1.0) : Color.white.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(cur == val ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
+                .foregroundColor(.white)
+        }
+    }
+}
+
+struct TeamLogoView: View {
+    let url: String?; let abbr: String; let size: CGFloat
+    var body: some View {
+        AsyncImage(url: URL(string: url ?? "")) { phase in
+            if let image = phase.image { image.resizable().scaledToFit() }
+            else { ZStack { Circle().fill(Color.gray.opacity(0.3)); Text(abbr).font(.system(size: size * 0.35, weight: .bold)).foregroundColor(.white.opacity(0.8)) } }
+        }.frame(width: size, height: size)
+    }
+}
+
+struct GameRow: View {
+    let game: Game
+    
+    var activeSituation: String {
+        guard let s = game.situation else { return "" }
+        if let en = s.emptyNet, en { return "EMPTY NET" }
+        if let pp = s.powerPlay, pp { return "PWR PLAY" }
+        if let dd = s.downDist { return dd }
+        if let rz = s.isRedZone, rz { return "RED ZONE" }
+        if let b = s.balls, let str = s.strikes, let o = s.outs { return "\(b)-\(str), \(o) Out" }
+        return ""
+    }
+
+    var situationColor: Color {
+        if let s = game.situation {
+            if s.isRedZone == true { return Color.red }
+            if s.emptyNet == true { return Color.red }
+        }
+        return Color.yellow
+    }
+    
+    func hasPossession(isHome: Bool) -> Bool {
+        guard let s = game.situation, let p = s.possession else { return false }
+        
+        let pClean = p.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if pClean.isEmpty { return false }
+        
+        let abbr = (isHome ? game.home_abbr : game.away_abbr).uppercased()
+        let id = (isHome ? game.home_id : game.away_id) ?? ""
+        let logo = isHome ? game.home_logo : game.away_logo
+        
+        if pClean == abbr { return true }
+        if pClean == id { return true }
+        if logo.contains("/\(pClean).png") || logo.contains("/\(pClean).svg") { return true }
+        
+        return false
+    }
+    
+    var isSituationGlobal: Bool {
+        guard let s = game.situation else { return false }
+        return !activeSituation.isEmpty && !hasPossession(isHome: true) && !hasPossession(isHome: false)
+    }
+    
+    var formattedSport: String {
+        switch game.sport { case "ncf_fbs": return "FBS"; case "ncf_fcs": return "FCS"; default: return game.sport.uppercased() }
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Capsule().fill(game.is_shown ? Color.green : Color.red).frame(width: 4, height: 55)
+            
+            if game.sport == "weather" {
+                HStack {
+                    Image(systemName: game.situation?.icon == "sun" ? "sun.max.fill" : "cloud.fill").font(.title).foregroundColor(.yellow)
+                    VStack(alignment: .leading) {
+                        Text(game.away_abbr).font(.headline).bold().foregroundColor(.white)
+                        Text(game.status).font(.caption).foregroundColor(.gray)
+                    }
+                    Spacer()
+                    Text(game.home_abbr).font(.system(size: 24, weight: .bold)).foregroundColor(.white)
+                }
+            } else if game.sport == "clock" {
+                HStack {
+                    Image(systemName: "clock.fill").font(.title).foregroundColor(.blue)
+                    Text("Clock Mode Active").font(.headline).bold().foregroundColor(.white)
+                    Spacer()
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        TeamLogoView(url: game.away_logo, abbr: game.away_abbr, size: 22)
+                        Text(game.away_abbr).font(.headline).bold().foregroundColor(.white)
+                        if !activeSituation.isEmpty, hasPossession(isHome: false) { SituationPill(text: activeSituation, color: situationColor) }
+                        Spacer(); Text(game.away_score).font(.headline).bold().foregroundColor(.white)
+                    }
+                    HStack {
+                        TeamLogoView(url: game.home_logo, abbr: game.home_abbr, size: 22)
+                        Text(game.home_abbr).font(.headline).bold().foregroundColor(.white)
+                        if !activeSituation.isEmpty, hasPossession(isHome: true) { SituationPill(text: activeSituation, color: situationColor) }
+                        Spacer(); Text(game.home_score).font(.headline).bold().foregroundColor(.white)
+                    }
+                }
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(game.status).font(.caption).bold().padding(.horizontal, 8).padding(.vertical, 4).background(Color.white.opacity(0.1)).cornerRadius(6).foregroundColor(.white)
+                    Text(formattedSport).font(.caption2).foregroundStyle(.gray)
+                    if isSituationGlobal { SituationPill(text: activeSituation, color: situationColor) }
+                }.frame(width: 80, alignment: .trailing)
+            }
+        }.padding(12).liquidGlass()
+    }
+}
