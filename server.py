@@ -129,8 +129,6 @@ if os.path.exists(CONFIG_FILE):
                 if k in state:
                     if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
                     else: state[k] = v
-        state['test_pattern'] = False
-        state['reboot_requested'] = False
     except: pass
 
 def save_config_file():
@@ -159,8 +157,7 @@ class WeatherFetcher:
     def update_coords(self, location_query):
         clean_query = str(location_query).strip()
         if not clean_query: return
-        
-        # 1. Zip Code Check
+        # Zip Check
         if re.fullmatch(r'\d{5}', clean_query):
             try:
                 r = requests.get(f"https://api.zippopotam.us/us/{clean_query}", timeout=5)
@@ -170,8 +167,7 @@ class WeatherFetcher:
                     self.location_name = p['place name']; self.last_fetch = 0
                     return
             except: pass
-        
-        # 2. City Name Check
+        # City Check
         try:
             r = requests.get(f"https://geocoding-api.open-meteo.com/v1/search?name={clean_query}&count=1&language=en&format=json", timeout=5)
             d = r.json()
@@ -366,8 +362,12 @@ class SportsFetcher:
         for league_key, config in self.leagues.items():
             if not conf['active_sports'].get(league_key, False): continue
             
+            # --- UPDATED NHL LOGIC: TRY NATIVE, FALLBACK TO ESPN ---
             if league_key == 'nhl' and not conf['debug_mode']:
-                self._fetch_nhl_native(games, target_date_str); continue
+                prev_count = len(games)
+                self._fetch_nhl_native(games, target_date_str)
+                if len(games) > prev_count: continue # Native worked, skip fallback
+                # If we get here, native failed/returned 0 games. Fallthrough to generic ESPN fetch.
 
             try:
                 curr_p = config['scoreboard_params'].copy(); curr_p.update(req_params)
@@ -419,8 +419,11 @@ class SportsFetcher:
                     game_obj = {
                         'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
                         'home_abbr': h_ab, 'home_score': h.get('score','0'), 'home_logo': h_lg,
+                        'home_id': h.get('id'), # Added generic ID for fallback
                         'away_abbr': a_ab, 'away_score': a.get('score','0'), 'away_logo': a_lg,
-                        'situation': { 'possession': sit.get('possession'), 'isRedZone': sit.get('isRedZone'), 'downDist': sit.get('downDistanceText') }
+                        'away_id': a.get('id'), # Added generic ID for fallback
+                        'period': st.get('period', 1),
+                        'situation': { 'possession': sit.get('possession', ''), 'isRedZone': sit.get('isRedZone', False), 'downDist': sit.get('downDistanceText', '') }
                     }
                     if league_key == 'mlb':
                         game_obj['situation'] = { 'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False) }
