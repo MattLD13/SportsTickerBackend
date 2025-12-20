@@ -39,7 +39,6 @@ LOGO_OVERRIDES = {
     "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
     "NBA:UTA": "https://a.espncdn.com/i/teamlogos/nba/500/utah.png",
     "NBA:NOP": "https://a.espncdn.com/i/teamlogos/nba/500/no.png",
-    # --- NCAA FIXES handled dynamically ---
 }
 
 # ================= DEFAULT STATE =================
@@ -101,8 +100,102 @@ class WeatherFetcher:
         self.last_fetch = 0
         self.cache = None
 
-    # Weather update_coords, get_icon, get_weather methods remain unchanged
-    # ... (omitted here for brevity; they are exactly as in your original code)
+    def update_coords(self, location_query):
+        clean_query = str(location_query).strip()
+        if re.fullmatch(r'\d{5}', clean_query):
+            try:
+                zip_url = f"https://api.zippopotam.us/us/{clean_query}"
+                r = requests.get(zip_url, timeout=5)
+                if r.status_code == 200:
+                    data = r.json()
+                    place = data['places'][0]
+                    self.lat = float(place['latitude'])
+                    self.lon = float(place['longitude'])
+                    self.location_name = place['place name']
+                    self.last_fetch = 0
+                    return
+            except: pass
+        
+        try:
+            url = f"https://geocoding-api.open-meteo.com/v1/search?name={location_query}&count=1&language=en&format=json"
+            r = requests.get(url, timeout=5)
+            data = r.json()
+            if 'results' in data and len(data['results']) > 0:
+                res = data['results'][0]
+                self.lat = res['latitude']
+                self.lon = res['longitude']
+                self.location_name = res['name']
+                self.last_fetch = 0 
+        except: pass
+
+    def get_icon(self, code, is_day=1):
+        if code in [0, 1]: return "sun" if is_day else "moon"
+        elif code in [2]: return "partly_cloudy"
+        elif code in [3]: return "cloud"
+        elif code in [45, 48]: return "fog"
+        elif code in [51, 53, 55, 61, 63, 65, 80, 81, 82]: return "rain"
+        elif code in [71, 73, 75, 77, 85, 86]: return "snow"
+        elif code in [95, 96, 99]: return "storm"
+        return "cloud"
+
+    def get_weather(self):
+        if time.time() - self.last_fetch < 900 and self.cache: return self.cache
+        try:
+            url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto"
+            r = requests.get(url, timeout=5)
+            data = r.json()
+            
+            curr = data.get('current', {})
+            daily = data.get('daily', {})
+            
+            cur_temp = int(curr.get('temperature_2m', 0))
+            cur_code = curr.get('weather_code', 0)
+            is_day = curr.get('is_day', 1)
+            cur_icon = self.get_icon(cur_code, is_day)
+            
+            high = int(daily['temperature_2m_max'][0])
+            low = int(daily['temperature_2m_min'][0])
+            uv = float(daily['uv_index_max'][0])
+            
+            forecast = []
+            days = daily.get('time', [])
+            codes = daily.get('weather_code', [])
+            maxs = daily.get('temperature_2m_max', [])
+            mins = daily.get('temperature_2m_min', [])
+            
+            for i in range(1, 4):
+                if i < len(days):
+                    dt_obj = dt.strptime(days[i], "%Y-%m-%d")
+                    day_name = dt_obj.strftime("%a").upper()
+                    f_icon = self.get_icon(codes[i], 1)
+                    forecast.append({
+                        "day": day_name,
+                        "high": int(maxs[i]),
+                        "low": int(mins[i]),
+                        "icon": f_icon
+                    })
+
+            weather_obj = {
+                "sport": "weather",
+                "id": "weather_widget",
+                "status": "Live",
+                "home_abbr": f"{cur_temp}°",
+                "away_abbr": self.location_name,
+                "home_score": "", "away_score": "",
+                "is_shown": True,
+                "home_logo": "", "away_logo": "",
+                "situation": {
+                    "icon": cur_icon,
+                    "is_day": is_day,
+                    "stats": { "high": high, "low": low, "uv": uv, "aqi": "MOD" },
+                    "forecast": forecast
+                }
+            }
+            self.cache = weather_obj
+            self.last_fetch = time.time()
+            return weather_obj
+        except Exception as e: 
+            return None
 
 class SportsFetcher:
     def __init__(self):
@@ -124,7 +217,6 @@ class SportsFetcher:
             return LOGO_OVERRIDES[key]
         return default_logo
 
-    # ---------- NEW: Dynamic FBS/FCS team sets ----------
     def _get_college_team_sets(self):
         fbs_set = set()
         fcs_set = set()
@@ -148,7 +240,6 @@ class SportsFetcher:
         except: pass
         return fbs_set, fcs_set
 
-    # ---------- FETCH ALL TEAMS ----------
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
@@ -179,7 +270,6 @@ class SportsFetcher:
         except Exception as e:
             print(e)
 
-    # ---------- SIMPLE LEAGUE FETCH ----------
     def _fetch_simple_league(self, league_key, catalog):
         config = self.leagues[league_key]
         url = f"{self.base_url}{config['path']}/teams"
@@ -196,111 +286,77 @@ class SportsFetcher:
                             catalog[league_key].append({'abbr': abbr, 'logo': logo})
         except: pass
 
-    # The rest of SportsFetcher (NHL, get_real_games, etc.) remains unchanged
-    # ...
-
-fetcher = SportsFetcher()
-
-def background_updater():
-    fetcher.fetch_all_teams()
-    while True:
-        fetcher.get_real_games()
-        time.sleep(UPDATE_INTERVAL)
+    # ------------------ NHL & get_real_games as in original ------------------
+    def _fetch_nhl_native(self, games_list, target_date_str):
         with data_lock:
-            if state.get('reboot_requested'): pass 
+            is_nhl_enabled = state['active_sports'].get('nhl', False)
+        
+        schedule_url = "https://api-web.nhle.com/v1/schedule/now"
+        try:
+            response = requests.get(schedule_url, timeout=5)
+            if response.status_code != 200: return
+            schedule_data = response.json()
+        except: return
 
-app = Flask(__name__)
+        for date_entry in schedule_data.get('gameWeek', []):
+            if date_entry.get('date') != target_date_str: continue 
+            for game in date_entry.get('games', []):
+                self._process_single_nhl_game(game['id'], games_list, is_nhl_enabled)
 
-@app.route('/')
-def dashboard(): return "Ticker Server is Running"
+    def _process_single_nhl_game(self, game_id, games_list, is_enabled):
+        pbp_url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
+        try:
+            r = requests.get(pbp_url, timeout=3)
+            if r.status_code != 200: return
+            data = r.json()
+        except: return
 
-@app.route('/api/ticker')
-def get_ticker_data():
-    with data_lock:
-        local_state = state.copy()
-    visible_games = [g for g in local_state['current_games'] if g.get('is_shown', True)]
-    return jsonify({
-        'meta': { 
-            'time': dt.now(timezone.utc).strftime("%I:%M %p"), 
-            'count': len(visible_games), 
-            'speed': 0.02, 
-            'scroll_seamless': local_state.get('scroll_seamless', False),
-            'brightness': local_state.get('brightness', 0.5),
-            'inverted': local_state.get('inverted', False),
-            'panel_count': local_state.get('panel_count', 2),
-            'test_pattern': local_state.get('test_pattern', False),
-            'reboot_requested': local_state.get('reboot_requested', False)
-        },
-        'games': visible_games
-    })
+        away_abbr = data['awayTeam']['abbrev']
+        home_abbr = data['homeTeam']['abbrev']
+        away_score = str(data['awayTeam'].get('score', 0))
+        home_score = str(data['homeTeam'].get('score', 0))
+        game_type = data.get('gameType', 2)
+        is_playoff = (game_type == 3)
 
-@app.route('/api/state')
-def get_full_state():
-    with data_lock:
-        return jsonify({'settings': state, 'games': state['current_games']})
+        away_logo = self.get_corrected_logo('nhl', away_abbr, f"https://a.espncdn.com/i/teamlogos/nhl/500/{away_abbr.lower()}.png")
+        home_logo = self.get_corrected_logo('nhl', home_abbr, f"https://a.espncdn.com/i/teamlogos/nhl/500/{home_abbr.lower()}.png")
 
-@app.route('/api/teams')
-def get_teams():
-    with data_lock:
-        return jsonify(state['all_teams_data'])
+        game_state = data.get('gameState', 'OFF') 
+        mapped_state = 'in' if game_state in ['LIVE', 'CRIT'] else 'post'
+        if game_state in ['PRE', 'FUT']: mapped_state = 'pre'
 
-@app.route('/api/config', methods=['POST'])
-def update_config():
-    d = request.json
-    with data_lock:
-        if 'mode' in d: state['mode'] = d['mode']
-        if 'active_sports' in d: state['active_sports'] = d['active_sports']
-        if 'scroll_seamless' in d: state['scroll_seamless'] = d['scroll_seamless']
-        if 'my_teams' in d: state['my_teams'] = d['my_teams']
-        if 'weather_location' in d: state['weather_location'] = d['weather_location']
-    
-    save_config_file()
-    threading.Thread(target=fetcher.get_real_games).start()
-    return jsonify({"status": "ok", "settings": state})
+        with data_lock:
+            mode = state['mode']
+            my_teams = state['my_teams']
+        
+        is_shown = is_enabled
+        if is_shown:
+            if mode == 'live' and mapped_state != 'in': is_shown = False
+            if mode == 'my_teams':
+                h_key = f"nhl:{home_abbr}"
+                a_key = f"nhl:{away_abbr}"
+                h_match = (h_key in my_teams)
+                a_match = (a_key in my_teams)
+                if not h_match and not a_match: is_shown = False
 
-@app.route('/api/debug', methods=['POST'])
-def set_debug():
-    d = request.json
-    with data_lock:
-        if 'debug_mode' in d: state['debug_mode'] = d['debug_mode']
-        if 'custom_date' in d: state['custom_date'] = d['custom_date']
-    fetcher.get_real_games()
-    return jsonify({"status": "ok"})
-
-@app.route('/api/hardware', methods=['POST'])
-def hardware_control():
-    data = request.json
-    action = data.get('action')
-
-    if action == 'reboot':
-        with data_lock: state['reboot_requested'] = True
-        def clear_reboot():
-            time.sleep(10)
-            with data_lock: state['reboot_requested'] = False
-        threading.Thread(target=clear_reboot).start()
-        return jsonify({"status": "ok", "message": "Reboot command sent to Ticker"})
-
-    if action == 'test_pattern':
-        with data_lock: state['test_pattern'] = not state.get('test_pattern', False)
-        return jsonify({"status": "ok", "test_pattern": state['test_pattern']})
-
-    updated = False
-    with data_lock:
-        if 'brightness' in data: 
-            state['brightness'] = float(data['brightness']); updated = True
-        if 'inverted' in data: 
-            state['inverted'] = bool(data['inverted']); updated = True
-        if 'panel_count' in data: 
-            state['panel_count'] = int(data['panel_count']); updated = True
-        if 'weather_location' in data:
-            state['weather_location'] = data['weather_location']; updated = True
-
-    if updated: save_config_file()
-    return jsonify({"status": "ok", "settings": state})
-
-if __name__ == "__main__":
-    t = threading.Thread(target=background_updater)
-    t.daemon = True
-    t.start()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+        clock = data.get('clock', {})
+        time_rem = clock.get('timeRemaining', '00:00')
+        period = data.get('periodDescriptor', {}).get('number', 1)
+        
+        period_label = f"P{period}"
+        if period == 4: period_label = "OT"
+        elif period > 4: period_label = "2OT" if is_playoff else "S/O"
+        
+        if game_state == 'FINAL' or game_state == 'OFF': status_disp = "FINAL"
+        elif game_state in ['PRE', 'FUT']: 
+            raw_time = data.get('startTimeUTC', '')
+            if raw_time:
+                try:
+                    utc_dt = dt.strptime(raw_time, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                    local_dt = utc_dt + timedelta(hours=TIMEZONE_OFFSET)
+                    status_disp = local_dt.strftime("%I:%M %p").lstrip('0') 
+                except: status_disp = "Scheduled"
+            else: status_disp = "Scheduled"
+        elif clock.get('inIntermission'): status_disp = f"{period_label} INT"
+        else:
+            if period > 4 and not is_playoff: status_disp
