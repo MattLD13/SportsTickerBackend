@@ -18,10 +18,26 @@ except ImportError:
     FBS_TEAMS = []
     FCS_TEAMS = []
 
-# --- NHL LOGO FIXES ---
-NHL_LOGO_MAP = {
-    "SJS": "sj", "NJD": "nj", "TBL": "tb", "LAK": "la", 
-    "VGK": "vgs", "VEG": "vgs", "UTA": "utah"
+# --- LOGO OVERRIDES (Server-Side) ---
+# These overrides ensure the App gets the correct URL
+LOGO_OVERRIDES = {
+    # NHL
+    "SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
+    "NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
+    "TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png",
+    "LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
+    "VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", 
+    "VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png",
+    "WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+    "WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+    "UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+    
+    # NCAA
+    "CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png",
+    "OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
+    "ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
+    "LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
+    "LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
 }
 
 # ================= DEFAULT STATE =================
@@ -148,6 +164,11 @@ class SportsFetcher:
                                     t_abbr = item['team'].get('abbreviation', 'unk')
                                     logos = item['team'].get('logos', [])
                                     t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
+                                    
+                                    # APPLY OVERRIDE
+                                    if t_abbr in LOGO_OVERRIDES:
+                                        t_logo = LOGO_OVERRIDES[t_abbr]
+
                                     team_obj = {'abbr': t_abbr, 'logo': t_logo}
                                     if t_abbr in FBS_TEAMS: teams_catalog['ncf_fbs'].append(team_obj)
                                     elif t_abbr in FCS_TEAMS: teams_catalog['ncf_fcs'].append(team_obj)
@@ -166,12 +187,17 @@ class SportsFetcher:
                 for sport in data['sports']:
                     for league in sport['leagues']:
                         for item in league.get('teams', []):
-                            catalog[league_key].append({
-                                'abbr': item['team'].get('abbreviation', 'unk'), 
-                                'logo': item['team'].get('logos', [{}])[0].get('href', '')
-                            })
+                            abbr = item['team'].get('abbreviation', 'unk')
+                            logo = item['team'].get('logos', [{}])[0].get('href', '')
+                            
+                            # APPLY OVERRIDE
+                            if abbr in LOGO_OVERRIDES:
+                                logo = LOGO_OVERRIDES[abbr]
+                                
+                            catalog[league_key].append({'abbr': abbr, 'logo': logo})
         except: pass
 
+    # ================= NHL NATIVE FETCHING =================
     def _fetch_nhl_native(self, games_list, target_date_str):
         is_nhl_enabled = state['active_sports'].get('nhl', False)
         schedule_url = "https://api-web.nhle.com/v1/schedule/now"
@@ -202,14 +228,28 @@ class SportsFetcher:
         game_type = data.get('gameType', 2)
         is_playoff = (game_type == 3)
 
-        away_code = NHL_LOGO_MAP.get(away_abbr, away_abbr.lower())
-        home_code = NHL_LOGO_MAP.get(home_abbr, home_abbr.lower())
-        
-        if away_abbr.upper() in ['WSH', 'WAS']: away_logo = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
-        else: away_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{away_code}.png"
-            
-        if home_abbr.upper() in ['WSH', 'WAS']: home_logo = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
-        else: home_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{home_code}.png"
+        # Apply Overrides
+        if away_abbr in LOGO_OVERRIDES: away_logo = LOGO_OVERRIDES[away_abbr]
+        else:
+            # Fallback to ESPN map if not in override list
+            # We assume most NHL teams work via ESPN, but we check our overrides first
+            code = away_abbr.lower()
+            if away_abbr == "SJS": code = "sj"
+            elif away_abbr == "NJD": code = "nj"
+            elif away_abbr == "TBL": code = "tb"
+            elif away_abbr == "LAK": code = "la"
+            elif away_abbr in ["VGK","VEG"]: code = "vgs"
+            away_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{code}.png"
+
+        if home_abbr in LOGO_OVERRIDES: home_logo = LOGO_OVERRIDES[home_abbr]
+        else:
+            code = home_abbr.lower()
+            if home_abbr == "SJS": code = "sj"
+            elif home_abbr == "NJD": code = "nj"
+            elif home_abbr == "TBL": code = "tb"
+            elif home_abbr == "LAK": code = "la"
+            elif home_abbr in ["VGK","VEG"]: code = "vgs"
+            home_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{code}.png"
 
         game_state = data.get('gameState', 'OFF') 
         mapped_state = 'in' if game_state in ['LIVE', 'CRIT'] else 'post'
@@ -369,10 +409,13 @@ class SportsFetcher:
                         
                         home_logo_url = home['team'].get('logo', '')
                         away_logo_url = away['team'].get('logo', '')
-                        if league_key == 'nhl':
-                            if home['team']['abbreviation'].upper() in ['WSH', 'WAS']: home_logo_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
-                            if away['team']['abbreviation'].upper() in ['WSH', 'WAS']: away_logo_url = "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png"
-                            
+                        
+                        # OVERRIDE SERVER SIDE
+                        if home['team']['abbreviation'] in LOGO_OVERRIDES:
+                            home_logo_url = LOGO_OVERRIDES[home['team']['abbreviation']]
+                        if away['team']['abbreviation'] in LOGO_OVERRIDES:
+                            away_logo_url = LOGO_OVERRIDES[away['team']['abbreviation']]
+
                         game_obj = {
                             'sport': league_key, 'id': event['id'], 'status': status_display, 'state': status_state,
                             'is_shown': is_shown, 
