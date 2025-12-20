@@ -488,7 +488,27 @@ class SportsFetcher:
                 except: status_disp = "Scheduled"
             else: status_disp = "Scheduled"
         elif clock.get('inIntermission'): status_disp = f"{period_label} INT"
-        else: status_disp = f"{period_label} {time_rem}"
+        else:
+            # SHOOTOUT LOGIC
+            if period > 4 and not is_playoff:
+                so_away = 0
+                so_home = 0
+                # Need IDs for counting
+                away_id_num = data['awayTeam']['id']
+                home_id_num = data['homeTeam']['id']
+                
+                for play in data.get('plays', []):
+                    if play.get("typeDescKey") == "shootout-shot":
+                        if play["details"].get("shotResult") == "Goal":
+                            oid = play["details"].get("eventOwnerTeamId")
+                            if oid == away_id_num:
+                                so_away += 1
+                            elif oid == home_id_num:
+                                so_home += 1
+                # Format: S/O [Away]-[Home] (matching space separator style)
+                status_disp = f"S/O {so_away}-{so_home}"
+            else:
+                status_disp = f"{period_label} {time_rem}"
 
         # --- POWER PLAY & EMPTY NET LOGIC ---
         sit_code = data.get('situation', {}).get('situationCode', '1551')
