@@ -14,7 +14,7 @@ UPDATE_INTERVAL = 15
 data_lock = threading.Lock()
 
 # ==========================================
-# VALID TEAMS LISTS (Embedded)
+# VALID TEAMS LISTS (Embedded for Stability)
 # ==========================================
 FBS_TEAMS = [
     "AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", 
@@ -50,36 +50,63 @@ FCS_TEAMS = [
     "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"
 ]
 
-# --- LOGO OVERRIDES (League-Specific) ---
+# --- COMPREHENSIVE LOGO OVERRIDES ---
+# Format: "LEAGUE:ABBR"
 LOGO_OVERRIDES = {
-    # NHL
-    "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
-    "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
-    "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png",
-    "NHL:LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
-    "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", 
-    "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png",
-    "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+    # === NHL ===
+    # Washington (Eagle)
     "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
     "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
-    
-    # NFL
+    # Utah & Vegas fixes
+    "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+    "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", 
+    "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png",
+
+    # === NFL ===
+    # Washington (Commanders)
     "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
     "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
-    
-    # NBA
+    # Miami (Dolphins)
+    "NFL:MIA": "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png",
+    # Houston (Texans)
+    "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png",
+    # Indiana (Colts)
+    "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png",
+
+    # === NBA ===
+    # Washington (Wizards)
     "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
     "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
+    # Miami (Heat)
     "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png",
-    
-    # NCAA
+    # Houston (Rockets)
+    "NBA:HOU": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png",
+    # Indiana (Pacers)
+    "NBA:IND": "https://a.espncdn.com/i/teamlogos/nba/500/ind.png",
+    # Utah (Jazz)
+    "NBA:UTA": "https://a.espncdn.com/i/teamlogos/nba/500/utah.png",
+
+    # === MLB ===
+    # Washington (Nationals)
+    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
+    "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
+    # Houston (Astros)
+    "MLB:HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png",
+
+    # === NCAA FBS ===
+    # Miami (Hurricanes - The U)
+    "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
+    "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
+    # Houston (Cougars)
+    "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
+    # Indiana (Hoosiers)
+    "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
+    # Other Common Fixes
     "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png",
     "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
     "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
-    "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
-    "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
-    "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
-    "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
+    
+    # === NCAA FCS ===
     "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
     "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
 }
@@ -206,7 +233,9 @@ class SportsFetcher:
             'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100} }
         }
 
+    # LOGO FIXING FUNCTION
     def get_corrected_logo(self, league_key, abbr, default_logo):
+        # Creates a key like "NHL:WSH" or "NCF_FBS:MIA" to look up the specific logo for that sport.
         key = f"{league_key.upper()}:{abbr}"
         return LOGO_OVERRIDES.get(key, default_logo)
 
@@ -230,13 +259,14 @@ class SportsFetcher:
                             logos = item['team'].get('logos', [])
                             t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
                             
-                            # Correct logo if needed
+                            # Determine League Tag for Logo Lookup
                             league_tag = 'ncf_fbs' if t_abbr in FBS_TEAMS else 'ncf_fcs'
+                            # Apply League-Specific Logo Fix
                             t_logo = self.get_corrected_logo(league_tag, t_abbr, t_logo)
 
                             team_obj = {'abbr': t_abbr, 'logo': t_logo}
                             
-                            # STRICT SORTING
+                            # STRICT SORTING into Catalog
                             if t_abbr in FBS_TEAMS:
                                 if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']):
                                     teams_catalog['ncf_fbs'].append(team_obj)
@@ -259,6 +289,7 @@ class SportsFetcher:
                         for item in league.get('teams', []):
                             abbr = item['team'].get('abbreviation', 'unk')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
+                            # Apply League-Specific Logo Fix
                             logo = self.get_corrected_logo(league_key, abbr, logo)
                             catalog[league_key].append({'abbr': abbr, 'logo': logo})
         except: pass
@@ -282,7 +313,7 @@ class SportsFetcher:
             h_ab = d['homeTeam']['abbrev']; a_ab = d['awayTeam']['abbrev']
             h_sc = str(d['homeTeam'].get('score', 0)); a_sc = str(d['awayTeam'].get('score', 0))
             
-            # Logos
+            # NHL Native Logo Fixes (Hardcoded 'nhl' key)
             h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
             a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
 
@@ -375,7 +406,7 @@ class SportsFetcher:
                     comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
                     h_ab = h['team']['abbreviation']; a_ab = a['team']['abbreviation']
 
-                    # COLLEGE FILTER
+                    # COLLEGE FILTER (Strict List Check)
                     if league_key == 'ncf_fbs':
                         if h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
                     elif league_key == 'ncf_fcs':
@@ -389,6 +420,7 @@ class SportsFetcher:
                         if (hk not in conf['my_teams'] and h_ab not in conf['my_teams']) and \
                            (ak not in conf['my_teams'] and a_ab not in conf['my_teams']): is_shown = False
 
+                    # ESPN API Logo Fixes (Using current league_key)
                     h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
                     a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
 
@@ -417,7 +449,12 @@ fetcher = SportsFetcher(state['weather_location'])
 
 def background_updater():
     fetcher.fetch_all_teams()
-    while True: fetcher.get_real_games(); time.sleep(UPDATE_INTERVAL)
+    while True:
+        fetcher.get_real_games()
+        time.sleep(UPDATE_INTERVAL)
+        with data_lock:
+            if state.get('test_pattern') and time.time() - state.get('test_pattern_ts', 0) > 60:
+                state['test_pattern'] = False
 
 # ================= FLASK API =================
 app = Flask(__name__)
