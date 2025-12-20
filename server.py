@@ -15,12 +15,6 @@ UPDATE_INTERVAL = 15
 # Thread Lock for safety
 data_lock = threading.Lock()
 
-try:
-    from valid_teams import FBS_TEAMS, FCS_TEAMS
-except ImportError:
-    FBS_TEAMS = []
-    FCS_TEAMS = []
-
 # --- LOGO OVERRIDES (Server-Side) ---
 # Maps tricky acronyms to their correct image URLs
 LOGO_OVERRIDES = {
@@ -202,8 +196,8 @@ class SportsFetcher:
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
-            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'limit': 1000} },
-            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81', 'limit': 100}, 'team_params': {'limit': 1000} },
+            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'groups': '80', 'limit': 1000} },
+            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81', 'limit': 100}, 'team_params': {'groups': '81', 'limit': 1000} },
             'mlb': { 'path': 'baseball/mlb', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100} }
@@ -213,30 +207,43 @@ class SportsFetcher:
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
+            
+            # 1. Fetch Standard Leagues (NFL, MLB, NHL, NBA)
             for league_key in ['nfl', 'mlb', 'nhl', 'nba']:
                 self._fetch_simple_league(league_key, teams_catalog)
 
+            # 2. Fetch College Football (Split by Groups)
+            # Group 80 = FBS, Group 81 = FCS
+            college_splits = [
+                {'id': '80', 'key': 'ncf_fbs'},
+                {'id': '81', 'key': 'ncf_fcs'}
+            ]
+            
             url = f"{self.base_url}football/college-football/teams"
-            try:
-                r = requests.get(url, params={'limit': 1000}, timeout=10)
-                data = r.json()
-                if 'sports' in data:
-                    for sport in data['sports']:
-                        for league in sport['leagues']:
-                            for item in league.get('teams', []):
-                                try:
-                                    t_abbr = item['team'].get('abbreviation', 'unk')
-                                    logos = item['team'].get('logos', [])
-                                    t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
-                                    
-                                    if t_abbr in LOGO_OVERRIDES:
-                                        t_logo = LOGO_OVERRIDES[t_abbr]
+            
+            for split in college_splits:
+                try:
+                    # Request specific group from API to ensure correct sorting
+                    r = requests.get(url, params={'groups': split['id'], 'limit': 1000}, timeout=10)
+                    data = r.json()
+                    if 'sports' in data:
+                        for sport in data['sports']:
+                            for league in sport['leagues']:
+                                for item in league.get('teams', []):
+                                    try:
+                                        t_abbr = item['team'].get('abbreviation', 'unk')
+                                        logos = item['team'].get('logos', [])
+                                        t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
+                                        
+                                        if t_abbr in LOGO_OVERRIDES:
+                                            t_logo = LOGO_OVERRIDES[t_abbr]
 
-                                    team_obj = {'abbr': t_abbr, 'logo': t_logo}
-                                    if t_abbr in FBS_TEAMS: teams_catalog['ncf_fbs'].append(team_obj)
-                                    elif t_abbr in FCS_TEAMS: teams_catalog['ncf_fcs'].append(team_obj)
-                                except: continue
-            except: pass
+                                        team_obj = {'abbr': t_abbr, 'logo': t_logo}
+                                        teams_catalog[split['key']].append(team_obj)
+                                    except: continue
+                except Exception as e:
+                    print(f"Error fetching college group {split['id']}: {e}")
+
             with data_lock:
                 state['all_teams_data'] = teams_catalog
         except Exception as e: print(e)
