@@ -19,7 +19,6 @@ except ImportError:
     FCS_TEAMS = []
 
 # --- LOGO OVERRIDES (Server-Side) ---
-# Crucial for the iOS App to display correct logos
 LOGO_OVERRIDES = {
     # NHL Fixes
     "SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
@@ -37,7 +36,11 @@ LOGO_OVERRIDES = {
     "OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
     "ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
     "LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
-    "LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
+    "LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png",
+    "IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",    # Indiana
+    "HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",   # Houston
+    "MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",  # Miami (FL)
+    "MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png" # Safety for Miami
 }
 
 # ================= DEFAULT STATE =================
@@ -106,11 +109,9 @@ class WeatherFetcher:
         return "cloud"
 
     def get_weather(self):
-        # Refresh every 15 mins to respect API limits
         if time.time() - self.last_fetch < 900 and self.cache: return self.cache
         
         try:
-            # Fetch Current + Daily Forecast + UV
             url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto"
             r = requests.get(url, timeout=5)
             data = r.json()
@@ -118,25 +119,22 @@ class WeatherFetcher:
             curr = data.get('current', {})
             daily = data.get('daily', {})
             
-            # Current
             cur_temp = int(curr.get('temperature_2m', 0))
             cur_code = curr.get('weather_code', 0)
             is_day = curr.get('is_day', 1)
             cur_icon = self.get_icon(cur_code, is_day)
             
-            # Today's High/Low/UV (Index 0 is today)
             high = int(daily['temperature_2m_max'][0])
             low = int(daily['temperature_2m_min'][0])
             uv = float(daily['uv_index_max'][0])
             
-            # Forecast (Next 3 Days)
             forecast = []
             days = daily.get('time', [])
             codes = daily.get('weather_code', [])
             maxs = daily.get('temperature_2m_max', [])
             mins = daily.get('temperature_2m_min', [])
             
-            for i in range(1, 4): # Days 1, 2, 3
+            for i in range(1, 4):
                 if i < len(days):
                     dt_obj = dt.strptime(days[i], "%Y-%m-%d")
                     day_name = dt_obj.strftime("%a").upper()
@@ -234,7 +232,6 @@ class SportsFetcher:
                             catalog[league_key].append({'abbr': abbr, 'logo': logo})
         except: pass
 
-    # ================= NHL NATIVE FETCHING =================
     def _fetch_nhl_native(self, games_list, target_date_str):
         is_nhl_enabled = state['active_sports'].get('nhl', False)
         schedule_url = "https://api-web.nhle.com/v1/schedule/now"
@@ -265,7 +262,6 @@ class SportsFetcher:
         game_type = data.get('gameType', 2)
         is_playoff = (game_type == 3)
 
-        # Apply Overrides
         if away_abbr in LOGO_OVERRIDES: away_logo = LOGO_OVERRIDES[away_abbr]
         else:
             code = away_abbr.lower()
@@ -445,7 +441,6 @@ class SportsFetcher:
                         home_logo_url = home['team'].get('logo', '')
                         away_logo_url = away['team'].get('logo', '')
                         
-                        # OVERRIDE SERVER SIDE
                         if home['team']['abbreviation'] in LOGO_OVERRIDES:
                             home_logo_url = LOGO_OVERRIDES[home['team']['abbreviation']]
                         if away['team']['abbreviation'] in LOGO_OVERRIDES:
