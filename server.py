@@ -3,7 +3,7 @@ import threading
 import json
 import os
 import subprocess 
-import re # Added for Zip Code detection
+import re
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from flask import Flask, jsonify, request
@@ -16,43 +16,50 @@ UPDATE_INTERVAL = 15
 # Thread Lock for safety
 data_lock = threading.Lock()
 
-try:
-    from valid_teams import FBS_TEAMS, FCS_TEAMS
-except ImportError:
-    FBS_TEAMS = []
-    FCS_TEAMS = []
-
-# --- LOGO OVERRIDES (Server-Side) ---
+# --- LOGO OVERRIDES (League-Specific) ---
+# Format: "LEAGUE:ABBR": "URL"
+# This prevents Washington (NHL) from overriding Washington (NFL)
 LOGO_OVERRIDES = {
-    # NHL Fixes
-    "SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
-    "SJ":  "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
-    "NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
-    "NJ":  "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
-    "TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png",
-    "TB":  "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png",
-    "LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
-    "LA":  "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
-    "VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", 
-    "VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png",
-    "VGS": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png",
-    "UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
-    "UT":  "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+    # --- NHL FIXES ---
+    "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
+    "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
+    "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png",
+    "NHL:LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
+    "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", 
+    "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png",
+    "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
     
-    # Washington Fixes
-    "WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
-    "WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+    # Washington Capitals (Specific Eagle/Secondary Logo)
+    "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+    "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
     
-    # NCAA Fixes
-    "CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png",
-    "OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
-    "ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
-    "LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
-    "LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png",
-    "IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
-    "HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
-    "MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
-    "MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png"
+    # --- NFL FIXES ---
+    "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", # Commanders
+    "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
+    
+    # --- MLB FIXES ---
+    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", # Nationals
+    "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
+    
+    # --- NBA FIXES ---
+    "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png", # Wizards
+    "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
+    "NBA:UTA": "https://a.espncdn.com/i/teamlogos/nba/500/utah.png",
+    "NBA:NOP": "https://a.espncdn.com/i/teamlogos/nba/500/no.png",
+    
+    # --- NCAA FIXES ---
+    # Note: NCAA codes often vary, so we map the common 3-letter codes
+    "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png",
+    "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
+    "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
+    "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
+    "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
+    "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
+    "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
+    
+    # Lower divisions (FCS)
+    "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
+    "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
 }
 
 # ================= DEFAULT STATE =================
@@ -115,11 +122,9 @@ class WeatherFetcher:
         self.cache = None
 
     def update_coords(self, location_query):
-        # 1. Check if input is a 5-digit US Zip Code
         clean_query = str(location_query).strip()
         if re.fullmatch(r'\d{5}', clean_query):
             try:
-                # Use Zippopotam.us for reliable Zip -> City/Lat/Lon
                 zip_url = f"https://api.zippopotam.us/us/{clean_query}"
                 r = requests.get(zip_url, timeout=5)
                 if r.status_code == 200:
@@ -127,15 +132,11 @@ class WeatherFetcher:
                     place = data['places'][0]
                     self.lat = float(place['latitude'])
                     self.lon = float(place['longitude'])
-                    # Set location name to the actual City Name
                     self.location_name = place['place name']
-                    self.last_fetch = 0 # Force refresh
+                    self.last_fetch = 0
                     return
-            except Exception as e:
-                print(f"Zip Lookup Failed: {e}")
-                # Fallthrough to standard search if zip lookup fails
+            except: pass
         
-        # 2. Standard City Search
         try:
             url = f"https://geocoding-api.open-meteo.com/v1/search?name={location_query}&count=1&language=en&format=json"
             r = requests.get(url, timeout=5)
@@ -231,6 +232,13 @@ class SportsFetcher:
         }
         self.last_weather_loc = ""
 
+    def get_corrected_logo(self, league_key, abbr, default_logo):
+        # Format the key like "NHL:WSH" or "NCF_FBS:OSU"
+        key = f"{league_key.upper()}:{abbr}"
+        if key in LOGO_OVERRIDES:
+            return LOGO_OVERRIDES[key]
+        return default_logo
+
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
@@ -250,12 +258,12 @@ class SportsFetcher:
                                     logos = item['team'].get('logos', [])
                                     t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
                                     
-                                    if t_abbr in LOGO_OVERRIDES:
-                                        t_logo = LOGO_OVERRIDES[t_abbr]
+                                    # Override
+                                    t_logo = self.get_corrected_logo('ncf_fbs', t_abbr, t_logo)
 
                                     team_obj = {'abbr': t_abbr, 'logo': t_logo}
-                                    if t_abbr in FBS_TEAMS: teams_catalog['ncf_fbs'].append(team_obj)
-                                    elif t_abbr in FCS_TEAMS: teams_catalog['ncf_fcs'].append(team_obj)
+                                    # Basic heuristic for FBS/FCS if not known
+                                    teams_catalog['ncf_fbs'].append(team_obj) 
                                 except: continue
             except: pass
             with data_lock:
@@ -274,7 +282,7 @@ class SportsFetcher:
                         for item in league.get('teams', []):
                             abbr = item['team'].get('abbreviation', 'unk')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
-                            if abbr in LOGO_OVERRIDES: logo = LOGO_OVERRIDES[abbr]
+                            logo = self.get_corrected_logo(league_key, abbr, logo)
                             catalog[league_key].append({'abbr': abbr, 'logo': logo})
         except: pass
 
@@ -306,15 +314,12 @@ class SportsFetcher:
         home_abbr = data['homeTeam']['abbrev']
         away_score = str(data['awayTeam'].get('score', 0))
         home_score = str(data['homeTeam'].get('score', 0))
-        
         game_type = data.get('gameType', 2)
         is_playoff = (game_type == 3)
 
-        if away_abbr in LOGO_OVERRIDES: away_logo = LOGO_OVERRIDES[away_abbr]
-        else: away_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{away_abbr.lower()}.png"
-
-        if home_abbr in LOGO_OVERRIDES: home_logo = LOGO_OVERRIDES[home_abbr]
-        else: home_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{home_abbr.lower()}.png"
+        # NHL Specific Overrides
+        away_logo = self.get_corrected_logo('nhl', away_abbr, f"https://a.espncdn.com/i/teamlogos/nhl/500/{away_abbr.lower()}.png")
+        home_logo = self.get_corrected_logo('nhl', home_abbr, f"https://a.espncdn.com/i/teamlogos/nhl/500/{home_abbr.lower()}.png")
 
         game_state = data.get('gameState', 'OFF') 
         mapped_state = 'in' if game_state in ['LIVE', 'CRIT'] else 'post'
@@ -328,11 +333,11 @@ class SportsFetcher:
         if is_shown:
             if mode == 'live' and mapped_state != 'in': is_shown = False
             if mode == 'my_teams':
-                # Strict check
+                # STRICT NAMESPACE CHECK: "nhl:SJS" must be in my_teams
                 h_key = f"nhl:{home_abbr}"
                 a_key = f"nhl:{away_abbr}"
-                h_match = (h_key in my_teams) or (home_abbr in my_teams)
-                a_match = (a_key in my_teams) or (away_abbr in my_teams)
+                h_match = (h_key in my_teams)
+                a_match = (a_key in my_teams)
                 if not h_match and not a_match: is_shown = False
 
         clock = data.get('clock', {})
@@ -385,13 +390,11 @@ class SportsFetcher:
         with data_lock:
             local_config = state.copy()
         
-        # --- CLOCK MODE CHECK ---
         if local_config['active_sports'].get('clock', False):
             games.append({'sport': 'clock', 'id': 'clock_widget', 'is_shown': True})
             with data_lock: state['current_games'] = games
             return
 
-        # --- WEATHER MODE CHECK ---
         if local_config['active_sports'].get('weather', False):
             if local_config['weather_location'] != self.last_weather_loc:
                 self.weather.update_coords(local_config['weather_location'])
@@ -402,7 +405,6 @@ class SportsFetcher:
             with data_lock: state['current_games'] = games
             return
         
-        # --- SPORTS MODE ---
         req_params = {}
         if local_config['debug_mode'] and local_config['custom_date']:
             target_date_str = local_config['custom_date']
@@ -469,24 +471,20 @@ class SportsFetcher:
                             if local_config['mode'] == 'live':
                                 if status_state not in ['in', 'half']: is_shown = False
                             elif local_config['mode'] == 'my_teams':
-                                # Construct Namespaced Keys for strict matching
+                                # STRICT NAMESPACED CHECK
                                 h_key = f"{league_key}:{home['team']['abbreviation']}"
                                 a_key = f"{league_key}:{away['team']['abbreviation']}"
                                 my_t = local_config['my_teams']
-                                
-                                # Check Strict ID OR plain Abbr (for backward compat)
-                                h_match = (h_key in my_t) or (home['team']['abbreviation'] in my_t)
-                                a_match = (a_key in my_t) or (away['team']['abbreviation'] in my_t)
-                                
+                                h_match = (h_key in my_t)
+                                a_match = (a_key in my_t)
                                 if not h_match and not a_match: is_shown = False
                         
                         home_logo_url = home['team'].get('logo', '')
                         away_logo_url = away['team'].get('logo', '')
                         
-                        if home['team']['abbreviation'] in LOGO_OVERRIDES:
-                            home_logo_url = LOGO_OVERRIDES[home['team']['abbreviation']]
-                        if away['team']['abbreviation'] in LOGO_OVERRIDES:
-                            away_logo_url = LOGO_OVERRIDES[away['team']['abbreviation']]
+                        # Apply League-Aware Logo Override
+                        home_logo_url = self.get_corrected_logo(league_key, home['team']['abbreviation'], home_logo_url)
+                        away_logo_url = self.get_corrected_logo(league_key, away['team']['abbreviation'], away_logo_url)
 
                         game_obj = {
                             'sport': league_key, 'id': event['id'], 'status': status_display, 'state': status_state,
