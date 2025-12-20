@@ -76,11 +76,10 @@ class WeatherFetcher:
                 self.lat = res['latitude']
                 self.lon = res['longitude']
                 self.location_name = res['name']
-                self.last_fetch = 0 # Force refresh
+                self.last_fetch = 0 
         except: pass
 
     def get_weather(self):
-        # Refresh every 15 mins
         if time.time() - self.last_fetch < 900 and self.cache: return self.cache
         
         try:
@@ -93,7 +92,6 @@ class WeatherFetcher:
             icon = "cloud"
             status_text = "Cloudy"
             
-            # Expanded Mapping
             if code in [0, 1]: icon = "sun" if is_day else "moon"; status_text = "Clear"
             elif code in [2]: icon = "partly_cloudy"; status_text = "Partly Cld"
             elif code in [3]: icon = "cloud"; status_text = "Cloudy"
@@ -106,8 +104,8 @@ class WeatherFetcher:
                 "sport": "weather",
                 "id": "weather_widget",
                 "status": status_text,
-                "home_abbr": f"{int(d.get('temperature_2m', 0))}°", # Temp
-                "away_abbr": self.location_name, # Location Name
+                "home_abbr": f"{int(d.get('temperature_2m', 0))}°", 
+                "away_abbr": self.location_name, 
                 "home_score": "", "away_score": "",
                 "is_shown": True,
                 "home_logo": "", "away_logo": "",
@@ -174,7 +172,6 @@ class SportsFetcher:
                             })
         except: pass
 
-    # ================= NHL NATIVE FETCHING =================
     def _fetch_nhl_native(self, games_list, target_date_str):
         is_nhl_enabled = state['active_sports'].get('nhl', False)
         schedule_url = "https://api-web.nhle.com/v1/schedule/now"
@@ -277,14 +274,12 @@ class SportsFetcher:
             'situation': { 'powerPlay': is_pp, 'possession': possession, 'emptyNet': is_empty_net }
         }
         games_list.append(game_obj)
-    # =======================================================
 
     def get_real_games(self):
         games = []
         
         # --- CLOCK MODE CHECK ---
         if state['active_sports'].get('clock', False):
-            # Pass a dummy object so ticker knows to draw clock
             games.append({'sport': 'clock', 'id': 'clock_widget', 'is_shown': True})
             state['current_games'] = games
             return
