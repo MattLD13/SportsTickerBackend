@@ -17,7 +17,7 @@ UPDATE_INTERVAL = 15
 data_lock = threading.Lock()
 
 # ==========================================
-# FBS ABBREVIATIONS (Updated per user request)
+# FBS ABBREVIATIONS
 # ==========================================
 FBS_TEAMS = [
     "AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", 
@@ -37,7 +37,7 @@ FBS_TEAMS = [
 ]
 
 # ==========================================
-# FCS ABBREVIATIONS (Updated per user request)
+# FCS ABBREVIATIONS
 # ==========================================
 FCS_TEAMS = [
     "ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", 
@@ -56,9 +56,9 @@ FCS_TEAMS = [
     "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"
 ]
 
-# --- LOGO OVERRIDES (League-Specific) ---
+# --- LOGO OVERRIDES ---
 LOGO_OVERRIDES = {
-    # --- NHL ---
+    # NHL
     "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
     "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
     "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png",
@@ -69,23 +69,11 @@ LOGO_OVERRIDES = {
     "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
     "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
     
-    # --- NFL ---
+    # NFL
     "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
     "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
-    "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png",
-    "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png",
     
-    # --- MLB ---
-    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
-    "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
-    
-    # --- NBA ---
-    "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
-    "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
-    "NBA:UTA": "https://a.espncdn.com/i/teamlogos/nba/500/utah.png",
-    "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png",
-    
-    # --- NCAA FBS ---
+    # NCAA
     "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png",
     "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
     "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
@@ -93,8 +81,6 @@ LOGO_OVERRIDES = {
     "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
     "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
     "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
-    
-    # --- NCAA FCS ---
     "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
     "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
 }
@@ -130,6 +116,7 @@ if os.path.exists(CONFIG_FILE):
                         state[k].update(v)
                     else:
                         state[k] = v
+        # Ensure critical flags start False
         state['test_pattern'] = False
         state['reboot_requested'] = False
     except: pass
@@ -211,11 +198,15 @@ class SportsFetcher:
     def __init__(self, initial_loc):
         self.weather = WeatherFetcher(initial_loc)
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
+        
+        # FIXED: FULL LEAGUE DICTIONARY RESTORED
         self.leagues = {
-            'nfl': 'football/nfl',
-            'mlb': 'baseball/mlb',
-            'nhl': 'hockey/nhl',
-            'nba': 'basketball/nba',
+            'nfl': { 'path': 'football/nfl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
+            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'groups': '80', 'limit': 1000} },
+            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81', 'limit': 100}, 'team_params': {'groups': '81', 'limit': 1000} },
+            'mlb': { 'path': 'baseball/mlb', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
+            'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
+            'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100} }
         }
 
     def get_corrected_logo(self, league_key, abbr, default_logo):
@@ -223,44 +214,152 @@ class SportsFetcher:
         return LOGO_OVERRIDES.get(key, default_logo)
 
     def fetch_all_teams(self):
-        teams_catalog = {'nfl':[], 'mlb':[], 'nhl':[], 'nba':[], 'ncf_fbs':[], 'ncf_fcs':[]}
-        
-        # 1. Standard Leagues
-        for lg, path in self.leagues.items():
-            try:
-                r = requests.get(f"{self.base_url}{path}/teams", params={'limit':100}, timeout=5)
-                for item in r.json().get('sports', [{}])[0].get('leagues', [{}])[0].get('teams', []):
-                    t = item['team']; abbr = t.get('abbreviation', 'UNK')
-                    logo = t.get('logos', [{}])[0].get('href', '')
-                    logo = self.get_corrected_logo(lg, abbr, logo)
-                    teams_catalog[lg].append({'abbr': abbr, 'logo': logo})
-            except: pass
+        try:
+            teams_catalog = {k: [] for k in self.leagues.keys()}
+            
+            # 1. Fetch Standard Leagues
+            for lg_key in ['nfl', 'mlb', 'nhl', 'nba']:
+                self._fetch_simple_league(lg_key, teams_catalog)
 
-        # 2. College Football (FBS & FCS) - Dual Fetch
-        cfb_teams_raw = []
-        for grp in ['80', '81']: 
-            try:
-                r = requests.get(f"{self.base_url}football/college-football/teams", params={'limit':1000, 'groups':grp}, timeout=10)
-                for item in r.json().get('sports', [{}])[0].get('leagues', [{}])[0].get('teams', []):
-                    cfb_teams_raw.append(item['team'])
-            except: pass
+            # 2. Fetch College Football (FBS & FCS) and Sort
+            # We fetch all College Football teams, then sort them into buckets
+            cfb_teams_raw = []
+            for grp in ['80', '81']: 
+                try:
+                    r = requests.get(f"{self.base_url}football/college-football/teams", params={'limit':1000, 'groups':grp}, timeout=10)
+                    for item in r.json().get('sports', [{}])[0].get('leagues', [{}])[0].get('teams', []):
+                        cfb_teams_raw.append(item['team'])
+                except: pass
             
-        for t in cfb_teams_raw:
-            abbr = t.get('abbreviation', 'UNK')
-            logo = t.get('logos', [{}])[0].get('href', '')
-            
-            # SORT into buckets based on Lists
-            if abbr in FBS_TEAMS:
-                logo = self.get_corrected_logo('ncf_fbs', abbr, logo)
-                if not any(x['abbr'] == abbr for x in teams_catalog['ncf_fbs']):
-                    teams_catalog['ncf_fbs'].append({'abbr': abbr, 'logo': logo})
-            elif abbr in FCS_TEAMS:
-                logo = self.get_corrected_logo('ncf_fcs', abbr, logo)
-                if not any(x['abbr'] == abbr for x in teams_catalog['ncf_fcs']):
-                    teams_catalog['ncf_fcs'].append({'abbr': abbr, 'logo': logo})
+            # Sort into FBS/FCS buckets
+            for t in cfb_teams_raw:
+                abbr = t.get('abbreviation', 'UNK')
+                logo = t.get('logos', [{}])[0].get('href', '')
+                
+                if abbr in FBS_TEAMS:
+                    logo = self.get_corrected_logo('ncf_fbs', abbr, logo)
+                    # Deduplicate
+                    if not any(x['abbr'] == abbr for x in teams_catalog['ncf_fbs']):
+                        teams_catalog['ncf_fbs'].append({'abbr': abbr, 'logo': logo})
+                elif abbr in FCS_TEAMS:
+                    logo = self.get_corrected_logo('ncf_fcs', abbr, logo)
+                    if not any(x['abbr'] == abbr for x in teams_catalog['ncf_fcs']):
+                        teams_catalog['ncf_fcs'].append({'abbr': abbr, 'logo': logo})
+
+            with data_lock:
+                state['all_teams_data'] = teams_catalog
+        except Exception as e: 
+            print(f"Catalog Error: {e}")
+
+    def _fetch_simple_league(self, league_key, catalog):
+        config = self.leagues[league_key]
+        url = f"{self.base_url}{config['path']}/teams"
+        try:
+            r = requests.get(url, params=config['team_params'], timeout=10)
+            data = r.json()
+            if 'sports' in data:
+                for sport in data['sports']:
+                    for league in sport['leagues']:
+                        for item in league.get('teams', []):
+                            abbr = item['team'].get('abbreviation', 'unk')
+                            logo = item['team'].get('logos', [{}])[0].get('href', '')
+                            logo = self.get_corrected_logo(league_key, abbr, logo)
+                            catalog[league_key].append({'abbr': abbr, 'logo': logo})
+        except: pass
+
+    def _fetch_nhl_native(self, games_list, target_date_str):
+        with data_lock:
+            is_nhl_enabled = state['active_sports'].get('nhl', False)
+        
+        schedule_url = "https://api-web.nhle.com/v1/schedule/now"
+        try:
+            response = requests.get(schedule_url, timeout=5)
+            if response.status_code != 200: return
+            schedule_data = response.json()
+        except: return
+
+        for date_entry in schedule_data.get('gameWeek', []):
+            if date_entry.get('date') != target_date_str: continue 
+            for game in date_entry.get('games', []):
+                self._process_single_nhl_game(game['id'], games_list, is_nhl_enabled)
+
+    def _process_single_nhl_game(self, game_id, games_list, is_enabled):
+        pbp_url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
+        try:
+            r = requests.get(pbp_url, timeout=3)
+            if r.status_code != 200: return
+            data = r.json()
+        except: return
+
+        away_abbr = data['awayTeam']['abbrev']
+        home_abbr = data['homeTeam']['abbrev']
+        away_score = str(data['awayTeam'].get('score', 0))
+        home_score = str(data['homeTeam'].get('score', 0))
+        game_type = data.get('gameType', 2)
+        is_playoff = (game_type == 3)
+
+        away_logo = self.get_corrected_logo('nhl', away_abbr, f"https://a.espncdn.com/i/teamlogos/nhl/500/{away_abbr.lower()}.png")
+        home_logo = self.get_corrected_logo('nhl', home_abbr, f"https://a.espncdn.com/i/teamlogos/nhl/500/{home_abbr.lower()}.png")
+
+        game_state = data.get('gameState', 'OFF') 
+        mapped_state = 'in' if game_state in ['LIVE', 'CRIT'] else 'post'
+        if game_state in ['PRE', 'FUT']: mapped_state = 'pre'
 
         with data_lock:
-            state['all_teams_data'] = teams_catalog
+            mode = state['mode']
+            my_teams = state['my_teams']
+        
+        is_shown = is_enabled
+        if is_shown:
+            if mode == 'live' and mapped_state != 'in': is_shown = False
+            if mode == 'my_teams':
+                h_key = f"nhl:{home_abbr}"; a_key = f"nhl:{away_abbr}"
+                h_match = (h_key in my_teams); a_match = (a_key in my_teams)
+                if not h_match and not a_match: is_shown = False
+
+        clock = data.get('clock', {})
+        time_rem = clock.get('timeRemaining', '00:00')
+        period = data.get('periodDescriptor', {}).get('number', 1)
+        
+        period_label = f"P{period}"
+        if period == 4: period_label = "OT"
+        elif period > 4: period_label = "2OT" if is_playoff else "S/O"
+        
+        if game_state == 'FINAL' or game_state == 'OFF': status_disp = "FINAL"
+        elif game_state in ['PRE', 'FUT']: 
+            raw_time = data.get('startTimeUTC', '')
+            if raw_time:
+                try:
+                    utc_dt = dt.strptime(raw_time, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                    local_dt = utc_dt + timedelta(hours=TIMEZONE_OFFSET)
+                    status_disp = local_dt.strftime("%I:%M %p").lstrip('0') 
+                except: status_disp = "Scheduled"
+            else: status_disp = "Scheduled"
+        elif clock.get('inIntermission'): status_disp = f"{period_label} INT"
+        else:
+            if period > 4 and not is_playoff: status_disp = "S/O"
+            else: status_disp = f"{period_label} {time_rem}"
+
+        sit_code = data.get('situation', {}).get('situationCode', '1551')
+        try:
+            away_goalie = int(sit_code[0]); away_skaters = int(sit_code[1])
+            home_skaters = int(sit_code[2]); home_goalie = int(sit_code[3])
+        except: away_goalie, away_skaters, home_skaters, home_goalie = 1, 5, 5, 1
+
+        is_pp = False; possession = ""; is_empty_net = False
+        if away_skaters > home_skaters: is_pp = True; possession = away_abbr 
+        elif home_skaters > away_skaters: is_pp = True; possession = home_abbr
+        if away_goalie == 0 or home_goalie == 0: is_empty_net = True
+
+        game_obj = {
+            'sport': 'nhl', 'id': str(game_id), 'status': status_disp, 'state': mapped_state,
+            'is_shown': is_shown, 'is_playoff': is_playoff,
+            'home_abbr': home_abbr, 'home_score': home_score, 'home_logo': home_logo, 'home_id': home_abbr, 
+            'away_abbr': away_abbr, 'away_score': away_score, 'away_logo': away_logo, 'away_id': away_abbr,
+            'period': period, 
+            'situation': { 'powerPlay': is_pp, 'possession': possession, 'emptyNet': is_empty_net }
+        }
+        games_list.append(game_obj)
 
     def get_real_games(self):
         games = []
@@ -276,17 +375,17 @@ class SportsFetcher:
 
         target_date = conf['custom_date'] if (conf['debug_mode'] and conf['custom_date']) else dt.now(timezone(timedelta(hours=TIMEZONE_OFFSET))).strftime("%Y-%m-%d")
         
-        for league_key in ['nfl', 'ncf_fbs', 'ncf_fcs', 'mlb', 'nhl', 'nba']:
+        for league_key in self.leagues.keys():
             if not conf['active_sports'].get(league_key): continue
             
-            path = self.leagues.get(league_key)
-            if league_key.startswith('ncf'): path = 'football/college-football'
-            
-            params = {'dates': target_date.replace('-','')} if conf['debug_mode'] else {}
-            if league_key == 'ncf_fbs': params['groups'] = '80'
-            elif league_key == 'ncf_fcs': params['groups'] = '81'
+            # Path Logic
+            config = self.leagues[league_key]
+            path = config['path']
+            params = config['scoreboard_params'].copy()
+            if conf['debug_mode']: params['dates'] = target_date.replace('-','')
             
             try:
+                # NHL Native
                 if league_key == 'nhl' and not conf['debug_mode']:
                     self._fetch_nhl_native(games, target_date)
                     continue
@@ -297,6 +396,7 @@ class SportsFetcher:
                 for e in data.get('events', []):
                     status = e.get('status', {}); type_s = status.get('type', {})
                     state_game = type_s.get('state', 'pre')
+                    
                     if conf['mode'] == 'live' and state_game not in ['in','half']: continue
                     
                     h = e['competitions'][0]['competitors'][0]; a = e['competitions'][0]['competitors'][1]
@@ -304,7 +404,9 @@ class SportsFetcher:
                     
                     if conf['mode'] == 'my_teams':
                         h_id = f"{league_key}:{h_ab}"; a_id = f"{league_key}:{a_ab}"
-                        if (h_id not in conf['my_teams']) and (a_id not in conf['my_teams']): continue
+                        h_match = (h_id in conf['my_teams'])
+                        a_match = (a_id in conf['my_teams'])
+                        if not h_match and not a_match: continue
                     
                     h_logo = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo', ''))
                     a_logo = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo', ''))
@@ -325,10 +427,6 @@ class SportsFetcher:
             except: pass
             
         with data_lock: state['current_games'] = games
-
-    def _fetch_nhl_native(self, games_list, target_date):
-        # Keeps previous NHL logic... omitted for brevity but assumed present
-        pass 
 
 fetcher = SportsFetcher(state['weather_location'])
 
