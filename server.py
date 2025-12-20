@@ -339,11 +339,16 @@ class SportsFetcher:
             clk = d.get('clock', {})
             time_rem = clk.get('timeRemaining', '00:00')
             is_intermission = clk.get('inIntermission', False)
+            period_type = pd.get('periodType', '')
 
             if st in ['PRE','FUT']: disp = "Scheduled"
             elif st in ['FINAL','OFF']: disp = "FINAL"
+            
+            # === UPDATED SHOOTOUT LOGIC ===
+            elif period_type == 'SHOOTOUT':
+                disp = "S/O"
+
             elif is_intermission or time_rem == "00:00":
-                # === NHL INTERMISSION FIX ===
                 p_num = pd.get('number', 1)
                 if p_num == 1: disp = "End 1st"
                 elif p_num == 2: disp = "End 2nd"
@@ -459,14 +464,21 @@ class SportsFetcher:
                     sit = comp.get('situation', {})
                     
                     # === FIXED POSSESSION LOGIC ===
+                    # 1. Update cache if API sends valid possession
                     curr_poss = sit.get('possession')
-                    if curr_poss and not is_halftime:
+                    if curr_poss:
                         self.possession_cache[e['id']] = curr_poss
-                    elif gst == 'in' and not is_halftime: 
-                        curr_poss = self.possession_cache.get(e['id'], '')
+                    
+                    # 2. Decide what to display
+                    if gst == 'pre':
+                         curr_poss = '' # No arrow before game
+                    elif is_halftime or gst in ['post', 'final']:
+                         curr_poss = '' # Clear at Halftime/Final
+                         self.possession_cache[e['id']] = '' # Wipe cache
                     else:
-                        self.possession_cache[e['id']] = ''
-                        curr_poss = '' 
+                         # During live game, if API sends null, USE CACHE
+                         if not curr_poss:
+                             curr_poss = self.possession_cache.get(e['id'], '')
                     
                     down_text = sit.get('downDistanceText', '')
                     if is_halftime: down_text = ''
@@ -549,4 +561,3 @@ def api_hardware():
 if __name__ == "__main__":
     threading.Thread(target=background_updater, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
-
