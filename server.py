@@ -215,7 +215,7 @@ class SportsFetcher:
     def __init__(self, initial_loc):
         self.weather = WeatherFetcher(initial_loc)
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
-        self.possession_cache = {}  # <--- NEW: Stores last known possession by game ID
+        self.possession_cache = {}  # Stores last known possession by game ID
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'groups': '80', 'limit': 1000} },
@@ -418,26 +418,36 @@ class SportsFetcher:
                     a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
 
                     s_disp = tp.get('shortDetail', 'TBD')
+                    
+                    # === STATUS TEXT LOGIC ===
+                    is_halftime = False
                     if gst == 'pre':
                         try: s_disp = (dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc) + timedelta(hours=TIMEZONE_OFFSET)).strftime("%I:%M %p").lstrip('0')
                         except: pass
-                    elif gst == 'in':
+                    elif gst == 'in' or gst == 'half':
                         p = st.get('period', 1); clk = st.get('displayClock', '')
-                        s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
+                        
+                        # Detect Halftime explicitly (catch Q2 0:00 or 'half' state)
+                        if gst == 'half' or (p == 2 and clk == '0:00'):
+                            s_disp = "Halftime"
+                            is_halftime = True
+                        else:
+                            s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
                     else:
                         s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
 
                     sit = comp.get('situation', {})
                     
                     # === FIXED POSSESSION LOGIC ===
-                    # If API has possession, update cache. If null, use cache.
                     curr_poss = sit.get('possession')
-                    if curr_poss:
+                    if curr_poss and not is_halftime:
                         self.possession_cache[e['id']] = curr_poss
-                    elif gst == 'in': # Only stick during live game
+                    elif gst == 'in' and not is_halftime: # Only stick during live game (NOT Halftime)
                         curr_poss = self.possession_cache.get(e['id'], '')
                     else:
-                        curr_poss = '' # Clear if Final/Pre
+                        # Clear possession cache at Halftime/Final so it doesn't get stuck
+                        self.possession_cache[e['id']] = ''
+                        curr_poss = '' 
                     
                     game_obj = {
                         'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
