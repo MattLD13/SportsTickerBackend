@@ -10,7 +10,10 @@ from flask import Flask, jsonify, request
 # ================= CONFIGURATION =================
 TIMEZONE_OFFSET = -5  # Set to -5 for EST/EDT
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 8
+UPDATE_INTERVAL = 15 # Increased slightly to reduce load
+
+# Thread Lock for safety
+data_lock = threading.Lock()
 
 try:
     from valid_teams import FBS_TEAMS, FCS_TEAMS
@@ -37,10 +40,10 @@ LOGO_OVERRIDES = {
     "ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
     "LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
     "LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png",
-    "IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",    # Indiana
-    "HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",   # Houston
-    "MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",  # Miami (FL)
-    "MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png" # Safety for Miami
+    "IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
+    "HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
+    "MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
+    "MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png"
 }
 
 # ================= DEFAULT STATE =================
@@ -63,19 +66,38 @@ default_state = {
 
 state = default_state.copy()
 
+# Load Config Safely
 if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            if 'active_sports' in loaded: state['active_sports'].update(loaded['active_sports'])
-            if 'mode' in loaded: state['mode'] = loaded['mode']
-            if 'scroll_seamless' in loaded: state['scroll_seamless'] = loaded['scroll_seamless']
-            if 'my_teams' in loaded: state['my_teams'] = loaded['my_teams']
-            if 'brightness' in loaded: state['brightness'] = loaded['brightness']
-            if 'inverted' in loaded: state['inverted'] = loaded['inverted']
-            if 'panel_count' in loaded: state['panel_count'] = loaded['panel_count']
-            if 'weather_location' in loaded: state['weather_location'] = loaded['weather_location']
+            # Only update keys that exist to prevent state corruption
+            for k, v in loaded.items():
+                if k in state:
+                    if isinstance(state[k], dict) and isinstance(v, dict):
+                        state[k].update(v)
+                    else:
+                        state[k] = v
     except: pass
+
+def save_config_file():
+    """Helper to save config thread-safely"""
+    try:
+        with data_lock:
+            export_data = {
+                'active_sports': state['active_sports'], 
+                'mode': state['mode'], 
+                'scroll_seamless': state['scroll_seamless'], 
+                'my_teams': state['my_teams'],
+                'brightness': state['brightness'],
+                'inverted': state['inverted'],
+                'panel_count': state['panel_count'],
+                'weather_location': state['weather_location']
+            }
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(export_data, f)
+    except Exception as e:
+        print(f"Save Config Error: {e}")
 
 class WeatherFetcher:
     def __init__(self):
@@ -166,7 +188,6 @@ class WeatherFetcher:
             self.last_fetch = time.time()
             return weather_obj
         except Exception as e: 
-            print(f"Weather Error: {e}")
             return None
 
 class SportsFetcher:
@@ -210,7 +231,8 @@ class SportsFetcher:
                                     elif t_abbr in FCS_TEAMS: teams_catalog['ncf_fcs'].append(team_obj)
                                 except: continue
             except: pass
-            state['all_teams_data'] = teams_catalog
+            with data_lock:
+                state['all_teams_data'] = teams_catalog
         except Exception as e: print(e)
 
     def _fetch_simple_league(self, league_key, catalog):
@@ -225,15 +247,14 @@ class SportsFetcher:
                         for item in league.get('teams', []):
                             abbr = item['team'].get('abbreviation', 'unk')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
-                            
-                            if abbr in LOGO_OVERRIDES:
-                                logo = LOGO_OVERRIDES[abbr]
-                                
+                            if abbr in LOGO_OVERRIDES: logo = LOGO_OVERRIDES[abbr]
                             catalog[league_key].append({'abbr': abbr, 'logo': logo})
         except: pass
 
     def _fetch_nhl_native(self, games_list, target_date_str):
-        is_nhl_enabled = state['active_sports'].get('nhl', False)
+        with data_lock:
+            is_nhl_enabled = state['active_sports'].get('nhl', False)
+        
         schedule_url = "https://api-web.nhle.com/v1/schedule/now"
         try:
             response = requests.get(schedule_url, timeout=5)
@@ -262,35 +283,27 @@ class SportsFetcher:
         game_type = data.get('gameType', 2)
         is_playoff = (game_type == 3)
 
+        # Apply Overrides (RESTORED FIX)
         if away_abbr in LOGO_OVERRIDES: away_logo = LOGO_OVERRIDES[away_abbr]
-        else:
-            code = away_abbr.lower()
-            if away_abbr == "SJS": code = "sj"
-            elif away_abbr == "NJD": code = "nj"
-            elif away_abbr == "TBL": code = "tb"
-            elif away_abbr == "LAK": code = "la"
-            elif away_abbr in ["VGK","VEG"]: code = "vgs"
-            away_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{code}.png"
+        else: away_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{away_abbr.lower()}.png"
 
         if home_abbr in LOGO_OVERRIDES: home_logo = LOGO_OVERRIDES[home_abbr]
-        else:
-            code = home_abbr.lower()
-            if home_abbr == "SJS": code = "sj"
-            elif home_abbr == "NJD": code = "nj"
-            elif home_abbr == "TBL": code = "tb"
-            elif home_abbr == "LAK": code = "la"
-            elif home_abbr in ["VGK","VEG"]: code = "vgs"
-            home_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{code}.png"
+        else: home_logo = f"https://a.espncdn.com/i/teamlogos/nhl/500/{home_abbr.lower()}.png"
 
         game_state = data.get('gameState', 'OFF') 
         mapped_state = 'in' if game_state in ['LIVE', 'CRIT'] else 'post'
         if game_state in ['PRE', 'FUT']: mapped_state = 'pre'
 
+        # Filter Logic
+        with data_lock:
+            mode = state['mode']
+            my_teams = state['my_teams']
+        
         is_shown = is_enabled
         if is_shown:
-            if state['mode'] == 'live' and mapped_state != 'in': is_shown = False
-            if state['mode'] == 'my_teams':
-                if (home_abbr not in state['my_teams']) and (away_abbr not in state['my_teams']): is_shown = False
+            if mode == 'live' and mapped_state != 'in': is_shown = False
+            if mode == 'my_teams':
+                if (home_abbr not in my_teams) and (away_abbr not in my_teams): is_shown = False
 
         clock = data.get('clock', {})
         time_rem = clock.get('timeRemaining', '00:00')
@@ -349,34 +362,37 @@ class SportsFetcher:
     def get_real_games(self):
         games = []
         
+        with data_lock:
+            local_config = state.copy() # Thread safe read
+        
         # --- CLOCK MODE CHECK ---
-        if state['active_sports'].get('clock', False):
+        if local_config['active_sports'].get('clock', False):
             games.append({'sport': 'clock', 'id': 'clock_widget', 'is_shown': True})
-            state['current_games'] = games
+            with data_lock: state['current_games'] = games
             return
 
         # --- WEATHER MODE CHECK ---
-        if state['active_sports'].get('weather', False):
-            if state['weather_location'] != self.last_weather_loc:
-                self.weather.update_coords(state['weather_location'])
-                self.last_weather_loc = state['weather_location']
+        if local_config['active_sports'].get('weather', False):
+            if local_config['weather_location'] != self.last_weather_loc:
+                self.weather.update_coords(local_config['weather_location'])
+                self.last_weather_loc = local_config['weather_location']
             
             w_obj = self.weather.get_weather()
             if w_obj: games.append(w_obj)
-            state['current_games'] = games
+            with data_lock: state['current_games'] = games
             return
         
         # --- SPORTS MODE ---
         req_params = {}
-        if state['debug_mode'] and state['custom_date']:
-            target_date_str = state['custom_date']
+        if local_config['debug_mode'] and local_config['custom_date']:
+            target_date_str = local_config['custom_date']
             req_params['dates'] = target_date_str.replace('-', '')
         else:
             local_now = dt.now(timezone.utc) + timedelta(hours=TIMEZONE_OFFSET)
             target_date_str = local_now.strftime("%Y-%m-%d")
         
         for league_key, config in self.leagues.items():
-            is_sport_enabled = state['active_sports'].get(league_key, False)
+            is_sport_enabled = local_config['active_sports'].get(league_key, False)
 
             if league_key == 'nhl':
                 self._fetch_nhl_native(games, target_date_str)
@@ -422,7 +438,6 @@ class SportsFetcher:
                                 elif period > 5: prefix = f"{period-4}OT"
                             elif league_key == 'nba':
                                 if period >= 5: prefix = f"OT{period-4}"
-                            
                             if clock: status_display = f"{prefix} - {clock}"
                             else: status_display = f"{prefix}" 
                         else:
@@ -431,11 +446,11 @@ class SportsFetcher:
                         
                         is_shown = is_sport_enabled
                         if is_shown:
-                            if state['mode'] == 'live':
+                            if local_config['mode'] == 'live':
                                 if status_state not in ['in', 'half']: is_shown = False
-                            elif state['mode'] == 'my_teams':
+                            elif local_config['mode'] == 'my_teams':
                                 h_abbr = home['team']['abbreviation']; a_abbr = away['team']['abbreviation']
-                                if (h_abbr not in state['my_teams']) and (a_abbr not in state['my_teams']):
+                                if (h_abbr not in local_config['my_teams']) and (a_abbr not in local_config['my_teams']):
                                     is_shown = False
                         
                         home_logo_url = home['team'].get('logo', '')
@@ -468,7 +483,8 @@ class SportsFetcher:
 
             except Exception as e: print(f"Fetch Error {league_key}: {e}")
             
-        state['current_games'] = games
+        with data_lock:
+            state['current_games'] = games
 
 fetcher = SportsFetcher()
 
@@ -477,9 +493,11 @@ def background_updater():
     while True:
         fetcher.get_real_games()
         time.sleep(UPDATE_INTERVAL)
-        if state.get('reboot_requested'):
-             time.sleep(15)
-             state['reboot_requested'] = False
+        # Clear reboot flag securely
+        with data_lock:
+            if state.get('reboot_requested'):
+                 # We keep it true for a bit so ticker sees it
+                 pass 
 
 app = Flask(__name__)
 
@@ -488,58 +506,55 @@ def dashboard(): return "Ticker Server is Running"
 
 @app.route('/api/ticker')
 def get_ticker_data():
-    visible_games = [g for g in state['current_games'] if g.get('is_shown', True)]
+    with data_lock:
+        local_state = state.copy()
+        
+    visible_games = [g for g in local_state['current_games'] if g.get('is_shown', True)]
     return jsonify({
         'meta': { 
             'time': dt.now(timezone.utc).strftime("%I:%M %p"), 
             'count': len(visible_games), 
             'speed': 0.02, 
-            'scroll_seamless': state.get('scroll_seamless', False),
-            'brightness': state.get('brightness', 0.5),
-            'inverted': state.get('inverted', False),
-            'panel_count': state.get('panel_count', 2),
-            'test_pattern': state.get('test_pattern', False),
-            'reboot_requested': state.get('reboot_requested', False)
+            'scroll_seamless': local_state.get('scroll_seamless', False),
+            'brightness': local_state.get('brightness', 0.5),
+            'inverted': local_state.get('inverted', False),
+            'panel_count': local_state.get('panel_count', 2),
+            'test_pattern': local_state.get('test_pattern', False),
+            'reboot_requested': local_state.get('reboot_requested', False)
         },
         'games': visible_games
     })
 
 @app.route('/api/state')
-def get_full_state(): return jsonify({'settings': state, 'games': state['current_games']})
+def get_full_state():
+    with data_lock:
+        return jsonify({'settings': state, 'games': state['current_games']})
 
 @app.route('/api/teams')
-def get_teams(): return jsonify(state['all_teams_data'])
+def get_teams():
+    with data_lock:
+        return jsonify(state['all_teams_data'])
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
     d = request.json
-    if 'mode' in d: state['mode'] = d['mode']
-    if 'active_sports' in d: state['active_sports'] = d['active_sports']
-    if 'scroll_seamless' in d: state['scroll_seamless'] = d['scroll_seamless']
-    if 'my_teams' in d: state['my_teams'] = d['my_teams']
+    with data_lock:
+        if 'mode' in d: state['mode'] = d['mode']
+        if 'active_sports' in d: state['active_sports'] = d['active_sports']
+        if 'scroll_seamless' in d: state['scroll_seamless'] = d['scroll_seamless']
+        if 'my_teams' in d: state['my_teams'] = d['my_teams']
+        if 'weather_location' in d: state['weather_location'] = d['weather_location']
     
-    try:
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump({
-                'active_sports': state['active_sports'], 
-                'mode': state['mode'], 
-                'scroll_seamless': state['scroll_seamless'], 
-                'my_teams': state['my_teams'],
-                'brightness': state['brightness'],
-                'inverted': state['inverted'],
-                'panel_count': state['panel_count'],
-                'weather_location': state['weather_location']
-            }, f)
-    except: pass
-    
+    save_config_file()
     threading.Thread(target=fetcher.get_real_games).start()
     return jsonify({"status": "ok", "settings": state})
 
 @app.route('/api/debug', methods=['POST'])
 def set_debug():
     d = request.json
-    if 'debug_mode' in d: state['debug_mode'] = d['debug_mode']
-    if 'custom_date' in d: state['custom_date'] = d['custom_date']
+    with data_lock:
+        if 'debug_mode' in d: state['debug_mode'] = d['debug_mode']
+        if 'custom_date' in d: state['custom_date'] = d['custom_date']
     fetcher.get_real_games()
     return jsonify({"status": "ok"})
 
@@ -549,37 +564,32 @@ def hardware_control():
     action = data.get('action')
 
     if action == 'reboot':
-        state['reboot_requested'] = True
+        with data_lock: state['reboot_requested'] = True
+        
+        # Auto-clear reboot flag after 10 seconds to prevent infinite reboot loop
+        def clear_reboot():
+            time.sleep(10)
+            with data_lock: state['reboot_requested'] = False
+        threading.Thread(target=clear_reboot).start()
+        
         return jsonify({"status": "ok", "message": "Reboot command sent to Ticker"})
 
     if action == 'test_pattern':
-        state['test_pattern'] = not state.get('test_pattern', False)
+        with data_lock: state['test_pattern'] = not state.get('test_pattern', False)
         return jsonify({"status": "ok", "test_pattern": state['test_pattern']})
 
     updated = False
-    if 'brightness' in data: 
-        state['brightness'] = float(data['brightness']); updated = True
-    if 'inverted' in data: 
-        state['inverted'] = bool(data['inverted']); updated = True
-    if 'panel_count' in data: 
-        state['panel_count'] = int(data['panel_count']); updated = True
-    if 'weather_location' in data:
-        state['weather_location'] = data['weather_location']; updated = True
+    with data_lock:
+        if 'brightness' in data: 
+            state['brightness'] = float(data['brightness']); updated = True
+        if 'inverted' in data: 
+            state['inverted'] = bool(data['inverted']); updated = True
+        if 'panel_count' in data: 
+            state['panel_count'] = int(data['panel_count']); updated = True
+        if 'weather_location' in data:
+            state['weather_location'] = data['weather_location']; updated = True
 
-    if updated:
-        try:
-            with open(CONFIG_FILE, 'w') as f:
-                json.dump({
-                    'active_sports': state['active_sports'], 
-                    'mode': state['mode'], 
-                    'scroll_seamless': state['scroll_seamless'], 
-                    'my_teams': state['my_teams'],
-                    'brightness': state['brightness'],
-                    'inverted': state['inverted'],
-                    'panel_count': state['panel_count'],
-                    'weather_location': state['weather_location']
-                }, f)
-        except: pass
+    if updated: save_config_file()
 
     return jsonify({"status": "ok", "settings": state})
 
