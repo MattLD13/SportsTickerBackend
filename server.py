@@ -15,7 +15,10 @@ data_lock = threading.Lock()
 
 # Standard headers to prevent caching/throttling from APIs
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0"
 }
 
 # ==========================================
@@ -334,9 +337,20 @@ class SportsFetcher:
             if pd.get('number') > 3: p_lbl = "OT"
             
             clk = d.get('clock', {})
+            time_rem = clk.get('timeRemaining', '00:00')
+            is_intermission = clk.get('inIntermission', False)
+
             if st in ['PRE','FUT']: disp = "Scheduled"
             elif st in ['FINAL','OFF']: disp = "FINAL"
-            else: disp = f"{p_lbl} {clk.get('timeRemaining','00:00')}"
+            elif is_intermission or time_rem == "00:00":
+                # === NHL INTERMISSION FIX ===
+                p_num = pd.get('number', 1)
+                if p_num == 1: disp = "End 1st"
+                elif p_num == 2: disp = "End 2nd"
+                elif p_num == 3: disp = "End 3rd"
+                else: disp = "Intermission"
+            else: 
+                disp = f"{p_lbl} {time_rem}"
 
             sit_obj = d.get('situation', {})
             if sit_obj:
@@ -427,10 +441,16 @@ class SportsFetcher:
                     elif gst == 'in' or gst == 'half':
                         p = st.get('period', 1); clk = st.get('displayClock', '')
                         
-                        # Detect Halftime explicitly (catch Q2 0:00 or 'half' state)
-                        if gst == 'half' or (p == 2 and clk == '0:00'):
+                        # Football Halftime Detection
+                        if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
                             s_disp = "Halftime"
                             is_halftime = True
+                        # Hockey Intermission Detection (ESPN Fallback)
+                        elif 'hockey' in config['path'] and clk == '0:00':
+                             if p == 1: s_disp = "End 1st"
+                             elif p == 2: s_disp = "End 2nd"
+                             elif p == 3: s_disp = "End 3rd"
+                             else: s_disp = "Intermission"
                         else:
                             s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
                     else:
@@ -442,17 +462,14 @@ class SportsFetcher:
                     curr_poss = sit.get('possession')
                     if curr_poss and not is_halftime:
                         self.possession_cache[e['id']] = curr_poss
-                    elif gst == 'in' and not is_halftime: # Only stick during live game (NOT Halftime)
+                    elif gst == 'in' and not is_halftime: 
                         curr_poss = self.possession_cache.get(e['id'], '')
                     else:
-                        # Clear possession cache at Halftime/Final so it doesn't get stuck
                         self.possession_cache[e['id']] = ''
                         curr_poss = '' 
                     
-                    # === NEW: CLEAR DOWN/DIST ON HALFTIME ===
                     down_text = sit.get('downDistanceText', '')
-                    if is_halftime:
-                        down_text = ''
+                    if is_halftime: down_text = ''
 
                     game_obj = {
                         'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
