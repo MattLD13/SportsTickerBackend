@@ -13,6 +13,11 @@ CONFIG_FILE = "ticker_config.json"
 UPDATE_INTERVAL = 15
 data_lock = threading.Lock()
 
+# Standard headers to prevent caching/throttling from APIs
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+}
+
 # ==========================================
 # FBS ABBREVIATIONS (Full List)
 # ==========================================
@@ -234,7 +239,7 @@ class SportsFetcher:
 
             # 2. College Football (Strict Sort via Embedded Lists)
             url = f"{self.base_url}football/college-football/teams"
-            r = requests.get(url, params={'limit': 1000, 'groups': '80,81'}, timeout=10) # Fetch both
+            r = requests.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) # Fetch both
             data = r.json()
             if 'sports' in data:
                 for sport in data['sports']:
@@ -267,7 +272,7 @@ class SportsFetcher:
     def _fetch_simple_league(self, league_key, catalog):
         config = self.leagues[league_key]
         try:
-            r = requests.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], timeout=10)
+            r = requests.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=10)
             data = r.json()
             if 'sports' in data:
                 for sport in data['sports']:
@@ -282,18 +287,32 @@ class SportsFetcher:
 
     def _fetch_nhl_native(self, games_list, target_date_str):
         with data_lock: is_nhl = state['active_sports'].get('nhl', False)
+        processed_ids = set()
         try:
-            r = requests.get("https://api-web.nhle.com/v1/schedule/now", timeout=5)
+            # Use headers to avoid cache/bot blocking
+            r = requests.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
             if r.status_code != 200: return
+            
+            # Iterate through the full week returned by schedule/now
             for d in r.json().get('gameWeek', []):
-                if d.get('date') == target_date_str:
-                    for g in d.get('games', []):
-                        self._process_single_nhl_game(g['id'], games_list, is_nhl)
+                day_games = d.get('games', [])
+                
+                # Logic: Fetch if date matches target OR if any game in that day is actually Live/Crit
+                # This fixes the midnight bug where target_date changes but game is still "yesterday" in API
+                has_active_games = any(g.get('gameState') in ['LIVE', 'CRIT'] for g in day_games)
+                
+                if d.get('date') == target_date_str or has_active_games:
+                    for g in day_games:
+                        gid = g['id']
+                        if gid not in processed_ids:
+                            self._process_single_nhl_game(gid, games_list, is_nhl)
+                            processed_ids.add(gid)
         except: pass
 
     def _process_single_nhl_game(self, game_id, games_list, is_enabled):
         try:
-            r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play", timeout=3)
+            # SWITCHED to 'landing' endpoint - much lighter and faster than play-by-play
+            r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/landing", headers=HEADERS, timeout=3)
             d = r.json()
             
             h_ab = d['homeTeam']['abbrev']; a_ab = d['awayTeam']['abbrev']
@@ -325,11 +344,16 @@ class SportsFetcher:
             elif st in ['FINAL','OFF']: disp = "FINAL"
             else: disp = f"{p_lbl} {clk.get('timeRemaining','00:00')}"
 
-            sit = d.get('situation', {}).get('situationCode', '1551')
-            ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
-            pp = False; poss = ""; en = (ag==0 or hg==0)
-            if as_ > hs: pp=True; poss=a_ab
-            elif hs > as_: pp=True; poss=h_ab
+            # Safely get situation, default to empty if not present (landing endpoint might differ slightly if game over)
+            sit_obj = d.get('situation', {})
+            if sit_obj:
+                sit = sit_obj.get('situationCode', '1551')
+                ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
+                pp = False; poss = ""; en = (ag==0 or hg==0)
+                if as_ > hs: pp=True; poss=a_ab
+                elif hs > as_: pp=True; poss=h_ab
+            else:
+                pp=False; poss=""; en=False
 
             games_list.append({
                 'sport': 'nhl', 'id': str(game_id), 'status': disp, 'state': map_st, 'is_shown': is_shown,
@@ -371,7 +395,7 @@ class SportsFetcher:
 
             try:
                 curr_p = config['scoreboard_params'].copy(); curr_p.update(req_params)
-                r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, timeout=5)
+                r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
                 data = r.json()
                 
                 for e in data.get('events', []):
