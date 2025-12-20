@@ -1,41 +1,70 @@
 # valid_teams.py
+# Updated for 2025 Season (including Delaware/Missouri State to FBS)
 
-# ==========================================
-# FBS ABBREVIATIONS (136 Teams)
-# ==========================================
 FBS_TEAMS = [
-    "AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", 
-    "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", 
-    "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", 
-    "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", 
-    "HOU", "ILL", "IND", "IOWA", "ISU", "JMU", "JXST", "KAN", "KSU", "KENN", 
-    "KENT", "UK", "LIB", "LOU", "LT", "LSU", "MAR", "MD", "MASS", "MEM", 
-    "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", 
-    "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", 
-    "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", 
-    "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", 
-    "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", 
-    "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "ULL", 
-    "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", 
-    "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"
+    # ACC
+    "BC", "CAL", "CLEM", "DUKE", "FSU", "GT", "LOU", "MIA", "NCST", "UNC", 
+    "PITT", "SMU", "STAN", "SYR", "UVA", "VT", "WAKE",
+    # American (AAC)
+    "ARMY", "UAB", "CLT", "ECU", "FAU", "MEM", "NAVY", "UNT", "RICE", 
+    "USF", "TEM", "UTSA", "TUL", "TLSA", "WICH",
+    # Big 12
+    "ARIZ", "ASU", "BAY", "BYU", "CIN", "COLO", "HOU", "ISU", "KU", 
+    "KSU", "OKST", "TCU", "TTU", "UCF", "UTAH", "WVU",
+    # Big Ten
+    "ILL", "IND", "IOWA", "MD", "MICH", "MSU", "MINN", "NEB", "NW", 
+    "OSU", "ORE", "PSU", "PUR", "RUTG", "UCLA", "USC", "WASH", "WIS",
+    # CUSA
+    "DEL", "FIU", "JSU", "KENN", "LIB", "LT", "MTSU", "MSU", "NMSU", 
+    "SHSU", "UTEP", "WKU", "MOST", 
+    # MAC
+    "AKR", "BALL", "BGSU", "BUF", "CMU", "EMU", "KENT", "M-OH", 
+    "NIU", "OHIO", "TOL", "UMASS", "WMU",
+    # Mountain West
+    "AFA", "BOISE", "CSU", "FRES", "HAW", "NEV", "UNM", "SDSU", 
+    "SJSU", "UNLV", "USU", "WYO", "ORST", "WSU", # Pac-12 leftovers usually grouped here or separate
+    # SEC
+    "ALA", "ARK", "AUB", "FLA", "UGA", "UK", "LSU", "MISS", "MSST", 
+    "MIZ", "OU", "SC", "TENN", "TEX", "TAMU", "VAN",
+    # Sun Belt
+    "APP", "ARST", "CCU", "GASO", "GAST", "JM", "LA", "ULM", 
+    "MRSH", "ODU", "USA", "USM", "TXST", "TROY",
+    # Independents
+    "ND", "UCONN",
+    # Common ESPN Variations
+    "WSH", "WSU", "ORST", "OSU", "MIA", "MISS", "MSST", "WKU", "ECU"
 ]
 
-# ==========================================
-# FCS ABBREVIATIONS (129 Teams)
-# ==========================================
 FCS_TEAMS = [
-    "ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", 
-    "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", 
-    "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", 
-    "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", 
-    "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", 
-    "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", 
-    "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", 
-    "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", 
-    "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", 
-    "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", 
-    "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", 
-    "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", 
-    "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTU", "VAL", "VILL", "VMI", "WAG", 
-    "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"
+    # Big Sky
+    "CP", "EWU", "IDHO", "IDST", "MONT", "MTST", "NAU", "UNCO", "PRST", 
+    "SAC", "UCD", "WEB",
+    # Big South-OVC
+    "CHSO", "EIU", "GWEB", "LIN", "SEMO", "TNST", "TNTC", "UTM", "WIU",
+    # CAA
+    "ALB", "BRY", "CAMP", "DEL", "ELON", "HAMP", "ME", "MONM", "UNH", 
+    "NCAT", "RICH", "URI", "SBU", "TOW", "VILL", "W&M",
+    # Ivy League
+    "BRWN", "CLMB", "CORN", "DART", "HARV", "PENN", "PRIN", "YALE",
+    # MEAC
+    "DSU", "HOW", "MORG", "NCCU", "NSU", "SCSU",
+    # MVFC
+    "ILST", "INST", "MOST", "MURR", "UND", "NDSU", "UNI", "USD", 
+    "SDSU", "SIU", "YSU",
+    # NEC
+    "CCSU", "DUQ", "LIU", "MER", "RMU", "SHU", "SFU", "STO", "WAG", "MC",
+    # Patriot
+    "BUCK", "COLG", "FORD", "GTWN", "HC", "LAF", "LEH",
+    # Pioneer
+    "BUT", "DAV", "DAY", "DRKE", "MAR", "MORE", "PRES", "STTH", 
+    "SAND", "STET", "VALP",
+    # SoCon
+    "CHAT", "CIT", "ETSU", "FUR", "MER", "SAM", "VMI", "WCU", "WOFF",
+    # Southland
+    "HCU", "UIW", "LAM", "MCNS", "NICH", "NSU", "SELA", "TAMC",
+    # SWAC
+    "AAMU", "ALST", "ALCN", "ARPB", "BCU", "FAMU", "GRAM", "JKST", 
+    "MVSU", "PV", "SOU", "TSU",
+    # UAC (ASUN-WAC)
+    "ACU", "APSU", "UCA", "EKU", "UNA", "SUU", "TAR", "UTTC", "UWG"
 ]
