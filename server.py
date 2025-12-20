@@ -17,10 +17,8 @@ UPDATE_INTERVAL = 15
 data_lock = threading.Lock()
 
 # --- LOGO OVERRIDES (League-Specific) ---
-# Format: "LEAGUE:ABBR": "URL"
-# This prevents Washington (NHL) from overriding Washington (NFL)
 LOGO_OVERRIDES = {
-    # --- NHL FIXES ---
+    # --- NHL ---
     "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
     "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
     "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png",
@@ -28,27 +26,26 @@ LOGO_OVERRIDES = {
     "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", 
     "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png",
     "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
-    
-    # Washington Capitals (Specific Eagle/Secondary Logo)
     "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
     "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
     
-    # --- NFL FIXES ---
-    "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", # Commanders
+    # --- NFL ---
+    "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
     "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
+    "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png",
+    "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png",
     
-    # --- MLB FIXES ---
-    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", # Nationals
+    # --- MLB ---
+    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
     "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
     
-    # --- NBA FIXES ---
-    "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png", # Wizards
+    # --- NBA ---
+    "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
     "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
     "NBA:UTA": "https://a.espncdn.com/i/teamlogos/nba/500/utah.png",
-    "NBA:NOP": "https://a.espncdn.com/i/teamlogos/nba/500/no.png",
+    "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png",
     
-    # --- NCAA FIXES ---
-    # Note: NCAA codes often vary, so we map the common 3-letter codes
+    # --- NCAA FBS ---
     "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png",
     "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
     "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
@@ -57,7 +54,7 @@ LOGO_OVERRIDES = {
     "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
     "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
     
-    # Lower divisions (FCS)
+    # --- NCAA FCS ---
     "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
     "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
 }
@@ -93,6 +90,9 @@ if os.path.exists(CONFIG_FILE):
                         state[k].update(v)
                     else:
                         state[k] = v
+        # Ensure critical flags start False
+        state['test_pattern'] = False
+        state['reboot_requested'] = False
     except: pass
 
 def save_config_file():
@@ -114,15 +114,20 @@ def save_config_file():
         print(f"Save Config Error: {e}")
 
 class WeatherFetcher:
-    def __init__(self):
+    def __init__(self, initial_loc):
         self.lat = 40.7128 # Default NY
         self.lon = -74.0060
         self.location_name = "New York"
         self.last_fetch = 0
         self.cache = None
+        if initial_loc:
+            self.update_coords(initial_loc)
 
     def update_coords(self, location_query):
         clean_query = str(location_query).strip()
+        if not clean_query: return
+        
+        # Check Zip Code
         if re.fullmatch(r'\d{5}', clean_query):
             try:
                 zip_url = f"https://api.zippopotam.us/us/{clean_query}"
@@ -137,6 +142,7 @@ class WeatherFetcher:
                     return
             except: pass
         
+        # Check City Name
         try:
             url = f"https://geocoding-api.open-meteo.com/v1/search?name={location_query}&count=1&language=en&format=json"
             r = requests.get(url, timeout=5)
@@ -219,21 +225,22 @@ class WeatherFetcher:
             return None
 
 class SportsFetcher:
-    def __init__(self):
-        self.weather = WeatherFetcher()
+    def __init__(self, initial_weather_loc):
+        self.weather = WeatherFetcher(initial_weather_loc)
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
+        
+        # UPDATED CONFIG: Explicitly separated team_params for FBS (Group 80) and FCS (Group 81)
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
-            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'limit': 1000} },
-            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81', 'limit': 100}, 'team_params': {'limit': 1000} },
+            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'groups': '80', 'limit': 1000} },
+            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81', 'limit': 100}, 'team_params': {'groups': '81', 'limit': 1000} },
             'mlb': { 'path': 'baseball/mlb', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100} }
         }
-        self.last_weather_loc = ""
+        self.last_weather_loc = initial_weather_loc
 
     def get_corrected_logo(self, league_key, abbr, default_logo):
-        # Format the key like "NHL:WSH" or "NCF_FBS:OSU"
         key = f"{league_key.upper()}:{abbr}"
         if key in LOGO_OVERRIDES:
             return LOGO_OVERRIDES[key]
@@ -242,33 +249,14 @@ class SportsFetcher:
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
-            for league_key in ['nfl', 'mlb', 'nhl', 'nba']:
+            
+            # Unified Loop - Fetches FCS correctly now using Group ID 81
+            for league_key in self.leagues.keys():
                 self._fetch_simple_league(league_key, teams_catalog)
 
-            url = f"{self.base_url}football/college-football/teams"
-            try:
-                r = requests.get(url, params={'limit': 1000}, timeout=10)
-                data = r.json()
-                if 'sports' in data:
-                    for sport in data['sports']:
-                        for league in sport['leagues']:
-                            for item in league.get('teams', []):
-                                try:
-                                    t_abbr = item['team'].get('abbreviation', 'unk')
-                                    logos = item['team'].get('logos', [])
-                                    t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
-                                    
-                                    # Override
-                                    t_logo = self.get_corrected_logo('ncf_fbs', t_abbr, t_logo)
-
-                                    team_obj = {'abbr': t_abbr, 'logo': t_logo}
-                                    # Basic heuristic for FBS/FCS if not known
-                                    teams_catalog['ncf_fbs'].append(team_obj) 
-                                except: continue
-            except: pass
             with data_lock:
                 state['all_teams_data'] = teams_catalog
-        except Exception as e: print(e)
+        except Exception as e: print(f"Catalog Error: {e}")
 
     def _fetch_simple_league(self, league_key, catalog):
         config = self.leagues[league_key]
@@ -282,6 +270,7 @@ class SportsFetcher:
                         for item in league.get('teams', []):
                             abbr = item['team'].get('abbreviation', 'unk')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
+                            # Apply Override
                             logo = self.get_corrected_logo(league_key, abbr, logo)
                             catalog[league_key].append({'abbr': abbr, 'logo': logo})
         except: pass
@@ -317,7 +306,6 @@ class SportsFetcher:
         game_type = data.get('gameType', 2)
         is_playoff = (game_type == 3)
 
-        # NHL Specific Overrides
         away_logo = self.get_corrected_logo('nhl', away_abbr, f"https://a.espncdn.com/i/teamlogos/nhl/500/{away_abbr.lower()}.png")
         home_logo = self.get_corrected_logo('nhl', home_abbr, f"https://a.espncdn.com/i/teamlogos/nhl/500/{home_abbr.lower()}.png")
 
@@ -333,7 +321,6 @@ class SportsFetcher:
         if is_shown:
             if mode == 'live' and mapped_state != 'in': is_shown = False
             if mode == 'my_teams':
-                # STRICT NAMESPACE CHECK: "nhl:SJS" must be in my_teams
                 h_key = f"nhl:{home_abbr}"
                 a_key = f"nhl:{away_abbr}"
                 h_match = (h_key in my_teams)
@@ -471,7 +458,6 @@ class SportsFetcher:
                             if local_config['mode'] == 'live':
                                 if status_state not in ['in', 'half']: is_shown = False
                             elif local_config['mode'] == 'my_teams':
-                                # STRICT NAMESPACED CHECK
                                 h_key = f"{league_key}:{home['team']['abbreviation']}"
                                 a_key = f"{league_key}:{away['team']['abbreviation']}"
                                 my_t = local_config['my_teams']
@@ -482,7 +468,6 @@ class SportsFetcher:
                         home_logo_url = home['team'].get('logo', '')
                         away_logo_url = away['team'].get('logo', '')
                         
-                        # Apply League-Aware Logo Override
                         home_logo_url = self.get_corrected_logo(league_key, home['team']['abbreviation'], home_logo_url)
                         away_logo_url = self.get_corrected_logo(league_key, away['team']['abbreviation'], away_logo_url)
 
@@ -511,7 +496,7 @@ class SportsFetcher:
         with data_lock:
             state['current_games'] = games
 
-fetcher = SportsFetcher()
+fetcher = SportsFetcher(state['weather_location'])
 
 def background_updater():
     fetcher.fetch_all_teams()
@@ -519,7 +504,11 @@ def background_updater():
         fetcher.get_real_games()
         time.sleep(UPDATE_INTERVAL)
         with data_lock:
-            if state.get('reboot_requested'): pass 
+            # Auto-disable Test Pattern after 60s
+            if state.get('test_pattern') and state.get('test_pattern_ts', 0) > 0:
+                if time.time() - state['test_pattern_ts'] > 60:
+                    state['test_pattern'] = False
+                    print("Auto-disabled Test Mode")
 
 app = Flask(__name__)
 
@@ -593,7 +582,10 @@ def hardware_control():
         return jsonify({"status": "ok", "message": "Reboot command sent to Ticker"})
 
     if action == 'test_pattern':
-        with data_lock: state['test_pattern'] = not state.get('test_pattern', False)
+        with data_lock: 
+            state['test_pattern'] = not state.get('test_pattern', False)
+            if state['test_pattern']:
+                state['test_pattern_ts'] = time.time()
         return jsonify({"status": "ok", "test_pattern": state['test_pattern']})
 
     updated = False
