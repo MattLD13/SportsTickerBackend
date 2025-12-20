@@ -3,6 +3,7 @@ import threading
 import json
 import os
 import subprocess 
+import re # Added for Zip Code detection
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from flask import Flask, jsonify, request
@@ -22,9 +23,8 @@ except ImportError:
     FCS_TEAMS = []
 
 # --- LOGO OVERRIDES (Server-Side) ---
-# Maps tricky acronyms to their correct image URLs
 LOGO_OVERRIDES = {
-    # NHL Fixes (3-letter to 2-letter filename mapping)
+    # NHL Fixes
     "SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
     "SJ":  "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
     "NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
@@ -115,6 +115,27 @@ class WeatherFetcher:
         self.cache = None
 
     def update_coords(self, location_query):
+        # 1. Check if input is a 5-digit US Zip Code
+        clean_query = str(location_query).strip()
+        if re.fullmatch(r'\d{5}', clean_query):
+            try:
+                # Use Zippopotam.us for reliable Zip -> City/Lat/Lon
+                zip_url = f"https://api.zippopotam.us/us/{clean_query}"
+                r = requests.get(zip_url, timeout=5)
+                if r.status_code == 200:
+                    data = r.json()
+                    place = data['places'][0]
+                    self.lat = float(place['latitude'])
+                    self.lon = float(place['longitude'])
+                    # Set location name to the actual City Name
+                    self.location_name = place['place name']
+                    self.last_fetch = 0 # Force refresh
+                    return
+            except Exception as e:
+                print(f"Zip Lookup Failed: {e}")
+                # Fallthrough to standard search if zip lookup fails
+        
+        # 2. Standard City Search
         try:
             url = f"https://geocoding-api.open-meteo.com/v1/search?name={location_query}&count=1&language=en&format=json"
             r = requests.get(url, timeout=5)
@@ -364,13 +385,13 @@ class SportsFetcher:
         with data_lock:
             local_config = state.copy()
         
-        # --- CLOCK MODE ---
+        # --- CLOCK MODE CHECK ---
         if local_config['active_sports'].get('clock', False):
             games.append({'sport': 'clock', 'id': 'clock_widget', 'is_shown': True})
             with data_lock: state['current_games'] = games
             return
 
-        # --- WEATHER MODE ---
+        # --- WEATHER MODE CHECK ---
         if local_config['active_sports'].get('weather', False):
             if local_config['weather_location'] != self.last_weather_loc:
                 self.weather.update_coords(local_config['weather_location'])
