@@ -215,6 +215,7 @@ class SportsFetcher:
     def __init__(self, initial_loc):
         self.weather = WeatherFetcher(initial_loc)
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
+        self.possession_cache = {}  # <--- NEW: Stores last known possession by game ID
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'groups': '80', 'limit': 1000} },
@@ -289,16 +290,11 @@ class SportsFetcher:
         with data_lock: is_nhl = state['active_sports'].get('nhl', False)
         processed_ids = set()
         try:
-            # Use headers to avoid cache/bot blocking
             r = requests.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
             if r.status_code != 200: return
             
-            # Iterate through the full week returned by schedule/now
             for d in r.json().get('gameWeek', []):
                 day_games = d.get('games', [])
-                
-                # Logic: Fetch if date matches target OR if any game in that day is actually Live/Crit
-                # This fixes the midnight bug where target_date changes but game is still "yesterday" in API
                 has_active_games = any(g.get('gameState') in ['LIVE', 'CRIT'] for g in day_games)
                 
                 if d.get('date') == target_date_str or has_active_games:
@@ -311,14 +307,12 @@ class SportsFetcher:
 
     def _process_single_nhl_game(self, game_id, games_list, is_enabled):
         try:
-            # SWITCHED to 'landing' endpoint - much lighter and faster than play-by-play
             r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/landing", headers=HEADERS, timeout=3)
             d = r.json()
             
             h_ab = d['homeTeam']['abbrev']; a_ab = d['awayTeam']['abbrev']
             h_sc = str(d['homeTeam'].get('score', 0)); a_sc = str(d['awayTeam'].get('score', 0))
             
-            # APPLY FIX
             h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
             a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
 
@@ -344,7 +338,6 @@ class SportsFetcher:
             elif st in ['FINAL','OFF']: disp = "FINAL"
             else: disp = f"{p_lbl} {clk.get('timeRemaining','00:00')}"
 
-            # Safely get situation, default to empty if not present (landing endpoint might differ slightly if game over)
             sit_obj = d.get('situation', {})
             if sit_obj:
                 sit = sit_obj.get('situationCode', '1551')
@@ -386,12 +379,10 @@ class SportsFetcher:
         for league_key, config in self.leagues.items():
             if not conf['active_sports'].get(league_key, False): continue
             
-            # --- UPDATED NHL LOGIC: TRY NATIVE, FALLBACK TO ESPN ---
             if league_key == 'nhl' and not conf['debug_mode']:
                 prev_count = len(games)
                 self._fetch_nhl_native(games, target_date_str)
-                if len(games) > prev_count: continue # Native worked, skip fallback
-                # If we get here, native failed/returned 0 games. Fallthrough to generic ESPN fetch.
+                if len(games) > prev_count: continue 
 
             try:
                 curr_p = config['scoreboard_params'].copy(); curr_p.update(req_params)
@@ -404,7 +395,6 @@ class SportsFetcher:
                     
                     st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
                     
-                    # DATE FILTER
                     keep_date = (gst == 'in') or (game_date_str == target_date_str)
                     if league_key == 'mlb' and not keep_date: continue
                     if not keep_date: continue
@@ -412,7 +402,6 @@ class SportsFetcher:
                     comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
                     h_ab = h['team']['abbreviation']; a_ab = a['team']['abbreviation']
                     
-                    # STRICT COLLEGE FILTER
                     if league_key == 'ncf_fbs':
                         if h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
                     elif league_key == 'ncf_fcs':
@@ -425,7 +414,6 @@ class SportsFetcher:
                         if (hk not in conf['my_teams'] and h_ab not in conf['my_teams']) and \
                            (ak not in conf['my_teams'] and a_ab not in conf['my_teams']): is_shown = False
 
-                    # APPLY LOGO FIX
                     h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
                     a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
 
@@ -440,14 +428,29 @@ class SportsFetcher:
                         s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
 
                     sit = comp.get('situation', {})
+                    
+                    # === FIXED POSSESSION LOGIC ===
+                    # If API has possession, update cache. If null, use cache.
+                    curr_poss = sit.get('possession')
+                    if curr_poss:
+                        self.possession_cache[e['id']] = curr_poss
+                    elif gst == 'in': # Only stick during live game
+                        curr_poss = self.possession_cache.get(e['id'], '')
+                    else:
+                        curr_poss = '' # Clear if Final/Pre
+                    
                     game_obj = {
                         'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
                         'home_abbr': h_ab, 'home_score': h.get('score','0'), 'home_logo': h_lg,
-                        'home_id': h.get('id'), # Added generic ID for fallback
+                        'home_id': h.get('id'), 
                         'away_abbr': a_ab, 'away_score': a.get('score','0'), 'away_logo': a_lg,
-                        'away_id': a.get('id'), # Added generic ID for fallback
+                        'away_id': a.get('id'), 
                         'period': st.get('period', 1),
-                        'situation': { 'possession': sit.get('possession', ''), 'isRedZone': sit.get('isRedZone', False), 'downDist': sit.get('downDistanceText', '') }
+                        'situation': { 
+                            'possession': curr_poss, 
+                            'isRedZone': sit.get('isRedZone', False), 
+                            'downDist': sit.get('downDistanceText', '') 
+                        }
                     }
                     if league_key == 'mlb':
                         game_obj['situation'] = { 'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False) }
