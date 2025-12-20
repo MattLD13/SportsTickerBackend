@@ -54,28 +54,27 @@ FCS_TEAMS = [
 ]
 
 # --- STRICT LEAGUE-SPECIFIC LOGO OVERRIDES ---
-# Every key MUST be prefixed with the sport code (e.g. "NFL:", "NBA:")
 LOGO_OVERRIDES = {
     # === HOUSTON ===
     "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png",       # Texans
     "NBA:HOU": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png",       # Rockets
     "MLB:HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png",       # Astros
-    "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",  # Cougars (College)
+    "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",  # Cougars
 
     # === MIAMI ===
     "NFL:MIA": "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png",       # Dolphins
     "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png",       # Heat
     "MLB:MIA": "https://a.espncdn.com/i/teamlogos/mlb/500/mia.png",       # Marlins
-    "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png", # Hurricanes (The U)
+    "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png", # Hurricanes
     "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
 
     # === INDIANA ===
     "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png",       # Colts
     "NBA:IND": "https://a.espncdn.com/i/teamlogos/nba/500/ind.png",       # Pacers
-    "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",   # Hoosiers (College)
+    "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",   # Hoosiers
 
     # === WASHINGTON ===
-    "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png", # Capitals Eagle
+    "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
     "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
     "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",       # Commanders
     "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
@@ -128,11 +127,8 @@ if os.path.exists(CONFIG_FILE):
             loaded = json.load(f)
             for k, v in loaded.items():
                 if k in state:
-                    if isinstance(state[k], dict) and isinstance(v, dict):
-                        state[k].update(v)
-                    else:
-                        state[k] = v
-        # Reset transient flags
+                    if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
+                    else: state[k] = v
         state['test_pattern'] = False
         state['reboot_requested'] = False
     except: pass
@@ -163,7 +159,6 @@ class WeatherFetcher:
     def update_coords(self, location_query):
         clean_query = str(location_query).strip()
         if not clean_query: return
-        # Zip Check
         if re.fullmatch(r'\d{5}', clean_query):
             try:
                 r = requests.get(f"https://api.zippopotam.us/us/{clean_query}", timeout=5)
@@ -173,7 +168,6 @@ class WeatherFetcher:
                     self.location_name = p['place name']; self.last_fetch = 0
                     return
             except: pass
-        # City Check
         try:
             r = requests.get(f"https://geocoding-api.open-meteo.com/v1/search?name={clean_query}&count=1&language=en&format=json", timeout=5)
             d = r.json()
@@ -218,49 +212,55 @@ class SportsFetcher:
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
-            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'groups': '80', 'limit': 1000} },
-            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81', 'limit': 100}, 'team_params': {'groups': '81', 'limit': 1000} },
             'mlb': { 'path': 'baseball/mlb', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100} }
         }
 
-    # === STRICT LOGO LOGIC ===
     def get_corrected_logo(self, league_key, abbr, default_logo):
-        # We construct a Namespaced Key: "NFL:HOU"
-        # If that key exists in LOGO_OVERRIDES, we use it.
-        # If not, we use the default ESPN URL.
         key = f"{league_key.upper()}:{abbr}"
         return LOGO_OVERRIDES.get(key, default_logo)
 
     def fetch_all_teams(self):
-        teams_catalog = {}
-        for lg in self.leagues.keys(): teams_catalog[lg] = []
+        teams_catalog = {'nfl':[], 'mlb':[], 'nhl':[], 'nba':[], 'ncf_fbs':[], 'ncf_fcs':[]}
         
-        for league_key, config in self.leagues.items():
+        # 1. Pro Sports (Simple)
+        for league_key in ['nfl', 'mlb', 'nhl', 'nba']:
+            config = self.leagues[league_key]
             try:
                 r = requests.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], timeout=10)
-                data = r.json()
-                
-                # ESPN Structure Handling
-                if 'sports' in data:
-                    for sport in data['sports']:
-                        for league in sport['leagues']:
-                            for item in league.get('teams', []):
-                                t = item['team']
-                                abbr = t.get('abbreviation', 'UNK')
-                                logo = t.get('logos', [{}])[0].get('href', '')
-                                
-                                # STRICT SORTING FOR COLLEGE
-                                if league_key == 'ncf_fbs':
-                                    if abbr not in FBS_TEAMS: continue
-                                elif league_key == 'ncf_fcs':
-                                    if abbr not in FCS_TEAMS: continue
-                                
-                                # APPLY LOGO FIX
-                                logo = self.get_corrected_logo(league_key, abbr, logo)
-                                teams_catalog[league_key].append({'abbr': abbr, 'logo': logo})
+                d = r.json()
+                if 'sports' in d:
+                    for t in d['sports'][0]['leagues'][0]['teams']:
+                        abbr = t['team'].get('abbreviation', 'UNK')
+                        logo = t['team'].get('logos', [{}])[0].get('href', '')
+                        logo = self.get_corrected_logo(league_key, abbr, logo)
+                        teams_catalog[league_key].append({'abbr': abbr, 'logo': logo})
             except: pass
+
+        # 2. College Football - FBS (Group 80)
+        try:
+            r = requests.get(f"{self.base_url}football/college-football/teams", params={'limit':1000, 'groups': '80'}, timeout=10)
+            d = r.json()
+            if 'sports' in d:
+                for t in d['sports'][0]['leagues'][0]['teams']:
+                    abbr = t['team'].get('abbreviation', 'UNK')
+                    logo = t['team'].get('logos', [{}])[0].get('href', '')
+                    logo = self.get_corrected_logo('ncf_fbs', abbr, logo)
+                    teams_catalog['ncf_fbs'].append({'abbr': abbr, 'logo': logo})
+        except: pass
+
+        # 3. College Football - FCS (Group 81)
+        try:
+            r = requests.get(f"{self.base_url}football/college-football/teams", params={'limit':1000, 'groups': '81'}, timeout=10)
+            d = r.json()
+            if 'sports' in d:
+                for t in d['sports'][0]['leagues'][0]['teams']:
+                    abbr = t['team'].get('abbreviation', 'UNK')
+                    logo = t['team'].get('logos', [{}])[0].get('href', '')
+                    logo = self.get_corrected_logo('ncf_fcs', abbr, logo)
+                    teams_catalog['ncf_fcs'].append({'abbr': abbr, 'logo': logo})
+        except: pass
 
         with data_lock:
             state['all_teams_data'] = teams_catalog
@@ -269,7 +269,6 @@ class SportsFetcher:
         games = []
         with data_lock: conf = state.copy()
         
-        # Clock/Weather Priority
         if conf['active_sports'].get('clock'):
             with data_lock: state['current_games'] = [{'sport':'clock','id':'clk','is_shown':True}]; return
         if conf['active_sports'].get('weather'):
@@ -278,142 +277,122 @@ class SportsFetcher:
             if w: 
                 with data_lock: state['current_games'] = [w]; return
 
-        # Date Logic
-        req_params = {}
-        if conf['debug_mode'] and conf['custom_date']:
-            target_date_str = conf['custom_date']
-            req_params['dates'] = target_date_str.replace('-', '')
-        else:
-            local_now = dt.now(timezone(timedelta(hours=TIMEZONE_OFFSET)))
-            target_date_str = local_now.strftime("%Y-%m-%d")
-            # For MLB, we don't strict filter by date param to catch doubleheaders, handled below
-            if 'mlb' not in conf['active_sports']: 
-                req_params['dates'] = target_date_str.replace('-', '')
-        
-        for league_key, config in self.leagues.items():
-            if not conf['active_sports'].get(league_key, False): continue
+        target_date_str = (dt.now(timezone(timedelta(hours=TIMEZONE_OFFSET)))).strftime("%Y-%m-%d")
+        if conf['debug_mode'] and conf['custom_date']: target_date_str = conf['custom_date']
+        req_params = {'dates': target_date_str.replace('-','')}
+
+        # === FETCH LOOP ===
+        # Pro Leagues
+        for league_key in ['nfl', 'mlb', 'nhl', 'nba']:
+            if not conf['active_sports'].get(league_key): continue
             
-            # NHL Override (Skip if normal)
+            # NHL Native Exception
             if league_key == 'nhl' and not conf['debug_mode']:
-                self._fetch_nhl_native(games, target_date_str)
-                continue
+                self._fetch_nhl_native(games, target_date_str); continue
 
+            path = self.leagues[league_key]['path']
             try:
-                curr_p = config['scoreboard_params'].copy()
-                curr_p.update(req_params)
-                r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, timeout=5)
-                data = r.json()
-                
-                for e in data.get('events', []):
-                    # Time Check
-                    try:
-                        utc_s = e['date'].replace('Z','')
-                        g_dt = dt.fromisoformat(utc_s).replace(tzinfo=timezone.utc)
-                        local_dt = g_dt.astimezone(timezone(timedelta(hours=TIMEZONE_OFFSET)))
-                        g_date = local_dt.strftime("%Y-%m-%d")
-                    except: g_date = target_date_str
+                self._fetch_games_generic(games, league_key, path, req_params, conf, target_date_str)
+            except: pass
 
-                    st = e.get('status', {}); tp = st.get('type', {})
-                    gst = tp.get('state', 'pre')
-                    
-                    # Date Filter: Must be Today OR Live
-                    if g_date != target_date_str and gst not in ['in','half']: continue
+        # College FBS
+        if conf['active_sports'].get('ncf_fbs'):
+            try:
+                fbs_params = req_params.copy(); fbs_params['groups'] = '80'
+                self._fetch_games_generic(games, 'ncf_fbs', 'football/college-football', fbs_params, conf, target_date_str)
+            except: pass
 
-                    comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
-                    h_ab = h['team']['abbreviation']; a_ab = a['team']['abbreviation']
-
-                    # COLLEGE FILTER: Check against Valid Lists
-                    if league_key == 'ncf_fbs':
-                        if h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
-                    elif league_key == 'ncf_fcs':
-                        if h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
-
-                    # Display Logic
-                    is_shown = True
-                    if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
-                    elif conf['mode'] == 'my_teams':
-                        # Namespaced Check
-                        hk = f"{league_key}:{h_ab}"; ak = f"{league_key}:{a_ab}"
-                        if (hk not in conf['my_teams'] and h_ab not in conf['my_teams']) and \
-                           (ak not in conf['my_teams'] and a_ab not in conf['my_teams']): is_shown = False
-
-                    # LOGO FIX APPLICATION
-                    h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
-                    a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
-
-                    s_disp = tp.get('shortDetail', 'TBD')
-                    if gst == 'pre':
-                        try: s_disp = local_dt.strftime("%I:%M %p").lstrip('0')
-                        except: pass
-                    elif gst == 'in':
-                        p = st.get('period', 1); clk = st.get('displayClock', '')
-                        s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
-                    else:
-                        s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
-
-                    sit = comp.get('situation', {})
-                    games.append({
-                        'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
-                        'home_abbr': h_ab, 'home_score': h.get('score','0'), 'home_logo': h_lg,
-                        'away_abbr': a_ab, 'away_score': a.get('score','0'), 'away_logo': a_lg,
-                        'situation': { 'possession': sit.get('possession'), 'isRedZone': sit.get('isRedZone'), 'downDist': sit.get('downDistanceText') }
-                    })
+        # College FCS
+        if conf['active_sports'].get('ncf_fcs'):
+            try:
+                fcs_params = req_params.copy(); fcs_params['groups'] = '81'
+                self._fetch_games_generic(games, 'ncf_fcs', 'football/college-football', fcs_params, conf, target_date_str)
             except: pass
         
         with data_lock: state['current_games'] = games
 
+    def _fetch_games_generic(self, games, league_key, path, params, conf, target_date_str):
+        r = requests.get(f"{self.base_url}{path}/scoreboard", params=params, timeout=5)
+        data = r.json()
+        for e in data.get('events', []):
+            try:
+                utc_s = e['date'].replace('Z','')
+                g_dt = dt.fromisoformat(utc_s).replace(tzinfo=timezone.utc)
+                local_dt = g_dt.astimezone(timezone(timedelta(hours=TIMEZONE_OFFSET)))
+                g_date = local_dt.strftime("%Y-%m-%d")
+            except: g_date = target_date_str
+
+            st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
+            if g_date != target_date_str and gst not in ['in','half']: continue
+            if league_key == 'mlb' and g_date != target_date_str: continue
+
+            comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
+            h_ab = h['team']['abbreviation']; a_ab = a['team']['abbreviation']
+
+            is_shown = True
+            if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
+            elif conf['mode'] == 'my_teams':
+                hk = f"{league_key}:{h_ab}"; ak = f"{league_key}:{a_ab}"
+                if (hk not in conf['my_teams'] and h_ab not in conf['my_teams']) and \
+                   (ak not in conf['my_teams'] and a_ab not in conf['my_teams']): is_shown = False
+
+            h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
+            a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
+
+            s_disp = tp.get('shortDetail', 'TBD')
+            if gst == 'pre':
+                try: s_disp = local_dt.strftime("%I:%M %p").lstrip('0')
+                except: pass
+            elif gst == 'in':
+                p = st.get('period', 1); clk = st.get('displayClock', '')
+                s_disp = f"P{p} {clk}" if 'hockey' in path else f"Q{p} {clk}"
+            else:
+                s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
+
+            sit = comp.get('situation', {})
+            games.append({
+                'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
+                'home_abbr': h_ab, 'home_score': h.get('score','0'), 'home_logo': h_lg,
+                'away_abbr': a_ab, 'away_score': a.get('score','0'), 'away_logo': a_lg,
+                'situation': { 'possession': sit.get('possession'), 'isRedZone': sit.get('isRedZone'), 'downDist': sit.get('downDistanceText') }
+            })
+
     def _fetch_nhl_native(self, games_list, target_date_str):
         with data_lock:
-            # Check strict filter
             mode = state['mode']; my_teams = state['my_teams']
-            
         try:
             r = requests.get("https://api-web.nhle.com/v1/schedule/now", timeout=5)
             if r.status_code != 200: return
-            data = r.json()
-            
-            for day in data.get('gameWeek', []):
-                if day['date'] != target_date_str: continue
-                for g in day.get('games', []):
-                    try:
-                        gd = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{g['id']}/play-by-play", timeout=3).json()
-                        h = gd['homeTeam']; a = gd['awayTeam']
-                        h_ab = h['abbrev']; a_ab = a['abbrev']
-                        
-                        is_shown = True
-                        if mode == 'live' and gd['gameState'] not in ['LIVE','CRIT']: is_shown = False
-                        if mode == 'my_teams':
-                            h_k = f"nhl:{h_ab}"; a_k = f"nhl:{a_ab}"
-                            if (h_k not in my_teams and h_ab not in my_teams) and (a_k not in my_teams and a_ab not in my_teams): is_shown = False
-                        
-                        st = gd.get('gameState', 'OFF')
-                        state_game = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
+            for d in r.json().get('gameWeek', []):
+                if d.get('date') == target_date_str:
+                    for g in d.get('games', []):
+                        try:
+                            gd = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{g['id']}/play-by-play", timeout=3).json()
+                            h_ab = gd['homeTeam']['abbrev']; a_ab = gd['awayTeam']['abbrev']
+                            
+                            is_shown = True
+                            if mode == 'live' and gd['gameState'] not in ['LIVE','CRIT']: is_shown = False
+                            if mode == 'my_teams':
+                                if (f"nhl:{h_ab}" not in my_teams and h_ab not in my_teams) and (f"nhl:{a_ab}" not in my_teams and a_ab not in my_teams): is_shown = False
+                            
+                            st = gd.get('gameState', 'OFF'); map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
+                            if map_st == 'pre':
+                                u = dt.strptime(gd['startTimeUTC'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                                disp = u.astimezone(timezone(timedelta(hours=TIMEZONE_OFFSET))).strftime("%I:%M %p").lstrip('0')
+                            elif map_st == 'in':
+                                pd = gd['periodDescriptor']; p = pd['number']; pl = f"P{p}" if p<=3 else "OT"; tm = gd['clock']['timeRemaining']; disp = f"{pl} {tm}"
+                            else: disp = "FINAL"
 
-                        # Status
-                        if state_game == 'pre':
-                            try:
-                                utc_dt = dt.strptime(gd['startTimeUTC'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                                s_disp = utc_dt.astimezone(timezone(timedelta(hours=TIMEZONE_OFFSET))).strftime("%I:%M %p").lstrip('0')
-                            except: s_disp = "Scheduled"
-                        elif state_game == 'in':
-                            p = gd['periodDescriptor']['number']
-                            pd = "P" + str(p)
-                            if p > 3: pd = "OT"
-                            rem = gd['clock']['timeRemaining']
-                            s_disp = f"{pd} {rem}"
-                        else: s_disp = "FINAL"
+                            h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
+                            a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
 
-                        # LOGO FIX - Force NHL Key
-                        h_logo = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
-                        a_logo = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
-
-                        games_list.append({
-                            'sport': 'nhl', 'id': str(g['id']), 'status': s_disp, 'state': state_game, 'is_shown': is_shown,
-                            'home_abbr': h_ab, 'home_score': str(h.get('score',0)), 'home_logo': h_logo,
-                            'away_abbr': a_ab, 'away_score': str(a.get('score',0)), 'away_logo': a_logo,
-                            'situation': {}
-                        })
-                    except: pass
+                            games_list.append({
+                                'sport': 'nhl', 'id': str(g['id']), 'status': disp, 'state': map_st, 'is_shown': is_shown,
+                                'home_abbr': h_ab, 'home_score': str(gd['homeTeam'].get('score',0)), 'home_logo': h_lg,
+                                'away_abbr': a_ab, 'away_score': str(gd['awayTeam'].get('score',0)), 'away_logo': a_lg,
+                                'situation': {}
+                            })
+                        except: pass
         except: pass
 
 fetcher = SportsFetcher(state['weather_location'])
