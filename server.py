@@ -240,35 +240,62 @@ class SportsFetcher:
         except: pass
         return fbs_set, fcs_set
 
-    def fetch_all_teams(self):
+   def fetch_all_teams(self):
+    try:
+        teams_catalog = {k: [] for k in self.leagues.keys()}
+        for league_key in ['nfl', 'mlb', 'nhl', 'nba']:
+            self._fetch_simple_league(league_key, teams_catalog)
+
+        # Fetch sets of FBS and FCS abbreviations separately
+        fbs_set = set()
+        fcs_set = set()
         try:
-            teams_catalog = {k: [] for k in self.leagues.keys()}
-            for league_key in ['nfl', 'mlb', 'nhl', 'nba']:
-                self._fetch_simple_league(league_key, teams_catalog)
+            r = requests.get(f"{self.base_url}football/college-football/teams", params={'groups': '80', 'limit': 1000}, timeout=10)
+            data = r.json()
+            for sport in data.get('sports', []):
+                for league in sport.get('leagues', []):
+                    for item in league.get('teams', []):
+                        abbr = item['team'].get('abbreviation')
+                        if abbr:
+                            fbs_set.add(abbr)
+        except: pass
 
-            fbs_set, fcs_set = self._get_college_team_sets()
+        try:
+            r = requests.get(f"{self.base_url}football/college-football/teams", params={'groups': '81', 'limit': 1000}, timeout=10)
+            data = r.json()
+            for sport in data.get('sports', []):
+                for league in sport.get('leagues', []):
+                    for item in league.get('teams', []):
+                        abbr = item['team'].get('abbreviation')
+                        if abbr:
+                            fcs_set.add(abbr)
+        except: pass
 
-            try:
-                r = requests.get(f"{self.base_url}football/college-football/teams", params={'limit': 1000}, timeout=10)
-                data = r.json()
-                if 'sports' in data:
-                    for sport in data['sports']:
-                        for league in sport['leagues']:
-                            for item in league.get('teams', []):
-                                try:
-                                    t_abbr = item['team'].get('abbreviation', 'unk')
-                                    logos = item['team'].get('logos', [])
-                                    t_logo = logos[0].get('href', '') if logos else ''
-                                    league_type = 'ncf_fcs' if t_abbr in fcs_set else 'ncf_fbs'
-                                    t_logo = self.get_corrected_logo(league_type, t_abbr, t_logo)
-                                    teams_catalog[league_type].append({'abbr': t_abbr, 'logo': t_logo})
-                                except: continue
-            except: pass
+        # Fetch all college teams and assign to FBS or FCS catalog
+        try:
+            r = requests.get(f"{self.base_url}football/college-football/teams", params={'limit': 1000}, timeout=10)
+            data = r.json()
+            if 'sports' in data:
+                for sport in data['sports']:
+                    for league in sport['leagues']:
+                        for item in league.get('teams', []):
+                            try:
+                                t_abbr = item['team'].get('abbreviation', 'unk')
+                                logos = item['team'].get('logos', [])
+                                t_logo = logos[0].get('href', '') if logos else ''
+                                if t_abbr in fcs_set:
+                                    league_type = 'ncf_fcs'
+                                else:
+                                    league_type = 'ncf_fbs'
+                                t_logo = self.get_corrected_logo(league_type, t_abbr, t_logo)
+                                teams_catalog[league_type].append({'abbr': t_abbr, 'logo': t_logo})
+                            except: continue
+        except: pass
 
-            with data_lock:
-                state['all_teams_data'] = teams_catalog
-        except Exception as e:
-            print(e)
+        with data_lock:
+            state['all_teams_data'] = teams_catalog
+    except Exception as e:
+        print(e)
 
     def _fetch_simple_league(self, league_key, catalog):
         config = self.leagues[league_key]
@@ -360,3 +387,4 @@ class SportsFetcher:
         elif clock.get('inIntermission'): status_disp = f"{period_label} INT"
         else:
             if period > 4 and not is_playoff: status_disp
+
