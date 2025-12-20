@@ -10,7 +10,7 @@ from flask import Flask, jsonify, request
 # ================= CONFIGURATION =================
 TIMEZONE_OFFSET = -5  # Set to -5 for EST/EDT
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 15
+UPDATE_INTERVAL = 5
 data_lock = threading.Lock()
 
 # Standard headers to prevent caching/throttling from APIs
@@ -549,3 +549,4 @@ def api_hardware():
 if __name__ == "__main__":
     threading.Thread(target=background_updater, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+
