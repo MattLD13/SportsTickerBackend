@@ -388,12 +388,20 @@ class SportsFetcher:
                 with data_lock: state['current_games'] = [w]; return
 
         req_params = {}
+        
+        # === DATE LOGIC (MIDNIGHT FIX) ===
         if conf['debug_mode'] and conf['custom_date']:
             target_date_str = conf['custom_date']
-            req_params['dates'] = target_date_str.replace('-', '')
         else:
-            target_date_str = (dt.now(timezone(timedelta(hours=TIMEZONE_OFFSET)))).strftime("%Y-%m-%d")
-            req_params['dates'] = target_date_str.replace('-', '')
+            # If it is between 00:00 and 04:00, use Yesterday's date
+            now_local = dt.now(timezone(timedelta(hours=TIMEZONE_OFFSET)))
+            if now_local.hour < 4:
+                query_date = now_local - timedelta(days=1)
+            else:
+                query_date = now_local
+            target_date_str = query_date.strftime("%Y-%m-%d")
+
+        req_params['dates'] = target_date_str.replace('-', '')
 
         for league_key, config in self.leagues.items():
             if not conf['active_sports'].get(league_key, False): continue
