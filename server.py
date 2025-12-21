@@ -341,13 +341,14 @@ class SportsFetcher:
                         # B. Defaults
                         disp = "Scheduled"; pp = False; poss = ""; en = False
                         
-                        if st == 'PRE':
+                        if st in ['PRE', 'FUT']:
                              # Try to format time from startTimeUTC
                              try:
                                  utc = g.get('startTimeUTC', '')
-                                 dt_obj = dt.fromisoformat(utc.replace('Z', '+00:00'))
-                                 local = dt_obj.astimezone(timezone(timedelta(hours=TIMEZONE_OFFSET)))
-                                 disp = local.strftime("%I:%M %p").lstrip('0')
+                                 if utc:
+                                     dt_obj = dt.fromisoformat(utc.replace('Z', '+00:00'))
+                                     local = dt_obj.astimezone(timezone(timedelta(hours=TIMEZONE_OFFSET)))
+                                     disp = local.strftime("%I:%M %p").lstrip('0')
                              except: pass
                         elif st in ['FINAL', 'OFF']:
                              disp = "FINAL"
