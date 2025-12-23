@@ -81,9 +81,10 @@ class TimezoneManager:
         # 1. Manual Override
         with data_lock:
             manual = state.get('manual_offset')
-            if manual is not None and str(manual).strip() != "":
+            if manual is not None:
                 try:
-                    return float(manual) * 3600, "Manual Override"
+                    val = float(manual)
+                    return val * 3600, f"Manual Override ({val})"
                 except: pass
 
         # 2. Cache
@@ -295,7 +296,6 @@ class SportsFetcher:
                         disp = "Scheduled"; pp = False; poss = ""; en = False
                         utc_start = g.get('startTimeUTC', '') 
                         
-                        # Note: We rely on the API endpoint to fix the time now.
                         if st in ['FINAL', 'OFF']:
                              disp = "FINAL"
                              if g.get('periodDescriptor', {}).get('periodType') == 'OT': disp = "FINAL OT"
@@ -385,11 +385,15 @@ class SportsFetcher:
                     utc_str = e['date'].replace('Z', '') 
                     utc_start_iso = e['date']
                     
-                    game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                    game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=DEFAULT_OFFSET)))
-                    game_date_str = game_dt_server.strftime("%Y-%m-%d")
-                    
                     st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
+                    
+                    # Convert to Server Time just for filtering logic (date check)
+                    try:
+                        game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+                        game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=DEFAULT_OFFSET)))
+                        game_date_str = game_dt_server.strftime("%Y-%m-%d")
+                    except:
+                        game_date_str = target_date_str
                     
                     keep_date = (gst == 'in') or (game_date_str == target_date_str)
                     if league_key == 'mlb' and not keep_date: continue
@@ -415,11 +419,7 @@ class SportsFetcher:
 
                     s_disp = tp.get('shortDetail', 'TBD')
                     
-                    # === FALLBACK TIME CALCULATION (EST) ===
-                    if gst == 'pre':
-                        try:
-                            s_disp = game_dt_server.strftime("%I:%M %p").lstrip('0')
-                        except: s_disp = "Scheduled"
+                    if gst == 'pre': s_disp = "Scheduled"
                     elif gst == 'in' or gst == 'half':
                         p = st.get('period', 1); clk = st.get('displayClock', '')
                         if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
@@ -507,7 +507,7 @@ def root():
     <html><head><title>Ticker Status</title>
     <style>body{{font-family:sans-serif;padding:2rem;background:#1a1a1a;color:white}}
     .box{{background:#333;padding:1rem;border-radius:8px;margin-bottom:1rem}}
-    input,button{{padding:0.5rem;border-radius:4px;border:none}}
+    select,button{{padding:0.5rem;border-radius:4px;border:none}}
     button{{background:#007bff;color:white;cursor:pointer}}
     </style>
     </head>
@@ -526,8 +526,17 @@ def root():
         <div class="box">
             <h3>Manual Override</h3>
             <form method="POST">
-                <label>Set Timezone Offset (e.g. -4 for Aruba/AST):</label><br><br>
-                <input type="text" name="offset" value="{current_offset_val}" placeholder="Leave empty to auto-detect">
+                <label>Select Timezone Offset:</label><br><br>
+                <select name="offset">
+                    <option value="" {'selected' if current_offset_val == "" else ''}>Auto-Detect (Default)</option>
+                    <option value="-4" {'selected' if current_offset_val == "-4" else ''}>AST / EDT (Aruba/NY Summer) [-4]</option>
+                    <option value="-5" {'selected' if current_offset_val == "-5" else ''}>EST / CDT (NY Winter/Chicago Summer) [-5]</option>
+                    <option value="-6" {'selected' if current_offset_val == "-6" else ''}>CST / MDT (Chicago Winter/Denver Summer) [-6]</option>
+                    <option value="-7" {'selected' if current_offset_val == "-7" else ''}>MST / PDT (Denver Winter/LA Summer) [-7]</option>
+                    <option value="-8" {'selected' if current_offset_val == "-8" else ''}>PST (LA Winter) [-8]</option>
+                    <option value="0" {'selected' if current_offset_val == "0" else ''}>UTC [0]</option>
+                    <option value="1" {'selected' if current_offset_val == "1" else ''}>CET [+1]</option>
+                </select>
                 <button type="submit">Save</button>
             </form>
         </div>
@@ -555,9 +564,10 @@ def api_ticker():
         if not g.get('is_shown', True): continue
         game_copy = g.copy()
         
-        # === FORCE TIME OVERWRITE FOR PRE-GAME ===
-        # The Fetcher saves "Scheduled". This overrides it with "9:15 PM"
+        # === FORCE TIME OVERWRITE FOR PRE-GAME AND FUTURE ===
+        # If we have UTC time and game is PRE or FUT, apply offset
         utc_str = game_copy.get('startTimeUTC')
+        # Check if status is "Scheduled" OR if state implies it's not live/final
         if utc_str and game_copy.get('state') in ['pre', 'fut']:
             try:
                 if utc_str.endswith('Z'): utc_str = utc_str.replace('Z', '+00:00')
