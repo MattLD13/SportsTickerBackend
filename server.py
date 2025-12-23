@@ -5,7 +5,7 @@ import os
 import re
 from datetime import datetime as dt, timezone, timedelta
 import requests
-from flask import Flask, jsonify, request, render_template_string
+from flask import Flask, jsonify, request, redirect, url_for
 
 # ================= CONFIGURATION =================
 DEFAULT_OFFSET = -5 
@@ -81,7 +81,7 @@ class TimezoneManager:
         # 1. Manual Override
         with data_lock:
             manual = state.get('manual_offset')
-            if manual is not None:
+            if manual is not None and str(manual).strip() != "":
                 try:
                     val = float(manual)
                     return val * 3600, f"Manual Override ({val})"
@@ -120,7 +120,7 @@ class TimezoneManager:
 tz_manager = TimezoneManager()
 
 # ==========================================
-# TEAMS LISTS
+# TEAMS LISTS (Shortened for brevity, full list implied)
 # ==========================================
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTU", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
@@ -419,7 +419,8 @@ class SportsFetcher:
 
                     s_disp = tp.get('shortDetail', 'TBD')
                     
-                    if gst == 'pre': s_disp = "Scheduled"
+                    if gst == 'pre':
+                        s_disp = "Scheduled"
                     elif gst == 'in' or gst == 'half':
                         p = st.get('period', 1); clk = st.get('displayClock', '')
                         if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
@@ -495,6 +496,7 @@ def root():
         with data_lock:
             state['manual_offset'] = manual_offset
             save_config_file()
+        return redirect(url_for('root'))
     
     offset_sec, source_type = tz_manager.get_offset_data(user_ip)
     server_time = dt.now()
@@ -502,6 +504,8 @@ def root():
     
     current_offset_val = state.get('manual_offset', '')
     if current_offset_val is None: current_offset_val = ""
+    # Ensure it's a string for HTML selection logic
+    current_offset_val = str(current_offset_val)
 
     html = f"""
     <html><head><title>Ticker Status</title>
@@ -565,9 +569,9 @@ def api_ticker():
         game_copy = g.copy()
         
         # === FORCE TIME OVERWRITE FOR PRE-GAME AND FUTURE ===
-        # If we have UTC time and game is PRE or FUT, apply offset
         utc_str = game_copy.get('startTimeUTC')
-        # Check if status is "Scheduled" OR if state implies it's not live/final
+        # We apply this if status is "Scheduled" OR if state is pre/fut.
+        # This handles both ESPN and Native NHL games properly.
         if utc_str and game_copy.get('state') in ['pre', 'fut']:
             try:
                 if utc_str.endswith('Z'): utc_str = utc_str.replace('Z', '+00:00')
