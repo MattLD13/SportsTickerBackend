@@ -8,13 +8,11 @@ import requests
 from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
-# Fallback if everything fails (EST)
 DEFAULT_OFFSET = -5 
 CONFIG_FILE = "ticker_config.json"
 UPDATE_INTERVAL = 5
 data_lock = threading.Lock()
 
-# Standard headers
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -38,7 +36,7 @@ default_state = {
     'test_pattern': False,
     'reboot_requested': False,
     'weather_location': "New York",
-    'manual_offset': None # User can force this
+    'manual_offset': None 
 }
 
 state = default_state.copy()
@@ -80,7 +78,7 @@ class TimezoneManager:
         self.cache_lock = threading.Lock()
 
     def get_offset_data(self, ip_address):
-        # 1. Check Manual Override First
+        # 1. Manual Override
         with data_lock:
             manual = state.get('manual_offset')
             if manual is not None and str(manual).strip() != "":
@@ -88,16 +86,16 @@ class TimezoneManager:
                     return float(manual) * 3600, "Manual Override"
                 except: pass
 
-        # 2. Check Cache
+        # 2. Cache
         with self.cache_lock:
             if ip_address in self.ip_cache:
                 return self.ip_cache[ip_address], "Auto-Detected (Cached)"
 
         clean_ip = ip_address.split(':')[0]
         
-        # 3. Try TimeAPI.io (Primary Request)
+        # 3. TimeAPI
         try:
-            r = requests.get(f"https://timeapi.io/api/TimeZone/ip?ipAddress={clean_ip}", timeout=4.0, headers=HEADERS)
+            r = requests.get(f"https://timeapi.io/api/TimeZone/ip?ipAddress={clean_ip}", timeout=3.0, headers=HEADERS)
             if r.status_code == 200:
                 data = r.json()
                 if 'currentUtcOffset' in data and 'seconds' in data['currentUtcOffset']:
@@ -106,7 +104,7 @@ class TimezoneManager:
                     return offset, "Auto-Detected (timeapi.io)"
         except: pass
 
-        # 4. Try ip-api.com (Backup 1)
+        # 4. Fallback API
         try:
             r = requests.get(f"http://ip-api.com/json/{clean_ip}", timeout=3.0)
             data = r.json()
@@ -116,7 +114,6 @@ class TimezoneManager:
                 return offset, "Auto-Detected (ip-api)"
         except: pass
 
-        # 5. Fallback
         return DEFAULT_OFFSET * 3600, "Server Default (Fallback)"
 
 tz_manager = TimezoneManager()
@@ -124,75 +121,19 @@ tz_manager = TimezoneManager()
 # ==========================================
 # TEAMS LISTS
 # ==========================================
-FBS_TEAMS = [
-    "AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", 
-    "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", 
-    "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", 
-    "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", 
-    "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", 
-    "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", 
-    "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", 
-    "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", 
-    "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", 
-    "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", 
-    "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", 
-    "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", 
-    "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", 
-    "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"
-]
+FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
+FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTU", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 
-FCS_TEAMS = [
-    "ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", 
-    "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", 
-    "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", 
-    "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", 
-    "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", 
-    "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", 
-    "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", 
-    "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", 
-    "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", 
-    "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", 
-    "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", 
-    "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", 
-    "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTU", "UTRGV", "VAL", "VILL", "VMI", 
-    "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"
-]
-
-# --- LOGO OVERRIDES ---
 LOGO_OVERRIDES = {
-    "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png",
-    "NBA:HOU": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png",
-    "MLB:HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png",
-    "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
-    "NFL:MIA": "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png",
-    "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png",
-    "MLB:MIA": "https://a.espncdn.com/i/teamlogos/mlb/500/mia.png",
-    "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
-    "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
-    "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png",
-    "NBA:IND": "https://a.espncdn.com/i/teamlogos/nba/500/ind.png",
-    "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
-    "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
-    "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
-    "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
-    "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
-    "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
-    "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
-    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
-    "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
-    "NCF_FBS:WASH": "https://a.espncdn.com/i/teamlogos/ncaa/500/264.png",
-    "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png",
-    "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png",
-    "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png",
-    "NHL:LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
-    "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", 
-    "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png",
-    "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
-    "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png",
-    "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
-    "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png",
-    "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
-    "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
+    "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png", "NBA:HOU": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png", "MLB:HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png", "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
+    "NFL:MIA": "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png", "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png", "MLB:MIA": "https://a.espncdn.com/i/teamlogos/mlb/500/mia.png", "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png", "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
+    "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png", "NBA:IND": "https://a.espncdn.com/i/teamlogos/nba/500/ind.png", "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
+    "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png", "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+    "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png", "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
+    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "NCF_FBS:WASH": "https://a.espncdn.com/i/teamlogos/ncaa/500/264.png",
+    "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png", "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png", "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png", "NHL:LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
+    "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+    "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png", "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png", "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png", "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png", "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
 }
 
 class WeatherFetcher:
@@ -429,6 +370,7 @@ class SportsFetcher:
         for league_key, config in self.leagues.items():
             if not conf['active_sports'].get(league_key, False): continue
             
+            # === HYBRID NHL LOGIC ===
             if league_key == 'nhl' and not conf['debug_mode']:
                 prev_count = len(games)
                 self._fetch_nhl_native(games, target_date_str)
@@ -473,8 +415,11 @@ class SportsFetcher:
 
                     s_disp = tp.get('shortDetail', 'TBD')
                     
-                    # === FALLBACK TIME (Will be overwritten by API) ===
-                    if gst == 'pre': s_disp = "Scheduled"
+                    # === FALLBACK TIME CALCULATION (EST) ===
+                    if gst == 'pre':
+                        try:
+                            s_disp = game_dt_server.strftime("%I:%M %p").lstrip('0')
+                        except: s_disp = "Scheduled"
                     elif gst == 'in' or gst == 'half':
                         p = st.get('period', 1); clk = st.get('displayClock', '')
                         if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
