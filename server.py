@@ -5,10 +5,11 @@ import os
 import re
 from datetime import datetime as dt, timezone, timedelta
 import requests
-from flask import Flask, jsonify, request, redirect, url_for
+from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
-DEFAULT_OFFSET = -5 
+# HARDCODED TO -4 (AST/EDT) AS REQUESTED
+DEFAULT_OFFSET = -4 
 CONFIG_FILE = "ticker_config.json"
 UPDATE_INTERVAL = 5
 data_lock = threading.Lock()
@@ -35,8 +36,7 @@ default_state = {
     'panel_count': 2,
     'test_pattern': False,
     'reboot_requested': False,
-    'weather_location': "New York",
-    'manual_offset': None 
+    'weather_location': "New York"
 }
 
 state = default_state.copy()
@@ -62,65 +62,14 @@ def save_config_file():
                 'brightness': state['brightness'],
                 'inverted': state['inverted'],
                 'panel_count': state['panel_count'],
-                'weather_location': state['weather_location'],
-                'manual_offset': state.get('manual_offset')
+                'weather_location': state['weather_location']
             }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(export_data, f)
     except: pass
 
 # ==========================================
-# TIMEZONE MANAGER
-# ==========================================
-class TimezoneManager:
-    def __init__(self):
-        self.ip_cache = {} 
-        self.cache_lock = threading.Lock()
-
-    def get_offset_data(self, ip_address):
-        # 1. Manual Override
-        with data_lock:
-            manual = state.get('manual_offset')
-            if manual is not None and str(manual).strip() != "":
-                try:
-                    val = float(manual)
-                    return val * 3600, f"Manual Override ({val})"
-                except: pass
-
-        # 2. Cache
-        with self.cache_lock:
-            if ip_address in self.ip_cache:
-                return self.ip_cache[ip_address], "Auto-Detected (Cached)"
-
-        clean_ip = ip_address.split(':')[0]
-        
-        # 3. TimeAPI
-        try:
-            r = requests.get(f"https://timeapi.io/api/TimeZone/ip?ipAddress={clean_ip}", timeout=3.0, headers=HEADERS)
-            if r.status_code == 200:
-                data = r.json()
-                if 'currentUtcOffset' in data and 'seconds' in data['currentUtcOffset']:
-                    offset = data['currentUtcOffset']['seconds']
-                    with self.cache_lock: self.ip_cache[ip_address] = offset
-                    return offset, "Auto-Detected (timeapi.io)"
-        except: pass
-
-        # 4. Fallback API
-        try:
-            r = requests.get(f"http://ip-api.com/json/{clean_ip}", timeout=3.0)
-            data = r.json()
-            if data['status'] == 'success':
-                offset = data['offset']
-                with self.cache_lock: self.ip_cache[ip_address] = offset
-                return offset, "Auto-Detected (ip-api)"
-        except: pass
-
-        return DEFAULT_OFFSET * 3600, "Server Default (Fallback)"
-
-tz_manager = TimezoneManager()
-
-# ==========================================
-# TEAMS LISTS (Shortened for brevity, full list implied)
+# TEAMS LISTS
 # ==========================================
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTU", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
@@ -485,66 +434,20 @@ app = Flask(__name__)
 
 @app.route('/', methods=['GET', 'POST'])
 def root():
-    user_ip = request.headers.get('X-Real-IP') or \
-              request.headers.get('CF-Connecting-IP') or \
-              request.headers.get('X-Forwarded-For') or \
-              request.remote_addr
-    if user_ip and ',' in user_ip: user_ip = user_ip.split(',')[0].strip()
+    offset_sec = DEFAULT_OFFSET * 3600
     
-    if request.method == 'POST':
-        manual_offset = request.form.get('offset')
-        with data_lock:
-            state['manual_offset'] = manual_offset
-            save_config_file()
-        return redirect(url_for('root'))
-    
-    offset_sec, source_type = tz_manager.get_offset_data(user_ip)
-    server_time = dt.now()
-    local_time = dt.now(timezone(timedelta(seconds=offset_sec)))
-    
-    current_offset_val = state.get('manual_offset', '')
-    if current_offset_val is None: current_offset_val = ""
-    # Ensure it's a string for HTML selection logic
-    current_offset_val = str(current_offset_val)
-
     html = f"""
     <html><head><title>Ticker Status</title>
     <style>body{{font-family:sans-serif;padding:2rem;background:#1a1a1a;color:white}}
     .box{{background:#333;padding:1rem;border-radius:8px;margin-bottom:1rem}}
-    select,button{{padding:0.5rem;border-radius:4px;border:none}}
-    button{{background:#007bff;color:white;cursor:pointer}}
     </style>
     </head>
     <body>
         <h1>Ticker Backend Online</h1>
-        
         <div class="box">
-            <h3>Timezone Debug</h3>
-            <p><strong>Your IP:</strong> {user_ip}</p>
-            <p><strong>Detected Offset:</strong> {offset_sec / 3600} Hours</p>
-            <p><strong>Source:</strong> {source_type}</p>
-            <p><strong>Server Time (UTC):</strong> {dt.now(timezone.utc).strftime('%I:%M %p')}</p>
-            <p><strong>Your Local Time:</strong> {local_time.strftime('%I:%M %p')}</p>
+            <p><strong>Status:</strong> Running</p>
+            <p><strong>Timezone:</strong> Hardcoded to -4 (AST/EDT)</p>
         </div>
-
-        <div class="box">
-            <h3>Manual Override</h3>
-            <form method="POST">
-                <label>Select Timezone Offset:</label><br><br>
-                <select name="offset">
-                    <option value="" {'selected' if current_offset_val == "" else ''}>Auto-Detect (Default)</option>
-                    <option value="-4" {'selected' if current_offset_val == "-4" else ''}>AST / EDT (Aruba/NY Summer) [-4]</option>
-                    <option value="-5" {'selected' if current_offset_val == "-5" else ''}>EST / CDT (NY Winter/Chicago Summer) [-5]</option>
-                    <option value="-6" {'selected' if current_offset_val == "-6" else ''}>CST / MDT (Chicago Winter/Denver Summer) [-6]</option>
-                    <option value="-7" {'selected' if current_offset_val == "-7" else ''}>MST / PDT (Denver Winter/LA Summer) [-7]</option>
-                    <option value="-8" {'selected' if current_offset_val == "-8" else ''}>PST (LA Winter) [-8]</option>
-                    <option value="0" {'selected' if current_offset_val == "0" else ''}>UTC [0]</option>
-                    <option value="1" {'selected' if current_offset_val == "1" else ''}>CET [+1]</option>
-                </select>
-                <button type="submit">Save</button>
-            </form>
-        </div>
-
         <br><a href="/api/ticker" style="color:#007bff">View Raw JSON</a>
     </body></html>
     """
@@ -552,13 +455,8 @@ def root():
 
 @app.route('/api/ticker')
 def api_ticker():
-    user_ip = request.headers.get('X-Real-IP') or \
-              request.headers.get('CF-Connecting-IP') or \
-              request.headers.get('X-Forwarded-For') or \
-              request.remote_addr
-    if user_ip and ',' in user_ip: user_ip = user_ip.split(',')[0].strip()
-    
-    offset_sec, _ = tz_manager.get_offset_data(user_ip)
+    # Force -4 Offset
+    offset_sec = DEFAULT_OFFSET * 3600
     
     with data_lock: d = state.copy()
     raw_games = d['current_games']
@@ -568,10 +466,7 @@ def api_ticker():
         if not g.get('is_shown', True): continue
         game_copy = g.copy()
         
-        # === FORCE TIME OVERWRITE FOR PRE-GAME AND FUTURE ===
         utc_str = game_copy.get('startTimeUTC')
-        # We apply this if status is "Scheduled" OR if state is pre/fut.
-        # This handles both ESPN and Native NHL games properly.
         if utc_str and game_copy.get('state') in ['pre', 'fut']:
             try:
                 if utc_str.endswith('Z'): utc_str = utc_str.replace('Z', '+00:00')
