@@ -8,7 +8,7 @@ import requests
 from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
-# HARDCODED TO -4 (AST/EDT) AS REQUESTED
+# HARDCODED TO -4 (AST/EDT)
 DEFAULT_OFFSET = -4 
 CONFIG_FILE = "ticker_config.json"
 UPDATE_INTERVAL = 5
@@ -245,7 +245,13 @@ class SportsFetcher:
                         disp = "Scheduled"; pp = False; poss = ""; en = False
                         utc_start = g.get('startTimeUTC', '') 
                         
-                        if st in ['FINAL', 'OFF']:
+                        if st in ['PRE', 'FUT'] and utc_start:
+                             try:
+                                 dt_obj = dt.fromisoformat(utc_start.replace('Z', '+00:00'))
+                                 local = dt_obj.astimezone(timezone(timedelta(hours=DEFAULT_OFFSET)))
+                                 disp = local.strftime("%I:%M %p").lstrip('0')
+                             except: pass
+                        elif st in ['FINAL', 'OFF']:
                              disp = "FINAL"
                              if g.get('periodDescriptor', {}).get('periodType') == 'OT': disp = "FINAL OT"
                              if g.get('periodDescriptor', {}).get('periodType') == 'SHOOTOUT': disp = "FINAL S/O"
@@ -334,15 +340,11 @@ class SportsFetcher:
                     utc_str = e['date'].replace('Z', '') 
                     utc_start_iso = e['date']
                     
-                    st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
+                    game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+                    game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=DEFAULT_OFFSET)))
+                    game_date_str = game_dt_server.strftime("%Y-%m-%d")
                     
-                    # Convert to Server Time just for filtering logic (date check)
-                    try:
-                        game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                        game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=DEFAULT_OFFSET)))
-                        game_date_str = game_dt_server.strftime("%Y-%m-%d")
-                    except:
-                        game_date_str = target_date_str
+                    st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
                     
                     keep_date = (gst == 'in') or (game_date_str == target_date_str)
                     if league_key == 'mlb' and not keep_date: continue
@@ -369,7 +371,9 @@ class SportsFetcher:
                     s_disp = tp.get('shortDetail', 'TBD')
                     
                     if gst == 'pre':
-                        s_disp = "Scheduled"
+                        try:
+                            s_disp = game_dt_server.strftime("%I:%M %p").lstrip('0')
+                        except: s_disp = "Scheduled"
                     elif gst == 'in' or gst == 'half':
                         p = st.get('period', 1); clk = st.get('displayClock', '')
                         if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
@@ -432,7 +436,7 @@ def background_updater():
 # ================= FLASK API =================
 app = Flask(__name__)
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/')
 def root():
     offset_sec = DEFAULT_OFFSET * 3600
     
@@ -464,18 +468,7 @@ def api_ticker():
     
     for g in raw_games:
         if not g.get('is_shown', True): continue
-        game_copy = g.copy()
-        
-        utc_str = game_copy.get('startTimeUTC')
-        if utc_str and game_copy.get('state') in ['pre', 'fut']:
-            try:
-                if utc_str.endswith('Z'): utc_str = utc_str.replace('Z', '+00:00')
-                dt_utc = dt.fromisoformat(utc_str)
-                dt_local = dt_utc.astimezone(timezone(timedelta(seconds=offset_sec)))
-                game_copy['status'] = dt_local.strftime("%I:%M %p").lstrip('0')
-            except: pass
-        
-        processed_games.append(game_copy)
+        processed_games.append(g.copy())
 
     return jsonify({
         'meta': {
