@@ -8,7 +8,7 @@ import requests
 from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
-# Default fallback if IP lookup fails (EST/EDT)
+# Fallback if IP lookup fails (EST/EDT)
 DEFAULT_OFFSET = -5 
 CONFIG_FILE = "ticker_config.json"
 UPDATE_INTERVAL = 5
@@ -22,6 +22,55 @@ HEADERS = {
     "Expires": "0"
 }
 
+# ================= DEFAULT STATE =================
+default_state = {
+    'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 'weather': False, 'clock': False },
+    'mode': 'all', 
+    'scroll_seamless': False,
+    'my_teams': [], 
+    'current_games': [],
+    'all_teams_data': {}, 
+    'debug_mode': False,
+    'custom_date': None,
+    'brightness': 0.5,
+    'inverted': False,
+    'panel_count': 2,
+    'test_pattern': False,
+    'reboot_requested': False,
+    'weather_location': "New York",
+    'manual_offset': None # User can force this
+}
+
+state = default_state.copy()
+
+if os.path.exists(CONFIG_FILE):
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            loaded = json.load(f)
+            for k, v in loaded.items():
+                if k in state:
+                    if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
+                    else: state[k] = v
+    except: pass
+
+def save_config_file():
+    try:
+        with data_lock:
+            export_data = {
+                'active_sports': state['active_sports'], 
+                'mode': state['mode'], 
+                'scroll_seamless': state['scroll_seamless'], 
+                'my_teams': state['my_teams'],
+                'brightness': state['brightness'],
+                'inverted': state['inverted'],
+                'panel_count': state['panel_count'],
+                'weather_location': state['weather_location'],
+                'manual_offset': state.get('manual_offset')
+            }
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(export_data, f)
+    except: pass
+
 # ==========================================
 # TIMEZONE MANAGER
 # ==========================================
@@ -30,22 +79,64 @@ class TimezoneManager:
         self.ip_cache = {} 
         self.cache_lock = threading.Lock()
 
-    def get_offset(self, ip_address):
+    def get_offset_data(self, ip_address):
+        # 1. Check Manual Override First
+        with data_lock:
+            manual = state.get('manual_offset')
+            if manual is not None and manual != "":
+                try:
+                    return float(manual) * 3600, "Manual Override"
+                except: pass
+
+        # 2. Check Cache
         with self.cache_lock:
             if ip_address in self.ip_cache:
-                return self.ip_cache[ip_address]
+                return self.ip_cache[ip_address], "Auto-Detected (Cached)"
+
+        clean_ip = ip_address.split(':')[0]
+        
+        # 3. Try TimeAPI.io (Primary Request)
         try:
-            clean_ip = ip_address.split(':')[0]
-            r = requests.get(f"http://ip-api.com/json/{clean_ip}", timeout=1.0)
+            # Using specific endpoint requested by user
+            r = requests.get(f"https://timeapi.io/api/TimeZone/ip?ipAddress={clean_ip}", timeout=4.0, headers=HEADERS)
+            if r.status_code == 200:
+                data = r.json()
+                # TimeAPI returns 'currentUtcOffset' object with 'seconds'
+                if 'currentUtcOffset' in data and 'seconds' in data['currentUtcOffset']:
+                    offset = data['currentUtcOffset']['seconds']
+                    with self.cache_lock: self.ip_cache[ip_address] = offset
+                    return offset, "Auto-Detected (timeapi.io)"
+        except Exception as e: 
+            print(f"[TZ DEBUG] timeapi.io failed: {e}")
+
+        # 4. Try ip-api.com (Backup 1)
+        try:
+            r = requests.get(f"http://ip-api.com/json/{clean_ip}", timeout=3.0)
             data = r.json()
             if data['status'] == 'success':
-                offset = data['offset'] # in seconds
-                with self.cache_lock:
-                    self.ip_cache[ip_address] = offset
-                return offset
-        except:
-            pass
-        return DEFAULT_OFFSET * 3600
+                offset = data['offset']
+                with self.cache_lock: self.ip_cache[ip_address] = offset
+                return offset, "Auto-Detected (ip-api)"
+        except: pass
+
+        # 5. Try ipapi.co (Backup 2)
+        try:
+            r = requests.get(f"https://ipapi.co/{clean_ip}/json/", timeout=3.0, headers=HEADERS)
+            data = r.json()
+            if 'utc_offset' in data:
+                # Format is usually "+0530" or "-0400"
+                utc_str = data['utc_offset']
+                hours = int(utc_str[:3])
+                minutes = int(utc_str[3:])
+                offset = (hours * 3600) + (minutes * 60)
+                if hours < 0: offset = (hours * 3600) - (minutes * 60)
+                
+                with self.cache_lock: self.ip_cache[ip_address] = offset
+                return offset, "Auto-Detected (ipapi.co)"
+        except: pass
+
+        # 6. Fallback
+        return DEFAULT_OFFSET * 3600, "Server Default (Fallback)"
 
 tz_manager = TimezoneManager()
 
@@ -122,53 +213,6 @@ LOGO_OVERRIDES = {
     "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png",
     "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
 }
-
-# ================= DEFAULT STATE =================
-default_state = {
-    'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 'weather': False, 'clock': False },
-    'mode': 'all', 
-    'scroll_seamless': False,
-    'my_teams': [], 
-    'current_games': [],
-    'all_teams_data': {}, 
-    'debug_mode': False,
-    'custom_date': None,
-    'brightness': 0.5,
-    'inverted': False,
-    'panel_count': 2,
-    'test_pattern': False,
-    'reboot_requested': False,
-    'weather_location': "New York"
-}
-
-state = default_state.copy()
-
-if os.path.exists(CONFIG_FILE):
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            loaded = json.load(f)
-            for k, v in loaded.items():
-                if k in state:
-                    if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
-                    else: state[k] = v
-    except: pass
-
-def save_config_file():
-    try:
-        with data_lock:
-            export_data = {
-                'active_sports': state['active_sports'], 
-                'mode': state['mode'], 
-                'scroll_seamless': state['scroll_seamless'], 
-                'my_teams': state['my_teams'],
-                'brightness': state['brightness'],
-                'inverted': state['inverted'],
-                'panel_count': state['panel_count'],
-                'weather_location': state['weather_location']
-            }
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(export_data, f)
-    except: pass
 
 class WeatherFetcher:
     def __init__(self, initial_loc):
@@ -522,29 +566,58 @@ def background_updater():
 # ================= FLASK API =================
 app = Flask(__name__)
 
-@app.route('/')
+@app.route('/', methods=['GET', 'POST'])
 def root():
     user_ip = request.headers.get('X-Real-IP') or \
               request.headers.get('CF-Connecting-IP') or \
               request.headers.get('X-Forwarded-For') or \
               request.remote_addr
     if user_ip and ',' in user_ip: user_ip = user_ip.split(',')[0].strip()
-    offset = tz_manager.get_offset(user_ip)
-    server_time = dt.now()
-    local_time = dt.now(timezone(timedelta(seconds=offset)))
     
+    if request.method == 'POST':
+        manual_offset = request.form.get('offset')
+        with data_lock:
+            state['manual_offset'] = manual_offset
+            save_config_file()
+    
+    offset_sec, source_type = tz_manager.get_offset_data(user_ip)
+    server_time = dt.now()
+    local_time = dt.now(timezone(timedelta(seconds=offset_sec)))
+    
+    current_offset_val = state.get('manual_offset', '')
+    if current_offset_val is None: current_offset_val = ""
+
     html = f"""
-    <html><head><title>Ticker Status</title></head>
-    <body style="font-family: sans-serif; padding: 2rem;">
+    <html><head><title>Ticker Status</title>
+    <style>body{{font-family:sans-serif;padding:2rem;background:#1a1a1a;color:white}}
+    .box{{background:#333;padding:1rem;border-radius:8px;margin-bottom:1rem}}
+    input,button{{padding:0.5rem;border-radius:4px;border:none}}
+    button{{background:#007bff;color:white;cursor:pointer}}
+    </style>
+    </head>
+    <body>
         <h1>Ticker Backend Online</h1>
-        <div style="background: #f0f0f0; padding: 1rem; border-radius: 8px;">
+        
+        <div class="box">
             <h3>Timezone Debug</h3>
             <p><strong>Your IP:</strong> {user_ip}</p>
-            <p><strong>Detected Offset:</strong> {offset / 3600} Hours</p>
+            <p><strong>Detected Offset:</strong> {offset_sec / 3600} Hours</p>
+            <p><strong>Source:</strong> {source_type}</p>
             <p><strong>Server Time (UTC):</strong> {dt.now(timezone.utc).strftime('%I:%M %p')}</p>
             <p><strong>Your Local Time:</strong> {local_time.strftime('%I:%M %p')}</p>
         </div>
-        <br><a href="/api/ticker">View Raw JSON</a>
+
+        <div class="box">
+            <h3>Manual Override</h3>
+            <form method="POST">
+                <label>Set Timezone Offset (e.g. -4 or -5):</label><br><br>
+                <input type="text" name="offset" value="{current_offset_val}" placeholder="Leave empty to auto-detect">
+                <button type="submit">Save</button>
+            </form>
+            <small>Set to <b>-4</b> for AST (Aruba), <b>-5</b> for EST.</small>
+        </div>
+
+        <br><a href="/api/ticker" style="color:#007bff">View Raw JSON</a>
     </body></html>
     """
     return html
@@ -557,7 +630,7 @@ def api_ticker():
               request.remote_addr
     if user_ip and ',' in user_ip: user_ip = user_ip.split(',')[0].strip()
     
-    offset_sec = tz_manager.get_offset(user_ip)
+    offset_sec, _ = tz_manager.get_offset_data(user_ip)
     
     with data_lock: d = state.copy()
     raw_games = d['current_games']
