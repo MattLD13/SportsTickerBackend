@@ -8,18 +8,56 @@ import requests
 from flask import Flask, jsonify, request
 
 # ================= CONFIGURATION =================
-TIMEZONE_OFFSET = -5  # Set to -5 for EST/EDT
+# Default fallback if IP lookup fails (EST/EDT)
+DEFAULT_OFFSET = -5 
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 15
+UPDATE_INTERVAL = 5
 data_lock = threading.Lock()
 
-# Standard headers to prevent caching/throttling from APIs
+# Standard headers
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0"
 }
 
 # ==========================================
-# FBS ABBREVIATIONS (Full List)
+# TIMEZONE MANAGER
+# ==========================================
+class TimezoneManager:
+    def __init__(self):
+        self.ip_cache = {} # Stores {ip: offset_seconds}
+        self.cache_lock = threading.Lock()
+
+    def get_offset(self, ip_address):
+        # 1. Check Cache
+        with self.cache_lock:
+            if ip_address in self.ip_cache:
+                return self.ip_cache[ip_address]
+
+        # 2. Lookup (using free ip-api.com)
+        try:
+            clean_ip = ip_address.split(':')[0]
+            # Use short timeout to prevent hanging
+            r = requests.get(f"http://ip-api.com/json/{clean_ip}", timeout=1.5)
+            data = r.json()
+            if data['status'] == 'success':
+                offset = data['offset'] # seconds
+                with self.cache_lock:
+                    self.ip_cache[ip_address] = offset
+                print(f"[TZ DEBUG] Cached offset for {ip_address}: {offset/3600}h")
+                return offset
+        except:
+            pass
+        
+        # 3. Fallback
+        return DEFAULT_OFFSET * 3600
+
+tz_manager = TimezoneManager()
+
+# ==========================================
+# FBS ABBREVIATIONS
 # ==========================================
 FBS_TEAMS = [
     "AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", 
@@ -39,7 +77,7 @@ FBS_TEAMS = [
 ]
 
 # ==========================================
-# FCS ABBREVIATIONS (Full List)
+# FCS ABBREVIATIONS
 # ==========================================
 FCS_TEAMS = [
     "ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", 
@@ -215,6 +253,7 @@ class SportsFetcher:
     def __init__(self, initial_loc):
         self.weather = WeatherFetcher(initial_loc)
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
+        self.possession_cache = {}  # Stores last known possession by game ID
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'groups': '80', 'limit': 1000} },
@@ -287,80 +326,112 @@ class SportsFetcher:
 
     def _fetch_nhl_native(self, games_list, target_date_str):
         with data_lock: is_nhl = state['active_sports'].get('nhl', False)
+        if not is_nhl: return
         processed_ids = set()
+        
         try:
-            # Use headers to avoid cache/bot blocking
+            # 1. Fetch Schedule for the week (MASTER LIST)
             r = requests.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
             if r.status_code != 200: return
             
-            # Iterate through the full week returned by schedule/now
+            # 2. Iterate days to find target games
             for d in r.json().get('gameWeek', []):
                 day_games = d.get('games', [])
                 
-                # Logic: Fetch if date matches target OR if any game in that day is actually Live/Crit
-                # This fixes the midnight bug where target_date changes but game is still "yesterday" in API
+                # Check if this day is relevant: Matches Target Date OR has Active Games (e.g. late night)
+                is_target_date = (d.get('date') == target_date_str)
                 has_active_games = any(g.get('gameState') in ['LIVE', 'CRIT'] for g in day_games)
                 
-                if d.get('date') == target_date_str or has_active_games:
+                if is_target_date or has_active_games:
                     for g in day_games:
                         gid = g['id']
-                        if gid not in processed_ids:
-                            self._process_single_nhl_game(gid, games_list, is_nhl)
-                            processed_ids.add(gid)
-        except: pass
+                        if gid in processed_ids: continue
+                        processed_ids.add(gid)
 
-    def _process_single_nhl_game(self, game_id, games_list, is_enabled):
-        try:
-            # SWITCHED to 'landing' endpoint - much lighter and faster than play-by-play
-            r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/landing", headers=HEADERS, timeout=3)
-            d = r.json()
-            
-            h_ab = d['homeTeam']['abbrev']; a_ab = d['awayTeam']['abbrev']
-            h_sc = str(d['homeTeam'].get('score', 0)); a_sc = str(d['awayTeam'].get('score', 0))
-            
-            # APPLY FIX
-            h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
-            a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
+                        # --- HYBRID LOGIC ---
+                        # A. Get BASIC info from schedule (Safe fallback)
+                        h_ab = g['homeTeam']['abbrev']
+                        a_ab = g['awayTeam']['abbrev']
+                        h_sc = str(g['homeTeam'].get('score', 0))
+                        a_sc = str(g['awayTeam'].get('score', 0))
+                        
+                        st = g.get('gameState', 'OFF')
+                        
+                        # Apply logo fix
+                        h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
+                        a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
+                        
+                        map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
+                        
+                        # Filter Mode
+                        with data_lock:
+                            mode = state['mode']; my_teams = state['my_teams']
+                        
+                        is_shown = True
+                        if mode == 'live' and map_st != 'in': is_shown = False
+                        if mode == 'my_teams':
+                            h_k = f"nhl:{h_ab}"; a_k = f"nhl:{a_ab}"
+                            if (h_k not in my_teams and h_ab not in my_teams) and (a_k not in my_teams and a_ab not in my_teams): is_shown = False
 
-            st = d.get('gameState', 'OFF')
-            map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
+                        # B. Defaults
+                        disp = "Scheduled"; pp = False; poss = ""; en = False
+                        utc_start = g.get('startTimeUTC', '') # SAVE THIS for local conversion
+                        
+                        if st in ['PRE', 'FUT']:
+                             disp = "Scheduled" 
+                        elif st in ['FINAL', 'OFF']:
+                             disp = "FINAL"
+                             if g.get('periodDescriptor', {}).get('periodType') == 'OT': disp = "FINAL OT"
+                             if g.get('periodDescriptor', {}).get('periodType') == 'SHOOTOUT': disp = "FINAL S/O"
 
-            with data_lock:
-                mode = state['mode']; my_teams = state['my_teams']
-            
-            is_shown = is_enabled
-            if is_shown:
-                if mode == 'live' and map_st != 'in': is_shown = False
-                if mode == 'my_teams':
-                    h_k = f"nhl:{h_ab}"; a_k = f"nhl:{a_ab}"
-                    if (h_k not in my_teams and h_ab not in my_teams) and (a_k not in my_teams and a_ab not in my_teams): is_shown = False
+                        # C. If LIVE, Try Fetching Detailed 'Landing' Data
+                        if map_st == 'in':
+                            try:
+                                r2 = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{gid}/landing", headers=HEADERS, timeout=2)
+                                if r2.status_code == 200:
+                                    d2 = r2.json()
+                                    
+                                    # Update Scores (more accurate in landing)
+                                    h_sc = str(d2['homeTeam'].get('score', h_sc))
+                                    a_sc = str(d2['awayTeam'].get('score', a_sc))
+                                    
+                                    pd = d2.get('periodDescriptor', {})
+                                    clk = d2.get('clock', {})
+                                    time_rem = clk.get('timeRemaining', '00:00')
+                                    is_intermission = clk.get('inIntermission', False)
+                                    p_type = pd.get('periodType', '')
+                                    p_num = pd.get('number', 1)
+                                    
+                                    if p_type == 'SHOOTOUT':
+                                        disp = "S/O"
+                                    elif is_intermission or time_rem == "00:00":
+                                        if p_num == 1: disp = "End 1st"
+                                        elif p_num == 2: disp = "End 2nd"
+                                        elif p_num == 3: disp = "End 3rd"
+                                        else: disp = "Intermission"
+                                    else:
+                                        p_lbl = "OT" if p_num > 3 else f"P{p_num}"
+                                        disp = f"{p_lbl} {time_rem}"
 
-            pd = d.get('periodDescriptor', {})
-            p_lbl = f"P{pd.get('number', 1)}"
-            if pd.get('number') > 3: p_lbl = "OT"
-            
-            clk = d.get('clock', {})
-            if st in ['PRE','FUT']: disp = "Scheduled"
-            elif st in ['FINAL','OFF']: disp = "FINAL"
-            else: disp = f"{p_lbl} {clk.get('timeRemaining','00:00')}"
+                                    sit_obj = d2.get('situation', {})
+                                    if sit_obj:
+                                        sit = sit_obj.get('situationCode', '1551')
+                                        ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
+                                        if as_ > hs: pp=True; poss=a_ab
+                                        elif hs > as_: pp=True; poss=h_ab
+                                        en = (ag==0 or hg==0)
+                            except: 
+                                disp = "Live" # Fallback if landing fails
 
-            # Safely get situation, default to empty if not present (landing endpoint might differ slightly if game over)
-            sit_obj = d.get('situation', {})
-            if sit_obj:
-                sit = sit_obj.get('situationCode', '1551')
-                ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
-                pp = False; poss = ""; en = (ag==0 or hg==0)
-                if as_ > hs: pp=True; poss=a_ab
-                elif hs > as_: pp=True; poss=h_ab
-            else:
-                pp=False; poss=""; en=False
+                        # Append Game (Always append, even if landing failed)
+                        games_list.append({
+                            'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': is_shown,
+                            'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
+                            'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
+                            'startTimeUTC': utc_start, # Passed to client for timezone fix
+                            'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en }
+                        })
 
-            games_list.append({
-                'sport': 'nhl', 'id': str(game_id), 'status': disp, 'state': map_st, 'is_shown': is_shown,
-                'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
-                'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
-                'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en }
-            })
         except: pass
 
     def get_real_games(self):
@@ -376,22 +447,29 @@ class SportsFetcher:
                 with data_lock: state['current_games'] = [w]; return
 
         req_params = {}
+        
+        # === DATE LOGIC (MIDNIGHT FIX) ===
+        now_local = dt.now(timezone(timedelta(hours=DEFAULT_OFFSET)))
         if conf['debug_mode'] and conf['custom_date']:
             target_date_str = conf['custom_date']
-            req_params['dates'] = target_date_str.replace('-', '')
         else:
-            target_date_str = (dt.now(timezone(timedelta(hours=TIMEZONE_OFFSET)))).strftime("%Y-%m-%d")
-            req_params['dates'] = target_date_str.replace('-', '')
+            if now_local.hour < 4:
+                query_date = now_local - timedelta(days=1)
+            else:
+                query_date = now_local
+            target_date_str = query_date.strftime("%Y-%m-%d")
+
+        req_params['dates'] = target_date_str.replace('-', '')
 
         for league_key, config in self.leagues.items():
             if not conf['active_sports'].get(league_key, False): continue
             
-            # --- UPDATED NHL LOGIC: TRY NATIVE, FALLBACK TO ESPN ---
+            # === HYBRID NHL LOGIC ===
             if league_key == 'nhl' and not conf['debug_mode']:
                 prev_count = len(games)
                 self._fetch_nhl_native(games, target_date_str)
-                if len(games) > prev_count: continue # Native worked, skip fallback
-                # If we get here, native failed/returned 0 games. Fallthrough to generic ESPN fetch.
+                # If we got ANY games from native (live or scheduled), skip ESPN
+                if len(games) > prev_count: continue 
 
             try:
                 curr_p = config['scoreboard_params'].copy(); curr_p.update(req_params)
@@ -399,12 +477,16 @@ class SportsFetcher:
                 data = r.json()
                 
                 for e in data.get('events', []):
-                    utc_str = e['date'].replace('Z', '')
-                    game_date_str = (dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc) + timedelta(hours=TIMEZONE_OFFSET)).strftime("%Y-%m-%d")
+                    utc_str = e['date'].replace('Z', '') # ESPN provides clean ISO
+                    utc_start_iso = e['date']
+                    
+                    # Convert to Server Time just for filtering logic (date check)
+                    game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+                    game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=DEFAULT_OFFSET)))
+                    game_date_str = game_dt_server.strftime("%Y-%m-%d")
                     
                     st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
                     
-                    # DATE FILTER
                     keep_date = (gst == 'in') or (game_date_str == target_date_str)
                     if league_key == 'mlb' and not keep_date: continue
                     if not keep_date: continue
@@ -412,7 +494,6 @@ class SportsFetcher:
                     comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
                     h_ab = h['team']['abbreviation']; a_ab = a['team']['abbreviation']
                     
-                    # STRICT COLLEGE FILTER
                     if league_key == 'ncf_fbs':
                         if h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
                     elif league_key == 'ncf_fcs':
@@ -425,29 +506,65 @@ class SportsFetcher:
                         if (hk not in conf['my_teams'] and h_ab not in conf['my_teams']) and \
                            (ak not in conf['my_teams'] and a_ab not in conf['my_teams']): is_shown = False
 
-                    # APPLY LOGO FIX
                     h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
                     a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
 
                     s_disp = tp.get('shortDetail', 'TBD')
+                    
+                    # === STATUS TEXT LOGIC ===
+                    is_halftime = False
                     if gst == 'pre':
-                        try: s_disp = (dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc) + timedelta(hours=TIMEZONE_OFFSET)).strftime("%I:%M %p").lstrip('0')
-                        except: pass
-                    elif gst == 'in':
+                        s_disp = "Scheduled" 
+                    elif gst == 'in' or gst == 'half':
                         p = st.get('period', 1); clk = st.get('displayClock', '')
-                        s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
+                        
+                        # Football Halftime Detection
+                        if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
+                            s_disp = "Halftime"
+                            is_halftime = True
+                        # Hockey Intermission Detection (ESPN Fallback)
+                        elif 'hockey' in config['path'] and clk == '0:00':
+                             if p == 1: s_disp = "End 1st"
+                             elif p == 2: s_disp = "End 2nd"
+                             elif p == 3: s_disp = "End 3rd"
+                             else: s_disp = "Intermission"
+                        else:
+                            s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
                     else:
                         s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
 
                     sit = comp.get('situation', {})
+                    
+                    # === FIXED POSSESSION LOGIC ===
+                    curr_poss = sit.get('possession')
+                    if curr_poss:
+                        self.possession_cache[e['id']] = curr_poss
+                    
+                    if gst == 'pre':
+                         curr_poss = '' 
+                    elif is_halftime or gst in ['post', 'final']:
+                         curr_poss = '' 
+                         self.possession_cache[e['id']] = '' 
+                    else:
+                         if not curr_poss:
+                             curr_poss = self.possession_cache.get(e['id'], '')
+                    
+                    down_text = sit.get('downDistanceText', '')
+                    if is_halftime: down_text = ''
+
                     game_obj = {
                         'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
                         'home_abbr': h_ab, 'home_score': h.get('score','0'), 'home_logo': h_lg,
-                        'home_id': h.get('id'), # Added generic ID for fallback
+                        'home_id': h.get('id'), 
                         'away_abbr': a_ab, 'away_score': a.get('score','0'), 'away_logo': a_lg,
-                        'away_id': a.get('id'), # Added generic ID for fallback
+                        'away_id': a.get('id'), 
+                        'startTimeUTC': utc_start_iso, # Stored for API conversion
                         'period': st.get('period', 1),
-                        'situation': { 'possession': sit.get('possession', ''), 'isRedZone': sit.get('isRedZone', False), 'downDist': sit.get('downDistanceText', '') }
+                        'situation': { 
+                            'possession': curr_poss, 
+                            'isRedZone': sit.get('isRedZone', False), 
+                            'downDist': down_text 
+                        }
                     }
                     if league_key == 'mlb':
                         game_obj['situation'] = { 'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False) }
@@ -471,9 +588,59 @@ def root(): return "Ticker Server Online"
 
 @app.route('/api/ticker')
 def api_ticker():
+    # 1. Get Client IP (Check various headers for proxy)
+    user_ip = request.headers.get('X-Real-IP')
+    if not user_ip:
+        user_ip = request.headers.get('CF-Connecting-IP')
+    if not user_ip:
+        user_ip = request.headers.get('X-Forwarded-For')
+    if not user_ip:
+        user_ip = request.remote_addr
+        
+    if user_ip and ',' in user_ip: 
+        user_ip = user_ip.split(',')[0].strip()
+    
+    # 2. Get Timezone Offset (Seconds)
+    offset_sec = tz_manager.get_offset(user_ip)
+    
+    # 3. Process Games List (Copy to avoid race conditions)
     with data_lock: d = state.copy()
-    vis = [g for g in d['current_games'] if g.get('is_shown', True)]
-    return jsonify({'meta': {'time': dt.now().strftime("%I:%M %p"), 'count': len(vis), 'scroll_seamless': d['scroll_seamless'], 'brightness': d['brightness'], 'inverted': d['inverted'], 'panel_count': d['panel_count'], 'test_pattern': d['test_pattern'], 'reboot_requested': d['reboot_requested']}, 'games': vis})
+    raw_games = d['current_games']
+    
+    processed_games = []
+    
+    for g in raw_games:
+        if not g.get('is_shown', True): continue
+        
+        game_copy = g.copy()
+        
+        # === FORCE DYNAMIC TIME FORMATTING ===
+        # If we have UTC start time and game is PRE or FUT, always overwrite status
+        utc_str = game_copy.get('startTimeUTC')
+        if utc_str and game_copy.get('state') in ['pre', 'fut']:
+            try:
+                if utc_str.endswith('Z'): utc_str = utc_str.replace('Z', '+00:00')
+                dt_utc = dt.fromisoformat(utc_str)
+                dt_local = dt_utc.astimezone(timezone(timedelta(seconds=offset_sec)))
+                game_copy['status'] = dt_local.strftime("%I:%M %p").lstrip('0')
+            except:
+                pass 
+        
+        processed_games.append(game_copy)
+
+    return jsonify({
+        'meta': {
+            'time': dt.now().strftime("%I:%M %p"), 
+            'count': len(processed_games), 
+            'scroll_seamless': d['scroll_seamless'], 
+            'brightness': d['brightness'], 
+            'inverted': d['inverted'], 
+            'panel_count': d['panel_count'], 
+            'test_pattern': d['test_pattern'], 
+            'reboot_requested': d['reboot_requested']
+        }, 
+        'games': processed_games
+    })
 
 @app.route('/api/state')
 def api_state():
