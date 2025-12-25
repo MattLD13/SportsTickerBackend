@@ -22,18 +22,13 @@ SLOW_INTERVAL = 10800 # 3 Hours
 
 SIM_COUNT = 20000 
 
-# === VOLATILITY SETTINGS ===
-# Higher = More Upset Potential
+# === VOLATILITY & SCORING SETTINGS ===
 LEAGUE_VOLATILITY = { "CBS": 0.55, "ESPN": 0.65, "DEFAULT": 0.60 }
 LEAGUE_PAYOUTS = { "CBS": {"win": 1770, "loss": 1100}, "ESPN": {"win": 1000, "loss": 500} }
 
-# === PROJECTION SCALERS ===
-# Adjusts the raw Vegas number to match league scoring vibes
-# CBS: 0.91 (Dampens slight inflation)
-# ESPN: 1.05 (Boosts for PPR/Bonuses that Vegas might under-price)
+# [FIX] Added missing definition
 LEAGUE_PROJ_MULTIPLIERS = { "CBS": 0.91, "ESPN": 1.05, "DEFAULT": 1.0 }
 
-# HISTORICAL REGRESSION (If Vegas is missing props)
 HISTORICAL_RATES = {
     'QB': {'pass_td_per_yd': 0.0064, 'rush_td_per_yd': 0.003}, 
     'RB': {'rush_td_per_yd': 0.0090, 'rec_td_per_yd': 0.005},  
@@ -215,7 +210,6 @@ class FantasySimulator:
         tag = "CBS" if "CBS" in plat else ("ESPN" if "ESPN" in plat else "Fantasy")
         
         vol = LEAGUE_VOLATILITY.get(tag, 0.60)
-        # Apply League-Specific Multiplier (Fixes ESPN being too low)
         proj_mult = LEAGUE_PROJ_MULTIPLIERS.get(tag, 1.0)
         payouts = LEAGUE_PAYOUTS.get(tag, {"win":0, "loss":0})
         
@@ -246,7 +240,6 @@ class FantasySimulator:
                             stats, cnt = self.get_proj(match, pm)
                             if cnt > 0:
                                 raw_vegas = self.calc_pts(stats, p['pos'], json_data['scoring_rules'])
-                                # Apply League-Specific Multiplier here
                                 v_proj = raw_vegas * proj_mult 
                                 b_std = max(v_proj * vol, 4.0)
                                 src = "Vegas"
