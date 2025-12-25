@@ -34,7 +34,15 @@ PROP_MARKETS = [
     "player_reception_tds", "player_receptions", "player_anytime_td"
 ]
 
-# GENERIC LOGOS
+# HISTORICAL REGRESSION (TDs per Yard)
+HISTORICAL_RATES = {
+    'QB': {'pass_td_per_yd': 0.0064, 'rush_td_per_yd': 0.003}, 
+    'RB': {'rush_td_per_yd': 0.0090, 'rec_td_per_yd': 0.005},  
+    'WR': {'rush_td_per_yd': 0.0050, 'rec_td_per_yd': 0.0062}, 
+    'TE': {'rec_td_per_yd': 0.0083},                           
+    'DEFAULT': {'pass': 0.006, 'rush': 0.007, 'rec': 0.006}
+}
+
 FANTASY_LOGO = "https://a.espncdn.com/i/teamlogos/ncaa/500/172.png" 
 OPPONENT_LOGO = "https://a.espncdn.com/i/teamlogos/ncaa/500/193.png" 
 
@@ -51,7 +59,7 @@ class LiveGameManager:
     def __init__(self):
         self.base_url = "http://site.api.espn.com/apis/site/v2/sports/football/nfl"
         self.team_map = {}   # Maps "MIN" -> {game_id: 123, mins_remaining: 45.0}
-        self.player_stats = {} # Maps "Justin Jefferson" -> {pass_yds: 0, rec_yds: 50, ...}
+        self.player_stats = {} # Maps "Justin Jefferson" -> stats
         self.processed_games = set()
 
     def update(self):
@@ -61,7 +69,7 @@ class LiveGameManager:
         self.processed_games = set()
         
         try:
-            # 1. GET SCOREBOARD (Find active Game IDs)
+            # 1. GET SCOREBOARD
             r = requests.get(f"{self.base_url}/scoreboard", params={'limit': 100}, timeout=5)
             data = r.json()
             
@@ -84,12 +92,12 @@ class LiveGameManager:
                 elif state == 'post':
                     mins_remaining = 0.0
                 
-                # Map Teams to this Game
+                # Map Teams
                 for c in e['competitions'][0]['competitors']:
                     abbr = c['team']['abbreviation']
                     self.team_map[abbr] = {'game_id': game_id, 'mins_remaining': mins_remaining}
                 
-                # 2. FETCH BOXSCORE (Only if game is live/final)
+                # 2. FETCH BOXSCORE (If live/final)
                 if state in ['in', 'post']:
                     self._fetch_boxscore(game_id)
                     
@@ -102,21 +110,18 @@ class LiveGameManager:
             r = requests.get(f"{self.base_url}/summary?event={game_id}", timeout=5)
             d = r.json()
             
-            # Parse every player in the boxscore
+            # Parse players
             for tm in d.get('boxscore', {}).get('players', []):
                 for grp in tm.get('statistics', []):
-                    # grp['name'] is 'passing', 'rushing', etc.
                     keys = grp['keys']
                     for ath in grp.get('athletes', []):
                         name = ath['athlete']['displayName']
                         stats = ath['stats']
                         
-                        # Normalize Name
                         clean_name = self._clean_name(name)
                         if clean_name not in self.player_stats:
                             self.player_stats[clean_name] = {'pass_yds':0,'pass_td':0,'int':0,'rush_yds':0,'rush_td':0,'rec_yds':0,'rec_td':0,'rec':0}
                         
-                        # Extract Stats
                         try:
                             s = self.player_stats[clean_name]
                             if grp['name'] == 'passing':
@@ -136,7 +141,6 @@ class LiveGameManager:
         except: pass
 
     def _clean_name(self, name):
-        # Removes "Jr", "III", periods to match bet/fantasy sites
         return name.lower().replace('.', '').replace(' jr', '').replace(' sr', '').replace(' iii', '').strip()
 
     def get_player_live(self, name, team_abbr, scoring_rules):
@@ -144,28 +148,23 @@ class LiveGameManager:
         # 1. Get Game Status
         game_info = self.team_map.get(team_abbr)
         if not game_info:
-            return 0.0, 60.0 # Game hasn't started or team not found
+            return 0.0, 60.0 
         
         mins = game_info['mins_remaining']
         
-        # 2. Get Player Stats
+        # 2. Get Stats
         clean_name = self._clean_name(name)
         stats = self.player_stats.get(clean_name)
         
-        if not stats:
-            # Player hasn't recorded a stat yet
-            return 0.0, mins
+        if not stats: return 0.0, mins
             
-        # 3. Calculate Fantasy Points
+        # 3. Calculate Points
         pts = 0.0
-        # Passing
         pts += (stats['pass_yds'] * scoring_rules['passing']['yards'])
         pts += (stats['pass_td'] * scoring_rules['passing']['touchdown'])
         pts += (stats['int'] * scoring_rules['passing']['interception'])
-        # Rushing
         pts += (stats['rush_yds'] * scoring_rules['rushing']['yards'])
         pts += (stats['rush_td'] * scoring_rules['rushing']['touchdown'])
-        # Receiving
         pts += (stats['rec_yds'] * scoring_rules['receiving']['yards'])
         pts += (stats['rec_td'] * scoring_rules['receiving']['touchdown'])
         pts += (stats['rec'] * scoring_rules['receiving'].get('ppr', 0))
@@ -219,9 +218,7 @@ class FantasySimulator:
         best = None; hi = 0.0
         for api in api_names:
             clean = api.lower().replace('.', '').replace(' jr', '').strip()
-            # Exact Match
             if target == clean: return api
-            # Sequence Match
             ratio = difflib.SequenceMatcher(None, target, clean).ratio()
             if ratio > hi: hi = ratio; best = api
         return best if hi > 0.85 else None
@@ -247,25 +244,33 @@ class FantasySimulator:
             stats['anytime_td_prob'] = prob; count += 1
         return stats, count
 
-    def calc_vegas_pts(self, stats, rules):
+    def calc_pts(self, stats, pos, rules):
         s = 0.0
+        # PASSING
         p_yds = stats.get('player_pass_yds', 0); p_tds = stats.get('player_pass_tds', 0)
-        if p_yds > 0 and p_tds == 0: p_tds = p_yds * 0.006 # Regression
         s += (p_yds * 0.04) + (p_tds * rules['passing']['touchdown'])
-        
+        if p_yds > 0 and p_tds == 0:
+            rate = HISTORICAL_RATES.get('QB', {}).get('pass_td_per_yd', 0.006)
+            s += (p_yds * rate * rules['passing']['touchdown'])
+
+        # RUSHING
         r_yds = stats.get('player_rush_yds', 0); r_tds = stats.get('player_rush_tds', 0)
         s += (r_yds * 0.1)
-        if r_yds > 0 and r_tds == 0: s += (r_yds * 0.008 * 6.0) # Regression
+        if r_yds > 0 and r_tds == 0:
+            rate = HISTORICAL_RATES.get(pos, HISTORICAL_RATES['DEFAULT']).get('rush_td_per_yd', 0.007)
+            s += (r_yds * rate * 6.0)
         else: s += (r_tds * 6.0)
 
+        # RECEIVING
         rec_yds = stats.get('player_reception_yds', 0); rec_tds = stats.get('player_reception_tds', 0)
         recs = stats.get('player_receptions', 0)
         s += (rec_yds * 0.1)
-        if rec_yds > 0 and recs == 0: recs = rec_yds / 12.0
+        if rec_yds > 0 and recs == 0: recs = rec_yds / 13.0
         s += recs * rules['receiving'].get('ppr', 0)
-        if rec_yds > 0 and rec_tds == 0: s += (rec_yds * 0.007 * 6.0)
+        if rec_yds > 0 and rec_tds == 0:
+            rate = HISTORICAL_RATES.get(pos, HISTORICAL_RATES['DEFAULT']).get('rec_td_per_yd', 0.006)
+            s += (rec_yds * rate * 6.0)
         else: s += (rec_tds * 6.0)
-        
         return s
 
     def run_sim(self, json_data, props_map, debug_list):
@@ -284,23 +289,15 @@ class FantasySimulator:
         for side in ['home', 'away']:
             team = home if side == 'home' else away
             for p in team['roster']:
-                # 1. GET LIVE DATA
-                live_pts, mins_rem = self.live.get_player_live(p['name'], p.get('team',''), json_data['scoring_rules'])
-                
-                # 2. CALCULATE DECAY FACTOR (0.0 to 1.0)
-                # If 60 mins left, factor is 1.0. If 0 mins left, factor is 0.0.
-                decay_factor = mins_rem / 60.0
-                if decay_factor < 0: decay_factor = 0
-                if decay_factor > 1: decay_factor = 1
-                
-                # 3. BASE PROJECTION (LEAGUE)
-                base_full_game = p['proj']
-                # Remainder is PreGame * Decay
-                base_rem = base_full_game * decay_factor
-                
-                # 4. VEGAS PROJECTION
-                vegas_rem = None
+                base = p['proj']
+                b_std = max(base * vol, 4.0)
                 src = "League"
+                
+                live_pts, mins_rem = self.live.get_player_live(p['name'], p.get('team',''), json_data['scoring_rules'])
+                decay_factor = max(0.0, min(1.0, mins_rem / 60.0))
+                
+                base_rem = base * decay_factor
+                vegas_rem = None
                 
                 if decay_factor > 0:
                     for eid, pm in props_map.items():
@@ -313,27 +310,25 @@ class FantasySimulator:
                         if match:
                             stats, cnt = self.get_proj(match, pm)
                             if cnt > 0:
-                                v_full = self.calc_vegas_pts(stats, json_data['scoring_rules']) * proj_mult
-                                vegas_rem = v_full * decay_factor
+                                raw_vegas = self.calc_pts(stats, p['pos'], json_data['scoring_rules'])
+                                vegas_rem = (raw_vegas * proj_mult) * decay_factor
+                                b_std = max(raw_vegas * vol, 4.0)
                                 src = "Vegas"
                             break
                 
-                # If Vegas missing or suspiciously low vs league, stick to League
                 if vegas_rem is None or (vegas_rem < (base_rem * 0.5)):
                     vegas_rem = base_rem
                     if src == "Vegas": src = "League (Low Vegas)"
                 
-                # 5. FINAL FORECAST
-                # Forecast = Locked_In_Points + Remaining_Projection
                 final_mean_vegas = live_pts + vegas_rem
                 final_mean_league = live_pts + base_rem
                 
-                # Standard Deviation only applies to the FUTURE
-                b_std = max(vegas_rem * vol, 3.0 * decay_factor) 
+                if p['pos'] in ['DST', 'K']: final_mean_vegas = final_mean_league; src = "League"
                 
-                matchup[side].append({'name': p['name'], 'mean': final_mean_vegas, 'std': b_std})
+                sim_std = b_std * decay_factor 
                 
-                # Debug Data
+                matchup[side].append({'name': p['name'], 'mean': final_mean_vegas, 'std': sim_std})
+                
                 dbg['players'].append({
                     "name": p['name'], "pos": p['pos'], "team": side.upper(),
                     "live_score": round(live_pts, 2),
@@ -349,11 +344,8 @@ class FantasySimulator:
             hs = 0; as_ = 0
             for p in matchup['home']: hs += random.gauss(p['mean'], p['std'])
             for p in matchup['away']: as_ += random.gauss(p['mean'], p['std'])
-            
-            # Chaos Factor (+/- 12 pts)
             hs += random.gauss(0, 12.0)
             as_ += random.gauss(0, 12.0)
-            
             if hs > as_: h_wins += 1
             
         win_pct = (h_wins / SIM_COUNT) * 100
@@ -362,8 +354,10 @@ class FantasySimulator:
         return {
             "sport": "nfl", "id": str(hash(home['name']+away['name'])%100000), 
             "status": tag, "state": "in", "is_shown": True,
-            "home_abbr": "ME", "home_score": f"{win_pct:.2f}", "home_logo": FANTASY_LOGO, "home_id": "998",
-            "away_abbr": "OTH", "away_score": f"{(100-win_pct):.2f}", "away_logo": OPPONENT_LOGO, "away_id": "999",
+            "home_abbr": "ME", "home_score": f"{win_pct:.2f}", 
+            "home_logo": FANTASY_LOGO, "home_id": "998",
+            "away_abbr": "OTH", "away_score": f"{(100-win_pct):.2f}", 
+            "away_logo": OPPONENT_LOGO, "away_id": "999",
             "startTimeUTC": datetime.utcnow().isoformat() + "Z", "period": 4,
             "situation": { "possession": "ME", "downDist": f"Hedge: ${hedge}", "isRedZone": False }
         }
@@ -374,7 +368,7 @@ def run_loop():
     time.sleep(5) 
     while True:
         odds.fetch_fresh(); props = odds.get_props()
-        live.update() # Fetch Real Stats
+        live.update() 
         sim = FantasySimulator(odds, live); games = []; dbg = []
         if os.path.exists(CBS_FILE):
             try: games.append(sim.run_sim(sim.load_json(CBS_FILE), props, dbg))
