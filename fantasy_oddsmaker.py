@@ -14,6 +14,7 @@ CBS_FILE = "cbs_data.json"
 ESPN_FILE = "espn_data.json"
 CACHE_FILE = "odds_cache.json"
 OUTPUT_FILE = "fantasy_output.json"
+DEBUG_FILE = "fantasy_debug.json" # For the website table
 
 # === TURBO TIMING ===
 FAST_INTERVAL = 60    # Live stats every minute
@@ -22,9 +23,7 @@ SLOW_INTERVAL = 600   # Vegas odds every 10 minutes
 # SIMULATION SETTINGS
 SIM_COUNT = 50000 
 
-# === LEAGUE-SPECIFIC CHAOS (VOLATILITY) ===
-# CBS: 0.40 (Tightened to reward the favorite more)
-# ESPN: 0.65 (Increased chaos to lower the 77% win prob towards 57%)
+# LEAGUE-SPECIFIC CHAOS
 LEAGUE_VOLATILITY = {
     "CBS": 0.40,
     "ESPN": 0.65,
@@ -43,7 +42,6 @@ PROP_MARKETS = [
 ]
 
 class LiveESPNFetcher:
-    """ Fetches REAL-TIME stats from ESPN (Free/Unlimited) """
     def __init__(self):
         self.url = "http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
         self.live_data = {}
@@ -62,8 +60,8 @@ class LiveESPNFetcher:
             status = e.get('status', {})
             state = status.get('type', {}).get('state', 'pre')
             period = status.get('period', 1)
-            
             time_rem_pct = 1.0
+            
             if state == 'in':
                 q_rem = 4 - period
                 time_rem_pct = (q_rem * 15) / 60.0
@@ -117,7 +115,6 @@ class LiveESPNFetcher:
         return None
 
 class OddsAPIFetcher:
-    """ Fetches Vegas Props (Costly) """
     def __init__(self, api_key):
         self.key = api_key
         self.base = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl"
@@ -141,7 +138,6 @@ class OddsAPIFetcher:
         except: pass
 
     def fetch_fresh_props(self):
-        # Only run if SLOW_INTERVAL has passed
         if time.time() - self.last_fetch_time < SLOW_INTERVAL:
             return
         
@@ -151,24 +147,18 @@ class OddsAPIFetcher:
             r = requests.get(url)
             if r.status_code == 200:
                 events = r.json()
-                relevant = events
                 self.cache = {'events': events} 
-                
-                for e in relevant:
+                for e in events:
                     mkts = ",".join(PROP_MARKETS)
                     u2 = f"{self.base}/events/{e['id']}/odds?apiKey={self.key}&regions=us&markets={mkts}&oddsFormat=american"
                     r2 = requests.get(u2)
                     if r2.status_code == 200:
                         self.cache[f"props_{e['id']}"] = r2.json()
-                
                 self.last_fetch_time = time.time()
                 self.save_cache()
-                if 'x-requests-remaining' in r.headers:
-                    print(f"Credits Remaining: {r.headers['x-requests-remaining']}")
         except Exception as e: print(f"Odds API Error: {e}")
 
     def get_all_props(self):
-        # Returns dict of all cached props {event_id: props}
         res = {}
         events = self.cache.get('events', [])
         for e in events:
@@ -246,7 +236,7 @@ class FantasySimulator:
         hash_val = int(hashlib.sha256(string_input.encode('utf-8')).hexdigest(), 16)
         return str(hash_val % 1000000000)
 
-    def simulate_game(self, json_data, events_map):
+    def simulate_game(self, json_data, events_map, debug_data_list):
         home = json_data['matchup']['home_team']
         away = json_data['matchup']['away_team']
         rules = json_data['scoring_rules']
@@ -254,18 +244,24 @@ class FantasySimulator:
         
         status_tag = "CBS" if "CBS" in platform else ("ESPN" if "ESPN" in platform else "Fantasy")
         payouts = LEAGUE_PAYOUTS.get(status_tag, {"win": 0, "loss": 0})
-        
-        # === DYNAMIC VOLATILITY SELECTION ===
         league_vol = LEAGUE_VOLATILITY.get(status_tag, LEAGUE_VOLATILITY["DEFAULT"])
 
         matchup_models = {'home': [], 'away': []}
         
+        # DEBUG DATA STRUCTURE
+        game_debug = {
+            "platform": status_tag,
+            "home_team": home['name'],
+            "away_team": away['name'],
+            "players": []
+        }
+
         for side in ['home', 'away']:
             team_data = home if side == 'home' else away
             for p in team_data['roster']:
                 base_proj = p['proj']
-                # USE LEAGUE-SPECIFIC VOLATILITY
                 base_std = base_proj * league_vol
+                source = "League"
                 
                 live_info = self.live_fetcher.get_player_live(p['name'])
                 live_score = 0.0; rem_pct = 1.0
@@ -287,6 +283,7 @@ class FantasySimulator:
                             if count > 0:
                                 vegas_proj = self.calculate_fantasy_points(stats, rules)
                                 base_std = vegas_proj * league_vol 
+                                source = "Vegas"
                             break
                 
                 remainder_proj = (vegas_proj if vegas_proj else base_proj) * rem_pct
@@ -295,8 +292,21 @@ class FantasySimulator:
                 if p['pos'] in ['DST', 'K']:
                     final_mean = live_score + (p['proj'] * rem_pct)
                     base_std = 4.0 * rem_pct
+                    source = "League"
 
                 matchup_models[side].append({'name': p['name'], 'mean': final_mean, 'std': base_std})
+
+                # Add to Debug Data
+                game_debug['players'].append({
+                    "name": p['name'],
+                    "pos": p['pos'],
+                    "team": side.upper(),
+                    "league_proj": round(live_score + (base_proj * rem_pct), 2),
+                    "my_proj": round(final_mean, 2),
+                    "source": source
+                })
+
+        debug_data_list.append(game_debug)
 
         home_wins = 0; player_volatility = {}
         for _ in range(SIM_COUNT):
@@ -376,18 +386,23 @@ def run_loop():
         
         sim = FantasySimulator(odds_fetcher, live_fetcher)
         games = []
+        debug_data = [] # Collect debug info
         
         if os.path.exists(CBS_FILE):
             try:
-                games.append(sim.simulate_game(sim.load_json(CBS_FILE), cached_props))
+                games.append(sim.simulate_game(sim.load_json(CBS_FILE), cached_props, debug_data))
             except: pass
 
         if os.path.exists(ESPN_FILE):
             try:
-                games.append(sim.simulate_game(sim.load_json(ESPN_FILE), cached_props))
+                games.append(sim.simulate_game(sim.load_json(ESPN_FILE), cached_props, debug_data))
             except: pass
         
+        # Save Ticker Output
         with open(OUTPUT_FILE, 'w') as f: json.dump(games, f)
+        
+        # Save Website Debug Data
+        with open(DEBUG_FILE, 'w') as f: json.dump(debug_data, f)
         
         print(f"Updated: {datetime.now().strftime('%H:%M:%S')}")
         time.sleep(FAST_INTERVAL)
