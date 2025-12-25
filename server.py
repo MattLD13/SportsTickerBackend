@@ -154,12 +154,11 @@ def fantasy_dashboard():
                         vegas = p['my_proj']
                         league = p['league_proj']
                         
-                        # Combo = Average of the Two Final Projections
+                        # Combo = (League + Vegas) / 2
                         combo = (vegas + league) / 2.0
                         
                         v_sum += vegas; l_sum += league; c_sum += combo; live_sum += live
                         
-                        # Compare Combo to League
                         color = "g" if combo > league else "b"
                         
                         h += f"<tr><td>{p['name']}</td><td>{p.get('pos')}</td><td class='n'>{live:.1f}</td><td class='{color}'>{combo:.2f}</td><td>{vegas:.2f}</td><td>{league:.2f}</td></tr>"
