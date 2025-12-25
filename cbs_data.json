@@ -5,71 +5,11 @@
     "scoring_type": "Custom"
   },
   "scoring_rules": {
-    "passing": {
-      "touchdown": 6,
-      "yards_factor": 0.05,
-      "interception": -2,
-      "two_point_conversion": 2,
-      "bonuses": {
-        "300_yards": 2,
-        "350_yards": 3,
-        "400_yards": 4
-      }
-    },
-    "rushing": {
-      "touchdown": 6,
-      "yards_factor": 0.1,
-      "two_point_conversion": 2,
-      "bonuses": {
-        "100_yards": 2,
-        "150_yards": 3,
-        "200_yards": 4
-      }
-    },
-    "receiving": {
-      "touchdown": 6,
-      "yards_factor": 0.1,
-      "two_point_conversion": 2,
-      "bonuses": {
-        "100_yards": 2,
-        "150_yards": 3,
-        "200_yards": 4
-      }
-    },
-    "kicking": {
-      "xp_made": 1,
-      "xp_missed": -1,
-      "fg_missed": 0,
-      "fg_0_39": 3,
-      "fg_40_49": 4,
-      "fg_50_55": 5,
-      "fg_56_plus": 6
-    },
-    "defense_st": {
-      "sack": 1,
-      "interception": 2,
-      "fumble_recovery": 2,
-      "safety": 2,
-      "touchdown": 6,
-      "blocked_kick_punt": 3,
-      "fumble_lost": -2,
-      "points_allowed": {
-        "0_10": 10,
-        "11_20": 7,
-        "21_30": 3,
-        "31_40": 0,
-        "41_50": -3,
-        "51_plus": -5
-      },
-      "yards_allowed": {
-        "0_49": 10,
-        "50_99": 8,
-        "100_149": 6,
-        "150_199": 4,
-        "200_249": 2,
-        "250_plus": 0
-      }
-    }
+    "passing": { "touchdown": 6, "yards_factor": 0.05, "interception": -2, "bonuses": { "300_yards": 2, "350_yards": 3, "400_yards": 4 } },
+    "rushing": { "touchdown": 6, "yards_factor": 0.1, "bonuses": { "100_yards": 2, "150_yards": 3, "200_yards": 4 } },
+    "receiving": { "touchdown": 6, "yards_factor": 0.1, "bonuses": { "100_yards": 2, "150_yards": 3, "200_yards": 4 } },
+    "kicking": { "xp_made": 1, "fg_0_39": 3, "fg_40_49": 4, "fg_50_55": 5, "fg_56_plus": 6 },
+    "defense_st": { "sack": 1, "interception": 2, "fumble_recovery": 2, "safety": 2, "touchdown": 6, "points_allowed": { "0_10": 10, "11_20": 7, "21_30": 3, "31_40": 0, "41_50": -3, "51_plus": -5 } }
   },
   "matchup": {
     "away_team": {
@@ -88,7 +28,7 @@
       ]
     },
     "home_team": {
-      "name": "Team Tuna",
+      "name": "Tuna",
       "side": "right",
       "roster": [
         {"pos": "QB", "name": "M. Stafford", "proj": 24.37},
