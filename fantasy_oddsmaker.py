@@ -59,7 +59,6 @@ class LiveGameManager:
         self.team_status = {} 
 
     def update(self):
-        print("Fetching Live Scores...")
         self.player_stats = {}
         self.team_status = {}
         
@@ -67,6 +66,8 @@ class LiveGameManager:
             # 1. GET SCOREBOARD
             r = requests.get(f"{self.base_url}/scoreboard", params={'limit': 100}, timeout=5)
             data = r.json()
+            
+            active_games = []
             
             for e in data.get('events', []):
                 game_id = e['id']
@@ -90,9 +91,15 @@ class LiveGameManager:
                     abbr = c['team']['abbreviation']
                     self.team_status[abbr] = mins_remaining
                 
-                # 2. FETCH BOXSCORE (If live/final)
+                # Add to fetch list
                 if state in ['in', 'post']:
-                    self._fetch_boxscore(game_id)
+                    active_games.append(game_id)
+            
+            print(f"[Live] Found {len(active_games)} active games.")
+            for gid in active_games:
+                self._fetch_boxscore(gid)
+                
+            print(f"[Live] Tracked stats for {len(self.player_stats)} players.")
                     
         except Exception as e:
             print(f"Live Data Error: {e}")
@@ -102,9 +109,10 @@ class LiveGameManager:
             r = requests.get(f"{self.base_url}/summary?event={game_id}", timeout=5)
             d = r.json()
             
-            # [FIXED PATH]: boxscore -> teams -> statistics -> athletes
-            for tm in d.get('boxscore', {}).get('teams', []):
-                for grp in tm.get('statistics', []):
+            # [FIXED] Path is boxscore -> PLAYERS (not teams)
+            # 'players' is a list (one object per team)
+            for team_group in d.get('boxscore', {}).get('players', []):
+                for grp in team_group.get('statistics', []):
                     keys = grp['keys']
                     for ath in grp.get('athletes', []):
                         name = ath['athlete']['displayName']
@@ -116,21 +124,27 @@ class LiveGameManager:
                         
                         try:
                             s = self.player_stats[clean_name]
+                            # ESPN stats come as strings, sometimes with "--"
+                            def get_stat(idx):
+                                try: return float(stats[idx])
+                                except: return 0.0
+
                             if grp['name'] == 'passing':
-                                if 'yds' in keys: s['pass_yds'] = float(stats[keys.index('yds')])
-                                if 'tds' in keys: s['pass_td'] = float(stats[keys.index('tds')])
-                                if 'ints' in keys: s['int'] = float(stats[keys.index('ints')])
+                                if 'yds' in keys: s['pass_yds'] = get_stat(keys.index('yds'))
+                                if 'tds' in keys: s['pass_td'] = get_stat(keys.index('tds'))
+                                if 'ints' in keys: s['int'] = get_stat(keys.index('ints'))
                             elif grp['name'] == 'rushing':
-                                if 'yds' in keys: s['rush_yds'] = float(stats[keys.index('yds')])
-                                if 'tds' in keys: s['rush_td'] = float(stats[keys.index('tds')])
+                                if 'yds' in keys: s['rush_yds'] = get_stat(keys.index('yds'))
+                                if 'tds' in keys: s['rush_td'] = get_stat(keys.index('tds'))
                             elif grp['name'] == 'receiving':
-                                if 'yds' in keys: s['rec_yds'] = float(stats[keys.index('yds')])
-                                if 'tds' in keys: s['rec_td'] = float(stats[keys.index('tds')])
-                                if 'rec' in keys: s['rec'] = float(stats[keys.index('rec')])
+                                if 'yds' in keys: s['rec_yds'] = get_stat(keys.index('yds'))
+                                if 'tds' in keys: s['rec_td'] = get_stat(keys.index('tds'))
+                                if 'rec' in keys: s['rec'] = get_stat(keys.index('rec'))
                         except: pass
         except: pass
 
     def _clean_name(self, name):
+        # Normalize for matching
         return name.lower().replace('.', '').replace(' jr', '').replace(' sr', '').replace(' iii', '').strip()
 
     def get_player_live(self, name, team_abbr, scoring_rules):
@@ -170,6 +184,7 @@ class OddsAPIFetcher:
         atomic_write(CACHE_FILE, {'timestamp': time.time(), 'payload': self.cache})
     def fetch_fresh(self):
         if time.time() - self.last_fetch < SLOW_INTERVAL: return
+        print("Fetching Vegas Data...")
         try:
             r = requests.get(f"{self.base}/events?apiKey={self.key}", timeout=10)
             if r.status_code == 200:
@@ -345,7 +360,11 @@ class FantasySimulator:
 def run_loop():
     print(f"Fantasy Oddsmaker Started (Sim: {SIM_COUNT})")
     odds = OddsAPIFetcher(API_KEY); live = LiveGameManager()
-    time.sleep(5) 
+    
+    # [FIX] Run update IMMEDIATELY on boot
+    print("Performing initial live data fetch...")
+    live.update()
+    
     while True:
         odds.fetch_fresh(); props = odds.get_props()
         live.update() 
