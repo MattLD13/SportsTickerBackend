@@ -23,7 +23,6 @@ SLOW_INTERVAL = 10800 # 3 Hours
 
 SIM_COUNT = 20000 
 
-# === VOLATILITY & SCORING SETTINGS ===
 LEAGUE_VOLATILITY = { "CBS": 0.55, "ESPN": 0.65, "DEFAULT": 0.60 }
 LEAGUE_PAYOUTS = { "CBS": {"win": 1770, "loss": 1100}, "ESPN": {"win": 1000, "loss": 500} }
 LEAGUE_PROJ_MULTIPLIERS = { "CBS": 0.91, "ESPN": 1.05, "DEFAULT": 1.0 }
@@ -34,7 +33,6 @@ PROP_MARKETS = [
     "player_reception_tds", "player_receptions", "player_anytime_td"
 ]
 
-# HISTORICAL REGRESSION (TDs per Yard)
 HISTORICAL_RATES = {
     'QB': {'pass_td_per_yd': 0.0064, 'rush_td_per_yd': 0.003}, 
     'RB': {'rush_td_per_yd': 0.0090, 'rec_td_per_yd': 0.005},  
