@@ -6,21 +6,19 @@ import requests
 import random
 import statistics
 import difflib
-from datetime import datetime as dt, timedelta
+from datetime import datetime as dt
 from flask import Flask, jsonify
 
 # ================= CONFIGURATION =================
 API_KEY = "5da338be7ba612d5e88f889f93dd832f"
 CBS_FILE = "cbs_data.json"
 ESPN_FILE = "espn_data.json"
-CACHE_FILE = "odds_cache.json"
 
-# Timing
-FAST_INTERVAL = 60    # Live stats every 60s
-SLOW_INTERVAL = 600   # Vegas odds every 10m
+# SERVER SETTINGS
 SERVER_PORT = 5000
+UPDATE_INTERVAL = 60  # Update odds/scores every 60 seconds
 
-# Tuning
+# TUNING
 SIM_COUNT = 50000 
 LEAGUE_VOLATILITY = { "CBS": 0.40, "ESPN": 0.65, "DEFAULT": 0.50 }
 LEAGUE_PAYOUTS = { "CBS": {"win": 1770, "loss": 1100}, "ESPN": {"win": 1000, "loss": 500} }
@@ -31,42 +29,56 @@ PROP_MARKETS = [
     "player_reception_tds", "player_receptions", "player_anytime_td"
 ]
 
-# GLOBAL SHARED STATE (Thread-Safe)
+# GLOBAL STATE (Thread-Safe Memory Storage)
 data_lock = threading.Lock()
 GLOBAL_STATE = {
-    'ticker_data': [],      # For /api/ticker
-    'fantasy_debug': [],    # For /fantasy
-    'last_updated': "Initializing..."
+    'ticker_data': [],      # This goes to /api/ticker
+    'fantasy_debug': [],    # This goes to /fantasy
+    'last_updated': "Initializing...",
+    'status': "Starting Up"
 }
 
-# ================= ODDSMAKER LOGIC =================
+# ================= 1. DATA FETCHERS =================
 class LiveESPNFetcher:
     def __init__(self):
         self.url = "http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
         self.live_data = {}
+
     def fetch_live_stats(self):
         try:
             r = requests.get(self.url, params={'limit': 100}, timeout=5)
-            if r.status_code == 200: self._parse_events(r.json().get('events', []))
-        except: pass
+            if r.status_code == 200: 
+                self._parse_events(r.json().get('events', []))
+        except Exception as e: 
+            print(f"[ESPN] Error fetching live stats: {e}")
+
     def _parse_events(self, events):
         temp_map = {}
         for e in events:
-            st = e.get('status', {}); state = st.get('type', {}).get('state', 'pre')
-            period = st.get('period', 1); time_rem = 1.0
+            st = e.get('status', {})
+            state = st.get('type', {}).get('state', 'pre')
+            period = st.get('period', 1)
+            time_rem = 1.0
+            
             if state == 'in': time_rem = ((4 - period) * 15) / 60.0
             elif state == 'post': time_rem = 0.0
-            if state == 'in': self._fetch_summary(e['id'], temp_map, time_rem)
+            
+            if state == 'in': 
+                self._fetch_summary(e['id'], temp_map, time_rem)
         self.live_data = temp_map
+
     def _fetch_summary(self, evt_id, p_map, rem):
         try:
             r = requests.get(f"http://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event={evt_id}", timeout=5)
             d = r.json()
-            for tm in d.get('boxscore', {}).get('players', []):
+            box = d.get('boxscore', {})
+            for tm in box.get('players', []):
                 for grp in tm.get('statistics', []):
                     keys = grp['keys']
                     for ath in grp.get('athletes', []):
-                        nm = ath['athlete']['displayName']; stats = ath['stats']; pts = 0.0
+                        nm = ath['athlete']['displayName']
+                        stats = ath['stats']
+                        pts = 0.0
                         try:
                             if grp['name'] == 'passing':
                                 pts += (float(stats[keys.index('yds')])*0.04) + (float(stats[keys.index('tds')])*4) - (float(stats[keys.index('ints')])*2)
@@ -78,6 +90,7 @@ class LiveESPNFetcher:
                         if nm not in p_map: p_map[nm] = {'score': 0.0, 'rem': rem}
                         p_map[nm]['score'] += pts
         except: pass
+
     def get_live(self, name):
         clean = name.split('.')[-1].strip().lower()
         for k, v in self.live_data.items():
@@ -86,48 +99,54 @@ class LiveESPNFetcher:
 
 class OddsAPIFetcher:
     def __init__(self, api_key):
-        self.key = api_key; self.base = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl"
-        self.cache = {}; self.last_fetch = 0; self.load_cache()
-    def load_cache(self):
-        if os.path.exists(CACHE_FILE):
-            try: 
-                with open(CACHE_FILE, 'r') as f: d = json.load(f); self.cache = d.get('payload', {})
-                self.last_fetch = d.get('timestamp', 0)
-            except: pass
-    def save_cache(self):
-        try:
-            with open(CACHE_FILE, 'w') as f: json.dump({'timestamp': time.time(), 'payload': self.cache}, f)
-        except: pass
+        self.key = api_key
+        self.base = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl"
+        self.cache = {}
+        self.last_fetch = 0
+
     def fetch_fresh(self):
-        if time.time() - self.last_fetch < SLOW_INTERVAL: return
-        print("Fetching Vegas Props...")
+        # Cache for 10 minutes (600s)
+        if time.time() - self.last_fetch < 600: return
+        print("[Vegas] Fetching new odds...")
         try:
             r = requests.get(f"{self.base}/events?apiKey={self.key}", timeout=5)
             if r.status_code == 200:
-                events = r.json(); self.cache = {'events': events}
+                events = r.json()
+                self.cache = {'events': events}
                 for e in events:
                     mkts = ",".join(PROP_MARKETS)
                     r2 = requests.get(f"{self.base}/events/{e['id']}/odds?apiKey={self.key}&regions=us&markets={mkts}&oddsFormat=american", timeout=5)
-                    if r2.status_code == 200: self.cache[f"props_{e['id']}"] = r2.json()
-                self.last_fetch = time.time(); self.save_cache()
-        except: pass
+                    if r2.status_code == 200: 
+                        self.cache[f"props_{e['id']}"] = r2.json()
+                self.last_fetch = time.time()
+                print("[Vegas] Cache updated.")
+        except Exception as e: print(f"[Vegas] Error: {e}")
+
     def get_props(self):
-        res = {}; events = self.cache.get('events', [])
+        res = {}
+        events = self.cache.get('events', [])
         for e in events:
             p = self.cache.get(f"props_{e['id']}")
             if p: res[e['id']] = p
         return res
 
+# ================= 2. CALCULATOR ENGINE =================
 class FantasySimulator:
     def __init__(self, fetcher, live_fetcher):
-        self.fetcher = fetcher; self.live_fetcher = live_fetcher
+        self.fetcher = fetcher
+        self.live_fetcher = live_fetcher
+
     def load_json(self, path):
-        if not os.path.exists(path): return None
+        if not os.path.exists(path): 
+            print(f"[System] Warning: File not found {path}")
+            return None
         try:
             with open(path, 'r') as f: return json.load(f)
         except: return None
+
     def fuzzy_match(self, name, api_names):
-        target = name.split('.')[-1].strip().lower(); best = None; hi = 0.0
+        target = name.split('.')[-1].strip().lower()
+        best = None; hi = 0.0
         for api in api_names:
             clean = api.split(' ')[-1].strip().lower()
             if target == clean:
@@ -169,7 +188,6 @@ class FantasySimulator:
         recs = stats.get('player_receptions', 0)
         s += (r_yds*0.1) + (rec_yds*0.1)
         
-        # Touchdown Logic
         tot_td = r_tds + rec_tds
         if tot_td == 0 and 'anytime_td_prob' in stats: s += stats['anytime_td_prob'] * 6.0
         elif tot_td > 0: s += (r_tds*6) + (rec_tds*6)
@@ -251,40 +269,55 @@ class FantasySimulator:
         hedge = int((payouts['win'] - payouts['loss']) * 0.20)
         
         return {
-            "id": str(hash(home['name']+away['name'])%100000), "status": tag,
+            "sport": "nfl", "id": str(hash(home['name']+away['name'])%100000), "status": tag,
             "home_abbr": "ME", "home_score": f"{win_pct:.2f}",
             "away_abbr": "OTH", "away_score": f"{(100-win_pct):.2f}",
+            "is_shown": True,
             "situation": {"possession": poss, "downDist": f"Hedge: ${hedge}"}
         }
 
-# ================= BACKGROUND WORKER =================
+# ================= 3. BACKGROUND THREAD =================
 def oddsmaker_thread():
-    print("Starting Oddsmaker Engine...")
-    odds = OddsAPIFetcher(API_KEY); live = LiveESPNFetcher()
+    print(">>> Starting Oddsmaker Engine...")
+    odds = OddsAPIFetcher(API_KEY)
+    live = LiveESPNFetcher()
     sim = FantasySimulator(odds, live)
     
     while True:
-        odds.fetch_fresh(); props = odds.get_props()
+        with data_lock: GLOBAL_STATE['status'] = "Updating Data..."
+        
+        odds.fetch_fresh()
+        props = odds.get_props()
         live.fetch_live_stats()
         
-        games_out = []; debug_out = []
+        games_out = []
+        debug_out = []
+        
         if os.path.exists(CBS_FILE):
+            print(f"> Processing {CBS_FILE}...")
             try: games_out.append(sim.run_sim(sim.load_json(CBS_FILE), props, debug_out))
-            except Exception as e: print(f"CBS Sim Error: {e}")
+            except Exception as e: print(f"CBS Error: {e}")
+        else:
+            print(f"> Missing {CBS_FILE}")
+
         if os.path.exists(ESPN_FILE):
+            print(f"> Processing {ESPN_FILE}...")
             try: games_out.append(sim.run_sim(sim.load_json(ESPN_FILE), props, debug_out))
-            except Exception as e: print(f"ESPN Sim Error: {e}")
+            except Exception as e: print(f"ESPN Error: {e}")
+        else:
+            print(f"> Missing {ESPN_FILE}")
             
-        # UPDATE GLOBAL STATE (Thread-Safe)
+        # UPDATE MEMORY (Thread-Safe)
         with data_lock:
             GLOBAL_STATE['ticker_data'] = [g for g in games_out if g]
             GLOBAL_STATE['fantasy_debug'] = debug_out
             GLOBAL_STATE['last_updated'] = dt.now().strftime("%I:%M:%S %p")
+            GLOBAL_STATE['status'] = "Idle"
             
-        print(f"Updated Data at {GLOBAL_STATE['last_updated']}")
-        time.sleep(FAST_INTERVAL)
+        print(f"> Cycle Complete. Ticker Data Count: {len(GLOBAL_STATE['ticker_data'])}")
+        time.sleep(UPDATE_INTERVAL)
 
-# ================= FLASK SERVER =================
+# ================= 4. FLASK SERVER =================
 app = Flask(__name__)
 
 @app.route('/')
@@ -292,9 +325,10 @@ def root():
     return """
     <html><body style='background:#111;color:#eee;font-family:sans-serif;padding:2rem'>
     <h1>Server Online</h1>
+    <p>System is running in-memory (No files).</p>
     <ul>
         <li><a style='color:#4dabf7' href='/fantasy'>Fantasy Dashboard</a></li>
-        <li><a style='color:#4dabf7' href='/api/ticker'>Ticker JSON</a></li>
+        <li><a style='color:#4dabf7' href='/api/ticker'>JSON Output (for App)</a></li>
     </ul>
     </body></html>
     """
@@ -304,8 +338,10 @@ def fantasy_page():
     with data_lock:
         data = GLOBAL_STATE['fantasy_debug']
         ts = GLOBAL_STATE['last_updated']
+        status = GLOBAL_STATE['status']
     
-    if not data: return f"<h3>Loading Data... (Last Update: {ts})</h3><script>setTimeout(()=>location.reload(), 5000)</script>"
+    if not data: 
+        return f"<h3>System Status: {status}</h3><p>Waiting for calculation cycle...</p><script>setTimeout(()=>location.reload(), 3000)</script>"
 
     html = f"""<html><head><title>Fantasy Odds</title>
     <meta http-equiv="refresh" content="30">
@@ -324,7 +360,7 @@ def fantasy_page():
         .good{{color:#40c057; font-weight:bold}} .bad{{color:#ff6b6b}}
         .time{{color:#555; font-size:12px; margin-bottom:20px; text-align:right}}
     </style></head><body>
-    <div class="time">Last Updated: {ts}</div>"""
+    <div class="time">Last Updated: {ts} | Status: {status}</div>"""
     
     for g in data:
         html += f"<div class='matchup'><h2>{g['platform']}: {g['home_team']} vs {g['away_team']}</h2>"
@@ -354,10 +390,10 @@ def api_ticker():
         return jsonify({'games': GLOBAL_STATE['ticker_data']})
 
 if __name__ == "__main__":
-    # Start the engine in a background thread
+    # Start the calculation engine in background
     t = threading.Thread(target=oddsmaker_thread, daemon=True)
     t.start()
     
-    # Start the server
-    print(f"Server starting on port {SERVER_PORT}...")
+    # Start Flask
+    print(f"Server online at http://0.0.0.0:{SERVER_PORT}")
     app.run(host='0.0.0.0', port=SERVER_PORT, debug=False)
