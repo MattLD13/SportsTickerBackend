@@ -22,10 +22,14 @@ SLOW_INTERVAL = 600   # Vegas odds every 10 minutes
 # SIMULATION SETTINGS
 SIM_COUNT = 50000 
 
-# CHAOS FACTOR (Standard Deviation)
-# 0.35 = Standard (Vegas Confidence)
-# 0.50 = High Variance (Any Given Sunday) - Use this to lower win % closer to 60%
-VOLATILITY = 0.50 
+# === LEAGUE-SPECIFIC CHAOS (VOLATILITY) ===
+# CBS: 0.40 (Tightened to reward the favorite more)
+# ESPN: 0.65 (Increased chaos to lower the 77% win prob towards 57%)
+LEAGUE_VOLATILITY = {
+    "CBS": 0.40,
+    "ESPN": 0.65,
+    "DEFAULT": 0.50
+}
 
 LEAGUE_PAYOUTS = {
     "CBS": {"win": 1770, "loss": 1100},
@@ -39,6 +43,7 @@ PROP_MARKETS = [
 ]
 
 class LiveESPNFetcher:
+    """ Fetches REAL-TIME stats from ESPN (Free/Unlimited) """
     def __init__(self):
         self.url = "http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
         self.live_data = {}
@@ -112,6 +117,7 @@ class LiveESPNFetcher:
         return None
 
 class OddsAPIFetcher:
+    """ Fetches Vegas Props (Costly) """
     def __init__(self, api_key):
         self.key = api_key
         self.base = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl"
@@ -135,6 +141,7 @@ class OddsAPIFetcher:
         except: pass
 
     def fetch_fresh_props(self):
+        # Only run if SLOW_INTERVAL has passed
         if time.time() - self.last_fetch_time < SLOW_INTERVAL:
             return
         
@@ -161,6 +168,7 @@ class OddsAPIFetcher:
         except Exception as e: print(f"Odds API Error: {e}")
 
     def get_all_props(self):
+        # Returns dict of all cached props {event_id: props}
         res = {}
         events = self.cache.get('events', [])
         for e in events:
@@ -246,6 +254,9 @@ class FantasySimulator:
         
         status_tag = "CBS" if "CBS" in platform else ("ESPN" if "ESPN" in platform else "Fantasy")
         payouts = LEAGUE_PAYOUTS.get(status_tag, {"win": 0, "loss": 0})
+        
+        # === DYNAMIC VOLATILITY SELECTION ===
+        league_vol = LEAGUE_VOLATILITY.get(status_tag, LEAGUE_VOLATILITY["DEFAULT"])
 
         matchup_models = {'home': [], 'away': []}
         
@@ -253,8 +264,8 @@ class FantasySimulator:
             team_data = home if side == 'home' else away
             for p in team_data['roster']:
                 base_proj = p['proj']
-                # USE HIGHER VOLATILITY
-                base_std = base_proj * VOLATILITY
+                # USE LEAGUE-SPECIFIC VOLATILITY
+                base_std = base_proj * league_vol
                 
                 live_info = self.live_fetcher.get_player_live(p['name'])
                 live_score = 0.0; rem_pct = 1.0
@@ -275,8 +286,7 @@ class FantasySimulator:
                             stats, count = self.get_projected_stats(matched, props)
                             if count > 0:
                                 vegas_proj = self.calculate_fantasy_points(stats, rules)
-                                # Volatility scales with projection
-                                base_std = vegas_proj * VOLATILITY 
+                                base_std = vegas_proj * league_vol 
                             break
                 
                 remainder_proj = (vegas_proj if vegas_proj else base_proj) * rem_pct
@@ -353,7 +363,7 @@ class FantasySimulator:
         }
 
 def run_loop():
-    print(f"Fantasy Oddsmaker Started (Turbo | Sim Count: {SIM_COUNT} | Volatility: {VOLATILITY})")
+    print(f"Fantasy Oddsmaker Started (Turbo | Sim: {SIM_COUNT} | Volatility: {LEAGUE_VOLATILITY})")
     
     odds_fetcher = OddsAPIFetcher(API_KEY)
     live_fetcher = LiveESPNFetcher()
