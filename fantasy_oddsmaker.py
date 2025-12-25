@@ -145,7 +145,11 @@ class FantasySimulator:
         home = json_data['matchup']['home_team']
         away = json_data['matchup']['away_team']
         rules = json_data['scoring_rules']
+        platform = json_data.get('league_settings', {}).get('platform', 'Fantasy')
         
+        # Set Tag based on Platform
+        status_tag = "CBS" if "CBS" in platform else ("ESPN" if "ESPN" in platform else "Fantasy")
+
         matchup_models = {'home': [], 'away': []}
         
         for side in ['home', 'away']:
@@ -231,7 +235,7 @@ class FantasySimulator:
         return {
             "sport": "nfl",
             "id": game_id,
-            "status": "Live",
+            "status": status_tag, # <--- CHANGED FROM "Live"
             "state": "in",
             "is_shown": True,
             "home_abbr": h_abbr,
