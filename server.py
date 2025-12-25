@@ -3,18 +3,21 @@ import threading
 import json
 import os
 import re
-import subprocess  # <--- ADDED
-from datetime import datetime as dt, timezone, timedelta
+import subprocess
 import requests
+from datetime import datetime as dt, timezone, timedelta
 from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
 # HARDCODED TO -4 (AST/EDT)
 DEFAULT_OFFSET = -4 
 CONFIG_FILE = "ticker_config.json"
-FANTASY_FILE = "fantasy_output.json" # <--- ADDED
-DEBUG_FILE = "fantasy_debug.json"    # <--- ADDED
 UPDATE_INTERVAL = 5
+
+# FANTASY CONFIG
+FANTASY_FILE = "fantasy_output.json"
+DEBUG_FILE = "fantasy_debug.json"
+
 data_lock = threading.Lock()
 
 HEADERS = {
@@ -26,7 +29,7 @@ HEADERS = {
 
 # ================= DEFAULT STATE =================
 default_state = {
-    'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 'weather': False, 'clock': False, 'fantasy': True }, # <--- Ensure 'fantasy': True is here
+    'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 'weather': False, 'clock': False, 'fantasy': True },
     'mode': 'all', 
     'scroll_seamless': False,
     'my_teams': [], 
@@ -306,7 +309,9 @@ class SportsFetcher:
         games = []
         with data_lock: conf = state.copy()
 
-        # [MODIFICATION] - INSERT FANTASY DATA
+        # ========================================================
+        # [START] FANTASY INJECTION
+        # ========================================================
         if conf['active_sports'].get('fantasy'):
             if os.path.exists(FANTASY_FILE):
                 try: 
@@ -314,7 +319,9 @@ class SportsFetcher:
                         content = f.read().strip()
                         if content: games.extend(json.loads(content))
                 except: pass
-        # [END MODIFICATION]
+        # ========================================================
+        # [END] FANTASY INJECTION
+        # ========================================================
 
         if conf['active_sports'].get('clock'):
             with data_lock: state['current_games'] = [{'sport':'clock','id':'clk','is_shown':True}]; return
@@ -443,11 +450,11 @@ class SportsFetcher:
 fetcher = SportsFetcher(state['weather_location'])
 
 def background_updater():
-    # [MODIFICATION] - LAUNCH FANTASY ENGINE
+    # [START FANTASY ENGINE]
     try: subprocess.run(["pkill", "-f", "fantasy_oddsmaker.py"], capture_output=True)
     except: pass
     subprocess.Popen(["python", "fantasy_oddsmaker.py"])
-    # [END MODIFICATION]
+    # [END]
 
     fetcher.fetch_all_teams()
     while True: fetcher.get_real_games(); time.sleep(UPDATE_INTERVAL)
@@ -455,7 +462,12 @@ def background_updater():
 # ================= FLASK API =================
 app = Flask(__name__)
 
-# [MODIFICATION] - Dashboard Route
+# [MODIFICATION] - Root URL returns JSON
+@app.route('/')
+def root():
+    with data_lock: return jsonify({'games': state['current_games']})
+
+# [MODIFICATION] - Fantasy Dashboard
 @app.route('/fantasy')
 def fantasy_dashboard():
     data = []
@@ -465,6 +477,7 @@ def fantasy_dashboard():
                 content = f.read().strip()
                 if content: data = json.loads(content)
         except: return "<meta http-equiv='refresh' content='2'><h3>Syncing Data...</h3>"
+    
     if not data: return "<meta http-equiv='refresh' content='5'><h3>Waiting for Data...</h3>"
 
     html = """<html><head><title>Fantasy Odds</title>
@@ -489,7 +502,9 @@ def fantasy_dashboard():
             html += f"<h3>{tm}</h3><table><thead><tr><th>PLAYER</th><th>POS</th><th>LEAGUE</th><th>MY PROJ</th><th>SOURCE</th></tr></thead><tbody>"
             l_sum = 0; m_sum = 0
             for p in players:
-                l_sum += p['league_proj']; m_sum += p['my_proj']
+                l_proj = p.get('league_proj', 0)
+                m_proj = p.get('my_proj', 0)
+                l_sum += l_proj; m_sum += m_proj
                 cls = "good" if m_proj > l_proj else "bad"
                 src = "src-v" if "Vegas" in p['source'] else ""
                 html += f"<tr><td>{p['name']}</td><td>{p['pos']}</td><td>{l_proj:.2f}</td><td class='{cls}'>{m_proj:.2f}</td><td><span class='{src}'>{p['source']}</span></td></tr>"
@@ -498,28 +513,12 @@ def fantasy_dashboard():
         html += "</div>"
     return html + "</body></html>"
 
-@app.route('/')
-def root():
-    offset_sec = DEFAULT_OFFSET * 3600
-    
-    # [MODIFICATION] - Return JSON directly for App
-    with data_lock: d = state.copy()
-    return jsonify({
-        'meta': {
-            'time': dt.now(timezone(timedelta(seconds=offset_sec))).strftime("%I:%M %p"), 
-            'count': len(d['current_games']), 
-            'utc_offset_seconds': offset_sec 
-        }, 
-        'games': d['current_games']
-    })
-
 @app.route('/api/ticker')
 def api_ticker():
     offset_sec = DEFAULT_OFFSET * 3600
     with data_lock: d = state.copy()
     raw_games = d['current_games']
     processed_games = []
-    
     for g in raw_games:
         if not g.get('is_shown', True): continue
         processed_games.append(g.copy())
