@@ -5,20 +5,19 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime as dt, timezone, timedelta
 import requests
-from flask import Flask, jsonify, request, render_template_string
+from datetime import datetime as dt, timezone, timedelta
+from flask import Flask, jsonify, request
 
 # ================= CONFIGURATION =================
-# HARDCODED TO -4 (AST/EDT)
+# DYNAMIC PORT (Required for Railway)
+PORT = int(os.environ.get("PORT", 5000))
 DEFAULT_OFFSET = -4 
-CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 5
 
-# --- [ADDED] FANTASY CONFIG ---
+UPDATE_INTERVAL = 10
+CONFIG_FILE = "ticker_config.json"
 FANTASY_FILE = "fantasy_output.json"
 DEBUG_FILE = "fantasy_debug.json"
-# ------------------------------
 
 data_lock = threading.Lock()
 
@@ -31,7 +30,6 @@ HEADERS = {
 
 # ================= DEFAULT STATE =================
 default_state = {
-    # [MODIFIED] Ensure fantasy is True by default
     'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 'weather': False, 'clock': False, 'fantasy': True },
     'mode': 'all', 
     'scroll_seamless': False,
@@ -312,15 +310,22 @@ class SportsFetcher:
         games = []
         with data_lock: conf = state.copy()
 
-        # --- [ADDED] FANTASY INJECTION ---
+        # ========================================================
+        # [START] FANTASY INJECTION
+        # ========================================================
         if conf['active_sports'].get('fantasy'):
             if os.path.exists(FANTASY_FILE):
                 try: 
                     with open(FANTASY_FILE, 'r') as f: 
                         content = f.read().strip()
-                        if content: games.extend(json.loads(content))
+                        if content: 
+                            loaded = json.loads(content)
+                            if isinstance(loaded, list):
+                                games.extend([g for g in loaded if g]) # Filter None values
                 except: pass
-        # --- [END FANTASY INJECTION] ---
+        # ========================================================
+        # [END] FANTASY INJECTION
+        # ========================================================
 
         if conf['active_sports'].get('clock'):
             with data_lock: state['current_games'] = [{'sport':'clock','id':'clk','is_shown':True}]; return
@@ -449,15 +454,13 @@ class SportsFetcher:
 fetcher = SportsFetcher(state['weather_location'])
 
 def background_updater():
-    # [ADDED: LAUNCH FANTASY ENGINE]
+    # [MODIFICATION] - LAUNCH FANTASY ENGINE
     print("Launching Fantasy Engine...")
-    try: subprocess.Popen([sys.executable, "fantasy_oddsmaker.py"])
+    try: subprocess.run(["pkill", "-f", "fantasy_oddsmaker.py"], capture_output=True)
     except: pass
+    subprocess.Popen([sys.executable, "fantasy_oddsmaker.py"])
     
-    # [FETCH GAMES IMMEDIATELY]
-    fetcher.get_real_games()
-    
-    # [FETCH TEAMS]
+    # [FETCH ALL TEAMS IN BACKGROUND]
     fetcher.fetch_all_teams()
     
     while True: fetcher.get_real_games(); time.sleep(UPDATE_INTERVAL)
@@ -465,77 +468,84 @@ def background_updater():
 # ================= FLASK API =================
 app = Flask(__name__)
 
-# [MODIFIED] - Root returns JSON
+# [MODIFICATION] - Root URL returns JSON
 @app.route('/')
 def root():
     with data_lock: return jsonify({'games': state['current_games']})
 
-# [ADDED] - Fantasy Dashboard
+# [MODIFIED] - Safe Fantasy Dashboard
 @app.route('/fantasy')
 def fantasy_dashboard():
-    data = []
-    if os.path.exists(DEBUG_FILE):
-        try:
+    try:
+        data = []
+        if os.path.exists(DEBUG_FILE):
             with open(DEBUG_FILE, 'r') as f:
                 content = f.read().strip()
                 if content: data = json.loads(content)
-        except: return "<meta http-equiv='refresh' content='2'><h3>Syncing Data...</h3>"
-    
-    if not data: return "<meta http-equiv='refresh' content='5'><h3>Waiting for Data...</h3>"
+        
+        if not data: return "<h3>Waiting for Data...</h3>"
 
-    html = """<html><head><title>Fantasy Odds</title>
-    <meta http-equiv="refresh" content="30">
-    <style>
-        body{font-family:sans-serif;background:#121212;color:#eee;padding:20px}
-        .matchup{background:#1e1e1e;padding:20px;border-radius:10px;margin-bottom:20px}
-        h2{color:#4dabf7;border-bottom:1px solid #333;padding-bottom:10px}
-        table{width:100%;border-collapse:collapse;margin-top:10px}
-        th{text-align:left;color:#888;font-size:12px;padding:8px;background:#252525}
-        td{padding:8px;border-bottom:1px solid #333}
-        .src-v{color:#40c057;font-weight:bold; background:rgba(64,192,87,0.1); padding:2px 6px; border-radius:4px}
-        .total{font-weight:bold; background:#2a2a2a; border-top:2px solid #555}
-        .good{color:#40c057; font-weight:bold} .bad{color:#ff6b6b}
-    </style></head><body>"""
-    
-    for g in data:
-        html += f"<div class='matchup'><h2>{g.get('platform','FANTASY')}</h2>"
-        for team_type in ['HOME', 'AWAY']:
-            players = [p for p in g['players'] if p['team'] == team_type]
-            tm = g.get('home_team' if team_type=='HOME' else 'away_team', team_type)
+        html = """<html><head><title>Fantasy Odds</title>
+        <meta http-equiv="refresh" content="30">
+        <style>
+            body{font-family:sans-serif;background:#121212;color:#eee;padding:20px}
+            .matchup{background:#1e1e1e;padding:20px;border-radius:10px;margin-bottom:20px}
+            h2{color:#4dabf7;border-bottom:1px solid #333;padding-bottom:10px}
+            table{width:100%;border-collapse:collapse;margin-top:10px}
+            th{text-align:left;color:#888;font-size:12px;padding:8px;background:#252525}
+            td{padding:8px;border-bottom:1px solid #333}
+            .src-v{color:#40c057;font-weight:bold; background:rgba(64,192,87,0.1); padding:2px 6px; border-radius:4px}
+            .total{font-weight:bold; background:#2a2a2a; border-top:2px solid #555}
+            .good{color:#40c057; font-weight:bold} .bad{color:#ff6b6b}
+        </style></head><body>"""
+        
+        for g in data:
+            if not g: continue # Skip bad rows
             
-            html += f"<h3>{tm}</h3><table><thead><tr><th>PLAYER</th><th>POS</th><th>LEAGUE</th><th>MY PROJ</th><th>SOURCE</th></tr></thead><tbody>"
-            l_sum = 0; m_sum = 0
-            for p in players:
-                l_sum += p['league_proj']; m_sum += p['my_proj']
-                cls = "good" if m_proj > l_proj else "bad"
-                src = "src-v" if "Vegas" in p['source'] else ""
-                html += f"<tr><td>{p['name']}</td><td>{p['pos']}</td><td>{l_proj:.2f}</td><td class='{cls}'>{m_proj:.2f}</td><td><span class='{src}'>{p['source']}</span></td></tr>"
-            d = m_sum - l_sum; dc = "#40c057" if d > 0 else "#ff6b6b"
-            html += f"<tr class='total'><td>TOTAL</td><td></td><td>{l_sum:.2f}</td><td style='color:{dc}'>{m_sum:.2f} ({d:+.2f})</td><td></td></tr></tbody></table>"
-        html += "</div>"
-    return html + "</body></html>"
+            html += f"<div class='matchup'><h2>{g.get('platform','FANTASY')}</h2>"
+            for team_type in ['HOME', 'AWAY']:
+                # SAFE FILTER
+                players = [p for p in g.get('players',[]) if p.get('team') == team_type]
+                tm = g.get('home_team' if team_type=='HOME' else 'away_team', team_type)
+                
+                html += f"<h3>{tm}</h3><table><thead><tr><th>PLAYER</th><th>POS</th><th>LEAGUE</th><th>MY PROJ</th><th>SOURCE</th></tr></thead><tbody>"
+                l_sum = 0; m_sum = 0
+                for p in players:
+                    l_proj = p.get('league_proj', 0)
+                    m_proj = p.get('my_proj', 0)
+                    l_sum += l_proj; m_sum += m_proj
+                    cls = "good" if m_proj > l_proj else "bad"
+                    src = "src-v" if "Vegas" in p.get('source','') else ""
+                    html += f"<tr><td>{p.get('name')}</td><td>{p.get('pos')}</td><td>{l_proj:.2f}</td><td class='{cls}'>{m_proj:.2f}</td><td><span class='{src}'>{p.get('source')}</span></td></tr>"
+                d = m_sum - l_sum; dc = "#40c057" if d > 0 else "#ff6b6b"
+                html += f"<tr class='total'><td>TOTAL</td><td></td><td>{l_sum:.2f}</td><td style='color:{dc}'>{m_sum:.2f} ({d:+.2f})</td><td></td></tr></tbody></table>"
+            html += "</div>"
+        return html + "</body></html>"
+    except Exception as e:
+        return f"<h3>Dashboard Error: {e}</h3>"
 
 @app.route('/api/ticker')
 def api_ticker():
     offset_sec = DEFAULT_OFFSET * 3600
     with data_lock: d = state.copy()
-    raw_games = d['current_games']
-    processed_games = []
     
+    # Safe filtering
+    raw_games = d.get('current_games', [])
+    processed_games = []
     for g in raw_games:
-        if not g.get('is_shown', True): continue
-        processed_games.append(g.copy())
+        if not g: continue
+        if g.get('is_shown', True): processed_games.append(g.copy())
 
     return jsonify({
         'meta': {
             'time': dt.now(timezone(timedelta(seconds=offset_sec))).strftime("%I:%M %p"), 
             'count': len(processed_games), 
-            'scroll_seamless': d['scroll_seamless'], 
-            'brightness': d['brightness'], 
-            'inverted': d['inverted'], 
-            'panel_count': d['panel_count'], 
-            'test_pattern': d['test_pattern'], 
-            'reboot_requested': d['reboot_requested'],
+            'scroll_seamless': d.get('scroll_seamless', False), 
+            'brightness': d.get('brightness', 0.5), 
+            'inverted': d.get('inverted', False), 
+            'panel_count': d.get('panel_count', 2), 
+            'test_pattern': d.get('test_pattern', False), 
+            'reboot_requested': d.get('reboot_requested', False),
             'utc_offset_seconds': offset_sec 
         }, 
         'games': processed_games
