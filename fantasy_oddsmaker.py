@@ -19,8 +19,7 @@ OUTPUT_FILE = "fantasy_output.json"
 DEBUG_FILE = "fantasy_debug.json"
 
 FAST_INTERVAL = 60    
-SLOW_INTERVAL = 10800 # 3 Hours
-
+SLOW_INTERVAL = 10800 
 SIM_COUNT = 20000 
 
 LEAGUE_VOLATILITY = { "CBS": 0.55, "ESPN": 0.65, "DEFAULT": 0.60 }
@@ -56,15 +55,13 @@ def atomic_write(filename, data):
 class LiveGameManager:
     def __init__(self):
         self.base_url = "http://site.api.espn.com/apis/site/v2/sports/football/nfl"
-        self.team_map = {}   # Maps "MIN" -> {game_id: 123, mins_remaining: 45.0}
-        self.player_stats = {} # Maps "Justin Jefferson" -> stats
-        self.processed_games = set()
+        self.player_stats = {} 
+        self.team_status = {} 
 
     def update(self):
-        """Fetches all active games and processes boxscores."""
-        self.team_map = {}
+        print("Fetching Live Scores...")
         self.player_stats = {}
-        self.processed_games = set()
+        self.team_status = {}
         
         try:
             # 1. GET SCOREBOARD
@@ -76,16 +73,14 @@ class LiveGameManager:
                 status = e.get('status', {})
                 state = status.get('type', {}).get('state', 'pre')
                 
-                # Calculate Time Remaining (Decay Factor)
+                # Calculate Time Remaining
                 mins_remaining = 60.0 # Default Pre-Game
                 if state == 'in':
                     period = status.get('period', 1)
                     clock = status.get('displayClock', '15:00')
                     try:
                         c_min = int(clock.split(':')[0])
-                        c_sec = int(clock.split(':')[1])
-                        # Formula: (Quarters Left * 15) + Current Clock
-                        mins_remaining = ((4 - period) * 15) + c_min + (c_sec/60.0)
+                        mins_remaining = ((4 - period) * 15) + c_min
                     except: mins_remaining = 45.0 # Fallback
                 elif state == 'post':
                     mins_remaining = 0.0
@@ -93,7 +88,7 @@ class LiveGameManager:
                 # Map Teams
                 for c in e['competitions'][0]['competitors']:
                     abbr = c['team']['abbreviation']
-                    self.team_map[abbr] = {'game_id': game_id, 'mins_remaining': mins_remaining}
+                    self.team_status[abbr] = mins_remaining
                 
                 # 2. FETCH BOXSCORE (If live/final)
                 if state in ['in', 'post']:
@@ -103,13 +98,12 @@ class LiveGameManager:
             print(f"Live Data Error: {e}")
 
     def _fetch_boxscore(self, game_id):
-        if game_id in self.processed_games: return
         try:
             r = requests.get(f"{self.base_url}/summary?event={game_id}", timeout=5)
             d = r.json()
             
-            # Parse players
-            for tm in d.get('boxscore', {}).get('players', []):
+            # [FIXED PATH]: boxscore -> teams -> statistics -> athletes
+            for tm in d.get('boxscore', {}).get('teams', []):
                 for grp in tm.get('statistics', []):
                     keys = grp['keys']
                     for ath in grp.get('athletes', []):
@@ -134,23 +128,16 @@ class LiveGameManager:
                                 if 'tds' in keys: s['rec_td'] = float(stats[keys.index('tds')])
                                 if 'rec' in keys: s['rec'] = float(stats[keys.index('rec')])
                         except: pass
-            
-            self.processed_games.add(game_id)
         except: pass
 
     def _clean_name(self, name):
         return name.lower().replace('.', '').replace(' jr', '').replace(' sr', '').replace(' iii', '').strip()
 
     def get_player_live(self, name, team_abbr, scoring_rules):
-        """Returns (LivePoints, MinutesRemaining)"""
         # 1. Get Game Status
-        game_info = self.team_map.get(team_abbr)
-        if not game_info:
-            return 0.0, 60.0 
+        mins = self.team_status.get(team_abbr, 60.0)
         
-        mins = game_info['mins_remaining']
-        
-        # 2. Get Stats
+        # 2. Get Player Stats
         clean_name = self._clean_name(name)
         stats = self.player_stats.get(clean_name)
         
@@ -244,14 +231,12 @@ class FantasySimulator:
 
     def calc_pts(self, stats, pos, rules):
         s = 0.0
-        # PASSING
         p_yds = stats.get('player_pass_yds', 0); p_tds = stats.get('player_pass_tds', 0)
         s += (p_yds * 0.04) + (p_tds * rules['passing']['touchdown'])
         if p_yds > 0 and p_tds == 0:
             rate = HISTORICAL_RATES.get('QB', {}).get('pass_td_per_yd', 0.006)
             s += (p_yds * rate * rules['passing']['touchdown'])
 
-        # RUSHING
         r_yds = stats.get('player_rush_yds', 0); r_tds = stats.get('player_rush_tds', 0)
         s += (r_yds * 0.1)
         if r_yds > 0 and r_tds == 0:
@@ -259,7 +244,6 @@ class FantasySimulator:
             s += (r_yds * rate * 6.0)
         else: s += (r_tds * 6.0)
 
-        # RECEIVING
         rec_yds = stats.get('player_reception_yds', 0); rec_tds = stats.get('player_reception_tds', 0)
         recs = stats.get('player_receptions', 0)
         s += (rec_yds * 0.1)
@@ -292,12 +276,12 @@ class FantasySimulator:
                 src = "League"
                 
                 live_pts, mins_rem = self.live.get_player_live(p['name'], p.get('team',''), json_data['scoring_rules'])
-                decay_factor = max(0.0, min(1.0, mins_rem / 60.0))
+                decay = max(0.0, min(1.0, mins_rem / 60.0))
                 
-                base_rem = base * decay_factor
+                base_rem = base * decay
                 vegas_rem = None
                 
-                if decay_factor > 0:
+                if decay > 0:
                     for eid, pm in props_map.items():
                         names = set()
                         for b in pm.get('bookmakers', []):
@@ -309,7 +293,7 @@ class FantasySimulator:
                             stats, cnt = self.get_proj(match, pm)
                             if cnt > 0:
                                 raw_vegas = self.calc_pts(stats, p['pos'], json_data['scoring_rules'])
-                                vegas_rem = (raw_vegas * proj_mult) * decay_factor
+                                vegas_rem = (raw_vegas * proj_mult) * decay
                                 b_std = max(raw_vegas * vol, 4.0)
                                 src = "Vegas"
                             break
@@ -323,9 +307,7 @@ class FantasySimulator:
                 
                 if p['pos'] in ['DST', 'K']: final_mean_vegas = final_mean_league; src = "League"
                 
-                sim_std = b_std * decay_factor 
-                
-                matchup[side].append({'name': p['name'], 'mean': final_mean_vegas, 'std': sim_std})
+                matchup[side].append({'name': p['name'], 'mean': final_mean_vegas, 'std': b_std * decay})
                 
                 dbg['players'].append({
                     "name": p['name'], "pos": p['pos'], "team": side.upper(),
