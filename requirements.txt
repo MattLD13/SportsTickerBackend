@@ -1,3 +1,6 @@
 flask
 requests
 Pillow
+python-dateutil
+espn-api
+gunicorn
