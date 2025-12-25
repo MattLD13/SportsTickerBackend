@@ -5,7 +5,7 @@ import random
 import statistics
 import difflib
 import os
-import hashlib
+import shutil
 from datetime import datetime
 
 # ================= CONFIGURATION =================
@@ -20,7 +20,8 @@ DEBUG_FILE = "fantasy_debug.json"
 FAST_INTERVAL = 60    
 SLOW_INTERVAL = 600   
 
-# MEMORY SAFE SETTINGS (Prevents Container Crash)
+# === MEMORY SAFE MODE ===
+# 5,000 Sims prevents the "Stopping Container" crash while keeping accuracy.
 SIM_COUNT = 5000 
 
 LEAGUE_VOLATILITY = { "CBS": 0.40, "ESPN": 0.65, "DEFAULT": 0.50 }
@@ -33,47 +34,37 @@ PROP_MARKETS = [
 ]
 
 def atomic_write(filename, data):
-    """Writes to temp file then performs atomic swap to prevent read errors"""
-    temp_file = f"{filename}.tmp"
+    """ Writes to temp file first to prevent Server Read Errors (502) """
+    temp = f"{filename}.tmp"
     try:
-        with open(temp_file, 'w') as f:
-            json.dump(data, f)
-        # Atomic replacement
-        os.replace(temp_file, filename)
-    except Exception as e:
-        print(f"Write Error: {e}")
-        if os.path.exists(temp_file):
-            try: os.remove(temp_file)
-            except: pass
+        with open(temp, 'w') as f: json.dump(data, f)
+        os.replace(temp, filename) # Atomic swap
+    except:
+        if os.path.exists(temp): os.remove(temp)
 
 class LiveESPNFetcher:
     def __init__(self):
         self.url = "http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
         self.live_data = {}
-
     def fetch_live_stats(self):
         try:
             r = requests.get(self.url, params={'limit': 100}, timeout=10)
-            if r.status_code == 200:
-                self._parse_events(r.json().get('events', []))
+            if r.status_code == 200: self._parse_events(r.json().get('events', []))
         except: pass
-
     def _parse_events(self, events):
-        temp_map = {}
+        temp = {}
         for e in events:
             st = e.get('status', {}); state = st.get('type', {}).get('state', 'pre')
-            period = st.get('period', 1); time_rem = 1.0
-            if state == 'in': time_rem = ((4 - period) * 15) / 60.0
-            elif state == 'post': time_rem = 0.0
-            if state == 'in': self._fetch_summary(e['id'], temp_map, time_rem)
-        self.live_data = temp_map
-
-    def _fetch_summary(self, evt_id, p_map, rem):
+            period = st.get('period', 1); rem = 1.0
+            if state == 'in': rem = ((4 - period) * 15) / 60.0
+            elif state == 'post': rem = 0.0
+            if state == 'in': self._fetch_summary(e['id'], temp, rem)
+        self.live_data = temp
+    def _fetch_summary(self, eid, p_map, rem):
         try:
-            r = requests.get(f"http://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event={evt_id}", timeout=5)
+            r = requests.get(f"http://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event={eid}", timeout=5)
             d = r.json()
-            box = d.get('boxscore', {})
-            for tm in box.get('players', []):
+            for tm in d.get('boxscore', {}).get('players', []):
                 for grp in tm.get('statistics', []):
                     keys = grp['keys']
                     for ath in grp.get('athletes', []):
@@ -89,7 +80,6 @@ class LiveESPNFetcher:
                         if nm not in p_map: p_map[nm] = {'score': 0.0, 'rem': rem}
                         p_map[nm]['score'] += pts
         except: pass
-
     def get_live(self, name):
         clean = name.split('.')[-1].strip().lower()
         for k, v in self.live_data.items():
@@ -100,35 +90,26 @@ class OddsAPIFetcher:
     def __init__(self, api_key):
         self.key = api_key; self.base = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl"
         self.cache = {}; self.last_fetch = 0; self.load_cache()
-
     def load_cache(self):
         if os.path.exists(CACHE_FILE):
-            try:
-                with open(CACHE_FILE, 'r') as f:
-                    d = json.load(f)
-                    self.cache = d.get('payload', {})
-                    self.last_fetch = d.get('timestamp', 0)
+            try: 
+                with open(CACHE_FILE, 'r') as f: d = json.load(f); self.cache = d.get('payload', {}); self.last_fetch = d.get('timestamp', 0)
             except: pass
-
     def save_cache(self):
         atomic_write(CACHE_FILE, {'timestamp': time.time(), 'payload': self.cache})
-
     def fetch_fresh(self):
-        # Cache for 10 minutes
-        if time.time() - self.last_fetch < 600: return
-        print("Fetching Vegas Data...")
+        if time.time() - self.last_fetch < SLOW_INTERVAL: return
         try:
             r = requests.get(f"{self.base}/events?apiKey={self.key}", timeout=10)
             if r.status_code == 200:
                 events = r.json(); self.cache = {'events': events}
                 for e in events:
                     mkts = ",".join(PROP_MARKETS)
-                    time.sleep(0.2) # Prevent Rate Limit/CPU Spike
+                    time.sleep(0.2) # Gentle on CPU
                     r2 = requests.get(f"{self.base}/events/{e['id']}/odds?apiKey={self.key}&regions=us&markets={mkts}&oddsFormat=american", timeout=5)
                     if r2.status_code == 200: self.cache[f"props_{e['id']}"] = r2.json()
                 self.last_fetch = time.time(); self.save_cache()
         except: pass
-
     def get_props(self):
         res = {}; events = self.cache.get('events', [])
         for e in events:
@@ -139,13 +120,11 @@ class OddsAPIFetcher:
 class FantasySimulator:
     def __init__(self, fetcher, live_fetcher):
         self.fetcher = fetcher; self.live_fetcher = live_fetcher
-
     def load_json(self, path):
         if not os.path.exists(path): return None
         try:
             with open(path, 'r') as f: return json.load(f)
         except: return None
-
     def fuzzy_match(self, name, api_names):
         target = name.split('.')[-1].strip().lower(); best = None; hi = 0.0
         for api in api_names:
@@ -232,8 +211,7 @@ class FantasySimulator:
                                 b_std = v_proj*vol; src = "Vegas"
                             break
                 
-                # SAFETY FLOOR
-                if v_proj is not None and v_proj < (base * 0.7): v_proj = base; src = "League (Low Vegas)"
+                if v_proj is not None and v_proj < (base * 0.7): v_proj = base; src = "League (Vegas Low)"
                 
                 final_proj = (v_proj if v_proj else base)
                 final_mean = l_score + (final_proj * rem)
@@ -245,7 +223,6 @@ class FantasySimulator:
         debug_list.append(dbg)
         
         h_wins = 0; p_vol = {}
-        # SIMULATION
         for _ in range(SIM_COUNT):
             hs = 0; as_ = 0
             for p in matchup['home']:
@@ -280,19 +257,14 @@ class FantasySimulator:
         }
 
 def run_loop():
-    print(f"Fantasy Oddsmaker Started (Sim: {SIM_COUNT} | Vol: {LEAGUE_VOLATILITY})")
+    print(f"Fantasy Oddsmaker Started (Sim: {SIM_COUNT})")
     odds = OddsAPIFetcher(API_KEY); live = LiveESPNFetcher()
-    
-    # Initial sleep to let the web server start up fully
-    time.sleep(5)
-    
+    time.sleep(5) # Wait for server boot
     while True:
-        odds.fetch_fresh()
-        props = odds.get_props()
+        odds.fetch_fresh(); props = odds.get_props()
         live.fetch_live_stats()
-        sim = FantasySimulator(odds, live)
+        sim = FantasySimulator(odds, live); games = []; dbg = []
         
-        games = []; dbg = []
         if os.path.exists(CBS_FILE):
             try: games.append(sim.run_sim(sim.load_json(CBS_FILE), props, dbg))
             except: pass
@@ -305,5 +277,4 @@ def run_loop():
         print(f"Updated: {datetime.now().strftime('%H:%M:%S')}")
         time.sleep(FAST_INTERVAL)
 
-if __name__ == "__main__":
-    run_loop()
+if __name__ == "__main__": run_loop()
