@@ -15,24 +15,24 @@ ESPN_FILE = "espn_data.json"
 CACHE_FILE = "odds_cache.json"
 OUTPUT_FILE = "fantasy_output.json"
 
-# TARGET: End of MNF (Monday Dec 29, 2025 approx midnight)
-END_DATE_ISO = "2025-12-30T05:00:00Z" # 12AM EST (UTC-5)
+# === TIMING CONFIGURATION ===
+# FAST LOOP: Updates scores/win % using ESPN (Free)
+FAST_INTERVAL = 300  # 5 Minutes
+
+# SLOW LOOP: Updates Vegas Odds (Costly)
+# 493 Credits / ~40 cost per run = ~12 runs left.
+# 120 Hours / 12 runs = ~10 Hours per update.
+SLOW_INTERVAL = 10 * 3600 
 
 LEAGUE_PAYOUTS = {
     "CBS": {"win": 1770, "loss": 1100},
     "ESPN": {"win": 1000, "loss": 500}
 }
 
-# ECONOMY MODE: Fetch only high-correlation markets to save credits
-# Cost: 1 credit per item in this list per game.
-# We use 3 markets to allow for ~12 updates total.
-PROP_MARKETS = [
-    "player_pass_yds", 
-    "player_rush_yds", 
-    "player_reception_yds"
-]
+PROP_MARKETS = ["player_pass_yds", "player_rush_yds", "player_reception_yds"]
 
 class LiveESPNFetcher:
+    """ Fetches REAL-TIME stats from ESPN (Free/Unlimited) """
     def __init__(self):
         self.url = "http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
         self.live_data = {}
@@ -106,37 +106,66 @@ class LiveESPNFetcher:
         return None
 
 class OddsAPIFetcher:
+    """ Fetches Vegas Props (Costly/Limited) """
     def __init__(self, api_key):
         self.key = api_key
         self.base = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl"
-        self.remaining_credits = 493 # Fallback default
         self.cache = {}
+        self.last_fetch_time = 0
+        self.load_cache()
 
-    def get_events(self):
-        # 0 Cost
+    def load_cache(self):
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, 'r') as f:
+                    data = json.load(f)
+                    self.cache = data.get('payload', {})
+                    self.last_fetch_time = data.get('timestamp', 0)
+            except: pass
+
+    def save_cache(self):
+        try:
+            with open(CACHE_FILE, 'w') as f:
+                json.dump({'timestamp': time.time(), 'payload': self.cache}, f)
+        except: pass
+
+    def fetch_fresh_props(self):
+        # Only run if SLOW_INTERVAL has passed
+        if time.time() - self.last_fetch_time < SLOW_INTERVAL:
+            print("Using Cached Vegas Data (Economy Mode).")
+            return
+        
+        print("Fetching FRESH Vegas Data (Spending Credits)...")
         url = f"{self.base}/events?apiKey={self.key}"
         try:
             r = requests.get(url)
             if r.status_code == 200:
-                if 'x-requests-remaining' in r.headers:
-                    self.remaining_credits = int(r.headers['x-requests-remaining'])
-                    print(f"API Credits Remaining: {self.remaining_credits}")
-                return r.json()
-        except: return []
-        return []
+                events = r.json()
+                # Economy: Only first 12 games
+                relevant = events[:12] if len(events) > 12 else events
+                
+                # Clear old props to force refresh
+                self.cache = {'events': events} 
+                
+                for e in relevant:
+                    mkts = ",".join(PROP_MARKETS)
+                    u2 = f"{self.base}/events/{e['id']}/odds?apiKey={self.key}&regions=us&markets={mkts}&oddsFormat=american"
+                    r2 = requests.get(u2)
+                    if r2.status_code == 200:
+                        self.cache[f"props_{e['id']}"] = r2.json()
+                
+                self.last_fetch_time = time.time()
+                self.save_cache()
+        except Exception as e: print(f"Odds API Error: {e}")
 
-    def get_player_props(self, event_id):
-        # Cost = len(PROP_MARKETS)
-        markets_str = ",".join(PROP_MARKETS)
-        url = f"{self.base}/events/{event_id}/odds?apiKey={self.key}&regions=us&markets={markets_str}&oddsFormat=american"
-        try:
-            r = requests.get(url)
-            if r.status_code == 200:
-                if 'x-requests-remaining' in r.headers:
-                    self.remaining_credits = int(r.headers['x-requests-remaining'])
-                return r.json()
-        except: return None
-        return None
+    def get_all_props(self):
+        # Returns dict of all cached props {event_id: props}
+        res = {}
+        events = self.cache.get('events', [])
+        for e in events:
+            p = self.cache.get(f"props_{e['id']}")
+            if p: res[e['id']] = p
+        return res
 
 class FantasySimulator:
     def __init__(self, fetcher, live_fetcher):
@@ -181,7 +210,6 @@ class FantasySimulator:
 
     def calculate_fantasy_points(self, stats, rules):
         score = 0.0
-        # Only use markets we fetched (Economy Mode)
         p_yds = stats.get('player_pass_yds', 0)
         score += p_yds * rules['passing'].get('yards_factor', 0.04)
         if 'bonuses' in rules['passing'] and p_yds >= 300:
@@ -193,20 +221,16 @@ class FantasySimulator:
         rec_yds = stats.get('player_reception_yds', 0)
         score += rec_yds * rules['receiving'].get('yards_factor', 0.1)
         
-        # Estimate TDs based on yardage (Regression fallback since we didn't fetch TD props)
-        # Avg ~1 TD per 150 yds passing, ~1 per 100 rushing/rec
+        # Regression Estimates for missing props
         est_pass_td = p_yds / 160.0
         est_rush_td = r_yds / 90.0
         est_rec_td = rec_yds / 90.0
+        est_recs = rec_yds / 11.0
         
         score += est_pass_td * rules['passing']['touchdown']
         score += est_rush_td * rules['rushing']['touchdown']
         score += est_rec_td * rules['receiving']['touchdown']
-        
-        # Estimate Receptions (for PPR) based on yards (Avg 10 yds/rec)
-        est_recs = rec_yds / 11.0
         score += est_recs * rules['receiving'].get('ppr', 0)
-
         return score
 
     def generate_numeric_id(self, string_input):
@@ -284,6 +308,7 @@ class FantasySimulator:
 
         h_abbr = "ME"
         a_abbr = "OTH"
+
         upside_val = payouts['win'] - payouts['loss']
         hedge_bet_amount = int(upside_val * 0.20)
 
@@ -323,75 +348,38 @@ class FantasySimulator:
             }
         }
 
-def run_model():
-    # 1. LIVE DATA (Free)
+def run_loop():
+    print("Fantasy Oddsmaker Started.")
+    
+    odds_fetcher = OddsAPIFetcher(API_KEY)
     live_fetcher = LiveESPNFetcher()
-    live_fetcher.fetch_live_stats()
     
-    # 2. PROPS DATA (Costly)
-    fetcher = OddsAPIFetcher(API_KEY)
-    
-    # Determine which games we ACTUALLY need
-    # This optimization prevents fetching props for teams not on our rosters.
-    # We first load the user rosters to get team names, then filter events.
-    # (For simplicity in this script, we fetch all active events then filter calls).
-    events = fetcher.get_events()
-    
-    # Identify relevant events (Optimization to save credits)
-    # Since we can't easily map "Bengals" to event ID without more logic, 
-    # we will rely on the "Economy Mode" markets reduction to save cost.
-    
-    # Filter: Only fetch props for up to 12 games to stay within budget if many games active
-    relevant_events = events[:12] if len(events) > 12 else events
-    
-    events_map = {}
-    for e in relevant_events:
-        props = fetcher.get_player_props(e['id'])
-        if props: events_map[e['id']] = props
-    
-    # 3. SIMULATION
-    sim = FantasySimulator(fetcher, live_fetcher)
-    games = []
-    
-    if os.path.exists(CBS_FILE):
-        try:
-            cbs_data = sim.load_json(CBS_FILE)
-            games.append(sim.simulate_game(cbs_data, events_map))
-        except Exception as e: print(f"CBS Error: {e}")
+    # Run continuously
+    while True:
+        # 1. Slow Loop: Check if we need new Vegas Data
+        odds_fetcher.fetch_fresh_props() 
+        cached_props = odds_fetcher.get_all_props()
+        
+        # 2. Fast Loop: Get Live Scores & Run Sim
+        live_fetcher.fetch_live_stats()
+        
+        sim = FantasySimulator(odds_fetcher, live_fetcher)
+        games = []
+        
+        if os.path.exists(CBS_FILE):
+            try:
+                games.append(sim.simulate_game(sim.load_json(CBS_FILE), cached_props))
+            except: pass
 
-    if os.path.exists(ESPN_FILE):
-        try:
-            espn_data = sim.load_json(ESPN_FILE)
-            games.append(sim.simulate_game(espn_data, events_map))
-        except Exception as e: print(f"ESPN Error: {e}")
-    
-    with open(OUTPUT_FILE, 'w') as f: json.dump(games, f)
-    
-    # 4. DYNAMIC SLEEP CALCULATION
-    # Cost per run: len(relevant_events) * len(PROP_MARKETS)
-    # E.g. 12 games * 3 markets = 36 credits.
-    cost_per_run = len(relevant_events) * len(PROP_MARKETS)
-    if cost_per_run == 0: cost_per_run = 1 # Avoid div by zero
-    
-    credits_left = fetcher.remaining_credits
-    runs_left = max(1, int(credits_left / cost_per_run))
-    
-    # Time until Monday
-    now = datetime.utcnow()
-    end = datetime.strptime(END_DATE_ISO, "%Y-%m-%dT%H:%M:%SZ")
-    hours_remaining = (end - now).total_seconds() / 3600.0
-    
-    if hours_remaining <= 0:
-        sleep_hours = 1 # Game over, sleep 1 hour
-    else:
-        sleep_hours = hours_remaining / runs_left
-    
-    # Safety clamp: Don't sleep less than 15 mins (API spam) or more than 24 hours
-    sleep_hours = max(0.25, min(sleep_hours, 24.0))
-    
-    print(f"Updates Left: {runs_left} | Cost/Run: {cost_per_run} | Next Update: {sleep_hours:.2f} hrs")
-    time.sleep(sleep_hours * 3600)
+        if os.path.exists(ESPN_FILE):
+            try:
+                games.append(sim.simulate_game(sim.load_json(ESPN_FILE), cached_props))
+            except: pass
+        
+        with open(OUTPUT_FILE, 'w') as f: json.dump(games, f)
+        
+        print(f"Updated: {datetime.now().strftime('%H:%M:%S')}")
+        time.sleep(FAST_INTERVAL)
 
 if __name__ == "__main__":
-    while True:
-        run_model()
+    run_loop()
