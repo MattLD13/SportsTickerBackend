@@ -18,12 +18,19 @@ OUTPUT_FILE = "fantasy_output.json"
 DEBUG_FILE = "fantasy_debug.json"
 
 FAST_INTERVAL = 60    
-SLOW_INTERVAL = 10800 # 3 Hours
+SLOW_INTERVAL = 10800 
 
 SIM_COUNT = 20000 
 
-LEAGUE_VOLATILITY = { "CBS": 0.20, "ESPN": 0.35, "DEFAULT": 0.25 }
+# === TUNED VOLATILITY ===
+# 0.27 prevents the "90-10" blowout issue while staying accurate.
+LEAGUE_VOLATILITY = { "CBS": 0.27, "ESPN": 0.38, "DEFAULT": 0.30 }
 LEAGUE_PAYOUTS = { "CBS": {"win": 1770, "loss": 1100}, "ESPN": {"win": 1000, "loss": 500} }
+
+# [NEW] MINIMUM VARIANCE FLOOR
+# Ensures every player has at least +/- 3.0 pts of risk.
+# This prevents low-scoring players from skewing the math.
+MIN_STD_DEV = 3.0
 
 PROP_MARKETS = [
     "player_pass_yds", "player_pass_tds", "player_pass_interceptions",
@@ -31,7 +38,6 @@ PROP_MARKETS = [
     "player_reception_tds", "player_receptions", "player_anytime_td"
 ]
 
-# GENERIC LOGOS FOR FANTASY
 FANTASY_LOGO = "https://a.espncdn.com/i/teamlogos/ncaa/500/172.png" 
 OPPONENT_LOGO = "https://a.espncdn.com/i/teamlogos/ncaa/500/193.png" 
 
@@ -191,7 +197,11 @@ class FantasySimulator:
         for side in ['home', 'away']:
             team = home if side == 'home' else away
             for p in team['roster']:
-                base = p['proj']; b_std = base*vol; src = "League"
+                base = p['proj']
+                # [FIX] Apply Volatility AND Min Floor
+                b_std = max(base * vol, MIN_STD_DEV)
+                src = "League"
+                
                 live = self.live_fetcher.get_live(p['name'])
                 l_score = live['score'] if live else 0.0; rem = live['rem'] if live else 1.0
                 
@@ -209,7 +219,9 @@ class FantasySimulator:
                             stats, cnt = self.get_proj(match, pm)
                             if cnt > 0:
                                 v_proj = self.calc_pts(stats, json_data['scoring_rules'])
-                                b_std = v_proj*vol; src = "Vegas"
+                                # [FIX] Apply Min Floor to Vegas too
+                                b_std = max(v_proj * vol, MIN_STD_DEV)
+                                src = "Vegas"
                             break
                 
                 if v_proj is not None and v_proj < (base * 0.7): v_proj = base; src = "League (Low Vegas)"
@@ -277,6 +289,7 @@ def run_loop():
             try: games.append(sim.run_sim(sim.load_json(ESPN_FILE), props, dbg))
             except: pass
         
+        games = [g for g in games if g]
         atomic_write(OUTPUT_FILE, games)
         atomic_write(DEBUG_FILE, dbg)
         gc.collect()
