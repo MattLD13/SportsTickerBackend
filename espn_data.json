@@ -5,61 +5,41 @@
     "scoring_type": "0.5 PPR"
   },
   "scoring_rules": {
-    "passing": {
-      "touchdown": 4,
-      "yards_factor": 0.04,
-      "interception": -2
-    },
-    "rushing": {
-      "touchdown": 6,
-      "yards_factor": 0.1
-    },
-    "receiving": {
-      "touchdown": 6,
-      "yards_factor": 0.1,
-      "ppr": 0.5
-    },
-    "kicking": {
-        "fg_made": 3,
-        "xp_made": 1
-    },
-    "defense": {
-        "default_start": 10
-    }
+    "passing": { "touchdown": 4, "yards_factor": 0.04, "interception": -2 },
+    "rushing": { "touchdown": 6, "yards_factor": 0.1 },
+    "receiving": { "touchdown": 6, "yards_factor": 0.1, "ppr": 0.5 },
+    "kicking": { "fg_made": 3, "xp_made": 1 },
+    "defense": { "default_start": 10 }
   },
   "matchup": {
     "home_team": {
-      "name": "Team Dicks",
+      "name": "Thanos",
       "side": "left",
-      "win_probability_percent": 58,
-      "score": 0.0,
       "roster": [
-        {"pos": "QB", "name": "D. Prescott", "proj": 21.33, "opponent": "@WSH"},
-        {"pos": "RB", "name": "S. Barkley", "proj": 17.25, "opponent": "@BUF"},
-        {"pos": "RB", "name": "C. Brown", "proj": 14.71, "opponent": "ARI"},
-        {"pos": "WR", "name": "J. Smith-Njigba", "proj": 19.01, "opponent": "@CAR"},
-        {"pos": "WR", "name": "M. Evans", "proj": 11.56, "opponent": "@MIA"},
-        {"pos": "TE", "name": "T. McBride", "proj": 16.04, "opponent": "@CIN"},
-        {"pos": "FLEX", "name": "G. Pickens", "proj": 14.56, "opponent": "@WSH"},
-        {"pos": "DST", "name": "Patriots D/ST", "proj": 8.95, "opponent": "@NYJ"},
-        {"pos": "K", "name": "B. Aubrey", "proj": 8.65, "opponent": "@WSH"}
+        {"pos": "QB", "name": "D. Prescott", "proj": 21.33},
+        {"pos": "RB", "name": "S. Barkley", "proj": 17.25},
+        {"pos": "RB", "name": "C. Brown", "proj": 14.71},
+        {"pos": "WR", "name": "J. Smith-Njigba", "proj": 19.01},
+        {"pos": "WR", "name": "M. Evans", "proj": 11.56},
+        {"pos": "TE", "name": "T. McBride", "proj": 16.04},
+        {"pos": "FLEX", "name": "G. Pickens", "proj": 14.56},
+        {"pos": "DST", "name": "Patriots D/ST", "proj": 8.95},
+        {"pos": "K", "name": "B. Aubrey", "proj": 8.65}
       ]
     },
     "away_team": {
-      "name": "Team E",
+      "name": "Helmet",
       "side": "right",
-      "win_probability_percent": 42,
-      "score": 1.0,
       "roster": [
-        {"pos": "QB", "name": "J. Allen", "proj": 20.19, "opponent": "PHI"},
-        {"pos": "RB", "name": "J. Gibbs", "proj": 19.12, "opponent": "@MIN"},
-        {"pos": "RB", "name": "D. Swift", "proj": 13.3, "opponent": "@SF"},
-        {"pos": "WR", "name": "C. Lamb", "proj": 15.15, "opponent": "@WSH"},
-        {"pos": "WR", "name": "D. London", "proj": 13.3, "opponent": "LAR"},
-        {"pos": "TE", "name": "J. Johnson", "proj": 8.14, "opponent": "@TEN"},
-        {"pos": "FLEX", "name": "J. Meyers", "proj": 11.54, "opponent": "@IND"},
-        {"pos": "DST", "name": "Lions D/ST", "proj": 8.95, "opponent": "@MIN"},
-        {"pos": "K", "name": "C. McLaughlin", "proj": 7.49, "opponent": "@MIA"}
+        {"pos": "QB", "name": "J. Allen", "proj": 20.19},
+        {"pos": "RB", "name": "J. Gibbs", "proj": 19.12},
+        {"pos": "RB", "name": "D. Swift", "proj": 13.3},
+        {"pos": "WR", "name": "C. Lamb", "proj": 15.15},
+        {"pos": "WR", "name": "D. London", "proj": 13.3},
+        {"pos": "TE", "name": "J. Johnson", "proj": 8.14},
+        {"pos": "FLEX", "name": "J. Meyers", "proj": 11.54},
+        {"pos": "DST", "name": "Lions D/ST", "proj": 8.95},
+        {"pos": "K", "name": "C. McLaughlin", "proj": 7.49}
       ]
     }
   }
