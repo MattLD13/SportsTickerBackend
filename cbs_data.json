@@ -1,46 +1,42 @@
 {
-  "league_settings": {
-    "name": "Random Keepers",
-    "platform": "CBS Sports",
-    "scoring_type": "Custom"
-  },
-  "scoring_rules": {
-    "passing": { "touchdown": 6, "yards_factor": 0.05, "interception": -2, "bonuses": { "300_yards": 2, "350_yards": 3, "400_yards": 4 } },
-    "rushing": { "touchdown": 6, "yards_factor": 0.1, "bonuses": { "100_yards": 2, "150_yards": 3, "200_yards": 4 } },
-    "receiving": { "touchdown": 6, "yards_factor": 0.1, "bonuses": { "100_yards": 2, "150_yards": 3, "200_yards": 4 } },
-    "kicking": { "xp_made": 1, "fg_0_39": 3, "fg_40_49": 4, "fg_50_55": 5, "fg_56_plus": 6 },
-    "defense_st": { "sack": 1, "interception": 2, "fumble_recovery": 2, "safety": 2, "touchdown": 6, "points_allowed": { "0_10": 10, "11_20": 7, "21_30": 3, "31_40": 0, "41_50": -3, "51_plus": -5 } }
-  },
   "matchup": {
     "away_team": {
       "name": "Hoochies",
-      "side": "left",
       "roster": [
-        {"pos": "QB", "name": "J. Burrow", "proj": 29.08},
-        {"pos": "RB", "name": "K. Gainwell", "proj": 6.5},
-        {"pos": "RB", "name": "B. Robinson", "proj": 14.91},
-        {"pos": "WR", "name": "J. Jefferson", "proj": 8.41},
-        {"pos": "WR", "name": "J. Smith-Njigba", "proj": 16.52},
-        {"pos": "TE", "name": "O. Gadsden II", "proj": 5.2},
-        {"pos": "FLEX", "name": "J. Waddle", "proj": 8.01},
-        {"pos": "K", "name": "C. Little", "proj": 7.9},
-        {"pos": "DST", "name": "Lions", "proj": 17.7}
+        { "name": "Joe Burrow", "pos": "QB", "team": "CIN", "proj": 29.08 },
+        { "name": "Kenneth Gainwell", "pos": "RB", "team": "PHI", "proj": 6.50 },
+        { "name": "Bijan Robinson", "pos": "RB", "team": "ATL", "proj": 14.91 },
+        { "name": "Justin Jefferson", "pos": "WR", "team": "MIN", "proj": 8.41 },
+        { "name": "Jaxon Smith-Njigba", "pos": "WR", "team": "SEA", "proj": 16.52 },
+        { "name": "Taysom Hill", "pos": "TE", "team": "NO", "proj": 4.30 },
+        { "name": "Jaylen Waddle", "pos": "FLEX", "team": "MIA", "proj": 8.01 },
+        { "name": "Cam Little", "pos": "K", "team": "JAC", "proj": 7.90 },
+        { "name": "Steelers", "pos": "DST", "team": "PIT", "proj": 18.30 }
       ]
     },
     "home_team": {
-      "name": "Tuna",
-      "side": "right",
+      "name": "Team Tuna",
       "roster": [
-        {"pos": "QB", "name": "M. Stafford", "proj": 24.37},
-        {"pos": "RB", "name": "D. Achane", "proj": 16.91},
-        {"pos": "RB", "name": "J. Gibbs", "proj": 14.81},
-        {"pos": "WR", "name": "J. Chase", "proj": 12.92},
-        {"pos": "WR", "name": "A. St. Brown", "proj": 10.82},
-        {"pos": "TE", "name": "J. Ferguson", "proj": 6.31},
-        {"pos": "FLEX", "name": "J. Williams", "proj": 13.7},
-        {"pos": "K", "name": "B. Aubrey", "proj": 9.6},
-        {"pos": "DST", "name": "Patriots", "proj": 17.4}
+        { "name": "Matthew Stafford", "pos": "QB", "team": "LAR", "proj": 24.37 },
+        { "name": "De'Von Achane", "pos": "RB", "team": "MIA", "proj": 16.91 },
+        { "name": "Jahmyr Gibbs", "pos": "RB", "team": "DET", "proj": 14.81 },
+        { "name": "Ja'Marr Chase", "pos": "WR", "team": "CIN", "proj": 12.92 },
+        { "name": "Amon-Ra St. Brown", "pos": "WR", "team": "DET", "proj": 10.82 },
+        { "name": "Jake Ferguson", "pos": "TE", "team": "DAL", "proj": 6.31 },
+        { "name": "Jamaal Williams", "pos": "FLEX", "team": "NO", "proj": 13.70 },
+        { "name": "Brandon Aubrey", "pos": "K", "team": "DAL", "proj": 9.60 },
+        { "name": "Patriots", "pos": "DST", "team": "NE", "proj": 17.40 }
       ]
     }
+  },
+  "league_settings": {
+    "platform": "CBS Fantasy"
+  },
+  "scoring_rules": {
+    "passing": { "touchdown": 4, "interception": -2, "yards": 0.04 },
+    "rushing": { "touchdown": 6, "yards": 0.1 },
+    "receiving": { "touchdown": 6, "yards": 0.1, "ppr": 1.0 },
+    "kicking": { "field_goal": 3, "extra_point": 1 },
+    "defense": { "sack": 1, "turnover": 2, "touchdown": 6, "safety": 2 }
   }
 }
