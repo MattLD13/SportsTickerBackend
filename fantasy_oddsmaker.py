@@ -6,6 +6,7 @@ import statistics
 import difflib
 import os
 import shutil
+import gc
 from datetime import datetime
 
 # ================= CONFIGURATION =================
@@ -16,11 +17,10 @@ CACHE_FILE = "odds_cache.json"
 OUTPUT_FILE = "fantasy_output.json"
 DEBUG_FILE = "fantasy_debug.json"
 
-# TIMING
 FAST_INTERVAL = 60    
-SLOW_INTERVAL = 600   
+SLOW_INTERVAL = 10800  # 3 Hours
 
-# === RESTORED HIGH ACCURACY ===
+# === HIGH ACCURACY MODE ===
 SIM_COUNT = 50000 
 
 LEAGUE_VOLATILITY = { "CBS": 0.40, "ESPN": 0.65, "DEFAULT": 0.50 }
@@ -33,16 +33,12 @@ PROP_MARKETS = [
 ]
 
 def atomic_write(filename, data):
-    """ Writes to temp file then performs atomic swap to prevent read errors """
     temp_file = f"{filename}.tmp"
     try:
-        with open(temp_file, 'w') as f:
-            json.dump(data, f)
+        with open(temp_file, 'w') as f: json.dump(data, f)
         os.replace(temp_file, filename)
-    except Exception as e:
-        if os.path.exists(temp_file):
-            try: os.remove(temp_file)
-            except: pass
+    except:
+        if os.path.exists(temp_file): os.remove(temp_file)
 
 class LiveESPNFetcher:
     def __init__(self):
@@ -101,7 +97,6 @@ class OddsAPIFetcher:
         atomic_write(CACHE_FILE, {'timestamp': time.time(), 'payload': self.cache})
     def fetch_fresh(self):
         if time.time() - self.last_fetch < SLOW_INTERVAL: return
-        print("Fetching Vegas Data...")
         try:
             r = requests.get(f"{self.base}/events?apiKey={self.key}", timeout=10)
             if r.status_code == 200:
@@ -262,7 +257,7 @@ class FantasySimulator:
 def run_loop():
     print(f"Fantasy Oddsmaker Started (Sim: {SIM_COUNT})")
     odds = OddsAPIFetcher(API_KEY); live = LiveESPNFetcher()
-    time.sleep(2) # Brief wait
+    time.sleep(2) 
     while True:
         odds.fetch_fresh(); props = odds.get_props()
         live.fetch_live_stats()
@@ -276,6 +271,10 @@ def run_loop():
         
         atomic_write(OUTPUT_FILE, games)
         atomic_write(DEBUG_FILE, dbg)
+        
+        # Explicit garbage collection to prevent crash
+        gc.collect()
+        
         print(f"Updated: {datetime.now().strftime('%H:%M:%S')}")
         time.sleep(FAST_INTERVAL)
 
