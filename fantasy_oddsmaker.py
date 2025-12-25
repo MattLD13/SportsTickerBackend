@@ -20,7 +20,7 @@ DEBUG_FILE = "fantasy_debug.json"
 FAST_INTERVAL = 60    
 SLOW_INTERVAL = 10800 # 3 Hours
 
-SIM_COUNT = 50000 
+SIM_COUNT = 20000 
 
 LEAGUE_VOLATILITY = { "CBS": 0.40, "ESPN": 0.65, "DEFAULT": 0.50 }
 LEAGUE_PAYOUTS = { "CBS": {"win": 1770, "loss": 1100}, "ESPN": {"win": 1000, "loss": 500} }
@@ -32,8 +32,8 @@ PROP_MARKETS = [
 ]
 
 # GENERIC LOGOS FOR FANTASY
-FANTASY_LOGO = "https://a.espncdn.com/i/teamlogos/ncaa/500/172.png" # Shield Icon
-OPPONENT_LOGO = "https://a.espncdn.com/i/teamlogos/ncaa/500/193.png" # Generic Helmet
+FANTASY_LOGO = "https://a.espncdn.com/i/teamlogos/ncaa/500/172.png" 
+OPPONENT_LOGO = "https://a.espncdn.com/i/teamlogos/ncaa/500/193.png" 
 
 def atomic_write(filename, data):
     temp_file = f"{filename}.tmp"
@@ -100,7 +100,6 @@ class OddsAPIFetcher:
         atomic_write(CACHE_FILE, {'timestamp': time.time(), 'payload': self.cache})
     def fetch_fresh(self):
         if time.time() - self.last_fetch < SLOW_INTERVAL: return
-        print("Fetching Vegas Data...")
         try:
             r = requests.get(f"{self.base}/events?apiKey={self.key}", timeout=10)
             if r.status_code == 200:
@@ -238,10 +237,8 @@ class FantasySimulator:
             if hs > as_: h_wins += 1
             
         win_pct = (h_wins / SIM_COUNT) * 100
-        
         hedge = int((payouts['win'] - payouts['loss']) * 0.20)
         
-        # === FULL ESPN COMPATIBLE OBJECT ===
         return {
             "sport": "nfl", 
             "id": str(hash(home['name']+away['name'])%100000), 
@@ -250,24 +247,25 @@ class FantasySimulator:
             "is_shown": True,
             "home_abbr": "ME", 
             "home_score": f"{win_pct:.2f}",
-            "home_logo": FANTASY_LOGO,  # REQUIRED FOR APP
-            "home_id": "998",           # REQUIRED FOR APP
+            "home_logo": FANTASY_LOGO,
+            "home_id": "998",
             "away_abbr": "OTH", 
             "away_score": f"{(100-win_pct):.2f}",
-            "away_logo": OPPONENT_LOGO, # REQUIRED FOR APP
-            "away_id": "999",           # REQUIRED FOR APP
+            "away_logo": OPPONENT_LOGO,
+            "away_id": "999",
             "startTimeUTC": datetime.utcnow().isoformat() + "Z",
             "period": 4,
             "situation": {
                 "possession": "ME", 
-                "downDist": f"Hedge: ${hedge}"
+                "downDist": f"Hedge: ${hedge}",
+                "isRedZone": False
             }
         }
 
 def run_loop():
     print(f"Fantasy Oddsmaker Started (Sim: {SIM_COUNT})")
     odds = OddsAPIFetcher(API_KEY); live = LiveESPNFetcher()
-    time.sleep(2) 
+    time.sleep(5) 
     while True:
         odds.fetch_fresh(); props = odds.get_props()
         live.fetch_live_stats()
@@ -281,7 +279,6 @@ def run_loop():
         
         atomic_write(OUTPUT_FILE, games)
         atomic_write(DEBUG_FILE, dbg)
-        
         gc.collect()
         print(f"Updated: {datetime.now().strftime('%H:%M:%S')}")
         time.sleep(FAST_INTERVAL)
