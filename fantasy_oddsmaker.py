@@ -18,19 +18,15 @@ OUTPUT_FILE = "fantasy_output.json"
 DEBUG_FILE = "fantasy_debug.json"
 
 FAST_INTERVAL = 60    
-SLOW_INTERVAL = 10800 
+SLOW_INTERVAL = 10800 # 3 Hours
 
 SIM_COUNT = 20000 
 
-# === TUNED VOLATILITY ===
-# 0.27 prevents the "90-10" blowout issue while staying accurate.
-LEAGUE_VOLATILITY = { "CBS": 0.27, "ESPN": 0.38, "DEFAULT": 0.30 }
+# === HIGHER VOLATILITY = CLOSER ODDS ===
+# Low volatility makes the favorite win 99% of the time.
+# We need HIGH volatility to reflect true fantasy randomness.
+LEAGUE_VOLATILITY = { "CBS": 0.55, "ESPN": 0.65, "DEFAULT": 0.60 }
 LEAGUE_PAYOUTS = { "CBS": {"win": 1770, "loss": 1100}, "ESPN": {"win": 1000, "loss": 500} }
-
-# [NEW] MINIMUM VARIANCE FLOOR
-# Ensures every player has at least +/- 3.0 pts of risk.
-# This prevents low-scoring players from skewing the math.
-MIN_STD_DEV = 3.0
 
 PROP_MARKETS = [
     "player_pass_yds", "player_pass_tds", "player_pass_interceptions",
@@ -189,7 +185,10 @@ class FantasySimulator:
         home = json_data['matchup']['home_team']; away = json_data['matchup']['away_team']
         plat = json_data.get('league_settings', {}).get('platform', 'Fantasy')
         tag = "CBS" if "CBS" in plat else ("ESPN" if "ESPN" in plat else "Fantasy")
-        vol = LEAGUE_VOLATILITY.get(tag, 0.5); payouts = LEAGUE_PAYOUTS.get(tag, {"win":0, "loss":0})
+        
+        # Use higher volatility to prevent blowouts
+        vol = LEAGUE_VOLATILITY.get(tag, 0.50)
+        payouts = LEAGUE_PAYOUTS.get(tag, {"win":0, "loss":0})
         
         matchup = {'home': [], 'away': []}
         dbg = {"platform": tag, "home_team": home['name'], "away_team": away['name'], "players": []}
@@ -198,8 +197,8 @@ class FantasySimulator:
             team = home if side == 'home' else away
             for p in team['roster']:
                 base = p['proj']
-                # [FIX] Apply Volatility AND Min Floor
-                b_std = max(base * vol, MIN_STD_DEV)
+                # Ensure minimum std dev of 4.0 pts for randomness
+                b_std = max(base * vol, 4.0)
                 src = "League"
                 
                 live = self.live_fetcher.get_live(p['name'])
@@ -219,8 +218,8 @@ class FantasySimulator:
                             stats, cnt = self.get_proj(match, pm)
                             if cnt > 0:
                                 v_proj = self.calc_pts(stats, json_data['scoring_rules'])
-                                # [FIX] Apply Min Floor to Vegas too
-                                b_std = max(v_proj * vol, MIN_STD_DEV)
+                                # Vegas gets same high volatility
+                                b_std = max(v_proj * vol, 4.0)
                                 src = "Vegas"
                             break
                 
@@ -246,6 +245,12 @@ class FantasySimulator:
                 v = random.gauss(p['mean'], p['std']); as_ += v
                 if p['name'] not in p_vol: p_vol[p['name']] = []
                 p_vol[p['name']].append(v)
+            
+            # [FIX] "Any Given Sunday" Factor
+            # Add +/- 6.0 points of pure luck to the final score to simulate game-script chaos
+            hs += random.gauss(0, 6.0)
+            as_ += random.gauss(0, 6.0)
+            
             if hs > as_: h_wins += 1
             
         win_pct = (h_wins / SIM_COUNT) * 100
