@@ -18,15 +18,22 @@ OUTPUT_FILE = "fantasy_output.json"
 DEBUG_FILE = "fantasy_debug.json"
 
 FAST_INTERVAL = 60    
-SLOW_INTERVAL = 10800 # 3 Hours
+SLOW_INTERVAL = 10800 
 
 SIM_COUNT = 20000 
 
-# === HIGHER VOLATILITY = CLOSER ODDS ===
-# Low volatility makes the favorite win 99% of the time.
-# We need HIGH volatility to reflect true fantasy randomness.
 LEAGUE_VOLATILITY = { "CBS": 0.55, "ESPN": 0.65, "DEFAULT": 0.60 }
 LEAGUE_PAYOUTS = { "CBS": {"win": 1770, "loss": 1100}, "ESPN": {"win": 1000, "loss": 500} }
+
+# === NEW: HISTORICAL TOUCHDOWN REGRESSION RATES ===
+# derived from NFL historical averages (TDs per Yard)
+HISTORICAL_RATES = {
+    'QB': {'pass_td_per_yd': 0.0064, 'rush_td_per_yd': 0.003}, # ~1 Pass TD per 156 yds
+    'RB': {'rush_td_per_yd': 0.0090, 'rec_td_per_yd': 0.005},  # ~1 Rush TD per 110 yds (RZ usage)
+    'WR': {'rush_td_per_yd': 0.0050, 'rec_td_per_yd': 0.0062}, # ~1 Rec TD per 160 yds
+    'TE': {'rec_td_per_yd': 0.0083},                           # ~1 Rec TD per 120 yds (RZ threat)
+    'DEFAULT': {'pass': 0.006, 'rush': 0.007, 'rec': 0.006}
+}
 
 PROP_MARKETS = [
     "player_pass_yds", "player_pass_tds", "player_pass_interceptions",
@@ -159,25 +166,49 @@ class FantasySimulator:
             stats['anytime_td_prob'] = prob; count += 1
         return stats, count
 
-    def calc_pts(self, stats, rules):
+    def calc_pts(self, stats, pos, rules):
         s = 0.0
-        p_yds = stats.get('player_pass_yds', 0); p_tds = stats.get('player_pass_tds', 0)
-        if p_yds > 0 and p_tds == 0: p_tds = p_yds / 160.0
-        s += (p_yds*0.04) + (p_tds*rules['passing']['touchdown'])
-        if p_yds >= 300: s += rules['passing']['bonuses'].get('300_yards', 0)
         
-        r_yds = stats.get('player_rush_yds', 0); r_tds = stats.get('player_rush_tds', 0)
-        rec_yds = stats.get('player_reception_yds', 0); rec_tds = stats.get('player_reception_tds', 0)
+        # --- PASSING ---
+        p_yds = stats.get('player_pass_yds', 0)
+        p_tds = stats.get('player_pass_tds', 0)
+        s += (p_yds * 0.04) + (p_tds * rules['passing']['touchdown'])
+        
+        # If no Pass TD prop, use historical regression for QBs
+        if p_yds > 0 and p_tds == 0:
+            rate = HISTORICAL_RATES.get('QB', {}).get('pass_td_per_yd', 0.006)
+            s += (p_yds * rate * rules['passing']['touchdown'])
+
+        # --- RUSHING ---
+        r_yds = stats.get('player_rush_yds', 0)
+        r_tds = stats.get('player_rush_tds', 0)
+        s += (r_yds * 0.1)
+        
+        # If no Rush TD prop, use historical regression by position
+        if r_yds > 0 and r_tds == 0:
+            rate = HISTORICAL_RATES.get(pos, HISTORICAL_RATES['DEFAULT']).get('rush_td_per_yd', 0.007)
+            s += (r_yds * rate * 6.0)
+        else:
+            s += (r_tds * 6.0)
+
+        # --- RECEIVING ---
+        rec_yds = stats.get('player_reception_yds', 0)
+        rec_tds = stats.get('player_reception_tds', 0)
         recs = stats.get('player_receptions', 0)
-        s += (r_yds*0.1) + (rec_yds*0.1)
+        s += (rec_yds * 0.1)
         
-        tot_td = r_tds + rec_tds
-        if tot_td == 0 and 'anytime_td_prob' in stats: s += stats['anytime_td_prob'] * 6.0
-        elif tot_td > 0: s += (r_tds*6) + (rec_tds*6)
-        else: s += ((r_yds/90.0)*6) + ((rec_yds/90.0)*6)
-        
-        if rec_yds > 0 and recs == 0: recs = rec_yds / 11.0
+        # Implied Receptions (Conservative)
+        if rec_yds > 0 and recs == 0: 
+            recs = rec_yds / 13.0
         s += recs * rules['receiving'].get('ppr', 0)
+        
+        # If no Rec TD prop, use historical regression (TEs get boost)
+        if rec_yds > 0 and rec_tds == 0:
+            rate = HISTORICAL_RATES.get(pos, HISTORICAL_RATES['DEFAULT']).get('rec_td_per_yd', 0.006)
+            s += (rec_yds * rate * 6.0)
+        else:
+            s += (rec_tds * 6.0)
+            
         return s
 
     def run_sim(self, json_data, props_map, debug_list):
@@ -186,8 +217,7 @@ class FantasySimulator:
         plat = json_data.get('league_settings', {}).get('platform', 'Fantasy')
         tag = "CBS" if "CBS" in plat else ("ESPN" if "ESPN" in plat else "Fantasy")
         
-        # Use higher volatility to prevent blowouts
-        vol = LEAGUE_VOLATILITY.get(tag, 0.50)
+        vol = LEAGUE_VOLATILITY.get(tag, 0.60)
         payouts = LEAGUE_PAYOUTS.get(tag, {"win":0, "loss":0})
         
         matchup = {'home': [], 'away': []}
@@ -197,7 +227,7 @@ class FantasySimulator:
             team = home if side == 'home' else away
             for p in team['roster']:
                 base = p['proj']
-                # Ensure minimum std dev of 4.0 pts for randomness
+                # Standard Deviation Floor
                 b_std = max(base * vol, 4.0)
                 src = "League"
                 
@@ -217,13 +247,15 @@ class FantasySimulator:
                         if match:
                             stats, cnt = self.get_proj(match, pm)
                             if cnt > 0:
-                                v_proj = self.calc_pts(stats, json_data['scoring_rules'])
-                                # Vegas gets same high volatility
+                                # PASS POSITION TO CALCULATOR
+                                raw_vegas = self.calc_pts(stats, p['pos'], json_data['scoring_rules'])
+                                v_proj = raw_vegas * 0.90 # Juice Dampener
                                 b_std = max(v_proj * vol, 4.0)
                                 src = "Vegas"
                             break
                 
-                if v_proj is not None and v_proj < (base * 0.7): v_proj = base; src = "League (Low Vegas)"
+                if v_proj is not None and v_proj < (base * 0.6): 
+                    v_proj = base; src = "League (Vegas Low)"
                 
                 final_proj = (v_proj if v_proj else base)
                 final_mean = l_score + (final_proj * rem)
@@ -246,8 +278,7 @@ class FantasySimulator:
                 if p['name'] not in p_vol: p_vol[p['name']] = []
                 p_vol[p['name']].append(v)
             
-            # [FIX] "Any Given Sunday" Factor
-            # Add +/- 6.0 points of pure luck to the final score to simulate game-script chaos
+            # Any Given Sunday Chaos (+/- 6 pts)
             hs += random.gauss(0, 6.0)
             as_ += random.gauss(0, 6.0)
             
