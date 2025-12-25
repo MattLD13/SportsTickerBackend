@@ -137,12 +137,7 @@ class FantasySimulator:
         score += recs * rules['receiving'].get('ppr', 0)
         return score
 
-    def smart_abbr(self, name):
-        clean = name.replace("Team ", "").strip()
-        return clean[:3].upper()
-
     def generate_numeric_id(self, string_input):
-        # Generate a stable 9-digit numeric ID from string
         hash_val = int(hashlib.sha256(string_input.encode('utf-8')).hexdigest(), 16)
         return str(hash_val % 1000000000)
 
@@ -198,26 +193,38 @@ class FantasySimulator:
             
         win_pct = (home_wins / sims) * 100
         
+        # Identify Risk Player
         max_std = 0; risk_player = "None"
         for name, vals in player_volatility.items():
             std = statistics.stdev(vals)
             if std > max_std:
                 max_std = std; risk_player = name
-                
+
         try:
             parts = risk_player.split(' ')
             if len(parts) > 1 and '.' not in parts[0]: risk_str = f"{parts[0][0]}. {parts[-1]}"
             else: risk_str = risk_player
         except: risk_str = risk_player
 
-        h_abbr = self.smart_abbr(home['name'])
-        a_abbr = self.smart_abbr(away['name'])
-        
-        # ID Generation (Numeric for App Compatibility)
-        game_id = self.generate_numeric_id(f"{h_abbr}_vs_{a_abbr}")
+        # === FORCE ABBREVIATIONS ===
+        h_abbr = "ME"
+        a_abbr = "OTH"
 
-        # Formatting Scores (4 sig figs, no %)
-        # e.g., 58.12
+        # === DETERMINE POSSESSION ===
+        possession_abbr = ""
+        # Check home roster for risk player
+        for p in matchup_models['home']:
+            if p['name'] == risk_player:
+                possession_abbr = h_abbr
+                break
+        # Check away roster if not found
+        if not possession_abbr:
+            for p in matchup_models['away']:
+                if p['name'] == risk_player:
+                    possession_abbr = a_abbr
+                    break
+
+        game_id = self.generate_numeric_id(f"{home['name']}_vs_{away['name']}")
         h_val = f"{win_pct:.2f}"
         a_val = f"{(100 - win_pct):.2f}"
 
@@ -229,16 +236,16 @@ class FantasySimulator:
             "is_shown": True,
             "home_abbr": h_abbr,
             "home_score": h_val,
-            "home_logo": "",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/172.png", # Cornell
             "home_id": h_abbr,
             "away_abbr": a_abbr,
             "away_score": a_val,
-            "away_logo": "",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyj.png",  # Jets
             "away_id": a_abbr,
             "startTimeUTC": datetime.utcnow().isoformat() + "Z",
             "period": 4,
             "situation": {
-                "possession": "",
+                "possession": possession_abbr,
                 "isRedZone": False,
                 "downDist": f"Risk: {risk_str}"
             }
@@ -255,22 +262,17 @@ def run_model():
     sim = FantasySimulator(fetcher)
     games = []
     
+    # Process both leagues
     if os.path.exists(CBS_FILE):
         try:
             cbs_data = sim.load_json(CBS_FILE)
-            g = sim.simulate_game(cbs_data, events_map)
-            g['away_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/cin.png"
-            g['home_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/lar.png"
-            games.append(g)
+            games.append(sim.simulate_game(cbs_data, events_map))
         except: pass
 
     if os.path.exists(ESPN_FILE):
         try:
             espn_data = sim.load_json(ESPN_FILE)
-            g = sim.simulate_game(espn_data, events_map)
-            g['home_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png"
-            g['away_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/buf.png"
-            games.append(g)
+            games.append(sim.simulate_game(espn_data, events_map))
         except: pass
     
     with open(OUTPUT_FILE, 'w') as f: json.dump(games, f)
