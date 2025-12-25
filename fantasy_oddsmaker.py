@@ -18,9 +18,8 @@ OUTPUT_FILE = "fantasy_output.json"
 DEBUG_FILE = "fantasy_debug.json"
 
 FAST_INTERVAL = 60    
-SLOW_INTERVAL = 10800  # 3 Hours
+SLOW_INTERVAL = 10800 # 3 Hours
 
-# === HIGH ACCURACY MODE ===
 SIM_COUNT = 50000 
 
 LEAGUE_VOLATILITY = { "CBS": 0.40, "ESPN": 0.65, "DEFAULT": 0.50 }
@@ -31,6 +30,10 @@ PROP_MARKETS = [
     "player_rush_yds", "player_rush_tds", "player_reception_yds", 
     "player_reception_tds", "player_receptions", "player_anytime_td"
 ]
+
+# GENERIC LOGOS FOR FANTASY
+FANTASY_LOGO = "https://a.espncdn.com/i/teamlogos/ncaa/500/172.png" # Shield Icon
+OPPONENT_LOGO = "https://a.espncdn.com/i/teamlogos/ncaa/500/193.png" # Generic Helmet
 
 def atomic_write(filename, data):
     temp_file = f"{filename}.tmp"
@@ -97,6 +100,7 @@ class OddsAPIFetcher:
         atomic_write(CACHE_FILE, {'timestamp': time.time(), 'payload': self.cache})
     def fetch_fresh(self):
         if time.time() - self.last_fetch < SLOW_INTERVAL: return
+        print("Fetching Vegas Data...")
         try:
             r = requests.get(f"{self.base}/events?apiKey={self.key}", timeout=10)
             if r.status_code == 200:
@@ -234,24 +238,30 @@ class FantasySimulator:
             if hs > as_: h_wins += 1
             
         win_pct = (h_wins / SIM_COUNT) * 100
-        max_std = 0; risk_p = "None"
-        for n, vals in p_vol.items():
-            s = statistics.stdev(vals)
-            if s > max_std: max_std = s; risk_p = n
-        
-        poss = ""; risk_h = False
-        for p in matchup['home']:
-            if p['name'] == risk_p: poss = "ME"; risk_h = True; break
-        if not poss: poss = "OTH"
         
         hedge = int((payouts['win'] - payouts['loss']) * 0.20)
         
+        # === FULL ESPN COMPATIBLE OBJECT ===
         return {
-            "sport": "nfl", "id": str(hash(home['name']+away['name'])%100000), "status": tag,
-            "home_abbr": "ME", "home_score": f"{win_pct:.2f}",
-            "away_abbr": "OTH", "away_score": f"{(100-win_pct):.2f}",
+            "sport": "nfl", 
+            "id": str(hash(home['name']+away['name'])%100000), 
+            "status": tag,
+            "state": "in",
             "is_shown": True,
-            "situation": {"possession": poss, "downDist": f"Hedge: ${hedge}"}
+            "home_abbr": "ME", 
+            "home_score": f"{win_pct:.2f}",
+            "home_logo": FANTASY_LOGO,  # REQUIRED FOR APP
+            "home_id": "998",           # REQUIRED FOR APP
+            "away_abbr": "OTH", 
+            "away_score": f"{(100-win_pct):.2f}",
+            "away_logo": OPPONENT_LOGO, # REQUIRED FOR APP
+            "away_id": "999",           # REQUIRED FOR APP
+            "startTimeUTC": datetime.utcnow().isoformat() + "Z",
+            "period": 4,
+            "situation": {
+                "possession": "ME", 
+                "downDist": f"Hedge: ${hedge}"
+            }
         }
 
 def run_loop():
@@ -272,9 +282,7 @@ def run_loop():
         atomic_write(OUTPUT_FILE, games)
         atomic_write(DEBUG_FILE, dbg)
         
-        # Explicit garbage collection to prevent crash
         gc.collect()
-        
         print(f"Updated: {datetime.now().strftime('%H:%M:%S')}")
         time.sleep(FAST_INTERVAL)
 
