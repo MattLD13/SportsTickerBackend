@@ -137,6 +137,7 @@ class SportsFetcher:
     def __init__(self, initial_loc):
         self.weather = WeatherFetcher(initial_loc)
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
+        self.possession_cache = {}  # [FIX] Added Cache
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'groups': '80', 'limit': 1000} },
@@ -198,7 +199,6 @@ class SportsFetcher:
         games = []
         with data_lock: conf = state.copy()
 
-        # FANTASY INJECTION
         if conf['active_sports'].get('fantasy'):
             if os.path.exists(FANTASY_FILE):
                 try: 
@@ -266,12 +266,21 @@ class SportsFetcher:
                         p = st.get('period', 1); clk = st.get('displayClock', '')
                         s_disp = f"Q{p} {clk}"
 
+                    # [FIX] Possession Logic
                     sit = comp.get('situation', {})
+                    poss = sit.get('possession')
+                    if poss:
+                        self.possession_cache[e['id']] = poss
+                    else:
+                        poss = self.possession_cache.get(e['id'], '')
+
                     game_obj = {
                         'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
                         'home_abbr': h_ab, 'home_score': h.get('score','0'), 'home_logo': h_lg,
+                        'home_id': h['team'].get('id'), # [FIX] Added Home ID
                         'away_abbr': a_ab, 'away_score': a.get('score','0'), 'away_logo': a_lg,
-                        'situation': { 'possession': sit.get('possession'), 'isRedZone': sit.get('isRedZone', False), 'downDist': sit.get('downDistanceText', '') }
+                        'away_id': a['team'].get('id'), # [FIX] Added Away ID
+                        'situation': { 'possession': poss, 'isRedZone': sit.get('isRedZone', False), 'downDist': sit.get('downDistanceText', '') }
                     }
                     if league_key == 'mlb':
                         game_obj['situation'] = { 'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False) }
@@ -288,7 +297,7 @@ def background_updater():
     except: pass
     subprocess.Popen([sys.executable, "fantasy_oddsmaker.py"])
     
-    # FETCH TEAMS ON BOOT (This is what you were missing)
+    # [FIX] RESTORED TEAM FETCHING
     fetcher.fetch_all_teams()
     
     while True: fetcher.get_real_games(); time.sleep(UPDATE_INTERVAL)
