@@ -9,7 +9,7 @@ import hashlib
 from datetime import datetime, timedelta
 
 # ================= CONFIGURATION =================
-TEST_MODE = False  # Set to True to see the comparison table
+TEST_MODE = False  # Set to True to print table to console, False for server mode
 
 API_KEY = "5da338be7ba612d5e88f889f93dd832f" 
 CBS_FILE = "cbs_data.json"
@@ -19,15 +19,16 @@ OUTPUT_FILE = "fantasy_output.json"
 DEBUG_FILE = "fantasy_debug.json"
 
 # === TURBO TIMING ===
-FAST_INTERVAL = 60    
-SLOW_INTERVAL = 600   
+FAST_INTERVAL = 60    # Live stats every minute
+SLOW_INTERVAL = 600   # Vegas odds every 10 minutes
 
 # SIMULATION SETTINGS
 SIM_COUNT = 50000 
 
+# LEAGUE-SPECIFIC CHAOS (Standard Deviation)
 LEAGUE_VOLATILITY = {
-    "CBS": 0.40,
-    "ESPN": 0.65,
+    "CBS": 0.40,   # Conservative
+    "ESPN": 0.65,  # Aggressive
     "DEFAULT": 0.50
 }
 
@@ -36,7 +37,6 @@ LEAGUE_PAYOUTS = {
     "ESPN": {"win": 1000, "loss": 500}
 }
 
-# ADDED "player_anytime_td" to the request list
 PROP_MARKETS = [
     "player_pass_yds", "player_pass_tds", "player_pass_interceptions",
     "player_rush_yds", "player_rush_tds", "player_reception_yds", 
@@ -82,27 +82,18 @@ class LiveESPNFetcher:
             box = d.get('boxscore', {})
             for team in box.get('players', []):
                 for stat_group in team.get('statistics', []):
-                    stat_type = stat_group['name'] 
                     keys = stat_group['keys']
                     for athlete in stat_group.get('athletes', []):
                         name = athlete['athlete']['displayName']
                         stats = athlete['stats']
                         pts = 0.0
                         try:
-                            if stat_type == 'passing':
-                                yds = int(stats[keys.index('yds')])
-                                tds = int(stats[keys.index('tds')])
-                                ints = int(stats[keys.index('ints')])
-                                pts += (yds * 0.04) + (tds * 4) - (ints * 2)
-                            elif stat_type == 'rushing':
-                                yds = int(stats[keys.index('yds')])
-                                tds = int(stats[keys.index('tds')])
-                                pts += (yds * 0.1) + (tds * 6)
-                            elif stat_type == 'receiving':
-                                yds = int(stats[keys.index('yds')])
-                                tds = int(stats[keys.index('tds')])
-                                rec = int(stats[keys.index('rec')])
-                                pts += (yds * 0.1) + (tds * 6) + (rec * 0.5)
+                            if stat_group['name'] == 'passing':
+                                pts += (int(stats[keys.index('yds')])*0.04) + (int(stats[keys.index('tds')])*4) - (int(stats[keys.index('ints')])*2)
+                            elif stat_group['name'] == 'rushing':
+                                pts += (int(stats[keys.index('yds')])*0.1) + (int(stats[keys.index('tds')])*6)
+                            elif stat_group['name'] == 'receiving':
+                                pts += (int(stats[keys.index('yds')])*0.1) + (int(stats[keys.index('tds')])*6) + (int(stats[keys.index('rec')])*0.5)
                         except: pass
 
                         if name not in player_map:
@@ -191,25 +182,20 @@ class FantasySimulator:
                 best_match = api_name
         return best_match if highest_ratio > 0.8 else None
 
-    # UPDATED: Now handles "price" (odds) instead of just "point" (line)
     def get_projected_stats(self, player_name, event_props):
         stats = {}
         if not event_props: return {}, 0
         
         agg_lines = {m: [] for m in PROP_MARKETS}
-        anytime_td_odds = [] # Specific list for TD odds
+        atd_odds = []
 
         for book in event_props.get('bookmakers', []):
             for market in book.get('markets', []):
                 key = market['key']
-                
-                # Special handling for Anytime TD (Uses 'price', not 'point')
                 if key == "player_anytime_td":
-                    for outcome in market['outcomes']:
-                        if outcome['description'] == player_name:
-                            anytime_td_odds.append(outcome['price'])
+                    for o in market['outcomes']:
+                        if o['description'] == player_name: atd_odds.append(o['price'])
                     continue
-
                 if key not in agg_lines: continue
                 for outcome in market['outcomes']:
                     if outcome['description'] == player_name and 'point' in outcome:
@@ -222,12 +208,10 @@ class FantasySimulator:
                 count += 1
         
         # Calculate Implied Probability for Anytime TD
-        if anytime_td_odds:
-            avg_odds = statistics.mean(anytime_td_odds)
-            if avg_odds > 0:
-                prob = 100 / (avg_odds + 100)
-            else:
-                prob = abs(avg_odds) / (abs(avg_odds) + 100)
+        if atd_odds:
+            avg_odds = statistics.mean(atd_odds)
+            if avg_odds > 0: prob = 100 / (avg_odds + 100)
+            else: prob = abs(avg_odds) / (abs(avg_odds) + 100)
             stats['anytime_td_prob'] = prob
             count += 1
 
@@ -239,62 +223,38 @@ class FantasySimulator:
         # --- PASSING ---
         p_yds = stats.get('player_pass_yds', 0)
         p_tds = stats.get('player_pass_tds', 0)
-        
-        # Fallback: 1 TD per 160 yards passing if no prop
-        if p_yds > 0 and p_tds == 0:
-            p_tds = p_yds / 160.0
+        # Failsafe: 1 TD per 160 yds if missing
+        if p_yds > 0 and p_tds == 0: p_tds = p_yds / 160.0
             
         p_ints = stats.get('player_pass_interceptions', 0)
-        if p_yds > 0 and p_ints == 0:
-            p_ints = 0.8 
+        if p_yds > 0 and p_ints == 0: p_ints = 0.8 
 
-        score += p_yds * rules['passing'].get('yards_factor', 0.04)
-        score += p_tds * rules['passing']['touchdown']
-        score += p_ints * rules['passing']['interception']
+        score += (p_yds * 0.04) + (p_tds * rules['passing']['touchdown']) + (p_ints * rules['passing']['interception'])
+        if p_yds >= 300: score += rules['passing']['bonuses'].get('300_yards', 0)
         
-        if 'bonuses' in rules['passing'] and p_yds >= 300:
-            score += rules['passing']['bonuses'].get('300_yards', 0)
-        
-        # --- RUSHING ---
+        # --- RUSHING/RECEIVING ---
         r_yds = stats.get('player_rush_yds', 0)
-        r_tds = stats.get('player_rush_tds', 0) # This is the O/U line (Over 0.5)
-        
-        score += r_yds * rules['rushing'].get('yards_factor', 0.1)
-
-        # --- RECEIVING ---
+        r_tds = stats.get('player_rush_tds', 0) 
         rec_yds = stats.get('player_reception_yds', 0)
         rec_tds = stats.get('player_reception_tds', 0)
         recs = stats.get('player_receptions', 0)
         
-        score += rec_yds * rules['receiving'].get('yards_factor', 0.1)
-        
-        # --- TOUCHDOWN LOGIC (THE UPGRADE) ---
-        # 1. Use specific Rushing/Receiving TD Over/Under if available
-        # 2. If not, use "Anytime TD" Probability * 6 points
-        # 3. If neither, fallback to yardage estimation
-        
+        score += (r_yds * 0.1) + (rec_yds * 0.1)
+
+        # TOUCHDOWN LOGIC
         total_skill_tds = r_tds + rec_tds
-        
         if total_skill_tds == 0 and 'anytime_td_prob' in stats:
-            # "Anytime TD" is roughly "At least 1 TD". 
-            # We treat this prob * 6 pts as the EV for touchdowns.
             score += stats['anytime_td_prob'] * 6.0
         elif total_skill_tds > 0:
-            # We have specific O/U lines (e.g. 0.5 rush TD), use those
-            score += r_tds * rules['rushing']['touchdown']
-            score += rec_tds * rules['receiving']['touchdown']
+            score += (r_tds * 6) + (rec_tds * 6)
         else:
-            # Fallback: Regress to yards
-            est_r_td = r_yds / 90.0 if r_yds > 0 else 0
-            est_rec_td = rec_yds / 90.0 if rec_yds > 0 else 0
-            score += (est_r_td * rules['rushing']['touchdown']) + (est_rec_td * rules['receiving']['touchdown'])
+            # Fallback to yardage regression
+            score += ((r_yds / 90.0) * 6) + ((rec_yds / 90.0) * 6)
 
-        # FAILSAFE: 1 Catch per 11 yards (for PPR)
-        if rec_yds > 0 and recs == 0:
-            recs = rec_yds / 11.0
+        # Failsafe: PPR estimation
+        if rec_yds > 0 and recs == 0: recs = rec_yds / 11.0
             
         score += recs * rules['receiving'].get('ppr', 0)
-        
         return score
 
     def generate_numeric_id(self, string_input):
@@ -307,11 +267,9 @@ class FantasySimulator:
         rules = json_data['scoring_rules']
         platform = json_data.get('league_settings', {}).get('platform', 'Fantasy')
         
-        print(f"\n=======================================================")
-        print(f"  {platform.upper()} TEST MODE COMPARISON")
-        print(f"=======================================================")
-        print(f"{'PLAYER':<20} | {'POS':<4} | {'LEAGUE':<7} | {'MY PROJ':<7} | {'DIFF':<5}")
-        print("-" * 55)
+        print(f"\n=== {platform.upper()} TEST MODE COMPARISON ===")
+        print(f"{'PLAYER':<20} | {'POS':<4} | {'LEAGUE':<7} | {'MY PROJ':<7} | {'DIFF':<5} | {'SOURCE'}")
+        print("-" * 75)
 
         for side in ['home', 'away']:
             team_data = home if side == 'home' else away
@@ -328,6 +286,7 @@ class FantasySimulator:
                     live_score = live_info['score']
                     rem_pct = live_info['rem']
 
+                vegas_val = None
                 if rem_pct > 0: 
                     for eid, props in events_map.items():
                         all_names = set()
@@ -338,10 +297,18 @@ class FantasySimulator:
                         if matched:
                             stats, count = self.get_projected_stats(matched, props)
                             if count > 0:
-                                my_proj = self.calculate_fantasy_points(stats, rules)
+                                vegas_val = self.calculate_fantasy_points(stats, rules)
                                 source = "Vegas"
                             break
                 
+                # SAFETY FLOOR
+                if vegas_val is not None:
+                    if vegas_val < (base_proj * 0.70):
+                        my_proj = base_proj
+                        source = "League (Vegas Low)"
+                    else:
+                        my_proj = vegas_val
+
                 final_my_proj = live_score + (my_proj * rem_pct)
                 final_league_proj = live_score + (base_proj * rem_pct)
                 
@@ -352,7 +319,7 @@ class FantasySimulator:
                 diff = final_my_proj - final_league_proj
                 diff_str = f"+{diff:.2f}" if diff > 0 else f"{diff:.2f}"
                 p_name = (p['name'][:18] + '..') if len(p['name']) > 18 else p['name']
-                print(f"{p_name:<20} | {p['pos']:<4} | {final_league_proj:<7.2f} | {final_my_proj:<7.2f} | {diff_str:<5} ({source})")
+                print(f"{p_name:<20} | {p['pos']:<4} | {final_league_proj:<7.2f} | {final_my_proj:<7.2f} | {diff_str:<5} | {source}")
         print("\n")
 
     def simulate_game(self, json_data, events_map, debug_data_list):
@@ -361,186 +328,123 @@ class FantasySimulator:
         rules = json_data['scoring_rules']
         platform = json_data.get('league_settings', {}).get('platform', 'Fantasy')
         
-        status_tag = "CBS" if "CBS" in platform else ("ESPN" if "ESPN" in platform else "Fantasy")
-        payouts = LEAGUE_PAYOUTS.get(status_tag, {"win": 0, "loss": 0})
-        league_vol = LEAGUE_VOLATILITY.get(status_tag, LEAGUE_VOLATILITY["DEFAULT"])
+        tag = "CBS" if "CBS" in platform else ("ESPN" if "ESPN" in platform else "Fantasy")
+        payouts = LEAGUE_PAYOUTS.get(tag, {"win": 0, "loss": 0})
+        vol = LEAGUE_VOLATILITY.get(tag, 0.50)
 
-        matchup_models = {'home': [], 'away': []}
-        
-        game_debug = {
-            "platform": status_tag,
-            "home_team": home['name'],
-            "away_team": away['name'],
-            "players": []
-        }
+        matchup = {'home': [], 'away': []}
+        debug = {"platform": tag, "home_team": home['name'], "away_team": away['name'], "players": []}
 
         for side in ['home', 'away']:
-            team_data = home if side == 'home' else away
-            for p in team_data['roster']:
-                base_proj = p['proj']
-                base_std = base_proj * league_vol
-                source = "League"
+            team = home if side == 'home' else away
+            for p in team['roster']:
+                base_proj = p['proj']; base_std = base_proj * vol; source = "League"
                 
                 live_info = self.live_fetcher.get_player_live(p['name'])
-                live_score = 0.0; rem_pct = 1.0
-
-                if live_info:
-                    live_score = live_info['score']
-                    rem_pct = live_info['rem']
+                l_score = live_info['score'] if live_info else 0.0
+                rem_pct = live_info['rem'] if live_info else 1.0
 
                 vegas_proj = None
                 if rem_pct > 0: 
                     for eid, props in events_map.items():
-                        all_names = set()
+                        all_n = set()
                         for b in props.get('bookmakers', []):
                             for m in b.get('markets', []):
-                                for o in m.get('outcomes', []): all_names.add(o['description'])
-                        matched = self.fuzzy_match_player(p['name'], list(all_names))
-                        if matched:
-                            stats, count = self.get_projected_stats(matched, props)
-                            if count > 0:
+                                for o in m.get('outcomes', []): all_n.add(o['description'])
+                        match = self.fuzzy_match_player(p['name'], list(all_n))
+                        if match:
+                            stats, cnt = self.get_projected_stats(match, props)
+                            if cnt > 0:
                                 vegas_proj = self.calculate_fantasy_points(stats, rules)
-                                base_std = vegas_proj * league_vol 
                                 source = "Vegas"
                             break
                 
-                remainder_proj = (vegas_proj if vegas_proj else base_proj) * rem_pct
-                final_mean = live_score + remainder_proj
+                # SAFETY FLOOR
+                if vegas_proj is not None:
+                    if vegas_proj < (base_proj * 0.70):
+                        vegas_proj = base_proj
+                        source = "League (Low)"
                 
+                final_proj = (vegas_proj if vegas_proj else base_proj)
+                final_mean = l_score + (final_proj * rem_pct)
+                if vegas_proj: base_std = vegas_proj * vol
+
                 if p['pos'] in ['DST', 'K']:
-                    final_mean = live_score + (p['proj'] * rem_pct)
+                    final_mean = l_score + (base_proj * rem_pct)
                     base_std = 4.0 * rem_pct
                     source = "League"
 
-                matchup_models[side].append({'name': p['name'], 'mean': final_mean, 'std': base_std})
-
-                game_debug['players'].append({
-                    "name": p['name'],
-                    "pos": p['pos'],
-                    "team": side.upper(),
-                    "league_proj": round(live_score + (base_proj * rem_pct), 2),
-                    "my_proj": round(final_mean, 2),
-                    "source": source
+                matchup[side].append({'name': p['name'], 'mean': final_mean, 'std': base_std})
+                
+                debug['players'].append({
+                    "name": p['name'], "pos": p['pos'], "team": side.upper(),
+                    "league_proj": round(l_score + (base_proj * rem_pct), 2),
+                    "my_proj": round(final_mean, 2), "source": source
                 })
 
-        debug_data_list.append(game_debug)
+        debug_data_list.append(debug)
 
-        home_wins = 0; player_volatility = {}
+        h_wins = 0; p_vol = {}
         for _ in range(SIM_COUNT):
-            h_score = 0; a_score = 0
-            for p in matchup_models['home']:
-                val = random.gauss(p['mean'], p['std'])
-                h_score += val
-                if p['name'] not in player_volatility: player_volatility[p['name']] = []
-                player_volatility[p['name']].append(val)
-            for p in matchup_models['away']:
-                val = random.gauss(p['mean'], p['std'])
-                a_score += val
-                if p['name'] not in player_volatility: player_volatility[p['name']] = []
-                player_volatility[p['name']].append(val)
-            if h_score > a_score: home_wins += 1
+            hs = 0; as_ = 0
+            for p in matchup['home']:
+                v = random.gauss(p['mean'], p['std']); hs += v
+                if p['name'] not in p_vol: p_vol[p['name']] = []
+                p_vol[p['name']].append(v)
+            for p in matchup['away']:
+                v = random.gauss(p['mean'], p['std']); as_ += v
+                if p['name'] not in p_vol: p_vol[p['name']] = []
+                p_vol[p['name']].append(v)
+            if hs > as_: h_wins += 1
             
-        win_pct = (home_wins / SIM_COUNT) * 100
-        
-        max_std = 0; risk_player = "None"
-        for name, vals in player_volatility.items():
-            std = statistics.stdev(vals)
-            if std > max_std: max_std = std; risk_player = name
+        win_pct = (h_wins / SIM_COUNT) * 100
+        max_std = 0; risk_p = "None"
+        for n, vals in p_vol.items():
+            s = statistics.stdev(vals)
+            if s > max_std: max_std = s; risk_p = n
 
-        h_abbr = "ME"
-        a_abbr = "OTH"
+        poss_abbr = ""; risk_home = False
+        for p in matchup['home']:
+            if p['name'] == risk_p: poss_abbr = "ME"; risk_home = True; break
+        if not poss_abbr: poss_abbr = "OTH"
 
-        upside_val = payouts['win'] - payouts['loss']
-        hedge_bet_amount = int(upside_val * 0.20)
-
-        risk_on_home = False
-        possession_abbr = ""
-        for p in matchup_models['home']:
-            if p['name'] == risk_player:
-                possession_abbr = h_abbr; risk_on_home = True; break
-        if not possession_abbr: possession_abbr = a_abbr
-
-        hedge_msg = f"Hedge: Bet ${hedge_bet_amount}"
-
-        game_id = self.generate_numeric_id(f"{home['name']}_vs_{away['name']}")
-        h_val = f"{win_pct:.2f}"
-        a_val = f"{(100 - win_pct):.2f}"
+        hedge = int((payouts['win'] - payouts['loss']) * 0.20)
 
         return {
-            "sport": "nfl",
-            "id": game_id,
-            "status": status_tag,
-            "state": "in",
-            "is_shown": True,
-            "home_abbr": h_abbr,
-            "home_score": h_val,
-            "home_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/172.png", 
-            "home_id": h_abbr,
-            "away_abbr": a_abbr,
-            "away_score": a_val,
-            "away_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/193.png", 
-            "away_id": a_abbr,
-            "startTimeUTC": datetime.utcnow().isoformat() + "Z",
-            "period": 4,
-            "situation": {
-                "possession": possession_abbr,
-                "isRedZone": False,
-                "downDist": hedge_msg
-            }
+            "id": str(hash(home['name']+away['name']) % 100000), "status": tag, 
+            "home_abbr": "ME", "home_score": f"{win_pct:.2f}", 
+            "away_abbr": "OTH", "away_score": f"{(100-win_pct):.2f}",
+            "situation": {"possession": poss_abbr, "downDist": f"Hedge: Bet ${hedge}"}
         }
 
 def run_test_mode():
     print("Running Test Mode...")
-    live_fetcher = LiveESPNFetcher()
-    live_fetcher.fetch_live_stats()
-    
-    odds_fetcher = OddsAPIFetcher(API_KEY)
-    if not odds_fetcher.cache.get('events'):
-        odds_fetcher.fetch_fresh_props()
-    cached_props = odds_fetcher.get_all_props()
-    
-    sim = FantasySimulator(odds_fetcher, live_fetcher)
-    
-    if os.path.exists(CBS_FILE):
-        sim.print_test_comparison(sim.load_json(CBS_FILE), cached_props)
-        
-    if os.path.exists(ESPN_FILE):
-        sim.print_test_comparison(sim.load_json(ESPN_FILE), cached_props)
+    live = LiveESPNFetcher(); live.fetch_live_stats()
+    odds = OddsAPIFetcher(API_KEY)
+    if not odds.cache.get('events'): odds.fetch_fresh_props()
+    props = odds.get_all_props()
+    sim = FantasySimulator(odds, live)
+    if os.path.exists(CBS_FILE): sim.print_test_comparison(sim.load_json(CBS_FILE), props)
+    if os.path.exists(ESPN_FILE): sim.print_test_comparison(sim.load_json(ESPN_FILE), props)
 
 def run_loop():
-    print(f"Fantasy Oddsmaker Started (Turbo | Sim: {SIM_COUNT} | Volatility: {LEAGUE_VOLATILITY})")
-    
-    odds_fetcher = OddsAPIFetcher(API_KEY)
-    live_fetcher = LiveESPNFetcher()
-    
+    print(f"Fantasy Oddsmaker Started (Sim: {SIM_COUNT} | Vol: {LEAGUE_VOLATILITY})")
+    odds = OddsAPIFetcher(API_KEY); live = LiveESPNFetcher()
     while True:
-        odds_fetcher.fetch_fresh_props() 
-        cached_props = odds_fetcher.get_all_props()
-        
-        live_fetcher.fetch_live_stats()
-        
-        sim = FantasySimulator(odds_fetcher, live_fetcher)
-        games = []
-        debug_data = [] 
-        
+        odds.fetch_fresh_props(); props = odds.get_all_props()
+        live.fetch_live_stats()
+        sim = FantasySimulator(odds, live); games = []; dbg = []
         if os.path.exists(CBS_FILE):
-            try:
-                games.append(sim.simulate_game(sim.load_json(CBS_FILE), cached_props, debug_data))
+            try: games.append(sim.simulate_game(sim.load_json(CBS_FILE), props, dbg))
             except: pass
-
         if os.path.exists(ESPN_FILE):
-            try:
-                games.append(sim.simulate_game(sim.load_json(ESPN_FILE), cached_props, debug_data))
+            try: games.append(sim.simulate_game(sim.load_json(ESPN_FILE), props, dbg))
             except: pass
-        
         with open(OUTPUT_FILE, 'w') as f: json.dump(games, f)
-        with open(DEBUG_FILE, 'w') as f: json.dump(debug_data, f)
-        
+        with open(DEBUG_FILE, 'w') as f: json.dump(dbg, f)
         print(f"Updated: {datetime.now().strftime('%H:%M:%S')}")
         time.sleep(FAST_INTERVAL)
 
 if __name__ == "__main__":
-    if TEST_MODE:
-        run_test_mode()
-    else:
-        run_loop()
+    if TEST_MODE: run_test_mode()
+    else: run_loop()
