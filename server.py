@@ -6,16 +6,12 @@ import subprocess
 from datetime import datetime as dt
 from flask import Flask, jsonify
 
-# ================= CONFIGURATION =================
 UPDATE_INTERVAL = 5
 FANTASY_FILE = "fantasy_output.json"
 DEBUG_FILE = "fantasy_debug.json"
 data_lock = threading.Lock()
 
-state = {
-    'active_sports': { 'fantasy': True },
-    'current_games': []
-}
+state = { 'active_sports': { 'fantasy': True }, 'current_games': [] }
 
 class SportsFetcher:
     def get_real_games(self):
@@ -33,11 +29,11 @@ class SportsFetcher:
 fetcher = SportsFetcher()
 
 def background_updater():
-    # Attempt to start the separate process
+    # Kill old instances to free RAM
     try: subprocess.run(["pkill", "-f", "fantasy_oddsmaker.py"], capture_output=True)
     except: pass
     
-    # Launch the logic engine
+    # Launch Oddsmaker
     subprocess.Popen(["python", "fantasy_oddsmaker.py"])
     
     while True:
@@ -47,21 +43,17 @@ def background_updater():
 app = Flask(__name__)
 
 @app.route('/')
-def root():
-    return "<a href='/fantasy'>Fantasy Dashboard</a> | <a href='/api/ticker'>JSON API</a>"
+def root(): return "<a href='/fantasy'>Fantasy Dashboard</a> | <a href='/api/ticker'>JSON API</a>"
 
 @app.route('/fantasy')
 def fantasy_dashboard():
     data = []
-    
-    # --- ROBUST FILE READING ---
     if os.path.exists(DEBUG_FILE):
         try:
             with open(DEBUG_FILE, 'r') as f:
                 content = f.read().strip()
                 if content: data = json.loads(content)
         except: return "<meta http-equiv='refresh' content='2'><h3>Syncing...</h3>"
-    else: return "<meta http-equiv='refresh' content='2'><h3>Initializing...</h3>"
     
     if not data: return "<meta http-equiv='refresh' content='5'><h3>Waiting for Data...</h3>"
 
