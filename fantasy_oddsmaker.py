@@ -5,6 +5,7 @@ import random
 import statistics
 import difflib
 import os
+import hashlib
 from datetime import datetime
 
 # ================= CONFIGURATION =================
@@ -137,9 +138,13 @@ class FantasySimulator:
         return score
 
     def smart_abbr(self, name):
-        # Removes "Team" and takes first 3 chars
         clean = name.replace("Team ", "").strip()
         return clean[:3].upper()
+
+    def generate_numeric_id(self, string_input):
+        # Generate a stable 9-digit numeric ID from string
+        hash_val = int(hashlib.sha256(string_input.encode('utf-8')).hexdigest(), 16)
+        return str(hash_val % 1000000000)
 
     def simulate_game(self, json_data, events_map):
         home = json_data['matchup']['home_team']
@@ -205,22 +210,29 @@ class FantasySimulator:
             else: risk_str = risk_player
         except: risk_str = risk_player
 
-        # Use Smart Abbreviation
         h_abbr = self.smart_abbr(home['name'])
         a_abbr = self.smart_abbr(away['name'])
+        
+        # ID Generation (Numeric for App Compatibility)
+        game_id = self.generate_numeric_id(f"{h_abbr}_vs_{a_abbr}")
+
+        # Formatting Scores (4 sig figs, no %)
+        # e.g., 58.12
+        h_val = f"{win_pct:.2f}"
+        a_val = f"{(100 - win_pct):.2f}"
 
         return {
             "sport": "nfl",
-            "id": f"fantasy_{json_data['league_settings']['platform']}",
+            "id": game_id,
             "status": "Live",
             "state": "in",
             "is_shown": True,
             "home_abbr": h_abbr,
-            "home_score": f"{int(win_pct)}%",
+            "home_score": h_val,
             "home_logo": "",
             "home_id": h_abbr,
             "away_abbr": a_abbr,
-            "away_score": f"{int(100 - win_pct)}%",
+            "away_score": a_val,
             "away_logo": "",
             "away_id": a_abbr,
             "startTimeUTC": datetime.utcnow().isoformat() + "Z",
