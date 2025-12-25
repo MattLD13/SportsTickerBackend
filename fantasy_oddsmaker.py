@@ -18,20 +18,27 @@ OUTPUT_FILE = "fantasy_output.json"
 DEBUG_FILE = "fantasy_debug.json"
 
 FAST_INTERVAL = 60    
-SLOW_INTERVAL = 10800 
+SLOW_INTERVAL = 10800 # 3 Hours
 
 SIM_COUNT = 20000 
 
+# === VOLATILITY SETTINGS ===
+# Higher = More Upset Potential
 LEAGUE_VOLATILITY = { "CBS": 0.55, "ESPN": 0.65, "DEFAULT": 0.60 }
 LEAGUE_PAYOUTS = { "CBS": {"win": 1770, "loss": 1100}, "ESPN": {"win": 1000, "loss": 500} }
 
-# === NEW: HISTORICAL TOUCHDOWN REGRESSION RATES ===
-# derived from NFL historical averages (TDs per Yard)
+# === PROJECTION SCALERS ===
+# Adjusts the raw Vegas number to match league scoring vibes
+# CBS: 0.91 (Dampens slight inflation)
+# ESPN: 1.05 (Boosts for PPR/Bonuses that Vegas might under-price)
+LEAGUE_PROJ_MULTIPLIERS = { "CBS": 0.91, "ESPN": 1.05, "DEFAULT": 1.0 }
+
+# HISTORICAL REGRESSION (If Vegas is missing props)
 HISTORICAL_RATES = {
-    'QB': {'pass_td_per_yd': 0.0064, 'rush_td_per_yd': 0.003}, # ~1 Pass TD per 156 yds
-    'RB': {'rush_td_per_yd': 0.0090, 'rec_td_per_yd': 0.005},  # ~1 Rush TD per 110 yds (RZ usage)
-    'WR': {'rush_td_per_yd': 0.0050, 'rec_td_per_yd': 0.0062}, # ~1 Rec TD per 160 yds
-    'TE': {'rec_td_per_yd': 0.0083},                           # ~1 Rec TD per 120 yds (RZ threat)
+    'QB': {'pass_td_per_yd': 0.0064, 'rush_td_per_yd': 0.003}, 
+    'RB': {'rush_td_per_yd': 0.0090, 'rec_td_per_yd': 0.005},  
+    'WR': {'rush_td_per_yd': 0.0050, 'rec_td_per_yd': 0.0062}, 
+    'TE': {'rec_td_per_yd': 0.0083},                           
     'DEFAULT': {'pass': 0.006, 'rush': 0.007, 'rec': 0.006}
 }
 
@@ -169,45 +176,35 @@ class FantasySimulator:
     def calc_pts(self, stats, pos, rules):
         s = 0.0
         
-        # --- PASSING ---
+        # PASSING
         p_yds = stats.get('player_pass_yds', 0)
         p_tds = stats.get('player_pass_tds', 0)
         s += (p_yds * 0.04) + (p_tds * rules['passing']['touchdown'])
-        
-        # If no Pass TD prop, use historical regression for QBs
         if p_yds > 0 and p_tds == 0:
             rate = HISTORICAL_RATES.get('QB', {}).get('pass_td_per_yd', 0.006)
             s += (p_yds * rate * rules['passing']['touchdown'])
 
-        # --- RUSHING ---
+        # RUSHING
         r_yds = stats.get('player_rush_yds', 0)
         r_tds = stats.get('player_rush_tds', 0)
         s += (r_yds * 0.1)
-        
-        # If no Rush TD prop, use historical regression by position
         if r_yds > 0 and r_tds == 0:
             rate = HISTORICAL_RATES.get(pos, HISTORICAL_RATES['DEFAULT']).get('rush_td_per_yd', 0.007)
             s += (r_yds * rate * 6.0)
-        else:
-            s += (r_tds * 6.0)
+        else: s += (r_tds * 6.0)
 
-        # --- RECEIVING ---
+        # RECEIVING
         rec_yds = stats.get('player_reception_yds', 0)
         rec_tds = stats.get('player_reception_tds', 0)
         recs = stats.get('player_receptions', 0)
         s += (rec_yds * 0.1)
-        
-        # Implied Receptions (Conservative)
-        if rec_yds > 0 and recs == 0: 
-            recs = rec_yds / 13.0
+        if rec_yds > 0 and recs == 0: recs = rec_yds / 13.0
         s += recs * rules['receiving'].get('ppr', 0)
         
-        # If no Rec TD prop, use historical regression (TEs get boost)
         if rec_yds > 0 and rec_tds == 0:
             rate = HISTORICAL_RATES.get(pos, HISTORICAL_RATES['DEFAULT']).get('rec_td_per_yd', 0.006)
             s += (rec_yds * rate * 6.0)
-        else:
-            s += (rec_tds * 6.0)
+        else: s += (rec_tds * 6.0)
             
         return s
 
@@ -218,6 +215,8 @@ class FantasySimulator:
         tag = "CBS" if "CBS" in plat else ("ESPN" if "ESPN" in plat else "Fantasy")
         
         vol = LEAGUE_VOLATILITY.get(tag, 0.60)
+        # Apply League-Specific Multiplier (Fixes ESPN being too low)
+        proj_mult = LEAGUE_PROJ_MULTIPLIERS.get(tag, 1.0)
         payouts = LEAGUE_PAYOUTS.get(tag, {"win":0, "loss":0})
         
         matchup = {'home': [], 'away': []}
@@ -227,7 +226,6 @@ class FantasySimulator:
             team = home if side == 'home' else away
             for p in team['roster']:
                 base = p['proj']
-                # Standard Deviation Floor
                 b_std = max(base * vol, 4.0)
                 src = "League"
                 
@@ -247,9 +245,9 @@ class FantasySimulator:
                         if match:
                             stats, cnt = self.get_proj(match, pm)
                             if cnt > 0:
-                                # PASS POSITION TO CALCULATOR
                                 raw_vegas = self.calc_pts(stats, p['pos'], json_data['scoring_rules'])
-                                v_proj = raw_vegas * 0.90 # Juice Dampener
+                                # Apply League-Specific Multiplier here
+                                v_proj = raw_vegas * proj_mult 
                                 b_std = max(v_proj * vol, 4.0)
                                 src = "Vegas"
                             break
@@ -278,9 +276,9 @@ class FantasySimulator:
                 if p['name'] not in p_vol: p_vol[p['name']] = []
                 p_vol[p['name']].append(v)
             
-            # Any Given Sunday Chaos (+/- 6 pts)
-            hs += random.gauss(0, 6.0)
-            as_ += random.gauss(0, 6.0)
+            # Massive Chaos Factor (+/- 12 pts) to flatten probability curve
+            hs += random.gauss(0, 12.0)
+            as_ += random.gauss(0, 12.0)
             
             if hs > as_: h_wins += 1
             
