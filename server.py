@@ -119,7 +119,9 @@ def background_updater():
 app = Flask(__name__)
 
 @app.route('/')
-def root(): with data_lock: return jsonify({'games':state['current_games']})
+def root():
+    with data_lock:
+        return jsonify({'games':state['current_games']})
 
 @app.route('/fantasy')
 def fantasy_dashboard():
@@ -154,7 +156,7 @@ def fantasy_dashboard():
                         vegas = p['my_proj']
                         league = p['league_proj']
                         
-                        # Combo = (League + Vegas) / 2
+                        # Combo = (Vegas + League) / 2
                         combo = (vegas + league) / 2.0
                         
                         v_sum += vegas; l_sum += league; c_sum += combo; live_sum += live
@@ -174,11 +176,15 @@ def fantasy_dashboard():
     return "<h3>Waiting for data...</h3>"
 
 @app.route('/api/ticker')
-def api_ticker(): with data_lock: return jsonify({'games':state['current_games']})
+def api_ticker():
+    with data_lock:
+        return jsonify({'games':state['current_games']})
 
 @app.route('/api/config', methods=['POST'])
 def api_config(): 
-    with data_lock: state.update(request.json); save_config_file()
+    with data_lock:
+        state.update(request.json)
+        save_config_file()
     return jsonify({"status":"ok"})
 
 if __name__=="__main__":
