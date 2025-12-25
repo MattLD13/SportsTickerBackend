@@ -15,17 +15,17 @@ ESPN_FILE = "espn_data.json"
 CACHE_FILE = "odds_cache.json"
 OUTPUT_FILE = "fantasy_output.json"
 
-# === BALANCED TIMING (HALF CREDIT USAGE) ===
-# FAST LOOP: Updates Live Scores (Free) -> Every 60 Seconds
-FAST_INTERVAL = 60
-
-# SLOW LOOP: Updates Vegas Odds (Costly) -> Every 60 Minutes
-# Logic: ~100 credits/run * 120 hours left = ~12,000 credits total usage.
-# This saves roughly half your 20k limit.
-SLOW_INTERVAL = 3600 
+# === TURBO TIMING ===
+FAST_INTERVAL = 60    # Live stats every minute
+SLOW_INTERVAL = 600   # Vegas odds every 10 minutes
 
 # SIMULATION SETTINGS
 SIM_COUNT = 50000 
+
+# CHAOS FACTOR (Standard Deviation)
+# 0.35 = Standard (Vegas Confidence)
+# 0.50 = High Variance (Any Given Sunday) - Use this to lower win % closer to 60%
+VOLATILITY = 0.50 
 
 LEAGUE_PAYOUTS = {
     "CBS": {"win": 1770, "loss": 1100},
@@ -39,7 +39,6 @@ PROP_MARKETS = [
 ]
 
 class LiveESPNFetcher:
-    """ Fetches REAL-TIME stats from ESPN (Free/Unlimited) """
     def __init__(self):
         self.url = "http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
         self.live_data = {}
@@ -113,7 +112,6 @@ class LiveESPNFetcher:
         return None
 
 class OddsAPIFetcher:
-    """ Fetches Vegas Props (Costly) """
     def __init__(self, api_key):
         self.key = api_key
         self.base = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl"
@@ -137,20 +135,16 @@ class OddsAPIFetcher:
         except: pass
 
     def fetch_fresh_props(self):
-        # Only run if SLOW_INTERVAL has passed
         if time.time() - self.last_fetch_time < SLOW_INTERVAL:
             return
         
-        print("Fetching FRESH Vegas Data (Costly Update)...")
+        print("Fetching FRESH Vegas Data...")
         url = f"{self.base}/events?apiKey={self.key}"
         try:
             r = requests.get(url)
             if r.status_code == 200:
                 events = r.json()
-                # Fetch ALL relevant games
                 relevant = events
-                
-                # Clear old props to force refresh
                 self.cache = {'events': events} 
                 
                 for e in relevant:
@@ -167,7 +161,6 @@ class OddsAPIFetcher:
         except Exception as e: print(f"Odds API Error: {e}")
 
     def get_all_props(self):
-        # Returns dict of all cached props {event_id: props}
         res = {}
         events = self.cache.get('events', [])
         for e in events:
@@ -260,7 +253,9 @@ class FantasySimulator:
             team_data = home if side == 'home' else away
             for p in team_data['roster']:
                 base_proj = p['proj']
-                base_std = base_proj * 0.4 
+                # USE HIGHER VOLATILITY
+                base_std = base_proj * VOLATILITY
+                
                 live_info = self.live_fetcher.get_player_live(p['name'])
                 live_score = 0.0; rem_pct = 1.0
 
@@ -280,7 +275,8 @@ class FantasySimulator:
                             stats, count = self.get_projected_stats(matched, props)
                             if count > 0:
                                 vegas_proj = self.calculate_fantasy_points(stats, rules)
-                                base_std = vegas_proj * 0.35
+                                # Volatility scales with projection
+                                base_std = vegas_proj * VOLATILITY 
                             break
                 
                 remainder_proj = (vegas_proj if vegas_proj else base_proj) * rem_pct
@@ -292,7 +288,6 @@ class FantasySimulator:
 
                 matchup_models[side].append({'name': p['name'], 'mean': final_mean, 'std': base_std})
 
-        # === HIGH SIM COUNT (Stability) ===
         home_wins = 0; player_volatility = {}
         for _ in range(SIM_COUNT):
             h_score = 0; a_score = 0
@@ -358,18 +353,15 @@ class FantasySimulator:
         }
 
 def run_loop():
-    print("Fantasy Oddsmaker Started (Balanced Budget Mode).")
+    print(f"Fantasy Oddsmaker Started (Turbo | Sim Count: {SIM_COUNT} | Volatility: {VOLATILITY})")
     
     odds_fetcher = OddsAPIFetcher(API_KEY)
     live_fetcher = LiveESPNFetcher()
     
-    # Run continuously
     while True:
-        # 1. Slow Loop: Check if we need new Vegas Data (60 min check)
         odds_fetcher.fetch_fresh_props() 
         cached_props = odds_fetcher.get_all_props()
         
-        # 2. Fast Loop: Get Live Scores & Run Sim (Every minute)
         live_fetcher.fetch_live_stats()
         
         sim = FantasySimulator(odds_fetcher, live_fetcher)
