@@ -1,10 +1,9 @@
 import requests
 import json
 import time
-import math
 import random
-import difflib
 import statistics
+import difflib
 import os
 from datetime import datetime
 
@@ -12,8 +11,8 @@ from datetime import datetime
 API_KEY = "63661f0d0d00232fd1e8964ed1cdca1f"
 CBS_FILE = "cbs_data.json"
 ESPN_FILE = "espn_data.json"
-CACHE_FILE = "odds_cache.json"        # Internal cache for The-Odds-API to save credits
-OUTPUT_FILE = "fantasy_output.json"   # The file server.py will read
+CACHE_FILE = "odds_cache.json"
+OUTPUT_FILE = "fantasy_output.json"
 UPDATE_INTERVAL_HOURS = 12
 
 PROP_MARKETS = [
@@ -35,10 +34,7 @@ class OddsAPIFetcher:
                 with open(CACHE_FILE, 'r') as f:
                     data = json.load(f)
                     if time.time() - data.get('timestamp', 0) < (UPDATE_INTERVAL_HOURS * 3600):
-                        print("Loaded fresh API data from cache.")
                         self.cache = data.get('payload', {})
-                    else:
-                        print("API Cache expired.")
             except: pass
 
     def save_cache(self):
@@ -57,7 +53,7 @@ class OddsAPIFetcher:
                 self.cache['events'] = events
                 self.save_cache()
                 return events
-        except Exception as e: print(f"Error fetching events: {e}")
+        except: return []
         return []
 
     def get_player_props(self, event_id):
@@ -66,22 +62,18 @@ class OddsAPIFetcher:
         
         markets_str = ",".join(PROP_MARKETS)
         url = f"{self.base}/events/{event_id}/odds?apiKey={self.key}&regions=us&markets={markets_str}&oddsFormat=american"
-        
         try:
-            print(f"Fetching props for event {event_id}...")
             r = requests.get(url)
             if r.status_code == 200:
                 data = r.json()
                 self.cache[cache_key] = data
                 self.save_cache()
                 return data
-        except Exception as e: print(f"Error fetching props: {e}")
+        except: return None
         return None
 
 class FantasySimulator:
-    def __init__(self, cbs_path, espn_path, fetcher):
-        self.cbs_path = cbs_path
-        self.espn_path = espn_path
+    def __init__(self, fetcher):
         self.fetcher = fetcher
 
     def load_json(self, path):
@@ -92,24 +84,19 @@ class FantasySimulator:
         clean_target = fantasy_name.split('.')[-1].strip().lower()
         best_match = None
         highest_ratio = 0.0
-        
         for api_name in api_player_names:
             clean_api = api_name.split(' ')[-1].strip().lower()
             if clean_target == clean_api:
                 if fantasy_name[0].lower() == api_name[0].lower(): return api_name
-            
             ratio = difflib.SequenceMatcher(None, fantasy_name.lower(), api_name.lower()).ratio()
             if ratio > highest_ratio:
                 highest_ratio = ratio
                 best_match = api_name
-                
         return best_match if highest_ratio > 0.8 else None
 
     def get_projected_stats(self, player_name, event_props):
         stats = {}
-        found_props = 0
         if not event_props: return {}, 0
-
         agg_lines = {m: [] for m in PROP_MARKETS}
         for book in event_props.get('bookmakers', []):
             for market in book.get('markets', []):
@@ -118,26 +105,24 @@ class FantasySimulator:
                 for outcome in market['outcomes']:
                     if outcome['description'] == player_name and 'point' in outcome:
                         agg_lines[key].append(outcome['point'])
-        
+        count = 0
         for market, lines in agg_lines.items():
             if lines:
                 stats[market] = statistics.mean(lines)
-                found_props += 1
-        return stats, found_props
+                count += 1
+        return stats, count
 
     def calculate_fantasy_points(self, stats, rules):
         score = 0.0
         p_yds = stats.get('player_pass_yds', 0)
         p_tds = stats.get('player_pass_tds', 0)
         p_ints = stats.get('player_pass_interceptions', 0)
-        
         score += p_yds * rules['passing'].get('yards_factor', 0.04)
         score += p_tds * rules['passing']['touchdown']
         score += p_ints * rules['passing']['interception']
-        
         if 'bonuses' in rules['passing'] and p_yds >= 300:
             score += rules['passing']['bonuses'].get('300_yards', 0)
-            
+        
         r_yds = stats.get('player_rush_yds', 0)
         r_tds = stats.get('player_rush_tds', 0)
         score += r_yds * rules['rushing'].get('yards_factor', 0.1)
@@ -146,12 +131,15 @@ class FantasySimulator:
         rec_yds = stats.get('player_reception_yds', 0)
         rec_tds = stats.get('player_reception_tds', 0)
         recs = stats.get('player_receptions', 0)
-        
         score += rec_yds * rules['receiving'].get('yards_factor', 0.1)
         score += rec_tds * rules['receiving']['touchdown']
         score += recs * rules['receiving'].get('ppr', 0)
-        
         return score
+
+    def smart_abbr(self, name):
+        # Removes "Team" and takes first 3 chars
+        clean = name.replace("Team ", "").strip()
+        return clean[:3].upper()
 
     def simulate_game(self, json_data, events_map):
         home = json_data['matchup']['home_team']
@@ -159,14 +147,12 @@ class FantasySimulator:
         rules = json_data['scoring_rules']
         
         matchup_models = {'home': [], 'away': []}
-        total_confidence_props = 0
-        total_players = 0
         
         for side in ['home', 'away']:
             team_data = home if side == 'home' else away
             for p in team_data['roster']:
                 if p['pos'] in ['DST', 'K']:
-                    matchup_models[side].append({'name': p['name'], 'mean': p['proj'], 'std': 4.0, 'is_prop': False})
+                    matchup_models[side].append({'name': p['name'], 'mean': p['proj'], 'std': 4.0})
                     continue
 
                 real_name = None
@@ -176,31 +162,21 @@ class FantasySimulator:
                     for b in props.get('bookmakers', []):
                         for m in b.get('markets', []):
                             for o in m.get('outcomes', []): all_names.add(o['description'])
-                    
                     matched = self.fuzzy_match_player(p['name'], list(all_names))
                     if matched:
-                        real_name = matched
-                        player_props = props
-                        break
+                        real_name = matched; player_props = props; break
                 
-                total_players += 1
                 if real_name and player_props:
                     stats, count = self.get_projected_stats(real_name, player_props)
                     if count > 0:
                         proj_score = self.calculate_fantasy_points(stats, rules)
-                        total_confidence_props += 1
-                        matchup_models[side].append({
-                            'name': p['name'], 'mean': proj_score, 'std': proj_score * 0.35, 'is_prop': True
-                        })
+                        matchup_models[side].append({'name': p['name'], 'mean': proj_score, 'std': proj_score * 0.35})
                     else:
-                        matchup_models[side].append({'name': p['name'], 'mean': p['proj'], 'std': p['proj']*0.4, 'is_prop': False})
+                        matchup_models[side].append({'name': p['name'], 'mean': p['proj'], 'std': p['proj']*0.4})
                 else:
-                    matchup_models[side].append({'name': p['name'], 'mean': p['proj'], 'std': p['proj']*0.4, 'is_prop': False})
+                    matchup_models[side].append({'name': p['name'], 'mean': p['proj'], 'std': p['proj']*0.4})
 
-        sims = 10000
-        home_wins = 0
-        player_volatility = {} 
-
+        sims = 10000; home_wins = 0; player_volatility = {}
         for _ in range(sims):
             h_score = 0; a_score = 0
             for p in matchup_models['home']:
@@ -208,24 +184,20 @@ class FantasySimulator:
                 h_score += val
                 if p['name'] not in player_volatility: player_volatility[p['name']] = []
                 player_volatility[p['name']].append(val)
-
             for p in matchup_models['away']:
                 val = random.gauss(p['mean'], p['std'])
                 a_score += val
                 if p['name'] not in player_volatility: player_volatility[p['name']] = []
                 player_volatility[p['name']].append(val)
-                
             if h_score > a_score: home_wins += 1
             
         win_pct = (home_wins / sims) * 100
         
-        max_std = 0
-        risk_player = "None"
+        max_std = 0; risk_player = "None"
         for name, vals in player_volatility.items():
             std = statistics.stdev(vals)
             if std > max_std:
-                max_std = std
-                risk_player = name
+                max_std = std; risk_player = name
                 
         try:
             parts = risk_player.split(' ')
@@ -233,29 +205,34 @@ class FantasySimulator:
             else: risk_str = risk_player
         except: risk_str = risk_player
 
-        conf_pct = int((total_confidence_props / max(1, total_players)) * 100)
-        status_str = f"Conf: {conf_pct}%"
+        # Use Smart Abbreviation
+        h_abbr = self.smart_abbr(home['name'])
+        a_abbr = self.smart_abbr(away['name'])
 
         return {
-            "sport": "nfl", 
+            "sport": "nfl",
             "id": f"fantasy_{json_data['league_settings']['platform']}",
-            "status": status_str,
+            "status": "Live",
+            "state": "in",
             "is_shown": True,
-            "home_abbr": home['name'][:3].upper(),
+            "home_abbr": h_abbr,
             "home_score": f"{int(win_pct)}%",
             "home_logo": "",
-            "away_abbr": away['name'][:3].upper(),
+            "home_id": h_abbr,
+            "away_abbr": a_abbr,
             "away_score": f"{int(100 - win_pct)}%",
             "away_logo": "",
+            "away_id": a_abbr,
+            "startTimeUTC": datetime.utcnow().isoformat() + "Z",
+            "period": 4,
             "situation": {
-                "downDist": f"Risk: {risk_str}",
                 "possession": "",
-                "isRedZone": False
+                "isRedZone": False,
+                "downDist": f"Risk: {risk_str}"
             }
         }
 
 def run_model():
-    print("Starting Fantasy Model...")
     fetcher = OddsAPIFetcher(API_KEY)
     events = fetcher.get_events()
     events_map = {}
@@ -263,34 +240,30 @@ def run_model():
         props = fetcher.get_player_props(e['id'])
         if props: events_map[e['id']] = props
         
-    sim = FantasySimulator(CBS_FILE, ESPN_FILE, fetcher)
+    sim = FantasySimulator(fetcher)
     games = []
     
     if os.path.exists(CBS_FILE):
         try:
             cbs_data = sim.load_json(CBS_FILE)
-            game_cbs = sim.simulate_game(cbs_data, events_map)
-            game_cbs['away_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/cin.png"
-            game_cbs['home_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/lar.png"
-            games.append(game_cbs)
-        except Exception as e: print(f"CBS Failed: {e}")
+            g = sim.simulate_game(cbs_data, events_map)
+            g['away_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/cin.png"
+            g['home_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/lar.png"
+            games.append(g)
+        except: pass
 
     if os.path.exists(ESPN_FILE):
         try:
             espn_data = sim.load_json(ESPN_FILE)
-            game_espn = sim.simulate_game(espn_data, events_map)
-            game_espn['home_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png"
-            game_espn['away_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/buf.png"
-            games.append(game_espn)
-        except Exception as e: print(f"ESPN Failed: {e}")
+            g = sim.simulate_game(espn_data, events_map)
+            g['home_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/dal.png"
+            g['away_logo'] = "https://a.espncdn.com/i/teamlogos/nfl/500/buf.png"
+            games.append(g)
+        except: pass
     
-    # Save output for Server
-    with open(OUTPUT_FILE, 'w') as f:
-        json.dump(games, f)
-    print("Fantasy Output Saved.")
+    with open(OUTPUT_FILE, 'w') as f: json.dump(games, f)
 
 if __name__ == "__main__":
     while True:
         run_model()
-        # Sleep 12 hours
         time.sleep(UPDATE_INTERVAL_HOURS * 3600)
