@@ -235,7 +235,7 @@ class FantasySimulator:
         return {
             "sport": "nfl",
             "id": game_id,
-            "status": status_tag, # <--- CHANGED FROM "Live"
+            "status": status_tag,
             "state": "in",
             "is_shown": True,
             "home_abbr": h_abbr,
@@ -244,7 +244,7 @@ class FantasySimulator:
             "home_id": h_abbr,
             "away_abbr": a_abbr,
             "away_score": a_val,
-            "away_logo": "https://a.espncdn.com/i/teamlogos/nfl/500/nyj.png",  # Jets
+            "away_logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/193.png", # Miami (OH)
             "away_id": a_abbr,
             "startTimeUTC": datetime.utcnow().isoformat() + "Z",
             "period": 4,
