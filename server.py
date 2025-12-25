@@ -3,7 +3,6 @@ import threading
 import json
 import os
 import subprocess
-import requests
 from datetime import datetime as dt, timedelta
 from flask import Flask, jsonify, request
 
@@ -38,12 +37,12 @@ class SportsFetcher:
 fetcher = SportsFetcher()
 
 def background_updater():
-    # Attempt to kill old instances (Linux/Mac only)
+    # Attempt to kill old instances to prevent port conflicts or double-writing
     try: subprocess.run(["pkill", "-f", "fantasy_oddsmaker.py"], capture_output=True)
     except: pass
 
     print("🚀 Starting Fantasy Oddsmaker Background Process...")
-    # Launch the oddsmaker. Ensure 'fantasy_oddsmaker.py' is in the same folder.
+    # Launches the calculation script alongside the server
     subprocess.Popen(["python", "fantasy_oddsmaker.py"])
     
     while True:
@@ -69,7 +68,7 @@ def root():
 def fantasy_dashboard():
     data = []
     
-    # --- ROBUST FILE READING (Prevents 502) ---
+    # ROBUST FILE READING to prevent 502 Errors
     if os.path.exists(DEBUG_FILE):
         try:
             with open(DEBUG_FILE, 'r') as f:
@@ -77,13 +76,12 @@ def fantasy_dashboard():
                 if content:
                     data = json.loads(content)
         except Exception as e:
-            # Return a valid HTML page even on error so the browser retries
             return f"""
             <html><head><meta http-equiv="refresh" content="5"></head>
             <body style='background:#121212;color:white;font-family:sans-serif;padding:20px'>
-            <h3>Data Syncing...</h3>
-            <p>The oddsmaker is writing to the database. Retrying in 5 seconds...</p>
-            <p style='color:#555;font-size:12px'>Error details: {str(e)}</p>
+            <h3>Syncing Data...</h3>
+            <p>Reading the oddsmaker file. Retrying in 5 seconds...</p>
+            <p style='color:#555;font-size:12px'>Details: {str(e)}</p>
             </body></html>
             """
     else:
@@ -91,16 +89,16 @@ def fantasy_dashboard():
         <html><head><meta http-equiv="refresh" content="5"></head>
         <body style='background:#121212;color:white;font-family:sans-serif;padding:20px'>
         <h3>Initializing...</h3>
-        <p>Waiting for the Oddsmaker to generate the first batch of data.</p>
+        <p>Waiting for the Oddsmaker to generate the first batch of data (takes ~10s).</p>
         </body></html>
         """
     
     if not data or not isinstance(data, list): 
         return """<html><head><meta http-equiv="refresh" content="5"></head>
         <body style='background:#121212;color:white;font-family:sans-serif;padding:20px'>
-        <h3>Loading...</h3></body></html>"""
+        <h3>Loading Data...</h3></body></html>"""
 
-    # --- HTML RENDERING ---
+    # HTML RENDERING
     html = """<html><head><title>Fantasy Odds</title>
     <meta http-equiv="refresh" content="30">
     <style>
