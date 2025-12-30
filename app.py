@@ -22,8 +22,8 @@ HEADERS = {
 # ================= DEFAULT STATE =================
 default_state = {
     'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 'weather': False, 'clock': False },
-    'mode': 'all', # 'all', 'live', 'my_teams'
-    'layout_mode': 'schedule', # 'schedule', 'grid'
+    'mode': 'all', 
+    'layout_mode': 'schedule',
     'scroll_seamless': False,
     'my_teams': [], 
     'current_games': [],
@@ -568,6 +568,11 @@ def root():
             .live-badge { background: #ff3333; color: white; padding: 1px 4px; border-radius: 3px; font-weight: bold; animation: pulse 2s infinite; font-size:0.7rem; border: 1px solid black; }
             @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
             
+            /* SWIPER / SCROLLER */
+            .carousel-mode { display: flex; overflow-x: auto; gap: 10px; padding: 0 5px; scroll-snap-type: x mandatory; }
+            .carousel-mode .sched-card { position: relative; top: 0 !important; left: 0 !important; width: 85% !important; flex-shrink: 0; scroll-snap-align: center; height: 100%; }
+            .carousel-mode::-webkit-scrollbar { display: none; }
+
             .poss-pill { display: inline-block; background: rgba(0,0,0,0.8); color: #ffeb3b; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid #ffeb3b; }
             .red-zone-pill { display: inline-block; background: rgba(255,51,51,0.9); color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid black; animation: pulse 1s infinite; }
 
@@ -585,8 +590,10 @@ def root():
             .sched-card {
                 position: absolute; border-radius: 8px; overflow: hidden;
                 box-shadow: 0 2px 5px rgba(0,0,0,0.5); color: white;
-                display: flex; flex-direction: column; justify-content: center;
-                padding: 0 10px; font-size: 0.85rem; box-sizing: border-box;
+                display: flex; flex-direction: column; 
+                justify-content: flex-start; /* MOVE TEXT UP */
+                padding: 10px; /* Padding for top alignment */
+                font-size: 0.85rem; box-sizing: border-box;
                 border: 1px solid rgba(0,0,0,0.5);
             }
             .sched-card:hover { z-index: 100 !important; transform: scale(1.01); box-shadow: 0 5px 15px rgba(0,0,0,0.8); }
@@ -822,55 +829,79 @@ def root():
                 }
 
                 clusters.forEach(cluster => {
-                    const widthPct = 100 / cluster.length;
-                    cluster.forEach((ev, idx) => {
-                        const game = ev.data;
-                        const div = document.createElement('div'); div.className = 'sched-card';
-                        div.style.top = (ev.start * PIXELS_PER_MINUTE) + 'px'; div.style.height = ((ev.end - ev.start) * PIXELS_PER_MINUTE) + 'px';
-                        div.style.width = widthPct + '%'; div.style.left = (idx * widthPct) + '%';
+                    // Check if clustering is needed (same time)
+                    // If multiple events, use horizontal swiper container
+                    if(cluster.length > 1) {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'carousel-mode';
+                        wrapper.style.position = 'absolute';
+                        // Position based on earliest start
+                        const minStart = Math.min(...cluster.map(e => e.start));
+                        const maxEnd = Math.max(...cluster.map(e => e.end));
                         
-                        const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
-                        // SWAPPED COLORS FOR SCHEDULE VIEW: Home on Left, Away on Right
-                        div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
-
-                        let footerHtml = '';
-                        if(game.situation && game.situation.isRedZone) { footerHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; } 
-                        else if(game.state === 'in' && game.situation.downDist) { footerHtml = `<div class="text-outline">${game.situation.downDist}</div>`; }
-
-                        div.innerHTML = `
-                            <div class="overlay"></div>
-                            <div class="card-header">
-                                ${game.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}
-                                <span class="text-outline" style="text-align:right">${game.status}</span>
-                            </div>
-                            
-                            <div class="team-row">
-                                <div class="t-left">
-                                    <img class="t-logo logo-outline" src="${game.away_logo}">
-                                    <div>
-                                        <div class="t-name text-outline">${game.away_abbr}</div>
-                                        ${game.situation.possession === game.away_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
-                                    </div>
-                                </div>
-                                <div class="t-score text-outline">${game.away_score}</div>
-                            </div>
-
-                            <div class="team-row">
-                                <div class="t-left">
-                                    <img class="t-logo logo-outline" src="${game.home_logo}">
-                                    <div>
-                                        <div class="t-name text-outline">${game.home_abbr}</div>
-                                        ${game.situation.possession === game.home_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
-                                    </div>
-                                </div>
-                                <div class="t-score text-outline">${game.home_score}</div>
-                            </div>
-                            
-                            ${footerHtml ? `<div class="card-footer">${footerHtml}</div>` : ''}
-                        `;
-                        eventsArea.appendChild(div);
-                    });
+                        wrapper.style.top = (minStart * PIXELS_PER_MINUTE) + 'px';
+                        wrapper.style.height = ((maxEnd - minStart) * PIXELS_PER_MINUTE) + 'px';
+                        wrapper.style.left = '0';
+                        wrapper.style.right = '0';
+                        
+                        cluster.forEach(ev => {
+                            wrapper.appendChild(createCard(ev.data, true));
+                        });
+                        eventsArea.appendChild(wrapper);
+                    } else {
+                        // Single item
+                        const ev = cluster[0];
+                        const card = createCard(ev.data, false);
+                        card.style.top = (ev.start * PIXELS_PER_MINUTE) + 'px';
+                        card.style.height = ((ev.end - ev.start) * PIXELS_PER_MINUTE) + 'px';
+                        card.style.width = '95%';
+                        eventsArea.appendChild(card);
+                    }
                 });
+            }
+
+            function createCard(game, isSlide) {
+                const div = document.createElement('div'); 
+                div.className = 'sched-card';
+                const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
+                div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
+
+                let footerHtml = '';
+                if(game.situation && game.situation.isRedZone) { footerHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; } 
+                else if(game.state === 'in' && game.situation.downDist) { footerHtml = `<div class="text-outline">${game.situation.downDist}</div>`; }
+
+                div.innerHTML = `
+                    <div class="overlay"></div>
+                    <div class="card-header">
+                        ${game.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}
+                        <span class="text-outline" style="text-align:right">${game.status}</span>
+                    </div>
+                    
+                    <div class="team-row">
+                        <div class="t-left">
+                            <img class="t-logo logo-outline" src="${game.away_logo}">
+                            <div>
+                                <div class="t-name text-outline">${game.away_abbr}</div>
+                                ${game.situation.possession === game.away_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                            </div>
+                        </div>
+                        <div class="t-score text-outline">${game.away_score}</div>
+                    </div>
+
+                    <div class="team-row">
+                        <div class="t-left">
+                            <img class="t-logo logo-outline" src="${game.home_logo}">
+                            <div>
+                                <div class="t-name text-outline">${game.home_abbr}</div>
+                                ${game.situation.possession === game.home_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                            </div>
+                        </div>
+                        <div class="t-score text-outline">${game.home_score}</div>
+                    </div>
+                    
+                    ${footerHtml ? `<div class="card-footer">${footerHtml}</div>` : ''}
+                `;
+                return div;
             }
 
             async function saveSettings() {
