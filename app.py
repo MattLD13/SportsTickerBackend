@@ -464,24 +464,287 @@ app = Flask(__name__)
 
 @app.route('/')
 def root():
-    offset_sec = DEFAULT_OFFSET * 3600
-    
-    html = f"""
-    <html><head><title>Ticker Status</title>
-    <style>body{{font-family:sans-serif;padding:2rem;background:#1a1a1a;color:white}}
-    .box{{background:#333;padding:1rem;border-radius:8px;margin-bottom:1rem}}
-    </style>
+    html = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Ticker Dashboard</title>
+        <style>
+            body { 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: #121212; 
+                color: #ddd; 
+                margin: 0; 
+                padding: 20px;
+            }
+            h1, h2 { color: #888; margin-bottom: 10px; font-weight: 300; }
+            
+            /* --- SETTINGS BOX --- */
+            .settings-panel {
+                background: #1e1e1e;
+                border: 1px solid #333;
+                border-radius: 8px;
+                padding: 15px;
+                margin-bottom: 25px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            }
+            .settings-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                gap: 15px;
+                margin-bottom: 15px;
+            }
+            .setting-item { display: flex; flex-direction: column; gap: 5px; }
+            .checkbox-group { display: flex; flex-direction: column; gap: 3px; }
+            label { font-size: 0.9rem; color: #aaa; }
+            
+            button.save-btn {
+                background: #007bff; color: white; border: none; padding: 8px 16px; 
+                border-radius: 4px; cursor: pointer; font-size: 0.9rem;
+            }
+            button.save-btn:hover { background: #0056b3; }
+
+            button.reboot-btn {
+                background: #dc3545; color: white; border: none; padding: 8px 16px; 
+                border-radius: 4px; cursor: pointer; font-size: 0.9rem; margin-left: 10px;
+            }
+            
+            /* --- GAMES GRID --- */
+            #container { 
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+                gap: 15px;
+            }
+            
+            .game-card {
+                position: relative;
+                border-radius: 10px;
+                overflow: hidden;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+                color: white;
+                height: 100px; /* Fixed small height */
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0 15px;
+                transition: transform 0.2s;
+            }
+            .game-card:hover { transform: scale(1.03); z-index: 10; }
+            
+            .overlay {
+                position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.35); z-index: 1;
+            }
+            
+            .team-col { display: flex; flex-direction: column; align-items: center; z-index: 2; width: 60px; }
+            .team-col img { width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.8)); }
+            .team-abbr { font-size: 0.9rem; font-weight: bold; margin-top: 3px; text-shadow: 0 1px 2px black; }
+            
+            .mid-col { z-index: 2; text-align: center; flex-grow: 1; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+            .status-text { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
+            .score-text { font-size: 1.4rem; font-weight: 800; line-height: 1.1; }
+            .poss-text { font-size: 0.7rem; color: #ffc107; margin-top: 2px; }
+
+            .loading { grid-column: 1 / -1; text-align: center; font-style: italic; color: #666; }
+        </style>
     </head>
     <body>
-        <h1>Ticker Backend Online</h1>
-        <div class="box">
-            <p><strong>Status:</strong> Running</p>
-            <p><strong>Timezone:</strong> Hardcoded to -4 (AST/EDT)</p>
+        
+        <div class="settings-panel">
+            <h2 style="margin-top:0">Ticker Settings</h2>
+            <div class="settings-grid">
+                
+                <div class="setting-item">
+                    <label><strong>Sports</strong></label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" id="chk_nfl"> NFL</label>
+                        <label><input type="checkbox" id="chk_nba"> NBA</label>
+                        <label><input type="checkbox" id="chk_nhl"> NHL</label>
+                        <label><input type="checkbox" id="chk_mlb"> MLB</label>
+                        <label><input type="checkbox" id="chk_ncf_fbs"> NCAA FBS</label>
+                        <label><input type="checkbox" id="chk_ncf_fcs"> NCAA FCS</label>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <label><strong>Display</strong></label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" id="chk_weather"> Weather</label>
+                        <label><input type="checkbox" id="chk_clock"> Clock</label>
+                        <div style="margin-top:5px;">
+                            <label>Brightness</label><br>
+                            <input type="range" id="rng_bright" min="0.1" max="1.0" step="0.1" style="width:100%">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <label><strong>Mode</strong></label>
+                    <select id="sel_mode" style="width:100%; padding:5px; margin-bottom:5px;">
+                        <option value="all">All Games</option>
+                        <option value="live">Live Only</option>
+                        <option value="my_teams">My Teams Only</option>
+                    </select>
+                    <label><input type="checkbox" id="chk_scroll"> Seamless Scroll</label>
+                    <label style="margin-top:5px">Location</label>
+                    <input type="text" id="inp_loc" style="width:100%; padding:4px;" placeholder="Zip or City">
+                </div>
+            </div>
+            
+            <button class="save-btn" onclick="saveSettings()">Save Changes</button>
+            <button class="reboot-btn" onclick="rebootDevice()">Reboot Ticker</button>
         </div>
-        <br><a href="/api/ticker" style="color:#007bff">View Raw JSON</a>
-    </body></html>
+
+        <h1>Active Games</h1>
+        <div id="container">
+            <div class="loading">Loading data...</div>
+        </div>
+
+        <script>
+            // --- Color & UI Logic ---
+            function hexToRgb(hex) {
+                if(!hex) return {r:0, g:0, b:0};
+                hex = hex.replace(/^#/, '');
+                if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+                const bigint = parseInt(hex, 16);
+                return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
+            }
+            function colorDistance(c1, c2) {
+                return Math.sqrt(Math.pow(c1.r - c2.r, 2) + Math.pow(c1.g - c2.g, 2) + Math.pow(c1.b - c2.b, 2));
+            }
+            function resolveColors(hColor, hAlt, aColor, aAlt) {
+                const THRESHOLD = 100;
+                const hC = hColor || '#000000'; const hA = hAlt || '#ffffff';
+                const aC = aColor || '#000000'; const aA = aAlt || '#ffffff';
+                const hRgb = hexToRgb(hC); const hAltRgb = hexToRgb(hA);
+                const aRgb = hexToRgb(aC); const aAltRgb = hexToRgb(aA);
+
+                if (colorDistance(hRgb, aRgb) > THRESHOLD) return [hC, aC];
+                if (colorDistance(hRgb, aAltRgb) > THRESHOLD) return [hC, aA];
+                if (colorDistance(hAltRgb, aRgb) > THRESHOLD) return [hA, aC];
+                if (colorDistance(hAltRgb, aAltRgb) > THRESHOLD) return [hA, aA];
+                return [hC, '#444444'];
+            }
+
+            // --- API Logic ---
+            let currentSettings = {};
+
+            async function loadState() {
+                try {
+                    const res = await fetch('/api/state');
+                    const data = await res.json();
+                    
+                    // Populate Settings UI
+                    const s = data.settings;
+                    currentSettings = s;
+                    
+                    document.getElementById('chk_nfl').checked = s.active_sports.nfl;
+                    document.getElementById('chk_nba').checked = s.active_sports.nba;
+                    document.getElementById('chk_nhl').checked = s.active_sports.nhl;
+                    document.getElementById('chk_mlb').checked = s.active_sports.mlb;
+                    document.getElementById('chk_ncf_fbs').checked = s.active_sports.ncf_fbs;
+                    document.getElementById('chk_ncf_fcs').checked = s.active_sports.ncf_fcs;
+                    document.getElementById('chk_weather').checked = s.active_sports.weather;
+                    document.getElementById('chk_clock').checked = s.active_sports.clock;
+                    
+                    document.getElementById('rng_bright').value = s.brightness;
+                    document.getElementById('sel_mode').value = s.mode;
+                    document.getElementById('chk_scroll').checked = s.scroll_seamless;
+                    document.getElementById('inp_loc').value = s.weather_location;
+
+                    // Render Games
+                    renderGames(data.games);
+                } catch(e) { console.error(e); }
+            }
+
+            function renderGames(games) {
+                const container = document.getElementById('container');
+                if (!games || games.length === 0) {
+                    container.innerHTML = '<div class="loading">No games found. Check filters.</div>';
+                    return;
+                }
+                
+                container.innerHTML = ''; 
+
+                games.forEach(game => {
+                    if(game.sport === 'weather' || game.sport === 'clock') return;
+
+                    const [leftColor, rightColor] = resolveColors(
+                        game.home_color, game.home_alt_color,
+                        game.away_color, game.away_alt_color
+                    );
+
+                    const div = document.createElement('div');
+                    div.className = 'game-card';
+                    div.style.background = `linear-gradient(135deg, ${leftColor} 0%, ${leftColor} 45%, ${rightColor} 55%, ${rightColor} 100%)`;
+
+                    div.innerHTML = `
+                        <div class="overlay"></div>
+                        <div class="team-col">
+                            <img src="${game.away_logo || ''}" onerror="this.style.opacity=0">
+                            <div class="team-abbr">${game.away_abbr}</div>
+                        </div>
+                        <div class="mid-col">
+                            <div class="status-text">${game.status}</div>
+                            <div class="score-text">${game.away_score} - ${game.home_score}</div>
+                            ${game.situation.possession ? `<div class="poss-text">Poss: ${game.situation.possession}</div>` : ''}
+                        </div>
+                        <div class="team-col">
+                            <img src="${game.home_logo || ''}" onerror="this.style.opacity=0">
+                            <div class="team-abbr">${game.home_abbr}</div>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+
+            async function saveSettings() {
+                const payload = {
+                    active_sports: {
+                        nfl: document.getElementById('chk_nfl').checked,
+                        nba: document.getElementById('chk_nba').checked,
+                        nhl: document.getElementById('chk_nhl').checked,
+                        mlb: document.getElementById('chk_mlb').checked,
+                        ncf_fbs: document.getElementById('chk_ncf_fbs').checked,
+                        ncf_fcs: document.getElementById('chk_ncf_fcs').checked,
+                        weather: document.getElementById('chk_weather').checked,
+                        clock: document.getElementById('chk_clock').checked
+                    },
+                    brightness: parseFloat(document.getElementById('rng_bright').value),
+                    mode: document.getElementById('sel_mode').value,
+                    scroll_seamless: document.getElementById('chk_scroll').checked,
+                    weather_location: document.getElementById('inp_loc').value
+                };
+
+                await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                alert("Settings Saved!");
+                loadState();
+            }
+
+            async function rebootDevice() {
+                if(!confirm("Reboot the ticker device?")) return;
+                await fetch('/api/hardware', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({action: 'reboot'})
+                });
+                alert("Reboot signal sent.");
+            }
+
+            // Init
+            loadState();
+            setInterval(loadState, 5000); // Poll for updates
+        </script>
+    </body>
+    </html>
     """
-    return html
+    return render_template_string(html)
 
 @app.route('/api/ticker')
 def api_ticker():
