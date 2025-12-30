@@ -75,7 +75,7 @@ FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "A
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTU", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 
 ABBR_MAPPING = {
-    'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL'
+    'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI'
 }
 
 LOGO_OVERRIDES = {
@@ -624,26 +624,44 @@ def root():
                 const bigint = parseInt(hex, 16);
                 return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
             }
+            
+            // Calculate perceived brightness (luminance)
+            function getLuminance(r, g, b) {
+                // Formula: 0.2126*R + 0.7152*G + 0.0722*B
+                return (0.2126 * r + 0.7152 * g + 0.0722 * b);
+            }
+
             function colorDistance(c1, c2) {
                 return Math.sqrt(Math.pow(c1.r - c2.r, 2) + Math.pow(c1.g - c2.g, 2) + Math.pow(c1.b - c2.b, 2));
             }
+
             function resolveColors(hColor, hAlt, aColor, aAlt) {
-                const THRESHOLD = 100;
+                const DIST_THRESHOLD = 100;
+                const LUM_THRESHOLD = 40; // Colors darker than this (out of 255) are considered "black/void"
                 
                 // Defaults
                 let hC = hColor || '#000000'; let hA = hAlt || '#ffffff';
                 let aC = aColor || '#000000'; let aA = aAlt || '#ffffff';
 
-                // Rule 1: If primary is black, default to alternate immediately
-                if(hC === '#000000' && hA) hC = hA;
-                if(aC === '#000000' && aA) aC = aA;
+                let hRgb = hexToRgb(hC);
+                let aRgb = hexToRgb(aC);
 
-                const hRgb = hexToRgb(hC);
-                const aRgb = hexToRgb(aC);
-                
-                // Rule 2: If they are too similar, default AWAY team to Black
-                if (colorDistance(hRgb, aRgb) < THRESHOLD) {
-                    aC = '#000000';
+                // RULE 1: Anti-Void (If primary is too dark, swap to Alt)
+                if (getLuminance(hRgb.r, hRgb.g, hRgb.b) < LUM_THRESHOLD && hA) {
+                    hC = hA;
+                    hRgb = hexToRgb(hC);
+                }
+                if (getLuminance(aRgb.r, aRgb.g, aRgb.b) < LUM_THRESHOLD && aA) {
+                    aC = aA;
+                    aRgb = hexToRgb(aC);
+                }
+
+                // RULE 2: Contrast (If too similar, darken the Away team to Black/DarkGray to force contrast)
+                if (colorDistance(hRgb, aRgb) < DIST_THRESHOLD) {
+                    // Force Away to a standard dark gray if it creates contrast, otherwise try something else
+                    // For now, simple logic: if too close, make Away dark (unless Home is dark, then make Away bright?)
+                    // Let's stick to the prompt's request: "default the away team to #000000"
+                    aC = '#222222'; 
                 }
                 
                 return [hC, aC];
