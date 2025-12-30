@@ -399,11 +399,11 @@ class SportsFetcher:
                     utc_str = e['date'].replace('Z', '') 
                     utc_start_iso = e['date']
                     
-                    st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
-                    
                     game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
                     game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=utc_offset)))
                     game_date_str = game_dt_server.strftime("%Y-%m-%d")
+                    
+                    st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
                     
                     keep_date = (gst == 'in') or (game_date_str == target_date_str)
                     if league_key == 'mlb' and not keep_date: continue
@@ -515,170 +515,180 @@ def root():
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <title>Fixtured Schedule</title>
         <style>
             body { 
                 font-family: 'Segoe UI', system-ui, sans-serif; 
                 background: #121212; 
                 color: #e0e0e0; 
-                margin: 0; 
-                padding: 0;
+                margin: 0; padding: 0;
                 overflow-x: hidden;
             }
             
-            /* HEADER & SETTINGS */
-            .settings-toggle {
-                position: fixed; top: 10px; right: 10px; z-index: 1000;
-                background: rgba(40,40,40,0.8); backdrop-filter: blur(5px);
-                border: 1px solid #444; color: white; padding: 8px 15px;
-                border-radius: 20px; cursor: pointer; font-size: 0.9rem;
+            /* --- HEADER & SIDEBAR --- */
+            .navbar {
+                position: fixed; top: 0; left: 0; right: 0;
+                height: 50px; background: rgba(18,18,18,0.9);
+                backdrop-filter: blur(8px);
+                z-index: 1000; border-bottom: 1px solid #333;
+                display: flex; align-items: center; padding: 0 15px;
             }
-            .settings-panel {
-                display: none; position: fixed; top: 50px; right: 10px; z-index: 1000;
-                width: 300px; background: #1e1e1e; border: 1px solid #333;
-                border-radius: 12px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            .hamburger {
+                background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer;
             }
-            .settings-panel.open { display: block; }
+            .nav-title { font-weight: bold; margin-left: 15px; letter-spacing: 1px; color: #bbb; }
+
+            .sidebar {
+                position: fixed; top: 50px; left: -300px; bottom: 0; width: 280px;
+                background: #1e1e1e; border-right: 1px solid #333;
+                transition: left 0.3s ease; z-index: 999;
+                padding: 20px; overflow-y: auto;
+            }
+            .sidebar.open { left: 0; }
+            .sidebar-overlay {
+                display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.5); z-index: 900;
+            }
+            .sidebar-overlay.active { display: block; }
+
+            /* Settings Controls */
+            .control-group { margin-bottom: 20px; }
+            .section-label { font-size: 0.75rem; color: #777; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+            .toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.9rem; }
             
-            .toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+            /* Switch CSS */
             .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
             .switch input { opacity: 0; width: 0; height: 0; }
             .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #444; transition: .4s; border-radius: 34px; }
             .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
             input:checked + .slider { background-color: #007bff; }
             input:checked + .slider:before { transform: translateX(14px); }
-            select, input[type="text"] { width: 100%; background: #333; color: white; border: 1px solid #555; padding: 8px; border-radius: 5px; margin-top: 5px; }
-            
-            /* TIMELINE LAYOUT */
+            select, input[type="text"] { width: 100%; background: #2a2a2a; color: white; border: 1px solid #444; padding: 8px; border-radius: 6px; margin-top: 5px; box-sizing: border-box; }
+
+            /* --- TIMELINE LAYOUT --- */
             .schedule-container {
                 position: relative;
                 width: 100%;
-                max-width: 600px; /* Mobile width mimic */
-                margin: 0 auto;
-                min-height: 100vh;
+                /* REMOVED MAX-WIDTH TO FIX "UNABLE TO READ" */
+                margin-top: 50px; /* Offset for navbar */
                 background: #121212;
-                padding-top: 20px;
-                padding-bottom: 50px;
+                min-height: calc(100vh - 50px);
+                overflow-x: hidden;
             }
 
-            /* LEFT AXIS */
             .time-axis {
-                position: absolute; left: 0; top: 0; bottom: 0; width: 60px;
+                position: absolute; left: 0; top: 0; bottom: 0; width: 50px;
                 border-right: 1px solid #333;
-                font-size: 0.75rem; color: #888;
                 background: #121212; z-index: 10;
             }
             .time-marker {
-                position: absolute; width: 100%; text-align: right; padding-right: 10px;
-                transform: translateY(-50%);
+                position: absolute; width: 100%; text-align: right; padding-right: 8px;
+                font-size: 0.7rem; color: #666; transform: translateY(-50%);
             }
 
-            /* EVENTS AREA */
+            /* Main Events Area */
             .events-area {
                 position: relative;
-                margin-left: 70px; /* Offset for axis */
+                margin-left: 55px; /* Axis width + padding */
                 margin-right: 10px;
-                min-height: 100vh;
+                height: 100%;
+            }
+            
+            /* Grid Lines */
+            .grid-line {
+                position: absolute; left: 0; right: 0; height: 1px; background: #222; z-index: 0;
             }
 
-            /* LIVE LINE */
             .current-time-line {
-                position: absolute;
-                left: -60px; /* Span across axis too */
-                right: 0;
-                height: 2px;
-                background: #007bff;
-                z-index: 50;
-                box-shadow: 0 0 8px rgba(0, 123, 255, 0.6);
-                pointer-events: none;
-            }
-            .current-time-line::before {
-                content: ''; position: absolute; left: 0; top: -4px; width: 10px; height: 10px;
-                background: #007bff; border-radius: 50%;
+                position: absolute; left: -55px; right: 0; height: 2px; background: #007bff;
+                z-index: 50; pointer-events: none;
+                box-shadow: 0 0 5px rgba(0,123,255,0.5);
             }
 
-            /* GAME CARD */
+            /* --- GAME CARD --- */
             .game-card {
                 position: absolute;
-                width: 95%;
-                border-radius: 12px;
+                border-radius: 8px;
                 overflow: hidden;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+                box-shadow: 0 2px 5px rgba(0,0,0,0.5);
                 color: white;
                 display: flex;
                 flex-direction: column;
                 justify-content: center;
-                padding: 0 15px;
-                transition: transform 0.2s;
-                font-family: 'Segoe UI', sans-serif;
+                padding: 0 10px;
+                font-size: 0.85rem;
                 box-sizing: border-box;
+                border: 1px solid rgba(255,255,255,0.1);
             }
-            .game-card:hover { z-index: 60 !important; transform: scale(1.02); }
-            
-            .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
-            .live-badge {
-                background: rgba(255,0,0,0.8); padding: 2px 6px; border-radius: 4px;
-                font-size: 0.65rem; font-weight: bold; text-transform: uppercase;
-                animation: pulse 1.5s infinite;
-            }
+            .game-card:hover { z-index: 100 !important; transform: scale(1.01); box-shadow: 0 5px 15px rgba(0,0,0,0.8); }
+
+            .card-header { display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 0.7rem; opacity: 0.8; }
+            .live-badge { background: #ff3333; color: white; padding: 1px 4px; border-radius: 3px; font-weight: bold; animation: pulse 2s infinite; }
             @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
 
-            .teams-row { display: flex; justify-content: space-between; align-items: center; }
-            .team-info { display: flex; align-items: center; gap: 8px; }
-            .team-logo { width: 30px; height: 30px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
-            .team-name { font-weight: 700; font-size: 1rem; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+            .team-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+            .t-left { display: flex; align-items: center; gap: 5px; }
+            .t-logo { width: 20px; height: 20px; object-fit: contain; }
+            .t-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .t-score { font-weight: 700; font-size: 1rem; }
             
-            .score-area { text-align: right; }
-            .main-score { font-size: 1.4rem; font-weight: 800; line-height: 1; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
-            .status-detail { font-size: 0.75rem; opacity: 0.9; margin-top: 2px; }
-            
-            /* Red Zone & Possession */
-            .poss-active { color: #ffeb3b; text-shadow: 0 0 5px rgba(255,255,0,0.5); }
-            .red-zone { color: #ff3333; font-weight: 800; animation: pulse-red 1s infinite; }
-            @keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+            .poss-active { color: #ffeb3b; text-shadow: 0 0 5px rgba(255,200,0,0.5); }
+            .red-zone { color: #ff5555; font-weight: 800; animation: pulse 1s infinite; font-size: 0.7rem; margin-top:2px; text-align:right;}
+            .game-status { font-size: 0.7rem; opacity: 0.8; text-align: right; }
 
-            .overlay {
-                position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0,0,0,0.25); z-index: -1;
-            }
+            .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
         </style>
     </head>
     <body>
         
-        <button class="settings-toggle" onclick="document.querySelector('.settings-panel').classList.toggle('open')">⚙️ Settings</button>
-        
-        <div class="settings-panel">
-            <h3 style="margin-top:0">Config</h3>
-            <div class="toggle-row"><span>NFL</span><label class="switch"><input type="checkbox" id="chk_nfl"><span class="slider"></span></label></div>
-            <div class="toggle-row"><span>NBA</span><label class="switch"><input type="checkbox" id="chk_nba"><span class="slider"></span></label></div>
-            <div class="toggle-row"><span>NHL</span><label class="switch"><input type="checkbox" id="chk_nhl"><span class="slider"></span></label></div>
-            <div class="toggle-row"><span>MLB</span><label class="switch"><input type="checkbox" id="chk_mlb"><span class="slider"></span></label></div>
-            <div class="toggle-row"><span>NCAA FBS</span><label class="switch"><input type="checkbox" id="chk_ncf_fbs"><span class="slider"></span></label></div>
+        <nav class="navbar">
+            <button class="hamburger" onclick="toggleMenu()">☰</button>
+            <span class="nav-title">FIXTURED</span>
+        </nav>
+
+        <div class="sidebar-overlay" onclick="toggleMenu()"></div>
+        <div class="sidebar" id="sidebar">
+            <div class="control-group">
+                <div class="section-label">Leagues</div>
+                <div class="toggle-row"><span>NFL</span><label class="switch"><input type="checkbox" id="chk_nfl"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>NBA</span><label class="switch"><input type="checkbox" id="chk_nba"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>NHL</span><label class="switch"><input type="checkbox" id="chk_nhl"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>MLB</span><label class="switch"><input type="checkbox" id="chk_mlb"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>NCAA FBS</span><label class="switch"><input type="checkbox" id="chk_ncf_fbs"><span class="slider"></span></label></div>
+            </div>
             
-            <label style="font-size:0.8rem; color:#aaa; margin-top:10px; display:block">Time Zone</label>
-            <select id="sel_timezone">
-                <option value="-4">Atlantic / EDT (UTC-4)</option>
-                <option value="-5">Eastern (UTC-5)</option>
-                <option value="-6">Central (UTC-6)</option>
-                <option value="-7">Mountain (UTC-7)</option>
-                <option value="-8">Pacific (UTC-8)</option>
-            </select>
-            <button onclick="saveSettings()" style="width:100%; margin-top:15px; padding:8px; background:#007bff; border:none; color:white; border-radius:5px;">Save</button>
+            <div class="control-group">
+                <div class="section-label">Settings</div>
+                <label style="font-size:0.8rem; color:#aaa; display:block">Time Zone</label>
+                <select id="sel_timezone">
+                    <option value="-4">Atlantic / EDT (UTC-4)</option>
+                    <option value="-5">Eastern (UTC-5)</option>
+                    <option value="-6">Central (UTC-6)</option>
+                    <option value="-7">Mountain (UTC-7)</option>
+                    <option value="-8">Pacific (UTC-8)</option>
+                </select>
+            </div>
+            
+            <button onclick="saveSettings()" style="width:100%; padding:10px; background:#007bff; border:none; color:white; border-radius:6px; font-weight:bold; cursor:pointer;">Save Changes</button>
         </div>
 
         <div class="schedule-container">
             <div class="time-axis" id="timeAxis"></div>
             <div class="events-area" id="eventsArea">
-                <div class="current-time-line" id="nowLine"></div>
                 </div>
         </div>
 
         <script>
             // --- CONSTANTS ---
-            const PIXELS_PER_MINUTE = 1.8; // Vertical Scale
-            const START_HOUR = 8; // Schedule starts at 8:00 AM local
+            const PIXELS_PER_MINUTE = 1.5; 
+            const START_HOUR = 8; // 8 AM
             
+            function toggleMenu() {
+                document.getElementById('sidebar').classList.toggle('open');
+                document.querySelector('.sidebar-overlay').classList.toggle('active');
+            }
+
             function hexToRgb(hex) {
                 if(!hex) return {r:0, g:0, b:0};
                 hex = hex.replace(/^#/, '');
@@ -692,16 +702,13 @@ def root():
             function resolveColors(aColor, aAlt, hColor, hAlt) {
                 const DIST_THRESHOLD = 100;
                 const LUM_THRESHOLD = 50; 
-                
                 let aC = aColor || '#000000'; let aA = aAlt || '#ffffff';
                 let hC = hColor || '#000000'; let hA = hAlt || '#ffffff';
-
                 let aRgb = hexToRgb(aC); let hRgb = hexToRgb(hC);
 
                 if (getLuminance(aRgb.r, aRgb.g, aRgb.b) < LUM_THRESHOLD && aA) { aC = aA; }
                 if (getLuminance(hRgb.r, hRgb.g, hRgb.b) < LUM_THRESHOLD && hA) { hC = hA; }
                 
-                // Fallback contrast check logic omitted for brevity, using primaries/alts
                 return [aC, hC];
             }
 
@@ -710,7 +717,6 @@ def root():
                     const res = await fetch('/api/state');
                     const data = await res.json();
                     
-                    // Init Settings (Shortened)
                     const s = data.settings;
                     document.getElementById('chk_nfl').checked = s.active_sports.nfl;
                     document.getElementById('chk_nba').checked = s.active_sports.nba;
@@ -719,131 +725,138 @@ def root():
                     document.getElementById('chk_ncf_fbs').checked = s.active_sports.ncf_fbs;
                     if(s.utc_offset) document.getElementById('sel_timezone').value = s.utc_offset;
 
-                    renderSchedule(data.games, s.utc_offset);
+                    renderSchedule(data.games, s.utc_offset || -4);
                 } catch(e) { console.error(e); }
             }
 
+            // --- LAYOUT ENGINE ---
             function renderSchedule(games, utcOffset) {
                 const eventsArea = document.getElementById('eventsArea');
                 const axis = document.getElementById('timeAxis');
-                
-                // Clear old cards (keep nowLine)
-                const nowLine = document.getElementById('nowLine');
                 eventsArea.innerHTML = '';
-                eventsArea.appendChild(nowLine);
                 axis.innerHTML = '';
+
+                // Draw "Now" Line
+                const nowLine = document.createElement('div');
+                nowLine.className = 'current-time-line';
+                eventsArea.appendChild(nowLine);
+
+                // Draw Grid & Axis
+                for(let i=0; i<18; i++) {
+                    const hour = START_HOUR + i;
+                    const top = i * 60 * PIXELS_PER_MINUTE;
+                    
+                    const marker = document.createElement('div');
+                    marker.className = 'time-marker';
+                    marker.innerText = hour > 12 ? (hour-12)+' PM' : (hour===12 ? '12 PM' : hour+' AM');
+                    marker.style.top = top + 'px';
+                    axis.appendChild(marker);
+
+                    const grid = document.createElement('div');
+                    grid.className = 'grid-line';
+                    grid.style.top = top + 'px';
+                    eventsArea.appendChild(grid);
+                }
 
                 if(!games || games.length === 0) return;
 
-                // 1. Draw Axis (from START_HOUR to +18 hours)
-                for(let i=0; i<18; i++) {
-                    const hour = START_HOUR + i;
-                    const displayHour = hour > 12 ? (hour-12)+' PM' : (hour === 12 ? '12 PM' : hour+' AM');
-                    const marker = document.createElement('div');
-                    marker.className = 'time-marker';
-                    marker.innerText = displayHour;
-                    marker.style.top = (i * 60 * PIXELS_PER_MINUTE) + 'px';
-                    axis.appendChild(marker);
-                }
+                // 1. Prepare Events with geometry
+                const offsetMs = utcOffset * 3600 * 1000;
+                const localNow = new Date(new Date().getTime() + offsetMs + (new Date().getTimezoneOffset()*60000));
+                
+                // Position Now Line
+                const nowMins = localNow.getHours() * 60 + localNow.getMinutes() - (START_HOUR * 60);
+                if(nowMins > 0) nowLine.style.top = (nowMins * PIXELS_PER_MINUTE) + 'px';
 
-                // 2. Sort Games by Time
-                games.sort((a,b) => new Date(a.startTimeUTC) - new Date(b.startTimeUTC));
-
-                // 3. Render Cards
-                games.forEach((game, index) => {
-                    if(game.sport === 'weather' || game.sport === 'clock') return;
-
-                    // Time Calc
-                    const startDt = new Date(game.startTimeUTC);
-                    // Adjust to selected offset manually if needed, 
-                    // but browser might handle UTC correctly if we just get hours/mins relative to start
-                    // Simpler: Calculate Minutes from 8:00 AM UTC-Adjusted
-                    
-                    // Hack: We assume the backend delivers UTC. We need local time relative to user selection.
-                    // Actually, simpler: Get minutes from start of day (local).
-                    // We need to parse ISO, add offset, get hours.
-                    const offsetMs = (utcOffset || -4) * 3600 * 1000;
-                    const localDt = new Date(startDt.getTime() + offsetMs + (new Date().getTimezoneOffset() * 60000)); 
-                    
-                    const minutesFromMidnight = localDt.getHours() * 60 + localDt.getMinutes();
-                    const startMinute = minutesFromMidnight - (START_HOUR * 60);
-                    
-                    // Position
-                    const topPos = startMinute * PIXELS_PER_MINUTE;
-                    const height = (game.estimated_duration || 180) * PIXELS_PER_MINUTE;
-
-                    // Overlap Logic (Simple alternating width)
-                    // Check previous game end
-                    let leftPos = '0%';
-                    let width = '95%';
-                    
-                    if(index > 0) {
-                        const prevGame = games[index-1];
-                        const prevStart = new Date(prevGame.startTimeUTC).getTime();
-                        const thisStart = new Date(game.startTimeUTC).getTime();
-                        // If starting within 30 mins of previous
-                        if (Math.abs(thisStart - prevStart) < 30 * 60 * 1000) {
-                            width = '48%';
-                            leftPos = (index % 2 === 1) ? '50%' : '0%';
-                        }
-                    }
-
-                    // Colors
-                    const [leftColor, rightColor] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
-
-                    // DOM
-                    const div = document.createElement('div');
-                    div.className = 'game-card';
-                    div.style.top = topPos + 'px';
-                    div.style.height = height + 'px';
-                    div.style.left = leftPos;
-                    div.style.width = width;
-                    div.style.background = `linear-gradient(135deg, ${leftColor} 0%, ${leftColor} 45%, ${rightColor} 55%, ${rightColor} 100%)`;
-
-                    // Red Zone
-                    let detailClass = "status-detail";
-                    if(game.situation && game.situation.isRedZone) detailClass += " red-zone";
-                    const statusText = game.state === 'in' ? (game.situation.downDist || game.status) : game.status;
-
-                    div.innerHTML = `
-                        <div class="overlay"></div>
-                        <div class="card-header">
-                            ${game.state === 'in' ? '<span class="live-badge">LIVE</span>' : '<span></span>'}
-                        </div>
-                        <div class="teams-row">
-                            <div class="team-info">
-                                <img class="team-logo" src="${game.away_logo}" onerror="this.style.opacity=0">
-                                <span class="team-name ${game.situation.possession === game.away_id ? 'poss-active' : ''}">${game.away_abbr}</span>
-                            </div>
-                            <div class="score-area">
-                                <div class="main-score">${game.away_score}</div>
-                            </div>
-                        </div>
-                        <div class="teams-row" style="margin-top:5px">
-                            <div class="team-info">
-                                <img class="team-logo" src="${game.home_logo}" onerror="this.style.opacity=0">
-                                <span class="team-name ${game.situation.possession === game.home_id ? 'poss-active' : ''}">${game.home_abbr}</span>
-                            </div>
-                            <div class="score-area">
-                                <div class="main-score">${game.home_score}</div>
-                                <div class="${detailClass}">${statusText}</div>
-                            </div>
-                        </div>
-                    `;
-                    eventsArea.appendChild(div);
+                // Map games to [startMin, endMin, obj]
+                let events = [];
+                games.forEach(g => {
+                    if(g.sport === 'weather' || g.sport === 'clock') return;
+                    const d = new Date(g.startTimeUTC);
+                    const local = new Date(d.getTime() + offsetMs + (new Date().getTimezoneOffset()*60000));
+                    const startMins = local.getHours() * 60 + local.getMinutes() - (START_HOUR * 60);
+                    const dur = g.estimated_duration || 180;
+                    events.push({
+                        start: startMins,
+                        end: startMins + dur,
+                        data: g
+                    });
                 });
 
-                // 4. Position "Now" Line
-                const now = new Date();
-                // Localize Now
-                const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes() + (utcOffset * 60);
-                // Wrap around day if needed? No, keeping simple
-                const nowFromStart = nowMinutes - (START_HOUR * 60);
-                if(nowFromStart > 0) {
-                    nowLine.style.top = (nowFromStart * PIXELS_PER_MINUTE) + 'px';
-                    // Auto scroll to now
-                    window.scrollTo({ top: (nowFromStart * PIXELS_PER_MINUTE) - 100, behavior: 'smooth' });
+                // 2. Cluster Overlapping Events
+                events.sort((a,b) => a.start - b.start);
+                let clusters = [];
+                if(events.length > 0) {
+                    let currentCluster = [events[0]];
+                    let clusterEnd = events[0].end;
+                    
+                    for(let i=1; i<events.length; i++) {
+                        if(events[i].start < clusterEnd) {
+                            currentCluster.push(events[i]);
+                            clusterEnd = Math.max(clusterEnd, events[i].end);
+                        } else {
+                            clusters.push(currentCluster);
+                            currentCluster = [events[i]];
+                            clusterEnd = events[i].end;
+                        }
+                    }
+                    clusters.push(currentCluster);
                 }
+
+                // 3. Render Clusters
+                clusters.forEach(cluster => {
+                    // Simple packing: Divide width by number of concurrent items in this cluster
+                    // Ideally we use a graph coloring algo, but for simple sports schedules:
+                    // If cluster size is N, width is 100/N %
+                    
+                    const widthPct = 100 / cluster.length;
+                    
+                    cluster.forEach((ev, idx) => {
+                        const game = ev.data;
+                        const div = document.createElement('div');
+                        div.className = 'game-card';
+                        div.style.top = (ev.start * PIXELS_PER_MINUTE) + 'px';
+                        div.style.height = ((ev.end - ev.start) * PIXELS_PER_MINUTE) + 'px';
+                        div.style.width = widthPct + '%';
+                        div.style.left = (idx * widthPct) + '%';
+                        
+                        const [c1, c2] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
+                        div.style.background = `linear-gradient(135deg, ${c1} 0%, ${c1} 45%, ${c2} 55%, ${c2} 100%)`;
+
+                        // Status/RedZone logic
+                        let statusHtml = `<div class="game-status">${game.status}</div>`;
+                        if(game.situation && game.situation.isRedZone) {
+                            statusHtml = `<div class="red-zone">${game.situation.downDist}</div>`;
+                        } else if(game.state === 'in' && game.situation.downDist) {
+                            statusHtml = `<div class="game-status">${game.situation.downDist}</div>`;
+                        }
+
+                        div.innerHTML = `
+                            <div class="overlay"></div>
+                            <div class="card-header">
+                                ${game.state === 'in' ? '<span class="live-badge">LIVE</span>' : '<span></span>'}
+                                ${statusHtml}
+                            </div>
+                            
+                            <div class="team-row">
+                                <div class="t-left">
+                                    <img class="t-logo" src="${game.away_logo}" onerror="this.style.opacity=0">
+                                    <span class="t-name ${game.situation.possession === game.away_id ? 'poss-active' : ''}">${game.away_abbr}</span>
+                                </div>
+                                <div class="t-score">${game.away_score}</div>
+                            </div>
+
+                            <div class="team-row">
+                                <div class="t-left">
+                                    <img class="t-logo" src="${game.home_logo}" onerror="this.style.opacity=0">
+                                    <span class="t-name ${game.situation.possession === game.home_id ? 'poss-active' : ''}">${game.home_abbr}</span>
+                                </div>
+                                <div class="t-score">${game.home_score}</div>
+                            </div>
+                        `;
+                        eventsArea.appendChild(div);
+                    });
+                });
             }
 
             async function saveSettings() {
@@ -858,10 +871,10 @@ def root():
                     utc_offset: parseInt(document.getElementById('sel_timezone').value)
                 };
                 await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-                alert("Saved!"); loadState();
+                toggleMenu();
+                loadState();
             }
 
-            // Init
             loadState();
             setInterval(loadState, 10000);
         </script>
@@ -870,7 +883,6 @@ def root():
     """
     return render_template_string(html)
 
-# ... [API ROUTES REMAIN UNCHANGED FROM PREVIOUS TURN] ...
 @app.route('/api/ticker')
 def api_ticker():
     with data_lock: d = state.copy()
