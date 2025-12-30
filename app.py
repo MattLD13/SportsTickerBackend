@@ -137,6 +137,7 @@ class WeatherFetcher:
                 "sport": "weather", "id": "weather_widget", "status": "Live",
                 "home_abbr": f"{int(c.get('temperature_2m', 0))}°", "away_abbr": self.location_name,
                 "home_score": "", "away_score": "", "is_shown": True, "home_logo": "", "away_logo": "",
+                "home_color": "#000000", "away_color": "#000000",
                 "situation": { "icon": icon, "stats": { "high": high, "low": low, "uv": uv } }
             }
             self.cache = w_obj; self.last_fetch = time.time(); return w_obj
@@ -160,6 +161,16 @@ class SportsFetcher:
         key = f"{league_key.upper()}:{abbr}"
         return LOGO_OVERRIDES.get(key, default_logo)
 
+    def lookup_color_from_cache(self, league, abbr):
+        try:
+            with data_lock:
+                teams = state['all_teams_data'].get(league, [])
+                for t in teams:
+                    if t['abbr'] == abbr:
+                        return t.get('color', '000000')
+        except: pass
+        return '000000'
+
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
@@ -174,11 +185,12 @@ class SportsFetcher:
                     for league in sport['leagues']:
                         for item in league.get('teams', []):
                             t_abbr = item['team'].get('abbreviation', 'unk')
+                            t_clr = item['team'].get('color', '000000')
                             logos = item['team'].get('logos', [])
                             t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
                             league_tag = 'ncf_fbs' if t_abbr in FBS_TEAMS else 'ncf_fcs'
                             t_logo = self.get_corrected_logo(league_tag, t_abbr, t_logo)
-                            team_obj = {'abbr': t_abbr, 'logo': t_logo}
+                            team_obj = {'abbr': t_abbr, 'logo': t_logo, 'color': t_clr}
                             if t_abbr in FBS_TEAMS:
                                 if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']):
                                     teams_catalog['ncf_fbs'].append(team_obj)
@@ -199,9 +211,10 @@ class SportsFetcher:
                     for league in sport['leagues']:
                         for item in league.get('teams', []):
                             abbr = item['team'].get('abbreviation', 'unk')
+                            clr = item['team'].get('color', '000000')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
                             logo = self.get_corrected_logo(league_key, abbr, logo)
-                            catalog[league_key].append({'abbr': abbr, 'logo': logo})
+                            catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr})
         except: pass
 
     def _fetch_nhl_native(self, games_list, target_date_str):
@@ -231,6 +244,10 @@ class SportsFetcher:
                         h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
                         a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
                         
+                        # Cache lookup for colors (NHL native API doesn't provide them)
+                        h_clr = self.lookup_color_from_cache('nhl', h_ab)
+                        a_clr = self.lookup_color_from_cache('nhl', a_ab)
+
                         map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
                         
                         with data_lock:
@@ -294,6 +311,7 @@ class SportsFetcher:
                             'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': is_shown,
                             'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
                             'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
+                            'home_color': f"#{h_clr}", 'away_color': f"#{a_clr}",
                             'startTimeUTC': utc_start,
                             'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en }
                         })
@@ -368,6 +386,12 @@ class SportsFetcher:
                     h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
                     a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
 
+                    # Capture colors (default to black/white if missing)
+                    h_clr = h['team'].get('color', '000000')
+                    h_alt = h['team'].get('alternateColor', 'ffffff')
+                    a_clr = a['team'].get('color', '000000')
+                    a_alt = a['team'].get('alternateColor', 'ffffff')
+
                     s_disp = tp.get('shortDetail', 'TBD')
                     
                     if gst == 'pre':
@@ -411,6 +435,8 @@ class SportsFetcher:
                         'home_id': h.get('id'), 
                         'away_abbr': a_ab, 'away_score': a.get('score','0'), 'away_logo': a_lg,
                         'away_id': a.get('id'), 
+                        'home_color': f"#{h_clr}", 'home_alt_color': f"#{h_alt}",
+                        'away_color': f"#{a_clr}", 'away_alt_color': f"#{a_alt}",
                         'startTimeUTC': utc_start_iso, 
                         'period': st.get('period', 1),
                         'situation': { 
