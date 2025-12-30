@@ -562,29 +562,28 @@ def root():
             select, input[type="text"] { width: 100%; background: #2a2a2a; color: white; border: 1px solid #444; padding: 8px; border-radius: 6px; margin-top: 5px; box-sizing: border-box; }
 
             /* --- COMMON GAME STYLES --- */
-            .text-outline { text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 4px rgba(0,0,0,0.8); }
-            .logo-outline { filter: drop-shadow(0 0 1px black) drop-shadow(0 0 1px black) drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+            .text-outline { text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 4px rgba(0,0,0,0.9); }
+            .logo-outline { filter: drop-shadow(0 0 1px black) drop-shadow(0 0 2px black) drop-shadow(0 2px 4px rgba(0,0,0,0.8)); }
             
             .live-badge { background: #ff3333; color: white; padding: 1px 4px; border-radius: 3px; font-weight: bold; animation: pulse 2s infinite; font-size:0.7rem; border: 1px solid black; }
             @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
             
-            .poss-pill { display: inline-block; background: rgba(0,0,0,0.8); color: #ffeb3b; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid #ffeb3b; }
-            .red-zone-pill { display: inline-block; background: rgba(255,51,51,0.9); color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid black; animation: pulse 1s infinite; }
+            /* CAROUSEL CONTROLS */
+            .carousel-controls { position: absolute; top:0; bottom:0; left:0; right:0; pointer-events:none; z-index: 200; display:flex; justify-content:space-between; align-items:center; }
+            .carousel-btn { 
+                pointer-events: auto; background: rgba(0,0,0,0.4); color: white; border:none; 
+                height: 100%; width: 30px; font-size: 1.5rem; cursor: pointer; display:flex; align-items:center; justify-content:center;
+            }
+            .carousel-btn:hover { background: rgba(0,0,0,0.7); }
+            .carousel-dots { position: absolute; bottom: 2px; left:0; right:0; text-align:center; }
+            .dot { display: inline-block; width: 6px; height: 6px; background: rgba(255,255,255,0.5); border-radius: 50%; margin: 0 2px; }
+            .dot.active { background: white; }
+
+            .poss-pill { display: inline-block; background: rgba(0,0,0,0.9); color: #ffeb3b; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid #ffeb3b; }
+            .red-zone-pill { display: inline-block; background: rgba(255,51,51,0.95); color: white; font-size: 0.75rem; padding: 2px 6px; border-radius: 10px; font-weight: bold; border: 1px solid black; animation: pulse 1s infinite; }
 
             .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
             .view-hidden { display: none !important; }
-
-            /* --- CAROUSEL STYLES --- */
-            .carousel-wrapper { position: absolute; width: 100%; height: 100%; }
-            .carousel-controls {
-                position: absolute; top: 50%; width: 100%; transform: translateY(-50%);
-                display: flex; justify-content: space-between; pointer-events: none; z-index: 200;
-            }
-            .carousel-btn {
-                background: rgba(0,0,0,0.6); color: white; border: none; padding: 10px 5px; cursor: pointer;
-                pointer-events: auto; border-radius: 4px; font-weight: bold; font-size: 1.2rem;
-            }
-            .carousel-btn:hover { background: rgba(0,0,0,0.9); }
 
             /* --- SCHEDULE VIEW STYLES --- */
             #schedule-view { position: relative; width: 100%; margin-top: 50px; background: #121212; min-height: calc(100vh - 50px); overflow-x: hidden; }
@@ -605,14 +604,17 @@ def root():
             }
             .sched-card:hover { z-index: 100 !important; transform: scale(1.01); box-shadow: 0 5px 15px rgba(0,0,0,0.8); }
             .card-header { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.7rem; opacity: 0.9; }
-            .team-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+            .team-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
             .t-left { display: flex; align-items: center; gap: 8px; }
-            .t-logo { width: 24px; height: 24px; object-fit: contain; }
-            .t-name { font-weight: 800; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-            .t-score { font-weight: 800; font-size: 1.3rem; }
-            
-            /* Down Distance - Positioned Top Right in Header */
-            .header-detail { font-weight: 700; color: #ffeb3b; text-shadow: 1px 1px 0 #000; }
+            .t-logo { width: 28px; height: 28px; object-fit: contain; }
+            .t-name { font-weight: 900; font-size: 1.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color:white; }
+            .t-score { font-weight: 800; font-size: 1.4rem; color:white; }
+            .card-footer { 
+                margin-top: auto; padding-top: 6px; 
+                border-top: 1px solid rgba(255,255,255,0.2); 
+                font-size: 0.8rem; font-weight: 700; color: #ffeb3b; 
+                text-shadow: 1px 1px 0 #000; text-align: center;
+            }
 
             /* --- GRID VIEW STYLES --- */
             #grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 70px 20px 20px 20px; }
@@ -701,7 +703,6 @@ def root():
             const PIXELS_PER_MINUTE = 1.5; 
             const START_HOUR = 8; // 8 AM start for schedule
             
-            // Carousel State: maps 'group_key' -> current index
             let carouselState = {};
 
             function toggleMenu() { document.getElementById('sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('active'); }
@@ -724,7 +725,6 @@ def root():
                     const data = await res.json();
                     const s = data.settings;
                     
-                    // Populate Settings
                     document.getElementById('chk_nfl').checked = s.active_sports.nfl;
                     document.getElementById('chk_nba').checked = s.active_sports.nba;
                     document.getElementById('chk_nhl').checked = s.active_sports.nhl;
@@ -778,7 +778,6 @@ def root():
 
                     const div = document.createElement('div');
                     div.className = 'grid-card';
-                    // Grid uses standard Away -> Home gradient
                     div.style.background = `linear-gradient(120deg, ${aC} 0%, ${aC} 45%, ${hC} 55%, ${hC} 100%)`;
                     div.innerHTML = `
                         <div class="overlay"></div>
@@ -815,7 +814,6 @@ def root():
                     const hour = START_HOUR + i; const top = i * 60 * PIXELS_PER_MINUTE;
                     let displayHour = (hour % 12) || 12;
                     displayHour += (hour < 12 ? ' AM' : ' PM');
-                    
                     const marker = document.createElement('div'); marker.className = 'time-marker'; marker.innerText = displayHour; marker.style.top = top + 'px'; axis.appendChild(marker);
                     const grid = document.createElement('div'); grid.className = 'grid-line'; grid.style.top = top + 'px'; eventsArea.appendChild(grid);
                 }
@@ -826,34 +824,34 @@ def root():
                 const nowMins = localNow.getHours() * 60 + localNow.getMinutes() - (START_HOUR * 60);
                 if(nowMins > 0) nowLine.style.top = (nowMins * PIXELS_PER_MINUTE) + 'px';
 
-                // PRE-PROCESS: Bucket Games by (Sport + Start Time)
+                // AGGRESSIVE GROUPING: Bucket Games by (Sport + 30-min Block)
                 let buckets = {};
                 games.forEach(g => {
                     if(g.sport === 'weather' || g.sport === 'clock') return;
-                    const key = g.sport + '_' + g.startTimeUTC;
+                    // Quantize start time to nearest 30 mins
+                    const d = new Date(g.startTimeUTC);
+                    const mins = d.getMinutes();
+                    const quantizedMins = mins < 30 ? 0 : 30;
+                    d.setMinutes(quantizedMins); d.setSeconds(0); d.setMilliseconds(0);
+                    
+                    const key = g.sport + '_' + d.toISOString(); // Group by sport + time slot
                     if(!buckets[key]) buckets[key] = [];
                     buckets[key].push(g);
                 });
 
-                // Convert Buckets to "Composite Events"
+                // Convert Buckets to Events
                 let events = [];
                 Object.keys(buckets).forEach(key => {
                     const group = buckets[key];
-                    const g = group[0]; // Representative for time calculation
+                    const g = group[0]; 
                     const d = new Date(g.startTimeUTC); const local = new Date(d.getTime() + offsetMs + (new Date().getTimezoneOffset()*60000));
                     const startMins = local.getHours() * 60 + local.getMinutes() - (START_HOUR * 60);
-                    
-                    events.push({ 
-                        start: startMins, 
-                        end: startMins + (g.estimated_duration || 180), 
-                        games: group, // Array of games in this slot
-                        key: key 
-                    });
+                    events.push({ start: startMins, end: startMins + (g.estimated_duration || 180), games: group, key: key });
                 });
 
-                // Sort & Layout
                 events.sort((a,b) => a.start - b.start);
-                // Basic Clustering for overlapping DIFFERENT sport/time groups
+                
+                // Simple Clustering for Different Sports at same time
                 let clusters = [];
                 if(events.length > 0) {
                     let currentCluster = [events[0]]; let clusterEnd = events[0].end;
@@ -867,11 +865,9 @@ def root():
                 clusters.forEach(cluster => {
                     const widthPct = 100 / cluster.length;
                     cluster.forEach((ev, idx) => {
-                        // If group has > 1 game, render Carousel
                         const isCarousel = ev.games.length > 1;
                         const currentIndex = carouselState[ev.key] || 0;
-                        // Ensure index validity (in case games finished/removed)
-                        const safeIndex = (currentIndex >= ev.games.length) ? 0 : currentIndex;
+                        const safeIndex = (currentIndex >= 0 && currentIndex < ev.games.length) ? currentIndex : 0;
                         const game = ev.games[safeIndex];
 
                         const div = document.createElement('div'); div.className = 'sched-card';
@@ -883,12 +879,16 @@ def root():
                         const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
                         div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
 
-                        // Status Logic
-                        let headerRight = `<span class="text-outline" style="text-align:right">${game.status}</span>`;
-                        if(game.situation && game.situation.isRedZone) { 
-                            headerRight = `<span class="red-zone-pill" style="float:right">${game.situation.downDist}</span>`; 
+                        // --- CONTENT GENERATION ---
+                        // Status Header
+                        let headerRight = `<span class="text-outline" style="text-align:right; color: #fff; font-weight:700;">${game.status}</span>`;
+                        
+                        // Footer: Situation or Red Zone
+                        let footerHtml = '';
+                        if(game.situation && game.situation.isRedZone) {
+                            footerHtml = `<div class="red-zone-pill" style="margin: 0 auto;">${game.situation.downDist}</div>`;
                         } else if(game.state === 'in' && game.situation.downDist) {
-                            headerRight = `<span class="header-detail text-outline" style="float:right">${game.situation.downDist}</span>`;
+                            footerHtml = `<div class="text-outline" style="color:#ffeb3b; text-align:center;">${game.situation.downDist}</div>`;
                         }
 
                         // Carousel Arrows
@@ -899,8 +899,8 @@ def root():
                                     <button class="carousel-btn" onclick="rotateCarousel('${ev.key}', -1)">‹</button>
                                     <button class="carousel-btn" onclick="rotateCarousel('${ev.key}', 1)">›</button>
                                 </div>
-                                <div style="position:absolute; bottom:2px; left:0; right:0; text-align:center; font-size:0.6rem; opacity:0.7;">
-                                    ${safeIndex + 1} / ${ev.games.length}
+                                <div style="position:absolute; bottom:2px; right:5px; font-size:0.6rem; color:rgba(255,255,255,0.7);">
+                                    ${safeIndex + 1}/${ev.games.length}
                                 </div>
                             `;
                         }
@@ -934,33 +934,25 @@ def root():
                                 </div>
                                 <div class="t-score text-outline">${game.home_score}</div>
                             </div>
+                            
+                            ${footerHtml ? `<div class="card-footer">${footerHtml}</div>` : ''}
                         `;
                         eventsArea.appendChild(div);
                     });
                 });
             }
 
-            // Global function to handle carousel clicks
             window.rotateCarousel = function(key, dir) {
-                // We need to know current index. Since we don't have full state here easily,
-                // we rely on the global carouselState map.
+                // Must fetch current games to know length
+                const currentData = window.lastData; 
+                if(!currentData) return;
+                
+                // Re-find the group size by duplicating logic (hacky but works for UI)
+                // Better: Store group sizes in a global map during render
+                // Let's assume unlimited scroll and rely on safety check in render
                 let current = carouselState[key] || 0;
-                // We need to know the MAX length. 
-                // Hack: We don't have the array length here easily without re-finding it in DOM or state.
-                // Better approach: Re-fetch or pass length in onclick? 
-                // Simplest: Find the bucket in the currently rendered 'data' variable? 
-                // Actually, just incrementing blindly works if we re-render, but we need immediate feedback?
-                // No, update state then re-render immediately.
-                
-                // To get length, we need the data. Let's just store length in a global lookup during render?
-                // Implementation details:
-                // We will just increment/decrement. The render function handles out-of-bounds checks.
-                // We assume the user doesn't click 100 times.
-                
                 carouselState[key] = current + dir;
-                // Trigger re-render with cached data?
-                // Ideally we have 'lastData'.
-                if(window.lastData) render(window.lastData);
+                render(currentData);
             };
 
             async function saveSettings() {
@@ -979,11 +971,7 @@ def root():
                 toggleMenu(); loadState();
             }
 
-            // Poll Loop
-            setInterval(loadState, 5000);
-            loadState(); // First load
-            
-            // Hook fetch to store last data for carousel
+            // Hook fetch to store data
             const originalFetch = window.fetch;
             window.fetch = async (...args) => {
                 const response = await originalFetch(...args);
@@ -995,6 +983,7 @@ def root():
                 return response;
             };
 
+            loadState(); setInterval(loadState, 5000);
         </script>
     </body>
     </html>
