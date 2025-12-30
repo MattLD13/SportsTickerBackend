@@ -167,17 +167,17 @@ class SportsFetcher:
         key = f"{league_key.upper()}:{abbr}"
         return LOGO_OVERRIDES.get(key, default_logo)
 
-    def lookup_color_from_cache(self, league, abbr):
-        # Handle Abbreviation Mappings (NHL Native -> ESPN)
+    def lookup_team_info_from_cache(self, league, abbr):
+        # Returns a dict {color, alt_color}
         search_abbr = ABBR_MAPPING.get(abbr, abbr)
         try:
             with data_lock:
                 teams = state['all_teams_data'].get(league, [])
                 for t in teams:
                     if t['abbr'] == search_abbr:
-                        return t.get('color', '000000')
+                        return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
         except: pass
-        return '000000'
+        return {'color': '000000', 'alt_color': '444444'}
 
     def fetch_all_teams(self):
         try:
@@ -194,11 +194,12 @@ class SportsFetcher:
                         for item in league.get('teams', []):
                             t_abbr = item['team'].get('abbreviation', 'unk')
                             t_clr = item['team'].get('color', '000000')
+                            t_alt = item['team'].get('alternateColor', '444444')
                             logos = item['team'].get('logos', [])
                             t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
                             league_tag = 'ncf_fbs' if t_abbr in FBS_TEAMS else 'ncf_fcs'
                             t_logo = self.get_corrected_logo(league_tag, t_abbr, t_logo)
-                            team_obj = {'abbr': t_abbr, 'logo': t_logo, 'color': t_clr}
+                            team_obj = {'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt}
                             if t_abbr in FBS_TEAMS:
                                 if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']):
                                     teams_catalog['ncf_fbs'].append(team_obj)
@@ -220,9 +221,10 @@ class SportsFetcher:
                         for item in league.get('teams', []):
                             abbr = item['team'].get('abbreviation', 'unk')
                             clr = item['team'].get('color', '000000')
+                            alt = item['team'].get('alternateColor', '444444')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
                             logo = self.get_corrected_logo(league_key, abbr, logo)
-                            catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr})
+                            catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
         except: pass
 
     def _fetch_nhl_native(self, games_list, target_date_str):
@@ -252,9 +254,9 @@ class SportsFetcher:
                         h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
                         a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
                         
-                        # Cache lookup for colors using ESPN data (handled via mappings in lookup function)
-                        h_clr = self.lookup_color_from_cache('nhl', h_ab)
-                        a_clr = self.lookup_color_from_cache('nhl', a_ab)
+                        # Cache lookup for colors from ESPN
+                        h_info = self.lookup_team_info_from_cache('nhl', h_ab)
+                        a_info = self.lookup_team_info_from_cache('nhl', a_ab)
 
                         map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
                         
@@ -319,7 +321,8 @@ class SportsFetcher:
                             'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': is_shown,
                             'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
                             'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
-                            'home_color': f"#{h_clr}", 'away_color': f"#{a_clr}",
+                            'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
+                            'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
                             'startTimeUTC': utc_start,
                             'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en }
                         })
@@ -629,10 +632,18 @@ def root():
                 const hRgb = hexToRgb(hC); const hAltRgb = hexToRgb(hA);
                 const aRgb = hexToRgb(aC); const aAltRgb = hexToRgb(aA);
 
+                // If Primary vs Primary is good
                 if (colorDistance(hRgb, aRgb) > THRESHOLD) return [hC, aC];
-                if (colorDistance(hRgb, aAltRgb) > THRESHOLD) return [hC, aA];
+                
+                // If Home Primary is too close to Away Primary, try Home Alt vs Away Primary
                 if (colorDistance(hAltRgb, aRgb) > THRESHOLD) return [hA, aC];
+
+                // If Home Primary is fine, but Away Primary is close, try Home Primary vs Away Alt
+                if (colorDistance(hRgb, aAltRgb) > THRESHOLD) return [hC, aA];
+
+                // Worst case: both Alts
                 if (colorDistance(hAltRgb, aAltRgb) > THRESHOLD) return [hA, aA];
+
                 return [hC, '#444444'];
             }
 
