@@ -74,8 +74,6 @@ def save_config_file():
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTU", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 
-# Map NHL API Abbreviations (Keys) -> ESPN API Abbreviations (Values)
-# This fixes color lookups where the APIs disagree.
 ABBR_MAPPING = {
     'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL'
 }
@@ -168,7 +166,6 @@ class SportsFetcher:
         return LOGO_OVERRIDES.get(key, default_logo)
 
     def lookup_team_info_from_cache(self, league, abbr):
-        # Returns a dict {color, alt_color}
         search_abbr = ABBR_MAPPING.get(abbr, abbr)
         try:
             with data_lock:
@@ -254,7 +251,6 @@ class SportsFetcher:
                         h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
                         a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
                         
-                        # Cache lookup for colors from ESPN
                         h_info = self.lookup_team_info_from_cache('nhl', h_ab)
                         a_info = self.lookup_team_info_from_cache('nhl', a_ab)
 
@@ -553,6 +549,12 @@ def root():
             .team-col img { width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.8)); }
             .team-abbr { font-size: 0.9rem; font-weight: bold; margin-top: 3px; text-shadow: 0 1px 2px black; }
             
+            /* Possession Highlight */
+            .poss-active {
+                color: #ffeb3b; /* Yellow */
+                text-shadow: 0 0 5px rgba(255, 69, 0, 0.8), 0 1px 2px black; /* Red/Orange Glow */
+            }
+
             .mid-col { z-index: 2; text-align: center; flex-grow: 1; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
             .status-text { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
             .score-text { font-size: 1.4rem; font-weight: 800; line-height: 1.1; }
@@ -627,24 +629,24 @@ def root():
             }
             function resolveColors(hColor, hAlt, aColor, aAlt) {
                 const THRESHOLD = 100;
-                const hC = hColor || '#000000'; const hA = hAlt || '#ffffff';
-                const aC = aColor || '#000000'; const aA = aAlt || '#ffffff';
-                const hRgb = hexToRgb(hC); const hAltRgb = hexToRgb(hA);
-                const aRgb = hexToRgb(aC); const aAltRgb = hexToRgb(aA);
-
-                // If Primary vs Primary is good
-                if (colorDistance(hRgb, aRgb) > THRESHOLD) return [hC, aC];
                 
-                // If Home Primary is too close to Away Primary, try Home Alt vs Away Primary
-                if (colorDistance(hAltRgb, aRgb) > THRESHOLD) return [hA, aC];
+                // Defaults
+                let hC = hColor || '#000000'; let hA = hAlt || '#ffffff';
+                let aC = aColor || '#000000'; let aA = aAlt || '#ffffff';
 
-                // If Home Primary is fine, but Away Primary is close, try Home Primary vs Away Alt
-                if (colorDistance(hRgb, aAltRgb) > THRESHOLD) return [hC, aA];
+                // Rule 1: If primary is black, default to alternate immediately
+                if(hC === '#000000' && hA) hC = hA;
+                if(aC === '#000000' && aA) aC = aA;
 
-                // Worst case: both Alts
-                if (colorDistance(hAltRgb, aAltRgb) > THRESHOLD) return [hA, aA];
-
-                return [hC, '#444444'];
+                const hRgb = hexToRgb(hC);
+                const aRgb = hexToRgb(aC);
+                
+                // Rule 2: If they are too similar, default AWAY team to Black
+                if (colorDistance(hRgb, aRgb) < THRESHOLD) {
+                    aC = '#000000';
+                }
+                
+                return [hC, aC];
             }
 
             // --- API Logic ---
@@ -655,7 +657,6 @@ def root():
                     const res = await fetch('/api/state');
                     const data = await res.json();
                     
-                    // Populate Settings UI
                     const s = data.settings;
                     currentSettings = s;
                     
@@ -673,7 +674,6 @@ def root():
                     document.getElementById('chk_scroll').checked = s.scroll_seamless;
                     document.getElementById('inp_loc').value = s.weather_location;
 
-                    // Render Games
                     renderGames(data.games);
                 } catch(e) { console.error(e); }
             }
@@ -695,6 +695,24 @@ def root():
                         game.away_color, game.away_alt_color
                     );
 
+                    // Determine Possession Logic
+                    const possId = game.situation.possession;
+                    const homeHasPoss = possId && (possId === game.home_id);
+                    const awayHasPoss = possId && (possId === game.away_id);
+                    
+                    // Highlight classes
+                    const homeClass = homeHasPoss ? 'team-abbr poss-active' : 'team-abbr';
+                    const awayClass = awayHasPoss ? 'team-abbr poss-active' : 'team-abbr';
+
+                    // Bottom text logic
+                    let bottomText = '';
+                    if(game.sport === 'nfl' || game.sport.includes('ncf')) {
+                        bottomText = game.situation.downDist || '';
+                    } else if (possId) {
+                         // Fallback for basketball/hockey if API provides possession
+                         // bottomText = 'Possession'; 
+                    }
+
                     const div = document.createElement('div');
                     div.className = 'game-card';
                     div.style.background = `linear-gradient(135deg, ${leftColor} 0%, ${leftColor} 45%, ${rightColor} 55%, ${rightColor} 100%)`;
@@ -703,16 +721,16 @@ def root():
                         <div class="overlay"></div>
                         <div class="team-col">
                             <img src="${game.away_logo || ''}" onerror="this.style.opacity=0">
-                            <div class="team-abbr">${game.away_abbr}</div>
+                            <div class="${awayClass}">${game.away_abbr}</div>
                         </div>
                         <div class="mid-col">
                             <div class="status-text">${game.status}</div>
                             <div class="score-text">${game.away_score} - ${game.home_score}</div>
-                            ${game.situation.possession ? `<div class="poss-text">Poss: ${game.situation.possession}</div>` : ''}
+                            <div class="poss-text">${bottomText}</div>
                         </div>
                         <div class="team-col">
                             <img src="${game.home_logo || ''}" onerror="this.style.opacity=0">
-                            <div class="team-abbr">${game.home_abbr}</div>
+                            <div class="${homeClass}">${game.home_abbr}</div>
                         </div>
                     `;
                     container.appendChild(div);
@@ -756,9 +774,8 @@ def root():
                 alert("Reboot signal sent.");
             }
 
-            // Init
             loadState();
-            setInterval(loadState, 5000); // Poll for updates
+            setInterval(loadState, 5000); 
         </script>
     </body>
     </html>
