@@ -35,7 +35,7 @@ default_state = {
     'test_pattern': False,
     'reboot_requested': False,
     'weather_location': "New York",
-    'utc_offset': -4  # Default to AST/EDT
+    'utc_offset': -4 
 }
 
 state = default_state.copy()
@@ -581,6 +581,15 @@ def root():
                 text-shadow: 0 0 8px rgba(255, 69, 0, 0.8), 0 1px 2px black; 
             }
 
+            /* Red Zone Highlight */
+            .red-zone {
+                color: #ff3333 !important;
+                font-weight: 800;
+                text-shadow: 0 0 8px rgba(255, 0, 0, 0.9);
+                animation: pulse-red 1.5s infinite;
+            }
+            @keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+
             .mid-col { z-index: 2; text-align: center; flex-grow: 1; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
             .status-text { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
             .score-text { font-size: 1.6rem; font-weight: 800; line-height: 1; }
@@ -777,6 +786,12 @@ def root():
                         bottomText = game.situation.downDist || '';
                     } 
 
+                    // Red Zone Logic
+                    let bottomClass = "poss-text";
+                    if(game.situation && game.situation.isRedZone) {
+                        bottomClass += " red-zone";
+                    }
+
                     const div = document.createElement('div');
                     div.className = 'game-card';
                     div.style.background = `linear-gradient(120deg, ${leftColor} 0%, ${leftColor} 45%, ${rightColor} 55%, ${rightColor} 100%)`;
@@ -790,7 +805,7 @@ def root():
                         <div class="mid-col">
                             <div class="status-text">${game.status}</div>
                             <div class="score-text">${game.away_score} - ${game.home_score}</div>
-                            <div class="poss-text">${bottomText}</div>
+                            <div class="${bottomClass}">${bottomText}</div>
                         </div>
                         <div class="team-col">
                             <img src="${game.home_logo || ''}" onerror="this.style.opacity=0">
