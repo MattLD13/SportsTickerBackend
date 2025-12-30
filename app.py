@@ -401,11 +401,11 @@ class SportsFetcher:
                     utc_str = e['date'].replace('Z', '') 
                     utc_start_iso = e['date']
                     
-                    st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
-                    
                     game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
                     game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=utc_offset)))
                     game_date_str = game_dt_server.strftime("%Y-%m-%d")
+                    
+                    st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
                     
                     keep_date = (gst == 'in') or (game_date_str == target_date_str)
                     if league_key == 'mlb' and not keep_date: continue
@@ -562,10 +562,17 @@ def root():
             select, input[type="text"] { width: 100%; background: #2a2a2a; color: white; border: 1px solid #444; padding: 8px; border-radius: 6px; margin-top: 5px; box-sizing: border-box; }
 
             /* --- COMMON GAME STYLES --- */
-            .poss-active { color: #ffeb3b; text-shadow: 0 0 5px rgba(255,200,0,0.5); }
-            .red-zone { color: #ff5555; font-weight: 800; animation: pulse 1s infinite; }
-            .live-badge { background: #ff3333; color: white; padding: 1px 4px; border-radius: 3px; font-weight: bold; animation: pulse 2s infinite; font-size:0.7rem;}
-            @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+            .text-outline { text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 4px rgba(0,0,0,0.8); }
+            .logo-outline { filter: drop-shadow(0 0 1px black) drop-shadow(0 0 1px black) drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+            
+            .live-badge { background: #ff3333; color: white; padding: 1px 4px; border-radius: 3px; font-weight: bold; animation: pulse 2s infinite; font-size:0.7rem; border: 1px solid black; }
+            @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+            
+            .poss-pill { display: inline-block; background: rgba(0,0,0,0.8); color: #ffeb3b; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid #ffeb3b; }
+            .red-zone-pill { display: inline-block; background: rgba(255,51,51,0.9); color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid black; animation: pulse 1s infinite; }
+
+            .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
+            .view-hidden { display: none !important; }
 
             /* --- SCHEDULE VIEW STYLES --- */
             #schedule-view { position: relative; width: 100%; margin-top: 50px; background: #121212; min-height: calc(100vh - 50px); overflow-x: hidden; }
@@ -580,15 +587,15 @@ def root():
                 box-shadow: 0 2px 5px rgba(0,0,0,0.5); color: white;
                 display: flex; flex-direction: column; justify-content: center;
                 padding: 0 10px; font-size: 0.85rem; box-sizing: border-box;
-                border: 1px solid rgba(255,255,255,0.1);
+                border: 1px solid rgba(0,0,0,0.5);
             }
             .sched-card:hover { z-index: 100 !important; transform: scale(1.01); box-shadow: 0 5px 15px rgba(0,0,0,0.8); }
-            .card-header { display: flex; justify-content: space-between; margin-bottom: 2px; font-size: 0.7rem; opacity: 0.8; }
-            .team-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
-            .t-left { display: flex; align-items: center; gap: 5px; }
-            .t-logo { width: 20px; height: 20px; object-fit: contain; }
-            .t-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-            .t-score { font-weight: 700; font-size: 1rem; }
+            .card-header { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.7rem; opacity: 0.9; }
+            .team-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+            .t-left { display: flex; align-items: center; gap: 8px; }
+            .t-logo { width: 24px; height: 24px; object-fit: contain; }
+            .t-name { font-weight: 800; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .t-score { font-weight: 800; font-size: 1.3rem; }
 
             /* --- GRID VIEW STYLES --- */
             #grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 70px 20px 20px 20px; }
@@ -596,19 +603,16 @@ def root():
                 position: relative; border-radius: 12px; overflow: hidden;
                 box-shadow: 0 4px 10px rgba(0,0,0,0.5); color: white; height: 110px;
                 display: flex; align-items: center; justify-content: space-between;
-                padding: 0 15px; transition: transform 0.2s;
+                padding: 0 15px; transition: transform 0.2s; border: 1px solid rgba(0,0,0,0.5);
             }
             .grid-card:hover { transform: translateY(-3px); box-shadow: 0 6px 14px rgba(0,0,0,0.6); z-index: 10; }
             .gc-col { display: flex; flex-direction: column; align-items: center; z-index: 2; width: 70px; }
-            .gc-logo { width: 45px; height: 45px; object-fit: contain; filter: drop-shadow(0 3px 3px rgba(0,0,0,0.8)); margin-bottom:4px; }
-            .gc-abbr { font-size: 0.9rem; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
-            .gc-mid { z-index: 2; text-align: center; flex-grow: 1; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+            .gc-logo { width: 45px; height: 45px; object-fit: contain; margin-bottom:4px; }
+            .gc-abbr { font-size: 1rem; font-weight: 800; }
+            .gc-mid { z-index: 2; text-align: center; flex-grow: 1; }
             .gc-status { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
-            .gc-score { font-size: 1.6rem; font-weight: 800; line-height: 1; }
-            .gc-detail { font-size: 0.75rem; color: #ffc107; margin-top: 4px; font-weight: 600; }
-
-            .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
-            .view-hidden { display: none !important; }
+            .gc-score { font-size: 1.8rem; font-weight: 800; line-height: 1; }
+            .grid-poss-dot { color: #ffeb3b; font-size: 0.8rem; margin-top: 2px; text-shadow: 0 0 3px black; }
         </style>
     </head>
     <body>
@@ -747,9 +751,9 @@ def root():
                     const homeHasPoss = game.situation.possession === game.home_id;
                     const awayHasPoss = game.situation.possession === game.away_id;
                     
-                    let detailText = game.situation.downDist || '';
-                    let detailClass = "gc-detail";
-                    if(game.situation && game.situation.isRedZone) { detailClass += " red-zone"; }
+                    let detailHtml = '';
+                    if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; }
+                    else if(game.state === 'in' && game.situation.downDist) { detailHtml = `<div class="gc-status text-outline" style="color:#ffc107">${game.situation.downDist}</div>`; }
 
                     const div = document.createElement('div');
                     div.className = 'grid-card';
@@ -757,9 +761,21 @@ def root():
                     div.style.background = `linear-gradient(120deg, ${aC} 0%, ${aC} 45%, ${hC} 55%, ${hC} 100%)`;
                     div.innerHTML = `
                         <div class="overlay"></div>
-                        <div class="gc-col"><img class="gc-logo" src="${game.away_logo}"><div class="gc-abbr ${awayHasPoss?'poss-active':''}">${game.away_abbr}</div></div>
-                        <div class="gc-mid"><div class="gc-status">${game.status}</div><div class="gc-score">${game.away_score} - ${game.home_score}</div><div class="${detailClass}">${detailText}</div></div>
-                        <div class="gc-col"><img class="gc-logo" src="${game.home_logo}"><div class="gc-abbr ${homeHasPoss?'poss-active':''}">${game.home_abbr}</div></div>
+                        <div class="gc-col">
+                            <img class="gc-logo logo-outline" src="${game.away_logo}">
+                            <div class="gc-abbr text-outline">${game.away_abbr}</div>
+                            ${awayHasPoss ? '<div class="grid-poss-dot">🏈</div>' : ''}
+                        </div>
+                        <div class="gc-mid">
+                            <div class="gc-status text-outline">${game.status}</div>
+                            <div class="gc-score text-outline">${game.away_score} - ${game.home_score}</div>
+                            ${detailHtml}
+                        </div>
+                        <div class="gc-col">
+                            <img class="gc-logo logo-outline" src="${game.home_logo}">
+                            <div class="gc-abbr text-outline">${game.home_abbr}</div>
+                            ${homeHasPoss ? '<div class="grid-poss-dot">🏈</div>' : ''}
+                        </div>
                     `;
                     container.appendChild(div);
                 });
@@ -816,15 +832,38 @@ def root():
                         // SWAPPED COLORS FOR SCHEDULE VIEW: Home on Left, Away on Right
                         div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
 
-                        let statusHtml = `<div style="text-align:right">${game.status}</div>`;
-                        if(game.situation && game.situation.isRedZone) { statusHtml = `<div class="red-zone">${game.situation.downDist}</div>`; } 
-                        else if(game.state === 'in' && game.situation.downDist) { statusHtml = `<div style="text-align:right">${game.situation.downDist}</div>`; }
+                        let statusHtml = `<div class="text-outline" style="text-align:right">${game.status}</div>`;
+                        if(game.situation && game.situation.isRedZone) { statusHtml = `<div style="text-align:right"><span class="red-zone-pill">${game.situation.downDist}</span></div>`; } 
+                        else if(game.state === 'in' && game.situation.downDist) { statusHtml = `<div class="text-outline" style="text-align:right">${game.situation.downDist}</div>`; }
 
                         div.innerHTML = `
                             <div class="overlay"></div>
-                            <div class="card-header">${game.state === 'in' ? '<span class="live-badge">LIVE</span>' : '<span></span>'}${statusHtml}</div>
-                            <div class="team-row"><div class="t-left"><img class="t-logo" src="${game.away_logo}"><span class="t-name ${game.situation.possession === game.away_id ? 'poss-active' : ''}">${game.away_abbr}</span></div><div class="t-score">${game.away_score}</div></div>
-                            <div class="team-row"><div class="t-left"><img class="t-logo" src="${game.home_logo}"><span class="t-name ${game.situation.possession === game.home_id ? 'poss-active' : ''}">${game.home_abbr}</span></div><div class="t-score">${game.home_score}</div></div>
+                            <div class="card-header">
+                                ${game.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}
+                                ${statusHtml}
+                            </div>
+                            
+                            <div class="team-row">
+                                <div class="t-left">
+                                    <img class="t-logo logo-outline" src="${game.away_logo}">
+                                    <div>
+                                        <div class="t-name text-outline">${game.away_abbr}</div>
+                                        ${game.situation.possession === game.away_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                                    </div>
+                                </div>
+                                <div class="t-score text-outline">${game.away_score}</div>
+                            </div>
+
+                            <div class="team-row">
+                                <div class="t-left">
+                                    <img class="t-logo logo-outline" src="${game.home_logo}">
+                                    <div>
+                                        <div class="t-name text-outline">${game.home_abbr}</div>
+                                        ${game.situation.possession === game.home_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                                    </div>
+                                </div>
+                                <div class="t-score text-outline">${game.home_score}</div>
+                            </div>
                         `;
                         eventsArea.appendChild(div);
                     });
