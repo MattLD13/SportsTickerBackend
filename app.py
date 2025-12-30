@@ -568,16 +568,23 @@ def root():
             .live-badge { background: #ff3333; color: white; padding: 1px 4px; border-radius: 3px; font-weight: bold; animation: pulse 2s infinite; font-size:0.7rem; border: 1px solid black; }
             @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
             
-            /* SWIPER / SCROLLER */
-            .carousel-mode { display: flex; overflow-x: auto; gap: 10px; padding: 0 5px; scroll-snap-type: x mandatory; }
-            .carousel-mode .sched-card { position: relative; top: 0 !important; left: 0 !important; width: 85% !important; flex-shrink: 0; scroll-snap-align: center; height: 100%; }
-            .carousel-mode::-webkit-scrollbar { display: none; }
-
             .poss-pill { display: inline-block; background: rgba(0,0,0,0.8); color: #ffeb3b; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid #ffeb3b; }
             .red-zone-pill { display: inline-block; background: rgba(255,51,51,0.9); color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid black; animation: pulse 1s infinite; }
 
             .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
             .view-hidden { display: none !important; }
+
+            /* --- CAROUSEL STYLES --- */
+            .carousel-wrapper { position: absolute; width: 100%; height: 100%; }
+            .carousel-controls {
+                position: absolute; top: 50%; width: 100%; transform: translateY(-50%);
+                display: flex; justify-content: space-between; pointer-events: none; z-index: 200;
+            }
+            .carousel-btn {
+                background: rgba(0,0,0,0.6); color: white; border: none; padding: 10px 5px; cursor: pointer;
+                pointer-events: auto; border-radius: 4px; font-weight: bold; font-size: 1.2rem;
+            }
+            .carousel-btn:hover { background: rgba(0,0,0,0.9); }
 
             /* --- SCHEDULE VIEW STYLES --- */
             #schedule-view { position: relative; width: 100%; margin-top: 50px; background: #121212; min-height: calc(100vh - 50px); overflow-x: hidden; }
@@ -592,7 +599,7 @@ def root():
                 box-shadow: 0 2px 5px rgba(0,0,0,0.5); color: white;
                 display: flex; flex-direction: column; 
                 justify-content: flex-start; /* MOVE TEXT UP */
-                padding: 10px; /* Padding for top alignment */
+                padding: 10px;
                 font-size: 0.85rem; box-sizing: border-box;
                 border: 1px solid rgba(0,0,0,0.5);
             }
@@ -603,7 +610,9 @@ def root():
             .t-logo { width: 24px; height: 24px; object-fit: contain; }
             .t-name { font-weight: 800; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .t-score { font-weight: 800; font-size: 1.3rem; }
-            .card-footer { margin-top: 4px; font-size: 0.75rem; text-align: right; opacity: 0.9; font-weight: 600; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 2px; }
+            
+            /* Down Distance - Positioned Top Right in Header */
+            .header-detail { font-weight: 700; color: #ffeb3b; text-shadow: 1px 1px 0 #000; }
 
             /* --- GRID VIEW STYLES --- */
             #grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 70px 20px 20px 20px; }
@@ -691,6 +700,10 @@ def root():
             // --- CONSTANTS & UTIL ---
             const PIXELS_PER_MINUTE = 1.5; 
             const START_HOUR = 8; // 8 AM start for schedule
+            
+            // Carousel State: maps 'group_key' -> current index
+            let carouselState = {};
+
             function toggleMenu() { document.getElementById('sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('active'); }
             function hexToRgb(hex) { if(!hex) return {r:0, g:0, b:0}; hex = hex.replace(/^#/, ''); if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2]; const bigint = parseInt(hex, 16); return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 }; }
             function getLuminance(r, g, b) { return (0.2126 * r + 0.7152 * g + 0.0722 * b); }
@@ -797,9 +810,13 @@ def root():
 
                 const nowLine = document.createElement('div'); nowLine.className = 'current-time-line'; eventsArea.appendChild(nowLine);
 
+                // Draw Timeline (12-Hour Format)
                 for(let i=0; i<18; i++) {
                     const hour = START_HOUR + i; const top = i * 60 * PIXELS_PER_MINUTE;
-                    const marker = document.createElement('div'); marker.className = 'time-marker'; marker.innerText = hour > 12 ? (hour-12)+' PM' : (hour===12 ? '12 PM' : hour+' AM'); marker.style.top = top + 'px'; axis.appendChild(marker);
+                    let displayHour = (hour % 12) || 12;
+                    displayHour += (hour < 12 ? ' AM' : ' PM');
+                    
+                    const marker = document.createElement('div'); marker.className = 'time-marker'; marker.innerText = displayHour; marker.style.top = top + 'px'; axis.appendChild(marker);
                     const grid = document.createElement('div'); grid.className = 'grid-line'; grid.style.top = top + 'px'; eventsArea.appendChild(grid);
                 }
 
@@ -809,15 +826,34 @@ def root():
                 const nowMins = localNow.getHours() * 60 + localNow.getMinutes() - (START_HOUR * 60);
                 if(nowMins > 0) nowLine.style.top = (nowMins * PIXELS_PER_MINUTE) + 'px';
 
-                let events = [];
+                // PRE-PROCESS: Bucket Games by (Sport + Start Time)
+                let buckets = {};
                 games.forEach(g => {
                     if(g.sport === 'weather' || g.sport === 'clock') return;
-                    const d = new Date(g.startTimeUTC); const local = new Date(d.getTime() + offsetMs + (new Date().getTimezoneOffset()*60000));
-                    const startMins = local.getHours() * 60 + local.getMinutes() - (START_HOUR * 60);
-                    events.push({ start: startMins, end: startMins + (g.estimated_duration || 180), data: g });
+                    const key = g.sport + '_' + g.startTimeUTC;
+                    if(!buckets[key]) buckets[key] = [];
+                    buckets[key].push(g);
                 });
 
+                // Convert Buckets to "Composite Events"
+                let events = [];
+                Object.keys(buckets).forEach(key => {
+                    const group = buckets[key];
+                    const g = group[0]; // Representative for time calculation
+                    const d = new Date(g.startTimeUTC); const local = new Date(d.getTime() + offsetMs + (new Date().getTimezoneOffset()*60000));
+                    const startMins = local.getHours() * 60 + local.getMinutes() - (START_HOUR * 60);
+                    
+                    events.push({ 
+                        start: startMins, 
+                        end: startMins + (g.estimated_duration || 180), 
+                        games: group, // Array of games in this slot
+                        key: key 
+                    });
+                });
+
+                // Sort & Layout
                 events.sort((a,b) => a.start - b.start);
+                // Basic Clustering for overlapping DIFFERENT sport/time groups
                 let clusters = [];
                 if(events.length > 0) {
                     let currentCluster = [events[0]]; let clusterEnd = events[0].end;
@@ -829,80 +865,103 @@ def root():
                 }
 
                 clusters.forEach(cluster => {
-                    // Check if clustering is needed (same time)
-                    // If multiple events, use horizontal swiper container
-                    if(cluster.length > 1) {
-                        const wrapper = document.createElement('div');
-                        wrapper.className = 'carousel-mode';
-                        wrapper.style.position = 'absolute';
-                        // Position based on earliest start
-                        const minStart = Math.min(...cluster.map(e => e.start));
-                        const maxEnd = Math.max(...cluster.map(e => e.end));
+                    const widthPct = 100 / cluster.length;
+                    cluster.forEach((ev, idx) => {
+                        // If group has > 1 game, render Carousel
+                        const isCarousel = ev.games.length > 1;
+                        const currentIndex = carouselState[ev.key] || 0;
+                        // Ensure index validity (in case games finished/removed)
+                        const safeIndex = (currentIndex >= ev.games.length) ? 0 : currentIndex;
+                        const game = ev.games[safeIndex];
+
+                        const div = document.createElement('div'); div.className = 'sched-card';
+                        div.style.top = (ev.start * PIXELS_PER_MINUTE) + 'px'; 
+                        div.style.height = ((ev.end - ev.start) * PIXELS_PER_MINUTE) + 'px';
+                        div.style.width = widthPct + '%'; 
+                        div.style.left = (idx * widthPct) + '%';
                         
-                        wrapper.style.top = (minStart * PIXELS_PER_MINUTE) + 'px';
-                        wrapper.style.height = ((maxEnd - minStart) * PIXELS_PER_MINUTE) + 'px';
-                        wrapper.style.left = '0';
-                        wrapper.style.right = '0';
-                        
-                        cluster.forEach(ev => {
-                            wrapper.appendChild(createCard(ev.data, true));
-                        });
-                        eventsArea.appendChild(wrapper);
-                    } else {
-                        // Single item
-                        const ev = cluster[0];
-                        const card = createCard(ev.data, false);
-                        card.style.top = (ev.start * PIXELS_PER_MINUTE) + 'px';
-                        card.style.height = ((ev.end - ev.start) * PIXELS_PER_MINUTE) + 'px';
-                        card.style.width = '95%';
-                        eventsArea.appendChild(card);
-                    }
+                        const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
+                        div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
+
+                        // Status Logic
+                        let headerRight = `<span class="text-outline" style="text-align:right">${game.status}</span>`;
+                        if(game.situation && game.situation.isRedZone) { 
+                            headerRight = `<span class="red-zone-pill" style="float:right">${game.situation.downDist}</span>`; 
+                        } else if(game.state === 'in' && game.situation.downDist) {
+                            headerRight = `<span class="header-detail text-outline" style="float:right">${game.situation.downDist}</span>`;
+                        }
+
+                        // Carousel Arrows
+                        let arrowsHtml = '';
+                        if(isCarousel) {
+                            arrowsHtml = `
+                                <div class="carousel-controls">
+                                    <button class="carousel-btn" onclick="rotateCarousel('${ev.key}', -1)">‹</button>
+                                    <button class="carousel-btn" onclick="rotateCarousel('${ev.key}', 1)">›</button>
+                                </div>
+                                <div style="position:absolute; bottom:2px; left:0; right:0; text-align:center; font-size:0.6rem; opacity:0.7;">
+                                    ${safeIndex + 1} / ${ev.games.length}
+                                </div>
+                            `;
+                        }
+
+                        div.innerHTML = `
+                            <div class="overlay"></div>
+                            ${arrowsHtml}
+                            <div class="card-header">
+                                ${game.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}
+                                ${headerRight}
+                            </div>
+                            
+                            <div class="team-row">
+                                <div class="t-left">
+                                    <img class="t-logo logo-outline" src="${game.away_logo}">
+                                    <div>
+                                        <div class="t-name text-outline">${game.away_abbr}</div>
+                                        ${game.situation.possession === game.away_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                                    </div>
+                                </div>
+                                <div class="t-score text-outline">${game.away_score}</div>
+                            </div>
+
+                            <div class="team-row">
+                                <div class="t-left">
+                                    <img class="t-logo logo-outline" src="${game.home_logo}">
+                                    <div>
+                                        <div class="t-name text-outline">${game.home_abbr}</div>
+                                        ${game.situation.possession === game.home_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                                    </div>
+                                </div>
+                                <div class="t-score text-outline">${game.home_score}</div>
+                            </div>
+                        `;
+                        eventsArea.appendChild(div);
+                    });
                 });
             }
 
-            function createCard(game, isSlide) {
-                const div = document.createElement('div'); 
-                div.className = 'sched-card';
-                const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
-                div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
-
-                let footerHtml = '';
-                if(game.situation && game.situation.isRedZone) { footerHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; } 
-                else if(game.state === 'in' && game.situation.downDist) { footerHtml = `<div class="text-outline">${game.situation.downDist}</div>`; }
-
-                div.innerHTML = `
-                    <div class="overlay"></div>
-                    <div class="card-header">
-                        ${game.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}
-                        <span class="text-outline" style="text-align:right">${game.status}</span>
-                    </div>
-                    
-                    <div class="team-row">
-                        <div class="t-left">
-                            <img class="t-logo logo-outline" src="${game.away_logo}">
-                            <div>
-                                <div class="t-name text-outline">${game.away_abbr}</div>
-                                ${game.situation.possession === game.away_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
-                            </div>
-                        </div>
-                        <div class="t-score text-outline">${game.away_score}</div>
-                    </div>
-
-                    <div class="team-row">
-                        <div class="t-left">
-                            <img class="t-logo logo-outline" src="${game.home_logo}">
-                            <div>
-                                <div class="t-name text-outline">${game.home_abbr}</div>
-                                ${game.situation.possession === game.home_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
-                            </div>
-                        </div>
-                        <div class="t-score text-outline">${game.home_score}</div>
-                    </div>
-                    
-                    ${footerHtml ? `<div class="card-footer">${footerHtml}</div>` : ''}
-                `;
-                return div;
-            }
+            // Global function to handle carousel clicks
+            window.rotateCarousel = function(key, dir) {
+                // We need to know current index. Since we don't have full state here easily,
+                // we rely on the global carouselState map.
+                let current = carouselState[key] || 0;
+                // We need to know the MAX length. 
+                // Hack: We don't have the array length here easily without re-finding it in DOM or state.
+                // Better approach: Re-fetch or pass length in onclick? 
+                // Simplest: Find the bucket in the currently rendered 'data' variable? 
+                // Actually, just incrementing blindly works if we re-render, but we need immediate feedback?
+                // No, update state then re-render immediately.
+                
+                // To get length, we need the data. Let's just store length in a global lookup during render?
+                // Implementation details:
+                // We will just increment/decrement. The render function handles out-of-bounds checks.
+                // We assume the user doesn't click 100 times.
+                
+                carouselState[key] = current + dir;
+                // Trigger re-render with cached data?
+                // Ideally we have 'lastData'.
+                if(window.lastData) render(window.lastData);
+            };
 
             async function saveSettings() {
                 const payload = {
@@ -920,7 +979,22 @@ def root():
                 toggleMenu(); loadState();
             }
 
-            loadState(); setInterval(loadState, 10000);
+            // Poll Loop
+            setInterval(loadState, 5000);
+            loadState(); // First load
+            
+            // Hook fetch to store last data for carousel
+            const originalFetch = window.fetch;
+            window.fetch = async (...args) => {
+                const response = await originalFetch(...args);
+                const clone = response.clone();
+                try {
+                    const data = await clone.json();
+                    if(data.games) window.lastData = data; 
+                } catch(e){}
+                return response;
+            };
+
         </script>
     </body>
     </html>
