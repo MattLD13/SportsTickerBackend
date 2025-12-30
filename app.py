@@ -596,6 +596,7 @@ def root():
             .t-logo { width: 24px; height: 24px; object-fit: contain; }
             .t-name { font-weight: 800; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .t-score { font-weight: 800; font-size: 1.3rem; }
+            .card-footer { margin-top: 4px; font-size: 0.75rem; text-align: right; opacity: 0.9; font-weight: 600; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 2px; }
 
             /* --- GRID VIEW STYLES --- */
             #grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 70px 20px 20px 20px; }
@@ -832,15 +833,15 @@ def root():
                         // SWAPPED COLORS FOR SCHEDULE VIEW: Home on Left, Away on Right
                         div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
 
-                        let statusHtml = `<div class="text-outline" style="text-align:right">${game.status}</div>`;
-                        if(game.situation && game.situation.isRedZone) { statusHtml = `<div style="text-align:right"><span class="red-zone-pill">${game.situation.downDist}</span></div>`; } 
-                        else if(game.state === 'in' && game.situation.downDist) { statusHtml = `<div class="text-outline" style="text-align:right">${game.situation.downDist}</div>`; }
+                        let footerHtml = '';
+                        if(game.situation && game.situation.isRedZone) { footerHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; } 
+                        else if(game.state === 'in' && game.situation.downDist) { footerHtml = `<div class="text-outline">${game.situation.downDist}</div>`; }
 
                         div.innerHTML = `
                             <div class="overlay"></div>
                             <div class="card-header">
                                 ${game.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}
-                                ${statusHtml}
+                                <span class="text-outline" style="text-align:right">${game.status}</span>
                             </div>
                             
                             <div class="team-row">
@@ -864,6 +865,8 @@ def root():
                                 </div>
                                 <div class="t-score text-outline">${game.home_score}</div>
                             </div>
+                            
+                            ${footerHtml ? `<div class="card-footer">${footerHtml}</div>` : ''}
                         `;
                         eventsArea.appendChild(div);
                     });
