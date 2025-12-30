@@ -8,8 +8,6 @@ import requests
 from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
-# HARDCODED TO -4 (AST/EDT)
-DEFAULT_OFFSET = -4 
 CONFIG_FILE = "ticker_config.json"
 UPDATE_INTERVAL = 5
 data_lock = threading.Lock()
@@ -36,7 +34,8 @@ default_state = {
     'panel_count': 2,
     'test_pattern': False,
     'reboot_requested': False,
-    'weather_location': "New York"
+    'weather_location': "New York",
+    'utc_offset': -4  # Default to AST/EDT
 }
 
 state = default_state.copy()
@@ -62,7 +61,8 @@ def save_config_file():
                 'brightness': state['brightness'],
                 'inverted': state['inverted'],
                 'panel_count': state['panel_count'],
-                'weather_location': state['weather_location']
+                'weather_location': state['weather_location'],
+                'utc_offset': state['utc_offset']
             }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(export_data, f)
@@ -225,7 +225,10 @@ class SportsFetcher:
         except: pass
 
     def _fetch_nhl_native(self, games_list, target_date_str):
-        with data_lock: is_nhl = state['active_sports'].get('nhl', False)
+        with data_lock: 
+            is_nhl = state['active_sports'].get('nhl', False)
+            utc_offset = state.get('utc_offset', -4)
+        
         if not is_nhl: return
         processed_ids = set()
         
@@ -271,7 +274,7 @@ class SportsFetcher:
                         if st in ['PRE', 'FUT'] and utc_start:
                              try:
                                  dt_obj = dt.fromisoformat(utc_start.replace('Z', '+00:00'))
-                                 local = dt_obj.astimezone(timezone(timedelta(hours=DEFAULT_OFFSET)))
+                                 local = dt_obj.astimezone(timezone(timedelta(hours=utc_offset)))
                                  disp = local.strftime("%I:%M %p").lstrip('0')
                              except: pass
                         elif st in ['FINAL', 'OFF']:
@@ -327,6 +330,8 @@ class SportsFetcher:
     def get_real_games(self):
         games = []
         with data_lock: conf = state.copy()
+        
+        utc_offset = conf.get('utc_offset', -4)
 
         if conf['active_sports'].get('clock'):
             with data_lock: state['current_games'] = [{'sport':'clock','id':'clk','is_shown':True}]; return
@@ -337,7 +342,7 @@ class SportsFetcher:
                 with data_lock: state['current_games'] = [w]; return
 
         req_params = {}
-        now_local = dt.now(timezone(timedelta(hours=DEFAULT_OFFSET)))
+        now_local = dt.now(timezone(timedelta(hours=utc_offset)))
         if conf['debug_mode'] and conf['custom_date']:
             target_date_str = conf['custom_date']
         else:
@@ -366,7 +371,7 @@ class SportsFetcher:
                     utc_start_iso = e['date']
                     
                     game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                    game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=DEFAULT_OFFSET)))
+                    game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=utc_offset)))
                     game_date_str = game_dt_server.strftime("%Y-%m-%d")
                     
                     st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
@@ -481,138 +486,182 @@ def root():
         <style>
             body { 
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                background: #121212; 
-                color: #ddd; 
+                background: #111; 
+                color: #eee; 
                 margin: 0; 
                 padding: 20px;
             }
-            h1, h2 { color: #888; margin-bottom: 10px; font-weight: 300; }
+            h1, h2, h3 { color: #888; margin-bottom: 10px; font-weight: 300; }
             
-            /* --- SETTINGS BOX --- */
-            .settings-panel {
-                background: #1e1e1e;
+            /* --- MODERN SETTINGS CARD --- */
+            .settings-card {
+                background: rgba(30, 30, 30, 0.95);
                 border: 1px solid #333;
-                border-radius: 8px;
-                padding: 15px;
-                margin-bottom: 25px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+                border-radius: 12px;
+                padding: 20px;
+                margin-bottom: 30px;
+                box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+                backdrop-filter: blur(10px);
             }
+            .section-title {
+                font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; color: #666; 
+                margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px;
+            }
+            
             .settings-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-                gap: 15px;
-                margin-bottom: 15px;
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 20px;
+                margin-bottom: 20px;
             }
-            .setting-item { display: flex; flex-direction: column; gap: 5px; }
-            .checkbox-group { display: flex; flex-direction: column; gap: 3px; }
-            label { font-size: 0.9rem; color: #aaa; }
-            
-            button.save-btn {
-                background: #007bff; color: white; border: none; padding: 8px 16px; 
-                border-radius: 4px; cursor: pointer; font-size: 0.9rem;
-            }
-            button.save-btn:hover { background: #0056b3; }
 
-            button.reboot-btn {
-                background: #dc3545; color: white; border: none; padding: 8px 16px; 
-                border-radius: 4px; cursor: pointer; font-size: 0.9rem; margin-left: 10px;
-            }
+            .control-group { display: flex; flex-direction: column; gap: 8px; }
             
+            /* Toggle Switch */
+            .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+            .toggle-label { font-size: 0.95rem; }
+            .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+            .switch input { opacity: 0; width: 0; height: 0; }
+            .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #444; transition: .4s; border-radius: 34px; }
+            .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+            input:checked + .slider { background-color: #007bff; }
+            input:checked + .slider:before { transform: translateX(14px); }
+
+            /* Modern Inputs */
+            select, input[type="text"], input[type="number"] {
+                background: #2a2a2a; border: 1px solid #444; color: white; 
+                padding: 10px; border-radius: 6px; width: 100%; 
+                font-size: 0.9rem; box-sizing: border-box; outline: none; transition: border-color 0.2s;
+            }
+            select:focus, input:focus { border-color: #007bff; }
+
+            /* Buttons */
+            .btn-row { display: flex; gap: 10px; margin-top: 10px; }
+            button {
+                padding: 10px 20px; border-radius: 6px; border: none; font-size: 0.9rem; 
+                cursor: pointer; transition: opacity 0.2s; font-weight: 600;
+            }
+            button:hover { opacity: 0.9; }
+            .btn-primary { background: #007bff; color: white; }
+            .btn-danger { background: #dc3545; color: white; }
+
             /* --- GAMES GRID --- */
             #container { 
                 display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
                 gap: 15px;
             }
             
             .game-card {
                 position: relative;
-                border-radius: 10px;
+                border-radius: 12px;
                 overflow: hidden;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+                box-shadow: 0 4px 10px rgba(0,0,0,0.5);
                 color: white;
-                height: 100px; /* Fixed small height */
+                height: 110px; 
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 padding: 0 15px;
                 transition: transform 0.2s;
             }
-            .game-card:hover { transform: scale(1.03); z-index: 10; }
+            .game-card:hover { transform: translateY(-3px); box-shadow: 0 6px 14px rgba(0,0,0,0.6); z-index: 10; }
             
             .overlay {
                 position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0,0,0,0.35); z-index: 1;
+                background: rgba(0,0,0,0.3); z-index: 1; /* Slight dark tint for readability */
             }
             
-            .team-col { display: flex; flex-direction: column; align-items: center; z-index: 2; width: 60px; }
-            .team-col img { width: 40px; height: 40px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.8)); }
-            .team-abbr { font-size: 0.9rem; font-weight: bold; margin-top: 3px; text-shadow: 0 1px 2px black; }
+            .team-col { display: flex; flex-direction: column; align-items: center; z-index: 2; width: 70px; }
+            .team-col img { width: 45px; height: 45px; object-fit: contain; filter: drop-shadow(0 3px 3px rgba(0,0,0,0.8)); margin-bottom:4px; }
+            .team-abbr { font-size: 0.9rem; font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
             
-            /* Possession Highlight */
             .poss-active {
-                color: #ffeb3b; /* Yellow */
-                text-shadow: 0 0 5px rgba(255, 69, 0, 0.8), 0 1px 2px black; /* Red/Orange Glow */
+                color: #ffeb3b; 
+                text-shadow: 0 0 8px rgba(255, 69, 0, 0.8), 0 1px 2px black; 
             }
 
             .mid-col { z-index: 2; text-align: center; flex-grow: 1; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
             .status-text { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
-            .score-text { font-size: 1.4rem; font-weight: 800; line-height: 1.1; }
-            .poss-text { font-size: 0.7rem; color: #ffc107; margin-top: 2px; }
+            .score-text { font-size: 1.6rem; font-weight: 800; line-height: 1; }
+            .poss-text { font-size: 0.75rem; color: #ffc107; margin-top: 4px; font-weight: 600; }
 
-            .loading { grid-column: 1 / -1; text-align: center; font-style: italic; color: #666; }
+            .loading { grid-column: 1 / -1; text-align: center; font-style: italic; color: #666; margin-top: 20px; }
         </style>
     </head>
     <body>
         
-        <div class="settings-panel">
-            <h2 style="margin-top:0">Ticker Settings</h2>
+        <div class="settings-card">
+            <h2 style="margin-top:0; border-bottom: 1px solid #444; padding-bottom:10px; margin-bottom:20px;">Ticker Control Center</h2>
+            
             <div class="settings-grid">
                 
-                <div class="setting-item">
-                    <label><strong>Sports</strong></label>
-                    <div class="checkbox-group">
-                        <label><input type="checkbox" id="chk_nfl"> NFL</label>
-                        <label><input type="checkbox" id="chk_nba"> NBA</label>
-                        <label><input type="checkbox" id="chk_nhl"> NHL</label>
-                        <label><input type="checkbox" id="chk_mlb"> MLB</label>
-                        <label><input type="checkbox" id="chk_ncf_fbs"> NCAA FBS</label>
-                        <label><input type="checkbox" id="chk_ncf_fcs"> NCAA FCS</label>
+                <div class="control-group">
+                    <div class="section-title">Sports</div>
+                    <div class="toggle-row"><span class="toggle-label">NFL</span><label class="switch"><input type="checkbox" id="chk_nfl"><span class="slider"></span></label></div>
+                    <div class="toggle-row"><span class="toggle-label">NBA</span><label class="switch"><input type="checkbox" id="chk_nba"><span class="slider"></span></label></div>
+                    <div class="toggle-row"><span class="toggle-label">NHL</span><label class="switch"><input type="checkbox" id="chk_nhl"><span class="slider"></span></label></div>
+                    <div class="toggle-row"><span class="toggle-label">MLB</span><label class="switch"><input type="checkbox" id="chk_mlb"><span class="slider"></span></label></div>
+                    <div class="toggle-row"><span class="toggle-label">NCAA FBS</span><label class="switch"><input type="checkbox" id="chk_ncf_fbs"><span class="slider"></span></label></div>
+                    <div class="toggle-row"><span class="toggle-label">NCAA FCS</span><label class="switch"><input type="checkbox" id="chk_ncf_fcs"><span class="slider"></span></label></div>
+                </div>
+
+                <div class="control-group">
+                    <div class="section-title">Widgets</div>
+                    <div class="toggle-row"><span class="toggle-label">Weather</span><label class="switch"><input type="checkbox" id="chk_weather"><span class="slider"></span></label></div>
+                    <div class="toggle-row"><span class="toggle-label">Clock</span><label class="switch"><input type="checkbox" id="chk_clock"><span class="slider"></span></label></div>
+                    
+                    <div style="margin-top:10px;">
+                        <label style="display:block; margin-bottom:5px; font-size:0.85rem; color:#aaa;">Brightness</label>
+                        <input type="range" id="rng_bright" min="0.1" max="1.0" step="0.1" style="width:100%">
                     </div>
                 </div>
 
-                <div class="setting-item">
-                    <label><strong>Display</strong></label>
-                    <div class="checkbox-group">
-                        <label><input type="checkbox" id="chk_weather"> Weather</label>
-                        <label><input type="checkbox" id="chk_clock"> Clock</label>
-                        <div style="margin-top:5px;">
-                            <label>Brightness</label><br>
-                            <input type="range" id="rng_bright" min="0.1" max="1.0" step="0.1" style="width:100%">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="setting-item">
-                    <label><strong>Mode</strong></label>
-                    <select id="sel_mode" style="width:100%; padding:5px; margin-bottom:5px;">
+                <div class="control-group">
+                    <div class="section-title">Configuration</div>
+                    
+                    <label style="font-size:0.85rem; color:#aaa;">Filter Mode</label>
+                    <select id="sel_mode">
                         <option value="all">All Games</option>
                         <option value="live">Live Only</option>
                         <option value="my_teams">My Teams Only</option>
                     </select>
-                    <label><input type="checkbox" id="chk_scroll"> Seamless Scroll</label>
-                    <label style="margin-top:5px">Location</label>
-                    <input type="text" id="inp_loc" style="width:100%; padding:4px;" placeholder="Zip or City">
+
+                    <label style="font-size:0.85rem; color:#aaa; margin-top:10px;">Time Zone</label>
+                    <select id="sel_timezone">
+                        <option value="-4">Atlantic / EDT (UTC-4)</option>
+                        <option value="-5">Eastern Standard (UTC-5)</option>
+                        <option value="-6">Central (UTC-6)</option>
+                        <option value="-7">Mountain (UTC-7)</option>
+                        <option value="-8">Pacific (UTC-8)</option>
+                        <option value="-9">Alaska (UTC-9)</option>
+                        <option value="-10">Hawaii (UTC-10)</option>
+                        <option value="0">UTC / GMT</option>
+                    </select>
+
+                    <div class="toggle-row" style="margin-top:10px;">
+                        <span class="toggle-label">Seamless Scroll</span>
+                        <label class="switch"><input type="checkbox" id="chk_scroll"><span class="slider"></span></label>
+                    </div>
                 </div>
+
+                 <div class="control-group">
+                    <div class="section-title">Location</div>
+                    <input type="text" id="inp_loc" placeholder="Enter Zip or City" style="margin-bottom:10px;">
+                </div>
+
             </div>
             
-            <button class="save-btn" onclick="saveSettings()">Save Changes</button>
-            <button class="reboot-btn" onclick="rebootDevice()">Reboot Ticker</button>
+            <div class="btn-row">
+                <button class="btn-primary" onclick="saveSettings()">Save Configuration</button>
+                <div style="flex-grow:1"></div>
+                <button class="btn-danger" onclick="rebootDevice()">Reboot Device</button>
+            </div>
         </div>
 
-        <h1>Active Games</h1>
+        <h1 style="border-bottom: 1px solid #333; padding-bottom: 10px;">Active Games</h1>
         <div id="container">
-            <div class="loading">Loading data...</div>
+            <div class="loading">Initializing Dashboard...</div>
         </div>
 
         <script>
@@ -625,9 +674,7 @@ def root():
                 return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
             }
             
-            // Calculate perceived brightness (luminance)
             function getLuminance(r, g, b) {
-                // Formula: 0.2126*R + 0.7152*G + 0.0722*B
                 return (0.2126 * r + 0.7152 * g + 0.0722 * b);
             }
 
@@ -635,57 +682,34 @@ def root():
                 return Math.sqrt(Math.pow(c1.r - c2.r, 2) + Math.pow(c1.g - c2.g, 2) + Math.pow(c1.b - c2.b, 2));
             }
 
-            // NOTE: hC = Home Color, aC = Away Color
             function resolveColors(aColor, aAlt, hColor, hAlt) {
                 const DIST_THRESHOLD = 100;
-                const LUM_THRESHOLD = 50; // Increased threshold to catch "Rich Blacks"
+                const LUM_THRESHOLD = 50; 
                 
-                // Defaults
                 let aC = aColor || '#000000'; let aA = aAlt || '#ffffff';
                 let hC = hColor || '#000000'; let hA = hAlt || '#ffffff';
 
                 let aRgb = hexToRgb(aC);
                 let hRgb = hexToRgb(hC);
 
-                // RULE 1: Anti-Void (If primary is too dark, swap to Alt)
                 if (getLuminance(aRgb.r, aRgb.g, aRgb.b) < LUM_THRESHOLD && aA) {
-                    aC = aA;
-                    aRgb = hexToRgb(aC);
+                    aC = aA; aRgb = hexToRgb(aC);
                 }
                 if (getLuminance(hRgb.r, hRgb.g, hRgb.b) < LUM_THRESHOLD && hA) {
-                    hC = hA;
-                    hRgb = hexToRgb(hC);
+                    hC = hA; hRgb = hexToRgb(hC);
                 }
 
-                // RULE 2: Contrast (If too similar, try combinations of Alternates)
                 if (colorDistance(aRgb, hRgb) < DIST_THRESHOLD) {
                     let bestDist = -1;
-                    let bestCombo = [aC, hC]; // Default to current
-
-                    // Try all 3 other combos
-                    const combos = [
-                        { c1: aA, c2: hC }, 
-                        { c1: aC, c2: hA }, 
-                        { c1: aA, c2: hA }
-                    ];
-
+                    let bestCombo = [aC, hC]; 
+                    const combos = [{ c1: aA, c2: hC }, { c1: aC, c2: hA }, { c1: aA, c2: hA }];
                     combos.forEach(combo => {
                         const d = colorDistance(hexToRgb(combo.c1), hexToRgb(combo.c2));
-                        if(d > bestDist) {
-                            bestDist = d;
-                            bestCombo = [combo.c1, combo.c2];
-                        }
+                        if(d > bestDist) { bestDist = d; bestCombo = [combo.c1, combo.c2]; }
                     });
-
-                    // If the best alternate combo is good enough, use it
-                    if (bestDist > DIST_THRESHOLD) {
-                        return bestCombo;
-                    } else {
-                        // If STILL bad, force Away to a dark gray/black to force contrast
-                        return ['#111111', hC];
-                    }
+                    if (bestDist > DIST_THRESHOLD) return bestCombo;
+                    else return ['#111111', hC];
                 }
-                
                 return [aC, hC];
             }
 
@@ -713,6 +737,12 @@ def root():
                     document.getElementById('sel_mode').value = s.mode;
                     document.getElementById('chk_scroll').checked = s.scroll_seamless;
                     document.getElementById('inp_loc').value = s.weather_location;
+                    
+                    // Set Timezone Dropdown
+                    const tzSelect = document.getElementById('sel_timezone');
+                    if (s.utc_offset !== undefined) {
+                        tzSelect.value = s.utc_offset;
+                    }
 
                     renderGames(data.games);
                 } catch(e) { console.error(e); }
@@ -721,7 +751,7 @@ def root():
             function renderGames(games) {
                 const container = document.getElementById('container');
                 if (!games || games.length === 0) {
-                    container.innerHTML = '<div class="loading">No games found. Check filters.</div>';
+                    container.innerHTML = '<div class="loading">No games active. Check filters or schedule.</div>';
                     return;
                 }
                 
@@ -730,34 +760,26 @@ def root():
                 games.forEach(game => {
                     if(game.sport === 'weather' || game.sport === 'clock') return;
 
-                    // Pass arguments in correct order: Away, AwayAlt, Home, HomeAlt
-                    // Returns [LeftColor, RightColor] which corresponds to [AwayColor, HomeColor]
                     const [leftColor, rightColor] = resolveColors(
                         game.away_color, game.away_alt_color,
                         game.home_color, game.home_alt_color
                     );
 
-                    // Determine Possession Logic
                     const possId = game.situation.possession;
                     const homeHasPoss = possId && (possId === game.home_id);
                     const awayHasPoss = possId && (possId === game.away_id);
                     
-                    // Highlight classes
                     const homeClass = homeHasPoss ? 'team-abbr poss-active' : 'team-abbr';
                     const awayClass = awayHasPoss ? 'team-abbr poss-active' : 'team-abbr';
 
-                    // Bottom text logic
                     let bottomText = '';
                     if(game.sport === 'nfl' || game.sport.includes('ncf')) {
                         bottomText = game.situation.downDist || '';
-                    } else if (possId) {
-                         // Fallback for basketball/hockey if API provides possession
-                         // bottomText = 'Possession'; 
-                    }
+                    } 
 
                     const div = document.createElement('div');
                     div.className = 'game-card';
-                    div.style.background = `linear-gradient(135deg, ${leftColor} 0%, ${leftColor} 45%, ${rightColor} 55%, ${rightColor} 100%)`;
+                    div.style.background = `linear-gradient(120deg, ${leftColor} 0%, ${leftColor} 45%, ${rightColor} 55%, ${rightColor} 100%)`;
 
                     div.innerHTML = `
                         <div class="overlay"></div>
@@ -794,7 +816,8 @@ def root():
                     brightness: parseFloat(document.getElementById('rng_bright').value),
                     mode: document.getElementById('sel_mode').value,
                     scroll_seamless: document.getElementById('chk_scroll').checked,
-                    weather_location: document.getElementById('inp_loc').value
+                    weather_location: document.getElementById('inp_loc').value,
+                    utc_offset: parseInt(document.getElementById('sel_timezone').value)
                 };
 
                 await fetch('/api/config', {
@@ -826,10 +849,10 @@ def root():
 
 @app.route('/api/ticker')
 def api_ticker():
-    # Force -4 Offset
-    offset_sec = DEFAULT_OFFSET * 3600
-    
+    # Use Dynamic Offset from State
     with data_lock: d = state.copy()
+    offset_sec = d.get('utc_offset', -4) * 3600
+    
     raw_games = d['current_games']
     processed_games = []
     
