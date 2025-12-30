@@ -635,36 +635,58 @@ def root():
                 return Math.sqrt(Math.pow(c1.r - c2.r, 2) + Math.pow(c1.g - c2.g, 2) + Math.pow(c1.b - c2.b, 2));
             }
 
-            function resolveColors(hColor, hAlt, aColor, aAlt) {
+            // NOTE: hC = Home Color, aC = Away Color
+            function resolveColors(aColor, aAlt, hColor, hAlt) {
                 const DIST_THRESHOLD = 100;
-                const LUM_THRESHOLD = 40; // Colors darker than this (out of 255) are considered "black/void"
+                const LUM_THRESHOLD = 50; // Increased threshold to catch "Rich Blacks"
                 
                 // Defaults
-                let hC = hColor || '#000000'; let hA = hAlt || '#ffffff';
                 let aC = aColor || '#000000'; let aA = aAlt || '#ffffff';
+                let hC = hColor || '#000000'; let hA = hAlt || '#ffffff';
 
-                let hRgb = hexToRgb(hC);
                 let aRgb = hexToRgb(aC);
+                let hRgb = hexToRgb(hC);
 
                 // RULE 1: Anti-Void (If primary is too dark, swap to Alt)
-                if (getLuminance(hRgb.r, hRgb.g, hRgb.b) < LUM_THRESHOLD && hA) {
-                    hC = hA;
-                    hRgb = hexToRgb(hC);
-                }
                 if (getLuminance(aRgb.r, aRgb.g, aRgb.b) < LUM_THRESHOLD && aA) {
                     aC = aA;
                     aRgb = hexToRgb(aC);
                 }
+                if (getLuminance(hRgb.r, hRgb.g, hRgb.b) < LUM_THRESHOLD && hA) {
+                    hC = hA;
+                    hRgb = hexToRgb(hC);
+                }
 
-                // RULE 2: Contrast (If too similar, darken the Away team to Black/DarkGray to force contrast)
-                if (colorDistance(hRgb, aRgb) < DIST_THRESHOLD) {
-                    // Force Away to a standard dark gray if it creates contrast, otherwise try something else
-                    // For now, simple logic: if too close, make Away dark (unless Home is dark, then make Away bright?)
-                    // Let's stick to the prompt's request: "default the away team to #000000"
-                    aC = '#222222'; 
+                // RULE 2: Contrast (If too similar, try combinations of Alternates)
+                if (colorDistance(aRgb, hRgb) < DIST_THRESHOLD) {
+                    let bestDist = -1;
+                    let bestCombo = [aC, hC]; // Default to current
+
+                    // Try all 3 other combos
+                    const combos = [
+                        { c1: aA, c2: hC }, 
+                        { c1: aC, c2: hA }, 
+                        { c1: aA, c2: hA }
+                    ];
+
+                    combos.forEach(combo => {
+                        const d = colorDistance(hexToRgb(combo.c1), hexToRgb(combo.c2));
+                        if(d > bestDist) {
+                            bestDist = d;
+                            bestCombo = [combo.c1, combo.c2];
+                        }
+                    });
+
+                    // If the best alternate combo is good enough, use it
+                    if (bestDist > DIST_THRESHOLD) {
+                        return bestCombo;
+                    } else {
+                        // If STILL bad, force Away to a dark gray/black to force contrast
+                        return ['#111111', hC];
+                    }
                 }
                 
-                return [hC, aC];
+                return [aC, hC];
             }
 
             // --- API Logic ---
@@ -708,9 +730,11 @@ def root():
                 games.forEach(game => {
                     if(game.sport === 'weather' || game.sport === 'clock') return;
 
+                    // Pass arguments in correct order: Away, AwayAlt, Home, HomeAlt
+                    // Returns [LeftColor, RightColor] which corresponds to [AwayColor, HomeColor]
                     const [leftColor, rightColor] = resolveColors(
-                        game.home_color, game.home_alt_color,
-                        game.away_color, game.away_alt_color
+                        game.away_color, game.away_alt_color,
+                        game.home_color, game.home_alt_color
                     );
 
                     // Determine Possession Logic
