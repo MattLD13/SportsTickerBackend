@@ -531,10 +531,14 @@ def root():
                 position: fixed; top: 0; left: 0; right: 0;
                 height: 50px; background: rgba(18,18,18,0.95);
                 backdrop-filter: blur(8px); z-index: 1000; border-bottom: 1px solid #333;
-                display: flex; align-items: center; padding: 0 15px;
+                display: flex; align-items: center; justify-content: space-between; padding: 0 15px;
             }
             .hamburger { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
-            .nav-title { font-weight: bold; margin-left: 15px; letter-spacing: 1px; color: #bbb; }
+            
+            /* Tabs */
+            .nav-tabs { display: flex; gap: 20px; }
+            .nav-tab { cursor: pointer; color: #888; font-weight: bold; font-size: 0.9rem; padding: 5px 0; border-bottom: 2px solid transparent; transition: 0.2s; }
+            .nav-tab.active { color: white; border-bottom: 2px solid #007bff; }
 
             .sidebar {
                 position: fixed; top: 50px; left: -300px; bottom: 0; width: 280px;
@@ -561,15 +565,27 @@ def root():
             input:checked + .slider:before { transform: translateX(14px); }
             select, input[type="text"] { width: 100%; background: #2a2a2a; color: white; border: 1px solid #444; padding: 8px; border-radius: 6px; margin-top: 5px; box-sizing: border-box; }
 
-            /* --- COMMON STYLES --- */
+            /* --- COMMON GAME STYLES --- */
             .text-outline { text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 4px rgba(0,0,0,0.9); }
             .logo-outline { filter: drop-shadow(0 0 1px black) drop-shadow(0 0 1px black) drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
             .live-badge { background: #ff3333; color: white; padding: 1px 4px; border-radius: 3px; font-weight: bold; animation: pulse 2s infinite; font-size:0.7rem; border: 1px solid black; }
             @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
             
-            .poss-active { color: #ffeb3b; text-shadow: 0 0 8px rgba(255, 235, 59, 0.8), 2px 2px 0 #000; }
-            
-            /* --- SCHEDULE LAYOUT --- */
+            .poss-pill { display: inline-block; background: rgba(0,0,0,0.8); color: #ffeb3b; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid #ffeb3b; }
+            .red-zone-pill { display: inline-block; background: rgba(255,51,51,0.9); color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid black; animation: pulse 1s infinite; }
+
+            /* BASEBALL */
+            .baseball-field { position: relative; width: 30px; height: 30px; margin-right: 5px; }
+            .base { position: absolute; width: 8px; height: 8px; background: rgba(255,255,255,0.3); border: 1px solid rgba(0,0,0,0.5); transform: rotate(45deg); }
+            .base.active { background: #ffeb3b; border-color: black; box-shadow: 0 0 4px #ffeb3b; }
+            .b1 { right: 0; top: 11px; }
+            .b2 { left: 11px; top: 0; }
+            .b3 { left: 0; top: 11px; }
+
+            .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
+            .view-hidden { display: none !important; }
+
+            /* --- SCHEDULE VIEW STYLES --- */
             #schedule-view { position: relative; width: 100%; margin-top: 50px; background: #121212; min-height: calc(100vh - 50px); overflow-x: hidden; }
             .time-axis { position: absolute; left: 0; top: 0; bottom: 0; width: 50px; border-right: 1px solid #333; background: #121212; z-index: 10; }
             .time-marker { position: absolute; width: 100%; text-align: right; padding-right: 8px; font-size: 0.7rem; color: #666; transform: translateY(-50%); }
@@ -596,7 +612,7 @@ def root():
             .card-footer { 
                 margin-top: auto; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.2); 
                 font-size: 0.8rem; font-weight: 700; color: white; 
-                text-align: right; display:flex; justify-content: flex-end;
+                text-align: right; display:flex; justify-content: flex-end; align-items: center; gap: 10px;
             }
             .red-zone { color: #ff3333; animation: pulse 1s infinite; }
 
@@ -622,25 +638,55 @@ def root():
     <body>
         <nav class="navbar">
             <button class="hamburger" onclick="toggleMenu()">☰</button>
-            <span class="nav-title">GAME SCHEDULE</span>
-        </nav>
+            <div class="nav-tabs">
+                <div class="nav-tab active" id="tab-my" onclick="switchTab('my')">MY SCHEDULE</div>
+                <div class="nav-tab" id="tab-all" onclick="switchTab('all')">ALL GAMES</div>
+            </div>
+            <div style="width:24px"></div> </nav>
 
         <div class="sidebar-overlay" onclick="toggleMenu()"></div>
         <div class="sidebar" id="sidebar">
             <div class="control-group">
-                <div class="section-label">View Settings</div>
-                 <label style="font-size:0.8rem; color:#aaa;">Layout Style</label>
-                <select id="sel_layout">
-                    <option value="schedule">Timeline Schedule</option>
-                    <option value="grid">Classic Grid</option>
+                <div class="section-label">My Teams</div>
+                <input type="text" id="inp_teams" placeholder="NYG, NYY, NJD..." value="">
+                <div style="font-size:0.7rem; color:#666; margin-top:4px;">Comma separated abbreviations</div>
+            </div>
+
+            <div class="control-group">
+                <div class="section-label">Filters</div>
+                 <div class="toggle-row"><span>Weather</span><label class="switch"><input type="checkbox" id="chk_weather"><span class="slider"></span></label></div>
+                 <div class="toggle-row"><span>Clock</span><label class="switch"><input type="checkbox" id="chk_clock"><span class="slider"></span></label></div>
+            </div>
+
+            <div class="control-group">
+                <div class="section-label">Leagues</div>
+                <div class="toggle-row"><span>NFL</span><label class="switch"><input type="checkbox" id="chk_nfl"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>NBA</span><label class="switch"><input type="checkbox" id="chk_nba"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>NHL</span><label class="switch"><input type="checkbox" id="chk_nhl"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>MLB</span><label class="switch"><input type="checkbox" id="chk_mlb"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>NCAA FBS</span><label class="switch"><input type="checkbox" id="chk_ncf_fbs"><span class="slider"></span></label></div>
+                 <div class="toggle-row"><span>NCAA FCS</span><label class="switch"><input type="checkbox" id="chk_ncf_fcs"><span class="slider"></span></label></div>
+            </div>
+            
+            <div class="control-group">
+                <div class="section-label">Location & Time</div>
+                 <input type="text" id="inp_loc" placeholder="Zip or City" style="margin-bottom:10px;">
+                <select id="sel_timezone">
+                    <option value="-4">Atlantic / EDT (UTC-4)</option>
+                    <option value="-5">Eastern (UTC-5)</option>
+                    <option value="-6">Central (UTC-6)</option>
+                    <option value="-7">Mountain (UTC-7)</option>
+                    <option value="-8">Pacific (UTC-8)</option>
+                    <option value="0">UTC / GMT</option>
                 </select>
                 <div class="toggle-row" style="margin-top:10px"><span>Seamless Scroll</span><label class="switch"><input type="checkbox" id="chk_scroll"><span class="slider"></span></label></div>
                  <div style="margin-top:10px;"><label style="font-size:0.8rem; color:#aaa;">Brightness</label><input type="range" id="rng_bright" min="0.1" max="1.0" step="0.1" style="width:100%"></div>
             </div>
+            
             <button onclick="saveSettings()" style="width:100%; padding:10px; background:#007bff; border:none; color:white; border-radius:6px; font-weight:bold; cursor:pointer;">Save Changes</button>
         </div>
 
-        <div id="schedule-view" class="view-hidden">
+        <div id="schedule-view">
             <div class="time-axis" id="timeAxis"></div>
             <div class="events-area" id="eventsArea"></div>
         </div>
@@ -650,6 +696,8 @@ def root():
         <script>
             const PIXELS_PER_MINUTE = 1.6; 
             const START_HOUR = 8; 
+            let currentTab = 'my';
+
             function toggleMenu() { document.getElementById('sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('active'); }
             function hexToRgb(hex) { if(!hex) return {r:0, g:0, b:0}; hex = hex.replace(/^#/, ''); if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2]; const bigint = parseInt(hex, 16); return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 }; }
             function getLuminance(r, g, b) { return (0.2126 * r + 0.7152 * g + 0.0722 * b); }
@@ -663,35 +711,66 @@ def root():
                 return [aC, hC];
             }
 
+            function switchTab(tab) {
+                currentTab = tab;
+                document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+                document.getElementById('tab-' + tab).classList.add('active');
+                
+                if(tab === 'my') {
+                    document.getElementById('schedule-view').classList.remove('view-hidden');
+                    document.getElementById('grid-view').classList.add('view-hidden');
+                } else {
+                    document.getElementById('schedule-view').classList.add('view-hidden');
+                    document.getElementById('grid-view').classList.remove('view-hidden');
+                }
+                loadState(); 
+            }
+
             async function loadState() {
                 try {
                     const res = await fetch('/api/state');
                     const data = await res.json();
+                    const s = data.settings;
+                    
+                    document.getElementById('inp_teams').value = (s.my_teams || []).join(', ');
+                    document.getElementById('chk_nfl').checked = s.active_sports.nfl;
+                    document.getElementById('chk_nba').checked = s.active_sports.nba;
+                    document.getElementById('chk_nhl').checked = s.active_sports.nhl;
+                    document.getElementById('chk_mlb').checked = s.active_sports.mlb;
+                    document.getElementById('chk_ncf_fbs').checked = s.active_sports.ncf_fbs;
+                    document.getElementById('chk_ncf_fcs').checked = s.active_sports.ncf_fcs;
+                    document.getElementById('chk_weather').checked = s.active_sports.weather;
+                    document.getElementById('chk_clock').checked = s.active_sports.clock;
+                    document.getElementById('chk_scroll').checked = s.scroll_seamless;
+                    document.getElementById('rng_bright').value = s.brightness;
+                    document.getElementById('sel_mode').value = s.mode;
+                    document.getElementById('inp_loc').value = s.weather_location;
+                    if(s.utc_offset) document.getElementById('sel_timezone').value = s.utc_offset;
+                    if(s.layout_mode) document.getElementById('sel_layout').value = s.layout_mode;
+
                     render(data);
                 } catch(e) { console.error(e); }
             }
 
             function render(data) {
-                const layoutMode = data.settings.layout_mode || 'schedule';
-                const schedView = document.getElementById('schedule-view');
-                const gridView = document.getElementById('grid-view');
+                const games = data.games;
+                const myTeamsStr = document.getElementById('inp_teams').value.toUpperCase();
+                const myTeams = myTeamsStr.split(',').map(s => s.trim());
 
-                if(layoutMode === 'schedule') {
-                    schedView.classList.remove('view-hidden');
-                    gridView.classList.add('view-hidden');
-                    renderSchedule(data.games, data.settings.utc_offset || -4);
+                if (currentTab === 'my') {
+                    const filtered = games.filter(g => {
+                        if(g.sport === 'weather' || g.sport === 'clock') return true;
+                        return myTeams.includes(g.home_abbr) || myTeams.includes(g.away_abbr);
+                    });
+                    renderSchedule(filtered, data.settings.utc_offset || -4);
                 } else {
-                    schedView.classList.add('view-hidden');
-                    gridView.classList.remove('view-hidden');
-                    renderGrid(data.games);
+                    renderGrid(games);
                 }
             }
 
             function renderGrid(games) {
                 const container = document.getElementById('grid-view');
                 container.innerHTML = '';
-                if(!games || games.length === 0) return;
-
                 games.forEach(game => {
                     if(game.sport === 'weather' || game.sport === 'clock') return;
                     const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
@@ -699,7 +778,7 @@ def root():
                     const awayHasPoss = game.situation.possession === game.away_id;
                     
                     let detailHtml = '';
-                    if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone text-outline">${game.situation.downDist}</div>`; }
+                    if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; }
                     else if(game.state === 'in' && game.situation.downDist) { detailHtml = `<div class="gc-status text-outline" style="color:#ffc107">${game.situation.downDist}</div>`; }
 
                     const div = document.createElement('div');
@@ -709,7 +788,8 @@ def root():
                         <div class="overlay"></div>
                         <div class="gc-col">
                             <img class="gc-logo logo-outline" src="${game.away_logo}">
-                            <div class="gc-abbr text-outline ${awayHasPoss?'poss-active':''}">${game.away_abbr}</div>
+                            <div class="gc-abbr text-outline">${game.away_abbr}</div>
+                            ${awayHasPoss ? '<div class="poss-pill">🏈 Poss</div>' : ''}
                         </div>
                         <div class="gc-mid">
                             <div class="gc-status text-outline">${game.status}</div>
@@ -718,7 +798,8 @@ def root():
                         </div>
                         <div class="gc-col">
                             <img class="gc-logo logo-outline" src="${game.home_logo}">
-                            <div class="gc-abbr text-outline ${homeHasPoss?'poss-active':''}">${game.home_abbr}</div>
+                            <div class="gc-abbr text-outline">${game.home_abbr}</div>
+                            ${homeHasPoss ? '<div class="poss-pill">🏈 Poss</div>' : ''}
                         </div>
                     `;
                     container.appendChild(div);
@@ -745,85 +826,102 @@ def root():
                 const nowMins = localNow.getHours() * 60 + localNow.getMinutes() - (START_HOUR * 60);
                 if(nowMins > 0) nowLine.style.top = (nowMins * PIXELS_PER_MINUTE) + 'px';
 
-                // --- 2-COLUMN LANE LOGIC ---
-                let events = [];
                 games.forEach(g => {
                     if(g.sport === 'weather' || g.sport === 'clock') return;
                     const d = new Date(g.startTimeUTC); 
                     const local = new Date(d.getTime() + offsetMs + (new Date().getTimezoneOffset()*60000));
                     const startMins = local.getHours() * 60 + local.getMinutes() - (START_HOUR * 60);
-                    events.push({ start: startMins, end: startMins + (g.estimated_duration || 180), data: g });
-                });
-                
-                events.sort((a,b) => a.start - b.start);
-                
-                // Track end time of columns [col0_end, col1_end]
-                let lanes = [0, 0]; 
+                    const dur = g.estimated_duration || 180;
 
-                events.forEach(ev => {
-                    // Find first lane that fits
-                    let colIndex = 0;
-                    if (ev.start >= lanes[0]) {
-                        colIndex = 0;
-                    } else if (ev.start >= lanes[1]) {
-                        colIndex = 1;
-                    } else {
-                        // Both occupied? Pick earliest end time to stack
-                        colIndex = lanes[0] < lanes[1] ? 0 : 1;
-                    }
-                    
-                    // Place card
-                    lanes[colIndex] = ev.end;
-                    
-                    const game = ev.data;
                     const div = document.createElement('div'); div.className = 'sched-card';
-                    div.style.top = (ev.start * PIXELS_PER_MINUTE) + 'px'; 
-                    div.style.height = ((ev.end - ev.start) * PIXELS_PER_MINUTE) + 'px';
+                    div.style.top = (startMins * PIXELS_PER_MINUTE) + 'px'; 
+                    div.style.height = (dur * PIXELS_PER_MINUTE) + 'px';
+                    div.style.width = '95%'; div.style.left = '0';
                     
-                    // Width Logic: 
-                    // If it's in col 0, width is 48%, left 0
-                    // If it's in col 1, width is 48%, left 50%
-                    div.style.width = '48%';
-                    div.style.left = colIndex === 0 ? '0%' : '50%';
-                    
-                    const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
+                    const [aC, hC] = resolveColors(g.away_color, g.away_alt_color, g.home_color, g.home_alt_color);
                     div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
 
-                    let footerHtml = '';
-                    if(game.situation && game.situation.isRedZone) { footerHtml = `<span class="red-zone text-outline">${game.situation.downDist}</span>`; } 
-                    else if(game.state === 'in' && game.situation.downDist) { footerHtml = `<span class="text-outline">${game.situation.downDist}</span>`; }
+                    // --- VISUAL ELEMENTS ---
+                    let statusHtml = '';
+                    if(g.situation && g.situation.isRedZone) { statusHtml = `<span class="red-zone-pill">${g.situation.downDist}</span>`; } 
+                    else if(g.state === 'in' && g.situation.downDist) { statusHtml = `<span class="text-outline">${g.situation.downDist}</span>`; }
+
+                    // BASEBALL DIAMOND
+                    let diamondHtml = '';
+                    if(g.sport === 'mlb') {
+                        const s = g.situation || {};
+                        diamondHtml = `
+                            <div class="baseball-field">
+                                <div class="base b1 ${s.onFirst?'active':''}"></div>
+                                <div class="base b2 ${s.onSecond?'active':''}"></div>
+                                <div class="base b3 ${s.onThird?'active':''}"></div>
+                            </div>
+                            <div class="text-outline" style="font-size:0.7rem;">${s.balls}-${s.strikes}, ${s.outs} Out</div>
+                        `;
+                    }
+
+                    // HOCKEY INDICATORS
+                    let awayExtra = '', homeExtra = '';
+                    if(g.sport === 'nhl') {
+                        const sit = g.situation || {};
+                        if(sit.powerPlay && sit.possession === g.away_id) awayExtra += ' 🏒';
+                        if(sit.powerPlay && sit.possession === g.home_id) homeExtra += ' 🏒';
+                        if(sit.emptyNet && sit.possession !== g.away_id) awayExtra += ' 🥅'; # Logic inverse usually
+                        if(sit.emptyNet && sit.possession !== g.home_id) homeExtra += ' 🥅';
+                    }
 
                     div.innerHTML = `
                         <div class="overlay"></div>
                         <div class="card-header">
-                            ${game.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}
-                            <span class="text-outline" style="text-align:right">${game.status}</span>
+                            ${g.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}
+                            <span class="text-outline" style="text-align:right">${g.status}</span>
                         </div>
                         
                         <div class="team-row">
                             <div class="t-left">
-                                <img class="t-logo logo-outline" src="${game.away_logo}">
-                                <div class="t-name text-outline ${game.situation.possession === game.away_id ? 'poss-active' : ''}">${game.away_abbr}</div>
+                                <img class="t-logo logo-outline" src="${g.away_logo}">
+                                <div>
+                                    <div class="t-name text-outline">${g.away_abbr} ${awayExtra}</div>
+                                    ${g.situation.possession === g.away_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                                </div>
                             </div>
-                            <div class="t-score text-outline">${game.away_score}</div>
+                            <div class="t-score text-outline">${g.away_score}</div>
                         </div>
 
                         <div class="team-row">
                             <div class="t-left">
-                                <img class="t-logo logo-outline" src="${game.home_logo}">
-                                <div class="t-name text-outline ${game.situation.possession === game.home_id ? 'poss-active' : ''}">${game.home_abbr}</div>
+                                <img class="t-logo logo-outline" src="${g.home_logo}">
+                                <div>
+                                    <div class="t-name text-outline">${g.home_abbr} ${homeExtra}</div>
+                                    ${g.situation.possession === g.home_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                                </div>
                             </div>
-                            <div class="t-score text-outline">${game.home_score}</div>
+                            <div class="t-score text-outline">${g.home_score}</div>
                         </div>
                         
-                        ${footerHtml ? `<div class="card-footer">${footerHtml}</div>` : ''}
+                        <div class="card-footer">
+                            ${diamondHtml}
+                            ${statusHtml}
+                        </div>
                     `;
                     eventsArea.appendChild(div);
                 });
             }
 
             async function saveSettings() {
-                // Implementation same as before, omitted for brevity
+                const teamsArr = document.getElementById('inp_teams').value.split(',').map(s=>s.trim()).filter(s=>s);
+                const payload = {
+                    active_sports: {
+                        nfl: document.getElementById('chk_nfl').checked, nba: document.getElementById('chk_nba').checked, nhl: document.getElementById('chk_nhl').checked, mlb: document.getElementById('chk_mlb').checked, ncf_fbs: document.getElementById('chk_ncf_fbs').checked, ncf_fcs: document.getElementById('chk_ncf_fcs').checked, weather: document.getElementById('chk_weather').checked, clock: document.getElementById('chk_clock').checked
+                    },
+                    my_teams: teamsArr,
+                    scroll_seamless: document.getElementById('chk_scroll').checked,
+                    brightness: parseFloat(document.getElementById('rng_bright').value),
+                    weather_location: document.getElementById('inp_loc').value,
+                    utc_offset: parseInt(document.getElementById('sel_timezone').value)
+                };
+                await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+                toggleMenu(); loadState();
             }
 
             loadState(); setInterval(loadState, 5000);
