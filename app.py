@@ -25,7 +25,7 @@ default_state = {
     'mode': 'all', 
     'layout_mode': 'schedule',
     'scroll_seamless': False,
-    'my_teams': ["NYG", "NYY", "NJD", "KNICKS", "LAL", "BOS"], # Default teams so it isn't empty
+    'my_teams': ["NYG", "NYY", "NJD", "KNICKS", "LAL", "BOS", "KC", "BUF"], # Default populated list
     'current_games': [],
     'all_teams_data': {}, 
     'debug_mode': False,
@@ -584,9 +584,12 @@ def root():
 
             .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
             .view-hidden { display: none !important; }
+            .empty-state { padding: 40px; text-align: center; color: #666; font-style: italic; }
+            .loading-spinner { border: 4px solid #333; border-top: 4px solid #007bff; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 50px auto; }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
             /* --- SCHEDULE VIEW STYLES --- */
-            #schedule-view { position: relative; width: 100%; margin-top: 50px; background: #121212; min-height: calc(100vh - 50px); overflow-x: hidden; }
+            #schedule-view { position: relative; width: 100%; max-width: 600px; margin: 50px auto 0 auto; background: #121212; min-height: calc(100vh - 50px); overflow-x: hidden; }
             .time-axis { position: absolute; left: 0; top: 0; bottom: 0; width: 50px; border-right: 1px solid #333; background: #121212; z-index: 10; }
             .time-marker { position: absolute; width: 100%; text-align: right; padding-right: 8px; font-size: 0.7rem; color: #666; transform: translateY(-50%); }
             .events-area { position: relative; margin-left: 55px; margin-right: 10px; height: 100%; }
@@ -615,10 +618,9 @@ def root():
                 text-align: right; display:flex; justify-content: flex-end; align-items: center; gap: 10px;
             }
             .red-zone { color: #ff3333; animation: pulse 1s infinite; }
-            .empty-state { position: absolute; top: 40%; left: 0; right: 0; text-align: center; color: #666; font-style: italic; }
 
             /* --- GRID VIEW --- */
-            #grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 70px 20px 20px 20px; }
+            #grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 70px 20px 20px 20px; max-width: 600px; margin: 0 auto; }
             .grid-card {
                 position: relative; border-radius: 12px; overflow: hidden;
                 box-shadow: 0 4px 10px rgba(0,0,0,0.5); color: white; height: 110px;
@@ -688,12 +690,14 @@ def root():
             <button onclick="saveSettings()" style="width:100%; padding:10px; background:#007bff; border:none; color:white; border-radius:6px; font-weight:bold; cursor:pointer;">Save Changes</button>
         </div>
 
-        <div id="schedule-view">
+        <div id="schedule-view" class="view-hidden">
             <div class="time-axis" id="timeAxis"></div>
             <div class="events-area" id="eventsArea"></div>
         </div>
 
-        <div id="grid-view" class="view-hidden"></div>
+        <div id="grid-view">
+             <div class="loading-spinner"></div>
+        </div>
 
         <script>
             const PIXELS_PER_MINUTE = 1.6; 
@@ -773,6 +777,12 @@ def root():
             function renderGrid(games) {
                 const container = document.getElementById('grid-view');
                 container.innerHTML = '';
+                
+                if(!games || games.length === 0) {
+                     container.innerHTML = '<div class="empty-state">No games active. Check your filters or the schedule.</div>';
+                     return;
+                }
+
                 games.forEach(game => {
                     if(game.sport === 'weather' || game.sport === 'clock') return;
                     const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
@@ -780,7 +790,7 @@ def root():
                     const awayHasPoss = game.situation.possession === game.away_id;
                     
                     let detailHtml = '';
-                    if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone text-outline">${game.situation.downDist}</div>`; }
+                    if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; }
                     else if(game.state === 'in' && game.situation.downDist) { detailHtml = `<div class="gc-status text-outline" style="color:#ffc107">${game.situation.downDist}</div>`; }
 
                     const div = document.createElement('div');
@@ -823,8 +833,8 @@ def root():
                 }
 
                 if(!games || games.length === 0) {
-                    eventsArea.innerHTML += '<div class="empty-state">No games scheduled for your teams.</div>';
-                    return;
+                     eventsArea.innerHTML += '<div class="empty-state">No scheduled games found for your teams.</div>';
+                     return;
                 }
                 const offsetMs = utcOffset * 3600 * 1000;
                 const localNow = new Date(new Date().getTime() + offsetMs + (new Date().getTimezoneOffset()*60000));
