@@ -630,9 +630,7 @@ def root():
             .gc-mid { z-index: 2; text-align: center; flex-grow: 1; }
             .gc-status { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
             .gc-score { font-size: 1.8rem; font-weight: 800; line-height: 1; }
-
-            .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
-            .view-hidden { display: none !important; }
+            .grid-poss-dot { color: #ffeb3b; font-size: 0.8rem; margin-top: 2px; text-shadow: 0 0 3px black; }
         </style>
     </head>
     <body>
@@ -866,7 +864,7 @@ def root():
                         const sit = g.situation || {};
                         if(sit.powerPlay && sit.possession === g.away_id) awayExtra += ' 🏒';
                         if(sit.powerPlay && sit.possession === g.home_id) homeExtra += ' 🏒';
-                        if(sit.emptyNet && sit.possession !== g.away_id) awayExtra += ' 🥅'; # Logic inverse usually
+                        if(sit.emptyNet && sit.possession !== g.away_id) awayExtra += ' 🥅'; // Fixed comment syntax
                         if(sit.emptyNet && sit.possession !== g.home_id) homeExtra += ' 🥅';
                     }
 
