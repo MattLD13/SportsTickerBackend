@@ -36,7 +36,7 @@ default_state = {
     'test_pattern': False,
     'reboot_requested': False,
     'weather_location': "New York",
-    'utc_offset': -4 
+    'utc_offset': -5  # Default to EST (Winter)
 }
 
 state = default_state.copy()
@@ -78,7 +78,7 @@ FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN
 
 ABBR_MAPPING = {
     'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI',
-    'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS' # Added common NBA mismatches
+    'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS'
 }
 
 LOGO_OVERRIDES = {
@@ -308,8 +308,11 @@ class SportsFetcher:
                              except: pass
                         elif st in ['FINAL', 'OFF']:
                              disp = "FINAL"
-                             if g.get('periodDescriptor', {}).get('periodType') == 'OT': disp = "FINAL OT"
-                             if g.get('periodDescriptor', {}).get('periodType') == 'SHOOTOUT': disp = "FINAL S/O"
+                             # FIXED: Check Period Descriptor for specific ending
+                             pd = g.get('periodDescriptor', {})
+                             pt = pd.get('periodType', '')
+                             if pt == 'OT': disp = "FINAL OT"
+                             elif pt == 'SHOOTOUT': disp = "FINAL S/O"
 
                         if map_st == 'in':
                             try:
@@ -333,6 +336,7 @@ class SportsFetcher:
                                         if p_num == 1: disp = "End 1st"
                                         elif p_num == 2: disp = "End 2nd"
                                         elif p_num == 3: disp = "End 3rd"
+                                        elif p_num >= 4: disp = "S/O" # FIXED: Detect Shootout transition
                                         else: disp = "Intermission"
                                     else:
                                         p_lbl = "OT" if p_num > 3 else f"P{p_num}"
@@ -455,11 +459,16 @@ class SportsFetcher:
                              if p == 1: s_disp = "End 1st"
                              elif p == 2: s_disp = "End 2nd"
                              elif p == 3: s_disp = "End 3rd"
+                             elif p >= 4: s_disp = "S/O" # FIXED: Detect Shootout transition
                              else: s_disp = "Intermission"
                         else:
                             s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
                     else:
-                        s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
+                        s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
+                        # Fallback for "FINAL" string but high period count
+                        if s_disp == "FINAL" and league_key == 'nhl':
+                            if p == 4: s_disp = "FINAL OT"
+                            elif p > 4: s_disp = "FINAL S/O"
 
                     sit = comp.get('situation', {})
                     is_halftime = (s_disp == "Halftime")
@@ -817,6 +826,12 @@ def root():
                     if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; }
                     else if(game.state === 'in' && game.situation.downDist) { detailHtml = `<div class="gc-status text-outline" style="color:#ffc107">${game.situation.downDist}</div>`; }
 
+                    // FIXED: Dynamic Possession Icons/Labels
+                    let possIcon = '🏈'; let possText = 'Poss';
+                    if(game.sport === 'nhl') { possIcon = '🏒'; possText = 'PP'; }
+                    else if(game.sport === 'nba') { possIcon = '🏀'; }
+                    else if(game.sport === 'mlb') { possIcon = '⚾'; }
+
                     const div = document.createElement('div');
                     div.className = 'grid-card';
                     div.style.background = `linear-gradient(120deg, ${aC} 0%, ${aC} 45%, ${hC} 55%, ${hC} 100%)`;
@@ -825,7 +840,7 @@ def root():
                         <div class="gc-col">
                             <img class="gc-logo logo-outline" src="${game.away_logo}">
                             <div class="gc-abbr text-outline">${game.away_abbr}</div>
-                            ${awayHasPoss ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                            ${awayHasPoss ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}
                         </div>
                         <div class="gc-mid">
                             <div class="gc-status text-outline">${game.status}</div>
@@ -835,7 +850,7 @@ def root():
                         <div class="gc-col">
                             <img class="gc-logo logo-outline" src="${game.home_logo}">
                             <div class="gc-abbr text-outline">${game.home_abbr}</div>
-                            ${homeHasPoss ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                            ${homeHasPoss ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}
                         </div>
                     `;
                     container.appendChild(div);
@@ -849,9 +864,15 @@ def root():
 
                 const nowLine = document.createElement('div'); nowLine.className = 'current-time-line'; eventsArea.appendChild(nowLine);
 
-                for(let i=0; i<18; i++) {
+                // FIXED: Extended time range to 24 hours (8AM - 8AM) to cover late games/overtime
+                for(let i=0; i<24; i++) {
                     const hour = START_HOUR + i; const top = i * 60 * PIXELS_PER_MINUTE;
                     let displayHour = (hour % 12) || 12; displayHour += (hour < 12 ? ' AM' : ' PM');
+                    if (hour >= 24) { 
+                        let h = hour - 24; 
+                        displayHour = (h % 12) || 12; displayHour += (h < 12 ? ' AM' : ' PM');
+                    }
+                    
                     const marker = document.createElement('div'); marker.className = 'time-marker'; marker.innerText = displayHour; marker.style.top = top + 'px'; axis.appendChild(marker);
                     const grid = document.createElement('div'); grid.className = 'grid-line'; grid.style.top = top + 'px'; eventsArea.appendChild(grid);
                 }
@@ -860,16 +881,52 @@ def root():
                      eventsArea.innerHTML += '<div class="empty-state">No scheduled games found for your teams.</div>';
                      return;
                 }
+
+                // FIXED: Time Calculation Logic for Current Time Line
                 const offsetMs = utcOffset * 3600 * 1000;
-                const localNow = new Date(new Date().getTime() + offsetMs + (new Date().getTimezoneOffset()*60000));
-                const nowMins = localNow.getHours() * 60 + localNow.getMinutes() - (START_HOUR * 60);
-                if(nowMins > 0) nowLine.style.top = (nowMins * PIXELS_PER_MINUTE) + 'px';
+                const now = new Date();
+                const utcNow = now.getTime() + (now.getTimezoneOffset() * 60000);
+                const targetMs = utcNow + offsetMs;
+                const localNow = new Date(targetMs + (now.getTimezoneOffset() * 60000));
+                
+                let h = localNow.getHours();
+                let m = localNow.getMinutes();
+                
+                // Wrap hours: If currently 1AM, but schedule starts at 8AM, treat 1AM as 25:00
+                let effectiveHour = h;
+                if(effectiveHour < START_HOUR) effectiveHour += 24;
+
+                const nowMins = (effectiveHour * 60) + m - (START_HOUR * 60);
+                
+                if(nowMins >= 0 && nowMins <= (24*60)) {
+                    nowLine.style.top = (nowMins * PIXELS_PER_MINUTE) + 'px';
+                    
+                    // FIXED: Auto-centering logic
+                    const view = document.getElementById('schedule-view');
+                    const halfScreen = window.innerHeight / 2;
+                    view.scrollTop = (nowMins * PIXELS_PER_MINUTE) - halfScreen;
+                } else {
+                    nowLine.style.display = 'none';
+                }
 
                 games.forEach(g => {
                     if(g.sport === 'weather' || g.sport === 'clock') return;
                     const d = new Date(g.startTimeUTC); 
-                    const local = new Date(d.getTime() + offsetMs + (new Date().getTimezoneOffset()*60000));
-                    const startMins = local.getHours() * 60 + local.getMinutes() - (START_HOUR * 60);
+                    
+                    // Same logic for games: UTC -> Target Timezone
+                    const gameUtcMs = d.getTime(); 
+                    // Note: 'd' is created from ISO string, so it is already in local browser time representation of that UTC instant.
+                    // We need to shift it to represent the Target Timezone visually.
+                    const gameLocalMs = gameUtcMs + offsetMs + (new Date().getTimezoneOffset() * 60000);
+                    const local = new Date(gameLocalMs);
+                    
+                    let gh = local.getHours();
+                    let gm = local.getMinutes();
+                    
+                    // Wrap hours for games too
+                    if(gh < START_HOUR) gh += 24;
+                    
+                    const startMins = gh * 60 + gm - (START_HOUR * 60);
                     const dur = g.estimated_duration || 180;
 
                     const div = document.createElement('div'); div.className = 'sched-card';
@@ -884,6 +941,12 @@ def root():
                     let statusHtml = '';
                     if(g.situation && g.situation.isRedZone) { statusHtml = `<span class="red-zone-pill">${g.situation.downDist}</span>`; } 
                     else if(g.state === 'in' && g.situation.downDist) { statusHtml = `<span class="text-outline">${g.situation.downDist}</span>`; }
+
+                    // FIXED: Dynamic Possession Icons/Labels
+                    let possIcon = '🏈'; let possText = 'Poss';
+                    if(g.sport === 'nhl') { possIcon = '🏒'; possText = 'PP'; }
+                    else if(g.sport === 'nba') { possIcon = '🏀'; }
+                    else if(g.sport === 'mlb') { possIcon = '⚾'; }
 
                     // BASEBALL DIAMOND
                     let diamondHtml = '';
@@ -921,7 +984,7 @@ def root():
                                 <img class="t-logo logo-outline" src="${g.away_logo}">
                                 <div>
                                     <div class="t-name text-outline">${g.away_abbr} ${awayExtra}</div>
-                                    ${g.situation.possession === g.away_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                                    ${g.situation.possession === g.away_id ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}
                                 </div>
                             </div>
                             <div class="t-score text-outline">${g.away_score}</div>
@@ -932,7 +995,7 @@ def root():
                                 <img class="t-logo logo-outline" src="${g.home_logo}">
                                 <div>
                                     <div class="t-name text-outline">${g.home_abbr} ${homeExtra}</div>
-                                    ${g.situation.possession === g.home_id ? '<div class="poss-pill">🏈 Poss</div>' : ''}
+                                    ${g.situation.possession === g.home_id ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}
                                 </div>
                             </div>
                             <div class="t-score text-outline">${g.home_score}</div>
