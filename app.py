@@ -25,7 +25,7 @@ default_state = {
     'mode': 'all', 
     'layout_mode': 'schedule',
     'scroll_seamless': False,
-    'my_teams': ["NYG", "NYY", "NJD", "KNICKS", "LAL", "BOS", "KC", "BUF"], 
+    'my_teams': ["NYG", "NYY", "NJD", "NYK", "LAL", "BOS", "KC", "BUF", "LEH"], 
     'current_games': [],
     'all_teams_data': {}, 
     'debug_mode': False,
@@ -77,7 +77,8 @@ FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "A
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTU", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 
 ABBR_MAPPING = {
-    'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI'
+    'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI',
+    'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS' # Added common NBA mismatches
 }
 
 LOGO_OVERRIDES = {
@@ -632,7 +633,9 @@ def root():
             .gc-abbr { font-size: 1rem; font-weight: 800; }
             .gc-mid { z-index: 2; text-align: center; flex-grow: 1; }
             .gc-status { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
-            .gc-score { font-size: 1.8rem; font-weight: 800; line-height: 1; }
+            
+            /* FIXED: Smaller font + nowrap to prevent overflow on high scores */
+            .gc-score { font-size: 1.5rem; font-weight: 800; line-height: 1; white-space: nowrap; }
 
             .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
             .view-hidden { display: none !important; }
@@ -763,7 +766,6 @@ def root():
                     document.getElementById('chk_scroll').checked = s.scroll_seamless;
                     document.getElementById('rng_bright').value = s.brightness;
                     
-                    // FIXED: Safe check for elements before setting
                     if(document.getElementById('sel_mode')) document.getElementById('sel_mode').value = s.mode;
                     if(document.getElementById('sel_layout')) document.getElementById('sel_layout').value = s.layout_mode;
                     
@@ -782,7 +784,13 @@ def root():
                 if (currentTab === 'my') {
                     const filtered = games.filter(g => {
                         if(g.sport === 'weather' || g.sport === 'clock') return true;
-                        return myTeams.includes(g.home_abbr) || myTeams.includes(g.away_abbr);
+                        
+                        // FIXED: Check both plain Abbr (NYG) and League:Abbr (NFL:NYG)
+                        const homeKey = (g.sport + ':' + g.home_abbr).toUpperCase();
+                        const awayKey = (g.sport + ':' + g.away_abbr).toUpperCase();
+                        
+                        return myTeams.includes(g.home_abbr) || myTeams.includes(g.away_abbr) || 
+                               myTeams.includes(homeKey) || myTeams.includes(awayKey);
                     });
                     renderSchedule(filtered, data.settings.utc_offset || -4);
                 } else {
@@ -950,7 +958,6 @@ def root():
                     brightness: parseFloat(document.getElementById('rng_bright').value),
                     weather_location: document.getElementById('inp_loc').value,
                     utc_offset: parseInt(document.getElementById('sel_timezone').value),
-                    // FIXED: Now correctly saving the modes
                     mode: document.getElementById('sel_mode') ? document.getElementById('sel_mode').value : 'all',
                     layout_mode: document.getElementById('sel_layout') ? document.getElementById('sel_layout').value : 'schedule'
                 };
