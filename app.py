@@ -25,7 +25,7 @@ default_state = {
     'mode': 'all', 
     'layout_mode': 'schedule',
     'scroll_seamless': False,
-    'my_teams': [], 
+    'my_teams': ["NYG", "NYY", "NJD", "KNICKS", "LAL", "BOS"], # Default teams so it isn't empty
     'current_games': [],
     'all_teams_data': {}, 
     'debug_mode': False,
@@ -533,7 +533,7 @@ def root():
                 backdrop-filter: blur(8px); z-index: 1000; border-bottom: 1px solid #333;
                 display: flex; align-items: center; justify-content: space-between; padding: 0 15px;
             }
-            .hamburger { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
+            .hamburger { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; z-index: 1001; }
             
             /* Tabs */
             .nav-tabs { display: flex; gap: 20px; }
@@ -615,6 +615,7 @@ def root():
                 text-align: right; display:flex; justify-content: flex-end; align-items: center; gap: 10px;
             }
             .red-zone { color: #ff3333; animation: pulse 1s infinite; }
+            .empty-state { position: absolute; top: 40%; left: 0; right: 0; text-align: center; color: #666; font-style: italic; }
 
             /* --- GRID VIEW --- */
             #grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 70px 20px 20px 20px; }
@@ -630,17 +631,20 @@ def root():
             .gc-mid { z-index: 2; text-align: center; flex-grow: 1; }
             .gc-status { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
             .gc-score { font-size: 1.8rem; font-weight: 800; line-height: 1; }
-            .grid-poss-dot { color: #ffeb3b; font-size: 0.8rem; margin-top: 2px; text-shadow: 0 0 3px black; }
+
+            .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
+            .view-hidden { display: none !important; }
         </style>
     </head>
     <body>
         <nav class="navbar">
             <button class="hamburger" onclick="toggleMenu()">☰</button>
             <div class="nav-tabs">
-                <div class="nav-tab active" id="tab-my" onclick="switchTab('my')">MY SCHEDULE</div>
-                <div class="nav-tab" id="tab-all" onclick="switchTab('all')">ALL GAMES</div>
+                <div class="nav-tab" id="tab-my" onclick="switchTab('my')">MY SCHEDULE</div>
+                <div class="nav-tab active" id="tab-all" onclick="switchTab('all')">ALL GAMES</div>
             </div>
-            <div style="width:24px"></div> </nav>
+            <div style="width:24px"></div>
+        </nav>
 
         <div class="sidebar-overlay" onclick="toggleMenu()"></div>
         <div class="sidebar" id="sidebar">
@@ -694,7 +698,7 @@ def root():
         <script>
             const PIXELS_PER_MINUTE = 1.6; 
             const START_HOUR = 8; 
-            let currentTab = 'my';
+            let currentTab = 'all';
 
             function toggleMenu() { document.getElementById('sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('active'); }
             function hexToRgb(hex) { if(!hex) return {r:0, g:0, b:0}; hex = hex.replace(/^#/, ''); if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2]; const bigint = parseInt(hex, 16); return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 }; }
@@ -776,7 +780,7 @@ def root():
                     const awayHasPoss = game.situation.possession === game.away_id;
                     
                     let detailHtml = '';
-                    if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; }
+                    if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone text-outline">${game.situation.downDist}</div>`; }
                     else if(game.state === 'in' && game.situation.downDist) { detailHtml = `<div class="gc-status text-outline" style="color:#ffc107">${game.situation.downDist}</div>`; }
 
                     const div = document.createElement('div');
@@ -818,7 +822,10 @@ def root():
                     const grid = document.createElement('div'); grid.className = 'grid-line'; grid.style.top = top + 'px'; eventsArea.appendChild(grid);
                 }
 
-                if(!games || games.length === 0) return;
+                if(!games || games.length === 0) {
+                    eventsArea.innerHTML += '<div class="empty-state">No games scheduled for your teams.</div>';
+                    return;
+                }
                 const offsetMs = utcOffset * 3600 * 1000;
                 const localNow = new Date(new Date().getTime() + offsetMs + (new Date().getTimezoneOffset()*60000));
                 const nowMins = localNow.getHours() * 60 + localNow.getMinutes() - (START_HOUR * 60);
@@ -864,7 +871,7 @@ def root():
                         const sit = g.situation || {};
                         if(sit.powerPlay && sit.possession === g.away_id) awayExtra += ' 🏒';
                         if(sit.powerPlay && sit.possession === g.home_id) homeExtra += ' 🏒';
-                        if(sit.emptyNet && sit.possession !== g.away_id) awayExtra += ' 🥅'; // Fixed comment syntax
+                        if(sit.emptyNet && sit.possession !== g.away_id) awayExtra += ' 🥅';
                         if(sit.emptyNet && sit.possession !== g.home_id) homeExtra += ' 🥅';
                     }
 
