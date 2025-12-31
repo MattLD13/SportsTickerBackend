@@ -25,7 +25,7 @@ default_state = {
     'mode': 'all', 
     'layout_mode': 'schedule',
     'scroll_seamless': False,
-    'my_teams': ["NYG", "NYY", "NJD", "KNICKS", "LAL", "BOS", "KC", "BUF"], # Default populated list
+    'my_teams': ["NYG", "NYY", "NJD", "KNICKS", "LAL", "BOS", "KC", "BUF"], 
     'current_games': [],
     'all_teams_data': {}, 
     'debug_mode': False,
@@ -657,6 +657,19 @@ def root():
             </div>
 
             <div class="control-group">
+                <div class="section-label">Display Settings</div>
+                <select id="sel_mode">
+                    <option value="all">Show All Games</option>
+                    <option value="live">Live Games Only</option>
+                    <option value="my_teams">My Teams Only</option>
+                </select>
+                <select id="sel_layout" style="margin-top:10px;">
+                    <option value="schedule">Schedule View</option>
+                    <option value="grid">Grid View</option>
+                </select>
+            </div>
+
+            <div class="control-group">
                 <div class="section-label">Filters</div>
                  <div class="toggle-row"><span>Weather</span><label class="switch"><input type="checkbox" id="chk_weather"><span class="slider"></span></label></div>
                  <div class="toggle-row"><span>Clock</span><label class="switch"><input type="checkbox" id="chk_clock"><span class="slider"></span></label></div>
@@ -749,17 +762,20 @@ def root():
                     document.getElementById('chk_clock').checked = s.active_sports.clock;
                     document.getElementById('chk_scroll').checked = s.scroll_seamless;
                     document.getElementById('rng_bright').value = s.brightness;
-                    document.getElementById('sel_mode').value = s.mode;
+                    
+                    // FIXED: Safe check for elements before setting
+                    if(document.getElementById('sel_mode')) document.getElementById('sel_mode').value = s.mode;
+                    if(document.getElementById('sel_layout')) document.getElementById('sel_layout').value = s.layout_mode;
+                    
                     document.getElementById('inp_loc').value = s.weather_location;
                     if(s.utc_offset) document.getElementById('sel_timezone').value = s.utc_offset;
-                    if(s.layout_mode) document.getElementById('sel_layout').value = s.layout_mode;
 
                     render(data);
                 } catch(e) { console.error(e); }
             }
 
             function render(data) {
-                const games = data.games;
+                const games = data.games || [];
                 const myTeamsStr = document.getElementById('inp_teams').value.toUpperCase();
                 const myTeams = myTeamsStr.split(',').map(s => s.trim());
 
@@ -933,7 +949,10 @@ def root():
                     scroll_seamless: document.getElementById('chk_scroll').checked,
                     brightness: parseFloat(document.getElementById('rng_bright').value),
                     weather_location: document.getElementById('inp_loc').value,
-                    utc_offset: parseInt(document.getElementById('sel_timezone').value)
+                    utc_offset: parseInt(document.getElementById('sel_timezone').value),
+                    // FIXED: Now correctly saving the modes
+                    mode: document.getElementById('sel_mode') ? document.getElementById('sel_mode').value : 'all',
+                    layout_mode: document.getElementById('sel_layout') ? document.getElementById('sel_layout').value : 'schedule'
                 };
                 await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
                 toggleMenu(); loadState();
@@ -946,7 +965,6 @@ def root():
     """
     return render_template_string(html)
 
-# ... [API ROUTES REMAIN UNCHANGED] ...
 @app.route('/api/ticker')
 def api_ticker():
     with data_lock: d = state.copy()
