@@ -9,7 +9,7 @@ from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 5
+UPDATE_INTERVAL = 10 # Slightly increased to handle more API calls
 data_lock = threading.Lock()
 
 HEADERS = {
@@ -21,7 +21,11 @@ HEADERS = {
 
 # ================= DEFAULT STATE =================
 default_state = {
-    'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 'weather': False, 'clock': False },
+    'active_sports': { 
+        'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
+        'soccer': True, 'golf': True, 'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
+        'weather': False, 'clock': False 
+    },
     'mode': 'all', 
     'layout_mode': 'schedule',
     'scroll_seamless': False,
@@ -31,13 +35,13 @@ default_state = {
     'debug_mode': False,
     'custom_date': None,
     'brightness': 0.5,
-    'scroll_speed': 5, # ADDED: Default speed
+    'scroll_speed': 5, 
     'inverted': False,
     'panel_count': 2,
     'test_pattern': False,
     'reboot_requested': False,
     'weather_location': "New York",
-    'utc_offset': -5  # Default to EST (Winter)
+    'utc_offset': -5  # Default to EST
 }
 
 state = default_state.copy()
@@ -62,7 +66,7 @@ def save_config_file():
                 'scroll_seamless': state['scroll_seamless'], 
                 'my_teams': state['my_teams'],
                 'brightness': state['brightness'],
-                'scroll_speed': state['scroll_speed'], # ADDED
+                'scroll_speed': state['scroll_speed'], 
                 'inverted': state['inverted'],
                 'panel_count': state['panel_count'],
                 'weather_location': state['weather_location'],
@@ -98,7 +102,7 @@ LOGO_OVERRIDES = {
 # Standard Game Lengths (minutes)
 SPORT_DURATIONS = {
     'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
-    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60
+    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
 }
 
 class WeatherFetcher:
@@ -169,7 +173,20 @@ class SportsFetcher:
             'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81', 'limit': 100}, 'team_params': {'groups': '81', 'limit': 1000} },
             'mlb': { 'path': 'baseball/mlb', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
-            'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100} }
+            'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
+            # --- NEW SPORTS ---
+            'soccer_epl': { 'path': 'soccer/eng.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer' },
+            'soccer_mls': { 'path': 'soccer/usa.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer' },
+            'soccer_ucl': { 'path': 'soccer/uefa.champions', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer' },
+            'soccer_esp': { 'path': 'soccer/esp.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer' },
+            'soccer_ger': { 'path': 'soccer/ger.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer' },
+            # Leaderboard Sports
+            'golf': { 'path': 'golf/pga', 'type': 'leaderboard' },
+            'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
+            'nascar': { 'path': 'racing/nascar', 'type': 'leaderboard' },
+            'indycar': { 'path': 'racing/indycar', 'type': 'leaderboard' },
+            'wec': { 'path': 'racing/wec', 'type': 'leaderboard' },
+            'imsa': { 'path': 'racing/imsa', 'type': 'leaderboard' }
         }
 
     def get_corrected_logo(self, league_key, abbr, default_logo):
@@ -208,9 +225,11 @@ class SportsFetcher:
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
+            # Fetch simple leagues
             for league_key in ['nfl', 'mlb', 'nhl', 'nba']:
                 self._fetch_simple_league(league_key, teams_catalog)
 
+            # Fetch College
             url = f"{self.base_url}football/college-football/teams"
             r = requests.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
             data = r.json()
@@ -238,6 +257,7 @@ class SportsFetcher:
 
     def _fetch_simple_league(self, league_key, catalog):
         config = self.leagues[league_key]
+        if 'team_params' not in config: return
         try:
             r = requests.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=10)
             data = r.json()
@@ -251,6 +271,67 @@ class SportsFetcher:
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
                             logo = self.get_corrected_logo(league_key, abbr, logo)
                             catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
+        except: pass
+
+    # === NEW: LEADERBOARD FETCHER ===
+    def fetch_leaderboard_event(self, league_key, config, games_list, conf):
+        try:
+            url = f"{self.base_url}{config['path']}/scoreboard"
+            r = requests.get(url, headers=HEADERS, timeout=5)
+            data = r.json()
+            
+            for e in data.get('events', []):
+                name = e.get('name', e.get('shortName', 'Tournament'))
+                status_obj = e.get('status', {})
+                state = status_obj.get('type', {}).get('state', 'pre')
+                
+                # Check date for caching/display logic
+                utc_str = e['date'].replace('Z', '')
+                try:
+                    game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+                    local_now = dt.now(timezone.utc)
+                    diff_hours = (game_dt_utc - local_now).total_seconds() / 3600
+                except: diff_hours = 0
+
+                # Only show active or recently finished/upcoming events (Last 24h, Next 48h)
+                if state == 'pre' and diff_hours > 48: continue
+                if state == 'post' and diff_hours < -24: continue
+
+                comps = e.get('competitions', [])
+                if not comps: continue
+                comp = comps[0]
+                
+                leaders = []
+                raw_competitors = comp.get('competitors', [])
+                
+                # Try sorting by 'curatedRank' or 'order'
+                try:
+                    sorted_comps = sorted(raw_competitors, key=lambda x: int(x.get('curatedRank', x.get('order', 999))))
+                except: sorted_comps = raw_competitors
+
+                for c in sorted_comps[:5]: # Top 5 only
+                    athlete = c.get('athlete', {})
+                    disp_name = athlete.get('displayName', c.get('team',{}).get('displayName','Unk'))
+                    if ' ' in disp_name: disp_name = disp_name.split(' ')[-1] # Shorten Name
+                    
+                    rank = c.get('curatedRank', c.get('order', '-'))
+                    score = c.get('score', '')
+                    
+                    # For racing, get gap/points if available
+                    if 'racing' in config['path']:
+                        lines = c.get('linescores', [])
+                        if lines: score = lines[-1].get('value', score)
+                    
+                    leaders.append({'rank': str(rank), 'name': disp_name, 'score': str(score)})
+
+                game_obj = {
+                    'sport': league_key, 'id': e['id'],
+                    'status': status_obj.get('type', {}).get('shortDetail', 'Live'),
+                    'state': state, 'tourney_name': name,
+                    'leaders': leaders, 'is_shown': True,
+                    'startTimeUTC': e['date']
+                }
+                games_list.append(game_obj)
         except: pass
 
     def _fetch_nhl_native(self, games_list, target_date_str):
@@ -310,7 +391,6 @@ class SportsFetcher:
                              except: pass
                         elif st in ['FINAL', 'OFF']:
                              disp = "FINAL"
-                             # FIXED: Check Period Descriptor for specific ending
                              pd = g.get('periodDescriptor', {})
                              pt = pd.get('periodType', '')
                              if pt == 'OT': disp = "FINAL OT"
@@ -338,7 +418,7 @@ class SportsFetcher:
                                         if p_num == 1: disp = "End 1st"
                                         elif p_num == 2: disp = "End 2nd"
                                         elif p_num == 3: disp = "End 3rd"
-                                        elif p_num >= 4: disp = "S/O" # FIXED: Detect Shootout transition
+                                        elif p_num >= 4: disp = "S/O" 
                                         else: disp = "Intermission"
                                     else:
                                         p_lbl = "OT" if p_num > 3 else f"P{p_num}"
@@ -391,7 +471,14 @@ class SportsFetcher:
         req_params['dates'] = target_date_str.replace('-', '')
 
         for league_key, config in self.leagues.items():
-            if not conf['active_sports'].get(league_key, False): continue
+            # Handle Grouping (e.g. all soccer leagues checked by 'soccer' toggle)
+            check_key = config.get('group', league_key)
+            if not conf['active_sports'].get(check_key, False): continue
+            
+            # --- LEADERBOARD LOGIC (New Sports) ---
+            if config.get('type') == 'leaderboard':
+                self.fetch_leaderboard_event(league_key, config, games, conf)
+                continue
             
             # === HYBRID NHL LOGIC ===
             if league_key == 'nhl' and not conf['debug_mode']:
@@ -400,7 +487,7 @@ class SportsFetcher:
                 if len(games) > prev_count: continue 
 
             try:
-                curr_p = config['scoreboard_params'].copy(); curr_p.update(req_params)
+                curr_p = config.get('scoreboard_params', {}).copy(); curr_p.update(req_params)
                 r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
                 data = r.json()
                 
@@ -461,10 +548,11 @@ class SportsFetcher:
                              if p == 1: s_disp = "End 1st"
                              elif p == 2: s_disp = "End 2nd"
                              elif p == 3: s_disp = "End 3rd"
-                             elif p >= 4: s_disp = "S/O" # FIXED: Detect Shootout transition
+                             elif p >= 4: s_disp = "S/O" 
                              else: s_disp = "Intermission"
                         else:
                             s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
+                            if 'soccer' in config['path']: s_disp = f"{clk}'"
                     else:
                         s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
                         # Fallback for "FINAL" string but high period count
@@ -489,7 +577,7 @@ class SportsFetcher:
                     if is_halftime: down_text = ''
 
                     game_obj = {
-                        'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
+                        'sport': check_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
                         'home_abbr': h_ab, 'home_score': h.get('score','0'), 'home_logo': h_lg,
                         'home_id': h.get('id'), 
                         'away_abbr': a_ab, 'away_score': a.get('score','0'), 'away_logo': a_lg,
@@ -532,520 +620,99 @@ def root():
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <title>Game Schedule</title>
         <style>
-            body { 
-                font-family: 'Segoe UI', system-ui, sans-serif; 
-                background: #121212; color: #e0e0e0; margin: 0; padding: 0;
-                overflow-x: hidden;
-            }
-            
-            /* --- HEADER & SIDEBAR --- */
-            .navbar {
-                position: fixed; top: 0; left: 0; right: 0;
-                height: 50px; background: rgba(18,18,18,0.95);
-                backdrop-filter: blur(8px); z-index: 1000; border-bottom: 1px solid #333;
-                display: flex; align-items: center; justify-content: space-between; padding: 0 15px;
-            }
-            .hamburger { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; z-index: 1001; }
-            
-            /* Tabs */
-            .nav-tabs { display: flex; gap: 20px; }
-            .nav-tab { cursor: pointer; color: #888; font-weight: bold; font-size: 0.9rem; padding: 5px 0; border-bottom: 2px solid transparent; transition: 0.2s; }
-            .nav-tab.active { color: white; border-bottom: 2px solid #007bff; }
-
-            .sidebar {
-                position: fixed; top: 50px; left: -300px; bottom: 0; width: 280px;
-                background: #1e1e1e; border-right: 1px solid #333;
-                transition: left 0.3s ease; z-index: 999;
-                padding: 20px; overflow-y: auto;
-            }
-            .sidebar.open { left: 0; }
-            .sidebar-overlay {
-                display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0,0,0,0.5); z-index: 900;
-            }
-            .sidebar-overlay.active { display: block; }
-
-            /* Controls */
-            .control-group { margin-bottom: 20px; }
-            .section-label { font-size: 0.75rem; color: #777; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
-            .toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.9rem; }
-            .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+            body { font-family: 'Segoe UI', system-ui, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+            h2 { border-bottom: 1px solid #333; padding-bottom: 10px; }
+            .control-group { margin-bottom: 20px; background: #1e1e1e; padding: 15px; border-radius: 8px; }
+            .toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 1rem; }
+            .switch { position: relative; display: inline-block; width: 40px; height: 24px; }
             .switch input { opacity: 0; width: 0; height: 0; }
             .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #444; transition: .4s; border-radius: 34px; }
-            .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+            .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
             input:checked + .slider { background-color: #007bff; }
-            input:checked + .slider:before { transform: translateX(14px); }
-            select, input[type="text"] { width: 100%; background: #2a2a2a; color: white; border: 1px solid #444; padding: 8px; border-radius: 6px; margin-top: 5px; box-sizing: border-box; }
-
-            /* --- COMMON GAME STYLES --- */
-            .text-outline { text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 4px rgba(0,0,0,0.9); }
-            .logo-outline { filter: drop-shadow(0 0 1px black) drop-shadow(0 0 1px black) drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
-            .live-badge { background: #ff3333; color: white; padding: 1px 4px; border-radius: 3px; font-weight: bold; animation: pulse 2s infinite; font-size:0.7rem; border: 1px solid black; }
-            @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
-            
-            .poss-pill { display: inline-block; background: rgba(0,0,0,0.8); color: #ffeb3b; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid #ffeb3b; }
-            .red-zone-pill { display: inline-block; background: rgba(255,51,51,0.9); color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid black; animation: pulse 1s infinite; }
-
-            /* BASEBALL */
-            .baseball-field { position: relative; width: 30px; height: 30px; margin-right: 5px; }
-            .base { position: absolute; width: 8px; height: 8px; background: rgba(255,255,255,0.3); border: 1px solid rgba(0,0,0,0.5); transform: rotate(45deg); }
-            .base.active { background: #ffeb3b; border-color: black; box-shadow: 0 0 4px #ffeb3b; }
-            .b1 { right: 0; top: 11px; }
-            .b2 { left: 11px; top: 0; }
-            .b3 { left: 0; top: 11px; }
-
-            .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
-            .view-hidden { display: none !important; }
-            .empty-state { padding: 40px; text-align: center; color: #666; font-style: italic; }
-            .loading-spinner { border: 4px solid #333; border-top: 4px solid #007bff; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 50px auto; }
-            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-            /* --- SCHEDULE VIEW STYLES --- */
-            #schedule-view { position: relative; width: 100%; max-width: 600px; margin: 50px auto 0 auto; background: #121212; min-height: calc(100vh - 50px); overflow-x: hidden; }
-            .time-axis { position: absolute; left: 0; top: 0; bottom: 0; width: 50px; border-right: 1px solid #333; background: #121212; z-index: 10; }
-            .time-marker { position: absolute; width: 100%; text-align: right; padding-right: 8px; font-size: 0.7rem; color: #666; transform: translateY(-50%); }
-            .events-area { position: relative; margin-left: 55px; margin-right: 10px; height: 100%; }
-            .grid-line { position: absolute; left: 0; right: 0; height: 1px; background: #222; z-index: 0; }
-            .current-time-line { position: absolute; left: -55px; right: 0; height: 2px; background: #007bff; z-index: 50; pointer-events: none; box-shadow: 0 0 5px rgba(0,123,255,0.5); }
-            
-            .sched-card {
-                position: absolute; border-radius: 8px; overflow: hidden;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.5); color: white;
-                display: flex; flex-direction: column; justify-content: flex-start;
-                padding: 10px; font-size: 0.85rem; box-sizing: border-box;
-                border: 1px solid rgba(0,0,0,0.5);
-            }
-            .sched-card:hover { z-index: 100 !important; transform: scale(1.02); box-shadow: 0 5px 15px rgba(0,0,0,0.8); }
-            
-            .card-header { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.75rem; opacity: 1; font-weight:700; color: white; }
-            .team-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-            .t-left { display: flex; align-items: center; gap: 8px; }
-            .t-logo { width: 30px; height: 30px; object-fit: contain; }
-            .t-name { font-weight: 800; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color:white; }
-            .t-score { font-weight: 800; font-size: 1.4rem; color:white; }
-            
-            .card-footer { 
-                margin-top: auto; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.2); 
-                font-size: 0.8rem; font-weight: 700; color: white; 
-                text-align: right; display:flex; justify-content: flex-end; align-items: center; gap: 10px;
-            }
-            .red-zone { color: #ff3333; animation: pulse 1s infinite; }
-
-            /* --- GRID VIEW --- */
-            #grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 70px 20px 20px 20px; max-width: 600px; margin: 0 auto; }
-            .grid-card {
-                position: relative; border-radius: 12px; overflow: hidden;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.5); color: white; height: 110px;
-                display: flex; align-items: center; justify-content: space-between;
-                padding: 0 15px; transition: transform 0.2s; border: 1px solid rgba(0,0,0,0.5);
-            }
-            .gc-col { display: flex; flex-direction: column; align-items: center; z-index: 2; width: 70px; }
-            .gc-logo { width: 45px; height: 45px; object-fit: contain; margin-bottom:4px; }
-            .gc-abbr { font-size: 1rem; font-weight: 800; }
-            .gc-mid { z-index: 2; text-align: center; flex-grow: 1; }
-            .gc-status { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
-            
-            /* FIXED: Smaller font + nowrap to prevent overflow on high scores */
-            .gc-score { font-size: 1.5rem; font-weight: 800; line-height: 1; white-space: nowrap; }
-
-            .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
-            .view-hidden { display: none !important; }
+            input:checked + .slider:before { transform: translateX(16px); }
+            input[type="text"], input[type="range"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #333; background: #222; color: white; margin-top:5px;}
+            button { width: 100%; padding: 12px; background: #007bff; border: none; color: white; border-radius: 6px; font-size: 1.1rem; cursor: pointer; margin-top: 20px; }
         </style>
     </head>
     <body>
-        <nav class="navbar">
-            <button class="hamburger" onclick="toggleMenu()">☰</button>
-            <div class="nav-tabs">
-                <div class="nav-tab" id="tab-my" onclick="switchTab('my')">MY SCHEDULE</div>
-                <div class="nav-tab active" id="tab-all" onclick="switchTab('all')">ALL GAMES</div>
-            </div>
-            <div style="width:24px"></div>
-        </nav>
-
-        <div class="sidebar-overlay" onclick="toggleMenu()"></div>
-        <div class="sidebar" id="sidebar">
-            <div class="control-group">
-                <div class="section-label">My Teams</div>
-                <input type="text" id="inp_teams" placeholder="NYG, NYY, NJD..." value="">
-                <div style="font-size:0.7rem; color:#666; margin-top:4px;">Comma separated abbreviations</div>
-            </div>
-
-            <div class="control-group">
-                <div class="section-label">Display Settings</div>
-                <select id="sel_mode">
-                    <option value="all">Show All Games</option>
-                    <option value="live">Live Games Only</option>
-                    <option value="my_teams">My Teams Only</option>
-                </select>
-                <select id="sel_layout" style="margin-top:10px;">
-                    <option value="schedule">Schedule View</option>
-                    <option value="grid">Grid View</option>
-                </select>
-            </div>
-
-            <div class="control-group">
-                <div class="section-label">Filters</div>
-                 <div class="toggle-row"><span>Weather</span><label class="switch"><input type="checkbox" id="chk_weather"><span class="slider"></span></label></div>
-                 <div class="toggle-row"><span>Clock</span><label class="switch"><input type="checkbox" id="chk_clock"><span class="slider"></span></label></div>
-            </div>
-
-            <div class="control-group">
-                <div class="section-label">Leagues</div>
-                <div class="toggle-row"><span>NFL</span><label class="switch"><input type="checkbox" id="chk_nfl"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>NBA</span><label class="switch"><input type="checkbox" id="chk_nba"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>NHL</span><label class="switch"><input type="checkbox" id="chk_nhl"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>MLB</span><label class="switch"><input type="checkbox" id="chk_mlb"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>NCAA FBS</span><label class="switch"><input type="checkbox" id="chk_ncf_fbs"><span class="slider"></span></label></div>
-                 <div class="toggle-row"><span>NCAA FCS</span><label class="switch"><input type="checkbox" id="chk_ncf_fcs"><span class="slider"></span></label></div>
-            </div>
-            
-            <div class="control-group">
-                <div class="section-label">Location & Time</div>
-                 <input type="text" id="inp_loc" placeholder="Zip or City" style="margin-bottom:10px;">
-                <select id="sel_timezone">
-                    <option value="-4">Atlantic / EDT (UTC-4)</option>
-                    <option value="-5">Eastern (UTC-5)</option>
-                    <option value="-6">Central (UTC-6)</option>
-                    <option value="-7">Mountain (UTC-7)</option>
-                    <option value="-8">Pacific (UTC-8)</option>
-                    <option value="0">UTC / GMT</option>
-                </select>
-            </div>
-
-            <div class="control-group">
-                <div class="section-label">Device Settings</div>
-                <div class="toggle-row" style="margin-top:10px"><span>Seamless Scroll</span><label class="switch"><input type="checkbox" id="chk_scroll"><span class="slider"></span></label></div>
-                 
-                <div style="margin-top:10px;">
-                    <label style="font-size:0.8rem; color:#aaa;">Brightness</label>
-                    <input type="range" id="rng_bright" min="0.1" max="1.0" step="0.1" style="width:100%">
-                </div>
-
-                <div style="margin-top:10px;">
-                    <label style="font-size:0.8rem; color:#aaa;">Scroll Speed (1=Slow, 10=Fast)</label>
-                    <input type="range" id="rng_speed" min="1" max="10" step="1" style="width:100%">
-                </div>
-            </div>
-            
-            <button onclick="saveSettings()" style="width:100%; padding:10px; background:#007bff; border:none; color:white; border-radius:6px; font-weight:bold; cursor:pointer;">Save Changes</button>
+        <h2>Ticker Settings</h2>
+        
+        <div class="control-group">
+            <div style="font-weight:bold; margin-bottom:10px; color:#aaa;">ACTIVE SPORTS</div>
+            <div class="toggle-row"><span>NFL</span><label class="switch"><input type="checkbox" id="chk_nfl"><span class="slider"></span></label></div>
+            <div class="toggle-row"><span>NBA</span><label class="switch"><input type="checkbox" id="chk_nba"><span class="slider"></span></label></div>
+            <div class="toggle-row"><span>NHL</span><label class="switch"><input type="checkbox" id="chk_nhl"><span class="slider"></span></label></div>
+            <div class="toggle-row"><span>MLB</span><label class="switch"><input type="checkbox" id="chk_mlb"><span class="slider"></span></label></div>
+            <div class="toggle-row"><span>NCAA FBS</span><label class="switch"><input type="checkbox" id="chk_ncf_fbs"><span class="slider"></span></label></div>
+            <div class="toggle-row"><span>Soccer</span><label class="switch"><input type="checkbox" id="chk_soccer"><span class="slider"></span></label></div>
+            <div class="toggle-row"><span>Golf (PGA)</span><label class="switch"><input type="checkbox" id="chk_golf"><span class="slider"></span></label></div>
+            <hr style="border-color:#333">
+            <div class="toggle-row"><span>Formula 1</span><label class="switch"><input type="checkbox" id="chk_f1"><span class="slider"></span></label></div>
+            <div class="toggle-row"><span>NASCAR</span><label class="switch"><input type="checkbox" id="chk_nascar"><span class="slider"></span></label></div>
+            <div class="toggle-row"><span>IndyCar</span><label class="switch"><input type="checkbox" id="chk_indycar"><span class="slider"></span></label></div>
+            <div class="toggle-row"><span>IMSA</span><label class="switch"><input type="checkbox" id="chk_imsa"><span class="slider"></span></label></div>
+            <div class="toggle-row"><span>WEC</span><label class="switch"><input type="checkbox" id="chk_wec"><span class="slider"></span></label></div>
+            <hr style="border-color:#333">
+            <div class="toggle-row"><span>Weather</span><label class="switch"><input type="checkbox" id="chk_weather"><span class="slider"></span></label></div>
+            <div class="toggle-row"><span>Clock</span><label class="switch"><input type="checkbox" id="chk_clock"><span class="slider"></span></label></div>
         </div>
 
-        <div id="schedule-view" class="view-hidden">
-            <div class="time-axis" id="timeAxis"></div>
-            <div class="events-area" id="eventsArea"></div>
+        <div class="control-group">
+            <div style="font-weight:bold; margin-bottom:10px; color:#aaa;">CONFIGURATION</div>
+            <div style="margin-bottom:10px;">
+                <label>My Teams (Comma Separated)</label>
+                <input type="text" id="inp_teams" placeholder="NYG, NYY, NJD...">
+            </div>
+            <div style="margin-bottom:10px;">
+                <label>Weather Location (Zip or City)</label>
+                <input type="text" id="inp_loc">
+            </div>
+            <div class="toggle-row"><span>Seamless Scroll</span><label class="switch"><input type="checkbox" id="chk_scroll"><span class="slider"></span></label></div>
+            <div style="margin-top:10px;">
+                <label>Brightness</label>
+                <input type="range" id="rng_bright" min="0.1" max="1.0" step="0.1">
+            </div>
         </div>
 
-        <div id="grid-view">
-             <div class="loading-spinner"></div>
-        </div>
+        <button onclick="saveSettings()">Save Changes</button>
 
         <script>
-            const PIXELS_PER_MINUTE = 1.6; 
-            const START_HOUR = 8; 
-            let currentTab = 'all';
-
-            function toggleMenu() { document.getElementById('sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('active'); }
-            function hexToRgb(hex) { if(!hex) return {r:0, g:0, b:0}; hex = hex.replace(/^#/, ''); if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2]; const bigint = parseInt(hex, 16); return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 }; }
-            function getLuminance(r, g, b) { return (0.2126 * r + 0.7152 * g + 0.0722 * b); }
-            function resolveColors(aColor, aAlt, hColor, hAlt) {
-                const LUM_THRESHOLD = 50; 
-                let aC = aColor || '#000000'; let aA = aAlt || '#ffffff';
-                let hC = hColor || '#000000'; let hA = hAlt || '#ffffff';
-                let aRgb = hexToRgb(aC); let hRgb = hexToRgb(hC);
-                if (getLuminance(aRgb.r, aRgb.g, aRgb.b) < LUM_THRESHOLD && aA) { aC = aA; }
-                if (getLuminance(hRgb.r, hRgb.g, hRgb.b) < LUM_THRESHOLD && hA) { hC = hA; }
-                return [aC, hC];
-            }
-
-            function switchTab(tab) {
-                currentTab = tab;
-                document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
-                document.getElementById('tab-' + tab).classList.add('active');
-                
-                if(tab === 'my') {
-                    document.getElementById('schedule-view').classList.remove('view-hidden');
-                    document.getElementById('grid-view').classList.add('view-hidden');
-                } else {
-                    document.getElementById('schedule-view').classList.add('view-hidden');
-                    document.getElementById('grid-view').classList.remove('view-hidden');
-                }
-                loadState(); 
-            }
-
-            async function loadState() {
+            async function load() {
                 try {
                     const res = await fetch('/api/state');
-                    const data = await res.json();
-                    const s = data.settings;
+                    const d = await res.json();
+                    const s = d.settings;
+                    
+                    const keys = ['nfl','nba','nhl','mlb','ncf_fbs','soccer','golf','f1','nascar','indycar','imsa','wec','weather','clock'];
+                    keys.forEach(k => {
+                        if(document.getElementById('chk_'+k)) document.getElementById('chk_'+k).checked = s.active_sports[k];
+                    });
                     
                     document.getElementById('inp_teams').value = (s.my_teams || []).join(', ');
-                    document.getElementById('chk_nfl').checked = s.active_sports.nfl;
-                    document.getElementById('chk_nba').checked = s.active_sports.nba;
-                    document.getElementById('chk_nhl').checked = s.active_sports.nhl;
-                    document.getElementById('chk_mlb').checked = s.active_sports.mlb;
-                    document.getElementById('chk_ncf_fbs').checked = s.active_sports.ncf_fbs;
-                    document.getElementById('chk_ncf_fcs').checked = s.active_sports.ncf_fcs;
-                    document.getElementById('chk_weather').checked = s.active_sports.weather;
-                    document.getElementById('chk_clock').checked = s.active_sports.clock;
+                    document.getElementById('inp_loc').value = s.weather_location;
                     document.getElementById('chk_scroll').checked = s.scroll_seamless;
                     document.getElementById('rng_bright').value = s.brightness;
-                    document.getElementById('rng_speed').value = s.scroll_speed || 5;
-                    
-                    if(document.getElementById('sel_mode')) document.getElementById('sel_mode').value = s.mode;
-                    if(document.getElementById('sel_layout')) document.getElementById('sel_layout').value = s.layout_mode;
-                    
-                    document.getElementById('inp_loc').value = s.weather_location;
-                    if(s.utc_offset) document.getElementById('sel_timezone').value = s.utc_offset;
-
-                    render(data);
-                } catch(e) { console.error(e); }
-            }
-
-            function render(data) {
-                const games = data.games || [];
-                const myTeamsStr = document.getElementById('inp_teams').value.toUpperCase();
-                const myTeams = myTeamsStr.split(',').map(s => s.trim());
-
-                if (currentTab === 'my') {
-                    const filtered = games.filter(g => {
-                        if(g.sport === 'weather' || g.sport === 'clock') return true;
-                        
-                        // FIXED: Check both plain Abbr (NYG) and League:Abbr (NFL:NYG)
-                        const homeKey = (g.sport + ':' + g.home_abbr).toUpperCase();
-                        const awayKey = (g.sport + ':' + g.away_abbr).toUpperCase();
-                        
-                        return myTeams.includes(g.home_abbr) || myTeams.includes(g.away_abbr) || 
-                               myTeams.includes(homeKey) || myTeams.includes(awayKey);
-                    });
-                    renderSchedule(filtered, data.settings.utc_offset || -4);
-                } else {
-                    renderGrid(games);
-                }
-            }
-
-            function renderGrid(games) {
-                const container = document.getElementById('grid-view');
-                container.innerHTML = '';
-                
-                if(!games || games.length === 0) {
-                     container.innerHTML = '<div class="empty-state">No games active. Check your filters or the schedule.</div>';
-                     return;
-                }
-
-                games.forEach(game => {
-                    if(game.sport === 'weather' || game.sport === 'clock') return;
-                    const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
-                    const homeHasPoss = game.situation.possession === game.home_id;
-                    const awayHasPoss = game.situation.possession === game.away_id;
-                    
-                    let detailHtml = '';
-                    if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; }
-                    else if(game.state === 'in' && game.situation.downDist) { detailHtml = `<div class="gc-status text-outline" style="color:#ffc107">${game.situation.downDist}</div>`; }
-
-                    // FIXED: Dynamic Possession Icons/Labels
-                    let possIcon = '🏈'; let possText = 'Poss';
-                    if(game.sport === 'nhl') { possIcon = '🏒'; possText = 'PP'; }
-                    else if(game.sport === 'nba') { possIcon = '🏀'; }
-                    else if(game.sport === 'mlb') { possIcon = '⚾'; }
-
-                    const div = document.createElement('div');
-                    div.className = 'grid-card';
-                    div.style.background = `linear-gradient(120deg, ${aC} 0%, ${aC} 45%, ${hC} 55%, ${hC} 100%)`;
-                    div.innerHTML = `
-                        <div class="overlay"></div>
-                        <div class="gc-col">
-                            <img class="gc-logo logo-outline" src="${game.away_logo}">
-                            <div class="gc-abbr text-outline">${game.away_abbr}</div>
-                            ${awayHasPoss ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}
-                        </div>
-                        <div class="gc-mid">
-                            <div class="gc-status text-outline">${game.status}</div>
-                            <div class="gc-score text-outline">${game.away_score} - ${game.home_score}</div>
-                            ${detailHtml}
-                        </div>
-                        <div class="gc-col">
-                            <img class="gc-logo logo-outline" src="${game.home_logo}">
-                            <div class="gc-abbr text-outline">${game.home_abbr}</div>
-                            ${homeHasPoss ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}
-                        </div>
-                    `;
-                    container.appendChild(div);
-                });
-            }
-
-            function renderSchedule(games, utcOffset) {
-                const eventsArea = document.getElementById('eventsArea');
-                const axis = document.getElementById('timeAxis');
-                eventsArea.innerHTML = ''; axis.innerHTML = '';
-
-                const nowLine = document.createElement('div'); nowLine.className = 'current-time-line'; eventsArea.appendChild(nowLine);
-
-                // FIXED: Extended time range to 24 hours (8AM - 8AM) to cover late games/overtime
-                for(let i=0; i<24; i++) {
-                    const hour = START_HOUR + i; const top = i * 60 * PIXELS_PER_MINUTE;
-                    let displayHour = (hour % 12) || 12; displayHour += (hour < 12 ? ' AM' : ' PM');
-                    if (hour >= 24) { 
-                        let h = hour - 24; 
-                        displayHour = (h % 12) || 12; displayHour += (h < 12 ? ' AM' : ' PM');
-                    }
-                    
-                    const marker = document.createElement('div'); marker.className = 'time-marker'; marker.innerText = displayHour; marker.style.top = top + 'px'; axis.appendChild(marker);
-                    const grid = document.createElement('div'); grid.className = 'grid-line'; grid.style.top = top + 'px'; eventsArea.appendChild(grid);
-                }
-
-                if(!games || games.length === 0) {
-                     eventsArea.innerHTML += '<div class="empty-state">No scheduled games found for your teams.</div>';
-                     return;
-                }
-
-                // FIXED: Time Calculation Logic for Current Time Line
-                const offsetMs = utcOffset * 3600 * 1000;
-                const now = new Date();
-                const utcNow = now.getTime() + (now.getTimezoneOffset() * 60000);
-                const targetMs = utcNow + offsetMs;
-                const localNow = new Date(targetMs + (now.getTimezoneOffset() * 60000));
-                
-                let h = localNow.getHours();
-                let m = localNow.getMinutes();
-                
-                // Wrap hours: If currently 1AM, but schedule starts at 8AM, treat 1AM as 25:00
-                let effectiveHour = h;
-                if(effectiveHour < START_HOUR) effectiveHour += 24;
-
-                const nowMins = (effectiveHour * 60) + m - (START_HOUR * 60);
-                
-                if(nowMins >= 0 && nowMins <= (24*60)) {
-                    nowLine.style.top = (nowMins * PIXELS_PER_MINUTE) + 'px';
-                    
-                    // FIXED: Auto-centering logic
-                    const view = document.getElementById('schedule-view');
-                    const halfScreen = window.innerHeight / 2;
-                    view.scrollTop = (nowMins * PIXELS_PER_MINUTE) - halfScreen;
-                } else {
-                    nowLine.style.display = 'none';
-                }
-
-                games.forEach(g => {
-                    if(g.sport === 'weather' || g.sport === 'clock') return;
-                    const d = new Date(g.startTimeUTC); 
-                    
-                    // Same logic for games: UTC -> Target Timezone
-                    const gameUtcMs = d.getTime(); 
-                    // Note: 'd' is created from ISO string, so it is already in local browser time representation of that UTC instant.
-                    // We need to shift it to represent the Target Timezone visually.
-                    const gameLocalMs = gameUtcMs + offsetMs + (new Date().getTimezoneOffset() * 60000);
-                    const local = new Date(gameLocalMs);
-                    
-                    let gh = local.getHours();
-                    let gm = local.getMinutes();
-                    
-                    // Wrap hours for games too
-                    if(gh < START_HOUR) gh += 24;
-                    
-                    const startMins = gh * 60 + gm - (START_HOUR * 60);
-                    const dur = g.estimated_duration || 180;
-
-                    const div = document.createElement('div'); div.className = 'sched-card';
-                    div.style.top = (startMins * PIXELS_PER_MINUTE) + 'px'; 
-                    div.style.height = (dur * PIXELS_PER_MINUTE) + 'px';
-                    div.style.width = '95%'; div.style.left = '0';
-                    
-                    const [aC, hC] = resolveColors(g.away_color, g.away_alt_color, g.home_color, g.home_alt_color);
-                    div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
-
-                    // --- VISUAL ELEMENTS ---
-                    let statusHtml = '';
-                    if(g.situation && g.situation.isRedZone) { statusHtml = `<span class="red-zone-pill">${g.situation.downDist}</span>`; } 
-                    else if(g.state === 'in' && g.situation.downDist) { statusHtml = `<span class="text-outline">${g.situation.downDist}</span>`; }
-
-                    // FIXED: Dynamic Possession Icons/Labels
-                    let possIcon = '🏈'; let possText = 'Poss';
-                    if(g.sport === 'nhl') { possIcon = '🏒'; possText = 'PP'; }
-                    else if(g.sport === 'nba') { possIcon = '🏀'; }
-                    else if(g.sport === 'mlb') { possIcon = '⚾'; }
-
-                    // BASEBALL DIAMOND
-                    let diamondHtml = '';
-                    if(g.sport === 'mlb') {
-                        const s = g.situation || {};
-                        diamondHtml = `
-                            <div class="baseball-field">
-                                <div class="base b1 ${s.onFirst?'active':''}"></div>
-                                <div class="base b2 ${s.onSecond?'active':''}"></div>
-                                <div class="base b3 ${s.onThird?'active':''}"></div>
-                            </div>
-                            <div class="text-outline" style="font-size:0.7rem;">${s.balls}-${s.strikes}, ${s.outs} Out</div>
-                        `;
-                    }
-
-                    // HOCKEY INDICATORS
-                    let awayExtra = '', homeExtra = '';
-                    if(g.sport === 'nhl') {
-                        const sit = g.situation || {};
-                        if(sit.powerPlay && sit.possession === g.away_id) awayExtra += ' 🏒';
-                        if(sit.powerPlay && sit.possession === g.home_id) homeExtra += ' 🏒';
-                        if(sit.emptyNet && sit.possession !== g.away_id) awayExtra += ' 🥅';
-                        if(sit.emptyNet && sit.possession !== g.home_id) homeExtra += ' 🥅';
-                    }
-
-                    div.innerHTML = `
-                        <div class="overlay"></div>
-                        <div class="card-header">
-                            ${g.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}
-                            <span class="text-outline" style="text-align:right">${g.status}</span>
-                        </div>
-                        
-                        <div class="team-row">
-                            <div class="t-left">
-                                <img class="t-logo logo-outline" src="${g.away_logo}">
-                                <div>
-                                    <div class="t-name text-outline">${g.away_abbr} ${awayExtra}</div>
-                                    ${g.situation.possession === g.away_id ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}
-                                </div>
-                            </div>
-                            <div class="t-score text-outline">${g.away_score}</div>
-                        </div>
-
-                        <div class="team-row">
-                            <div class="t-left">
-                                <img class="t-logo logo-outline" src="${g.home_logo}">
-                                <div>
-                                    <div class="t-name text-outline">${g.home_abbr} ${homeExtra}</div>
-                                    ${g.situation.possession === g.home_id ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}
-                                </div>
-                            </div>
-                            <div class="t-score text-outline">${g.home_score}</div>
-                        </div>
-                        
-                        <div class="card-footer">
-                            ${diamondHtml}
-                            ${statusHtml}
-                        </div>
-                    `;
-                    eventsArea.appendChild(div);
-                });
+                } catch(e) { console.log(e); }
             }
 
             async function saveSettings() {
-                const teamsArr = document.getElementById('inp_teams').value.split(',').map(s=>s.trim()).filter(s=>s);
+                const active = {};
+                ['nfl','nba','nhl','mlb','ncf_fbs','soccer','golf','f1','nascar','indycar','imsa','wec','weather','clock'].forEach(k => {
+                    active[k] = document.getElementById('chk_'+k).checked;
+                });
+                
                 const payload = {
-                    active_sports: {
-                        nfl: document.getElementById('chk_nfl').checked, nba: document.getElementById('chk_nba').checked, nhl: document.getElementById('chk_nhl').checked, mlb: document.getElementById('chk_mlb').checked, ncf_fbs: document.getElementById('chk_ncf_fbs').checked, ncf_fcs: document.getElementById('chk_ncf_fcs').checked, weather: document.getElementById('chk_weather').checked, clock: document.getElementById('chk_clock').checked
-                    },
-                    my_teams: teamsArr,
-                    scroll_seamless: document.getElementById('chk_scroll').checked,
-                    brightness: parseFloat(document.getElementById('rng_bright').value),
-                    scroll_speed: parseInt(document.getElementById('rng_speed').value),
+                    active_sports: active,
+                    my_teams: document.getElementById('inp_teams').value.split(',').map(s=>s.trim()).filter(s=>s),
                     weather_location: document.getElementById('inp_loc').value,
-                    utc_offset: parseInt(document.getElementById('sel_timezone').value),
-                    mode: document.getElementById('sel_mode') ? document.getElementById('sel_mode').value : 'all',
-                    layout_mode: document.getElementById('sel_layout') ? document.getElementById('sel_layout').value : 'schedule'
+                    scroll_seamless: document.getElementById('chk_scroll').checked,
+                    brightness: parseFloat(document.getElementById('rng_bright').value)
                 };
+                
                 await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-                toggleMenu(); loadState();
+                alert("Settings Saved!");
             }
-
-            loadState(); setInterval(loadState, 5000);
+            load();
         </script>
     </body>
     </html>
@@ -1055,7 +722,7 @@ def root():
 @app.route('/api/ticker')
 def api_ticker():
     with data_lock: d = state.copy()
-    offset_sec = d.get('utc_offset', -4) * 3600
+    offset_sec = d.get('utc_offset', -5) * 3600
     
     raw_games = d['current_games']
     processed_games = []
@@ -1070,12 +737,11 @@ def api_ticker():
             'count': len(processed_games), 
             'scroll_seamless': d['scroll_seamless'], 
             'brightness': d['brightness'], 
-            'scroll_speed': d.get('scroll_speed', 5), # ADDED
+            'scroll_speed': d.get('scroll_speed', 5),
             'inverted': d['inverted'], 
             'panel_count': d['panel_count'], 
             'test_pattern': d['test_pattern'], 
-            'reboot_requested': d['reboot_requested'],
-            'utc_offset_seconds': offset_sec 
+            'reboot_requested': d['reboot_requested']
         }, 
         'games': processed_games
     })
