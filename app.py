@@ -9,7 +9,7 @@ from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 5 
+UPDATE_INTERVAL = 60 
 data_lock = threading.Lock()
 
 HEADERS = {
