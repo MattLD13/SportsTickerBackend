@@ -11,14 +11,13 @@ from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 5  # Restored to 5 seconds
+UPDATE_INTERVAL = 5
 data_lock = threading.Lock()
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Cache-Control": "no-cache, no-store, must-revalidate",
-    "Pragma": "no-cache",
-    "Expires": "0"
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache"
 }
 
 # ================= DEFAULT STATE =================
@@ -468,9 +467,10 @@ class SportsFetcher:
 
     # === DEMO DATA GENERATOR ===
     def generate_demo_data(self):
+        t_str = dt.now().strftime('%H:%M:%S')
         return [
             {
-                'sport': 'nfl', 'id': 'd1', 'status': 'Q4 2:00', 'state': 'in', 'is_shown': True,
+                'sport': 'nfl', 'id': 'd1', 'status': f'DEMO {t_str}', 'state': 'in', 'is_shown': True,
                 'home_abbr': 'KC', 'home_score': '24', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/kc.png',
                 'away_abbr': 'BUF', 'away_score': '21', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/buf.png',
                 'home_color': '#e31837', 'away_color': '#00338d', 'home_alt_color': '#ffb81c', 'away_alt_color': '#c60c30',
@@ -478,8 +478,8 @@ class SportsFetcher:
                 'startTimeUTC': dt.utcnow().isoformat()
             },
             {
-                'sport': 'racing_f1', 'id': 'd2', 'status': 'Lap 45/52', 'state': 'in', 'is_shown': True,
-                'tourney_name': 'British GP',
+                'sport': 'racing_f1', 'id': 'd2', 'status': f'Lap 45/52', 'state': 'in', 'is_shown': True,
+                'tourney_name': f'British GP {t_str}',
                 'leaders': [
                     {'rank': '1', 'name': 'Norris', 'score': 'LEAD'},
                     {'rank': '2', 'name': 'Verstappen', 'score': '+1.2s'},
@@ -525,7 +525,6 @@ class SportsFetcher:
         self._fetch_nascar_native(games)
         
         # 2. Fetch ESPN Fallbacks (Golf, Indy, WEC, IMSA)
-        # Only fetch if not already populated by specific fetchers (for now assume they are distinct)
         for s in ['golf', 'racing_indycar', 'racing_wec', 'racing_imsa']:
             self._fetch_leaderboard_sport(s, games)
 
@@ -642,6 +641,14 @@ def background_updater():
 
 # ================= FLASK API =================
 app = Flask(__name__)
+
+# PREVENT FLASK CACHING
+@app.after_request
+def add_header(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 @app.route('/')
 def root():
@@ -804,6 +811,7 @@ def api_teams():
 def api_config():
     with data_lock: state.update(request.json)
     save_config_file()
+    # Force immediate refresh
     threading.Thread(target=fetcher.get_real_games).start()
     return jsonify({"status": "ok"})
 
