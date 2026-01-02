@@ -9,14 +9,12 @@ from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 15 # Balanced for API limits
+UPDATE_INTERVAL = 5 
 data_lock = threading.Lock()
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Cache-Control": "no-cache, no-store, must-revalidate",
-    "Pragma": "no-cache",
-    "Expires": "0"
+    "Cache-Control": "no-cache"
 }
 
 # ================= DEFAULT STATE =================
@@ -76,9 +74,7 @@ def save_config_file():
             json.dump(export_data, f)
     except: pass
 
-# ==========================================
-# TEAMS LISTS & MAPPINGS
-# ==========================================
+# ================= TEAMS & LOGOS =================
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTU", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 
@@ -113,15 +109,6 @@ class WeatherFetcher:
     def update_coords(self, location_query):
         clean_query = str(location_query).strip()
         if not clean_query: return
-        if re.fullmatch(r'\d{5}', clean_query):
-            try:
-                r = requests.get(f"https://api.zippopotam.us/us/{clean_query}", timeout=5)
-                if r.status_code == 200:
-                    d = r.json(); p = d['places'][0]
-                    self.lat = float(p['latitude']); self.lon = float(p['longitude'])
-                    self.location_name = p['place name']; self.last_fetch = 0
-                    return
-            except: pass
         try:
             r = requests.get(f"https://geocoding-api.open-meteo.com/v1/search?name={clean_query}&count=1&language=en&format=json", timeout=5)
             d = r.json()
@@ -173,13 +160,11 @@ class SportsFetcher:
             'mlb': { 'path': 'baseball/mlb', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            # --- NEW SPORTS ---
+            # --- SOCCER ---
             'soccer_epl': { 'path': 'soccer/eng.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
             'soccer_mls': { 'path': 'soccer/usa.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
             'soccer_ucl': { 'path': 'soccer/uefa.champions', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
-            'soccer_esp': { 'path': 'soccer/esp.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
-            'soccer_ger': { 'path': 'soccer/ger.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
-            # Leaderboard Sports
+            # --- LEADERBOARDS ---
             'golf': { 'path': 'golf/pga', 'type': 'leaderboard' },
             'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
             'nascar': { 'path': 'racing/nascar', 'type': 'leaderboard' },
@@ -267,8 +252,8 @@ class SportsFetcher:
                             catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
         except: pass
 
-    # === NEW: LEADERBOARD FETCHER ===
     def fetch_leaderboard_event(self, league_key, config, games_list, conf):
+        # NOTE: WE DO NOT USE req_params['dates'] here to ensure we get the active tournament
         try:
             url = f"{self.base_url}{config['path']}/scoreboard"
             r = requests.get(url, headers=HEADERS, timeout=5)
@@ -279,6 +264,7 @@ class SportsFetcher:
                 status_obj = e.get('status', {})
                 state = status_obj.get('type', {}).get('state', 'pre')
                 
+                # Check date for caching/display logic
                 utc_str = e['date'].replace('Z', '')
                 try:
                     game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
@@ -305,11 +291,12 @@ class SportsFetcher:
                     if ' ' in disp_name: disp_name = disp_name.split(' ')[-1] # Shorten Name
                     
                     rank = c.get('curatedRank', c.get('order', '-'))
-                    score = c.get('score', '')
                     
-                    if 'racing' in config['path']:
+                    # Robust Score Parsing
+                    score = c.get('score', '')
+                    if not score:
                         lines = c.get('linescores', [])
-                        if lines: score = lines[-1].get('value', score)
+                        if lines: score = lines[-1].get('value', '')
                     
                     leaders.append({'rank': str(rank), 'name': disp_name, 'score': str(score)})
 
@@ -370,9 +357,7 @@ class SportsFetcher:
 
                         disp = "Scheduled"; pp = False; poss = ""; en = False
                         utc_start = g.get('startTimeUTC', '') 
-                        
                         dur = self.calculate_game_timing('nhl', utc_start, 1, st)
-                        
                         if st in ['PRE', 'FUT'] and utc_start:
                              try:
                                  dt_obj = dt.fromisoformat(utc_start.replace('Z', '+00:00'))
@@ -393,7 +378,6 @@ class SportsFetcher:
                                     d2 = r2.json()
                                     h_sc = str(d2['homeTeam'].get('score', h_sc))
                                     a_sc = str(d2['awayTeam'].get('score', a_sc))
-                                    
                                     pd = d2.get('periodDescriptor', {})
                                     clk = d2.get('clock', {})
                                     time_rem = clk.get('timeRemaining', '00:00')
@@ -411,7 +395,6 @@ class SportsFetcher:
                                     else:
                                         p_lbl = "OT" if p_num > 3 else f"P{p_num}"
                                         disp = f"{p_lbl} {time_rem}"
-
                                     sit_obj = d2.get('situation', {})
                                     if sit_obj:
                                         sit = sit_obj.get('situationCode', '1551')
