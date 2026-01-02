@@ -9,7 +9,7 @@ from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 5
+UPDATE_INTERVAL = 5  # UPDATED: Updates every 5 seconds
 data_lock = threading.Lock()
 
 HEADERS = {
@@ -31,7 +31,7 @@ default_state = {
     'current_games': [],
     'all_teams_data': {}, 
     'debug_mode': False,
-    'demo_mode': False, # NEW: Demo Mode Toggle
+    'demo_mode': False,
     'custom_date': None,
     'brightness': 0.5,
     'scroll_speed': 5, 
@@ -101,6 +101,60 @@ SPORT_DURATIONS = {
     'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
     'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
 }
+
+# === DEMO DATA GENERATOR ===
+def generate_demo_data():
+    return [
+        # F1 Demo
+        {
+            'type': 'leaderboard', 'sport': 'f1', 'id': 'demo_f1', 'status': 'Lap 45/78', 'state': 'in',
+            'tourney_name': 'Monaco Grand Prix', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
+            'leaders': [
+                {'rank': '1', 'name': 'Verstappen', 'score': 'LEADER'},
+                {'rank': '2', 'name': 'Norris', 'score': '+2.4s'},
+                {'rank': '3', 'name': 'Leclerc', 'score': '+5.1s'},
+                {'rank': '4', 'name': 'Hamilton', 'score': '+12.0s'}
+            ]
+        },
+        # NASCAR Demo
+        {
+            'type': 'leaderboard', 'sport': 'nascar', 'id': 'demo_nascar', 'status': 'Stage 2', 'state': 'in',
+            'tourney_name': 'Daytona 500', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
+            'leaders': [
+                {'rank': '1', 'name': 'Hamlin', 'score': 'LEADER'},
+                {'rank': '2', 'name': 'Elliott', 'score': '-0.145'},
+                {'rank': '3', 'name': 'Logano', 'score': '-0.500'},
+                {'rank': '4', 'name': 'Larson', 'score': '-1.200'}
+            ]
+        },
+        # IndyCar Demo
+        {
+            'type': 'leaderboard', 'sport': 'indycar', 'id': 'demo_indy', 'status': 'Lap 150/200', 'state': 'in',
+            'tourney_name': 'Indy 500', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
+            'leaders': [
+                {'rank': '1', 'name': 'Newgarden', 'score': 'LEADER'},
+                {'rank': '2', 'name': 'O\'Ward', 'score': '-0.332'},
+                {'rank': '3', 'name': 'Palou', 'score': '-1.100'},
+                {'rank': '4', 'name': 'Dixon', 'score': '-2.500'}
+            ]
+        },
+        # EPL Soccer Demo
+        {
+            'type': 'scoreboard', 'sport': 'soccer', 'id': 'demo_soc', 'status': "88'", 'state': 'in', 'is_shown': True,
+            'home_abbr': 'ARS', 'home_score': '2', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/359.png', 'home_color': '#EF0107', 'home_alt_color': '#ffffff',
+            'away_abbr': 'CHE', 'away_score': '1', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/363.png', 'away_color': '#034694', 'away_alt_color': '#ffffff',
+            'startTimeUTC': dt.now(timezone.utc).isoformat(),
+            'situation': {'possession': 'away_id', 'isRedZone': False, 'downDist': ''}, 'estimated_duration': 115
+        },
+        # NFL Demo
+        {
+            'type': 'scoreboard', 'sport': 'nfl', 'id': 'demo_nfl', 'status': "4th 2:00", 'state': 'in', 'is_shown': True,
+            'home_abbr': 'KC', 'home_score': '24', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/kc.png', 'home_color': '#e31837', 'home_alt_color': '#ffb81c',
+            'away_abbr': 'BUF', 'away_score': '20', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/buf.png', 'away_color': '#00338d', 'away_alt_color': '#c60c30',
+            'startTimeUTC': dt.now(timezone.utc).isoformat(),
+            'situation': {'possession': 'home_id', 'isRedZone': True, 'downDist': '1st & Goal'}, 'estimated_duration': 195
+        }
+    ]
 
 class WeatherFetcher:
     def __init__(self, initial_loc):
@@ -412,67 +466,13 @@ class SportsFetcher:
                         })
         except: pass
 
-    # === NEW: GENERATE DEMO DATA ===
-    def generate_demo_data():
-        return [
-            # F1 Demo
-            {
-                'type': 'leaderboard', 'sport': 'f1', 'id': 'demo_f1', 'status': 'Lap 45/78', 'state': 'in',
-                'tourney_name': 'Monaco Grand Prix', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
-                'leaders': [
-                    {'rank': '1', 'name': 'Verstappen', 'score': 'LEADER'},
-                    {'rank': '2', 'name': 'Norris', 'score': '+2.4s'},
-                    {'rank': '3', 'name': 'Leclerc', 'score': '+5.1s'},
-                    {'rank': '4', 'name': 'Hamilton', 'score': '+12.0s'}
-                ]
-            },
-            # NASCAR Demo
-            {
-                'type': 'leaderboard', 'sport': 'nascar', 'id': 'demo_nascar', 'status': 'Stage 2', 'state': 'in',
-                'tourney_name': 'Daytona 500', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
-                'leaders': [
-                    {'rank': '1', 'name': 'Hamlin', 'score': 'LEADER'},
-                    {'rank': '2', 'name': 'Elliott', 'score': '-0.145'},
-                    {'rank': '3', 'name': 'Logano', 'score': '-0.500'},
-                    {'rank': '4', 'name': 'Larson', 'score': '-1.200'}
-                ]
-            },
-            # IndyCar Demo
-            {
-                'type': 'leaderboard', 'sport': 'indycar', 'id': 'demo_indy', 'status': 'Lap 150/200', 'state': 'in',
-                'tourney_name': 'Indy 500', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
-                'leaders': [
-                    {'rank': '1', 'name': 'Newgarden', 'score': 'LEADER'},
-                    {'rank': '2', 'name': 'O\'Ward', 'score': '-0.332'},
-                    {'rank': '3', 'name': 'Palou', 'score': '-1.100'},
-                    {'rank': '4', 'name': 'Dixon', 'score': '-2.500'}
-                ]
-            },
-            # EPL Soccer Demo
-            {
-                'type': 'scoreboard', 'sport': 'soccer', 'id': 'demo_soc', 'status': "88'", 'state': 'in', 'is_shown': True,
-                'home_abbr': 'ARS', 'home_score': '2', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/359.png', 'home_color': '#EF0107', 'home_alt_color': '#ffffff',
-                'away_abbr': 'CHE', 'away_score': '1', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/363.png', 'away_color': '#034694', 'away_alt_color': '#ffffff',
-                'startTimeUTC': dt.now(timezone.utc).isoformat(),
-                'situation': {'possession': 'away_id', 'isRedZone': False, 'downDist': ''}, 'estimated_duration': 115
-            },
-            # NFL Demo
-            {
-                'type': 'scoreboard', 'sport': 'nfl', 'id': 'demo_nfl', 'status': "4th 2:00", 'state': 'in', 'is_shown': True,
-                'home_abbr': 'KC', 'home_score': '24', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/kc.png', 'home_color': '#e31837', 'home_alt_color': '#ffb81c',
-                'away_abbr': 'BUF', 'away_score': '20', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/buf.png', 'away_color': '#00338d', 'away_alt_color': '#c60c30',
-                'startTimeUTC': dt.now(timezone.utc).isoformat(),
-                'situation': {'possession': 'home_id', 'isRedZone': True, 'downDist': '1st & Goal'}, 'estimated_duration': 195
-            }
-        ]
-
     def get_real_games(self):
         games = []
         with data_lock: 
             conf = state.copy()
             # === DEMO MODE OVERRIDE ===
             if conf.get('demo_mode', False):
-                state['current_games'] = SportsFetcher.generate_demo_data()
+                state['current_games'] = generate_demo_data()
                 return
 
         utc_offset = conf.get('utc_offset', -4)
