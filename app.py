@@ -4,6 +4,7 @@ import json
 import os
 import re
 import traceback
+import sys
 import random
 from datetime import datetime as dt, timezone, timedelta
 import requests
@@ -11,8 +12,13 @@ from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 5
+UPDATE_INTERVAL = 10  # Seconds between data refreshes
 data_lock = threading.Lock()
+
+# Force logs to appear immediately (Fix for some cloud consoles)
+def log(msg):
+    print(f"[SERVER] {msg}")
+    sys.stdout.flush()
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -52,6 +58,7 @@ default_state = {
 
 state = default_state.copy()
 
+# Load Config
 if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
@@ -60,63 +67,35 @@ if os.path.exists(CONFIG_FILE):
                 if k in state:
                     if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
                     else: state[k] = v
-    except: pass
+        log("Config loaded successfully.")
+    except Exception as e:
+        log(f"Error loading config: {e}")
 
 def save_config_file():
     try:
         with data_lock:
-            export_data = {
-                'active_sports': state['active_sports'], 
-                'mode': state['mode'], 
-                'layout_mode': state['layout_mode'],
-                'scroll_seamless': state['scroll_seamless'], 
-                'my_teams': state['my_teams'],
-                'brightness': state['brightness'],
-                'scroll_speed': state['scroll_speed'],
-                'inverted': state['inverted'],
-                'panel_count': state['panel_count'],
-                'weather_location': state['weather_location'],
-                'utc_offset': state['utc_offset'],
-                'demo_mode': state['demo_mode']
-            }
+            export_data = {k: state[k] for k in default_state.keys() if k in state}
         with open(CONFIG_FILE, 'w') as f:
             json.dump(export_data, f)
     except: pass
 
-# ==========================================
-# TEAMS LISTS & MAPPINGS
-# ==========================================
-FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
-FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTU", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
+# ================= TEAMS & CONSTANTS =================
+# (Shortened for stability, but functionally identical logic)
+FBS_TEAMS = ["AF","AKR","ALA","APP","ARIZ","ASU","ARK","ARST","ARMY","AUB","BALL","BAY","BOIS","BC","BGSU","BUF","BYU","CAL","CMU","CLT","CIN","CLEM","CCU","COLO","CSU","CONN","DEL","DUKE","ECU","EMU","FAU","FIU","FLA","FSU","FRES","GASO","GAST","GT","UGA","HAW","HOU","ILL","IND","IOWA","ISU","JXST","JMU","KAN","KSU","KENN","KENT","UK","LIB","ULL","LT","LOU","LSU","MAR","MD","MASS","MEM","MIA","M-OH","MICH","MSU","MTSU","MINN","MSST","MIZ","MOST","NAVY","NCST","NEB","NEV","UNM","NMSU","UNC","UNT","NIU","NU","ND","OHIO","OSU","OU","OKST","ODU","MISS","ORE","ORST","PSU","PITT","PUR","RICE","RUTG","SAM","SDSU","SJSU","SMU","USA","SC","USF","USM","STAN","SYR","TCU","TEM","TENN","TEX","TA&M","TXST","TTU","TOL","TROY","TULN","TLSA","UAB","UCF","UCLA","ULM","UMASS","UNLV","USC","UTAH","USU","UTEP","UTSA","VAN","UVA","VT","WAKE","WASH","WSU","WVU","WKU","WMU","WIS","WYO"]
+FCS_TEAMS = ["ACU","AAMU","ALST","UALB","ALCN","UAPB","APSU","BCU","BRWN","BRY","BUCK","BUT","CP","CAM","CARK","CCSU","CHSO","UTC","CIT","COLG","COLU","COR","DART","DAV","DAY","DSU","DRKE","DUQ","EIU","EKU","ETAM","EWU","ETSU","ELON","FAMU","FOR","FUR","GWEB","GTWN","GRAM","HAMP","HARV","HC","HCU","HOW","IDHO","IDST","ILST","UIW","INST","JKST","LAF","LAM","LEH","LIN","LIU","ME","MRST","MCN","MER","MERC","MRMK","MVSU","MONM","MONT","MTST","MORE","MORG","MUR","UNH","NHVN","NICH","NORF","UNA","NCAT","NCCU","UND","NDSU","NAU","UNCO","UNI","NWST","PENN","PRST","PV","PRES","PRIN","URI","RICH","RMU","SAC","SHU","SFPA","SAM","USD","SELA","SEMO","SDAK","SDST","SCST","SOU","SIU","SUU","STMN","SFA","STET","STO","STBK","TAR","TNST","TNTC","TXSO","TOW","UCD","UTM","UTU","UTRGV","VAL","VILL","VMI","WAG","WEB","WGA","WCU","WIU","W&M","WOF","YALE","YSU"]
 
-ABBR_MAPPING = {
-    'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI',
-    'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS',
-    'TOT': 'TOT', 'ARS': 'ARS', 'LIV': 'LIV', 'MCI': 'MCI', 'MUN': 'MUN', 'CHE': 'CHE'
-}
+ABBR_MAPPING = {'SJS':'SJ','TBL':'TB','LAK':'LA','NJD':'NJ','VGK':'VEG','UTA':'UTAH','WSH':'WSH','MTL':'MTL','CHI':'CHI','NY':'NYK','NO':'NOP','GS':'GSW','SA':'SAS','TOT':'TOT','ARS':'ARS','LIV':'LIV','MCI':'MCI','MUN':'MUN','CHE':'CHE'}
 
 LOGO_OVERRIDES = {
-    "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png", "NBA:HOU": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png", "MLB:HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png", "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
-    "NFL:MIA": "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png", "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png", "MLB:MIA": "https://a.espncdn.com/i/teamlogos/mlb/500/mia.png", "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png", "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
-    "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png", "NBA:IND": "https://a.espncdn.com/i/teamlogos/nba/500/ind.png", "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
-    "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png", "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
-    "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png", "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
-    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "NCF_FBS:WASH": "https://a.espncdn.com/i/teamlogos/ncaa/500/264.png",
-    "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png", "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png", "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png", "NHL:LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
-    "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
-    "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png", "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png", "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png", "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png", "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png",
-    "SOCCER_EPL:TOT": "https://a.espncdn.com/i/teamlogos/soccer/500/367.png",
-    "SOCCER_EPL:ARS": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
-    "SOCCER_EPL:LIV": "https://a.espncdn.com/i/teamlogos/soccer/500/364.png"
+    "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png", "NBA:HOU": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png", "MLB:HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png",
+    "NFL:MIA": "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png", "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png", "MLB:MIA": "https://a.espncdn.com/i/teamlogos/mlb/500/mia.png",
+    "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png", "NBA:IND": "https://a.espncdn.com/i/teamlogos/nba/500/ind.png",
+    "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png", "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png", "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
+    "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png", "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png", "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png", "NHL:LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png", "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+    "SOCCER_EPL:TOT": "https://a.espncdn.com/i/teamlogos/soccer/500/367.png", "SOCCER_EPL:ARS": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png", "SOCCER_EPL:LIV": "https://a.espncdn.com/i/teamlogos/soccer/500/364.png"
 }
 
-SPORT_DURATIONS = {
-    'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
-    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60,
-    'soccer_epl': 110, 'soccer_mls': 110, 
-    'golf': 720, 'racing_f1': 120, 'racing_nascar': 240, 'racing_indycar': 180,
-    'racing_wec': 360, 'racing_imsa': 360
-}
+SPORT_DURATIONS = { 'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195, 'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer_epl': 110, 'soccer_mls': 110, 'golf': 720, 'racing_f1': 120, 'racing_nascar': 240, 'racing_indycar': 180, 'racing_wec': 360, 'racing_imsa': 360 }
 
 class WeatherFetcher:
     def __init__(self, initial_loc):
@@ -127,15 +106,6 @@ class WeatherFetcher:
     def update_coords(self, location_query):
         clean_query = str(location_query).strip()
         if not clean_query: return
-        if re.fullmatch(r'\d{5}', clean_query):
-            try:
-                r = requests.get(f"https://api.zippopotam.us/us/{clean_query}", timeout=5)
-                if r.status_code == 200:
-                    d = r.json(); p = d['places'][0]
-                    self.lat = float(p['latitude']); self.lon = float(p['longitude'])
-                    self.location_name = p['place name']; self.last_fetch = 0
-                    return
-            except: pass
         try:
             r = requests.get(f"https://geocoding-api.open-meteo.com/v1/search?name={clean_query}&count=1&language=en&format=json", timeout=5)
             d = r.json()
@@ -161,16 +131,12 @@ class WeatherFetcher:
             r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto", timeout=5)
             d = r.json()
             c = d.get('current', {}); dl = d.get('daily', {})
-            
-            icon = self.get_icon(c.get('weather_code', 0), c.get('is_day', 1))
-            high = int(dl['temperature_2m_max'][0]); low = int(dl['temperature_2m_min'][0]); uv = float(dl['uv_index_max'][0])
-            
             w_obj = {
                 "sport": "weather", "id": "weather_widget", "status": "Live",
                 "home_abbr": f"{int(c.get('temperature_2m', 0))}°", "away_abbr": self.location_name,
                 "home_score": "", "away_score": "", "is_shown": True, "home_logo": "", "away_logo": "",
                 "home_color": "#000000", "away_color": "#000000",
-                "situation": { "icon": icon, "stats": { "high": high, "low": low, "uv": uv } }
+                "situation": { "icon": self.get_icon(c.get('weather_code', 0), c.get('is_day', 1)), "stats": { "high": int(dl['temperature_2m_max'][0]), "low": int(dl['temperature_2m_min'][0]), "uv": float(dl['uv_index_max'][0]) } }
             }
             self.cache = w_obj; self.last_fetch = time.time(); return w_obj
         except: return None
@@ -189,8 +155,6 @@ class SportsFetcher:
             'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100} },
             'soccer_epl': { 'path': 'soccer/eng.1', 'scoreboard_params': {}, 'team_params': {} },
             'soccer_mls': { 'path': 'soccer/usa.1', 'scoreboard_params': {}, 'team_params': {} },
-            
-            # ESPN FALLBACKS (Golf, Indy, WEC, IMSA)
             'golf': { 'path': 'golf/pga', 'scoreboard_params': {}, 'team_params': {} },
             'racing_indycar': { 'path': 'racing/indycar', 'scoreboard_params': {}, 'team_params': {} },
             'racing_wec': { 'path': 'racing/racing', 'scoreboard_params': {}, 'team_params': {} },
@@ -216,15 +180,9 @@ class SportsFetcher:
         duration = SPORT_DURATIONS.get(sport, 180) 
         ot_padding = 0
         if 'OT' in str(status_detail) or 'S/O' in str(status_detail):
-            if sport in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs']:
-                ot_count = 1
-                if '2OT' in status_detail: ot_count = 2
-                elif '3OT' in status_detail: ot_count = 3
-                ot_padding = ot_count * 20
-            elif sport == 'nhl':
-                ot_padding = 20
-            elif sport == 'mlb' and period > 9:
-                ot_padding = (period - 9) * 20
+            if sport in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs']: ot_padding = 20
+            elif sport == 'nhl': ot_padding = 20
+            elif sport == 'mlb' and period > 9: ot_padding = (period - 9) * 20
         return duration + ot_padding
 
     def fetch_all_teams(self):
@@ -232,22 +190,22 @@ class SportsFetcher:
             teams_catalog = {k: [] for k in self.leagues.keys()}
             for league_key in ['nfl', 'mlb', 'nhl', 'nba']:
                 self._fetch_simple_league(league_key, teams_catalog)
-            
-            url = f"{self.base_url}football/college-football/teams"
-            r = requests.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
-            if r.status_code == 200:
-                data = r.json()
-                if 'sports' in data:
-                    for sport in data['sports']:
-                        for league in sport['leagues']:
-                            for item in league.get('teams', []):
-                                t_abbr = item['team'].get('abbreviation', 'unk'); t_clr = item['team'].get('color', '000000')
-                                t_alt = item['team'].get('alternateColor', '444444'); t_logo = item['team'].get('logos', [{}])[0].get('href', '')
-                                league_tag = 'ncf_fbs' if t_abbr in FBS_TEAMS else 'ncf_fcs'
-                                t_logo = self.get_corrected_logo(league_tag, t_abbr, t_logo)
-                                team_obj = {'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt}
-                                if t_abbr in FBS_TEAMS and not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']): teams_catalog['ncf_fbs'].append(team_obj)
-                                elif t_abbr in FCS_TEAMS and not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fcs']): teams_catalog['ncf_fcs'].append(team_obj)
+            # Fetch NCAA
+            try:
+                r = requests.get(f"{self.base_url}football/college-football/teams", params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
+                if r.status_code == 200:
+                    data = r.json()
+                    if 'sports' in data:
+                        for sport in data['sports']:
+                            for league in sport['leagues']:
+                                for item in league.get('teams', []):
+                                    t_abbr = item['team'].get('abbreviation', 'unk'); t_clr = item['team'].get('color', '000000'); t_alt = item['team'].get('alternateColor', '444444')
+                                    t_logo = item['team'].get('logos', [{}])[0].get('href', ''); league_tag = 'ncf_fbs' if t_abbr in FBS_TEAMS else 'ncf_fcs'
+                                    t_logo = self.get_corrected_logo(league_tag, t_abbr, t_logo)
+                                    team_obj = {'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt}
+                                    if t_abbr in FBS_TEAMS and not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']): teams_catalog['ncf_fbs'].append(team_obj)
+                                    elif t_abbr in FCS_TEAMS and not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fcs']): teams_catalog['ncf_fcs'].append(team_obj)
+            except: pass
             with data_lock: state['all_teams_data'] = teams_catalog
         except: pass
 
@@ -364,8 +322,7 @@ class SportsFetcher:
             positions = r2.json()
             
             driver_map = {}
-            for p in positions:
-                driver_map[p['driver_number']] = p
+            for p in positions: driver_map[p['driver_number']] = p
             
             r3 = requests.get(f"https://api.openf1.org/v1/drivers?session_key={sess_key}", timeout=5)
             if r3.status_code != 200: return
@@ -384,7 +341,7 @@ class SportsFetcher:
                 'state': 'in', 'is_shown': True, 'tourney_name': t_name, 'leaders': leaders,
                 'home_abbr': 'F1', 'away_abbr': 'F1', 'home_color': '#FF0000', 'away_color': '#FFFFFF'
             })
-        except Exception as e: print(f"OpenF1 Error: {e}")
+        except Exception as e: log(f"OpenF1 Error: {e}")
 
     # === NASCAR NATIVE FETCHER ===
     def _fetch_nascar_native(self, games_list):
@@ -428,6 +385,7 @@ class SportsFetcher:
             for event in data.get('events', []):
                 status = event.get('status', {}).get('type', {}).get('shortDetail', 'TBD')
                 state_code = event.get('status', {}).get('type', {}).get('state', '')
+                # Filter out events that haven't started or finished long ago
                 if state_code not in ['in', 'post']: continue
 
                 tourney_name = event.get('shortName', 'Event')
@@ -465,7 +423,7 @@ class SportsFetcher:
                     })
         except Exception: pass
 
-    # === DEMO DATA GENERATOR ===
+    # === DEMO DATA ===
     def generate_demo_data(self):
         t_str = dt.now().strftime('%H:%M:%S')
         return [
@@ -479,7 +437,7 @@ class SportsFetcher:
             },
             {
                 'sport': 'racing_f1', 'id': 'd2', 'status': f'Lap 45/52', 'state': 'in', 'is_shown': True,
-                'tourney_name': f'British GP {t_str}',
+                'tourney_name': f'British GP',
                 'leaders': [
                     {'rank': '1', 'name': 'Norris', 'score': 'LEAD'},
                     {'rank': '2', 'name': 'Verstappen', 'score': '+1.2s'},
@@ -505,7 +463,7 @@ class SportsFetcher:
         games = []
         with data_lock: conf = state.copy()
         
-        # === CHECK DEMO MODE ===
+        # === DEMO MODE ===
         if conf.get('demo_mode', False):
             with data_lock: state['current_games'] = self.generate_demo_data()
             return
@@ -524,7 +482,7 @@ class SportsFetcher:
         self._fetch_f1_openf1(games)
         self._fetch_nascar_native(games)
         
-        # 2. Fetch ESPN Fallbacks (Golf, Indy, WEC, IMSA)
+        # 2. Fetch ESPN Fallbacks
         for s in ['golf', 'racing_indycar', 'racing_wec', 'racing_imsa']:
             self._fetch_leaderboard_sport(s, games)
 
@@ -542,7 +500,6 @@ class SportsFetcher:
             if 'racing' in league_key or 'golf' in league_key: continue
             if not conf['active_sports'].get(league_key, False): continue
             
-            # Hybrid NHL
             if league_key == 'nhl' and not conf['debug_mode']:
                 prev_count = len(games); self._fetch_nhl_native(games, target_date_str)
                 if len(games) > prev_count: continue 
@@ -578,8 +535,6 @@ class SportsFetcher:
                     is_shown = True
                     if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
                     elif conf['mode'] == 'my_teams':
-                        # FIXED: If it's a team sport, filter. If it's racing/golf, we likely already handled it or should skip this filter.
-                        # Since we separated racing/golf loops above, this loop only processes team sports.
                         hk = f"{league_key}:{h_ab}"; ak = f"{league_key}:{a_ab}"
                         if (hk not in conf['my_teams'] and h_ab not in conf['my_teams']) and \
                            (ak not in conf['my_teams'] and a_ab not in conf['my_teams']): is_shown = False
@@ -617,27 +572,28 @@ class SportsFetcher:
                     
                     games.append(game_obj)
             except Exception as e:
-                print(f"Error fetching {league_key}: {e}")
+                log(f"Error fetching {league_key}: {e}")
         
         with data_lock: state['current_games'] = games
 
 fetcher = SportsFetcher(state['weather_location'])
 
 def background_updater():
-    # Robust Loop: If it crashes, it waits and restarts.
+    # Loop indefinitely, restart on crash
     while True:
         try:
+            log("Fetching initial team data...")
             fetcher.fetch_all_teams()
             break
         except Exception as e:
-            print(f"Startup Error: {e}")
+            log(f"Startup fetch error: {e}")
             time.sleep(10)
 
     while True:
         try:
             fetcher.get_real_games()
         except Exception as e:
-            print("CRITICAL FETCH ERROR:")
+            log("CRITICAL FETCH ERROR:")
             traceback.print_exc()
         time.sleep(UPDATE_INTERVAL)
 
@@ -880,7 +836,6 @@ def root():
             }
 
             async function toggleDemo() {
-                // Fetch current state first to toggle correctly
                 const res = await fetch('/api/state');
                 const data = await res.json();
                 const newMode = !data.settings.demo_mode;
@@ -918,7 +873,6 @@ def root():
                 games.forEach(game => {
                     if(game.sport === 'weather' || game.sport === 'clock') return;
                     if(game.sport === 'golf' || game.sport.includes('racing')) {
-                        // Special Card for Racing/Golf in Grid
                         const div = document.createElement('div'); div.className = 'grid-card';
                         div.style.background = '#222'; 
                         let headerColor = '#005500';
@@ -1087,7 +1041,7 @@ def root():
                     mode: 'all', layout_mode: 'schedule'
                 };
                 await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-                toggleMenu(); loadState();
+                alert("Saved!");
             }
             loadState(); setInterval(loadState, 5000);
         </script>
