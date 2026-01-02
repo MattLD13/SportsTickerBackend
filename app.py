@@ -9,7 +9,7 @@ from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 60 
+UPDATE_INTERVAL = 5
 data_lock = threading.Lock()
 
 HEADERS = {
@@ -31,6 +31,7 @@ default_state = {
     'current_games': [],
     'all_teams_data': {}, 
     'debug_mode': False,
+    'demo_mode': False, # NEW: Demo Mode Toggle
     'custom_date': None,
     'brightness': 0.5,
     'scroll_speed': 5, 
@@ -68,7 +69,8 @@ def save_config_file():
                 'inverted': state['inverted'],
                 'panel_count': state['panel_count'],
                 'weather_location': state['weather_location'],
-                'utc_offset': state['utc_offset']
+                'utc_offset': state['utc_offset'],
+                'demo_mode': state.get('demo_mode', False)
             }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(export_data, f)
@@ -162,7 +164,7 @@ class SportsFetcher:
             'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             # --- SOCCER (EPL ONLY) ---
             'soccer_epl': { 'path': 'soccer/eng.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
-            # --- LEADERBOARDS (Golf Removed) ---
+            # --- LEADERBOARDS ---
             'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
             'nascar': { 'path': 'racing/nascar', 'type': 'leaderboard' },
             'indycar': { 'path': 'racing/indycar', 'type': 'leaderboard' },
@@ -410,9 +412,69 @@ class SportsFetcher:
                         })
         except: pass
 
+    # === NEW: GENERATE DEMO DATA ===
+    def generate_demo_data():
+        return [
+            # F1 Demo
+            {
+                'type': 'leaderboard', 'sport': 'f1', 'id': 'demo_f1', 'status': 'Lap 45/78', 'state': 'in',
+                'tourney_name': 'Monaco Grand Prix', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
+                'leaders': [
+                    {'rank': '1', 'name': 'Verstappen', 'score': 'LEADER'},
+                    {'rank': '2', 'name': 'Norris', 'score': '+2.4s'},
+                    {'rank': '3', 'name': 'Leclerc', 'score': '+5.1s'},
+                    {'rank': '4', 'name': 'Hamilton', 'score': '+12.0s'}
+                ]
+            },
+            # NASCAR Demo
+            {
+                'type': 'leaderboard', 'sport': 'nascar', 'id': 'demo_nascar', 'status': 'Stage 2', 'state': 'in',
+                'tourney_name': 'Daytona 500', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
+                'leaders': [
+                    {'rank': '1', 'name': 'Hamlin', 'score': 'LEADER'},
+                    {'rank': '2', 'name': 'Elliott', 'score': '-0.145'},
+                    {'rank': '3', 'name': 'Logano', 'score': '-0.500'},
+                    {'rank': '4', 'name': 'Larson', 'score': '-1.200'}
+                ]
+            },
+            # IndyCar Demo
+            {
+                'type': 'leaderboard', 'sport': 'indycar', 'id': 'demo_indy', 'status': 'Lap 150/200', 'state': 'in',
+                'tourney_name': 'Indy 500', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
+                'leaders': [
+                    {'rank': '1', 'name': 'Newgarden', 'score': 'LEADER'},
+                    {'rank': '2', 'name': 'O\'Ward', 'score': '-0.332'},
+                    {'rank': '3', 'name': 'Palou', 'score': '-1.100'},
+                    {'rank': '4', 'name': 'Dixon', 'score': '-2.500'}
+                ]
+            },
+            # EPL Soccer Demo
+            {
+                'type': 'scoreboard', 'sport': 'soccer', 'id': 'demo_soc', 'status': "88'", 'state': 'in', 'is_shown': True,
+                'home_abbr': 'ARS', 'home_score': '2', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/359.png', 'home_color': '#EF0107', 'home_alt_color': '#ffffff',
+                'away_abbr': 'CHE', 'away_score': '1', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/363.png', 'away_color': '#034694', 'away_alt_color': '#ffffff',
+                'startTimeUTC': dt.now(timezone.utc).isoformat(),
+                'situation': {'possession': 'away_id', 'isRedZone': False, 'downDist': ''}, 'estimated_duration': 115
+            },
+            # NFL Demo
+            {
+                'type': 'scoreboard', 'sport': 'nfl', 'id': 'demo_nfl', 'status': "4th 2:00", 'state': 'in', 'is_shown': True,
+                'home_abbr': 'KC', 'home_score': '24', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/kc.png', 'home_color': '#e31837', 'home_alt_color': '#ffb81c',
+                'away_abbr': 'BUF', 'away_score': '20', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/buf.png', 'away_color': '#00338d', 'away_alt_color': '#c60c30',
+                'startTimeUTC': dt.now(timezone.utc).isoformat(),
+                'situation': {'possession': 'home_id', 'isRedZone': True, 'downDist': '1st & Goal'}, 'estimated_duration': 195
+            }
+        ]
+
     def get_real_games(self):
         games = []
-        with data_lock: conf = state.copy()
+        with data_lock: 
+            conf = state.copy()
+            # === DEMO MODE OVERRIDE ===
+            if conf.get('demo_mode', False):
+                state['current_games'] = SportsFetcher.generate_demo_data()
+                return
+
         utc_offset = conf.get('utc_offset', -4)
 
         if conf['active_sports'].get('clock'):
@@ -670,6 +732,7 @@ def root():
             <div class="control-group">
                 <div class="section-label">Device</div>
                 <div class="toggle-row"><span>Seamless</span><label class="switch"><input type="checkbox" id="chk_scroll"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>Demo Mode</span><label class="switch"><input type="checkbox" id="chk_demo"><span class="slider"></span></label></div>
                 <input type="range" id="rng_bright" min="0.1" max="1.0" step="0.1" style="margin-top:10px;">
             </div>
             <button onclick="saveSettings()" style="width:100%; padding:10px; background:#007bff; border:none; color:white; border-radius:6px; font-weight:bold; cursor:pointer;">Save Changes</button>
@@ -706,6 +769,7 @@ def root():
                         if(document.getElementById('chk_'+k)) document.getElementById('chk_'+k).checked = s.active_sports[k];
                     });
                     document.getElementById('chk_scroll').checked = s.scroll_seamless;
+                    document.getElementById('chk_demo').checked = s.demo_mode;
                     document.getElementById('rng_bright').value = s.brightness;
                     document.getElementById('sel_mode').value = s.mode;
                     document.getElementById('sel_layout').value = s.layout_mode;
@@ -804,6 +868,7 @@ def root():
                     active_sports: sports,
                     my_teams: document.getElementById('inp_teams').value.split(',').map(s=>s.trim()).filter(s=>s),
                     scroll_seamless: document.getElementById('chk_scroll').checked,
+                    demo_mode: document.getElementById('chk_demo').checked,
                     brightness: parseFloat(document.getElementById('rng_bright').value),
                     weather_location: document.getElementById('inp_loc').value,
                     mode: document.getElementById('sel_mode').value,
