@@ -3,6 +3,7 @@ import threading
 import json
 import os
 import re
+import traceback
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from flask import Flask, jsonify, request, render_template_string
@@ -42,7 +43,7 @@ default_state = {
     'test_pattern': False,
     'reboot_requested': False,
     'weather_location': "New York",
-    'utc_offset': -5  # Default to EST (Winter)
+    'utc_offset': -5 
 }
 
 state = default_state.copy()
@@ -395,7 +396,12 @@ class SportsFetcher:
                 
                 leaders = []
                 # Parse Competitors (Leaderboard)
-                comps = event.get('competitions', [{}])[0].get('competitors', [])
+                # FIX: Check for empty lists to prevent crash
+                comps_list = event.get('competitions', [])
+                if not comps_list: continue
+                
+                comps = comps_list[0].get('competitors', [])
+                if not comps: continue
                 
                 # Sort by order (rank) and take top 4
                 sorted_comps = sorted(comps, key=lambda x: int(x.get('curPosition', 999) if str(x.get('curPosition',999)).isdigit() else 999))
@@ -429,7 +435,9 @@ class SportsFetcher:
                         'home_logo': '', 'away_logo': '',
                         'home_color': '#005500', 'away_color': '#FFFFFF'
                     })
-        except: pass
+        except Exception as e:
+            print(f"Golf Fetch Error: {e}")
+            traceback.print_exc()
 
     def get_real_games(self):
         games = []
@@ -487,7 +495,13 @@ class SportsFetcher:
                     if league_key == 'mlb' and not keep_date: continue
                     if not keep_date: continue
 
-                    comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
+                    # FIX: Check for empty competitions
+                    if not e.get('competitions'): continue
+                    
+                    comp = e['competitions'][0]
+                    if len(comp.get('competitors', [])) < 2: continue # Safety check
+
+                    h = comp['competitors'][0]; a = comp['competitors'][1]
                     h_ab = h['team']['abbreviation']; a_ab = a['team']['abbreviation']
                     
                     if league_key == 'ncf_fbs':
@@ -579,7 +593,9 @@ class SportsFetcher:
                         game_obj['situation'] = { 'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False) }
                     
                     games.append(game_obj)
-            except: pass
+            except Exception as e:
+                print(f"Error fetching {league_key}: {e}")
+                # traceback.print_exc() # Uncomment for deep debugging
         
         with data_lock: state['current_games'] = games
 
@@ -1027,10 +1043,12 @@ def api_ticker():
     })
 
 @app.route('/api/state')
-def api_state(): with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
+def api_state():
+    with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
 
 @app.route('/api/teams')
-def api_teams(): with data_lock: return jsonify(state['all_teams_data'])
+def api_teams():
+    with data_lock: return jsonify(state['all_teams_data'])
 
 @app.route('/api/config', methods=['POST'])
 def api_config():
