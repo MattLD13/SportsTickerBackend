@@ -578,6 +578,8 @@ class SportsFetcher:
                     is_shown = True
                     if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
                     elif conf['mode'] == 'my_teams':
+                        # FIXED: If it's a team sport, filter. If it's racing/golf, we likely already handled it or should skip this filter.
+                        # Since we separated racing/golf loops above, this loop only processes team sports.
                         hk = f"{league_key}:{h_ab}"; ak = f"{league_key}:{a_ab}"
                         if (hk not in conf['my_teams'] and h_ab not in conf['my_teams']) and \
                            (ak not in conf['my_teams'] and a_ab not in conf['my_teams']): is_shown = False
@@ -660,113 +662,434 @@ def root():
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <title>Sports Ticker</title>
         <style>
-            body { font-family: 'Segoe UI', system-ui; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
-            h2 { border-bottom: 1px solid #333; padding-bottom: 10px; }
-            .control-group { background: #1e1e1e; padding: 15px; margin-bottom: 15px; border-radius: 8px; }
-            .toggle-row { display: flex; justify-content: space-between; margin-bottom: 8px; align-items: center; }
-            input[type="text"], input[type="number"], select { width: 100%; padding: 8px; background: #2a2a2a; border: 1px solid #444; color: white; border-radius: 4px; margin-bottom: 10px; }
+            body { 
+                font-family: 'Segoe UI', system-ui, sans-serif; 
+                background: #121212; color: #e0e0e0; margin: 0; padding: 0;
+                overflow-x: hidden;
+            }
+            .navbar {
+                position: fixed; top: 0; left: 0; right: 0;
+                height: 50px; background: rgba(18,18,18,0.95);
+                backdrop-filter: blur(8px); z-index: 1000; border-bottom: 1px solid #333;
+                display: flex; align-items: center; justify-content: space-between; padding: 0 15px;
+            }
+            .hamburger { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; z-index: 1001; }
+            .nav-tabs { display: flex; gap: 20px; }
+            .nav-tab { cursor: pointer; color: #888; font-weight: bold; font-size: 0.9rem; padding: 5px 0; border-bottom: 2px solid transparent; transition: 0.2s; }
+            .nav-tab.active { color: white; border-bottom: 2px solid #007bff; }
+            .sidebar {
+                position: fixed; top: 50px; left: -300px; bottom: 0; width: 280px;
+                background: #1e1e1e; border-right: 1px solid #333;
+                transition: left 0.3s ease; z-index: 999;
+                padding: 20px; overflow-y: auto;
+            }
+            .sidebar.open { left: 0; }
+            .sidebar-overlay {
+                display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.5); z-index: 900;
+            }
+            .sidebar-overlay.active { display: block; }
+            .control-group { margin-bottom: 20px; }
+            .section-label { font-size: 0.75rem; color: #777; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+            .toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.9rem; }
+            .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+            .switch input { opacity: 0; width: 0; height: 0; }
+            .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #444; transition: .4s; border-radius: 34px; }
+            .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+            input:checked + .slider { background-color: #007bff; }
+            input:checked + .slider:before { transform: translateX(14px); }
+            select, input[type="text"], input[type="number"] { width: 100%; background: #2a2a2a; color: white; border: 1px solid #444; padding: 8px; border-radius: 6px; margin-top: 5px; box-sizing: border-box; }
             button { width: 100%; padding: 12px; background: #007bff; border: none; color: white; border-radius: 6px; font-weight: bold; cursor: pointer; }
             button.demo { background: #d32f2f; margin-bottom: 15px; }
+
+            /* --- COMMON GAME STYLES --- */
+            .text-outline { text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 4px rgba(0,0,0,0.9); }
+            .logo-outline { filter: drop-shadow(0 0 1px black) drop-shadow(0 0 1px black) drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+            .live-badge { background: #ff3333; color: white; padding: 1px 4px; border-radius: 3px; font-weight: bold; animation: pulse 2s infinite; font-size:0.7rem; border: 1px solid black; }
+            @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+            .poss-pill { display: inline-block; background: rgba(0,0,0,0.8); color: #ffeb3b; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid #ffeb3b; }
+            .red-zone-pill { display: inline-block; background: rgba(255,51,51,0.9); color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid black; animation: pulse 1s infinite; }
+            .baseball-field { position: relative; width: 30px; height: 30px; margin-right: 5px; }
+            .base { position: absolute; width: 8px; height: 8px; background: rgba(255,255,255,0.3); border: 1px solid rgba(0,0,0,0.5); transform: rotate(45deg); }
+            .base.active { background: #ffeb3b; border-color: black; box-shadow: 0 0 4px #ffeb3b; }
+            .b1 { right: 0; top: 11px; } .b2 { left: 11px; top: 0; } .b3 { left: 0; top: 11px; }
+            .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
+            .view-hidden { display: none !important; }
+            .empty-state { padding: 40px; text-align: center; color: #666; font-style: italic; }
+            .loading-spinner { border: 4px solid #333; border-top: 4px solid #007bff; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 50px auto; }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+            /* --- SCHEDULE VIEW --- */
+            #schedule-view { position: relative; width: 100%; max-width: 600px; margin: 50px auto 0 auto; background: #121212; min-height: calc(100vh - 50px); overflow-x: hidden; }
+            .time-axis { position: absolute; left: 0; top: 0; bottom: 0; width: 50px; border-right: 1px solid #333; background: #121212; z-index: 10; }
+            .time-marker { position: absolute; width: 100%; text-align: right; padding-right: 8px; font-size: 0.7rem; color: #666; transform: translateY(-50%); }
+            .events-area { position: relative; margin-left: 55px; margin-right: 10px; height: 100%; }
+            .grid-line { position: absolute; left: 0; right: 0; height: 1px; background: #222; z-index: 0; }
+            .current-time-line { position: absolute; left: -55px; right: 0; height: 2px; background: #007bff; z-index: 50; pointer-events: none; box-shadow: 0 0 5px rgba(0,123,255,0.5); }
+            
+            .sched-card {
+                position: absolute; border-radius: 8px; overflow: hidden;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.5); color: white;
+                display: flex; flex-direction: column; justify-content: flex-start;
+                padding: 10px; font-size: 0.85rem; box-sizing: border-box;
+                border: 1px solid rgba(0,0,0,0.5);
+            }
+            .card-header { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.75rem; opacity: 1; font-weight:700; color: white; }
+            .team-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+            .t-left { display: flex; align-items: center; gap: 8px; }
+            .t-logo { width: 30px; height: 30px; object-fit: contain; }
+            .t-name { font-weight: 800; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color:white; }
+            .t-score { font-weight: 800; font-size: 1.4rem; color:white; }
+            .card-footer { margin-top: auto; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 0.8rem; font-weight: 700; color: white; text-align: right; display:flex; justify-content: flex-end; align-items: center; gap: 10px; }
+            .red-zone { color: #ff3333; animation: pulse 1s infinite; }
+
+            /* --- GRID VIEW --- */
+            #grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 70px 20px 20px 20px; max-width: 600px; margin: 0 auto; }
+            .grid-card {
+                position: relative; border-radius: 12px; overflow: hidden;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.5); color: white; height: 110px;
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 0 15px; transition: transform 0.2s; border: 1px solid rgba(0,0,0,0.5);
+            }
+            .gc-col { display: flex; flex-direction: column; align-items: center; z-index: 2; width: 70px; }
+            .gc-logo { width: 45px; height: 45px; object-fit: contain; margin-bottom:4px; }
+            .gc-abbr { font-size: 1rem; font-weight: 800; }
+            .gc-mid { z-index: 2; text-align: center; flex-grow: 1; }
+            .gc-status { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
+            .gc-score { font-size: 1.5rem; font-weight: 800; line-height: 1; white-space: nowrap; }
         </style>
     </head>
     <body>
-        <h2>Config</h2>
-        
-        <button class="demo" id="btn_demo" onclick="toggleDemo()">Loading...</button>
+        <nav class="navbar">
+            <button class="hamburger" onclick="toggleMenu()">☰</button>
+            <div class="nav-tabs">
+                <div class="nav-tab" id="tab-my" onclick="switchTab('my')">MY SCHEDULE</div>
+                <div class="nav-tab active" id="tab-all" onclick="switchTab('all')">ALL GAMES</div>
+            </div>
+            <div style="width:24px"></div>
+        </nav>
 
-        <div class="control-group">
-            <label>My Teams (Comma Separated)</label>
-            <input type="text" id="inp_teams">
+        <div class="sidebar-overlay" onclick="toggleMenu()"></div>
+        <div class="sidebar" id="sidebar">
+            <button class="demo" id="btn_demo" onclick="toggleDemo()">Loading...</button>
+            <div class="control-group">
+                <div class="section-label">My Teams</div>
+                <input type="text" id="inp_teams" placeholder="NYG, NYY, NJD..." value="">
+            </div>
+            <div class="control-group">
+                <div class="section-label">Leagues</div>
+                <div class="toggle-row"><span>NFL</span><label class="switch"><input type="checkbox" id="chk_nfl"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>NBA</span><label class="switch"><input type="checkbox" id="chk_nba"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>NHL</span><label class="switch"><input type="checkbox" id="chk_nhl"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>MLB</span><label class="switch"><input type="checkbox" id="chk_mlb"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>EPL</span><label class="switch"><input type="checkbox" id="chk_soccer_epl"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>MLS</span><label class="switch"><input type="checkbox" id="chk_soccer_mls"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>Golf (PGA)</span><label class="switch"><input type="checkbox" id="chk_golf"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>F1 (OpenF1)</span><label class="switch"><input type="checkbox" id="chk_racing_f1"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>NASCAR (Feed)</span><label class="switch"><input type="checkbox" id="chk_racing_nascar"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>IndyCar</span><label class="switch"><input type="checkbox" id="chk_racing_indycar"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>WEC</span><label class="switch"><input type="checkbox" id="chk_racing_wec"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>IMSA</span><label class="switch"><input type="checkbox" id="chk_racing_imsa"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>NCAA FBS</span><label class="switch"><input type="checkbox" id="chk_ncf_fbs"><span class="slider"></span></label></div>
+            </div>
+            <div class="control-group">
+                <div class="section-label">Device Settings</div>
+                <div class="toggle-row"><span>Seamless Scroll</span><label class="switch"><input type="checkbox" id="chk_scroll"><span class="slider"></span></label></div>
+                <div style="margin-top:10px;">
+                    <label style="font-size:0.8rem; color:#aaa;">Brightness</label>
+                    <input type="range" id="rng_bright" min="0.1" max="1.0" step="0.1" style="width:100%">
+                </div>
+                <div style="margin-top:10px;">
+                    <label style="font-size:0.8rem; color:#aaa;">Scroll Speed (1-10)</label>
+                    <input type="range" id="rng_speed" min="1" max="10" step="1" style="width:100%">
+                </div>
+            </div>
+            <button onclick="saveSettings()" style="width:100%; padding:10px; background:#007bff; border:none; color:white; border-radius:6px; font-weight:bold; cursor:pointer;">Save Changes</button>
         </div>
 
-        <div class="control-group">
-            <div class="toggle-row"><span>NFL</span><input type="checkbox" id="chk_nfl"></div>
-            <div class="toggle-row"><span>NBA</span><input type="checkbox" id="chk_nba"></div>
-            <div class="toggle-row"><span>NHL</span><input type="checkbox" id="chk_nhl"></div>
-            <div class="toggle-row"><span>MLB</span><input type="checkbox" id="chk_mlb"></div>
-            <div class="toggle-row"><span>EPL</span><input type="checkbox" id="chk_soccer_epl"></div>
-            <div class="toggle-row"><span>MLS</span><input type="checkbox" id="chk_soccer_mls"></div>
-            <div class="toggle-row"><span>Golf (PGA)</span><input type="checkbox" id="chk_golf"></div>
-            <div class="toggle-row"><span>F1 (OpenF1)</span><input type="checkbox" id="chk_racing_f1"></div>
-            <div class="toggle-row"><span>NASCAR (Live Feed)</span><input type="checkbox" id="chk_racing_nascar"></div>
-            <div class="toggle-row"><span>IndyCar</span><input type="checkbox" id="chk_racing_indycar"></div>
-            <div class="toggle-row"><span>WEC</span><input type="checkbox" id="chk_racing_wec"></div>
-            <div class="toggle-row"><span>IMSA</span><input type="checkbox" id="chk_racing_imsa"></div>
-            <div class="toggle-row"><span>Weather</span><input type="checkbox" id="chk_weather"></div>
-            <div class="toggle-row"><span>Clock</span><input type="checkbox" id="chk_clock"></div>
+        <div id="schedule-view" class="view-hidden">
+            <div class="time-axis" id="timeAxis"></div>
+            <div class="events-area" id="eventsArea"></div>
         </div>
 
-        <div class="control-group">
-            <label>Scroll Speed (1-10)</label>
-            <input type="number" id="inp_speed" min="1" max="10">
-            <label>Brightness (0.1-1.0)</label>
-            <input type="number" id="inp_bright" step="0.1" min="0.1" max="1.0">
+        <div id="grid-view">
+             <div class="loading-spinner"></div>
         </div>
-
-        <button onclick="saveSettings()">Save Configuration</button>
 
         <script>
-            let currentDemoState = false;
+            const PIXELS_PER_MINUTE = 1.6; const START_HOUR = 8; let currentTab = 'all';
+            function toggleMenu() { document.getElementById('sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('active'); }
+            function hexToRgb(hex) { if(!hex) return {r:0, g:0, b:0}; hex = hex.replace(/^#/, ''); if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2]; const bigint = parseInt(hex, 16); return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 }; }
+            function getLuminance(r, g, b) { return (0.2126 * r + 0.7152 * g + 0.0722 * b); }
+            function resolveColors(aColor, aAlt, hColor, hAlt) {
+                const LUM_THRESHOLD = 50; 
+                let aC = aColor || '#000000'; let aA = aAlt || '#ffffff';
+                let hC = hColor || '#000000'; let hA = hAlt || '#ffffff';
+                let aRgb = hexToRgb(aC); let hRgb = hexToRgb(hC);
+                if (getLuminance(aRgb.r, aRgb.g, aRgb.b) < LUM_THRESHOLD && aA) { aC = aA; }
+                if (getLuminance(hRgb.r, hRgb.g, hRgb.b) < LUM_THRESHOLD && hA) { hC = hA; }
+                return [aC, hC];
+            }
+
+            function switchTab(tab) {
+                currentTab = tab;
+                document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+                document.getElementById('tab-' + tab).classList.add('active');
+                if(tab === 'my') {
+                    document.getElementById('schedule-view').classList.remove('view-hidden');
+                    document.getElementById('grid-view').classList.add('view-hidden');
+                } else {
+                    document.getElementById('schedule-view').classList.add('view-hidden');
+                    document.getElementById('grid-view').classList.remove('view-hidden');
+                }
+                loadState(); 
+            }
 
             async function loadState() {
-                const res = await fetch('/api/state');
-                const data = await res.json();
-                const s = data.settings;
-                currentDemoState = s.demo_mode;
-                document.getElementById('btn_demo').innerText = currentDemoState ? "DISABLE DEMO MODE" : "ENABLE DEMO MODE";
-                document.getElementById('btn_demo').style.background = currentDemoState ? "#4CAF50" : "#d32f2f";
+                try {
+                    const res = await fetch('/api/state');
+                    const data = await res.json();
+                    const s = data.settings;
+                    
+                    let demoBtn = document.getElementById('btn_demo');
+                    demoBtn.innerText = s.demo_mode ? "DISABLE DEMO MODE" : "ENABLE DEMO MODE";
+                    demoBtn.style.background = s.demo_mode ? "#4CAF50" : "#d32f2f";
 
-                document.getElementById('inp_teams').value = (s.my_teams || []).join(', ');
-                document.getElementById('chk_nfl').checked = s.active_sports.nfl;
-                document.getElementById('chk_nba').checked = s.active_sports.nba;
-                document.getElementById('chk_nhl').checked = s.active_sports.nhl;
-                document.getElementById('chk_mlb').checked = s.active_sports.mlb;
-                document.getElementById('chk_soccer_epl').checked = s.active_sports.soccer_epl;
-                document.getElementById('chk_soccer_mls').checked = s.active_sports.soccer_mls;
-                document.getElementById('chk_golf').checked = s.active_sports.golf;
-                document.getElementById('chk_racing_f1').checked = s.active_sports.racing_f1;
-                document.getElementById('chk_racing_nascar').checked = s.active_sports.racing_nascar;
-                document.getElementById('chk_racing_indycar').checked = s.active_sports.racing_indycar;
-                document.getElementById('chk_racing_wec').checked = s.active_sports.racing_wec;
-                document.getElementById('chk_racing_imsa').checked = s.active_sports.racing_imsa;
-                document.getElementById('chk_weather').checked = s.active_sports.weather;
-                document.getElementById('chk_clock').checked = s.active_sports.clock;
-                document.getElementById('inp_speed').value = s.scroll_speed || 5;
-                document.getElementById('inp_bright').value = s.brightness || 0.5;
+                    document.getElementById('inp_teams').value = (s.my_teams || []).join(', ');
+                    document.getElementById('chk_nfl').checked = s.active_sports.nfl;
+                    document.getElementById('chk_nba').checked = s.active_sports.nba;
+                    document.getElementById('chk_nhl').checked = s.active_sports.nhl;
+                    document.getElementById('chk_mlb').checked = s.active_sports.mlb;
+                    document.getElementById('chk_soccer_epl').checked = s.active_sports.soccer_epl;
+                    document.getElementById('chk_soccer_mls').checked = s.active_sports.soccer_mls;
+                    document.getElementById('chk_golf').checked = s.active_sports.golf;
+                    document.getElementById('chk_racing_f1').checked = s.active_sports.racing_f1;
+                    document.getElementById('chk_racing_nascar').checked = s.active_sports.racing_nascar;
+                    document.getElementById('chk_racing_indycar').checked = s.active_sports.racing_indycar;
+                    document.getElementById('chk_racing_wec').checked = s.active_sports.racing_wec;
+                    document.getElementById('chk_racing_imsa').checked = s.active_sports.racing_imsa;
+                    document.getElementById('chk_ncf_fbs').checked = s.active_sports.ncf_fbs;
+                    document.getElementById('chk_weather').checked = s.active_sports.weather;
+                    document.getElementById('chk_clock').checked = s.active_sports.clock;
+                    document.getElementById('chk_scroll').checked = s.scroll_seamless;
+                    document.getElementById('rng_bright').value = s.brightness;
+                    document.getElementById('rng_speed').value = s.scroll_speed || 5;
+
+                    render(data);
+                } catch(e) { console.error(e); }
             }
 
             async function toggleDemo() {
-                const payload = { demo_mode: !currentDemoState };
-                await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+                // Fetch current state first to toggle correctly
+                const res = await fetch('/api/state');
+                const data = await res.json();
+                const newMode = !data.settings.demo_mode;
+                await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({demo_mode: newMode}) });
                 loadState();
             }
 
+            function render(data) {
+                const games = data.games || [];
+                const myTeamsStr = document.getElementById('inp_teams').value.toUpperCase();
+                const myTeams = myTeamsStr.split(',').map(s => s.trim());
+
+                if (currentTab === 'my') {
+                    const filtered = games.filter(g => {
+                        if(g.sport === 'weather' || g.sport === 'clock') return true;
+                        // Always show leaderboard sports if active, regardless of "My Teams"
+                        if(g.sport === 'golf' || g.sport.includes('racing')) return true;
+                        
+                        const homeKey = (g.sport + ':' + g.home_abbr).toUpperCase();
+                        const awayKey = (g.sport + ':' + g.away_abbr).toUpperCase();
+                        return myTeams.includes(g.home_abbr) || myTeams.includes(g.away_abbr) || 
+                               myTeams.includes(homeKey) || myTeams.includes(awayKey);
+                    });
+                    renderSchedule(filtered, data.settings.utc_offset || -4);
+                } else {
+                    renderGrid(games);
+                }
+            }
+
+            function renderGrid(games) {
+                const container = document.getElementById('grid-view');
+                container.innerHTML = '';
+                if(!games || games.length === 0) { container.innerHTML = '<div class="empty-state">No games active.</div>'; return; }
+
+                games.forEach(game => {
+                    if(game.sport === 'weather' || game.sport === 'clock') return;
+                    if(game.sport === 'golf' || game.sport.includes('racing')) {
+                        // Special Card for Racing/Golf in Grid
+                        const div = document.createElement('div'); div.className = 'grid-card';
+                        div.style.background = '#222'; 
+                        let headerColor = '#005500';
+                        if(game.sport.includes('f1')) headerColor = '#CC0000';
+                        else if(game.sport.includes('nascar')) headerColor = '#003399';
+                        
+                        let leaderHtml = '';
+                        if(game.leaders) {
+                            game.leaders.slice(0,3).forEach(l => {
+                                leaderHtml += `<div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:2px;"><span>${l.rank}.${l.name}</span><span>${l.score}</span></div>`;
+                            });
+                        }
+
+                        div.innerHTML = `
+                            <div style="width:100%; display:flex; flex-direction:column; justify-content:center;">
+                                <div style="font-size:0.7rem; font-weight:bold; color:${headerColor}; text-transform:uppercase; margin-bottom:5px;">${game.tourney_name || game.sport}</div>
+                                <div style="color:white;">${leaderHtml}</div>
+                            </div>`;
+                        container.appendChild(div);
+                        return;
+                    }
+
+                    const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
+                    const homeHasPoss = game.situation.possession === game.home_id;
+                    const awayHasPoss = game.situation.possession === game.away_id;
+                    
+                    let detailHtml = '';
+                    if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; }
+                    else if(game.state === 'in' && game.situation.downDist) { detailHtml = `<div class="gc-status text-outline" style="color:#ffc107">${game.situation.downDist}</div>`; }
+
+                    let possIcon = '🏈'; let possText = 'Poss';
+                    if(game.sport === 'nhl') { possIcon = '🏒'; possText = 'PP'; }
+                    else if(game.sport === 'nba') { possIcon = '🏀'; }
+                    else if(game.sport === 'mlb') { possIcon = '⚾'; }
+                    else if(game.sport.includes('soccer')) { possIcon = '⚽'; }
+
+                    const div = document.createElement('div'); div.className = 'grid-card';
+                    div.style.background = `linear-gradient(120deg, ${aC} 0%, ${aC} 45%, ${hC} 55%, ${hC} 100%)`;
+                    div.innerHTML = `
+                        <div class="overlay"></div>
+                        <div class="gc-col">
+                            <img class="gc-logo logo-outline" src="${game.away_logo}">
+                            <div class="gc-abbr text-outline">${game.away_abbr}</div>
+                            ${awayHasPoss ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}
+                        </div>
+                        <div class="gc-mid">
+                            <div class="gc-status text-outline">${game.status}</div>
+                            <div class="gc-score text-outline">${game.away_score} - ${game.home_score}</div>
+                            ${detailHtml}
+                        </div>
+                        <div class="gc-col">
+                            <img class="gc-logo logo-outline" src="${game.home_logo}">
+                            <div class="gc-abbr text-outline">${game.home_abbr}</div>
+                            ${homeHasPoss ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}
+                        </div>`;
+                    container.appendChild(div);
+                });
+            }
+
+            function renderSchedule(games, utcOffset) {
+                const eventsArea = document.getElementById('eventsArea');
+                const axis = document.getElementById('timeAxis');
+                eventsArea.innerHTML = ''; axis.innerHTML = '';
+                const nowLine = document.createElement('div'); nowLine.className = 'current-time-line'; eventsArea.appendChild(nowLine);
+
+                for(let i=0; i<24; i++) {
+                    const hour = START_HOUR + i; const top = i * 60 * PIXELS_PER_MINUTE;
+                    let displayHour = (hour % 12) || 12; displayHour += (hour < 12 ? ' AM' : ' PM');
+                    if (hour >= 24) { let h = hour - 24; displayHour = (h % 12) || 12; displayHour += (h < 12 ? ' AM' : ' PM'); }
+                    const marker = document.createElement('div'); marker.className = 'time-marker'; marker.innerText = displayHour; marker.style.top = top + 'px'; axis.appendChild(marker);
+                    const grid = document.createElement('div'); grid.className = 'grid-line'; grid.style.top = top + 'px'; eventsArea.appendChild(grid);
+                }
+
+                if(!games || games.length === 0) { eventsArea.innerHTML += '<div class="empty-state">No scheduled games found.</div>'; return; }
+
+                const offsetMs = utcOffset * 3600 * 1000;
+                const now = new Date();
+                const utcNow = now.getTime() + (now.getTimezoneOffset() * 60000);
+                const targetMs = utcNow + offsetMs;
+                const localNow = new Date(targetMs + (now.getTimezoneOffset() * 60000));
+                
+                let h = localNow.getHours(); let m = localNow.getMinutes();
+                let effectiveHour = h; if(effectiveHour < START_HOUR) effectiveHour += 24;
+                const nowMins = (effectiveHour * 60) + m - (START_HOUR * 60);
+                
+                if(nowMins >= 0 && nowMins <= (24*60)) {
+                    nowLine.style.top = (nowMins * PIXELS_PER_MINUTE) + 'px';
+                    const view = document.getElementById('schedule-view');
+                    const halfScreen = window.innerHeight / 2;
+                    view.scrollTop = (nowMins * PIXELS_PER_MINUTE) - halfScreen;
+                } else { nowLine.style.display = 'none'; }
+
+                games.forEach(g => {
+                    if(g.sport === 'weather' || g.sport === 'clock' || g.sport === 'golf' || g.sport.includes('racing')) return;
+                    const d = new Date(g.startTimeUTC); 
+                    const gameUtcMs = d.getTime(); 
+                    const gameLocalMs = gameUtcMs + offsetMs + (new Date().getTimezoneOffset() * 60000);
+                    const local = new Date(gameLocalMs);
+                    
+                    let gh = local.getHours(); let gm = local.getMinutes();
+                    if(gh < START_HOUR) gh += 24;
+                    const startMins = gh * 60 + gm - (START_HOUR * 60);
+                    const dur = g.estimated_duration || 180;
+
+                    const div = document.createElement('div'); div.className = 'sched-card';
+                    div.style.top = (startMins * PIXELS_PER_MINUTE) + 'px'; 
+                    div.style.height = (dur * PIXELS_PER_MINUTE) + 'px';
+                    div.style.width = '95%'; div.style.left = '0';
+                    const [aC, hC] = resolveColors(g.away_color, g.away_alt_color, g.home_color, g.home_alt_color);
+                    div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
+
+                    let statusHtml = '';
+                    if(g.situation && g.situation.isRedZone) { statusHtml = `<span class="red-zone-pill">${g.situation.downDist}</span>`; } 
+                    else if(g.state === 'in' && g.situation.downDist) { statusHtml = `<span class="text-outline">${g.situation.downDist}</span>`; }
+                    let possIcon = '🏈'; let possText = 'Poss';
+                    if(g.sport === 'nhl') { possIcon = '🏒'; possText = 'PP'; }
+                    else if(g.sport === 'nba') { possIcon = '🏀'; }
+                    else if(g.sport === 'mlb') { possIcon = '⚾'; }
+                    else if(g.sport.includes('soccer')) { possIcon = '⚽'; }
+
+                    let diamondHtml = '';
+                    if(g.sport === 'mlb') {
+                        const s = g.situation || {};
+                        diamondHtml = `<div class="baseball-field"><div class="base b1 ${s.onFirst?'active':''}"></div><div class="base b2 ${s.onSecond?'active':''}"></div><div class="base b3 ${s.onThird?'active':''}"></div></div><div class="text-outline" style="font-size:0.7rem;">${s.balls}-${s.strikes}, ${s.outs} Out</div>`;
+                    }
+
+                    div.innerHTML = `
+                        <div class="overlay"></div>
+                        <div class="card-header">
+                            ${g.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}
+                            <span class="text-outline" style="text-align:right">${g.status}</span>
+                        </div>
+                        <div class="team-row">
+                            <div class="t-left">
+                                <img class="t-logo logo-outline" src="${g.away_logo}">
+                                <div><div class="t-name text-outline">${g.away_abbr}</div>${g.situation.possession === g.away_id ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}</div>
+                            </div>
+                            <div class="t-score text-outline">${g.away_score}</div>
+                        </div>
+                        <div class="team-row">
+                            <div class="t-left">
+                                <img class="t-logo logo-outline" src="${g.home_logo}">
+                                <div><div class="t-name text-outline">${g.home_abbr}</div>${g.situation.possession === g.home_id ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}</div>
+                            </div>
+                            <div class="t-score text-outline">${g.home_score}</div>
+                        </div>
+                        <div class="card-footer">${diamondHtml}${statusHtml}</div>`;
+                    eventsArea.appendChild(div);
+                });
+            }
+
             async function saveSettings() {
+                const teamsArr = document.getElementById('inp_teams').value.split(',').map(s=>s.trim()).filter(s=>s);
                 const payload = {
                     active_sports: {
-                        nfl: document.getElementById('chk_nfl').checked,
-                        nba: document.getElementById('chk_nba').checked,
-                        nhl: document.getElementById('chk_nhl').checked,
-                        mlb: document.getElementById('chk_mlb').checked,
-                        soccer_epl: document.getElementById('chk_soccer_epl').checked,
-                        soccer_mls: document.getElementById('chk_soccer_mls').checked,
-                        golf: document.getElementById('chk_golf').checked,
-                        racing_f1: document.getElementById('chk_racing_f1').checked,
-                        racing_nascar: document.getElementById('chk_racing_nascar').checked,
-                        racing_indycar: document.getElementById('chk_racing_indycar').checked,
-                        racing_wec: document.getElementById('chk_racing_wec').checked,
-                        racing_imsa: document.getElementById('chk_racing_imsa').checked,
-                        weather: document.getElementById('chk_weather').checked,
-                        clock: document.getElementById('chk_clock').checked
+                        nfl: document.getElementById('chk_nfl').checked, nba: document.getElementById('chk_nba').checked, nhl: document.getElementById('chk_nhl').checked, mlb: document.getElementById('chk_mlb').checked,
+                        soccer_epl: document.getElementById('chk_soccer_epl').checked, soccer_mls: document.getElementById('chk_soccer_mls').checked, golf: document.getElementById('chk_golf').checked,
+                        racing_f1: document.getElementById('chk_racing_f1').checked, racing_nascar: document.getElementById('chk_racing_nascar').checked, racing_indycar: document.getElementById('chk_racing_indycar').checked,
+                        racing_wec: document.getElementById('chk_racing_wec').checked, racing_imsa: document.getElementById('chk_racing_imsa').checked,
+                        ncf_fbs: document.getElementById('chk_ncf_fbs').checked, weather: document.getElementById('chk_weather').checked, clock: document.getElementById('chk_clock').checked
                     },
-                    my_teams: document.getElementById('inp_teams').value.split(',').map(s=>s.trim()).filter(s=>s),
-                    scroll_speed: parseInt(document.getElementById('inp_speed').value),
-                    brightness: parseFloat(document.getElementById('inp_bright').value)
+                    my_teams: teamsArr,
+                    scroll_seamless: document.getElementById('chk_scroll').checked,
+                    brightness: parseFloat(document.getElementById('rng_bright').value),
+                    scroll_speed: parseInt(document.getElementById('rng_speed').value),
+                    mode: 'all', layout_mode: 'schedule'
                 };
                 await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-                alert("Saved!");
+                toggleMenu(); loadState();
             }
-            loadState();
+            loadState(); setInterval(loadState, 5000);
         </script>
     </body>
     </html>
@@ -800,18 +1123,15 @@ def api_ticker():
     })
 
 @app.route('/api/state')
-def api_state():
-    with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
+def api_state(): with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
 
 @app.route('/api/teams')
-def api_teams():
-    with data_lock: return jsonify(state['all_teams_data'])
+def api_teams(): with data_lock: return jsonify(state['all_teams_data'])
 
 @app.route('/api/config', methods=['POST'])
 def api_config():
     with data_lock: state.update(request.json)
     save_config_file()
-    # Force immediate refresh
     threading.Thread(target=fetcher.get_real_games).start()
     return jsonify({"status": "ok"})
 
