@@ -7,7 +7,7 @@ import sys
 import subprocess
 import socket
 from datetime import datetime
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageStat
 import random
 
 # Import Matrix Library
@@ -23,7 +23,7 @@ PANEL_H = 32
 SETUP_SSID = "SportsTicker_Setup"
 
 PAGE_SCROLL_SPEED = 0.04
-PAGE_HOLD_TIME = 5.0    
+PAGE_HOLD_TIME = 5.0     
 SEAMLESS_SPEED = 0.05 
 REFRESH_RATE = 3   
 
@@ -88,10 +88,10 @@ class TickerStreamer:
         options = RGBMatrixOptions()
         options.rows = 32
         options.cols = 64
-        options.chain_length = 2      
+        options.chain_length = 2       
         options.parallel = 1
         options.hardware_mapping = 'regular'  
-        options.gpio_slowdown = 4                   
+        options.gpio_slowdown = 4                    
         options.disable_hardware_pulsing = True
         options.drop_privileges = False 
         
@@ -157,15 +157,83 @@ class TickerStreamer:
         if not url: return None
         cache_key = f"{url}_{size}"
         if cache_key in self.logo_cache: return self.logo_cache[cache_key]
+        
         try:
-            r = requests.get(url, timeout=2) 
-            img = Image.open(io.BytesIO(r.content)).convert("RGBA")
-            img = img.resize(size, Image.Resampling.LANCZOS)
-            bg = Image.new("RGBA", size, (0,0,0,0))
-            bg.alpha_composite(img)
-            self.logo_cache[cache_key] = bg
-            return bg
-        except: return None
+            r = requests.get(url, timeout=2)
+            original = Image.open(io.BytesIO(r.content)).convert("RGBA")
+            
+            # === IMPROVED ANALYSIS: SCAN WHOLE IMAGE ===
+            # We resize to a small check image to inspect pixel content
+            check_img = original.resize((32, 32), Image.Resampling.NEAREST)
+            width, height = check_img.size
+            rgb_img = check_img.convert("RGB")
+            alpha = check_img.split()[-1]
+            
+            visible_pixels = 0
+            dark_pixels = 0
+            
+            # Loop through every pixel to find "Black" mass
+            for y in range(height):
+                for x in range(width):
+                    # Check if pixel is visible (alpha > 50)
+                    if alpha.getpixel((x, y)) > 50:
+                        visible_pixels += 1
+                        r_val, g_val, b_val = rgb_img.getpixel((x, y))
+                        
+                        # DEFINITION OF DARK PIXEL:
+                        # If R, G, and B are ALL below 50, it is essentially black.
+                        # This catches the Cincinnati C and Wake Forest WF.
+                        if r_val < 50 and g_val < 50 and b_val < 50:
+                            dark_pixels += 1
+            
+            # DECISION: If > 30% of the LOGO ITSELF is dark/black, force the outline.
+            # This ignores the edges and looks at the total mass of the logo.
+            needs_outline = False
+            if visible_pixels > 0:
+                black_ratio = dark_pixels / visible_pixels
+                if black_ratio > 0.30: # 30% Threshold
+                    needs_outline = True
+            
+            # === RENDER LOGO ===
+            
+            if needs_outline:
+                # -- DARK LOGO MODE: SHRINK AND ADD WHITE STROKE --
+                target_w, target_h = size
+                icon_w, icon_h = target_w - 2, target_h - 2
+                original = original.resize((icon_w, icon_h), Image.Resampling.LANCZOS)
+                
+                base = Image.new("RGBA", size, (0, 0, 0, 0))
+                paste_x = (target_w - icon_w) // 2
+                paste_y = (target_h - icon_h) // 2
+                
+                _, _, _, alpha_ch = original.split()
+                
+                # Make the white mask
+                white_mask = Image.new("RGBA", (icon_w, icon_h), (255, 255, 255, 255))
+                white_mask.putalpha(alpha_ch)
+                
+                # Draw the outline by pasting the white mask in 8 directions
+                offsets = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
+                for ox, oy in offsets:
+                    base.paste(white_mask, (paste_x + ox, paste_y + oy), white_mask)
+                
+                # Paste original on top
+                base.paste(original, (paste_x, paste_y), original)
+                final_img = base
+                
+            else:
+                # -- NORMAL MODE: FULL SIZE, NO MODS --
+                final_img = original.resize(size, Image.Resampling.LANCZOS)
+                bg = Image.new("RGBA", size, (0,0,0,0))
+                bg.alpha_composite(final_img)
+                final_img = bg
+
+            self.logo_cache[cache_key] = final_img
+            return final_img
+
+        except Exception as e:
+            print(f"Error loading logo {url}: {e}")
+            return None
 
     def draw_hockey_stick(self, draw, cx, cy, size):
         WOOD = (150, 75, 0); TAPE = (255, 255, 255)
