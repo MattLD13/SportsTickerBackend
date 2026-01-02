@@ -9,7 +9,7 @@ from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 60 
+UPDATE_INTERVAL = 5
 data_lock = threading.Lock()
 
 HEADERS = {
@@ -21,7 +21,7 @@ HEADERS = {
 default_state = {
     'active_sports': { 
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
-        'soccer': True, 'golf': True, 'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
+        'soccer': True, 'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
         'weather': False, 'clock': False 
     },
     'mode': 'all', 
@@ -164,8 +164,7 @@ class SportsFetcher:
             'soccer_epl': { 'path': 'soccer/eng.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
             'soccer_mls': { 'path': 'soccer/usa.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
             'soccer_ucl': { 'path': 'soccer/uefa.champions', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
-            # --- LEADERBOARDS ---
-            'golf': { 'path': 'golf/pga', 'type': 'leaderboard' },
+            # --- LEADERBOARDS (Golf Removed) ---
             'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
             'nascar': { 'path': 'racing/nascar', 'type': 'leaderboard' },
             'indycar': { 'path': 'racing/indycar', 'type': 'leaderboard' },
@@ -253,7 +252,6 @@ class SportsFetcher:
         except: pass
 
     def fetch_leaderboard_event(self, league_key, config, games_list, conf):
-        # NOTE: WE DO NOT USE req_params['dates'] here to ensure we get the active tournament
         try:
             url = f"{self.base_url}{config['path']}/scoreboard"
             r = requests.get(url, headers=HEADERS, timeout=5)
@@ -662,7 +660,6 @@ def root():
                 <div class="toggle-row"><span>MLB</span><label class="switch"><input type="checkbox" id="chk_mlb"><span class="slider"></span></label></div>
                 <div class="toggle-row"><span>NCAA FBS</span><label class="switch"><input type="checkbox" id="chk_ncf_fbs"><span class="slider"></span></label></div>
                 <div class="toggle-row"><span>Soccer</span><label class="switch"><input type="checkbox" id="chk_soccer"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>Golf</span><label class="switch"><input type="checkbox" id="chk_golf"><span class="slider"></span></label></div>
                 <hr style="border-color:#444;">
                 <div class="toggle-row"><span>F1</span><label class="switch"><input type="checkbox" id="chk_f1"><span class="slider"></span></label></div>
                 <div class="toggle-row"><span>NASCAR</span><label class="switch"><input type="checkbox" id="chk_nascar"><span class="slider"></span></label></div>
@@ -710,7 +707,7 @@ def root():
                 try {
                     const res = await fetch('/api/state'); const data = await res.json(); const s = data.settings;
                     document.getElementById('inp_teams').value = (s.my_teams || []).join(', ');
-                    ['nfl','nba','nhl','mlb','ncf_fbs','soccer','golf','f1','nascar','indycar','imsa','wec','weather'].forEach(k => {
+                    ['nfl','nba','nhl','mlb','ncf_fbs','soccer','f1','nascar','indycar','imsa','wec','weather'].forEach(k => {
                         if(document.getElementById('chk_'+k)) document.getElementById('chk_'+k).checked = s.active_sports[k];
                     });
                     document.getElementById('chk_scroll').checked = s.scroll_seamless;
@@ -807,7 +804,7 @@ def root():
             }
             async function saveSettings() {
                 const sports = {};
-                ['nfl','nba','nhl','mlb','ncf_fbs','soccer','golf','f1','nascar','indycar','imsa','wec','weather'].forEach(k => { if(document.getElementById('chk_'+k)) sports[k] = document.getElementById('chk_'+k).checked; });
+                ['nfl','nba','nhl','mlb','ncf_fbs','soccer','f1','nascar','indycar','imsa','wec','weather'].forEach(k => { if(document.getElementById('chk_'+k)) sports[k] = document.getElementById('chk_'+k).checked; });
                 const payload = {
                     active_sports: sports,
                     my_teams: document.getElementById('inp_teams').value.split(',').map(s=>s.trim()).filter(s=>s),
