@@ -9,7 +9,7 @@ from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 5
+UPDATE_INTERVAL = 60 
 data_lock = threading.Lock()
 
 HEADERS = {
@@ -160,10 +160,8 @@ class SportsFetcher:
             'mlb': { 'path': 'baseball/mlb', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            # --- SOCCER ---
+            # --- SOCCER (EPL ONLY) ---
             'soccer_epl': { 'path': 'soccer/eng.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
-            'soccer_mls': { 'path': 'soccer/usa.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
-            'soccer_ucl': { 'path': 'soccer/uefa.champions', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
             # --- LEADERBOARDS (Golf Removed) ---
             'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
             'nascar': { 'path': 'racing/nascar', 'type': 'leaderboard' },
@@ -262,7 +260,6 @@ class SportsFetcher:
                 status_obj = e.get('status', {})
                 state = status_obj.get('type', {}).get('state', 'pre')
                 
-                # Check date for caching/display logic
                 utc_str = e['date'].replace('Z', '')
                 try:
                     game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
@@ -283,14 +280,12 @@ class SportsFetcher:
                     sorted_comps = sorted(raw_competitors, key=lambda x: int(x.get('curatedRank', x.get('order', 999))))
                 except: sorted_comps = raw_competitors
 
-                for c in sorted_comps[:5]: # Top 5 only
+                for c in sorted_comps[:5]:
                     athlete = c.get('athlete', {})
                     disp_name = athlete.get('displayName', c.get('team',{}).get('displayName','Unk'))
-                    if ' ' in disp_name: disp_name = disp_name.split(' ')[-1] # Shorten Name
+                    if ' ' in disp_name: disp_name = disp_name.split(' ')[-1]
                     
                     rank = c.get('curatedRank', c.get('order', '-'))
-                    
-                    # Robust Score Parsing
                     score = c.get('score', '')
                     if not score:
                         lines = c.get('linescores', [])
@@ -659,7 +654,7 @@ def root():
                 <div class="toggle-row"><span>NHL</span><label class="switch"><input type="checkbox" id="chk_nhl"><span class="slider"></span></label></div>
                 <div class="toggle-row"><span>MLB</span><label class="switch"><input type="checkbox" id="chk_mlb"><span class="slider"></span></label></div>
                 <div class="toggle-row"><span>NCAA FBS</span><label class="switch"><input type="checkbox" id="chk_ncf_fbs"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>Soccer</span><label class="switch"><input type="checkbox" id="chk_soccer"><span class="slider"></span></label></div>
+                <div class="toggle-row"><span>Premier League</span><label class="switch"><input type="checkbox" id="chk_soccer"><span class="slider"></span></label></div>
                 <hr style="border-color:#444;">
                 <div class="toggle-row"><span>F1</span><label class="switch"><input type="checkbox" id="chk_f1"><span class="slider"></span></label></div>
                 <div class="toggle-row"><span>NASCAR</span><label class="switch"><input type="checkbox" id="chk_nascar"><span class="slider"></span></label></div>
