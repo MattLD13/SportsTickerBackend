@@ -17,7 +17,7 @@ from flask import Flask, request, render_template_string
 
 # ================= CONFIGURATION =================
 # UPDATE THIS IP TO YOUR SERVER IP IF NOT HOSTED ON RAILWAY
-BACKEND_URL = "https://sportstickerbackend-production.up.railway.app/api/ticker"
+BACKEND_URL = "https://ticker.mattdicks.org/api/ticker"
 PANEL_W = 128        
 PANEL_H = 32
 SETUP_SSID = "SportsTicker_Setup"
