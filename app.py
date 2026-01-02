@@ -4,19 +4,21 @@ import json
 import os
 import re
 import traceback
+import random
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from flask import Flask, jsonify, request, render_template_string
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 5 # Seconds
+UPDATE_INTERVAL = 5  # Restored to 5 seconds
 data_lock = threading.Lock()
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Cache-Control": "no-cache",
-    "Pragma": "no-cache"
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0"
 }
 
 # ================= DEFAULT STATE =================
@@ -189,7 +191,7 @@ class SportsFetcher:
             'soccer_epl': { 'path': 'soccer/eng.1', 'scoreboard_params': {}, 'team_params': {} },
             'soccer_mls': { 'path': 'soccer/usa.1', 'scoreboard_params': {}, 'team_params': {} },
             
-            # ESPN FALLBACKS (Used if specific API fetchers fail or for Golf/Indy)
+            # ESPN FALLBACKS (Golf, Indy, WEC, IMSA)
             'golf': { 'path': 'golf/pga', 'scoreboard_params': {}, 'team_params': {} },
             'racing_indycar': { 'path': 'racing/indycar', 'scoreboard_params': {}, 'team_params': {} },
             'racing_wec': { 'path': 'racing/racing', 'scoreboard_params': {}, 'team_params': {} },
@@ -234,18 +236,19 @@ class SportsFetcher:
             
             url = f"{self.base_url}football/college-football/teams"
             r = requests.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
-            data = r.json()
-            if 'sports' in data:
-                for sport in data['sports']:
-                    for league in sport['leagues']:
-                        for item in league.get('teams', []):
-                            t_abbr = item['team'].get('abbreviation', 'unk'); t_clr = item['team'].get('color', '000000')
-                            t_alt = item['team'].get('alternateColor', '444444'); t_logo = item['team'].get('logos', [{}])[0].get('href', '')
-                            league_tag = 'ncf_fbs' if t_abbr in FBS_TEAMS else 'ncf_fcs'
-                            t_logo = self.get_corrected_logo(league_tag, t_abbr, t_logo)
-                            team_obj = {'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt}
-                            if t_abbr in FBS_TEAMS and not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']): teams_catalog['ncf_fbs'].append(team_obj)
-                            elif t_abbr in FCS_TEAMS and not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fcs']): teams_catalog['ncf_fcs'].append(team_obj)
+            if r.status_code == 200:
+                data = r.json()
+                if 'sports' in data:
+                    for sport in data['sports']:
+                        for league in sport['leagues']:
+                            for item in league.get('teams', []):
+                                t_abbr = item['team'].get('abbreviation', 'unk'); t_clr = item['team'].get('color', '000000')
+                                t_alt = item['team'].get('alternateColor', '444444'); t_logo = item['team'].get('logos', [{}])[0].get('href', '')
+                                league_tag = 'ncf_fbs' if t_abbr in FBS_TEAMS else 'ncf_fcs'
+                                t_logo = self.get_corrected_logo(league_tag, t_abbr, t_logo)
+                                team_obj = {'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt}
+                                if t_abbr in FBS_TEAMS and not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']): teams_catalog['ncf_fbs'].append(team_obj)
+                                elif t_abbr in FCS_TEAMS and not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fcs']): teams_catalog['ncf_fcs'].append(team_obj)
             with data_lock: state['all_teams_data'] = teams_catalog
         except: pass
 
@@ -253,18 +256,18 @@ class SportsFetcher:
         config = self.leagues[league_key]
         try:
             r = requests.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=10)
-            data = r.json()
-            if 'sports' in data:
-                for sport in data['sports']:
-                    for league in sport['leagues']:
-                        for item in league.get('teams', []):
-                            abbr = item['team'].get('abbreviation', 'unk'); clr = item['team'].get('color', '000000')
-                            alt = item['team'].get('alternateColor', '444444'); logo = item['team'].get('logos', [{}])[0].get('href', '')
-                            catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
+            if r.status_code == 200:
+                data = r.json()
+                if 'sports' in data:
+                    for sport in data['sports']:
+                        for league in sport['leagues']:
+                            for item in league.get('teams', []):
+                                abbr = item['team'].get('abbreviation', 'unk'); clr = item['team'].get('color', '000000')
+                                alt = item['team'].get('alternateColor', '444444'); logo = item['team'].get('logos', [{}])[0].get('href', '')
+                                catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
         except: pass
 
     def _fetch_nhl_native(self, games_list, target_date_str):
-        # (NHL logic preserved)
         with data_lock: is_nhl = state['active_sports'].get('nhl', False); utc_offset = state.get('utc_offset', -4)
         if not is_nhl: return
         processed_ids = set()
@@ -346,45 +349,35 @@ class SportsFetcher:
     def _fetch_f1_openf1(self, games_list):
         if not state['active_sports'].get('racing_f1', False): return
         try:
-            # 1. Get latest session
             year = dt.now().year
             r = requests.get(f"https://api.openf1.org/v1/sessions?year={year}", timeout=5)
+            if r.status_code != 200: return
             sessions = r.json()
             if not sessions: return
             
-            # Find most recent/active session
-            # OpenF1 sessions don't have a simple "active" flag, so we look for latest start date
-            # Ideally, we sort by date.
             sorted_sess = sorted(sessions, key=lambda x: x['date_start'], reverse=True)
             sess = sorted_sess[0]
-            
-            # Check if it's recent (within 2 hours of end or currently active)
-            # Simplified: Just show the latest session if it's today
             sess_key = sess['session_key']
             t_name = f"{sess['location']} - {sess['session_name']}"
             
-            # 2. Get positions (Live or Final)
-            # Use 'position' endpoint
             r2 = requests.get(f"https://api.openf1.org/v1/position?session_key={sess_key}", timeout=5)
+            if r2.status_code != 200: return
             positions = r2.json()
             
-            # Process positions (get latest entry per driver)
             driver_map = {}
             for p in positions:
-                driver_map[p['driver_number']] = p # Will overwrite with latest
+                driver_map[p['driver_number']] = p
             
-            # Get driver info to map numbers to names
             r3 = requests.get(f"https://api.openf1.org/v1/drivers?session_key={sess_key}", timeout=5)
+            if r3.status_code != 200: return
             drivers = {d['driver_number']: d['last_name'] for d in r3.json()}
             
-            # Build Leaderboard
             leaders = []
             sorted_drivers = sorted(driver_map.values(), key=lambda x: x['position'])
             
             for d in sorted_drivers[:4]:
                 num = d['driver_number']
                 name = drivers.get(num, str(num))
-                # For F1, we don't easily get "gap" from this endpoint, so we show position
                 leaders.append({'rank': d['position'], 'name': name[:3].upper(), 'score': ''})
                 
             games_list.append({
@@ -392,9 +385,7 @@ class SportsFetcher:
                 'state': 'in', 'is_shown': True, 'tourney_name': t_name, 'leaders': leaders,
                 'home_abbr': 'F1', 'away_abbr': 'F1', 'home_color': '#FF0000', 'away_color': '#FFFFFF'
             })
-                
-        except Exception as e:
-            print(f"OpenF1 Error: {e}")
+        except Exception as e: print(f"OpenF1 Error: {e}")
 
     # === NASCAR NATIVE FETCHER ===
     def _fetch_nascar_native(self, games_list):
@@ -406,19 +397,15 @@ class SportsFetcher:
             
             run_name = data.get('run_name', 'NASCAR')
             vehicles = data.get('vehicles', [])
-            
             leaders = []
-            # Sort by running position
             sorted_v = sorted(vehicles, key=lambda x: x.get('running_position', 999))
             
             for v in sorted_v[:4]:
                 name = v.get('driver_name', 'Unknown')
-                # Try to get last name
                 if ' ' in name: name = name.split(' ')[-1]
                 delta = v.get('delta', '')
                 if delta and float(delta) < 0: delta = "LEAD"
                 elif delta: delta = f"+{delta}"
-                
                 leaders.append({'rank': v.get('running_position'), 'name': name, 'score': delta})
             
             if leaders:
@@ -429,7 +416,7 @@ class SportsFetcher:
                 })
         except: pass
 
-    # === GENERIC ESPN LEADERBOARD FETCHER (Golf, IndyCar, WEC fallback) ===
+    # === GENERIC ESPN LEADERBOARD FETCHER ===
     def _fetch_leaderboard_sport(self, sport_key, games_list):
         if not state['active_sports'].get(sport_key, False): return
         config = self.leagues.get(sport_key)
@@ -437,6 +424,7 @@ class SportsFetcher:
 
         try:
             r = requests.get(f"{self.base_url}{config['path']}/scoreboard", headers=HEADERS, timeout=5)
+            if r.status_code != 200: return
             data = r.json()
             for event in data.get('events', []):
                 status = event.get('status', {}).get('type', {}).get('shortDetail', 'TBD')
@@ -445,7 +433,9 @@ class SportsFetcher:
 
                 tourney_name = event.get('shortName', 'Event')
                 leaders = []
-                comps = event.get('competitions', [{}])[0].get('competitors', [])
+                comps_list = event.get('competitions', [])
+                if not comps_list: continue
+                comps = comps_list[0].get('competitors', [])
                 if not comps: continue
                 
                 def get_rank(c):
@@ -457,6 +447,11 @@ class SportsFetcher:
                 for c in sorted_comps[:4]: 
                     athlete = c.get('athlete', {})
                     score = c.get('score', {}).get('displayValue', '')
+                    if not score and 'statistics' in c:
+                        for s in c['statistics']:
+                            if s.get('name') in ['time', 'points', 'leaderBehind']:
+                                score = s.get('displayValue', ''); break
+                    
                     rank = c.get('curPosition', c.get('order', '-'))
                     name = athlete.get('displayName', 'Unknown')
                     last_name = athlete.get('lastName', name)
@@ -556,6 +551,7 @@ class SportsFetcher:
             try:
                 curr_p = config['scoreboard_params'].copy(); curr_p.update(req_params)
                 r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
+                if r.status_code != 200: continue
                 data = r.json()
                 
                 for e in data.get('events', []):
@@ -627,8 +623,22 @@ class SportsFetcher:
 fetcher = SportsFetcher(state['weather_location'])
 
 def background_updater():
-    fetcher.fetch_all_teams()
-    while True: fetcher.get_real_games(); time.sleep(UPDATE_INTERVAL)
+    # Robust Loop: If it crashes, it waits and restarts.
+    while True:
+        try:
+            fetcher.fetch_all_teams()
+            break
+        except Exception as e:
+            print(f"Startup Error: {e}")
+            time.sleep(10)
+
+    while True:
+        try:
+            fetcher.get_real_games()
+        except Exception as e:
+            print("CRITICAL FETCH ERROR:")
+            traceback.print_exc()
+        time.sleep(UPDATE_INTERVAL)
 
 # ================= FLASK API =================
 app = Flask(__name__)
@@ -654,11 +664,14 @@ def root():
     </head>
     <body>
         <h2>Config</h2>
+        
         <button class="demo" id="btn_demo" onclick="toggleDemo()">Loading...</button>
+
         <div class="control-group">
             <label>My Teams (Comma Separated)</label>
             <input type="text" id="inp_teams">
         </div>
+
         <div class="control-group">
             <div class="toggle-row"><span>NFL</span><input type="checkbox" id="chk_nfl"></div>
             <div class="toggle-row"><span>NBA</span><input type="checkbox" id="chk_nba"></div>
@@ -668,22 +681,26 @@ def root():
             <div class="toggle-row"><span>MLS</span><input type="checkbox" id="chk_soccer_mls"></div>
             <div class="toggle-row"><span>Golf (PGA)</span><input type="checkbox" id="chk_golf"></div>
             <div class="toggle-row"><span>F1 (OpenF1)</span><input type="checkbox" id="chk_racing_f1"></div>
-            <div class="toggle-row"><span>NASCAR (Feed)</span><input type="checkbox" id="chk_racing_nascar"></div>
+            <div class="toggle-row"><span>NASCAR (Live Feed)</span><input type="checkbox" id="chk_racing_nascar"></div>
             <div class="toggle-row"><span>IndyCar</span><input type="checkbox" id="chk_racing_indycar"></div>
             <div class="toggle-row"><span>WEC</span><input type="checkbox" id="chk_racing_wec"></div>
             <div class="toggle-row"><span>IMSA</span><input type="checkbox" id="chk_racing_imsa"></div>
             <div class="toggle-row"><span>Weather</span><input type="checkbox" id="chk_weather"></div>
             <div class="toggle-row"><span>Clock</span><input type="checkbox" id="chk_clock"></div>
         </div>
+
         <div class="control-group">
             <label>Scroll Speed (1-10)</label>
             <input type="number" id="inp_speed" min="1" max="10">
             <label>Brightness (0.1-1.0)</label>
             <input type="number" id="inp_bright" step="0.1" min="0.1" max="1.0">
         </div>
+
         <button onclick="saveSettings()">Save Configuration</button>
+
         <script>
             let currentDemoState = false;
+
             async function loadState() {
                 const res = await fetch('/api/state');
                 const data = await res.json();
@@ -691,6 +708,7 @@ def root():
                 currentDemoState = s.demo_mode;
                 document.getElementById('btn_demo').innerText = currentDemoState ? "DISABLE DEMO MODE" : "ENABLE DEMO MODE";
                 document.getElementById('btn_demo').style.background = currentDemoState ? "#4CAF50" : "#d32f2f";
+
                 document.getElementById('inp_teams').value = (s.my_teams || []).join(', ');
                 document.getElementById('chk_nfl').checked = s.active_sports.nfl;
                 document.getElementById('chk_nba').checked = s.active_sports.nba;
@@ -709,11 +727,13 @@ def root():
                 document.getElementById('inp_speed').value = s.scroll_speed || 5;
                 document.getElementById('inp_bright').value = s.brightness || 0.5;
             }
+
             async function toggleDemo() {
                 const payload = { demo_mode: !currentDemoState };
                 await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
                 loadState();
             }
+
             async function saveSettings() {
                 const payload = {
                     active_sports: {
@@ -773,10 +793,12 @@ def api_ticker():
     })
 
 @app.route('/api/state')
-def api_state(): with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
+def api_state():
+    with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
 
 @app.route('/api/teams')
-def api_teams(): with data_lock: return jsonify(state['all_teams_data'])
+def api_teams():
+    with data_lock: return jsonify(state['all_teams_data'])
 
 @app.route('/api/config', methods=['POST'])
 def api_config():
