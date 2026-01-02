@@ -31,6 +31,7 @@ default_state = {
     'debug_mode': False,
     'custom_date': None,
     'brightness': 0.5,
+    'scroll_speed': 5, # ADDED: Default speed
     'inverted': False,
     'panel_count': 2,
     'test_pattern': False,
@@ -61,6 +62,7 @@ def save_config_file():
                 'scroll_seamless': state['scroll_seamless'], 
                 'my_teams': state['my_teams'],
                 'brightness': state['brightness'],
+                'scroll_speed': state['scroll_speed'], # ADDED
                 'inverted': state['inverted'],
                 'panel_count': state['panel_count'],
                 'weather_location': state['weather_location'],
@@ -708,8 +710,21 @@ def root():
                     <option value="-8">Pacific (UTC-8)</option>
                     <option value="0">UTC / GMT</option>
                 </select>
+            </div>
+
+            <div class="control-group">
+                <div class="section-label">Device Settings</div>
                 <div class="toggle-row" style="margin-top:10px"><span>Seamless Scroll</span><label class="switch"><input type="checkbox" id="chk_scroll"><span class="slider"></span></label></div>
-                 <div style="margin-top:10px;"><label style="font-size:0.8rem; color:#aaa;">Brightness</label><input type="range" id="rng_bright" min="0.1" max="1.0" step="0.1" style="width:100%"></div>
+                 
+                <div style="margin-top:10px;">
+                    <label style="font-size:0.8rem; color:#aaa;">Brightness</label>
+                    <input type="range" id="rng_bright" min="0.1" max="1.0" step="0.1" style="width:100%">
+                </div>
+
+                <div style="margin-top:10px;">
+                    <label style="font-size:0.8rem; color:#aaa;">Scroll Speed (1=Slow, 10=Fast)</label>
+                    <input type="range" id="rng_speed" min="1" max="10" step="1" style="width:100%">
+                </div>
             </div>
             
             <button onclick="saveSettings()" style="width:100%; padding:10px; background:#007bff; border:none; color:white; border-radius:6px; font-weight:bold; cursor:pointer;">Save Changes</button>
@@ -774,6 +789,7 @@ def root():
                     document.getElementById('chk_clock').checked = s.active_sports.clock;
                     document.getElementById('chk_scroll').checked = s.scroll_seamless;
                     document.getElementById('rng_bright').value = s.brightness;
+                    document.getElementById('rng_speed').value = s.scroll_speed || 5;
                     
                     if(document.getElementById('sel_mode')) document.getElementById('sel_mode').value = s.mode;
                     if(document.getElementById('sel_layout')) document.getElementById('sel_layout').value = s.layout_mode;
@@ -1019,6 +1035,7 @@ def root():
                     my_teams: teamsArr,
                     scroll_seamless: document.getElementById('chk_scroll').checked,
                     brightness: parseFloat(document.getElementById('rng_bright').value),
+                    scroll_speed: parseInt(document.getElementById('rng_speed').value),
                     weather_location: document.getElementById('inp_loc').value,
                     utc_offset: parseInt(document.getElementById('sel_timezone').value),
                     mode: document.getElementById('sel_mode') ? document.getElementById('sel_mode').value : 'all',
@@ -1053,6 +1070,7 @@ def api_ticker():
             'count': len(processed_games), 
             'scroll_seamless': d['scroll_seamless'], 
             'brightness': d['brightness'], 
+            'scroll_speed': d.get('scroll_speed', 5), # ADDED
             'inverted': d['inverted'], 
             'panel_count': d['panel_count'], 
             'test_pattern': d['test_pattern'], 
