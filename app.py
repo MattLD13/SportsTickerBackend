@@ -18,7 +18,7 @@ HEADERS = {
     "Cache-Control": "no-cache"
 }
 
-# ================= TEAMS & LOGOS =================
+# ================= TEAMS & LOGOS (FULL LIST) =================
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 
@@ -86,7 +86,7 @@ class DeviceManager:
 
     def get_device(self, device_id):
         if device_id not in self.devices:
-            print(f"New Device: {device_id}")
+            print(f"New Device Discovered: {device_id}")
             new_dev = DEFAULT_DEVICE.copy()
             new_code = self.generate_code()
             new_dev['pairing_code'] = new_code
@@ -139,11 +139,11 @@ class WeatherFetcher:
             if 'results' not in gd: return None
             lat = gd['results'][0]['latitude']; lon = gd['results'][0]['longitude']; name = gd['results'][0]['name']
             r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto", timeout=5)
-            d = r.json()
-            c = d.get('current', {}); dl = d.get('daily', {})
+            wd = r.json()
+            c = wd.get('current', {}); dl = wd.get('daily', {})
             icon = self.get_icon(c.get('weather_code', 0), c.get('is_day', 1))
             high = int(dl['temperature_2m_max'][0]); low = int(dl['temperature_2m_min'][0]); uv = float(dl['uv_index_max'][0])
-            w = {"type":"weather", "sport":"weather", "id":"weather", "status":"Live", "home_abbr": f"{int(c.get('temperature_2m', 0))}°", "away_abbr": name, "home_score":"", "away_score":"", "is_shown":True, "home_logo":"", "away_logo":"", "home_color":"#000000", "away_color":"#000000", "situation": {"icon": icon, "stats": {"high": high, "low": low, "uv": uv}}}
+            w = {"type":"weather", "sport":"weather", "id":"weather", "status":"Live", "home_abbr": f"{int(c.get('temperature_2m', 0))}°", "away_abbr": name, "home_score":"", "away_score":"", "is_shown":True, "home_logo":"", "away_logo":"", "home_color":"#000000", "away_color":"#000000", "situation": {"icon": icon, "stats": {"high": int(dl['temperature_2m_max'][0]), "low": int(dl['temperature_2m_min'][0]), "uv": float(dl['uv_index_max'][0])}}}
             self.cache[location] = (now, w)
             return w
         except: return None
@@ -175,47 +175,27 @@ class SportsFetcher:
     def calculate_game_timing(self, sport, start_utc, period, status_detail):
         duration = SPORT_DURATIONS.get(sport, 180); ot_padding = 0
         if 'OT' in str(status_detail) or 'S/O' in str(status_detail):
-            if sport in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs']: ot_padding = 20
+            if sport in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs']:
+                ot_count = 1
+                if '2OT' in status_detail: ot_count = 2
+                elif '3OT' in status_detail: ot_count = 3
+                ot_padding = ot_count * 20
             elif sport == 'nhl': ot_padding = 20
             elif sport == 'mlb' and period > 9: ot_padding = (period - 9) * 20
         return duration + ot_padding
 
-    def fetch_all_teams(self):
-        teams_catalog = {k: [] for k in self.leagues.keys()}
-        for league_key, config in self.leagues.items():
-            if config.get('type') != 'scoreboard': continue
-            try:
-                url = f"{self.base_url}{config['path']}/teams"
-                r = requests.get(url, params={'limit': 1000}, headers=HEADERS, timeout=10)
-                data = r.json()
-                if 'sports' in data:
-                    for sport in data['sports']:
-                        for league in sport['leagues']:
-                            for item in league.get('teams', []):
-                                t = item['team']
-                                abbr = t.get('abbreviation','UNK'); logo = t.get('logos',[{}])[0].get('href','')
-                                logo = self.get_corrected_logo(league_key, abbr, logo)
-                                teams_catalog[league_key].append({'abbr': abbr, 'logo': logo})
-            except: pass
-        with data_lock:
-            manager.all_teams_data = teams_catalog
-            manager.save()
-
-    def fetch_leaderboard_event(self, league_key, config, games_list, conf):
+    def fetch_leaderboard(self, key, cfg, games, conf):
         try:
-            url = f"{self.base_url}{config['path']}/scoreboard"
-            r = requests.get(url, headers=HEADERS, timeout=5)
+            r = requests.get(f"{self.base_url}{cfg['path']}/scoreboard", timeout=5)
             data = r.json()
             for e in data.get('events', []):
-                name = e.get('name', e.get('shortName', 'Tournament'))
-                status_obj = e.get('status', {})
-                state = status_obj.get('type', {}).get('state', 'pre')
                 utc_str = e['date'].replace('Z', '')
                 try:
                     game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
                     local_now = dt.now(timezone.utc)
                     diff_hours = (game_dt_utc - local_now).total_seconds() / 3600
                 except: diff_hours = 0
+                state = e.get('status',{}).get('type',{}).get('state','pre')
                 if state == 'pre' and diff_hours > 48: continue
                 if state == 'post' and diff_hours < -24: continue
                 leaders = []
@@ -228,7 +208,7 @@ class SportsFetcher:
                         score = c.get('score', c.get('linescores', [{}])[-1].get('value', ''))
                         leaders.append({'rank': str(c.get('curatedRank', '-')), 'name': disp_name, 'score': str(score)})
                 except: pass
-                games_list.append({'type': 'leaderboard', 'sport': league_key, 'id': e['id'], 'status': status_obj.get('type', {}).get('shortDetail', 'Live'), 'state': state, 'tourney_name': name, 'leaders': leaders, 'is_shown': True, 'startTimeUTC': e['date']})
+                games.append({'type': 'leaderboard', 'sport': key, 'id': e['id'], 'status': e.get('status',{}).get('type',{}).get('shortDetail','Live'), 'state': state, 'tourney_name': e.get('name','Event'), 'leaders': leaders, 'is_shown': True, 'startTimeUTC': e['date']})
         except: pass
 
     def _fetch_nhl_native(self, games_list, target_date_str, conf):
@@ -302,7 +282,7 @@ class SportsFetcher:
         for league_key, config in self.leagues.items():
             check_key = config.get('group', league_key)
             if not conf['active_sports'].get(check_key, False): continue
-            if config.get('type') == 'leaderboard': self.fetch_leaderboard_event(league_key, config, games, conf); continue
+            if config.get('type') == 'leaderboard': self.fetch_leaderboard(league_key, config, games, conf); continue
             if league_key == 'nhl' and not conf['debug_mode']:
                 prev_cnt = len(games); self._fetch_nhl_native(games, target_date_str, conf)
                 if len(games) > prev_cnt: continue
@@ -352,6 +332,27 @@ class SportsFetcher:
 
     def generate_demo_data(self):
         return [{'type': 'leaderboard', 'sport': 'f1', 'id': 'demo_f1', 'status': 'Lap 45/78', 'state': 'in', 'tourney_name': 'Monaco GP', 'is_shown': True, 'leaders': [{'rank': '1', 'name': 'Verstappen', 'score': 'LDR'}, {'rank': '2', 'name': 'Norris', 'score': '+2.4s'}]}, {'type': 'scoreboard', 'sport': 'nfl', 'id': 'demo_nfl', 'status': '4th 2:00', 'state': 'in', 'is_shown': True, 'home_abbr': 'KC', 'home_score': '24', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/kc.png', 'home_color': '#e31837', 'home_alt_color': '#ffb81c', 'away_abbr': 'BUF', 'away_score': '20', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/buf.png', 'away_color': '#00338d', 'away_alt_color': '#c60c30', 'situation': {'possession': 'KC', 'isRedZone': True, 'downDist': '1st & Goal'}}]
+
+    def fetch_all_teams(self):
+        teams_catalog = {k: [] for k in self.leagues.keys()}
+        for league_key, config in self.leagues.items():
+            if config.get('type') != 'scoreboard': continue
+            try:
+                url = f"{self.base_url}{config['path']}/teams"
+                r = requests.get(url, params={'limit': 1000}, headers=HEADERS, timeout=10)
+                data = r.json()
+                if 'sports' in data:
+                    for sport in data['sports']:
+                        for league in sport['leagues']:
+                            for item in league.get('teams', []):
+                                t = item['team']
+                                abbr = t.get('abbreviation','UNK'); logo = t.get('logos',[{}])[0].get('href','')
+                                logo = self.get_corrected_logo(league_key, abbr, logo)
+                                teams_catalog[league_key].append({'abbr': abbr, 'logo': logo})
+            except: pass
+        with data_lock:
+            manager.all_teams_data = teams_catalog
+            manager.save()
 
 fetcher = SportsFetcher()
 
