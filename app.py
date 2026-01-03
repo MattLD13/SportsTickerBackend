@@ -18,14 +18,9 @@ HEADERS = {
     "Cache-Control": "no-cache"
 }
 
-# ================= TEAMS & LOGOS (FULL LIST) =================
+# ================= TEAMS & LOGOS =================
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
-
-ABBR_MAPPING = {
-    'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI',
-    'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS'
-}
 
 LOGO_OVERRIDES = {
     "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png", "NBA:HOU": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png", "MLB:HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png", "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
@@ -47,35 +42,20 @@ SPORT_DURATIONS = {
 # ================= DEFAULT DEVICE STATE =================
 DEFAULT_DEVICE = {
     'name': 'New Ticker',
-    'setup_mode': True,  # Forces ticker to show Pairing Code
+    'setup_mode': True,
     'pairing_code': None,
-    'active_sports': { 
-        'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
-        'soccer': True, 'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
-        'weather': False, 'clock': False 
-    },
-    'mode': 'all', 
-    'layout_mode': 'schedule',
-    'scroll_seamless': False,
-    'my_teams': ["NYG", "NYY", "NJD", "NYK", "LAL", "BOS", "KC", "BUF", "LEH"], 
-    'brightness': 0.5,
-    'scroll_speed': 5, 
-    'inverted': False,
-    'panel_count': 2,
-    'test_pattern': False,
-    'reboot_requested': False,
-    'weather_location': "New York",
-    'utc_offset': -5,
-    'debug_mode': False,
-    'demo_mode': False,
-    'custom_date': None
+    'active_sports': { 'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 'soccer': True, 'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False, 'weather': False, 'clock': False },
+    'mode': 'all', 'layout_mode': 'schedule', 'scroll_seamless': False,
+    'my_teams': ["NYG", "NYY", "NJD", "NYK", "LAL", "BOS", "KC", "BUF", "LEH"],
+    'brightness': 0.5, 'scroll_speed': 5, 'inverted': False, 'panel_count': 2, 'weather_location': "New York", 'utc_offset': -5,
+    'debug_mode': False, 'demo_mode': False, 'custom_date': None
 }
 
 # ================= DEVICE MANAGER =================
 class DeviceManager:
     def __init__(self):
-        self.devices = {} # Key: MAC Address, Value: Config Dict
-        self.code_map = {} # Key: Short Code, Value: MAC Address
+        self.devices = {}
+        self.code_map = {}
         self.all_teams_data = {}
         self.load()
 
@@ -86,12 +66,9 @@ class DeviceManager:
                     data = json.load(f)
                     self.devices = data.get('devices', {})
                     self.all_teams_data = data.get('teams', {})
-                    # Rebuild code map
                     for mac, d in self.devices.items():
-                        if d.get('pairing_code'):
-                            self.code_map[d['pairing_code']] = mac
+                        if d.get('pairing_code'): self.code_map[d['pairing_code']] = mac
             except: self.devices = {}
-        # Ensure default exists for legacy/testing
         if 'default' not in self.devices:
             self.devices['default'] = DEFAULT_DEVICE.copy()
             self.devices['default']['setup_mode'] = False
@@ -99,10 +76,7 @@ class DeviceManager:
     def save(self):
         try:
             with open(CONFIG_FILE, 'w') as f:
-                json.dump({
-                    'devices': self.devices,
-                    'teams': self.all_teams_data
-                }, f, indent=2)
+                json.dump({'devices': self.devices, 'teams': self.all_teams_data}, f, indent=2)
         except: pass
 
     def generate_code(self):
@@ -113,7 +87,7 @@ class DeviceManager:
 
     def get_device(self, device_id):
         if device_id not in self.devices:
-            print(f"New Device Discovered: {device_id}")
+            print(f"New Device: {device_id}")
             new_dev = DEFAULT_DEVICE.copy()
             new_code = self.generate_code()
             new_dev['pairing_code'] = new_code
@@ -124,12 +98,9 @@ class DeviceManager:
 
     def update_device(self, device_id, updates):
         if device_id not in self.devices: return
-        
-        # Deep update for active_sports
         if 'active_sports' in updates and 'active_sports' in self.devices[device_id]:
             self.devices[device_id]['active_sports'].update(updates['active_sports'])
             del updates['active_sports']
-            
         self.devices[device_id].update(updates)
         self.save()
 
@@ -163,46 +134,34 @@ class WeatherFetcher:
         if location in self.cache:
             ts, data = self.cache[location]
             if now - ts < 900: return data
-
         try:
             r = requests.get(f"https://geocoding-api.open-meteo.com/v1/search?name={location}&count=1&language=en&format=json", timeout=3)
-            d = r.json()
-            if 'results' in d and len(d['results']) > 0:
-                res = d['results'][0]
-                lat = res['latitude']; lon = res['longitude']; name = res['name']
-                
-                r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto", timeout=5)
-                wd = r.json()
-                c = wd.get('current', {}); dl = wd.get('daily', {})
-                
-                icon = self.get_icon(c.get('weather_code', 0), c.get('is_day', 1))
-                high = int(dl['temperature_2m_max'][0]); low = int(dl['temperature_2m_min'][0]); uv = float(dl['uv_index_max'][0])
-                
-                w_obj = {
-                    "type": "weather", "sport": "weather", "id": "weather_widget", "status": "Live",
-                    "home_abbr": f"{int(c.get('temperature_2m', 0))}°", "away_abbr": name,
-                    "home_score": "", "away_score": "", "is_shown": True, "home_logo": "", "away_logo": "",
-                    "home_color": "#000000", "away_color": "#000000",
-                    "situation": { "icon": icon, "stats": { "high": high, "low": low, "uv": uv } }
-                }
-                self.cache[location] = (now, w_obj)
-                return w_obj
-        except: pass
-        return None
+            gd = r.json()
+            if 'results' not in gd: return None
+            lat = gd['results'][0]['latitude']; lon = gd['results'][0]['longitude']; name = gd['results'][0]['name']
+            r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto", timeout=5)
+            wd = r.json()
+            c = wd.get('current', {}); dl = wd.get('daily', {})
+            icon = self.get_icon(c.get('weather_code', 0), c.get('is_day', 1))
+            high = int(dl['temperature_2m_max'][0]); low = int(dl['temperature_2m_min'][0]); uv = float(dl['uv_index_max'][0])
+            w_obj = {"type": "weather", "sport": "weather", "id": "weather_widget", "status": "Live", "home_abbr": f"{int(c.get('temperature_2m', 0))}°", "away_abbr": name, "home_score": "", "away_score": "", "is_shown": True, "home_logo": "", "away_logo": "", "home_color": "#000000", "away_color": "#000000", "situation": { "icon": icon, "stats": { "high": high, "low": low, "uv": uv } }}
+            self.cache[location] = (now, w_obj)
+            return w_obj
+        except: return None
 
 class SportsFetcher:
     def __init__(self):
         self.weather = WeatherFetcher()
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
-        self.possession_cache = {}  
+        self.possession_cache = {}
         self.leagues = {
-            'nfl': { 'path': 'football/nfl', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'groups': '80', 'limit': 1000}, 'type': 'scoreboard' },
-            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81', 'limit': 100}, 'team_params': {'groups': '81', 'limit': 1000}, 'type': 'scoreboard' },
-            'mlb': { 'path': 'baseball/mlb', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'soccer_epl': { 'path': 'soccer/eng.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
+            'nfl': { 'path': 'football/nfl', 'params': {'limit': 100}, 'type': 'scoreboard' },
+            'ncf_fbs': { 'path': 'football/college-football', 'params': {'groups': '80', 'limit': 100}, 'type': 'scoreboard' },
+            'ncf_fcs': { 'path': 'football/college-football', 'params': {'groups': '81', 'limit': 100}, 'type': 'scoreboard' },
+            'mlb': { 'path': 'baseball/mlb', 'params': {'limit': 100}, 'type': 'scoreboard' },
+            'nhl': { 'path': 'hockey/nhl', 'params': {'limit': 100}, 'type': 'scoreboard' },
+            'nba': { 'path': 'basketball/nba', 'params': {'limit': 100}, 'type': 'scoreboard' },
+            'soccer': { 'path': 'soccer/eng.1', 'params': {}, 'group': 'soccer', 'type': 'scoreboard' },
             'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
             'nascar': { 'path': 'racing/nascar', 'type': 'leaderboard' },
             'indycar': { 'path': 'racing/indycar', 'type': 'leaderboard' },
@@ -232,33 +191,39 @@ class SportsFetcher:
         for league_key, config in self.leagues.items():
             if config.get('type') != 'scoreboard': continue
             try:
-                # Use simplified endpoint logic for brevity, but maintains integrity
-                pass # (Populated from original logic in full deployment)
+                url = f"{self.base_url}{config['path']}/teams"
+                r = requests.get(url, params={'limit': 1000}, headers=HEADERS, timeout=10)
+                data = r.json()
+                if 'sports' in data:
+                    for sport in data['sports']:
+                        for league in sport['leagues']:
+                            for item in league.get('teams', []):
+                                t = item['team']
+                                abbr = t.get('abbreviation','UNK'); logo = t.get('logos',[{}])[0].get('href','')
+                                logo = self.get_corrected_logo(league_key, abbr, logo)
+                                teams_catalog[league_key].append({'abbr': abbr, 'logo': logo})
             except: pass
-        # For this version, I'm assuming teams_catalog is populated or uses cache
-        # To avoid making this file 2000 lines again, I'll trust the team data is managed.
+        with data_lock:
+            manager.all_teams_data = teams_catalog
+            manager.save()
 
     def fetch_leaderboard_event(self, league_key, config, games_list, conf):
         try:
             url = f"{self.base_url}{config['path']}/scoreboard"
             r = requests.get(url, headers=HEADERS, timeout=5)
             data = r.json()
-            
             for e in data.get('events', []):
                 name = e.get('name', e.get('shortName', 'Tournament'))
                 status_obj = e.get('status', {})
                 state = status_obj.get('type', {}).get('state', 'pre')
-                
                 utc_str = e['date'].replace('Z', '')
                 try:
                     game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
                     local_now = dt.now(timezone.utc)
                     diff_hours = (game_dt_utc - local_now).total_seconds() / 3600
                 except: diff_hours = 0
-
                 if state == 'pre' and diff_hours > 48: continue
                 if state == 'post' and diff_hours < -24: continue
-
                 leaders = []
                 try:
                     comps = e.get('competitions', [])[0].get('competitors', [])
@@ -269,50 +234,35 @@ class SportsFetcher:
                         score = c.get('score', c.get('linescores', [{}])[-1].get('value', ''))
                         leaders.append({'rank': str(c.get('curatedRank', '-')), 'name': disp_name, 'score': str(score)})
                 except: pass
-
-                game_obj = {
-                    'type': 'leaderboard', 'sport': league_key, 'id': e['id'],
-                    'status': status_obj.get('type', {}).get('shortDetail', 'Live'),
-                    'state': state, 'tourney_name': name, 'leaders': leaders,
-                    'is_shown': True, 'startTimeUTC': e['date']
-                }
-                games_list.append(game_obj)
+                games_list.append({'type': 'leaderboard', 'sport': league_key, 'id': e['id'], 'status': status_obj.get('type', {}).get('shortDetail', 'Live'), 'state': state, 'tourney_name': name, 'leaders': leaders, 'is_shown': True, 'startTimeUTC': e['date']})
         except: pass
 
     def _fetch_nhl_native(self, games_list, target_date_str, conf):
         if not conf['active_sports'].get('nhl', False): return
         utc_offset = conf.get('utc_offset', -5)
         processed_ids = set()
-        
         try:
             r = requests.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
             if r.status_code != 200: return
-            
             for d in r.json().get('gameWeek', []):
                 day_games = d.get('games', [])
                 is_target_date = (d.get('date') == target_date_str)
                 has_active_games = any(g.get('gameState') in ['LIVE', 'CRIT'] for g in day_games)
-                
                 if is_target_date or has_active_games:
                     for g in day_games:
                         gid = g['id']
                         if gid in processed_ids: continue
                         processed_ids.add(gid)
-
                         h_ab = g['homeTeam']['abbrev']; a_ab = g['awayTeam']['abbrev']
                         st = g.get('gameState', 'OFF')
                         map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
-                        
                         is_shown = True
                         if conf['mode'] == 'live' and map_st != 'in': is_shown = False
                         if conf['mode'] == 'my_teams':
                             my = conf.get('my_teams', [])
                             if h_ab not in my and a_ab not in my: is_shown = False
-
-                        disp = "Scheduled"
-                        utc_start = g.get('startTimeUTC', '')
+                        disp = "Scheduled"; utc_start = g.get('startTimeUTC', '')
                         dur = self.calculate_game_timing('nhl', utc_start, 1, st)
-                        
                         if st in ['PRE', 'FUT'] and utc_start:
                              try:
                                  dt_obj = dt.fromisoformat(utc_start.replace('Z', '+00:00'))
@@ -320,7 +270,6 @@ class SportsFetcher:
                                  disp = local.strftime("%I:%M %p").lstrip('0')
                              except: pass
                         elif st in ['FINAL', 'OFF']: disp = "FINAL"
-
                         pp = False; poss = ""; en = False; h_sc = "0"; a_sc = "0"
                         if map_st == 'in':
                             try:
@@ -342,76 +291,47 @@ class SportsFetcher:
                                         elif hs > as_: pp=True; poss=h_ab
                                         en = (ag==0 or hg==0)
                             except: disp = "Live"
-
-                        games_list.append({
-                            'type': 'scoreboard', 'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': is_shown,
-                            'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png"), 'home_id': h_ab,
-                            'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png"), 'away_id': a_ab,
-                            'home_color': '#000000', 'home_alt_color': '#ffffff', 'away_color': '#000000', 'away_alt_color': '#ffffff',
-                            'startTimeUTC': utc_start, 'estimated_duration': dur,
-                            'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en }
-                        })
+                        games_list.append({'type': 'scoreboard', 'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': is_shown, 'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png"), 'home_id': h_ab, 'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png"), 'away_id': a_ab, 'home_color': '#000000', 'home_alt_color': '#ffffff', 'away_color': '#000000', 'away_alt_color': '#ffffff', 'startTimeUTC': utc_start, 'estimated_duration': dur, 'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en }})
         except: pass
 
     def get_games(self, conf):
         if conf.get('demo_mode'): return self.generate_demo_data()
         games = []
-        
-        if conf['active_sports'].get('clock'):
-            games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
-            
+        if conf['active_sports'].get('clock'): games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
         if conf['active_sports'].get('weather'):
             w = self.weather.get_weather(conf.get('weather_location'))
             if w: games.append(w)
-
         utc_offset = conf.get('utc_offset', -5)
         now_local = dt.now(timezone(timedelta(hours=utc_offset)))
+        target_date_str = conf['custom_date'] if (conf['debug_mode'] and conf['custom_date']) else (now_local - timedelta(days=1) if now_local.hour < 4 else now_local).strftime("%Y%m%d")
         
-        if conf['debug_mode'] and conf['custom_date']: target_date_str = conf['custom_date']
-        else:
-            if now_local.hour < 4: query_date = now_local - timedelta(days=1)
-            else: query_date = now_local
-            target_date_str = query_date.strftime("%Y%m%d")
-
         for league_key, config in self.leagues.items():
             check_key = config.get('group', league_key)
             if not conf['active_sports'].get(check_key, False): continue
-            
-            if config.get('type') == 'leaderboard':
-                self.fetch_leaderboard_event(league_key, config, games, conf)
-                continue
-            
+            if config.get('type') == 'leaderboard': self.fetch_leaderboard_event(league_key, config, games, conf); continue
             if league_key == 'nhl' and not conf['debug_mode']:
-                prev_cnt = len(games)
-                self._fetch_nhl_native(games, target_date_str, conf)
+                prev_cnt = len(games); self._fetch_nhl_native(games, target_date_str, conf)
                 if len(games) > prev_cnt: continue
-
             try:
-                curr_p = config.get('scoreboard_params', {}).copy()
-                curr_p['dates'] = target_date_str
+                curr_p = config.get('scoreboard_params', {}).copy(); curr_p['dates'] = target_date_str
                 r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
                 data = r.json()
-                
                 for e in data.get('events', []):
-                    utc_start = e['date']
-                    st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
-                    
+                    utc_start = e['date']; st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
                     comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
                     h_ab = h['team']['abbreviation']; a_ab = a['team']['abbreviation']
-                    
                     if league_key == 'ncf_fbs' and (h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS): continue
                     if league_key == 'ncf_fcs' and (h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS): continue
-
+                    
                     is_shown = True
                     if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
                     elif conf['mode'] == 'my_teams':
                         my = conf.get('my_teams', [])
                         hk = f"{league_key}:{h_ab}"; ak = f"{league_key}:{a_ab}"
                         if (hk not in my and h_ab not in my) and (ak not in my and a_ab not in my): is_shown = False
-
+                    
                     h_clr = h['team'].get('color', '000000'); h_alt = h['team'].get('alternateColor', 'ffffff')
                     a_clr = a['team'].get('color', '000000'); a_alt = a['team'].get('alternateColor', 'ffffff')
-                    
                     s_disp = tp.get('shortDetail', 'TBD')
                     if gst == 'pre':
                         try:
@@ -420,8 +340,7 @@ class SportsFetcher:
                             s_disp = local.strftime("%I:%M %p").lstrip('0')
                         except: pass
                     
-                    sit = comp.get('situation', {})
-                    poss = sit.get('possession'); 
+                    sit = comp.get('situation', {}); poss = sit.get('possession'); 
                     if poss: self.possession_cache[e['id']] = poss
                     elif gst == 'in': poss = self.possession_cache.get(e['id'])
                     
@@ -429,24 +348,16 @@ class SportsFetcher:
                         'type': 'scoreboard', 'sport': check_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
                         'home_abbr': h_ab, 'home_score': h.get('score','0'), 'home_logo': self.get_corrected_logo(league_key, h_ab, h['team'].get('logo','')), 'home_id': h.get('id'),
                         'away_abbr': a_ab, 'away_score': a.get('score','0'), 'away_logo': self.get_corrected_logo(league_key, a_ab, a['team'].get('logo','')), 'away_id': a.get('id'),
-                        'home_color': f"#{h_clr}", 'home_alt_color': f"#{h_alt}",
-                        'away_color': f"#{a_clr}", 'away_alt_color': f"#{a_alt}",
-                        'startTimeUTC': utc_start,
-                        'situation': { 'possession': poss, 'isRedZone': sit.get('isRedZone', False), 'downDist': sit.get('downDistanceText', '') }
+                        'home_color': f"#{h_clr}", 'home_alt_color': f"#{h_alt}", 'away_color': f"#{a_clr}", 'away_alt_color': f"#{a_alt}",
+                        'startTimeUTC': utc_start, 'situation': { 'possession': poss, 'isRedZone': sit.get('isRedZone', False), 'downDist': sit.get('downDistanceText', '') }
                     }
-                    if league_key == 'mlb':
-                        game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
-                    
+                    if league_key == 'mlb': game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
                     games.append(game_obj)
             except: pass
-            
         return games
 
     def generate_demo_data(self):
-        return [
-            {'type': 'leaderboard', 'sport': 'f1', 'id': 'demo_f1', 'status': 'Lap 45/78', 'state': 'in', 'tourney_name': 'Monaco GP', 'is_shown': True, 'leaders': [{'rank': '1', 'name': 'Verstappen', 'score': 'LDR'}, {'rank': '2', 'name': 'Norris', 'score': '+2.4s'}]},
-            {'type': 'scoreboard', 'sport': 'nfl', 'id': 'demo_nfl', 'status': '4th 2:00', 'state': 'in', 'is_shown': True, 'home_abbr': 'KC', 'home_score': '24', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/kc.png', 'home_color': '#e31837', 'home_alt_color': '#ffb81c', 'away_abbr': 'BUF', 'away_score': '20', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/buf.png', 'away_color': '#00338d', 'away_alt_color': '#c60c30', 'situation': {'possession': 'KC', 'isRedZone': True, 'downDist': '1st & Goal'}}
-        ]
+        return [{'type': 'leaderboard', 'sport': 'f1', 'id': 'demo_f1', 'status': 'Lap 45/78', 'state': 'in', 'tourney_name': 'Monaco GP', 'is_shown': True, 'leaders': [{'rank': '1', 'name': 'Verstappen', 'score': 'LDR'}, {'rank': '2', 'name': 'Norris', 'score': '+2.4s'}]}, {'type': 'scoreboard', 'sport': 'nfl', 'id': 'demo_nfl', 'status': '4th 2:00', 'state': 'in', 'is_shown': True, 'home_abbr': 'KC', 'home_score': '24', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/kc.png', 'home_color': '#e31837', 'home_alt_color': '#ffb81c', 'away_abbr': 'BUF', 'away_score': '20', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/buf.png', 'away_color': '#00338d', 'away_alt_color': '#c60c30', 'situation': {'possession': 'KC', 'isRedZone': True, 'downDist': '1st & Goal'}}]
 
 fetcher = SportsFetcher()
 
@@ -455,27 +366,16 @@ app = Flask(__name__)
 
 @app.route('/data')
 def route_data_global():
-    # Helper for App to see data before pairing
     with data_lock: conf = manager.get_device('default')
     games = fetcher.get_games(conf)
     return jsonify({'meta': {'is_setup': False}, 'games': games})
 
 @app.route('/data/<device_id>')
 def route_data_device(device_id):
-    # Specific feed for Ticker
     with data_lock: conf = manager.get_device(device_id)
-    if conf.get('setup_mode'):
-        return jsonify({'meta': {'is_setup': True, 'pairing_code': conf['pairing_code']}, 'games': []})
+    if conf.get('setup_mode'): return jsonify({'meta': {'is_setup': True, 'pairing_code': conf['pairing_code']}, 'games': []})
     games = fetcher.get_games(conf)
-    return jsonify({
-        'meta': {
-            'is_setup': False,
-            'brightness': conf['brightness'], 'scroll_speed': conf['scroll_speed'],
-            'inverted': conf['inverted'], 'scroll_seamless': conf['scroll_seamless'],
-            'reboot_requested': conf['reboot_requested']
-        },
-        'games': games
-    })
+    return jsonify({'meta': {'is_setup': False, 'brightness': conf['brightness'], 'scroll_speed': conf['scroll_speed'], 'inverted': conf['inverted'], 'scroll_seamless': conf['scroll_seamless']}, 'games': games})
 
 @app.route('/setup', methods=['POST'])
 def route_setup():
