@@ -567,8 +567,9 @@ class SportsFetcher:
                         else:
                             s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
                             if 'soccer' in config['path']: 
-                                if gst == 'half' or s_disp == 'HT':
-                                    s_disp = "HT"
+                                raw_status_text = tp.get('shortDetail', '')
+                                if gst == 'half' or raw_status_text in ['Halftime', 'HT', 'Half']:
+                                    s_disp = "Half"
                                 else:
                                     s_disp = f"{str(clk).replace("'", "")}'"
                     else:
