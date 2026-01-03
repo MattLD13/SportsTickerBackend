@@ -20,7 +20,7 @@ SETUP_SSID = "SportsTicker_Setup"
 PAGE_HOLD_TIME = 5.0
 REFRESH_RATE = 5
 
-# --- TINY PIXEL FONT (4x5) DEFINITION ---
+# --- TINY PIXEL FONT (4x5) - USED FOR MOTORSPORTS ---
 TINY_FONT_MAP = {
     'A': [0x6, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x9, 0x6],
     'D': [0xE, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8],
@@ -38,7 +38,27 @@ TINY_FONT_MAP = {
     '.': [0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0]
 }
 
+# --- HYBRID PIXEL FONT (4x6) - USED FOR GAME STATUS ---
+HYBRID_FONT_MAP = {
+    'A': [0x6, 0x9, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x8, 0x9, 0x6],
+    'D': [0xE, 0x9, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8, 0x8],
+    'G': [0x6, 0x9, 0x8, 0xB, 0x9, 0x6], 'H': [0x9, 0x9, 0x9, 0xF, 0x9, 0x9], 'I': [0xE, 0x4, 0x4, 0x4, 0x4, 0xE],
+    'J': [0x7, 0x2, 0x2, 0x2, 0xA, 0x4], 'K': [0x9, 0xA, 0xC, 0xC, 0xA, 0x9], 'L': [0x8, 0x8, 0x8, 0x8, 0x8, 0xF],
+    'M': [0x9, 0xF, 0xF, 0x9, 0x9, 0x9], 'N': [0x9, 0xD, 0xF, 0xB, 0x9, 0x9], 'O': [0x6, 0x9, 0x9, 0x9, 0x9, 0x6],
+    'P': [0xE, 0x9, 0x9, 0xE, 0x8, 0x8], 'Q': [0x6, 0x9, 0x9, 0x9, 0xA, 0x5], 'R': [0xE, 0x9, 0x9, 0xE, 0xA, 0x9],
+    'S': [0x7, 0x8, 0x6, 0x1, 0x1, 0xE], 'T': [0xF, 0x4, 0x4, 0x4, 0x4, 0x4], 'U': [0x9, 0x9, 0x9, 0x9, 0x9, 0x6],
+    'V': [0x9, 0x9, 0x9, 0x9, 0xA, 0x4], 'W': [0x9, 0x9, 0x9, 0xF, 0xF, 0x9], 'X': [0x9, 0x9, 0x6, 0x6, 0x9, 0x9],
+    'Y': [0x9, 0x9, 0x9, 0x6, 0x2, 0x2], 'Z': [0xF, 0x1, 0x2, 0x4, 0x8, 0xF], 
+    '0': [0x6, 0x9, 0x9, 0x9, 0x9, 0x6], '1': [0x4, 0xC, 0x4, 0x4, 0x4, 0xE], '2': [0xE, 0x9, 0x2, 0x4, 0x8, 0xF],
+    '3': [0xE, 0x9, 0x2, 0x1, 0x9, 0xE], '4': [0x9, 0x9, 0xF, 0x1, 0x1, 0x1], '5': [0xF, 0x8, 0xE, 0x1, 0x9, 0xE],
+    '6': [0x6, 0x8, 0xE, 0x9, 0x9, 0x6], '7': [0xF, 0x1, 0x2, 0x4, 0x8, 0x8], '8': [0x6, 0x9, 0x6, 0x9, 0x9, 0x6],
+    '9': [0x6, 0x9, 0x9, 0x7, 0x1, 0x6], '+': [0x0, 0x0, 0x4, 0xE, 0x4, 0x0], '-': [0x0, 0x0, 0x0, 0xE, 0x0, 0x0],
+    '.': [0x0, 0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], ':': [0x0, 0x6, 0x6, 0x0, 0x6, 0x6],
+    '~': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0] # Placeholder for half space
+}
+
 def draw_tiny_text(draw, x, y, text, color):
+    # Original 4x5 font, tight kerning (4px advance)
     text = str(text).upper()
     x_cursor = x
     for char in text:
@@ -49,6 +69,25 @@ def draw_tiny_text(draw, x, y, text, color):
             if row_byte & 0x2: draw.point((x_cursor+2, y+r), fill=color)
             if row_byte & 0x1: draw.point((x_cursor+3, y+r), fill=color)
         x_cursor += 4 
+    return x_cursor - x
+
+def draw_hybrid_text(draw, x, y, text, color):
+    # New 4x6 font, wider kerning (5px advance)
+    # SPECIAL: '~' character is a 2px wide space
+    text = str(text).upper()
+    x_cursor = x
+    for char in text:
+        if char == '~':
+            x_cursor += 2
+            continue
+            
+        bitmap = HYBRID_FONT_MAP.get(char, HYBRID_FONT_MAP[' '])
+        for r, row_byte in enumerate(bitmap):
+            if row_byte & 0x8: draw.point((x_cursor+0, y+r), fill=color)
+            if row_byte & 0x4: draw.point((x_cursor+1, y+r), fill=color)
+            if row_byte & 0x2: draw.point((x_cursor+2, y+r), fill=color)
+            if row_byte & 0x1: draw.point((x_cursor+3, y+r), fill=color)
+        x_cursor += 5 # WIDER KERNING
     return x_cursor - x
 
 # --- WIFI MANAGER CLASS ---
@@ -232,14 +271,25 @@ class TickerStreamer:
 
     def draw_hockey_stick(self, draw, cx, cy, size):
         WOOD = (150, 75, 0); TAPE = (255, 255, 255)
-        for i in range(5): draw.point((cx+i, cy-i), fill=WOOD)
-        draw.point((cx, cy), fill=TAPE); draw.point((cx-1, cy), fill=TAPE)
+        pattern = [[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,1,1,1,0],
+                   [0,0,0,0,1,1,0,0],[1,2,2,1,1,1,0,0],[1,2,2,1,1,0,0,0],[0,0,0,0,0,0,0,0]]
+        sx, sy = cx - 4, cy - 4
+        for y in range(8):
+            for x in range(8):
+                if pattern[y][x] == 1: draw.point((sx+x, sy+y), fill=WOOD)
+                elif pattern[y][x] == 2: draw.point((sx+x, sy+y), fill=TAPE)
 
     def shorten_status(self, status):
         if not status: return ""
         s = str(status).upper()
         s = s.replace(" - ", " ").replace("FINAL", "FINAL").replace("/OT", " OT").replace("HALFTIME", "HALF").replace("DELAY", "DLY")
         s = s.replace("1ST", "P1").replace("2ND", "P2").replace("3RD", "P3").replace("4TH", "P4").replace("FULL TIME", "FT")
+        
+        # === INSERT HALF SPACE ('~') BETWEEN PERIOD AND TIME ===
+        replacements = ["P1", "P2", "P3", "P4", "Q1", "Q2", "Q3", "Q4", "OT"]
+        for r in replacements:
+            s = s.replace(f"{r} ", f"{r}~")
+        
         return s
 
     def draw_weather_icon_large(self, d, icon, x, y):
@@ -318,7 +368,7 @@ class TickerStreamer:
             except: pass
             time.sleep(REFRESH_RATE)
 
-    # === REWRITTEN LEADERBOARD (Gap is Always Red & Has +) ===
+    # === LEADERBOARD (Uses OLD Tiny Font) ===
     def draw_leaderboard_card(self, game):
         img = Image.new("RGBA", (64, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
@@ -408,8 +458,10 @@ class TickerStreamer:
             d = ImageDraw.Draw(img)
             
             sport = str(game.get('sport', '')).lower()
-            is_football = 'football' in sport; is_hockey = 'hockey' in sport
-            is_baseball = 'baseball' in sport; is_soccer = 'soccer' in sport
+            is_football = 'football' in sport or 'nfl' in sport or 'ncf' in sport
+            is_hockey = 'hockey' in sport or 'nhl' in sport
+            is_baseball = 'baseball' in sport or 'mlb' in sport
+            is_soccer = 'soccer' in sport
             
             is_active = (game.get('state') == 'in')
             sit = game.get('situation', {}) or {} # Ensure dict
@@ -440,17 +492,26 @@ class TickerStreamer:
             d.text(((64-w_sc)/2, score_y), score, font=self.font, fill=(255,255,255), stroke_width=1, stroke_fill=(0,0,0))
 
             status = self.shorten_status(game.get('status', ''))
-            w_st = d.textlength(status, font=self.micro)
-            d.text(((64-w_st)/2, 22), status, font=self.micro, fill=(180,180,180))
+            
+            # === CHANGED: Using draw_hybrid_text (4x6 with 5px kerning) and moved Y to 25 ===
+            # Width calc: Count normal chars (5px) and half-spaces (2px)
+            st_width = 0
+            for ch in status:
+                st_width += 2 if ch == '~' else 5
+                
+            st_x = (64 - st_width) // 2
+            draw_hybrid_text(d, st_x, 25, status, (180, 180, 180))
 
             if is_active:
                 icon_y = logo_y + logo_size[1] + 3
                 tx = -1
                 side = None
+                
+                # --- LOGIC RESTORED FROM OLD CODE ---
                 if (is_football or is_baseball or is_soccer) and poss: side = poss
                 elif is_hockey and (sit.get('powerPlay') or sit.get('emptyNet')) and poss: side = poss
 
-                # Ensure we are comparing strings
+                # Check string matches safely
                 away_id = str(game.get('away_id', ''))
                 home_id = str(game.get('home_id', ''))
                 away_abbr = str(game.get('away_abbr', ''))
@@ -475,17 +536,28 @@ class TickerStreamer:
                         d.ellipse((tx-2, icon_y, tx+2, icon_y+4), fill='white')
                         d.point((tx, icon_y+2), fill='black')
 
+                # --- SITUATION INDICATORS (BASES, EN, PP, DOWN/DIST) ---
                 if is_hockey:
-                    if sit.get('emptyNet'): d.text(((64-d.textlength("EN", font=self.micro))/2, -1), "EN", font=self.micro, fill=(255,255,0))
-                    elif sit.get('powerPlay'): d.text(((64-d.textlength("PP", font=self.micro))/2, -1), "PP", font=self.micro, fill=(255,255,0))
+                    if sit.get('emptyNet'): 
+                        w = d.textlength("EN", font=self.micro)
+                        d.text(((64-w)/2, -1), "EN", font=self.micro, fill=(255,255,0))
+                    elif sit.get('powerPlay'): 
+                        w = d.textlength("PP", font=self.micro)
+                        d.text(((64-w)/2, -1), "PP", font=self.micro, fill=(255,255,0))
                 elif is_baseball:
                     bases = [(32,2), (29,5), (35,5)] 
                     active = [sit.get('onSecond'), sit.get('onThird'), sit.get('onFirst')]
-                    for i, p in enumerate(bases): d.rectangle((p[0], p[1], p[0]+2, p[1]+2), fill=(255,255,0) if active[i] else (60,60,60))
+                    for i, p in enumerate(bases): 
+                        color = (255,255,0) if active[i] else (60,60,60)
+                        d.rectangle((p[0], p[1], p[0]+2, p[1]+2), fill=color)
                 elif is_football:
                     dd = sit.get('downDist', '')
-                    if dd: d.text(((64-d.textlength(dd.split(' at ')[0], font=self.micro))/2, -1), dd.split(' at ')[0], font=self.micro, fill=(0,255,0))
-                if is_football and sit.get('isRedZone'): d.rectangle((0, 0, 63, 31), outline=(255, 0, 0), width=1)
+                    if dd: 
+                        s_dd = dd.split(' at ')[0].replace("1st", "1st")
+                        w = d.textlength(s_dd, font=self.micro)
+                        d.text(((64-w)/2, -1), s_dd, font=self.micro, fill=(0,255,0))
+                if is_football and sit.get('isRedZone'): 
+                    d.rectangle((0, 0, 63, 31), outline=(255, 0, 0), width=1)
         
         except Exception as e:
             print(f"Draw Game Error: {e}")
