@@ -566,7 +566,8 @@ class SportsFetcher:
                              else: s_disp = "Intermission"
                         else:
                             s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
-                            if 'soccer' in config['path']: s_disp = f"{clk}'"
+                            if 'soccer' in config['path']: 
+                                s_disp = f"{str(clk).replace("'", "")}'"
                     else:
                         s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
                         if league_key == 'nhl':
@@ -926,7 +927,7 @@ def api_teams():
 def api_config():
     with data_lock: state.update(request.json)
     save_config_file()
-    threading.Thread(target=fetcher.get_real_games).start()
+    # threading.Thread(target=fetcher.get_real_games).start()  <-- REMOVED TO PREVENT HANGS
     return jsonify({"status": "ok"})
 
 @app.route('/api/debug', methods=['POST'])
