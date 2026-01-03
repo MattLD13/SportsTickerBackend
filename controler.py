@@ -1,960 +1,634 @@
 import time
 import threading
-import json
-import os
-import re
-from datetime import datetime as dt, timezone, timedelta
+import io
 import requests
-from flask import Flask, jsonify, request, render_template_string
+import traceback
+import sys
+import subprocess
+import socket
+import json
+import concurrent.futures
+from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont, ImageStat, ImageOps
+import random
+from rgbmatrix import RGBMatrix, RGBMatrixOptions
+from flask import Flask, request, render_template_string
 
 # ================= CONFIGURATION =================
-CONFIG_FILE = "ticker_config.json"
-UPDATE_INTERVAL = 5  # Updates every 5 seconds
-data_lock = threading.Lock()
+BACKEND_URL = "https://ticker.mattdicks.org/api/ticker"
+PANEL_W = 128
+PANEL_H = 32
+SETUP_SSID = "SportsTicker_Setup"
+PAGE_HOLD_TIME = 5.0
+REFRESH_RATE = 3
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Cache-Control": "no-cache"
+# --- TINY PIXEL FONT (4x5) - USED FOR MOTORSPORTS ---
+TINY_FONT_MAP = {
+    'A': [0x6, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x9, 0x6],
+    'D': [0xE, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8],
+    'G': [0x6, 0x9, 0xB, 0x9, 0x6], 'H': [0x9, 0x9, 0xF, 0x9, 0x9], 'I': [0xE, 0x4, 0x4, 0x4, 0xE],
+    'J': [0x7, 0x2, 0x2, 0xA, 0x4], 'K': [0x9, 0xA, 0xC, 0xA, 0x9], 'L': [0x8, 0x8, 0x8, 0x8, 0xF],
+    'M': [0x9, 0xF, 0xF, 0x9, 0x9], 'N': [0x9, 0xD, 0xF, 0xB, 0x9], 'O': [0x6, 0x9, 0x9, 0x9, 0x6],
+    'P': [0xE, 0x9, 0xE, 0x8, 0x8], 'Q': [0x6, 0x9, 0x9, 0xA, 0x5], 'R': [0xE, 0x9, 0xE, 0xA, 0x9],
+    'S': [0x7, 0x8, 0x6, 0x1, 0xE], 'T': [0xF, 0x4, 0x4, 0x4, 0x4], 'U': [0x9, 0x9, 0x9, 0x9, 0x6],
+    'V': [0x9, 0x9, 0x9, 0xA, 0x4], 'W': [0x9, 0x9, 0xF, 0xF, 0x9], 'X': [0x9, 0x9, 0x6, 0x9, 0x9],
+    'Y': [0x9, 0x9, 0x6, 0x2, 0x2], 'Z': [0xF, 0x1, 0x6, 0x8, 0xF], 
+    '0': [0x6, 0x9, 0x9, 0x9, 0x6], '1': [0x4, 0xC, 0x4, 0x4, 0xE], '2': [0xE, 0x1, 0x6, 0x8, 0xF],
+    '3': [0xE, 0x1, 0x6, 0x1, 0xE], '4': [0x9, 0x9, 0xF, 0x1, 0x1], '5': [0xF, 0x8, 0xE, 0x1, 0xE],
+    '6': [0x6, 0x8, 0xE, 0x9, 0x6], '7': [0xF, 0x1, 0x2, 0x4, 0x4], '8': [0x6, 0x9, 0x6, 0x9, 0x6],
+    '9': [0x6, 0x9, 0x7, 0x1, 0x6], '+': [0x0, 0x4, 0xE, 0x4, 0x0], '-': [0x0, 0x0, 0xE, 0x0, 0x0],
+    '.': [0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x4, 0x8, 0x0],
+    "'": [0x4, 0x4, 0x0, 0x0, 0x0]
 }
 
-# ================= DEFAULT STATE =================
-default_state = {
-    'active_sports': { 
-        'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
-        'soccer': True, 'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
-        'weather': False, 'clock': False 
-    },
-    'mode': 'all', 
-    'layout_mode': 'schedule',
-    'scroll_seamless': False,
-    'my_teams': ["NYG", "NYY", "NJD", "NYK", "LAL", "BOS", "KC", "BUF", "LEH"], 
-    'current_games': [],
-    'all_teams_data': {}, 
-    'debug_mode': False,
-    'demo_mode': False,
-    'custom_date': None,
-    'brightness': 0.5,
-    'scroll_speed': 5, 
-    'inverted': False,
-    'panel_count': 2,
-    'test_pattern': False,
-    'reboot_requested': False,
-    'weather_location': "New York",
-    'utc_offset': -5 
+# --- HYBRID PIXEL FONT (4x6) - USED FOR GAME STATUS ---
+HYBRID_FONT_MAP = {
+    'A': [0x6, 0x9, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x8, 0x9, 0x6],
+    'D': [0xE, 0x9, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8, 0x8],
+    'G': [0x6, 0x9, 0x8, 0xB, 0x9, 0x6], 'H': [0x9, 0x9, 0x9, 0xF, 0x9, 0x9], 'I': [0xE, 0x4, 0x4, 0x4, 0x4, 0xE],
+    'J': [0x7, 0x2, 0x2, 0x2, 0xA, 0x4], 'K': [0x9, 0xA, 0xC, 0xC, 0xA, 0x9], 'L': [0x8, 0x8, 0x8, 0x8, 0x8, 0xF],
+    'M': [0x9, 0xF, 0xF, 0x9, 0x9, 0x9], 'N': [0x9, 0xD, 0xF, 0xB, 0x9, 0x9], 'O': [0x6, 0x9, 0x9, 0x9, 0x9, 0x6],
+    'P': [0xE, 0x9, 0x9, 0xE, 0x8, 0x8], 'Q': [0x6, 0x9, 0x9, 0x9, 0xA, 0x5], 'R': [0xE, 0x9, 0x9, 0xE, 0xA, 0x9],
+    'S': [0x7, 0x8, 0x6, 0x1, 0x1, 0xE], 'T': [0xF, 0x4, 0x4, 0x4, 0x4, 0x4], 'U': [0x9, 0x9, 0x9, 0x9, 0x9, 0x6],
+    'V': [0x9, 0x9, 0x9, 0x9, 0xA, 0x4], 'W': [0x9, 0x9, 0x9, 0xF, 0xF, 0x9], 'X': [0x9, 0x9, 0x6, 0x6, 0x9, 0x9],
+    'Y': [0x9, 0x9, 0x9, 0x6, 0x2, 0x2], 'Z': [0xF, 0x1, 0x2, 0x4, 0x8, 0xF], 
+    '0': [0x6, 0x9, 0x9, 0x9, 0x9, 0x6], '1': [0x4, 0xC, 0x4, 0x4, 0x4, 0xE], '2': [0xE, 0x9, 0x2, 0x4, 0x8, 0xF],
+    '3': [0xE, 0x9, 0x2, 0x1, 0x9, 0xE], '4': [0x9, 0x9, 0xF, 0x1, 0x1, 0x1], '5': [0xF, 0x8, 0xE, 0x1, 0x9, 0xE],
+    '6': [0x6, 0x8, 0xE, 0x9, 0x9, 0x6], '7': [0xF, 0x1, 0x2, 0x4, 0x8, 0x8], '8': [0x6, 0x9, 0x6, 0x9, 0x9, 0x6],
+    '9': [0x6, 0x9, 0x9, 0x7, 0x1, 0x6], '+': [0x0, 0x0, 0x4, 0xE, 0x4, 0x0], '-': [0x0, 0x0, 0x0, 0xE, 0x0, 0x0],
+    '.': [0x0, 0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], ':': [0x0, 0x6, 0x6, 0x0, 0x6, 0x6],
+    '~': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x2, 0x4, 0x4, 0x8], "'": [0x4, 0x4, 0x0, 0x0, 0x0, 0x0]
 }
 
-state = default_state.copy()
+def draw_tiny_text(draw, x, y, text, color):
+    text = str(text).upper()
+    x_cursor = x
+    for char in text:
+        bitmap = TINY_FONT_MAP.get(char, TINY_FONT_MAP[' '])
+        for r, row_byte in enumerate(bitmap):
+            if row_byte & 0x8: draw.point((x_cursor+0, y+r), fill=color)
+            if row_byte & 0x4: draw.point((x_cursor+1, y+r), fill=color)
+            if row_byte & 0x2: draw.point((x_cursor+2, y+r), fill=color)
+            if row_byte & 0x1: draw.point((x_cursor+3, y+r), fill=color)
+        x_cursor += 4 
+    return x_cursor - x
 
-if os.path.exists(CONFIG_FILE):
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            loaded = json.load(f)
-            for k, v in loaded.items():
-                if k in state:
-                    if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
-                    else: state[k] = v
-    except: pass
-
-def save_config_file():
-    try:
-        with data_lock:
-            export_data = {
-                'active_sports': state['active_sports'], 
-                'mode': state['mode'], 
-                'layout_mode': state['layout_mode'],
-                'scroll_seamless': state['scroll_seamless'], 
-                'my_teams': state['my_teams'],
-                'brightness': state['brightness'],
-                'scroll_speed': state['scroll_speed'], 
-                'inverted': state['inverted'],
-                'panel_count': state['panel_count'],
-                'weather_location': state['weather_location'],
-                'utc_offset': state['utc_offset'],
-                'demo_mode': state.get('demo_mode', False)
-            }
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(export_data, f)
-    except: pass
-
-# ================= TEAMS & LOGOS =================
-FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
-FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
-
-ABBR_MAPPING = {
-    'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI',
-    'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS'
-}
-
-LOGO_OVERRIDES = {
-    "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png", "NBA:HOU": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png", "MLB:HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png", "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
-    "NFL:MIA": "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png", "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png", "MLB:MIA": "https://a.espncdn.com/i/teamlogos/mlb/500/mia.png", "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png", "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
-    "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png", "NBA:IND": "https://a.espncdn.com/i/teamlogos/nba/500/ind.png", "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
-    "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png", "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
-    "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png", "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
-    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "NCF_FBS:WASH": "https://a.espncdn.com/i/teamlogos/ncaa/500/264.png",
-    "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png", "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png", "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png", "NHL:LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
-    "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
-    "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png", "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png", "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png", "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png", "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
-}
-
-SPORT_DURATIONS = {
-    'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
-    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
-}
-
-# === DEMO DATA GENERATOR ===
-def generate_demo_data():
-    return [
-        # F1 Demo
-        {
-            'type': 'leaderboard', 'sport': 'f1', 'id': 'demo_f1', 'status': 'Lap 45/78', 'state': 'in',
-            'tourney_name': 'Monaco Grand Prix', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
-            'leaders': [
-                {'rank': '1', 'name': 'Verstappen', 'score': 'LEADER'},
-                {'rank': '2', 'name': 'Norris', 'score': '+2.4s'},
-                {'rank': '3', 'name': 'Leclerc', 'score': '+5.1s'},
-                {'rank': '4', 'name': 'Hamilton', 'score': '+12.0s'}
-            ]
-        },
-        # NASCAR Demo
-        {
-            'type': 'leaderboard', 'sport': 'nascar', 'id': 'demo_nascar', 'status': 'Stage 2', 'state': 'in',
-            'tourney_name': 'Daytona 500', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
-            'leaders': [
-                {'rank': '1', 'name': 'Hamlin', 'score': 'LEADER'},
-                {'rank': '2', 'name': 'Elliott', 'score': '-0.145'},
-                {'rank': '3', 'name': 'Logano', 'score': '-0.500'},
-                {'rank': '4', 'name': 'Larson', 'score': '-1.200'}
-            ]
-        },
-        # IndyCar Demo
-        {
-            'type': 'leaderboard', 'sport': 'indycar', 'id': 'demo_indy', 'status': 'Lap 150/200', 'state': 'in',
-            'tourney_name': 'Indy 500', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
-            'leaders': [
-                {'rank': '1', 'name': 'Newgarden', 'score': 'LEADER'},
-                {'rank': '2', 'name': 'O\'Ward', 'score': '-0.332'},
-                {'rank': '3', 'name': 'Palou', 'score': '-1.100'},
-                {'rank': '4', 'name': 'Dixon', 'score': '-2.500'}
-            ]
-        },
-        # EPL Soccer Demo
-        {
-            'type': 'scoreboard', 'sport': 'soccer', 'id': 'demo_soc', 'status': "88'", 'state': 'in', 'is_shown': True,
-            'home_abbr': 'ARS', 'home_score': '2', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/359.png', 'home_color': '#EF0107', 'home_alt_color': '#ffffff',
-            'away_abbr': 'CHE', 'away_score': '1', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/363.png', 'away_color': '#034694', 'away_alt_color': '#ffffff',
-            'startTimeUTC': dt.now(timezone.utc).isoformat(),
-            'situation': {'possession': 'away_id', 'isRedZone': False, 'downDist': ''}, 'estimated_duration': 115
-        },
-        # NFL Demo
-        {
-            'type': 'scoreboard', 'sport': 'nfl', 'id': 'demo_nfl', 'status': "4th 2:00", 'state': 'in', 'is_shown': True,
-            'home_abbr': 'KC', 'home_score': '24', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/kc.png', 'home_color': '#e31837', 'home_alt_color': '#ffb81c',
-            'away_abbr': 'BUF', 'away_score': '20', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/buf.png', 'away_color': '#00338d', 'away_alt_color': '#c60c30',
-            'startTimeUTC': dt.now(timezone.utc).isoformat(),
-            'situation': {'possession': 'home_id', 'isRedZone': True, 'downDist': '1st & Goal'}, 'estimated_duration': 195
-        }
-    ]
-
-class WeatherFetcher:
-    def __init__(self, initial_loc):
-        self.lat = 40.7128; self.lon = -74.0060; self.location_name = "New York"
-        self.last_fetch = 0; self.cache = None
-        if initial_loc: self.update_coords(initial_loc)
-
-    def update_coords(self, location_query):
-        clean_query = str(location_query).strip()
-        if not clean_query: return
-        try:
-            r = requests.get(f"https://geocoding-api.open-meteo.com/v1/search?name={clean_query}&count=1&language=en&format=json", timeout=5)
-            d = r.json()
-            if 'results' in d and len(d['results']) > 0:
-                res = d['results'][0]
-                self.lat = res['latitude']; self.lon = res['longitude']
-                self.location_name = res['name']; self.last_fetch = 0 
-        except: pass
-
-    def get_icon(self, code, is_day=1):
-        if code in [0, 1]: return "sun" if is_day else "moon"
-        elif code in [2]: return "partly_cloudy"
-        elif code in [3]: return "cloud"
-        elif code in [45, 48]: return "fog"
-        elif code in [51, 53, 55, 61, 63, 65, 80, 81, 82]: return "rain"
-        elif code in [71, 73, 75, 77, 85, 86]: return "snow"
-        elif code in [95, 96, 99]: return "storm"
-        return "cloud"
-
-    def get_weather(self):
-        if time.time() - self.last_fetch < 900 and self.cache: return self.cache
-        try:
-            r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto", timeout=5)
-            d = r.json()
-            c = d.get('current', {}); dl = d.get('daily', {})
+def draw_hybrid_text(draw, x, y, text, color):
+    text = str(text).upper()
+    x_cursor = x
+    for char in text:
+        if char == '~':
+            x_cursor += 2
+            continue
             
-            icon = self.get_icon(c.get('weather_code', 0), c.get('is_day', 1))
-            high = int(dl['temperature_2m_max'][0]); low = int(dl['temperature_2m_min'][0]); uv = float(dl['uv_index_max'][0])
-            
-            w_obj = {
-                "type": "weather", "sport": "weather", "id": "weather_widget", "status": "Live",
-                "home_abbr": f"{int(c.get('temperature_2m', 0))}°", "away_abbr": self.location_name,
-                "home_score": "", "away_score": "", "is_shown": True, "home_logo": "", "away_logo": "",
-                "home_color": "#000000", "away_color": "#000000",
-                "situation": { "icon": icon, "stats": { "high": high, "low": low, "uv": uv } }
-            }
-            self.cache = w_obj; self.last_fetch = time.time(); return w_obj
-        except: return None
+        bitmap = HYBRID_FONT_MAP.get(char, HYBRID_FONT_MAP[' '])
+        for r, row_byte in enumerate(bitmap):
+            if row_byte & 0x8: draw.point((x_cursor+0, y+r), fill=color)
+            if row_byte & 0x4: draw.point((x_cursor+1, y+r), fill=color)
+            if row_byte & 0x2: draw.point((x_cursor+2, y+r), fill=color)
+            if row_byte & 0x1: draw.point((x_cursor+3, y+r), fill=color)
+        x_cursor += 5 
+    return x_cursor - x
 
-class SportsFetcher:
-    def __init__(self, initial_loc):
-        self.weather = WeatherFetcher(initial_loc)
-        self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
-        self.possession_cache = {}  
-        self.leagues = {
-            'nfl': { 'path': 'football/nfl', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80', 'limit': 100}, 'team_params': {'groups': '80', 'limit': 1000}, 'type': 'scoreboard' },
-            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81', 'limit': 100}, 'team_params': {'groups': '81', 'limit': 1000}, 'type': 'scoreboard' },
-            'mlb': { 'path': 'baseball/mlb', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            # --- SOCCER (EPL ONLY) ---
-            'soccer_epl': { 'path': 'soccer/eng.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
-            # --- LEADERBOARDS ---
-            'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
-            'nascar': { 'path': 'racing/nascar', 'type': 'leaderboard' },
-            'indycar': { 'path': 'racing/indycar', 'type': 'leaderboard' },
-            'wec': { 'path': 'racing/wec', 'type': 'leaderboard' },
-            'imsa': { 'path': 'racing/imsa', 'type': 'leaderboard' }
-        }
-
-    def get_corrected_logo(self, league_key, abbr, default_logo):
-        key = f"{league_key.upper()}:{abbr}"
-        return LOGO_OVERRIDES.get(key, default_logo)
-
-    def lookup_team_info_from_cache(self, league, abbr):
-        search_abbr = ABBR_MAPPING.get(abbr, abbr)
-        try:
-            with data_lock:
-                teams = state['all_teams_data'].get(league, [])
-                for t in teams:
-                    if t['abbr'] == search_abbr:
-                        return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
-        except: pass
-        return {'color': '000000', 'alt_color': '444444'}
-
-    def calculate_game_timing(self, sport, start_utc, period, status_detail):
-        duration = SPORT_DURATIONS.get(sport, 180) 
-        ot_padding = 0
-        if 'OT' in str(status_detail) or 'S/O' in str(status_detail):
-            if sport in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs']:
-                ot_count = 1
-                if '2OT' in status_detail: ot_count = 2
-                elif '3OT' in status_detail: ot_count = 3
-                ot_padding = ot_count * 20
-            elif sport == 'nhl':
-                ot_padding = 20
-            elif sport == 'mlb' and period > 9:
-                ot_padding = (period - 9) * 20
-        return duration + ot_padding
-
-    def fetch_all_teams(self):
-        try:
-            teams_catalog = {k: [] for k in self.leagues.keys()}
-            for league_key in ['nfl', 'mlb', 'nhl', 'nba']:
-                self._fetch_simple_league(league_key, teams_catalog)
-
-            url = f"{self.base_url}football/college-football/teams"
-            r = requests.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
-            data = r.json()
-            if 'sports' in data:
-                for sport in data['sports']:
-                    for league in sport['leagues']:
-                        for item in league.get('teams', []):
-                            t_abbr = item['team'].get('abbreviation', 'unk')
-                            t_clr = item['team'].get('color', '000000')
-                            t_alt = item['team'].get('alternateColor', '444444')
-                            logos = item['team'].get('logos', [])
-                            t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
-                            league_tag = 'ncf_fbs' if t_abbr in FBS_TEAMS else 'ncf_fcs'
-                            t_logo = self.get_corrected_logo(league_tag, t_abbr, t_logo)
-                            team_obj = {'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt}
-                            if t_abbr in FBS_TEAMS:
-                                if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']):
-                                    teams_catalog['ncf_fbs'].append(team_obj)
-                            elif t_abbr in FCS_TEAMS:
-                                if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fcs']):
-                                    teams_catalog['ncf_fcs'].append(team_obj)
-            with data_lock:
-                state['all_teams_data'] = teams_catalog
-        except: pass
-
-    def _fetch_simple_league(self, league_key, catalog):
-        config = self.leagues[league_key]
-        if 'team_params' not in config: return
-        try:
-            r = requests.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=10)
-            data = r.json()
-            if 'sports' in data:
-                for sport in data['sports']:
-                    for league in sport['leagues']:
-                        for item in league.get('teams', []):
-                            abbr = item['team'].get('abbreviation', 'unk')
-                            clr = item['team'].get('color', '000000')
-                            alt = item['team'].get('alternateColor', '444444')
-                            logo = item['team'].get('logos', [{}])[0].get('href', '')
-                            logo = self.get_corrected_logo(league_key, abbr, logo)
-                            catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
-        except: pass
-
-    def fetch_leaderboard_event(self, league_key, config, games_list, conf):
-        try:
-            url = f"{self.base_url}{config['path']}/scoreboard"
-            r = requests.get(url, headers=HEADERS, timeout=5)
-            data = r.json()
-            
-            for e in data.get('events', []):
-                name = e.get('name', e.get('shortName', 'Tournament'))
-                status_obj = e.get('status', {})
-                state = status_obj.get('type', {}).get('state', 'pre')
-                
-                utc_str = e['date'].replace('Z', '')
-                try:
-                    game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                    local_now = dt.now(timezone.utc)
-                    diff_hours = (game_dt_utc - local_now).total_seconds() / 3600
-                except: diff_hours = 0
-
-                if state == 'pre' and diff_hours > 48: continue
-                if state == 'post' and diff_hours < -24: continue
-
-                comps = e.get('competitions', [])
-                if not comps: continue
-                comp = comps[0]
-                
-                leaders = []
-                raw_competitors = comp.get('competitors', [])
-                try:
-                    sorted_comps = sorted(raw_competitors, key=lambda x: int(x.get('curatedRank', x.get('order', 999))))
-                except: sorted_comps = raw_competitors
-
-                for c in sorted_comps[:5]:
-                    athlete = c.get('athlete', {})
-                    disp_name = athlete.get('displayName', c.get('team',{}).get('displayName','Unk'))
-                    if ' ' in disp_name: disp_name = disp_name.split(' ')[-1]
-                    
-                    rank = c.get('curatedRank', c.get('order', '-'))
-                    score = c.get('score', '')
-                    if not score:
-                        lines = c.get('linescores', [])
-                        if lines: score = lines[-1].get('value', '')
-                    
-                    leaders.append({'rank': str(rank), 'name': disp_name, 'score': str(score)})
-
-                game_obj = {
-                    'type': 'leaderboard',
-                    'sport': league_key, 'id': e['id'],
-                    'status': status_obj.get('type', {}).get('shortDetail', 'Live'),
-                    'state': state, 'tourney_name': name,
-                    'leaders': leaders, 'is_shown': True,
-                    'startTimeUTC': e['date']
-                }
-                games_list.append(game_obj)
-        except: pass
-
-    def _fetch_nhl_native(self, games_list, target_date_str):
-        with data_lock: 
-            is_nhl = state['active_sports'].get('nhl', False)
-            utc_offset = state.get('utc_offset', -4)
+class WifiPortal:
+    def __init__(self, matrix, font):
+        self.matrix = matrix
+        self.font = font
+        self.app = Flask(__name__)
+        self.html_template = """<html><body><h2>Connect Ticker</h2><form action="/connect" method="POST"><input type="text" name="ssid" placeholder="SSID"><br><input type="password" name="password" placeholder="Password"><br><button type="submit">Connect</button></form></body></html>"""
         
-        if not is_nhl: return
-        processed_ids = set()
+        @self.app.route('/')
+        def home(): return render_template_string(self.html_template)
         
+        @self.app.route('/connect', methods=['POST'])
+        def connect():
+            ssid = request.form['ssid']; pw = request.form['password']
+            self.draw_status(f"CONNECTING:\n{ssid}")
+            try: 
+                subprocess.run(['nmcli', 'dev', 'wifi', 'connect', ssid, 'password', pw], check=True)
+                return "Rebooting..."
+            except: 
+                return "Failed"
+            finally: 
+                time.sleep(2)
+                subprocess.run(['reboot'])
+
+    def check_internet(self):
+        try: 
+            socket.gethostbyname("google.com")
+            return True
+        except: 
+            return False
+
+    def start_hotspot(self):
+        subprocess.run(['nmcli', 'con', 'up', SETUP_SSID], capture_output=True)
+
+    def draw_status(self, text):
+        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
+        d = ImageDraw.Draw(img)
+        d.text((2, 2), text, font=self.font, fill=(255, 255, 0))
+        self.matrix.SetImage(img.convert("RGB"))
+
+    def run(self):
+        if self.check_internet(): return True 
+        self.draw_status(f"SETUP WIFI\n{SETUP_SSID}")
+        self.start_hotspot()
+        self.app.run(host='0.0.0.0', port=80) 
+
+class TickerStreamer:
+    def __init__(self):
+        print("Starting Ticker System...")
+        options = RGBMatrixOptions()
+        options.rows = 32
+        options.cols = 64
+        options.chain_length = 2
+        options.parallel = 1
+        options.hardware_mapping = 'regular'
+        options.gpio_slowdown = 4                      
+        options.disable_hardware_pulsing = True
+        options.drop_privileges = False 
+        self.matrix = RGBMatrix(options=options)
+
+        try: self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 10)
+        except: self.font = ImageFont.load_default()
+        
+        try: self.tiny = ImageFont.truetype("DejaVuSans.ttf", 9) 
+        except: self.tiny = ImageFont.load_default()
+        
+        try: self.micro = ImageFont.truetype("DejaVuSans.ttf", 7)
+        except: self.micro = ImageFont.load_default()
+
+        try: self.nano = ImageFont.truetype("DejaVuSans.ttf", 5)
+        except: self.nano = ImageFont.load_default()
+        
+        try: self.big_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 16)
+        except: self.big_font = ImageFont.load_default()
+        
+        try: self.clock_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
+        except: self.clock_font = ImageFont.load_default()
+        
+        self.portal = WifiPortal(self.matrix, self.font)
+        if not self.portal.check_internet(): self.portal.run() 
+        
+        self.games = []
+        self.seamless_mode = False
+        self.brightness = 0.5
+        self.scroll_sleep = 0.05
+        self.inverted = False
+        self.test_pattern = False
+        self.running = True
+        self.logo_cache = {}
+        self.anim_tick = 0
+        
+        # === OPTIMIZATION VARS ===
+        self.config_updated = False
+        self.bg_strip = None # The strip being built in background
+        self.active_strip = None # The strip currently being displayed
+        self.bg_strip_ready = False
+        
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+
+        threading.Thread(target=self.poll_backend, daemon=True).start()
+        threading.Thread(target=self.render_loop, daemon=True).start()
+
+    def update_display(self, pil_image):
+        if self.test_pattern: pil_image = self.generate_test_pattern()
+        img = pil_image.resize((self.matrix.width, self.matrix.height)).convert("RGB")
+        
+        val = self.brightness
+        if val > 1.0: val = val / 100.0
+        
+        target_b = int(max(0, min(100, val * 100)))
+        if self.matrix.brightness != target_b: self.matrix.brightness = target_b
+        
+        if self.inverted: img = img.rotate(180)
+        self.matrix.SetImage(img)
+
+    def generate_test_pattern(self):
+        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
+        d = ImageDraw.Draw(img)
+        d.rectangle((0,0, PANEL_W-1, PANEL_H-1), outline=(255,0,0))
+        d.text((10, 10), "TEST", font=self.font, fill=(0,0,255))
+        return img
+
+    def download_and_process_logo(self, url, size=(24,24)):
+        cache_key = f"{url}_{size}"
+        if cache_key in self.logo_cache: return
         try:
-            r = requests.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
-            if r.status_code != 200: return
+            r = requests.get(url, timeout=3)
+            original = Image.open(io.BytesIO(r.content)).convert("RGBA")
+            target_w, target_h = size
+            check_img = original.resize((32, 32), Image.Resampling.NEAREST)
+            rgb_img = check_img.convert("RGB")
+            alpha = check_img.split()[-1]
+            visible_pixels = 0; dark_pixels = 0
+            for y in range(check_img.height):
+                for x in range(check_img.width):
+                    if alpha.getpixel((x, y)) > 50:
+                        visible_pixels += 1
+                        r_val, g_val, b_val = rgb_img.getpixel((x, y))
+                        if r_val < 60 and g_val < 60 and b_val < 60: dark_pixels += 1
             
-            for d in r.json().get('gameWeek', []):
-                day_games = d.get('games', [])
-                is_target_date = (d.get('date') == target_date_str)
-                has_active_games = any(g.get('gameState') in ['LIVE', 'CRIT'] for g in day_games)
-                
-                if is_target_date or has_active_games:
-                    for g in day_games:
-                        gid = g['id']
-                        if gid in processed_ids: continue
-                        processed_ids.add(gid)
+            needs_outline = (visible_pixels > 0 and (dark_pixels / visible_pixels) > 0.40)
+            if needs_outline:
+                icon_w, icon_h = target_w - 2, target_h - 2
+                img_ratio = original.width / original.height
+                target_ratio = icon_w / icon_h
+                if img_ratio > target_ratio: new_w = icon_w; new_h = int(icon_w / img_ratio)
+                else: new_h = icon_h; new_w = int(icon_h * img_ratio)
+                resized_icon = original.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                base = Image.new("RGBA", size, (0, 0, 0, 0))
+                center_x = (target_w - new_w) // 2
+                center_y = (target_h - new_h) // 2
+                _, _, _, alpha_ch = resized_icon.split()
+                white_mask = Image.new("RGBA", (new_w, new_h), (255, 255, 255, 255))
+                white_mask.putalpha(alpha_ch)
+                offsets = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
+                for ox, oy in offsets: base.paste(white_mask, (center_x + ox, center_y + oy), white_mask)
+                base.paste(resized_icon, (center_x, center_y), resized_icon)
+                final_img = base
+            else:
+                img_w, img_h = original.size
+                ratio = min(target_w / img_w, target_h / img_h)
+                new_w = int(img_w * ratio)
+                new_h = int(img_h * ratio)
+                resized_img = original.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                final_img = Image.new("RGBA", size, (0,0,0,0))
+                offset_x = (target_w - new_w) // 2
+                offset_y = (target_h - new_h) // 2
+                final_img.paste(resized_img, (offset_x, offset_y))
+            self.logo_cache[cache_key] = final_img
+        except Exception as e: pass
 
-                        h_ab = g['homeTeam']['abbrev']; a_ab = g['awayTeam']['abbrev']
-                        h_sc = str(g['homeTeam'].get('score', 0)); a_sc = str(g['awayTeam'].get('score', 0))
-                        st = g.get('gameState', 'OFF')
-                        
-                        h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
-                        a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
-                        
-                        h_info = self.lookup_team_info_from_cache('nhl', h_ab)
-                        a_info = self.lookup_team_info_from_cache('nhl', a_ab)
+    def get_logo(self, url, size=(24,24)):
+        if not url: return None
+        cache_key = f"{url}_{size}"
+        return self.logo_cache.get(cache_key)
 
-                        map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
-                        
-                        with data_lock:
-                            mode = state['mode']; my_teams = state['my_teams']
-                        
-                        is_shown = True
-                        if mode == 'live' and map_st != 'in': is_shown = False
-                        if mode == 'my_teams':
-                            h_k = f"nhl:{h_ab}"; a_k = f"nhl:{a_ab}"
-                            if (h_k not in my_teams and h_ab not in my_teams) and (a_k not in my_teams and a_ab not in my_teams): is_shown = False
+    def draw_hockey_stick(self, draw, cx, cy, size):
+        WOOD = (150, 75, 0); TAPE = (255, 255, 255)
+        pattern = [[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,1,1,1,0],
+                   [0,0,0,0,1,1,0,0],[1,2,2,1,1,1,0,0],[1,2,2,1,1,0,0,0],[0,0,0,0,0,0,0,0]]
+        sx, sy = cx - 4, cy - 4
+        for y in range(8):
+            for x in range(8):
+                if pattern[y][x] == 1: draw.point((sx+x, sy+y), fill=WOOD)
+                elif pattern[y][x] == 2: draw.point((sx+x, sy+y), fill=TAPE)
 
-                        disp = "Scheduled"; pp = False; poss = ""; en = False
-                        utc_start = g.get('startTimeUTC', '') 
-                        dur = self.calculate_game_timing('nhl', utc_start, 1, st)
-                        if st in ['PRE', 'FUT'] and utc_start:
-                             try:
-                                 dt_obj = dt.fromisoformat(utc_start.replace('Z', '+00:00'))
-                                 local = dt_obj.astimezone(timezone(timedelta(hours=utc_offset)))
-                                 disp = local.strftime("%I:%M %p").lstrip('0')
-                             except: pass
-                        elif st in ['FINAL', 'OFF']:
-                             disp = "FINAL"
-                             pd = g.get('periodDescriptor', {})
-                             pt = pd.get('periodType', '')
-                             p_num = pd.get('number', 3)
-                             if pt == 'OT' or (p_num == 4 and pt != 'REG'): disp = "FINAL OT"
-                             elif pt == 'SHOOTOUT' or p_num > 4: disp = "FINAL S/O"
+    def shorten_status(self, status):
+        if not status: return ""
+        s = str(status).upper()
+        s = s.replace(" - ", " ").replace("FINAL", "FINAL").replace("/OT", " OT").replace("HALFTIME", "HALF").replace("DELAY", "DLY")
+        s = s.replace("1ST", "P1").replace("2ND", "P2").replace("3RD", "P3").replace("4TH", "P4").replace("FULL TIME", "FT")
+        replacements = ["P1", "P2", "P3", "P4", "Q1", "Q2", "Q3", "Q4", "OT"]
+        for r in replacements: s = s.replace(f"{r} ", f"{r}~")
+        return s
 
-                        if map_st == 'in':
-                            try:
-                                r2 = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{gid}/landing", headers=HEADERS, timeout=2)
-                                if r2.status_code == 200:
-                                    d2 = r2.json()
-                                    h_sc = str(d2['homeTeam'].get('score', h_sc))
-                                    a_sc = str(d2['awayTeam'].get('score', a_sc))
-                                    pd = d2.get('periodDescriptor', {})
-                                    clk = d2.get('clock', {})
-                                    time_rem = clk.get('timeRemaining', '00:00')
-                                    is_intermission = clk.get('inIntermission', False)
-                                    p_type = pd.get('periodType', '')
-                                    p_num = pd.get('number', 1)
-                                    dur = self.calculate_game_timing('nhl', utc_start, p_num, p_type)
-                                    if p_type == 'SHOOTOUT': disp = "S/O"
-                                    elif is_intermission or time_rem == "00:00":
-                                        if p_num == 1: disp = "End 1st"
-                                        elif p_num == 2: disp = "End 2nd"
-                                        elif p_num == 3: disp = "End 3rd"
-                                        elif p_num >= 4: disp = "S/O" 
-                                        else: disp = "Intermission"
-                                    else:
-                                        p_lbl = "OT" if p_num > 3 else f"P{p_num}"
-                                        disp = f"{p_lbl} {time_rem}"
-                                    sit_obj = d2.get('situation', {})
-                                    if sit_obj:
-                                        sit = sit_obj.get('situationCode', '1551')
-                                        ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
-                                        if as_ > hs: pp=True; poss=a_ab
-                                        elif hs > as_: pp=True; poss=h_ab
-                                        en = (ag==0 or hg==0)
-                            except: disp = "Live" 
+    def draw_weather_icon_large(self, d, icon, x, y):
+        offset = 0 if (self.anim_tick % 10 < 5) else 1
+        if icon == 'sun':
+            d.ellipse((x+4, y+4, x+20, y+20), fill=(255,220,0))
+            d.line((x+12, y, x+12, y+3), fill=(255,220,0))
+            d.line((x+12, y+21, x+12, y+24), fill=(255,220,0))
+            d.line((x, y+12, x+3, y+12), fill=(255,220,0))
+            d.line((x+21, y+12, x+24, y+12), fill=(255,220,0))
+        elif icon == 'rain' or icon == 'storm':
+            d.ellipse((x+2, y+4, x+22, y+14), fill=(100,100,100))
+            d.ellipse((x+6, y, x+18, y+10), fill=(100,100,100))
+            d.line((x+6, y+16+offset, x+6, y+18+offset), fill=(0,0,255))
+            d.line((x+12, y+14-offset, x+12, y+16-offset), fill=(0,0,255))
+            d.line((x+18, y+16+offset, x+18, y+18+offset), fill=(0,0,255))
+            if icon == 'storm': 
+                d.line((x+10, y+10, x+8, y+16), fill=(255,255,0))
+                d.line((x+8, y+16, x+12, y+22), fill=(255,255,0))
+        else: 
+            color = (200,200,200)
+            d.ellipse((x+2, y+6, x+22, y+18), fill=color)
+            d.ellipse((x+6, y+2, x+18, y+14), fill=color)
+            if icon == 'partly_cloudy': d.ellipse((x+16, y-2, x+26, y+8), fill=(255,220,0))
 
-                        games_list.append({
-                            'type': 'scoreboard',
-                            'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': is_shown,
-                            'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
-                            'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
-                            'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
-                            'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
-                            'startTimeUTC': utc_start,
-                            'estimated_duration': dur,
-                            'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en }
-                        })
-        except: pass
+    def draw_weather_scene_simple(self, game):
+        img = Image.new("RGBA", (128, 32), (0, 0, 0, 255)) 
+        d = ImageDraw.Draw(img)
+        sit = game.get('situation', {}); stats = sit.get('stats', {})
+        cur_icon = sit.get('icon', 'cloud')
+        temp_str = str(game.get('home_abbr', '00')).replace('°','')
+        loc_str = str(game.get('away_abbr', 'CITY')).upper()[:10]
+        self.draw_weather_icon_large(d, cur_icon, 4, 4)
+        d.text((36, -1), loc_str, font=self.micro, fill=(180,180,180))
+        d.text((36, 9), temp_str + "°", font=self.big_font, fill=(255,255,255))
+        high = stats.get('high', 0); low = stats.get('low', 0); uv = int(stats.get('uv', 0))
+        d.text((92, 1), f"H:{high}", font=self.tiny, fill=(255,100,100))
+        d.text((92, 11), f"L:{low}", font=self.tiny, fill=(100,100,255))
+        d.text((92, 21), f"UV:{uv}", font=self.tiny, fill=(255,255,0))
+        return img
 
-    def get_real_games(self):
-        games = []
-        with data_lock: 
-            conf = state.copy()
-            # === DEMO MODE OVERRIDE ===
-            if conf.get('demo_mode', False):
-                state['current_games'] = generate_demo_data()
-                return
+    def draw_clock_scene(self):
+        img = Image.new("RGBA", (128, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        now = datetime.now()
+        t_str = now.strftime("%I:%M:%S"); 
+        if t_str.startswith('0'): t_str = t_str[1:]
+        ampm = now.strftime("%p")
+        w = d.textlength(t_str, font=self.clock_font)
+        x_pos = (128 - w) / 2
+        d.text((x_pos, 4), t_str, font=self.clock_font, fill=(0, 41, 91)) 
+        w_ap = d.textlength(ampm, font=self.font)
+        d.text(((128-w_ap)/2, 22), ampm, font=self.font, fill=(100,100,100))
+        return img
 
-        utc_offset = conf.get('utc_offset', -4)
+    def build_seamless_strip(self, playlist):
+        """Constructs the long film strip image in memory."""
+        if not playlist: return None
+        total_w = len(playlist) * 64
+        buffer = (PANEL_W // 64) + 1 
+        film_w = total_w + (buffer * 64)
+        strip = Image.new("RGBA", (film_w, PANEL_H), (0,0,0,255))
+        
+        # Draw all games
+        for i, g in enumerate(playlist):
+            g_img = self.draw_single_game(g)
+            strip.paste(g_img, (i * 64, 0), g_img)
+        # Draw buffer (wrap around)
+        for i in range(buffer):
+            g_img = self.draw_single_game(playlist[i % len(playlist)])
+            strip.paste(g_img, (total_w + (i * 64), 0), g_img)
+        return strip
 
-        if conf['active_sports'].get('clock'):
-            with data_lock: state['current_games'] = [{'type':'clock','sport':'clock','id':'clk','is_shown':True}]; return
-        if conf['active_sports'].get('weather'):
-            if conf['weather_location'] != self.weather.location_name: self.weather.update_coords(conf['weather_location'])
-            w = self.weather.get_weather()
-            if w: 
-                with data_lock: state['current_games'] = [w]; return
-
-        req_params = {}
-        now_local = dt.now(timezone(timedelta(hours=utc_offset)))
-        if conf['debug_mode'] and conf['custom_date']:
-            target_date_str = conf['custom_date']
-        else:
-            if now_local.hour < 4: query_date = now_local - timedelta(days=1)
-            else: query_date = now_local
-            target_date_str = query_date.strftime("%Y-%m-%d")
-
-        req_params['dates'] = target_date_str.replace('-', '')
-
-        for league_key, config in self.leagues.items():
-            check_key = config.get('group', league_key)
-            if not conf['active_sports'].get(check_key, False): continue
-            
-            # --- LEADERBOARD LOGIC ---
-            if config.get('type') == 'leaderboard':
-                self.fetch_leaderboard_event(league_key, config, games, conf)
-                continue
-            
-            # === HYBRID NHL LOGIC ===
-            if league_key == 'nhl' and not conf['debug_mode']:
-                prev_count = len(games)
-                self._fetch_nhl_native(games, target_date_str)
-                if len(games) > prev_count: continue 
-
+    def poll_backend(self):
+        last_data_hash = ""
+        while self.running:
             try:
-                curr_p = config.get('scoreboard_params', {}).copy(); curr_p.update(req_params)
-                r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
-                data = r.json()
+                r = requests.get(BACKEND_URL, timeout=5)
+                content = r.text
+                if content == last_data_hash:
+                    time.sleep(REFRESH_RATE)
+                    continue
                 
-                for e in data.get('events', []):
-                    utc_str = e['date'].replace('Z', '') 
-                    utc_start_iso = e['date']
-                    game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                    game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-                    game_date_str = game_dt_server.strftime("%Y-%m-%d")
-                    st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
-                    
-                    keep_date = (gst == 'in') or (game_date_str == target_date_str)
-                    if league_key == 'mlb' and not keep_date: continue
-                    if not keep_date: continue
+                last_data_hash = content
+                data = json.loads(content)
+                new_games = data.get('games', [])
 
-                    comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
-                    h_ab = h['team']['abbreviation']; a_ab = a['team']['abbreviation']
-                    
-                    if league_key == 'ncf_fbs' and (h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS): continue
-                    if league_key == 'ncf_fcs' and (h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS): continue
+                # 1. Download Logos
+                logos_to_fetch = []
+                for g in new_games:
+                    if g.get('home_logo'): logos_to_fetch.append((g['home_logo'], (24,24)))
+                    if g.get('away_logo'): logos_to_fetch.append((g['away_logo'], (24,24)))
+                    if g.get('home_logo'): logos_to_fetch.append((g['home_logo'], (16,16)))
+                    if g.get('away_logo'): logos_to_fetch.append((g['away_logo'], (16,16)))
+                logos_to_fetch = [x for x in list(set(logos_to_fetch)) if f"{x[0]}_{x[1]}" not in self.logo_cache]
+                if logos_to_fetch:
+                    futures = [self.executor.submit(self.download_and_process_logo, url, size) for url, size in logos_to_fetch]
+                    concurrent.futures.wait(futures)
 
-                    is_shown = True
-                    if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
-                    elif conf['mode'] == 'my_teams':
-                        hk = f"{league_key}:{h_ab}"; ak = f"{league_key}:{a_ab}"
-                        if (hk not in conf['my_teams'] and h_ab not in conf['my_teams']) and \
-                           (ak not in conf['my_teams'] and a_ab not in conf['my_teams']): is_shown = False
+                # 2. Update Metadata
+                if 'meta' in data:
+                    self.seamless_mode = data['meta'].get('scroll_seamless', False)
+                    self.brightness = float(data['meta'].get('brightness', 0.5))
+                    self.inverted = bool(data['meta'].get('inverted', False))
+                    self.test_pattern = bool(data['meta'].get('test_pattern', False))
+                    speed_setting = int(data['meta'].get('scroll_speed', 5))
+                    self.scroll_sleep = max(0.005, 0.11 - (speed_setting * 0.01))
+                    if data['meta'].get('reboot_requested', False): subprocess.run(['sudo', 'reboot'])
 
-                    h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
-                    a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
-                    h_clr = h['team'].get('color', '000000'); h_alt = h['team'].get('alternateColor', 'ffffff')
-                    a_clr = a['team'].get('color', '000000'); a_alt = a['team'].get('alternateColor', 'ffffff')
+                # 3. BACKGROUND RENDER: Build the strip here, off the main thread!
+                if self.seamless_mode and new_games and not (len(new_games) == 1 and new_games[0].get('sport') in ['weather', 'clock']):
+                    new_strip = self.build_seamless_strip(new_games)
+                    self.bg_strip = new_strip
+                    self.bg_strip_ready = True
+                else:
+                    self.bg_strip_ready = False
 
-                    s_disp = tp.get('shortDetail', 'TBD')
-                    p = st.get('period', 1)
-                    dur = self.calculate_game_timing(league_key, utc_start_iso, p, s_disp)
+                # 4. Finalize
+                self.games = new_games
+                self.config_updated = True
 
-                    if gst == 'pre':
-                        try: s_disp = game_dt_server.strftime("%I:%M %p").lstrip('0')
-                        except: s_disp = "Scheduled"
-                    elif gst == 'in' or gst == 'half':
-                        clk = st.get('displayClock', '')
-                        if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
-                            s_disp = "Halftime"; is_halftime = True
-                        elif 'hockey' in config['path'] and clk == '0:00':
-                             if p == 1: s_disp = "End 1st"
-                             elif p == 2: s_disp = "End 2nd"
-                             elif p == 3: s_disp = "End 3rd"
-                             elif p >= 4: s_disp = "S/O" 
-                             else: s_disp = "Intermission"
-                        else:
-                            s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
-                            if 'soccer' in config['path']: 
-                                raw_status_text = tp.get('shortDetail', '')
-                                if gst == 'half' or raw_status_text in ['Halftime', 'HT', 'Half']:
-                                    s_disp = "Half"
-                                else:
-                                    s_disp = f"{str(clk).replace("'", "")}'"
-                    else:
-                        s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
-                        if league_key == 'nhl':
-                            s_disp = s_disp.replace("/SO", " S/O").replace(": S/O", " S/O").replace(": SO", " S/O")
-                            if "FINAL" in s_disp:
-                                if p == 4 and "OT" not in s_disp: s_disp = "FINAL OT"
-                                elif p > 4 and "S/O" not in s_disp: s_disp = "FINAL S/O"
-
-                    sit = comp.get('situation', {})
-                    is_halftime = (s_disp == "Halftime")
-                    curr_poss = sit.get('possession')
-                    if curr_poss: self.possession_cache[e['id']] = curr_poss
-                    if gst == 'pre': curr_poss = '' 
-                    elif is_halftime or gst in ['post', 'final']: curr_poss = ''; self.possession_cache[e['id']] = '' 
-                    else:
-                         if not curr_poss: curr_poss = self.possession_cache.get(e['id'], '')
-                    
-                    down_text = sit.get('downDistanceText', '')
-                    if is_halftime: down_text = ''
-
-                    game_obj = {
-                        'type': 'scoreboard',
-                        'sport': check_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
-                        'home_abbr': h_ab, 'home_score': h.get('score','0'), 'home_logo': h_lg,
-                        'home_id': h.get('id'), 
-                        'away_abbr': a_ab, 'away_score': a.get('score','0'), 'away_logo': a_lg,
-                        'away_id': a.get('id'), 
-                        'home_color': f"#{h_clr}", 'home_alt_color': f"#{h_alt}",
-                        'away_color': f"#{a_clr}", 'away_alt_color': f"#{a_alt}",
-                        'startTimeUTC': utc_start_iso, 
-                        'estimated_duration': dur,
-                        'period': p,
-                        'situation': { 
-                            'possession': curr_poss, 
-                            'isRedZone': sit.get('isRedZone', False), 
-                            'downDist': down_text 
-                        }
-                    }
-                    if league_key == 'mlb':
-                        game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
-                    
-                    games.append(game_obj)
             except: pass
+            time.sleep(REFRESH_RATE)
+
+    def draw_leaderboard_card(self, game):
+        img = Image.new("RGBA", (64, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        try:
+            sport = str(game.get('sport', '')).lower()
+            accent_color = (100, 100, 100)
+            if 'f1' in sport: accent_color = (255, 0, 0)
+            elif 'nascar' in sport: accent_color = (255, 215, 0)
+            elif 'indy' in sport: accent_color = (0, 144, 255)
+            d.rectangle((0, 0, 63, 7), fill=(20, 20, 20))
+            d.line((0, 8, 63, 8), fill=accent_color, width=1)
+            t_name = str(game.get('tourney_name', '')).upper()
+            t_name = t_name.replace("GRAND PRIX", "GP").replace("TT", "").strip()
+            full_header = t_name[:14] 
+            header_w = len(full_header) * 4
+            hx = (64 - header_w) // 2
+            draw_tiny_text(d, hx, 1, full_header, (220, 220, 220))
+            leaders = game.get('leaders', [])
+            if not isinstance(leaders, list): leaders = []
+            y_off = 10; row_step = 8 
+            for i, p in enumerate(leaders[:3]):
+                rank_color = (200, 200, 200)
+                if i == 0: rank_color = (255, 215, 0)
+                elif i == 1: rank_color = (192, 192, 192)
+                elif i == 2: rank_color = (205, 127, 50)
+                full_name = str(p.get('name', 'UNK'))
+                acronym = full_name[:3].upper()
+                raw_score = str(p.get('score', ''))
+                if "LEADER" in raw_score.upper(): 
+                    display_score = "LDR"; score_color = (255, 215, 0) 
+                else:
+                    display_score = raw_score
+                    if not display_score.startswith('+') and not display_score.startswith('-'): display_score = "+" + display_score
+                    score_color = (255, 100, 100) 
+                draw_tiny_text(d, 1, y_off, str(i+1), rank_color)
+                draw_tiny_text(d, 8, y_off, acronym, (255, 255, 255))
+                score_width = len(display_score) * 4
+                draw_tiny_text(d, 63 - score_width, y_off, display_score, score_color)
+                y_off += row_step
+        except Exception as e: return Image.new("RGBA", (64, 32), (0, 0, 0, 255))
+        return img
+
+    def draw_single_game(self, game):
+        img = Image.new("RGBA", (64, 32), (0, 0, 0, 0)) 
+        if not isinstance(game, dict): return img
+        if game.get('type') == 'leaderboard': return self.draw_leaderboard_card(game)
+        try:
+            d = ImageDraw.Draw(img)
+            sport = str(game.get('sport', '')).lower()
+            is_football = 'football' in sport or 'nfl' in sport or 'ncf' in sport
+            is_hockey = 'hockey' in sport or 'nhl' in sport
+            is_baseball = 'baseball' in sport or 'mlb' in sport
+            is_soccer = 'soccer' in sport
+            is_active = (game.get('state') == 'in')
+            sit = game.get('situation', {}) or {} 
+            poss = sit.get('possession')
+            a_score = str(game.get('away_score', ''))
+            h_score = str(game.get('home_score', ''))
+            has_indicator = is_active and (poss or sit.get('powerPlay') or sit.get('emptyNet'))
+            is_wide = ((is_football and is_active) or len(a_score) >= 2 or len(h_score) >= 2 or has_indicator)
+            
+            logo_size = (16, 16) if is_wide else (24, 24)
+            logo_y = 5 if is_wide else 0
+            l1_pos = (2, logo_y) if is_wide else (0, logo_y)
+            l2_pos = (46, logo_y) if is_wide else (40, logo_y)
+            score_y = 10 if is_wide else 12
+
+            l1 = self.get_logo(game.get('away_logo'), logo_size)
+            if l1: img.paste(l1, l1_pos, l1)
+            else: d.text(l1_pos, str(game.get('away_abbr','UNK'))[:3], font=self.micro, fill=(150,150,150))
+            l2 = self.get_logo(game.get('home_logo'), logo_size)
+            if l2: img.paste(l2, l2_pos, l2)
+            else: d.text(l2_pos, str(game.get('home_abbr','UNK'))[:3], font=self.micro, fill=(150,150,150))
+
+            score = f"{a_score}-{h_score}"
+            w_sc = d.textlength(score, font=self.font)
+            d.text(((64-w_sc)/2, score_y), score, font=self.font, fill=(255,255,255), stroke_width=1, stroke_fill=(0,0,0))
+
+            status = self.shorten_status(game.get('status', ''))
+            st_width = 0
+            for ch in status: st_width += 2 if ch == '~' else 5
+            
+            # === FIXED CENTERING LOGIC ===
+            # Subtract 1 from width to ignore trailing space for visual centering
+            visual_width = st_width - 1 if st_width > 0 else 0
+            st_x = (64 - visual_width) // 2
+            
+            draw_hybrid_text(d, st_x, 25, status, (180, 180, 180))
+
+            if is_active:
+                icon_y = logo_y + logo_size[1] + 3; tx = -1; side = None
+                if (is_football or is_baseball or is_soccer) and poss: side = poss
+                elif is_hockey and (sit.get('powerPlay') or sit.get('emptyNet')) and poss: side = poss
+                away_id = str(game.get('away_id', '')); home_id = str(game.get('home_id', ''))
+                away_abbr = str(game.get('away_abbr', '')); home_abbr = str(game.get('home_abbr', ''))
+                side_str = str(side)
+                if side_str and (side_str == away_abbr or side_str == away_id): tx = l1_pos[0] + (logo_size[0]//2) - 2 
+                elif side_str and (side_str == home_abbr or side_str == home_id): tx = l2_pos[0] + (logo_size[0]//2) + 2 
+                if tx != -1:
+                    if is_football:
+                        d.ellipse([tx-3, icon_y, tx+3, icon_y+4], fill=(170,85,0))
+                        d.line([(tx, icon_y+1), (tx, icon_y+3)], fill='white', width=1)
+                    elif is_baseball:
+                        d.ellipse((tx-2, icon_y, tx+2, icon_y+4), fill='white')
+                        d.point((tx-1, icon_y+1), fill='red'); d.point((tx+1, icon_y+3), fill='red')
+                    elif is_hockey: self.draw_hockey_stick(d, tx+2, icon_y+5, 3) 
+                    elif is_soccer:
+                        d.ellipse((tx-2, icon_y, tx+2, icon_y+4), fill='white')
+                        d.point((tx, icon_y+2), fill='black')
+                if is_hockey:
+                    if sit.get('emptyNet'): 
+                        w = d.textlength("EN", font=self.micro)
+                        d.text(((64-w)/2, -1), "EN", font=self.micro, fill=(255,255,0))
+                    elif sit.get('powerPlay'): 
+                        w = d.textlength("PP", font=self.micro)
+                        d.text(((64-w)/2, -1), "PP", font=self.micro, fill=(255,255,0))
+                elif is_baseball:
+                    bases = [(32,2), (29,5), (35,5)] 
+                    active = [sit.get('onSecond'), sit.get('onThird'), sit.get('onFirst')]
+                    for i, p in enumerate(bases): 
+                        color = (255,255,0) if active[i] else (60,60,60)
+                        d.rectangle((p[0], p[1], p[0]+2, p[1]+2), fill=color)
+                elif is_football:
+                    dd = sit.get('downDist', '')
+                    if dd: 
+                        s_dd = dd.split(' at ')[0].replace("1st", "1st")
+                        w = d.textlength(s_dd, font=self.micro)
+                        d.text(((64-w)/2, -1), s_dd, font=self.micro, fill=(0,255,0))
+                if is_football and sit.get('isRedZone'): d.rectangle((0, 0, 63, 31), outline=(255, 0, 0), width=1)
+        except Exception as e: return img 
+        return img
+
+    def render_loop(self):
+        last_frame = None
+        strip_offset = 0.0
         
-        with data_lock: state['current_games'] = games
+        while self.running:
+            if self.brightness <= 0.01:
+                self.matrix.Clear()
+                time.sleep(1.0); continue
+            
+            self.anim_tick += 1
+            playlist = list(self.games)
+            
+            if not playlist:
+                img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
+                d = ImageDraw.Draw(img)
+                t_str = time.strftime("%I:%M")
+                w = d.textlength(t_str, font=self.font)
+                d.text(((PANEL_W - w)/2, 10), t_str, font=self.font, fill=(50,50,50))
+                self.update_display(img)
+                time.sleep(1); continue
 
-fetcher = SportsFetcher(state['weather_location'])
+            if self.test_pattern:
+                self.update_display(self.generate_test_pattern()); time.sleep(0.1); continue
 
-def background_updater():
-    fetcher.fetch_all_teams()
-    while True: fetcher.get_real_games(); time.sleep(UPDATE_INTERVAL)
+            is_weather = (len(playlist) == 1 and playlist[0].get('type') == 'weather')
+            is_clock = (len(playlist) == 1 and playlist[0].get('sport') == 'clock')
 
-# ================= FLASK API =================
-app = Flask(__name__)
+            if is_clock: self.update_display(self.draw_clock_scene()); time.sleep(1); continue
+            if is_weather: self.update_display(self.draw_weather_scene_simple(playlist[0])); time.sleep(0.1); continue
 
-@app.route('/')
-def root():
-    html = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>Game Schedule</title>
-        <style>
-            body { font-family: 'Segoe UI', system-ui, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 0; overflow-x: hidden; }
-            .navbar { position: fixed; top: 0; left: 0; right: 0; height: 50px; background: rgba(18,18,18,0.95); backdrop-filter: blur(8px); z-index: 1000; border-bottom: 1px solid #333; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; }
-            .hamburger { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; z-index: 1001; }
-            .nav-tabs { display: flex; gap: 20px; }
-            .nav-tab { cursor: pointer; color: #888; font-weight: bold; font-size: 0.9rem; padding: 5px 0; border-bottom: 2px solid transparent; transition: 0.2s; }
-            .nav-tab.active { color: white; border-bottom: 2px solid #007bff; }
-            .sidebar { position: fixed; top: 50px; left: -300px; bottom: 0; width: 280px; background: #1e1e1e; border-right: 1px solid #333; transition: left 0.3s ease; z-index: 999; padding: 20px; overflow-y: auto; }
-            .sidebar.open { left: 0; }
-            .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 900; }
-            .sidebar-overlay.active { display: block; }
-            .control-group { margin-bottom: 20px; }
-            .section-label { font-size: 0.75rem; color: #777; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
-            .toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.9rem; }
-            .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
-            .switch input { opacity: 0; width: 0; height: 0; }
-            .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #444; transition: .4s; border-radius: 34px; }
-            .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
-            input:checked + .slider { background-color: #007bff; }
-            input:checked + .slider:before { transform: translateX(14px); }
-            select, input[type="text"] { width: 100%; background: #2a2a2a; color: white; border: 1px solid #444; padding: 8px; border-radius: 6px; margin-top: 5px; box-sizing: border-box; }
-            .text-outline { text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 4px rgba(0,0,0,0.9); }
-            .logo-outline { filter: drop-shadow(0 0 1px black) drop-shadow(0 0 1px black) drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
-            .live-badge { background: #ff3333; color: white; padding: 1px 4px; border-radius: 3px; font-weight: bold; animation: pulse 2s infinite; font-size:0.7rem; border: 1px solid black; }
-            @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
-            .poss-pill { display: inline-block; background: rgba(0,0,0,0.8); color: #ffeb3b; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid #ffeb3b; }
-            .red-zone-pill { display: inline-block; background: rgba(255,51,51,0.9); color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid black; animation: pulse 1s infinite; }
-            .baseball-field { position: relative; width: 30px; height: 30px; margin-right: 5px; }
-            .base { position: absolute; width: 8px; height: 8px; background: rgba(255,255,255,0.3); border: 1px solid rgba(0,0,0,0.5); transform: rotate(45deg); }
-            .base.active { background: #ffeb3b; border-color: black; box-shadow: 0 0 4px #ffeb3b; }
-            .b1 { right: 0; top: 11px; } .b2 { left: 11px; top: 0; } .b3 { left: 0; top: 11px; }
-            .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
-            .view-hidden { display: none !important; }
-            .empty-state { padding: 40px; text-align: center; color: #666; font-style: italic; }
-            .loading-spinner { border: 4px solid #333; border-top: 4px solid #007bff; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 50px auto; }
-            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-            #schedule-view { position: relative; width: 100%; max-width: 600px; margin: 50px auto 0 auto; background: #121212; min-height: calc(100vh - 50px); overflow-x: hidden; }
-            .time-axis { position: absolute; left: 0; top: 0; bottom: 0; width: 50px; border-right: 1px solid #333; background: #121212; z-index: 10; }
-            .time-marker { position: absolute; width: 100%; text-align: right; padding-right: 8px; font-size: 0.7rem; color: #666; transform: translateY(-50%); }
-            .events-area { position: relative; margin-left: 55px; margin-right: 10px; height: 100%; }
-            .grid-line { position: absolute; left: 0; right: 0; height: 1px; background: #222; z-index: 0; }
-            .current-time-line { position: absolute; left: -55px; right: 0; height: 2px; background: #007bff; z-index: 50; pointer-events: none; box-shadow: 0 0 5px rgba(0,123,255,0.5); }
-            .sched-card { position: absolute; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.5); color: white; display: flex; flex-direction: column; justify-content: flex-start; padding: 10px; font-size: 0.85rem; box-sizing: border-box; border: 1px solid rgba(0,0,0,0.5); }
-            .sched-card:hover { z-index: 100 !important; transform: scale(1.02); box-shadow: 0 5px 15px rgba(0,0,0,0.8); }
-            .card-header { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.75rem; opacity: 1; font-weight:700; color: white; }
-            .team-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-            .t-left { display: flex; align-items: center; gap: 8px; }
-            .t-logo { width: 30px; height: 30px; object-fit: contain; }
-            .t-name { font-weight: 800; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color:white; }
-            .t-score { font-weight: 800; font-size: 1.4rem; color:white; }
-            .card-footer { margin-top: auto; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 0.8rem; font-weight: 700; color: white; text-align: right; display:flex; justify-content: flex-end; align-items: center; gap: 10px; }
-            #grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 70px 20px 20px 20px; max-width: 600px; margin: 0 auto; }
-            .grid-card { position: relative; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.5); color: white; height: 110px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; transition: transform 0.2s; border: 1px solid rgba(0,0,0,0.5); }
-            .gc-col { display: flex; flex-direction: column; align-items: center; z-index: 2; width: 70px; }
-            .gc-logo { width: 45px; height: 45px; object-fit: contain; margin-bottom:4px; }
-            .gc-abbr { font-size: 1rem; font-weight: 800; }
-            .gc-mid { z-index: 2; text-align: center; flex-grow: 1; }
-            .gc-status { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
-            .gc-score { font-size: 1.5rem; font-weight: 800; line-height: 1; white-space: nowrap; }
-        </style>
-    </head>
-    <body>
-        <nav class="navbar">
-            <button class="hamburger" onclick="toggleMenu()">☰</button>
-            <div class="nav-tabs">
-                <div class="nav-tab" id="tab-my" onclick="switchTab('my')">MY SCHEDULE</div>
-                <div class="nav-tab active" id="tab-all" onclick="switchTab('all')">ALL GAMES</div>
-            </div>
-            <div style="width:24px"></div>
-        </nav>
-        <div class="sidebar-overlay" onclick="toggleMenu()"></div>
-        <div class="sidebar" id="sidebar">
-            <div class="control-group">
-                <div class="section-label">My Teams</div>
-                <input type="text" id="inp_teams" placeholder="NYG, NYY, NJD...">
-            </div>
-            <div class="control-group">
-                <div class="section-label">Display</div>
-                <select id="sel_mode"><option value="all">Show All</option><option value="live">Live Only</option><option value="my_teams">My Teams Only</option></select>
-                <select id="sel_layout" style="margin-top:10px;"><option value="schedule">Schedule View</option><option value="grid">Grid View</option></select>
-            </div>
-            <div class="control-group">
-                <div class="section-label">Leagues</div>
-                <div class="toggle-row"><span>NFL</span><label class="switch"><input type="checkbox" id="chk_nfl"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>NBA</span><label class="switch"><input type="checkbox" id="chk_nba"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>NHL</span><label class="switch"><input type="checkbox" id="chk_nhl"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>MLB</span><label class="switch"><input type="checkbox" id="chk_mlb"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>NCAA FBS</span><label class="switch"><input type="checkbox" id="chk_ncf_fbs"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>Premier League</span><label class="switch"><input type="checkbox" id="chk_soccer"><span class="slider"></span></label></div>
-                <hr style="border-color:#444;">
-                <div class="toggle-row"><span>F1</span><label class="switch"><input type="checkbox" id="chk_f1"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>NASCAR</span><label class="switch"><input type="checkbox" id="chk_nascar"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>IndyCar</span><label class="switch"><input type="checkbox" id="chk_indycar"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>IMSA</span><label class="switch"><input type="checkbox" id="chk_imsa"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>WEC</span><label class="switch"><input type="checkbox" id="chk_wec"><span class="slider"></span></label></div>
-            </div>
-             <div class="control-group">
-                <div class="section-label">Location</div>
-                <input type="text" id="inp_loc" placeholder="Zip or City">
-                <div class="toggle-row" style="margin-top:10px;"><span>Weather</span><label class="switch"><input type="checkbox" id="chk_weather"><span class="slider"></span></label></div>
-            </div>
-            <div class="control-group">
-                <div class="section-label">Device</div>
-                <div class="toggle-row"><span>Seamless</span><label class="switch"><input type="checkbox" id="chk_scroll"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>Demo Mode</span><label class="switch"><input type="checkbox" id="chk_demo"><span class="slider"></span></label></div>
-                <input type="range" id="rng_bright" min="0.1" max="1.0" step="0.1" style="margin-top:10px;">
-            </div>
-            <button onclick="saveSettings()" style="width:100%; padding:10px; background:#007bff; border:none; color:white; border-radius:6px; font-weight:bold; cursor:pointer;">Save Changes</button>
-        </div>
-        <div id="schedule-view" class="view-hidden"><div class="time-axis" id="timeAxis"></div><div class="events-area" id="eventsArea"></div></div>
-        <div id="grid-view"><div class="loading-spinner"></div></div>
-        <script>
-            const PIXELS_PER_MINUTE = 1.6; const START_HOUR = 8; let currentTab = 'all';
-            function toggleMenu() { document.getElementById('sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('active'); }
-            function hexToRgb(hex) { if(!hex) return {r:0, g:0, b:0}; hex = hex.replace(/^#/, ''); if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2]; const bigint = parseInt(hex, 16); return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 }; }
-            function getLuminance(r, g, b) { return (0.2126 * r + 0.7152 * g + 0.0722 * b); }
-            function resolveColors(aColor, aAlt, hColor, hAlt) {
-                const LUM_THRESHOLD = 50; 
-                let aC = aColor || '#000000'; let aA = aAlt || '#ffffff';
-                let hC = hColor || '#000000'; let hA = hAlt || '#ffffff';
-                let aRgb = hexToRgb(aC); let hRgb = hexToRgb(hC);
-                if (getLuminance(aRgb.r, aRgb.g, aRgb.b) < LUM_THRESHOLD && aA) { aC = aA; }
-                if (getLuminance(hRgb.r, hRgb.g, hRgb.b) < LUM_THRESHOLD && hA) { hC = hA; }
-                return [aC, hC];
-            }
-            function switchTab(tab) {
-                currentTab = tab;
-                document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
-                document.getElementById('tab-' + tab).classList.add('active');
-                if(tab === 'my') { document.getElementById('schedule-view').classList.remove('view-hidden'); document.getElementById('grid-view').classList.add('view-hidden'); } 
-                else { document.getElementById('schedule-view').classList.add('view-hidden'); document.getElementById('grid-view').classList.remove('view-hidden'); }
-                loadState();
-            }
-            async function loadState() {
-                try {
-                    const res = await fetch('/api/state'); const data = await res.json(); const s = data.settings;
-                    document.getElementById('inp_teams').value = (s.my_teams || []).join(', ');
-                    ['nfl','nba','nhl','mlb','ncf_fbs','soccer','f1','nascar','indycar','imsa','wec','weather'].forEach(k => {
-                        if(document.getElementById('chk_'+k)) document.getElementById('chk_'+k).checked = s.active_sports[k];
-                    });
-                    document.getElementById('chk_scroll').checked = s.scroll_seamless;
-                    document.getElementById('chk_demo').checked = s.demo_mode;
-                    document.getElementById('rng_bright').value = s.brightness;
-                    document.getElementById('sel_mode').value = s.mode;
-                    document.getElementById('sel_layout').value = s.layout_mode;
-                    document.getElementById('inp_loc').value = s.weather_location;
-                    render(data);
-                } catch(e) { console.error(e); }
-            }
-            function render(data) {
-                const games = data.games || [];
-                const myTeamsStr = document.getElementById('inp_teams').value.toUpperCase();
-                const myTeams = myTeamsStr.split(',').map(s => s.trim());
-                if (currentTab === 'my') {
-                    const filtered = games.filter(g => {
-                        if(g.type === 'weather' || g.type === 'clock') return true;
-                        if(g.type === 'leaderboard') return true; // Always show active leaderboards
-                        const homeKey = (g.sport + ':' + g.home_abbr).toUpperCase();
-                        const awayKey = (g.sport + ':' + g.away_abbr).toUpperCase();
-                        return myTeams.includes(g.home_abbr) || myTeams.includes(g.away_abbr) || myTeams.includes(homeKey) || myTeams.includes(awayKey);
-                    });
-                    renderSchedule(filtered, data.settings.utc_offset || -5);
-                } else { renderGrid(games); }
-            }
-            function renderGrid(games) {
-                const container = document.getElementById('grid-view'); container.innerHTML = '';
-                if(!games || games.length === 0) { container.innerHTML = '<div class="empty-state">No games active.</div>'; return; }
-                games.forEach(game => {
-                    if(game.type === 'weather' || game.type === 'clock') return;
+            if self.seamless_mode:
+                # === NEW: INSTANT STRIP SWAPPING ===
+                # If backend prepared a new strip, swap it in instantly
+                if self.bg_strip_ready and self.bg_strip:
+                    self.active_strip = self.bg_strip
+                    self.bg_strip_ready = False # Consumed
+                
+                # Fallback: if active_strip is missing (first run), build it here once
+                if not self.active_strip:
+                    self.active_strip = self.build_seamless_strip(playlist)
+                
+                if self.active_strip:
+                    total_w = self.active_strip.width - ( (PANEL_W // 64) + 1 ) * 64
                     
-                    if(game.type === 'leaderboard') {
-                         const div = document.createElement('div'); div.className = 'grid-card';
-                         div.style.background = '#222';
-                         div.innerHTML = `<div style="padding:10px; width:100%"><div class="gc-status text-outline">${game.sport.toUpperCase()}</div><div class="gc-abbr text-outline">${game.tourney_name}</div><div style="font-size:0.8rem; margin-top:5px;">${game.status}</div></div>`;
-                         container.appendChild(div);
-                         return;
-                    }
-
-                    const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
-                    let detailHtml = '';
-                    if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; }
-                    else if(game.state === 'in' && game.situation.downDist) { detailHtml = `<div class="gc-status text-outline" style="color:#ffc107">${game.situation.downDist}</div>`; }
-                    let possIcon = '🏈'; let possText = 'Poss';
-                    if(game.sport === 'nhl') { possIcon = '🏒'; possText = 'PP'; } else if(game.sport === 'nba') { possIcon = '🏀'; } else if(game.sport === 'mlb') { possIcon = '⚾'; } else if(game.sport.includes('soccer')) { possIcon = '⚽'; }
-                    const div = document.createElement('div'); div.className = 'grid-card';
-                    div.style.background = `linear-gradient(120deg, ${aC} 0%, ${aC} 45%, ${hC} 55%, ${hC} 100%)`;
-                    const homeHasPoss = game.situation.possession === game.home_id; const awayHasPoss = game.situation.possession === game.away_id;
-                    div.innerHTML = `
-                        <div class="overlay"></div>
-                        <div class="gc-col"><img class="gc-logo logo-outline" src="${game.away_logo}"><div class="gc-abbr text-outline">${game.away_abbr}</div>${awayHasPoss ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}</div>
-                        <div class="gc-mid"><div class="gc-status text-outline">${game.status}</div><div class="gc-score text-outline">${game.away_score} - ${game.home_score}</div>${detailHtml}</div>
-                        <div class="gc-col"><img class="gc-logo logo-outline" src="${game.home_logo}"><div class="gc-abbr text-outline">${game.home_abbr}</div>${homeHasPoss ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}</div>
-                    `;
-                    container.appendChild(div);
-                });
-            }
-            function renderSchedule(games, utcOffset) {
-                const eventsArea = document.getElementById('eventsArea'); const axis = document.getElementById('timeAxis');
-                eventsArea.innerHTML = ''; axis.innerHTML = '';
-                const nowLine = document.createElement('div'); nowLine.className = 'current-time-line'; eventsArea.appendChild(nowLine);
-                for(let i=0; i<24; i++) {
-                    const hour = START_HOUR + i; const top = i * 60 * PIXELS_PER_MINUTE;
-                    let displayHour = (hour % 12) || 12; displayHour += (hour < 12 ? ' AM' : ' PM'); if (hour >= 24) { let h = hour - 24; displayHour = (h % 12) || 12; displayHour += (h < 12 ? ' AM' : ' PM'); }
-                    const marker = document.createElement('div'); marker.className = 'time-marker'; marker.innerText = displayHour; marker.style.top = top + 'px'; axis.appendChild(marker);
-                    const grid = document.createElement('div'); grid.className = 'grid-line'; grid.style.top = top + 'px'; eventsArea.appendChild(grid);
-                }
-                const offsetMs = utcOffset * 3600 * 1000; const now = new Date(); const utcNow = now.getTime() + (now.getTimezoneOffset() * 60000); const targetMs = utcNow + offsetMs; const localNow = new Date(targetMs + (now.getTimezoneOffset() * 60000));
-                let effectiveHour = localNow.getHours(); if(effectiveHour < START_HOUR) effectiveHour += 24;
-                const nowMins = (effectiveHour * 60) + localNow.getMinutes() - (START_HOUR * 60);
-                if(nowMins >= 0 && nowMins <= (24*60)) { nowLine.style.top = (nowMins * PIXELS_PER_MINUTE) + 'px'; document.getElementById('schedule-view').scrollTop = (nowMins * PIXELS_PER_MINUTE) - (window.innerHeight / 2); }
-                else { nowLine.style.display = 'none'; }
-                games.forEach(g => {
-                    if(g.type === 'weather' || g.type === 'clock') return;
-                    const d = new Date(g.startTimeUTC); 
-                    const gameLocalMs = d.getTime() + offsetMs + (new Date().getTimezoneOffset() * 60000);
-                    const local = new Date(gameLocalMs);
-                    let gh = local.getHours(); let gm = local.getMinutes(); if(gh < START_HOUR) gh += 24;
-                    const startMins = gh * 60 + gm - (START_HOUR * 60);
-                    const dur = g.estimated_duration || 180;
-                    const div = document.createElement('div'); div.className = 'sched-card';
-                    div.style.top = (startMins * PIXELS_PER_MINUTE) + 'px'; div.style.height = (dur * PIXELS_PER_MINUTE) + 'px'; div.style.width = '95%'; div.style.left = '0';
+                    # Safety check to prevent div by zero
+                    if total_w <= 0: total_w = 1 
                     
-                    if(g.type === 'leaderboard') {
-                         div.style.background = '#333';
-                         div.innerHTML = `<div class="card-header"><span class="live-badge">LIVE</span><span>${g.sport.toUpperCase()}</span></div><div class="t-name">${g.tourney_name}</div><div class="t-name" style="font-size:0.8rem; margin-top:5px;">${g.status}</div>`;
-                    } else {
-                        const [aC, hC] = resolveColors(g.away_color, g.away_alt_color, g.home_color, g.home_alt_color);
-                        div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
-                        div.innerHTML = `<div class="overlay"></div><div class="card-header">${g.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}<span class="text-outline" style="text-align:right">${g.status}</span></div><div class="team-row"><div class="t-left"><img class="t-logo logo-outline" src="${g.away_logo}"><div class="t-name text-outline">${g.away_abbr}</div></div><div class="t-score text-outline">${g.away_score}</div></div><div class="team-row"><div class="t-left"><img class="t-logo logo-outline" src="${g.home_logo}"><div class="t-name text-outline">${g.home_abbr}</div></div><div class="t-score text-outline">${g.home_score}</div></div>`;
-                    }
-                    eventsArea.appendChild(div);
-                });
-            }
-            async function saveSettings() {
-                const sports = {};
-                ['nfl','nba','nhl','mlb','ncf_fbs','soccer','f1','nascar','indycar','imsa','wec','weather'].forEach(k => { if(document.getElementById('chk_'+k)) sports[k] = document.getElementById('chk_'+k).checked; });
-                const payload = {
-                    active_sports: sports,
-                    my_teams: document.getElementById('inp_teams').value.split(',').map(s=>s.trim()).filter(s=>s),
-                    scroll_seamless: document.getElementById('chk_scroll').checked,
-                    demo_mode: document.getElementById('chk_demo').checked,
-                    brightness: parseFloat(document.getElementById('rng_bright').value),
-                    weather_location: document.getElementById('inp_loc').value,
-                    mode: document.getElementById('sel_mode').value,
-                    layout_mode: document.getElementById('sel_layout').value
-                };
-                await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-                toggleMenu(); loadState();
-            }
-            loadState(); setInterval(loadState, 5000);
-        </script>
-    </body>
-    </html>
-    """
-    return render_template_string(html)
+                    x = int(strip_offset)
+                    view = self.active_strip.crop((x, 0, x + PANEL_W, PANEL_H))
+                    self.update_display(view)
+                    
+                    strip_offset = (strip_offset + 1) % total_w
+                    time.sleep(self.scroll_sleep)
+                else:
+                    time.sleep(0.1)
+                    
+            else: # PAGED MODE (Simpler, redraws every page flip)
+                chunk = 2
+                for i in range(0, len(playlist), chunk):
+                    if self.config_updated or self.seamless_mode or self.test_pattern or self.brightness <= 0.01: break 
+                    if (len(self.games) == 1 and self.games[0].get('sport') in ['weather', 'clock']): break
 
-@app.route('/api/ticker')
-def api_ticker():
-    with data_lock: d = state.copy()
-    offset_sec = d.get('utc_offset', -5) * 3600
-    
-    raw_games = d['current_games']
-    processed_games = []
-    
-    for g in raw_games:
-        if not g.get('is_shown', True): continue
-        processed_games.append(g.copy())
-
-    return jsonify({
-        'meta': {
-            'time': dt.now(timezone(timedelta(seconds=offset_sec))).strftime("%I:%M %p"), 
-            'count': len(processed_games), 
-            'scroll_seamless': d['scroll_seamless'], 
-            'brightness': d['brightness'], 
-            'scroll_speed': d.get('scroll_speed', 5), 
-            'inverted': d['inverted'], 
-            'panel_count': d['panel_count'], 
-            'test_pattern': d['test_pattern'], 
-            'reboot_requested': d['reboot_requested']
-        }, 
-        'games': processed_games
-    })
-
-@app.route('/api/state')
-def api_state():
-    with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
-
-@app.route('/api/teams')
-def api_teams():
-    with data_lock: return jsonify(state['all_teams_data'])
-
-@app.route('/api/config', methods=['POST'])
-def api_config():
-    with data_lock: state.update(request.json)
-    save_config_file()
-    # threading.Thread(target=fetcher.get_real_games).start()  <-- REMOVED TO PREVENT HANGS
-    return jsonify({"status": "ok"})
-
-@app.route('/api/debug', methods=['POST'])
-def api_debug():
-    with data_lock: state.update(request.json)
-    fetcher.get_real_games()
-    return jsonify({"status": "ok"})
-
-@app.route('/api/hardware', methods=['POST'])
-def api_hardware():
-    d = request.json
-    if d.get('action') == 'reboot':
-        with data_lock: state['reboot_requested'] = True
-        threading.Timer(10, lambda: state.update({'reboot_requested': False})).start()
-    elif d.get('action') == 'test_pattern':
-        with data_lock: 
-            state['test_pattern'] = not state['test_pattern']
-            state['test_pattern_ts'] = time.time()
-    else:
-        with data_lock: state.update(d)
-        save_config_file()
-    return jsonify({"status": "ok", "settings": state})
+                    frame = Image.new("RGBA", (PANEL_W, PANEL_H), (0,0,0,255))
+                    g1 = self.draw_single_game(playlist[i])
+                    frame.paste(g1, (0,0), g1)
+                    if i + 1 < len(playlist):
+                        g2 = self.draw_single_game(playlist[i+1])
+                        frame.paste(g2, (64,0), g2)
+                    
+                    if last_frame:
+                        for x in range(0, PANEL_W + 1, 4):
+                            if self.config_updated or self.brightness <= 0.01: break
+                            c = Image.new("RGBA", (PANEL_W, PANEL_H), (0,0,0,255))
+                            c.paste(last_frame, (-x, 0))
+                            c.paste(frame, (PANEL_W - x, 0))
+                            self.update_display(c)
+                            time.sleep(self.scroll_sleep) 
+                    else:
+                        self.update_display(frame)
+                    last_frame = frame
+                    
+                    for _ in range(int(PAGE_HOLD_TIME * 10)):
+                        if self.config_updated or self.seamless_mode or self.test_pattern or self.brightness <= 0.01: break
+                        time.sleep(0.1)
+                
+                # Reset update flag after a full page cycle if we broke out
+                if self.config_updated: self.config_updated = False
 
 if __name__ == "__main__":
-    threading.Thread(target=background_updater, daemon=True).start()
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+    app = TickerStreamer()
+    try:
+        while True: time.sleep(1)
+    except KeyboardInterrupt:
+        print("Stopping...")
