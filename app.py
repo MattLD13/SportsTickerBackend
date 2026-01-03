@@ -567,7 +567,10 @@ class SportsFetcher:
                         else:
                             s_disp = f"P{p} {clk}" if 'hockey' in config['path'] else f"Q{p} {clk}"
                             if 'soccer' in config['path']: 
-                                s_disp = f"{str(clk).replace("'", "")}'"
+                                if gst == 'half' or s_disp == 'HT':
+                                    s_disp = "HT"
+                                else:
+                                    s_disp = f"{str(clk).replace("'", "")}'"
                     else:
                         s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
                         if league_key == 'nhl':
