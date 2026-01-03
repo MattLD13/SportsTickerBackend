@@ -6,6 +6,7 @@ import traceback
 import sys
 import subprocess
 import socket
+import concurrent.futures
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont, ImageStat, ImageOps
 import random
@@ -35,7 +36,7 @@ TINY_FONT_MAP = {
     '3': [0xE, 0x1, 0x6, 0x1, 0xE], '4': [0x9, 0x9, 0xF, 0x1, 0x1], '5': [0xF, 0x8, 0xE, 0x1, 0xE],
     '6': [0x6, 0x8, 0xE, 0x9, 0x6], '7': [0xF, 0x1, 0x2, 0x4, 0x4], '8': [0x6, 0x9, 0x6, 0x9, 0x6],
     '9': [0x6, 0x9, 0x7, 0x1, 0x6], '+': [0x0, 0x4, 0xE, 0x4, 0x0], '-': [0x0, 0x0, 0xE, 0x0, 0x0],
-    '.': [0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0]
+    '.': [0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x4, 0x8, 0x0]
 }
 
 # --- HYBRID PIXEL FONT (4x6) - USED FOR GAME STATUS ---
@@ -54,7 +55,7 @@ HYBRID_FONT_MAP = {
     '6': [0x6, 0x8, 0xE, 0x9, 0x9, 0x6], '7': [0xF, 0x1, 0x2, 0x4, 0x8, 0x8], '8': [0x6, 0x9, 0x6, 0x9, 0x9, 0x6],
     '9': [0x6, 0x9, 0x9, 0x7, 0x1, 0x6], '+': [0x0, 0x0, 0x4, 0xE, 0x4, 0x0], '-': [0x0, 0x0, 0x0, 0xE, 0x0, 0x0],
     '.': [0x0, 0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], ':': [0x0, 0x6, 0x6, 0x0, 0x6, 0x6],
-    '~': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0] # Placeholder for half space
+    '~': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x2, 0x4, 0x4, 0x8]
 }
 
 def draw_tiny_text(draw, x, y, text, color):
@@ -181,6 +182,9 @@ class TickerStreamer:
         self.logo_cache = {}
         self.anim_tick = 0
         
+        # --- FIXED: Thread pool for faster image downloading ---
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+
         threading.Thread(target=self.poll_backend, daemon=True).start()
         threading.Thread(target=self.render_loop, daemon=True).start()
 
@@ -201,13 +205,14 @@ class TickerStreamer:
         d.text((10, 10), "TEST", font=self.font, fill=(0,0,255))
         return img
 
-    def get_logo(self, url, size=(24,24)):
-        if not url: return None
+    # === NEW: DOWNLOADER FUNCTION ===
+    def download_and_process_logo(self, url, size=(24,24)):
+        """Downloads and processes a single logo. Run this in a thread."""
         cache_key = f"{url}_{size}"
-        if cache_key in self.logo_cache: return self.logo_cache[cache_key]
+        if cache_key in self.logo_cache: return
         
         try:
-            r = requests.get(url, timeout=2)
+            r = requests.get(url, timeout=3)
             original = Image.open(io.BytesIO(r.content)).convert("RGBA")
             target_w, target_h = size
             
@@ -264,10 +269,15 @@ class TickerStreamer:
                 final_img.paste(resized_img, (offset_x, offset_y))
                 
             self.logo_cache[cache_key] = final_img
-            return final_img
         except Exception as e: 
-            print(f"Logo Error: {e}")
-            return None
+            pass
+
+    # === FIXED: NON-BLOCKING RETRIEVAL ===
+    def get_logo(self, url, size=(24,24)):
+        if not url: return None
+        cache_key = f"{url}_{size}"
+        # Return cache or None. No downloading here.
+        return self.logo_cache.get(cache_key)
 
     def draw_hockey_stick(self, draw, cx, cy, size):
         WOOD = (150, 75, 0); TAPE = (255, 255, 255)
@@ -356,7 +366,26 @@ class TickerStreamer:
             try:
                 r = requests.get(BACKEND_URL, timeout=5)
                 data = r.json()
-                self.games = data.get('games', [])
+                new_games = data.get('games', [])
+
+                # === FIXED: PREFETCH LOGOS IN THREADS ===
+                logos_to_fetch = []
+                for g in new_games:
+                    if g.get('home_logo'): logos_to_fetch.append((g['home_logo'], (24,24)))
+                    if g.get('away_logo'): logos_to_fetch.append((g['away_logo'], (24,24)))
+                    if g.get('home_logo'): logos_to_fetch.append((g['home_logo'], (16,16)))
+                    if g.get('away_logo'): logos_to_fetch.append((g['away_logo'], (16,16)))
+
+                # Filter ones we already have
+                logos_to_fetch = [x for x in list(set(logos_to_fetch)) if f"{x[0]}_{x[1]}" not in self.logo_cache]
+
+                # Download in parallel
+                if logos_to_fetch:
+                    futures = [self.executor.submit(self.download_and_process_logo, url, size) for url, size in logos_to_fetch]
+                    concurrent.futures.wait(futures)
+
+                self.games = new_games
+
                 if 'meta' in data:
                     self.seamless_mode = data['meta'].get('scroll_seamless', False)
                     self.brightness = float(data['meta'].get('brightness', 0.5))
@@ -422,11 +451,8 @@ class TickerStreamer:
                     score_color = (255, 215, 0) # Gold
                 else:
                     display_score = raw_score
-                    # Ensure it starts with + if it's a gap
                     if not display_score.startswith('+') and not display_score.startswith('-'):
                         display_score = "+" + display_score
-                    
-                    # Force RED for all gaps
                     score_color = (255, 100, 100) 
                 
                 # Draw Rows (Pixel Font)
@@ -439,7 +465,6 @@ class TickerStreamer:
                 y_off += row_step
 
         except Exception as e:
-            print(f"Leaderboard Draw Error: {e}")
             return Image.new("RGBA", (64, 32), (0, 0, 0, 255))
             
         return img
@@ -493,8 +518,6 @@ class TickerStreamer:
 
             status = self.shorten_status(game.get('status', ''))
             
-            # === CHANGED: Using draw_hybrid_text (4x6 with 5px kerning) and moved Y to 25 ===
-            # Width calc: Count normal chars (5px) and half-spaces (2px)
             st_width = 0
             for ch in status:
                 st_width += 2 if ch == '~' else 5
@@ -507,11 +530,9 @@ class TickerStreamer:
                 tx = -1
                 side = None
                 
-                # --- LOGIC RESTORED FROM OLD CODE ---
                 if (is_football or is_baseball or is_soccer) and poss: side = poss
                 elif is_hockey and (sit.get('powerPlay') or sit.get('emptyNet')) and poss: side = poss
 
-                # Check string matches safely
                 away_id = str(game.get('away_id', ''))
                 home_id = str(game.get('home_id', ''))
                 away_abbr = str(game.get('away_abbr', ''))
@@ -536,7 +557,6 @@ class TickerStreamer:
                         d.ellipse((tx-2, icon_y, tx+2, icon_y+4), fill='white')
                         d.point((tx, icon_y+2), fill='black')
 
-                # --- SITUATION INDICATORS (BASES, EN, PP, DOWN/DIST) ---
                 if is_hockey:
                     if sit.get('emptyNet'): 
                         w = d.textlength("EN", font=self.micro)
@@ -560,7 +580,7 @@ class TickerStreamer:
                     d.rectangle((0, 0, 63, 31), outline=(255, 0, 0), width=1)
         
         except Exception as e:
-            print(f"Draw Game Error: {e}")
+            # print(f"Draw Game Error: {e}")
             return img 
 
         return img
