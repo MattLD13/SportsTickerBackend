@@ -2,6 +2,7 @@ import time
 import threading
 import json
 import os
+import sys
 import re
 import uuid
 import random
@@ -10,6 +11,31 @@ from datetime import datetime as dt, timezone, timedelta
 import requests
 from flask import Flask, jsonify, request, render_template_string
 from flask_cors import CORS
+
+# ================= LOGGING SETUP =================
+# This class duplicates output to both the console (for systemd) and a file (for the /error endpoint)
+class Tee(object):
+    def __init__(self, name, mode):
+        self.file = open(name, mode)
+        self.stdout = sys.stdout
+        sys.stdout = self
+        sys.stderr = self
+    def write(self, data):
+        self.file.write(data)
+        self.stdout.write(data)
+        self.file.flush()
+        self.stdout.flush()
+    def flush(self):
+        self.file.flush()
+        self.stdout.flush()
+
+# Start logging immediately
+try:
+    if not os.path.exists("ticker.log"):
+        with open("ticker.log", "w") as f: f.write("--- Log Started ---\n")
+    Tee("ticker.log", "a")
+except Exception as e:
+    print(f"Logging setup failed: {e}")
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
@@ -31,7 +57,7 @@ default_state = {
     },
     'mode': 'all', 
     'layout_mode': 'schedule',
-    'my_teams': ["NYG", "NYY", "NJD", "NYK", "LAL", "BOS", "KC", "BUF", "LEH"], 
+    'my_teams': [], 
     'current_games': [],
     'all_teams_data': {}, 
     'debug_mode': False,
@@ -39,7 +65,6 @@ default_state = {
     'custom_date': None,
     'weather_location': "New York",
     'utc_offset': -5,
-    # --- GLOBAL DEFAULTS (Required for App Compatibility) ---
     'scroll_seamless': True, 
     'scroll_speed': 5,
     'brightness': 100
@@ -61,18 +86,31 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
+            # Deep update to safely merge defaults
             for k, v in loaded.items():
                 if k in state:
                     if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
                     else: state[k] = v
-    except: pass
+    except Exception as e:
+        print(f"Error loading config: {e}")
 
 # --- LOAD TICKERS ---
 if os.path.exists(TICKER_REGISTRY_FILE):
     try:
         with open(TICKER_REGISTRY_FILE, 'r') as f:
             tickers = json.load(f)
-    except: pass
+    except Exception as e:
+        print(f"Error loading tickers: {e}")
+
+def save_json_atomically(filepath, data):
+    """Writes to temp file first to prevent corruption."""
+    temp = f"{filepath}.tmp"
+    try:
+        with open(temp, 'w') as f:
+            json.dump(data, f, indent=4)
+        os.replace(temp, filepath)
+    except Exception as e:
+        print(f"Failed to save {filepath}: {e}")
 
 def save_config_file():
     try:
@@ -85,13 +123,14 @@ def save_config_file():
                 'weather_location': state['weather_location'],
                 'utc_offset': state['utc_offset'],
                 'demo_mode': state.get('demo_mode', False),
-                'scroll_seamless': state.get('scroll_seamless', True) # Save global preference
+                'scroll_seamless': state.get('scroll_seamless', True)
             }
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(export_data, f)
-        with open(TICKER_REGISTRY_FILE, 'w') as f:
-            json.dump(tickers, f)
-    except: pass
+            tickers_snap = tickers.copy()
+        
+        save_json_atomically(CONFIG_FILE, export_data)
+        save_json_atomically(TICKER_REGISTRY_FILE, tickers_snap)
+    except Exception as e:
+        print(f"Save error: {e}")
 
 def generate_pairing_code():
     while True:
@@ -620,6 +659,25 @@ app = Flask(__name__)
 CORS(app) 
 
 # --- NEW ROUTES FOR PAIRING & MANAGEMENT ---
+
+@app.route('/error', methods=['GET'])
+def view_error_log():
+    try:
+        if not os.path.exists("ticker.log"):
+            return "No log file found."
+        
+        with open("ticker.log", "r") as f:
+            # Read last 50KB to avoid memory issues if file is huge
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 50000), 0)
+            lines = f.readlines()
+            # If we started reading in the middle of a line, drop the first partial line
+            if size > 50000: lines = lines[1:] 
+            content = "".join(lines)
+            return f"<body style='background:#111;color:#0f0;font-family:monospace;padding:20px'><h2>Server Log (Last 50KB)</h2><pre>{content}</pre></body>"
+    except Exception as e:
+        return f"Error reading log: {str(e)}"
 
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
