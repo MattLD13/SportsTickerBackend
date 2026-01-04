@@ -623,6 +623,7 @@ CORS(app)
 
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
+    """Polled by the physical Ticker Device."""
     ticker_id = request.args.get('id')
     if not ticker_id: return jsonify({"error": "No ticker ID provided"}), 400
 
@@ -632,6 +633,7 @@ def get_ticker_data():
         print(f"New ticker detected: {ticker_id}")
         tickers[ticker_id] = {
             "paired": False,
+            "clients": [], # NEW: List of Client IDs that own this ticker
             "settings": DEFAULT_TICKER_SETTINGS.copy(),
             "pairing_code": generate_pairing_code(),
             "last_seen": current_time,
@@ -643,7 +645,15 @@ def get_ticker_data():
 
     ticker_record = tickers[ticker_id]
 
-    if not ticker_record['paired']:
+    # Hardware logic: If NO clients are paired, show code.
+    # If at least one client is paired, show data.
+    is_paired_hardware = len(ticker_record.get('clients', [])) > 0
+
+    if not is_paired_hardware:
+        # Ensure code exists
+        if not ticker_record.get('pairing_code'):
+            ticker_record['pairing_code'] = generate_pairing_code()
+            
         return jsonify({
             "status": "pairing",
             "code": ticker_record['pairing_code'],
@@ -651,7 +661,6 @@ def get_ticker_data():
         })
 
     with data_lock:
-        # Use existing game data
         raw_games = state['current_games']
         processed_games = []
         for g in raw_games:
@@ -675,6 +684,10 @@ def get_ticker_data():
 
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
+    """Pairs a client to a ticker using the 6-digit code."""
+    client_id = request.headers.get('X-Client-ID')
+    if not client_id: return jsonify({"error": "Client ID missing"}), 400
+    
     data = request.json
     code = data.get('code')
     friendly_name = data.get('name', 'My Ticker')
@@ -683,22 +696,33 @@ def pair_ticker():
 
     target_uuid = None
     for uuid_key, record in tickers.items():
-        if not record['paired'] and record.get('pairing_code') == code:
+        # Allow pairing if unpaired OR if already paired but code matches (rare)
+        if record.get('pairing_code') == code:
             target_uuid = uuid_key
             break
     
     if target_uuid:
+        # Add client to list
+        clients = tickers[target_uuid].get('clients', [])
+        if client_id not in clients:
+            clients.append(client_id)
+        tickers[target_uuid]['clients'] = clients
+        
         tickers[target_uuid]['paired'] = True
-        tickers[target_uuid]['pairing_code'] = None 
+        tickers[target_uuid]['pairing_code'] = None # Clear code once paired to first user
         tickers[target_uuid]['name'] = friendly_name
+        
         save_config_file()
         return jsonify({"success": True, "ticker_id": target_uuid, "message": "Paired successfully"})
     else:
         return jsonify({"error": "Invalid or expired code"}), 404
 
-# --- NEW ROUTE: PAIR BY ID ---
 @app.route('/pair/id', methods=['POST'])
 def pair_ticker_by_id():
+    """Pairs a client to a ticker using the UUID (Shared by another user)."""
+    client_id = request.headers.get('X-Client-ID')
+    if not client_id: return jsonify({"error": "Client ID missing"}), 400
+
     data = request.json
     target_uuid = data.get('id')
     friendly_name = data.get('name', 'My Ticker')
@@ -706,31 +730,56 @@ def pair_ticker_by_id():
     if not target_uuid: return jsonify({"error": "Missing ID"}), 400
     
     if target_uuid in tickers:
+        # Add client to list
+        clients = tickers[target_uuid].get('clients', [])
+        if client_id not in clients:
+            clients.append(client_id)
+        tickers[target_uuid]['clients'] = clients
+        
         tickers[target_uuid]['paired'] = True
-        tickers[target_uuid]['pairing_code'] = None
         tickers[target_uuid]['name'] = friendly_name
+        
         save_config_file()
         return jsonify({"success": True, "ticker_id": target_uuid, "message": "Paired successfully"})
     else:
         return jsonify({"error": "Ticker ID not found. Ensure device is powered on."}), 404
 
-# --- NEW ROUTE: UNPAIR ---
 @app.route('/ticker/<ticker_id>/unpair', methods=['POST'])
 def unpair_ticker(ticker_id):
+    """Removes ONLY the requesting client from the ticker."""
+    client_id = request.headers.get('X-Client-ID')
+    if not client_id: return jsonify({"error": "Client ID missing"}), 400
+
     if ticker_id not in tickers:
         return jsonify({"error": "Ticker not found"}), 404
     
-    tickers[ticker_id]['paired'] = False
-    tickers[ticker_id]['pairing_code'] = generate_pairing_code()
-    tickers[ticker_id]['name'] = "New Ticker"
+    clients = tickers[ticker_id].get('clients', [])
+    
+    if client_id in clients:
+        clients.remove(client_id)
+        tickers[ticker_id]['clients'] = clients
+        
+        # If NO clients left, reset to pairing mode
+        if len(clients) == 0:
+            tickers[ticker_id]['paired'] = False
+            tickers[ticker_id]['pairing_code'] = generate_pairing_code()
+            tickers[ticker_id]['name'] = "New Ticker"
+            print(f"Ticker {ticker_id} fully reset (no clients left)")
+    
     save_config_file()
     return jsonify({"success": True, "message": "Unpaired successfully"})
 
 @app.route('/tickers', methods=['GET'])
 def list_tickers():
+    """Returns only tickers associated with the requesting Client ID."""
+    client_id = request.headers.get('X-Client-ID')
+    # If no client ID provided (legacy check), return empty to be safe
+    if not client_id: return jsonify([])
+
     paired_list = []
     for uuid_key, record in tickers.items():
-        if record.get('paired'):
+        clients = record.get('clients', [])
+        if client_id in clients:
             paired_list.append({
                 "id": uuid_key,
                 "name": record.get('name', 'Unknown Ticker'),
