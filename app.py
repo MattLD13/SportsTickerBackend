@@ -38,7 +38,11 @@ default_state = {
     'demo_mode': False,
     'custom_date': None,
     'weather_location': "New York",
-    'utc_offset': -5 
+    'utc_offset': -5,
+    # --- GLOBAL DEFAULTS (Required for App Compatibility) ---
+    'scroll_seamless': True, 
+    'scroll_speed': 5,
+    'brightness': 100
 }
 
 DEFAULT_TICKER_SETTINGS = {
@@ -80,7 +84,8 @@ def save_config_file():
                 'my_teams': state['my_teams'],
                 'weather_location': state['weather_location'],
                 'utc_offset': state['utc_offset'],
-                'demo_mode': state.get('demo_mode', False)
+                'demo_mode': state.get('demo_mode', False),
+                'scroll_seamless': state.get('scroll_seamless', True) # Save global preference
             }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(export_data, f)
@@ -614,7 +619,7 @@ def background_updater():
 app = Flask(__name__)
 CORS(app) 
 
-# --- ROUTES ---
+# --- NEW ROUTES FOR PAIRING & MANAGEMENT ---
 
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
@@ -646,6 +651,7 @@ def get_ticker_data():
         })
 
     with data_lock:
+        # Use existing game data
         raw_games = state['current_games']
         processed_games = []
         for g in raw_games:
@@ -690,6 +696,7 @@ def pair_ticker():
     else:
         return jsonify({"error": "Invalid or expired code"}), 404
 
+# --- NEW ROUTE: PAIR BY ID ---
 @app.route('/pair/id', methods=['POST'])
 def pair_ticker_by_id():
     data = request.json
@@ -707,6 +714,7 @@ def pair_ticker_by_id():
     else:
         return jsonify({"error": "Ticker ID not found. Ensure device is powered on."}), 404
 
+# --- NEW ROUTE: UNPAIR ---
 @app.route('/ticker/<ticker_id>/unpair', methods=['POST'])
 def unpair_ticker(ticker_id):
     if ticker_id not in tickers:
