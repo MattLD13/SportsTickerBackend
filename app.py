@@ -13,7 +13,7 @@ from flask_cors import CORS
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
-TICKER_REGISTRY_FILE = "tickers.json" # NEW: Stores paired devices
+TICKER_REGISTRY_FILE = "tickers.json" 
 UPDATE_INTERVAL = 5 
 data_lock = threading.Lock()
 
@@ -23,7 +23,6 @@ HEADERS = {
 }
 
 # ================= DEFAULT STATE =================
-# Global Server State (What to fetch)
 default_state = {
     'active_sports': { 
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
@@ -42,7 +41,6 @@ default_state = {
     'utc_offset': -5 
 }
 
-# Default Settings for a NEW ticker when it first connects
 DEFAULT_TICKER_SETTINGS = {
     "brightness": 100,
     "scroll_speed": 0.03,
@@ -52,7 +50,7 @@ DEFAULT_TICKER_SETTINGS = {
 }
 
 state = default_state.copy()
-tickers = {} # Registry of physical devices
+tickers = {} 
 
 # --- LOAD CONFIG ---
 if os.path.exists(CONFIG_FILE):
@@ -75,7 +73,6 @@ if os.path.exists(TICKER_REGISTRY_FILE):
 def save_config_file():
     try:
         with data_lock:
-            # Save Global Config
             export_data = {
                 'active_sports': state['active_sports'], 
                 'mode': state['mode'], 
@@ -87,25 +84,18 @@ def save_config_file():
             }
         with open(CONFIG_FILE, 'w') as f:
             json.dump(export_data, f)
-            
-        # Save Ticker Registry
         with open(TICKER_REGISTRY_FILE, 'w') as f:
             json.dump(tickers, f)
     except: pass
 
-# ================= HELPER FUNCTIONS =================
-
 def generate_pairing_code():
-    """Generates a unique 6-digit code."""
     while True:
         code = ''.join(random.choices(string.digits, k=6))
-        # Ensure code isn't currently active for another unpaired ticker
         active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
         if code not in active_codes:
             return code
 
-# ================= TEAMS & LOGOS (UNCHANGED) =================
-# [Keeping your original lists/dictionaries exactly as they were]
+# ================= TEAMS & LOGOS =================
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 
@@ -134,59 +124,25 @@ SPORT_DURATIONS = {
 # === DEMO DATA GENERATOR ===
 def generate_demo_data():
     return [
-        # F1 Demo
         {
             'type': 'leaderboard', 'sport': 'f1', 'id': 'demo_f1', 'status': 'Lap 45/78', 'state': 'in',
             'tourney_name': 'Monaco Grand Prix', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
             'leaders': [
                 {'rank': '1', 'name': 'Verstappen', 'score': 'LEADER'},
                 {'rank': '2', 'name': 'Norris', 'score': '+2.4s'},
-                {'rank': '3', 'name': 'Leclerc', 'score': '+5.1s'},
-                {'rank': '4', 'name': 'Hamilton', 'score': '+12.0s'}
+                {'rank': '3', 'name': 'Leclerc', 'score': '+5.1s'}
             ]
         },
-        # NASCAR Demo
-        {
-            'type': 'leaderboard', 'sport': 'nascar', 'id': 'demo_nascar', 'status': 'Stage 2', 'state': 'in',
-            'tourney_name': 'Daytona 500', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
-            'leaders': [
-                {'rank': '1', 'name': 'Hamlin', 'score': 'LEADER'},
-                {'rank': '2', 'name': 'Elliott', 'score': '-0.145'},
-                {'rank': '3', 'name': 'Logano', 'score': '-0.500'},
-                {'rank': '4', 'name': 'Larson', 'score': '-1.200'}
-            ]
-        },
-        # IndyCar Demo
-        {
-            'type': 'leaderboard', 'sport': 'indycar', 'id': 'demo_indy', 'status': 'Lap 150/200', 'state': 'in',
-            'tourney_name': 'Indy 500', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
-            'leaders': [
-                {'rank': '1', 'name': 'Newgarden', 'score': 'LEADER'},
-                {'rank': '2', 'name': 'O\'Ward', 'score': '-0.332'},
-                {'rank': '3', 'name': 'Palou', 'score': '-1.100'},
-                {'rank': '4', 'name': 'Dixon', 'score': '-2.500'}
-            ]
-        },
-        # EPL Soccer Demo
         {
             'type': 'scoreboard', 'sport': 'soccer', 'id': 'demo_soc', 'status': "88'", 'state': 'in', 'is_shown': True,
             'home_abbr': 'ARS', 'home_score': '2', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/359.png', 'home_color': '#EF0107', 'home_alt_color': '#ffffff',
             'away_abbr': 'CHE', 'away_score': '1', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/363.png', 'away_color': '#034694', 'away_alt_color': '#ffffff',
             'startTimeUTC': dt.now(timezone.utc).isoformat(),
             'situation': {'possession': 'away_id', 'isRedZone': False, 'downDist': ''}, 'estimated_duration': 115
-        },
-        # NFL Demo
-        {
-            'type': 'scoreboard', 'sport': 'nfl', 'id': 'demo_nfl', 'status': "4th 2:00", 'state': 'in', 'is_shown': True,
-            'home_abbr': 'KC', 'home_score': '24', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/kc.png', 'home_color': '#e31837', 'home_alt_color': '#ffb81c',
-            'away_abbr': 'BUF', 'away_score': '20', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/buf.png', 'away_color': '#00338d', 'away_alt_color': '#c60c30',
-            'startTimeUTC': dt.now(timezone.utc).isoformat(),
-            'situation': {'possession': 'home_id', 'isRedZone': True, 'downDist': '1st & Goal'}, 'estimated_duration': 195
         }
     ]
 
-# ================= FETCHING LOGIC (UNCHANGED) =================
-# [Restoring your Fetcher classes exactly to ensure reliability]
+# ================= FETCHING LOGIC =================
 
 class WeatherFetcher:
     def __init__(self, initial_loc):
@@ -656,24 +612,17 @@ def background_updater():
 
 # ================= FLASK API =================
 app = Flask(__name__)
-CORS(app) # Enable CORS for app access
+CORS(app) 
 
-# --- NEW ROUTES FOR APP/TICKER ARCHITECTURE ---
+# --- ROUTES ---
 
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
-    """
-    Main endpoint polled by the physical ticker.
-    Query param: ?id=<uuid>
-    """
     ticker_id = request.args.get('id')
-    
-    if not ticker_id:
-        return jsonify({"error": "No ticker ID provided"}), 400
+    if not ticker_id: return jsonify({"error": "No ticker ID provided"}), 400
 
     current_time = time.time()
     
-    # 1. Register Ticker if unknown
     if ticker_id not in tickers:
         print(f"New ticker detected: {ticker_id}")
         tickers[ticker_id] = {
@@ -689,18 +638,14 @@ def get_ticker_data():
 
     ticker_record = tickers[ticker_id]
 
-    # 2. Check Pairing Status
     if not ticker_record['paired']:
-        # Return pairing mode instructions
         return jsonify({
             "status": "pairing",
             "code": ticker_record['pairing_code'],
             "message": "Go to App to Pair"
         })
 
-    # 3. Return Operational Data
     with data_lock:
-        # Filter games based on Global Config
         raw_games = state['current_games']
         processed_games = []
         for g in raw_games:
@@ -718,12 +663,8 @@ def get_ticker_data():
         "status": "ok",
         "global_config": global_config,
         "local_config": ticker_record['settings'],
-        "content": {
-            "sports": processed_games,
-            # Weather is already embedded in games list if active, but can add separate if needed
-        }
+        "content": { "sports": processed_games }
     }
-
     return jsonify(response_payload)
 
 @app.route('/pair', methods=['POST'])
@@ -749,6 +690,34 @@ def pair_ticker():
     else:
         return jsonify({"error": "Invalid or expired code"}), 404
 
+@app.route('/pair/id', methods=['POST'])
+def pair_ticker_by_id():
+    data = request.json
+    target_uuid = data.get('id')
+    friendly_name = data.get('name', 'My Ticker')
+    
+    if not target_uuid: return jsonify({"error": "Missing ID"}), 400
+    
+    if target_uuid in tickers:
+        tickers[target_uuid]['paired'] = True
+        tickers[target_uuid]['pairing_code'] = None
+        tickers[target_uuid]['name'] = friendly_name
+        save_config_file()
+        return jsonify({"success": True, "ticker_id": target_uuid, "message": "Paired successfully"})
+    else:
+        return jsonify({"error": "Ticker ID not found. Ensure device is powered on."}), 404
+
+@app.route('/ticker/<ticker_id>/unpair', methods=['POST'])
+def unpair_ticker(ticker_id):
+    if ticker_id not in tickers:
+        return jsonify({"error": "Ticker not found"}), 404
+    
+    tickers[ticker_id]['paired'] = False
+    tickers[ticker_id]['pairing_code'] = generate_pairing_code()
+    tickers[ticker_id]['name'] = "New Ticker"
+    save_config_file()
+    return jsonify({"success": True, "message": "Unpaired successfully"})
+
 @app.route('/tickers', methods=['GET'])
 def list_tickers():
     paired_list = []
@@ -764,8 +733,7 @@ def list_tickers():
 
 @app.route('/ticker/<ticker_id>', methods=['POST'])
 def update_ticker_settings(ticker_id):
-    if ticker_id not in tickers:
-        return jsonify({"error": "Ticker not found"}), 404
+    if ticker_id not in tickers: return jsonify({"error": "Ticker not found"}), 404
     
     data = request.json
     current_settings = tickers[ticker_id]['settings']
@@ -776,288 +744,6 @@ def update_ticker_settings(ticker_id):
     tickers[ticker_id]['settings'] = current_settings
     save_config_file()
     return jsonify({"success": True, "settings": current_settings})
-
-@app.route('/settings', methods=['POST'])
-def update_global_settings():
-    """Alias for /api/config but cleaner."""
-    return api_config()
-
-# --- OLD ROUTES (KEPT FOR COMPATIBILITY / WEB UI) ---
-
-@app.route('/')
-def root():
-    # [Your original HTML string here - truncated for brevity in this response but 
-    # assumes the original giant HTML string is pasted here. It relies on /api/state 
-    # and /api/config so we keep those routes below.]
-    html = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>Game Schedule</title>
-        <style>
-            body { font-family: 'Segoe UI', system-ui, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 0; overflow-x: hidden; }
-            .navbar { position: fixed; top: 0; left: 0; right: 0; height: 50px; background: rgba(18,18,18,0.95); backdrop-filter: blur(8px); z-index: 1000; border-bottom: 1px solid #333; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; }
-            .hamburger { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; z-index: 1001; }
-            .nav-tabs { display: flex; gap: 20px; }
-            .nav-tab { cursor: pointer; color: #888; font-weight: bold; font-size: 0.9rem; padding: 5px 0; border-bottom: 2px solid transparent; transition: 0.2s; }
-            .nav-tab.active { color: white; border-bottom: 2px solid #007bff; }
-            .sidebar { position: fixed; top: 50px; left: -300px; bottom: 0; width: 280px; background: #1e1e1e; border-right: 1px solid #333; transition: left 0.3s ease; z-index: 999; padding: 20px; overflow-y: auto; }
-            .sidebar.open { left: 0; }
-            .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 900; }
-            .sidebar-overlay.active { display: block; }
-            .control-group { margin-bottom: 20px; }
-            .section-label { font-size: 0.75rem; color: #777; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
-            .toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.9rem; }
-            .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
-            .switch input { opacity: 0; width: 0; height: 0; }
-            .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #444; transition: .4s; border-radius: 34px; }
-            .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
-            input:checked + .slider { background-color: #007bff; }
-            input:checked + .slider:before { transform: translateX(14px); }
-            select, input[type="text"] { width: 100%; background: #2a2a2a; color: white; border: 1px solid #444; padding: 8px; border-radius: 6px; margin-top: 5px; box-sizing: border-box; }
-            .text-outline { text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 4px rgba(0,0,0,0.9); }
-            .logo-outline { filter: drop-shadow(0 0 1px black) drop-shadow(0 0 1px black) drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
-            .live-badge { background: #ff3333; color: white; padding: 1px 4px; border-radius: 3px; font-weight: bold; animation: pulse 2s infinite; font-size:0.7rem; border: 1px solid black; }
-            @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
-            .poss-pill { display: inline-block; background: rgba(0,0,0,0.8); color: #ffeb3b; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid #ffeb3b; }
-            .red-zone-pill { display: inline-block; background: rgba(255,51,51,0.9); color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 10px; margin-top: 2px; font-weight: bold; border: 1px solid black; animation: pulse 1s infinite; }
-            .overlay { position: absolute; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.25); z-index:-1; }
-            .view-hidden { display: none !important; }
-            .empty-state { padding: 40px; text-align: center; color: #666; font-style: italic; }
-            .loading-spinner { border: 4px solid #333; border-top: 4px solid #007bff; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 50px auto; }
-            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-            #schedule-view { position: relative; width: 100%; max-width: 600px; margin: 50px auto 0 auto; background: #121212; min-height: calc(100vh - 50px); overflow-x: hidden; }
-            .time-axis { position: absolute; left: 0; top: 0; bottom: 0; width: 50px; border-right: 1px solid #333; background: #121212; z-index: 10; }
-            .time-marker { position: absolute; width: 100%; text-align: right; padding-right: 8px; font-size: 0.7rem; color: #666; transform: translateY(-50%); }
-            .events-area { position: relative; margin-left: 55px; margin-right: 10px; height: 100%; }
-            .grid-line { position: absolute; left: 0; right: 0; height: 1px; background: #222; z-index: 0; }
-            .current-time-line { position: absolute; left: -55px; right: 0; height: 2px; background: #007bff; z-index: 50; pointer-events: none; box-shadow: 0 0 5px rgba(0,123,255,0.5); }
-            .sched-card { position: absolute; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.5); color: white; display: flex; flex-direction: column; justify-content: flex-start; padding: 10px; font-size: 0.85rem; box-sizing: border-box; border: 1px solid rgba(0,0,0,0.5); }
-            .sched-card:hover { z-index: 100 !important; transform: scale(1.02); box-shadow: 0 5px 15px rgba(0,0,0,0.8); }
-            .card-header { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 0.75rem; opacity: 1; font-weight:700; color: white; }
-            .team-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-            .t-left { display: flex; align-items: center; gap: 8px; }
-            .t-logo { width: 30px; height: 30px; object-fit: contain; }
-            .t-name { font-weight: 800; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color:white; }
-            .t-score { font-weight: 800; font-size: 1.4rem; color:white; }
-            #grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; padding: 70px 20px 20px 20px; max-width: 600px; margin: 0 auto; }
-            .grid-card { position: relative; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.5); color: white; height: 110px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; transition: transform 0.2s; border: 1px solid rgba(0,0,0,0.5); }
-            .gc-col { display: flex; flex-direction: column; align-items: center; z-index: 2; width: 70px; }
-            .gc-logo { width: 45px; height: 45px; object-fit: contain; margin-bottom:4px; }
-            .gc-abbr { font-size: 1rem; font-weight: 800; }
-            .gc-mid { z-index: 2; text-align: center; flex-grow: 1; }
-            .gc-status { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; margin-bottom: 2px; }
-            .gc-score { font-size: 1.5rem; font-weight: 800; line-height: 1; white-space: nowrap; }
-        </style>
-    </head>
-    <body>
-        <nav class="navbar">
-            <button class="hamburger" onclick="toggleMenu()">☰</button>
-            <div class="nav-tabs">
-                <div class="nav-tab" id="tab-my" onclick="switchTab('my')">MY SCHEDULE</div>
-                <div class="nav-tab active" id="tab-all" onclick="switchTab('all')">ALL GAMES</div>
-            </div>
-            <div style="width:24px"></div>
-        </nav>
-        <div class="sidebar-overlay" onclick="toggleMenu()"></div>
-        <div class="sidebar" id="sidebar">
-            <div class="control-group">
-                <div class="section-label">My Teams</div>
-                <input type="text" id="inp_teams" placeholder="NYG, NYY, NJD...">
-            </div>
-            <div class="control-group">
-                <div class="section-label">Display</div>
-                <select id="sel_mode"><option value="all">Show All</option><option value="live">Live Only</option><option value="my_teams">My Teams Only</option></select>
-                <select id="sel_layout" style="margin-top:10px;"><option value="schedule">Schedule View</option><option value="grid">Grid View</option></select>
-            </div>
-            <div class="control-group">
-                <div class="section-label">Leagues</div>
-                <div class="toggle-row"><span>NFL</span><label class="switch"><input type="checkbox" id="chk_nfl"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>NBA</span><label class="switch"><input type="checkbox" id="chk_nba"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>NHL</span><label class="switch"><input type="checkbox" id="chk_nhl"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>MLB</span><label class="switch"><input type="checkbox" id="chk_mlb"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>NCAA FBS</span><label class="switch"><input type="checkbox" id="chk_ncf_fbs"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>Premier League</span><label class="switch"><input type="checkbox" id="chk_soccer"><span class="slider"></span></label></div>
-                <hr style="border-color:#444;">
-                <div class="toggle-row"><span>F1</span><label class="switch"><input type="checkbox" id="chk_f1"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>NASCAR</span><label class="switch"><input type="checkbox" id="chk_nascar"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>IndyCar</span><label class="switch"><input type="checkbox" id="chk_indycar"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>IMSA</span><label class="switch"><input type="checkbox" id="chk_imsa"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>WEC</span><label class="switch"><input type="checkbox" id="chk_wec"><span class="slider"></span></label></div>
-            </div>
-             <div class="control-group">
-                <div class="section-label">Location</div>
-                <input type="text" id="inp_loc" placeholder="Zip or City">
-                <div class="toggle-row" style="margin-top:10px;"><span>Weather</span><label class="switch"><input type="checkbox" id="chk_weather"><span class="slider"></span></label></div>
-            </div>
-            <div class="control-group">
-                <div class="section-label">Device</div>
-                <div class="toggle-row"><span>Seamless</span><label class="switch"><input type="checkbox" id="chk_scroll"><span class="slider"></span></label></div>
-                <div class="toggle-row"><span>Demo Mode</span><label class="switch"><input type="checkbox" id="chk_demo"><span class="slider"></span></label></div>
-            </div>
-            <button onclick="saveSettings()" style="width:100%; padding:10px; background:#007bff; border:none; color:white; border-radius:6px; font-weight:bold; cursor:pointer;">Save Changes</button>
-        </div>
-        <div id="schedule-view" class="view-hidden"><div class="time-axis" id="timeAxis"></div><div class="events-area" id="eventsArea"></div></div>
-        <div id="grid-view"><div class="loading-spinner"></div></div>
-        <script>
-            const PIXELS_PER_MINUTE = 1.6; const START_HOUR = 8; let currentTab = 'all';
-            function toggleMenu() { document.getElementById('sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('active'); }
-            function hexToRgb(hex) { if(!hex) return {r:0, g:0, b:0}; hex = hex.replace(/^#/, ''); if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2]; const bigint = parseInt(hex, 16); return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 }; }
-            function getLuminance(r, g, b) { return (0.2126 * r + 0.7152 * g + 0.0722 * b); }
-            function resolveColors(aColor, aAlt, hColor, hAlt) {
-                const LUM_THRESHOLD = 50; 
-                let aC = aColor || '#000000'; let aA = aAlt || '#ffffff';
-                let hC = hColor || '#000000'; let hA = hAlt || '#ffffff';
-                let aRgb = hexToRgb(aC); let hRgb = hexToRgb(hC);
-                if (getLuminance(aRgb.r, aRgb.g, aRgb.b) < LUM_THRESHOLD && aA) { aC = aA; }
-                if (getLuminance(hRgb.r, hRgb.g, hRgb.b) < LUM_THRESHOLD && hA) { hC = hA; }
-                return [aC, hC];
-            }
-            function switchTab(tab) {
-                currentTab = tab;
-                document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
-                document.getElementById('tab-' + tab).classList.add('active');
-                if(tab === 'my') { document.getElementById('schedule-view').classList.remove('view-hidden'); document.getElementById('grid-view').classList.add('view-hidden'); } 
-                else { document.getElementById('schedule-view').classList.add('view-hidden'); document.getElementById('grid-view').classList.remove('view-hidden'); }
-                loadState();
-            }
-            async function loadState() {
-                try {
-                    const res = await fetch('/api/state'); const data = await res.json(); const s = data.settings;
-                    document.getElementById('inp_teams').value = (s.my_teams || []).join(', ');
-                    ['nfl','nba','nhl','mlb','ncf_fbs','soccer','f1','nascar','indycar','imsa','wec','weather'].forEach(k => {
-                        if(document.getElementById('chk_'+k)) document.getElementById('chk_'+k).checked = s.active_sports[k];
-                    });
-                    document.getElementById('chk_scroll').checked = s.scroll_seamless;
-                    document.getElementById('chk_demo').checked = s.demo_mode;
-                    document.getElementById('sel_mode').value = s.mode;
-                    document.getElementById('sel_layout').value = s.layout_mode;
-                    document.getElementById('inp_loc').value = s.weather_location;
-                    render(data);
-                } catch(e) { console.error(e); }
-            }
-            function render(data) {
-                const games = data.games || [];
-                const myTeamsStr = document.getElementById('inp_teams').value.toUpperCase();
-                const myTeams = myTeamsStr.split(',').map(s => s.trim());
-                if (currentTab === 'my') {
-                    const filtered = games.filter(g => {
-                        if(g.type === 'weather' || g.type === 'clock') return true;
-                        if(g.type === 'leaderboard') return true; 
-                        const homeKey = (g.sport + ':' + g.home_abbr).toUpperCase();
-                        const awayKey = (g.sport + ':' + g.away_abbr).toUpperCase();
-                        return myTeams.includes(g.home_abbr) || myTeams.includes(g.away_abbr) || myTeams.includes(homeKey) || myTeams.includes(awayKey);
-                    });
-                    renderSchedule(filtered, data.settings.utc_offset || -5);
-                } else { renderGrid(games); }
-            }
-            function renderGrid(games) {
-                const container = document.getElementById('grid-view'); container.innerHTML = '';
-                if(!games || games.length === 0) { container.innerHTML = '<div class="empty-state">No games active.</div>'; return; }
-                games.forEach(game => {
-                    if(game.type === 'weather' || game.type === 'clock') return;
-                    
-                    if(game.type === 'leaderboard') {
-                         const div = document.createElement('div'); div.className = 'grid-card';
-                         div.style.background = '#222';
-                         div.innerHTML = `<div style="padding:10px; width:100%"><div class="gc-status text-outline">${game.sport.toUpperCase()}</div><div class="gc-abbr text-outline">${game.tourney_name}</div><div style="font-size:0.8rem; margin-top:5px;">${game.status}</div></div>`;
-                         container.appendChild(div);
-                         return;
-                    }
-
-                    const [aC, hC] = resolveColors(game.away_color, game.away_alt_color, game.home_color, game.home_alt_color);
-                    let detailHtml = '';
-                    if(game.situation && game.situation.isRedZone) { detailHtml = `<div class="red-zone-pill">${game.situation.downDist}</div>`; }
-                    else if(game.state === 'in' && game.situation.downDist) { detailHtml = `<div class="gc-status text-outline" style="color:#ffc107">${game.situation.downDist}</div>`; }
-                    let possIcon = ' '; let possText = 'Poss';
-                    if(game.sport === 'nhl') { possIcon = ' '; possText = 'PP'; } else if(game.sport === 'nba') { possIcon = ' '; } else if(game.sport === 'mlb') { possIcon = ' '; } else if(game.sport.includes('soccer')) { possIcon = ' '; }
-                    const div = document.createElement('div'); div.className = 'grid-card';
-                    div.style.background = `linear-gradient(120deg, ${aC} 0%, ${aC} 45%, ${hC} 55%, ${hC} 100%)`;
-                    const homeHasPoss = game.situation.possession === game.home_id; const awayHasPoss = game.situation.possession === game.away_id;
-                    div.innerHTML = `
-                        <div class="overlay"></div>
-                        <div class="gc-col"><img class="gc-logo logo-outline" src="${game.away_logo}"><div class="gc-abbr text-outline">${game.away_abbr}</div>${awayHasPoss ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}</div>
-                        <div class="gc-mid"><div class="gc-status text-outline">${game.status}</div><div class="gc-score text-outline">${game.away_score} - ${game.home_score}</div>${detailHtml}</div>
-                        <div class="gc-col"><img class="gc-logo logo-outline" src="${game.home_logo}"><div class="gc-abbr text-outline">${game.home_abbr}</div>${homeHasPoss ? `<div class="poss-pill">${possIcon} ${possText}</div>` : ''}</div>
-                    `;
-                    container.appendChild(div);
-                });
-            }
-            function renderSchedule(games, utcOffset) {
-                const eventsArea = document.getElementById('eventsArea'); const axis = document.getElementById('timeAxis');
-                eventsArea.innerHTML = ''; axis.innerHTML = '';
-                const nowLine = document.createElement('div'); nowLine.className = 'current-time-line'; eventsArea.appendChild(nowLine);
-                for(let i=0; i<24; i++) {
-                    const hour = START_HOUR + i; const top = i * 60 * PIXELS_PER_MINUTE;
-                    let displayHour = (hour % 12) || 12; displayHour += (hour < 12 ? ' AM' : ' PM'); if (hour >= 24) { let h = hour - 24; displayHour = (h % 12) || 12; displayHour += (h < 12 ? ' AM' : ' PM'); }
-                    const marker = document.createElement('div'); marker.className = 'time-marker'; marker.innerText = displayHour; marker.style.top = top + 'px'; axis.appendChild(marker);
-                    const grid = document.createElement('div'); grid.className = 'grid-line'; grid.style.top = top + 'px'; eventsArea.appendChild(grid);
-                }
-                const offsetMs = utcOffset * 3600 * 1000; const now = new Date(); const utcNow = now.getTime() + (now.getTimezoneOffset() * 60000); const targetMs = utcNow + offsetMs; const localNow = new Date(targetMs + (now.getTimezoneOffset() * 60000));
-                let effectiveHour = localNow.getHours(); if(effectiveHour < START_HOUR) effectiveHour += 24;
-                const nowMins = (effectiveHour * 60) + localNow.getMinutes() - (START_HOUR * 60);
-                if(nowMins >= 0 && nowMins <= (24*60)) { nowLine.style.top = (nowMins * PIXELS_PER_MINUTE) + 'px'; document.getElementById('schedule-view').scrollTop = (nowMins * PIXELS_PER_MINUTE) - (window.innerHeight / 2); }
-                else { nowLine.style.display = 'none'; }
-                games.forEach(g => {
-                    if(g.type === 'weather' || g.type === 'clock') return;
-                    const d = new Date(g.startTimeUTC); 
-                    const gameLocalMs = d.getTime() + offsetMs + (new Date().getTimezoneOffset() * 60000);
-                    const local = new Date(gameLocalMs);
-                    let gh = local.getHours(); let gm = local.getMinutes(); if(gh < START_HOUR) gh += 24;
-                    const startMins = gh * 60 + gm - (START_HOUR * 60);
-                    const dur = g.estimated_duration || 180;
-                    const div = document.createElement('div'); div.className = 'sched-card';
-                    div.style.top = (startMins * PIXELS_PER_MINUTE) + 'px'; div.style.height = (dur * PIXELS_PER_MINUTE) + 'px'; div.style.width = '95%'; div.style.left = '0';
-                    
-                    if(g.type === 'leaderboard') {
-                         div.style.background = '#333';
-                         div.innerHTML = `<div class="card-header"><span class="live-badge">LIVE</span><span>${g.sport.toUpperCase()}</span></div><div class="t-name">${g.tourney_name}</div><div class="t-name" style="font-size:0.8rem; margin-top:5px;">${g.status}</div>`;
-                    } else {
-                        const [aC, hC] = resolveColors(g.away_color, g.away_alt_color, g.home_color, g.home_alt_color);
-                        div.style.background = `linear-gradient(135deg, ${hC} 0%, ${hC} 45%, ${aC} 55%, ${aC} 100%)`;
-                        div.innerHTML = `<div class="overlay"></div><div class="card-header">${g.state === 'in' ? '<span class="live-badge text-outline">LIVE</span>' : '<span></span>'}<span class="text-outline" style="text-align:right">${g.status}</span></div><div class="team-row"><div class="t-left"><img class="t-logo logo-outline" src="${g.away_logo}"><div class="t-name text-outline">${g.away_abbr}</div></div><div class="t-score text-outline">${g.away_score}</div></div><div class="team-row"><div class="t-left"><img class="t-logo logo-outline" src="${g.home_logo}"><div class="t-name text-outline">${g.home_abbr}</div></div><div class="t-score text-outline">${g.home_score}</div></div>`;
-                    }
-                    eventsArea.appendChild(div);
-                });
-            }
-            async function saveSettings() {
-                const sports = {};
-                ['nfl','nba','nhl','mlb','ncf_fbs','soccer','f1','nascar','indycar','imsa','wec','weather'].forEach(k => { if(document.getElementById('chk_'+k)) sports[k] = document.getElementById('chk_'+k).checked; });
-                const payload = {
-                    active_sports: sports,
-                    my_teams: document.getElementById('inp_teams').value.split(',').map(s=>s.trim()).filter(s=>s),
-                    scroll_seamless: document.getElementById('chk_scroll').checked,
-                    demo_mode: document.getElementById('chk_demo').checked,
-                    weather_location: document.getElementById('inp_loc').value,
-                    mode: document.getElementById('sel_mode').value,
-                    layout_mode: document.getElementById('sel_layout').value
-                };
-                await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-                toggleMenu(); loadState();
-            }
-            loadState(); setInterval(loadState, 5000);
-        </script>
-    </body>
-    </html>
-    """
-    return render_template_string(html)
-
-@app.route('/api/ticker')
-def api_ticker_old():
-    # LEGACY: Maps to /data logic but without ID support for compatibility
-    with data_lock: d = state.copy()
-    offset_sec = d.get('utc_offset', -5) * 3600
-    raw_games = d['current_games']
-    processed_games = []
-    for g in raw_games:
-        if not g.get('is_shown', True): continue
-        processed_games.append(g.copy())
-    return jsonify({
-        'meta': {'time': dt.now(timezone(timedelta(seconds=offset_sec))).strftime("%I:%M %p")}, 
-        'games': processed_games
-    })
 
 @app.route('/api/state')
 def api_state():
@@ -1072,6 +758,23 @@ def api_config():
     with data_lock: state.update(request.json)
     save_config_file()
     return jsonify({"status": "ok"})
+
+@app.route('/api/hardware', methods=['POST'])
+def api_hardware():
+    d = request.json
+    if d.get('action') == 'reboot':
+        with data_lock: state['reboot_requested'] = True
+        threading.Timer(10, lambda: state.update({'reboot_requested': False})).start()
+    return jsonify({"status": "ok"})
+
+# --- LEGACY / WEB UI ---
+@app.route('/')
+def root():
+    # [Simple placeholder for web UI - relies on /api/state]
+    html = """<!DOCTYPE html><html><head><title>Ticker</title><meta charset='utf-8'></head>
+    <body style='background:#111;color:#eee;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;'>
+    <h1>Sports Ticker Server</h1><p>Use the iOS App to configure.</p></body></html>"""
+    return render_template_string(html)
 
 if __name__ == "__main__":
     threading.Thread(target=background_updater, daemon=True).start()
