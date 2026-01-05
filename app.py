@@ -145,7 +145,7 @@ def generate_pairing_code():
             return code
 
 # ================= TEAMS & LOGOS =================
-# HARDCODED LISTS FOR COLLEGE FOOTBALL (Reverted as requested)
+# HARDCODED FILTER LISTS
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 
@@ -245,15 +245,13 @@ class SportsFetcher:
             'nhl': { 'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'nba': { 'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             
-            # --- SOCCER LEAGUES ---
+            # EXPLICIT SOCCER LEAGUES FOR CORRECT TEAM FETCHING
             'soccer_epl':   { 'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             'soccer_champ': { 'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             'soccer_l1':    { 'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             'soccer_l2':    { 'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             'soccer_wc':    { 'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            
-            # --- OLYMPIC HOCKEY ---
-            # Corrected endpoint for Olympic Hockey
+            # CORRECTED OLYMPIC HOCKEY ENDPOINT
             'hockey_olympics': { 'path': 'hockey/mens-olympic-hockey', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             
             'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
@@ -267,7 +265,7 @@ class SportsFetcher:
         return LOGO_OVERRIDES.get(f"{league_key.upper()}:{abbr}", default_logo)
 
     def fetch_all_teams(self):
-        """Fetches teams for all leagues (Dynamic for Pros, Static Filter for College)."""
+        """Fetches teams dynamically. For College, fetches strictly by Group ID and filters against hardcoded list."""
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
             print("Starting Team Fetch...")
@@ -299,33 +297,26 @@ class SportsFetcher:
                                         })
                     except Exception as e: print(f"Error fetching {league_key}: {e}")
 
-            # 2. Fetch College Football (With Hardcoded Filtering)
-            try:
-                print("Fetching College Football Teams...")
-                url = f"{self.base_url}football/college-football/teams"
-                r = requests.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10)
-                data = r.json()
-                if 'sports' in data:
-                    for item in data['sports'][0]['leagues'][0].get('teams', []):
-                        t = item['team']
-                        abbr = t.get('abbreviation', 'UNK')
-                        
-                        # Only include if in our hardcoded list
-                        if abbr in FBS_TEAMS:
-                            teams_catalog['ncf_fbs'].append({
-                                'abbr': abbr,
-                                'logo': t.get('logos', [{}])[0].get('href', ''),
-                                'color': t.get('color', '000000'),
-                                'alt_color': t.get('alternateColor', '444444')
-                            })
-                        elif abbr in FCS_TEAMS:
-                            teams_catalog['ncf_fcs'].append({
-                                'abbr': abbr,
-                                'logo': t.get('logos', [{}])[0].get('href', ''),
-                                'color': t.get('color', '000000'),
-                                'alt_color': t.get('alternateColor', '444444')
-                            })
-            except Exception as e: print(f"Error fetching College: {e}")
+            # 2. Fetch College Football (USING GROUP IDs for efficiency, filtering with HARDCODED lists)
+            for group_id, league_key, filter_list in [(80, 'ncf_fbs', FBS_TEAMS), (81, 'ncf_fcs', FCS_TEAMS)]:
+                try:
+                    url = f"{self.base_url}football/college-football/teams"
+                    # Using groups parameter is much faster/cleaner than limiting to 1000
+                    r = requests.get(url, params={'groups': group_id, 'limit': 1000}, headers=HEADERS, timeout=10)
+                    data = r.json()
+                    if 'sports' in data:
+                        for item in data['sports'][0]['leagues'][0].get('teams', []):
+                            t = item['team']
+                            abbr = t.get('abbreviation', 'UNK')
+                            
+                            if abbr in filter_list:
+                                teams_catalog[league_key].append({
+                                    'abbr': abbr,
+                                    'logo': t.get('logos', [{}])[0].get('href', ''),
+                                    'color': t.get('color', '000000'),
+                                    'alt_color': t.get('alternateColor', '444444')
+                                })
+                except Exception as e: print(f"Error fetching {league_key}: {e}")
 
             with data_lock:
                 state['all_teams_data'] = teams_catalog
@@ -376,17 +367,14 @@ class SportsFetcher:
         now_local = dt.now(timezone(timedelta(hours=utc_offset)))
         target_date_str = conf['custom_date'] if (conf['debug_mode'] and conf['custom_date']) else now_local.strftime("%Y-%m-%d")
         
-        # --- WEATHER ---
         if conf['active_sports'].get('weather'):
             if conf['weather_location'] != self.weather.location_name: self.weather.update_coords(conf['weather_location'])
             w = self.weather.get_weather()
             if w: games.append(w)
         
-        # --- CLOCK ---
         if conf['active_sports'].get('clock'):
             games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
 
-        # --- SPORTS LOOP ---
         for league_key, config in self.leagues.items():
             if not conf['active_sports'].get(league_key, False): continue
             
@@ -478,7 +466,6 @@ def background_updater():
 app = Flask(__name__)
 CORS(app) 
 
-# --- DATA ENDPOINT ---
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
     ticker_id = request.args.get('id')
@@ -503,14 +490,8 @@ def get_ticker_data():
         games = [g for g in state['current_games'] if g['is_shown']]
         conf = { "active_sports": state['active_sports'], "mode": state['mode'], "weather": state['weather_location'] }
     
-    return jsonify({ 
-        "status": "ok", 
-        "global_config": conf, 
-        "local_config": rec['settings'], 
-        "content": { "sports": games } 
-    })
+    return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": games } })
 
-# --- PAIRING ENDPOINTS ---
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
     cid = request.headers.get('X-Client-ID')
@@ -577,7 +558,6 @@ def update_settings(tid):
     save_config_file()
     return jsonify({"success": True})
 
-# --- GENERAL API ---
 @app.route('/api/state')
 def api_state():
     with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
