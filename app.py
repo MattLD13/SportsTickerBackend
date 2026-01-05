@@ -70,7 +70,7 @@ default_state = {
     # --- DEBUG MENU VISIBILITY ---
     # Change this to True or False. The server will ALWAYS use this value 
     # and ignore whatever is saved in the config file.
-    'show_debug_options': False 
+    'show_debug_options': True 
 }
 
 DEFAULT_TICKER_SETTINGS = {
