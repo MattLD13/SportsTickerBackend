@@ -17,8 +17,8 @@ class Tee(object):
     def __init__(self, name, mode):
         self.file = open(name, mode)
         self.stdout = sys.stdout
-        sys.stdout = self
-        sys.stderr = self
+        self.stdout = self
+        self.stderr = self
     def write(self, data):
         self.file.write(data)
         self.stdout.write(data)
@@ -50,7 +50,13 @@ HEADERS = {
 default_state = {
     'active_sports': { 
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
-        'soccer': True, 'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
+        'soccer': True,             # Premier League
+        'soccer_champ': False,      # EFL Championship
+        'soccer_l1': False,         # EFL League One
+        'soccer_l2': False,         # EFL League Two
+        'soccer_wc': False,         # FIFA World Cup
+        'hockey_olympics': False,   # Olympic Hockey
+        'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
         'weather': False, 'clock': False 
     },
     'mode': 'all', 
@@ -66,10 +72,6 @@ default_state = {
     'scroll_seamless': True, 
     'scroll_speed': 5,
     'brightness': 100,
-    
-    # --- DEBUG MENU VISIBILITY ---
-    # Change this to True or False. The server will ALWAYS use this value 
-    # and ignore whatever is saved in the config file.
     'show_debug_options': True 
 }
 
@@ -90,9 +92,7 @@ if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
             for k, v in loaded.items():
-                # *** FORCE DEFAULT: Ignore 'show_debug_options' from file ***
                 if k == 'show_debug_options': continue 
-                
                 if k in state:
                     if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
                     else: state[k] = v
@@ -128,7 +128,6 @@ def save_config_file():
                 'utc_offset': state['utc_offset'],
                 'demo_mode': state.get('demo_mode', False),
                 'scroll_seamless': state.get('scroll_seamless', True),
-                # We save this, but the loading logic above ignores it on restart
                 'show_debug_options': state.get('show_debug_options', True)
             }
             tickers_snap = tickers.copy()
@@ -168,13 +167,15 @@ LOGO_OVERRIDES = {
 
 SPORT_DURATIONS = {
     'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
-    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
+    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 
+    'soccer': 115, 'soccer_champ': 115, 'soccer_l1': 115, 'soccer_l2': 115, 'soccer_wc': 120,
+    'hockey_olympics': 150
 }
 
 # === DEMO DATA GENERATOR ===
 def generate_demo_data():
     return [
-        # 1. NHL Shootout (Dots visualization)
+        # 1. NHL Shootout
         {
             'type': 'scoreboard', 'sport': 'nhl', 'id': 'demo_so', 'status': 'S/O', 'state': 'in', 'is_shown': True,
             'home_abbr': 'NYR', 'home_score': '3', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png', 'home_color': '#0038A8', 'home_alt_color': '#CE1126',
@@ -184,33 +185,30 @@ def generate_demo_data():
                 'shootout': { 'away': ['goal', 'miss', 'miss'], 'home': ['miss', 'goal', 'pending'] }
             }
         },
-        # 2. NFL Red Zone (Possession + Red Zone indicator + Down/Dist)
+        # 2. EFL Championship (Leeds vs Ipswich)
         {
-            'type': 'scoreboard', 'sport': 'nfl', 'id': 'demo_nfl', 'status': 'Q4 1:58', 'state': 'in', 'is_shown': True,
-            'home_abbr': 'KC', 'home_score': '24', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/kc.png', 'home_color': '#E31837', 'home_alt_color': '#FFB81C',
-            'away_abbr': 'BAL', 'away_score': '20', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/bal.png', 'away_color': '#241773', 'away_alt_color': '#000000',
-            'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 180,
-            'situation': { 'possession': 'BAL', 'isRedZone': True, 'downDist': '4th & Goal' }
+            'type': 'scoreboard', 'sport': 'soccer_champ', 'id': 'demo_efl', 'status': '88\'', 'state': 'in', 'is_shown': True,
+            'home_abbr': 'LEE', 'home_score': '2', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/357.png', 'home_color': '#FFCD00', 'home_alt_color': '#1D428A',
+            'away_abbr': 'IPS', 'away_score': '1', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/365.png', 'away_color': '#0054A6', 'away_alt_color': '#FFFFFF',
+            'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 115,
+            'situation': { 'possession': 'LEE' }
         },
-        # 3. MLB Bases Loaded (Specific Balls/Strikes/Outs + Bases)
+        # 3. FIFA World Cup (Argentina vs France)
         {
-            'type': 'scoreboard', 'sport': 'mlb', 'id': 'demo_mlb', 'status': 'Bot 6', 'state': 'in', 'is_shown': True,
-            'home_abbr': 'NYY', 'home_score': '4', 'home_logo': 'https://a.espncdn.com/i/teamlogos/mlb/500/nyy.png', 'home_color': '#003087', 'home_alt_color': '#E4002B',
-            'away_abbr': 'BOS', 'away_score': '5', 'away_logo': 'https://a.espncdn.com/i/teamlogos/mlb/500/bos.png', 'away_color': '#BD3039', 'away_alt_color': '#0C2340',
-            'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 180,
-            'situation': {
-                'balls': 2, 'strikes': 1, 'outs': 1,
-                'onFirst': True, 'onSecond': True, 'onThird': False,
-                'possession': 'NYY' # Batting team
-            }
+            'type': 'scoreboard', 'sport': 'soccer_wc', 'id': 'demo_wc', 'status': 'FINAL', 'state': 'post', 'is_shown': True,
+            'home_abbr': 'ARG', 'home_score': '3 (4)', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/202.png', 'home_color': '#75AADB', 'home_alt_color': '#FFFFFF',
+            'away_abbr': 'FRA', 'away_score': '3 (2)', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/478.png', 'away_color': '#002395', 'away_alt_color': '#ED2939',
+            'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 140,
+            'situation': { 'possession': '' },
+            'tourney_name': 'FIFA World Cup'
         },
-        # 4. NHL Power Play + Empty Net (Stacked indicators)
+        # 4. Olympic Hockey (Canada vs USA)
         {
-            'type': 'scoreboard', 'sport': 'nhl', 'id': 'demo_nhl_pp', 'status': 'P3 1:30', 'state': 'in', 'is_shown': True,
-            'home_abbr': 'EDM', 'home_score': '4', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/edm.png', 'home_color': '#FF4C00', 'home_alt_color': '#041E42',
-            'away_abbr': 'CGY', 'away_score': '5', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/cgy.png', 'away_color': '#C8102E', 'away_alt_color': '#F1BE48',
+            'type': 'scoreboard', 'sport': 'hockey_olympics', 'id': 'demo_oly', 'status': 'P3 12:00', 'state': 'in', 'is_shown': True,
+            'home_abbr': 'CAN', 'home_score': '2', 'home_logo': 'https://a.espncdn.com/i/teamlogos/countries/500/can.png', 'home_color': '#FF0000', 'home_alt_color': '#000000',
+            'away_abbr': 'USA', 'away_score': '1', 'away_logo': 'https://a.espncdn.com/i/teamlogos/countries/500/usa.png', 'away_color': '#002868', 'away_alt_color': '#BF0A30',
             'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
-            'situation': { 'possession': 'EDM', 'powerPlay': True, 'emptyNet': True }
+            'situation': { 'powerPlay': True, 'possession': 'USA' }
         }
     ]
 
@@ -250,10 +248,10 @@ class WeatherFetcher:
             r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto", timeout=5)
             d = r.json()
             c = d.get('current', {}); dl = d.get('daily', {})
-             
+              
             icon = self.get_icon(c.get('weather_code', 0), c.get('is_day', 1))
             high = int(dl['temperature_2m_max'][0]); low = int(dl['temperature_2m_min'][0]); uv = float(dl['uv_index_max'][0])
-             
+              
             w_obj = {
                 "type": "weather", "sport": "weather", "id": "weather_widget", "status": "Live",
                 "home_abbr": f"{int(c.get('temperature_2m', 0))}°", "away_abbr": self.location_name,
@@ -277,6 +275,13 @@ class SportsFetcher:
             'nhl': { 'path': 'hockey/nhl', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'nba': { 'path': 'basketball/nba', 'scoreboard_params': {}, 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'soccer_epl': { 'path': 'soccer/eng.1', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer', 'type': 'scoreboard' },
+            # --- NEW LEAGUES ---
+            'soccer_champ': { 'path': 'soccer/eng.2', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer_champ', 'type': 'scoreboard' },
+            'soccer_l1': { 'path': 'soccer/eng.3', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer_l1', 'type': 'scoreboard' },
+            'soccer_l2': { 'path': 'soccer/eng.4', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer_l2', 'type': 'scoreboard' },
+            'soccer_wc': { 'path': 'soccer/fifa.world', 'scoreboard_params': {}, 'team_params': {}, 'group': 'soccer_wc', 'type': 'scoreboard' },
+            'hockey_olympics': { 'path': 'hockey/olympics.mens.ice_hockey', 'scoreboard_params': {}, 'team_params': {}, 'group': 'hockey_olympics', 'type': 'scoreboard' },
+            
             'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
             'nascar': { 'path': 'racing/nascar', 'type': 'leaderboard' },
             'indycar': { 'path': 'racing/indycar', 'type': 'leaderboard' },
@@ -308,7 +313,7 @@ class SportsFetcher:
                 if '2OT' in status_detail: ot_count = 2
                 elif '3OT' in status_detail: ot_count = 3
                 ot_padding = ot_count * 20
-            elif sport == 'nhl':
+            elif sport == 'nhl' or sport == 'hockey_olympics':
                 ot_padding = 20
             elif sport == 'mlb' and period > 9:
                 ot_padding = (period - 9) * 20
@@ -317,9 +322,15 @@ class SportsFetcher:
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
+            # Fetch standard leagues
             for league_key in ['nfl', 'mlb', 'nhl', 'nba']:
                 self._fetch_simple_league(league_key, teams_catalog)
+            
+            # Fetch EFL and Soccer leagues explicitly to get correct logos per league
+            for league_key in ['soccer_epl', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc']:
+                self._fetch_simple_league(league_key, teams_catalog)
 
+            # Fetch College Football
             url = f"{self.base_url}football/college-football/teams"
             r = requests.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
             data = r.json()
@@ -360,7 +371,9 @@ class SportsFetcher:
                             alt = item['team'].get('alternateColor', '444444')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
                             logo = self.get_corrected_logo(league_key, abbr, logo)
-                            catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
+                            # Ensure we don't have duplicates in the list
+                            if not any(x['abbr'] == abbr for x in catalog[league_key]):
+                                catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
         except: pass
 
     def fetch_leaderboard_event(self, league_key, config, games_list, conf):
@@ -368,12 +381,12 @@ class SportsFetcher:
             url = f"{self.base_url}{config['path']}/scoreboard"
             r = requests.get(url, headers=HEADERS, timeout=5)
             data = r.json()
-             
+              
             for e in data.get('events', []):
                 name = e.get('name', e.get('shortName', 'Tournament'))
                 status_obj = e.get('status', {})
                 state = status_obj.get('type', {}).get('state', 'pre')
-                 
+                  
                 utc_str = e['date'].replace('Z', '')
                 try:
                     game_dt_utc = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
@@ -387,7 +400,7 @@ class SportsFetcher:
                 comps = e.get('competitions', [])
                 if not comps: continue
                 comp = comps[0]
-                 
+                  
                 leaders = []
                 raw_competitors = comp.get('competitors', [])
                 try:
@@ -398,13 +411,13 @@ class SportsFetcher:
                     athlete = c.get('athlete', {})
                     disp_name = athlete.get('displayName', c.get('team',{}).get('displayName','Unk'))
                     if ' ' in disp_name: disp_name = disp_name.split(' ')[-1]
-                      
+                       
                     rank = c.get('curatedRank', c.get('order', '-'))
                     score = c.get('score', '')
                     if not score:
                         lines = c.get('linescores', [])
                         if lines: score = lines[-1].get('value', '')
-                      
+                       
                     leaders.append({'rank': str(rank), 'name': disp_name, 'score': str(score)})
 
                 game_obj = {
@@ -452,19 +465,19 @@ class SportsFetcher:
         with data_lock: 
             is_nhl = state['active_sports'].get('nhl', False)
             utc_offset = state.get('utc_offset', -4)
-         
+          
         if not is_nhl: return
         processed_ids = set()
-         
+          
         try:
             r = requests.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
             if r.status_code != 200: return
-             
+              
             for d in r.json().get('gameWeek', []):
                 day_games = d.get('games', [])
                 is_target_date = (d.get('date') == target_date_str)
                 has_active_games = any(g.get('gameState') in ['LIVE', 'CRIT'] for g in day_games)
-                 
+                  
                 if is_target_date or has_active_games:
                     for g in day_games:
                         gid = g['id']
@@ -474,7 +487,7 @@ class SportsFetcher:
                         h_ab = g['homeTeam']['abbrev']; a_ab = g['awayTeam']['abbrev']
                         h_sc = str(g['homeTeam'].get('score', 0)); a_sc = str(g['awayTeam'].get('score', 0))
                         st = g.get('gameState', 'OFF')
-                         
+                          
                         h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
                         a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
                         
@@ -482,7 +495,7 @@ class SportsFetcher:
                         a_info = self.lookup_team_info_from_cache('nhl', a_ab)
 
                         map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
-                         
+                          
                         with data_lock:
                             mode = state['mode']; my_teams = state['my_teams']
                         is_shown = True
@@ -592,11 +605,11 @@ class SportsFetcher:
         for league_key, config in self.leagues.items():
             check_key = config.get('group', league_key)
             if not conf['active_sports'].get(check_key, False): continue
-             
+              
             if config.get('type') == 'leaderboard':
                 self.fetch_leaderboard_event(league_key, config, games, conf)
                 continue
-             
+              
             if league_key == 'nhl' and not conf['debug_mode']:
                 prev_count = len(games)
                 self._fetch_nhl_native(games, target_date_str)
@@ -606,7 +619,7 @@ class SportsFetcher:
                 curr_p = config.get('scoreboard_params', {}).copy(); curr_p.update(req_params)
                 r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
                 data = r.json()
-                 
+                  
                 for e in data.get('events', []):
                     utc_str = e['date'].replace('Z', '') 
                     utc_start_iso = e['date']
@@ -614,23 +627,32 @@ class SportsFetcher:
                     game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=utc_offset)))
                     game_date_str = game_dt_server.strftime("%Y-%m-%d")
                     st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
-                      
+                       
                     keep_date = (gst == 'in') or (game_date_str == target_date_str)
                     if league_key == 'mlb' and not keep_date: continue
                     if not keep_date: continue
 
                     comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
-                    h_ab = h['team']['abbreviation']; a_ab = a['team']['abbreviation']
-                      
+                    h_ab = h['team'].get('abbreviation'); a_ab = a['team'].get('abbreviation')
+                       
                     if league_key == 'ncf_fbs' and (h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS): continue
                     if league_key == 'ncf_fcs' and (h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS): continue
 
                     is_shown = True
                     if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
                     elif conf['mode'] == 'my_teams':
+                        # Check specific key, generic key, and just abbr
                         hk = f"{league_key}:{h_ab}"; ak = f"{league_key}:{a_ab}"
-                        if (hk not in conf['my_teams'] and h_ab not in conf['my_teams']) and \
-                           (ak not in conf['my_teams'] and a_ab not in conf['my_teams']): is_shown = False
+                        
+                        # Fallback for generic soccer checks
+                        if 'soccer' in league_key:
+                             hk_gen = f"soccer:{h_ab}"; ak_gen = f"soccer:{a_ab}"
+                             in_my = (hk in conf['my_teams'] or hk_gen in conf['my_teams'] or h_ab in conf['my_teams']) or \
+                                     (ak in conf['my_teams'] or ak_gen in conf['my_teams'] or a_ab in conf['my_teams'])
+                             if not in_my: is_shown = False
+                        else:
+                             if (hk not in conf['my_teams'] and h_ab not in conf['my_teams']) and \
+                                (ak not in conf['my_teams'] and a_ab not in conf['my_teams']): is_shown = False
 
                     h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
                     a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
@@ -678,7 +700,7 @@ class SportsFetcher:
                     elif is_halftime or gst in ['post', 'final']: curr_poss = ''; self.possession_cache[e['id']] = '' 
                     else:
                          if not curr_poss: curr_poss = self.possession_cache.get(e['id'], '')
-                      
+                       
                     down_text = sit.get('downDistanceText', '')
                     if is_halftime: down_text = ''
 
@@ -702,7 +724,7 @@ class SportsFetcher:
                     }
                     if league_key == 'mlb':
                         game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
-                      
+                       
                     games.append(game_obj)
             except: pass
          
