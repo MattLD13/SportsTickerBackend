@@ -103,6 +103,7 @@ if os.path.exists(TICKER_REGISTRY_FILE):
     try:
         with open(TICKER_REGISTRY_FILE, 'r') as f:
             tickers = json.load(f)
+            print(f"Loaded {len(tickers)} paired tickers.")
     except Exception as e:
         print(f"Error loading tickers: {e}")
 
@@ -144,7 +145,7 @@ def generate_pairing_code():
             return code
 
 # ================= TEAMS & LOGOS =================
-# Manual lists only for NCAA due to volume
+# HARDCODED LISTS FOR COLLEGE FOOTBALL (Reverted as requested)
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 
@@ -236,7 +237,6 @@ class SportsFetcher:
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.possession_cache = {}
         
-        # --- DYNAMIC LEAGUE CONFIG ---
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'team_params': {'groups': '80', 'limit': 1000}, 'type': 'scoreboard' },
@@ -245,13 +245,16 @@ class SportsFetcher:
             'nhl': { 'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'nba': { 'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             
-            # EXPLICIT SOCCER LEAGUES FOR CORRECT TEAM FETCHING
-            'soccer_epl':   { 'path': 'soccer/eng.1', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'soccer_champ': { 'path': 'soccer/eng.2', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'soccer_l1':    { 'path': 'soccer/eng.3', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'soccer_l2':    { 'path': 'soccer/eng.4', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
+            # --- SOCCER LEAGUES ---
+            'soccer_epl':   { 'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
+            'soccer_champ': { 'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
+            'soccer_l1':    { 'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
+            'soccer_l2':    { 'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             'soccer_wc':    { 'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'hockey_olympics': { 'path': 'hockey/olympics.mens.ice_hockey', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
+            
+            # --- OLYMPIC HOCKEY ---
+            # Corrected endpoint for Olympic Hockey
+            'hockey_olympics': { 'path': 'hockey/mens-olympic-hockey', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             
             'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
             'nascar': { 'path': 'racing/nascar', 'type': 'leaderboard' },
@@ -264,7 +267,7 @@ class SportsFetcher:
         return LOGO_OVERRIDES.get(f"{league_key.upper()}:{abbr}", default_logo)
 
     def fetch_all_teams(self):
-        """Fetches teams dynamically from ESPN for all active leagues to support relegation/promotion."""
+        """Fetches teams for all leagues (Dynamic for Pros, Static Filter for College)."""
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
             print("Starting Team Fetch...")
@@ -275,7 +278,6 @@ class SportsFetcher:
                     if 'college-football' in config['path']: continue
                     
                     try:
-                        print(f"Fetching teams for {league_key}...")
                         url = f"{self.base_url}{config['path']}/teams"
                         r = requests.get(url, params=config['team_params'], headers=HEADERS, timeout=5)
                         data = r.json()
@@ -297,7 +299,7 @@ class SportsFetcher:
                                         })
                     except Exception as e: print(f"Error fetching {league_key}: {e}")
 
-            # 2. Fetch College Football
+            # 2. Fetch College Football (With Hardcoded Filtering)
             try:
                 print("Fetching College Football Teams...")
                 url = f"{self.base_url}football/college-football/teams"
@@ -307,10 +309,17 @@ class SportsFetcher:
                     for item in data['sports'][0]['leagues'][0].get('teams', []):
                         t = item['team']
                         abbr = t.get('abbreviation', 'UNK')
-                        league_key = 'ncf_fbs' if abbr in FBS_TEAMS else 'ncf_fcs'
                         
-                        if abbr in FBS_TEAMS or abbr in FCS_TEAMS:
-                            teams_catalog[league_key].append({
+                        # Only include if in our hardcoded list
+                        if abbr in FBS_TEAMS:
+                            teams_catalog['ncf_fbs'].append({
+                                'abbr': abbr,
+                                'logo': t.get('logos', [{}])[0].get('href', ''),
+                                'color': t.get('color', '000000'),
+                                'alt_color': t.get('alternateColor', '444444')
+                            })
+                        elif abbr in FCS_TEAMS:
+                            teams_catalog['ncf_fcs'].append({
                                 'abbr': abbr,
                                 'logo': t.get('logos', [{}])[0].get('href', ''),
                                 'color': t.get('color', '000000'),
@@ -320,15 +329,14 @@ class SportsFetcher:
 
             with data_lock:
                 state['all_teams_data'] = teams_catalog
-                print(f"Teams Loaded. NFL: {len(teams_catalog['nfl'])}, EPL: {len(teams_catalog['soccer_epl'])}")
+                print(f"Teams Loaded. NFL: {len(teams_catalog['nfl'])}, FBS: {len(teams_catalog['ncf_fbs'])}")
         except Exception as e: print(f"Global Team Fetch Error: {e}")
 
     def fetch_shootout_details(self, game_id, sport='nhl'):
-        """Fetches detailed shootout info."""
         try:
             path_part = "hockey/nhl" if sport == 'nhl' else "soccer/eng.1"
             if 'soccer' in sport: path_part = f"soccer/{sport.replace('soccer_','')}"
-            if sport == 'hockey_olympics': path_part = "hockey/olympics.mens.ice_hockey"
+            if sport == 'hockey_olympics': path_part = "hockey/mens-olympic-hockey"
 
             url = f"https://site.api.espn.com/apis/site/v2/sports/{path_part}/summary?event={game_id}"
             r = requests.get(url, headers=HEADERS, timeout=3)
@@ -345,7 +353,6 @@ class SportsFetcher:
                     if p.get("homeAway") == "home": results['home'].append(res)
                     else: results['away'].append(res)
             else:
-                # Soccer Parsing
                 shootout_plays = data.get("shootout", [])
                 if not shootout_plays: return None
                 for p in shootout_plays:
@@ -403,8 +410,8 @@ class SportsFetcher:
                     comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
                     h_ab = h['team'].get('abbreviation', 'UNK'); a_ab = a['team'].get('abbreviation', 'UNK')
                     
-                    if league_key == 'ncf_fbs' and (h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS): continue
-                    if league_key == 'ncf_fcs' and (h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS): continue
+                    if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
+                    if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
 
                     is_shown = True
                     if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
@@ -418,7 +425,6 @@ class SportsFetcher:
                     h_clr = h['team'].get('color', '000000'); h_alt = h['team'].get('alternateColor', 'ffffff')
                     a_clr = a['team'].get('color', '000000'); a_alt = a['team'].get('alternateColor', 'ffffff')
 
-                    # CLEAN SCORES (Remove penalty text)
                     h_score = h.get('score','0')
                     a_score = a.get('score','0')
                     if 'soccer' in league_key:
@@ -472,7 +478,7 @@ def background_updater():
 app = Flask(__name__)
 CORS(app) 
 
-# --- DATA ENDPOINT (FOR DEVICE POLLING) ---
+# --- DATA ENDPOINT ---
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
     ticker_id = request.args.get('id')
@@ -571,6 +577,7 @@ def update_settings(tid):
     save_config_file()
     return jsonify({"success": True})
 
+# --- GENERAL API ---
 @app.route('/api/state')
 def api_state():
     with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
