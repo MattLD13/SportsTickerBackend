@@ -191,13 +191,13 @@ def generate_demo_data():
             'home_abbr': 'LEE', 'home_score': '2', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/357.png', 'home_color': '#FFCD00', 'home_alt_color': '#1D428A',
             'away_abbr': 'IPS', 'away_score': '1', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/365.png', 'away_color': '#0054A6', 'away_alt_color': '#FFFFFF',
             'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 115,
-            'situation': { 'possession': 'LEE' }
+            'situation': { 'possession': '' }
         },
         # 3. FIFA World Cup (Argentina vs France)
         {
             'type': 'scoreboard', 'sport': 'soccer_wc', 'id': 'demo_wc', 'status': 'FINAL', 'state': 'post', 'is_shown': True,
-            'home_abbr': 'ARG', 'home_score': '3 (4)', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/202.png', 'home_color': '#75AADB', 'home_alt_color': '#FFFFFF',
-            'away_abbr': 'FRA', 'away_score': '3 (2)', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/478.png', 'away_color': '#002395', 'away_alt_color': '#ED2939',
+            'home_abbr': 'ARG', 'home_score': '4', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/202.png', 'home_color': '#75AADB', 'home_alt_color': '#FFFFFF',
+            'away_abbr': 'FRA', 'away_score': '2', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/478.png', 'away_color': '#002395', 'away_alt_color': '#ED2939',
             'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 140,
             'situation': { 'possession': '' },
             'tourney_name': 'FIFA World Cup'
