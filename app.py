@@ -65,7 +65,9 @@ default_state = {
     'utc_offset': -5,
     'scroll_seamless': True, 
     'scroll_speed': 5,
-    'brightness': 100
+    'brightness': 100,
+    # --- NEW: CONTROL APP VISIBILITY ---
+    'show_debug_options': True 
 }
 
 DEFAULT_TICKER_SETTINGS = {
@@ -119,7 +121,8 @@ def save_config_file():
                 'weather_location': state['weather_location'],
                 'utc_offset': state['utc_offset'],
                 'demo_mode': state.get('demo_mode', False),
-                'scroll_seamless': state.get('scroll_seamless', True)
+                'scroll_seamless': state.get('scroll_seamless', True),
+                'show_debug_options': state.get('show_debug_options', True)
             }
             tickers_snap = tickers.copy()
         
