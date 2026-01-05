@@ -66,7 +66,6 @@ default_state = {
     'scroll_seamless': True, 
     'scroll_speed': 5,
     'brightness': 100,
-    # --- NEW: CONTROL APP VISIBILITY ---
     'show_debug_options': True 
 }
 
@@ -164,25 +163,46 @@ SPORT_DURATIONS = {
     'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
 }
 
-# === DEMO DATA GENERATOR ===
+# === FEATURE-RICH DEMO DATA GENERATOR ===
 def generate_demo_data():
     return [
+        # 1. NHL Shootout (Dots visualization)
         {
             'type': 'scoreboard', 'sport': 'nhl', 'id': 'demo_so', 'status': 'S/O', 'state': 'in', 'is_shown': True,
             'home_abbr': 'NYR', 'home_score': '3', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png', 'home_color': '#0038A8', 'home_alt_color': '#CE1126',
             'away_abbr': 'NJD', 'away_score': '3', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nj.png', 'away_color': '#CE1126', 'away_alt_color': '#000000',
             'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
             'situation': {
-                'possession': '', 'isRedZone': False, 'downDist': '',
                 'shootout': { 'away': ['goal', 'miss', 'goal'], 'home': ['miss', 'goal', 'pending'] }
             }
         },
+        # 2. NFL Red Zone (Possession + Red Zone indicator + Down/Dist)
         {
-            'type': 'scoreboard', 'sport': 'soccer', 'id': 'demo_soc', 'status': "88'", 'state': 'in', 'is_shown': True,
-            'home_abbr': 'ARS', 'home_score': '2', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/359.png', 'home_color': '#EF0107', 'home_alt_color': '#ffffff',
-            'away_abbr': 'CHE', 'away_score': '1', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/363.png', 'away_color': '#034694', 'away_alt_color': '#ffffff',
-            'startTimeUTC': dt.now(timezone.utc).isoformat(),
-            'situation': {'possession': 'away_id', 'isRedZone': False, 'downDist': ''}, 'estimated_duration': 115
+            'type': 'scoreboard', 'sport': 'nfl', 'id': 'demo_nfl', 'status': 'Q4 1:58', 'state': 'in', 'is_shown': True,
+            'home_abbr': 'KC', 'home_score': '24', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/kc.png', 'home_color': '#E31837', 'home_alt_color': '#FFB81C',
+            'away_abbr': 'BAL', 'away_score': '20', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nfl/500/bal.png', 'away_color': '#241773', 'away_alt_color': '#000000',
+            'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 180,
+            'situation': { 'possession': 'BAL', 'isRedZone': True, 'downDist': '4th & Goal' }
+        },
+        # 3. MLB Bases Loaded (Specific Balls/Strikes/Outs + Bases)
+        {
+            'type': 'scoreboard', 'sport': 'mlb', 'id': 'demo_mlb', 'status': 'Bot 9', 'state': 'in', 'is_shown': True,
+            'home_abbr': 'NYY', 'home_score': '4', 'home_logo': 'https://a.espncdn.com/i/teamlogos/mlb/500/nyy.png', 'home_color': '#003087', 'home_alt_color': '#E4002B',
+            'away_abbr': 'BOS', 'away_score': '5', 'away_logo': 'https://a.espncdn.com/i/teamlogos/mlb/500/bos.png', 'away_color': '#BD3039', 'away_alt_color': '#0C2340',
+            'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 180,
+            'situation': {
+                'balls': 3, 'strikes': 2, 'outs': 2,
+                'onFirst': True, 'onSecond': True, 'onThird': True,
+                'possession': 'NYY' # Batting team
+            }
+        },
+        # 4. NHL Power Play + Empty Net (Stacked indicators)
+        {
+            'type': 'scoreboard', 'sport': 'nhl', 'id': 'demo_nhl_pp', 'status': 'P3 1:30', 'state': 'in', 'is_shown': True,
+            'home_abbr': 'EDM', 'home_score': '4', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/edm.png', 'home_color': '#FF4C00', 'home_alt_color': '#041E42',
+            'away_abbr': 'CGY', 'away_score': '5', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/cgy.png', 'away_color': '#C8102E', 'away_alt_color': '#F1BE48',
+            'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
+            'situation': { 'possession': 'EDM', 'powerPlay': True, 'emptyNet': True }
         }
     ]
 
@@ -535,6 +555,7 @@ class SportsFetcher:
         games = []
         with data_lock: 
             conf = state.copy()
+            # === USE RICH DEMO DATA IF ENABLED ===
             if conf.get('demo_mode', False):
                 state['current_games'] = generate_demo_data()
                 return
