@@ -98,11 +98,12 @@ if os.path.exists(CONFIG_FILE):
     except Exception as e:
         print(f"Error loading config: {e}")
 
-# --- LOAD TICKERS ---
+# --- LOAD TICKERS (PERSISTENCE) ---
 if os.path.exists(TICKER_REGISTRY_FILE):
     try:
         with open(TICKER_REGISTRY_FILE, 'r') as f:
             tickers = json.load(f)
+            print(f"Loaded {len(tickers)} paired tickers.")
     except Exception as e:
         print(f"Error loading tickers: {e}")
 
@@ -139,12 +140,13 @@ def save_config_file():
 def generate_pairing_code():
     while True:
         code = ''.join(random.choices(string.digits, k=6))
+        # Ensure code is unique among unpaired tickers
         active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
         if code not in active_codes:
             return code
 
 # ================= TEAMS & LOGOS =================
-# Manual lists only for NCAA due to volume
+# Manual lists only for NCAA due to volume; others are fetched dynamically
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 
@@ -319,7 +321,6 @@ class SportsFetcher:
                     abbr = t.get('abbreviation', 'UNK')
                     league_key = 'ncf_fbs' if abbr in FBS_TEAMS else 'ncf_fcs'
                     
-                    # Only add if it's in our valid list
                     if abbr in FBS_TEAMS or abbr in FCS_TEAMS:
                         teams_catalog[league_key].append({
                             'abbr': abbr,
@@ -335,8 +336,7 @@ class SportsFetcher:
     def fetch_shootout_details(self, game_id, sport='nhl'):
         """Fetches detailed shootout info. Supports NHL and generic Soccer."""
         try:
-            # Construct URL based on sport
-            path_part = "hockey/nhl" if sport == 'nhl' else "soccer/eng.1" # Default to EPL path for parsing structure
+            path_part = "hockey/nhl" if sport == 'nhl' else "soccer/eng.1"
             if 'soccer' in sport: path_part = f"soccer/{sport.replace('soccer_','')}"
             if sport == 'hockey_olympics': path_part = "hockey/olympics.mens.ice_hockey"
 
@@ -360,9 +360,7 @@ class SportsFetcher:
             else:
                 shootout_plays = data.get("shootout", [])
                 if not shootout_plays: return None
-                
                 for p in shootout_plays:
-                    # Logic for soccer summary
                     is_goal = p.get("result") == "scored" or "Goal" in p.get("text", "")
                     res = "goal" if is_goal else "miss"
                     if p.get("homeAway") == "home": results['home'].append(res)
@@ -397,12 +395,10 @@ class SportsFetcher:
         for league_key, config in self.leagues.items():
             if not conf['active_sports'].get(league_key, False): continue
             
-            # LEADERBOARDS (Racing)
             if config.get('type') == 'leaderboard':
                 self.fetch_leaderboard_event(league_key, config, games, conf)
                 continue
 
-            # SCOREBOARDS
             try:
                 curr_p = config.get('scoreboard_params', {}).copy()
                 curr_p['dates'] = target_date_str.replace('-', '')
@@ -410,65 +406,54 @@ class SportsFetcher:
                 data = r.json()
                 
                 for e in data.get('events', []):
-                    # Basic Parse
                     utc_str = e['date'].replace('Z', '')
                     st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
                     
-                    # Date Filter (keep 'in' games always)
                     game_date = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=utc_offset))).strftime("%Y-%m-%d")
                     if gst != 'in' and game_date != target_date_str: continue
 
-                    # Teams
                     comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
                     h_ab = h['team'].get('abbreviation', 'UNK'); a_ab = a['team'].get('abbreviation', 'UNK')
                     
-                    # Filter College
                     if league_key == 'ncf_fbs' and (h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS): continue
                     if league_key == 'ncf_fcs' and (h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS): continue
 
-                    # Visibility
                     is_shown = True
                     if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
                     elif conf['mode'] == 'my_teams':
-                        # "My Teams" Logic: check specific key or raw abbr
+                        # Flexible Key Checking
                         hk = f"{league_key}:{h_ab}"; ak = f"{league_key}:{a_ab}"
                         in_my = (hk in conf['my_teams'] or h_ab in conf['my_teams'] or ak in conf['my_teams'] or a_ab in conf['my_teams'])
                         if not in_my: is_shown = False
 
-                    # Logos & Colors
                     h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
                     a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
                     h_clr = h['team'].get('color', '000000'); h_alt = h['team'].get('alternateColor', 'ffffff')
                     a_clr = a['team'].get('color', '000000'); a_alt = a['team'].get('alternateColor', 'ffffff')
 
-                    # Score Cleaning (Remove Penalty Scores for Soccer)
+                    # CLEAN SCORES (Remove penalty score from main display)
                     h_score = h.get('score','0')
                     a_score = a.get('score','0')
                     if 'soccer' in league_key:
                         h_score = re.sub(r'\s*\(.*?\)', '', h_score)
                         a_score = re.sub(r'\s*\(.*?\)', '', a_score)
 
-                    # Status Text
                     s_disp = tp.get('shortDetail', 'TBD')
                     if gst == 'pre':
                         try: s_disp = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
                         except: pass
                     elif 'soccer' in league_key and (gst == 'in' or gst == 'half'):
-                        # Soccer time formatting (45', 90+3')
                         clk = st.get('displayClock', '0:00').replace("'", "")
                         s_disp = f"{clk}'"
                         if gst == 'half': s_disp = "Half"
 
-                    # Situation & Shootouts
                     sit = comp.get('situation', {})
                     shootout_data = None
                     
-                    # Detect Shootout
                     is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
                     if is_shootout:
                         shootout_data = self.fetch_shootout_details(e['id'], league_key)
                     
-                    # Possession (Soccer/Football)
                     poss = sit.get('possession', '')
                     if gst == 'pre' or gst == 'post' or 'soccer' in league_key: poss = ''
 
@@ -501,13 +486,21 @@ def background_updater():
 app = Flask(__name__)
 CORS(app) 
 
+# --- DATA ENDPOINT (FOR DEVICE POLLING) ---
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
     ticker_id = request.args.get('id')
     if not ticker_id: return jsonify({"error": "No ID"}), 400
     
     if ticker_id not in tickers:
-        tickers[ticker_id] = { "paired": False, "clients": [], "settings": DEFAULT_TICKER_SETTINGS.copy(), "pairing_code": generate_pairing_code(), "last_seen": time.time(), "name": "New Ticker" }
+        tickers[ticker_id] = { 
+            "paired": False, 
+            "clients": [], 
+            "settings": DEFAULT_TICKER_SETTINGS.copy(), 
+            "pairing_code": generate_pairing_code(), 
+            "last_seen": time.time(), 
+            "name": "New Ticker" 
+        }
         save_config_file()
     else: tickers[ticker_id]['last_seen'] = time.time()
 
@@ -515,25 +508,86 @@ def get_ticker_data():
     if not rec.get('clients'): return jsonify({"status": "pairing", "code": rec['pairing_code']})
 
     with data_lock:
+        # Filter games based on show settings
         games = [g for g in state['current_games'] if g['is_shown']]
         conf = { "active_sports": state['active_sports'], "mode": state['mode'], "weather": state['weather_location'] }
     
-    return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": games } })
+    return jsonify({ 
+        "status": "ok", 
+        "global_config": conf, 
+        "local_config": rec['settings'], 
+        "content": { "sports": games } 
+    })
 
+# --- PAIRING ENDPOINTS ---
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
     cid = request.headers.get('X-Client-ID')
     code = request.json.get('code')
-    if not cid or not code: return jsonify({"success": False}), 400
+    friendly_name = request.json.get('name', 'My Ticker')
+    
+    if not cid or not code: return jsonify({"success": False, "message": "Missing info"}), 400
     
     for uid, rec in tickers.items():
         if rec.get('pairing_code') == code:
             if cid not in rec['clients']: rec['clients'].append(cid)
             rec['paired'] = True
+            rec['name'] = friendly_name
             save_config_file()
             return jsonify({"success": True, "ticker_id": uid})
-    return jsonify({"success": False}), 404
+    return jsonify({"success": False, "message": "Invalid code"}), 404
 
+@app.route('/pair/id', methods=['POST'])
+def pair_ticker_by_id():
+    cid = request.headers.get('X-Client-ID')
+    tid = request.json.get('id')
+    friendly_name = request.json.get('name', 'My Ticker')
+    
+    if not cid or not tid: return jsonify({"success": False, "message": "Missing info"}), 400
+    
+    if tid in tickers:
+        if cid not in tickers[tid]['clients']: tickers[tid]['clients'].append(cid)
+        tickers[tid]['paired'] = True
+        tickers[tid]['name'] = friendly_name
+        save_config_file()
+        return jsonify({"success": True, "ticker_id": tid})
+    return jsonify({"success": False, "message": "Ticker ID not found"}), 404
+
+@app.route('/ticker/<tid>/unpair', methods=['POST'])
+def unpair(tid):
+    cid = request.headers.get('X-Client-ID')
+    if tid in tickers and cid in tickers[tid]['clients']:
+        tickers[tid]['clients'].remove(cid)
+        # If no clients left, reset
+        if not tickers[tid]['clients']:
+            tickers[tid]['paired'] = False
+            tickers[tid]['pairing_code'] = generate_pairing_code()
+        save_config_file()
+    return jsonify({"success": True})
+
+@app.route('/tickers', methods=['GET'])
+def list_tickers():
+    cid = request.headers.get('X-Client-ID')
+    if not cid: return jsonify([])
+    res = []
+    for uid, rec in tickers.items():
+        if cid in rec.get('clients', []):
+            res.append({ 
+                "id": uid, 
+                "name": rec.get('name', 'Ticker'), 
+                "settings": rec['settings'], 
+                "last_seen": rec.get('last_seen', 0) 
+            })
+    return jsonify(res)
+
+@app.route('/ticker/<tid>', methods=['POST'])
+def update_settings(tid):
+    if tid not in tickers: return jsonify({"error":"404"}), 404
+    tickers[tid]['settings'].update(request.json)
+    save_config_file()
+    return jsonify({"success": True})
+
+# --- GENERAL API ---
 @app.route('/api/state')
 def api_state():
     with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
@@ -547,6 +601,23 @@ def api_config():
     with data_lock: state.update(request.json)
     save_config_file()
     return jsonify({"status": "ok"})
+
+@app.route('/api/hardware', methods=['POST'])
+def api_hardware():
+    d = request.json
+    if d.get('action') == 'reboot':
+        with data_lock: state['reboot_requested'] = True
+        threading.Timer(10, lambda: state.update({'reboot_requested': False})).start()
+    return jsonify({"status": "ok"})
+
+@app.route('/api/debug', methods=['POST'])
+def api_debug():
+    with data_lock: state.update(request.json)
+    return jsonify({"status": "ok"})
+
+@app.route('/')
+def root():
+    return "Ticker Server Running"
 
 if __name__ == "__main__":
     threading.Thread(target=background_updater, daemon=True).start()
