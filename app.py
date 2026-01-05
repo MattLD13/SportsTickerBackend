@@ -177,8 +177,8 @@ def generate_demo_data():
         # 2. FIFA World Cup Shootout (5 dots)
         {
             'type': 'scoreboard', 'sport': 'soccer_wc', 'id': 'demo_wc_pens', 'status': 'Pens', 'state': 'in', 'is_shown': True,
-            'home_abbr': 'ARG', 'home_score': '3 (4)', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/202.png', 'home_color': '#75AADB', 'home_alt_color': '#FFFFFF',
-            'away_abbr': 'FRA', 'away_score': '3 (2)', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/478.png', 'away_color': '#002395', 'away_alt_color': '#ED2939',
+            'home_abbr': 'ARG', 'home_score': '3', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/202.png', 'home_color': '#75AADB', 'home_alt_color': '#FFFFFF',
+            'away_abbr': 'FRA', 'away_score': '3', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/478.png', 'away_color': '#002395', 'away_alt_color': '#ED2939',
             'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 140,
             'situation': { 
                 'shootout': { 'away': ['goal', 'miss', 'goal', 'miss'], 'home': ['goal', 'goal', 'goal', 'goal'] } 
