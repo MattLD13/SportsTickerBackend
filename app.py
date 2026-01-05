@@ -66,6 +66,7 @@ default_state = {
     'scroll_seamless': True, 
     'scroll_speed': 5,
     'brightness': 100,
+    # Controls visibility of debug menu in iOS App
     'show_debug_options': True 
 }
 
@@ -163,7 +164,7 @@ SPORT_DURATIONS = {
     'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
 }
 
-# === FEATURE-RICH DEMO DATA GENERATOR ===
+# === DEMO DATA GENERATOR ===
 def generate_demo_data():
     return [
         # 1. NHL Shootout (Dots visualization)
@@ -786,13 +787,13 @@ def get_ticker_data():
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
     client_id = request.headers.get('X-Client-ID')
-    if not client_id: return jsonify({"error": "Client ID missing"}), 400
+    if not client_id: return jsonify({"success": False, "message": "Client ID missing"}), 400
     
     data = request.json
     code = data.get('code')
     friendly_name = data.get('name', 'My Ticker')
 
-    if not code: return jsonify({"error": "Missing code"}), 400
+    if not code: return jsonify({"success": False, "message": "Missing code"}), 400
 
     target_uuid = None
     for uuid_key, record in tickers.items():
@@ -813,18 +814,18 @@ def pair_ticker():
         save_config_file()
         return jsonify({"success": True, "ticker_id": target_uuid, "message": "Paired successfully"})
     else:
-        return jsonify({"error": "Invalid or expired code"}), 404
+        return jsonify({"success": False, "message": "Invalid or expired code"}), 404
 
 @app.route('/pair/id', methods=['POST'])
 def pair_ticker_by_id():
     client_id = request.headers.get('X-Client-ID')
-    if not client_id: return jsonify({"error": "Client ID missing"}), 400
+    if not client_id: return jsonify({"success": False, "message": "Client ID missing"}), 400
 
     data = request.json
     target_uuid = data.get('id')
     friendly_name = data.get('name', 'My Ticker')
     
-    if not target_uuid: return jsonify({"error": "Missing ID"}), 400
+    if not target_uuid: return jsonify({"success": False, "message": "Missing ID"}), 400
     
     if target_uuid in tickers:
         clients = tickers[target_uuid].get('clients', [])
@@ -838,7 +839,7 @@ def pair_ticker_by_id():
         save_config_file()
         return jsonify({"success": True, "ticker_id": target_uuid, "message": "Paired successfully"})
     else:
-        return jsonify({"error": "Ticker ID not found. Ensure device is powered on."}), 404
+        return jsonify({"success": False, "message": "Ticker ID not found. Ensure device is powered on."}), 404
 
 @app.route('/ticker/<ticker_id>/unpair', methods=['POST'])
 def unpair_ticker(ticker_id):
