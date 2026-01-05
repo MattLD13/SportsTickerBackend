@@ -174,7 +174,7 @@ def generate_demo_data():
             'away_abbr': 'NJD', 'away_score': '3', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nj.png', 'away_color': '#CE1126', 'away_alt_color': '#000000',
             'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
             'situation': {
-                'shootout': { 'away': ['goal', 'miss', 'goal'], 'home': ['miss', 'goal', 'pending'] }
+                'shootout': { 'away': ['goal', 'miss', 'miss'], 'home': ['miss', 'goal', 'pending'] }
             }
         },
         # 2. NFL Red Zone (Possession + Red Zone indicator + Down/Dist)
@@ -187,13 +187,13 @@ def generate_demo_data():
         },
         # 3. MLB Bases Loaded (Specific Balls/Strikes/Outs + Bases)
         {
-            'type': 'scoreboard', 'sport': 'mlb', 'id': 'demo_mlb', 'status': 'Bot 9', 'state': 'in', 'is_shown': True,
+            'type': 'scoreboard', 'sport': 'mlb', 'id': 'demo_mlb', 'status': 'Bot 6', 'state': 'in', 'is_shown': True,
             'home_abbr': 'NYY', 'home_score': '4', 'home_logo': 'https://a.espncdn.com/i/teamlogos/mlb/500/nyy.png', 'home_color': '#003087', 'home_alt_color': '#E4002B',
             'away_abbr': 'BOS', 'away_score': '5', 'away_logo': 'https://a.espncdn.com/i/teamlogos/mlb/500/bos.png', 'away_color': '#BD3039', 'away_alt_color': '#0C2340',
             'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 180,
             'situation': {
-                'balls': 3, 'strikes': 2, 'outs': 2,
-                'onFirst': True, 'onSecond': True, 'onThird': True,
+                'balls': 2, 'strikes': 1, 'outs': 1,
+                'onFirst': True, 'onSecond': True, 'onThird': False,
                 'possession': 'NYY' # Batting team
             }
         },
