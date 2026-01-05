@@ -93,6 +93,11 @@ if os.path.exists(CONFIG_FILE):
     except Exception as e:
         print(f"Error loading config: {e}")
 
+# *** FORCE OVERRIDE ***
+# This ensures that even if 'True' is saved in the config file, 
+# the code takes precedence and hides the menu on restart.
+state['show_debug_options'] = False
+
 # --- LOAD TICKERS ---
 if os.path.exists(TICKER_REGISTRY_FILE):
     try:
@@ -122,7 +127,7 @@ def save_config_file():
                 'utc_offset': state['utc_offset'],
                 'demo_mode': state.get('demo_mode', False),
                 'scroll_seamless': state.get('scroll_seamless', True),
-                'show_debug_options': state.get('show_debug_options', True)
+                'show_debug_options': state.get('show_debug_options', False)
             }
             tickers_snap = tickers.copy()
         
