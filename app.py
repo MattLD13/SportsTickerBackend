@@ -67,7 +67,7 @@ default_state = {
     'scroll_speed': 5,
     'brightness': 100,
     # Controls visibility of debug menu in iOS App
-    'show_debug_options': True 
+    'show_debug_options': False 
 }
 
 DEFAULT_TICKER_SETTINGS = {
