@@ -4,6 +4,8 @@ import io
 import requests
 import traceback
 import sys
+import os
+import uuid
 import subprocess
 import socket
 import json
@@ -15,12 +17,14 @@ from rgbmatrix import RGBMatrix, RGBMatrixOptions
 from flask import Flask, request, render_template_string
 
 # ================= CONFIGURATION =================
-BACKEND_URL = "https://ticker.mattdicks.org/api/ticker"
+BACKEND_URL = "https://ticker.mattdicks.org" 
 PANEL_W = 128
 PANEL_H = 32
 SETUP_SSID = "SportsTicker_Setup"
 PAGE_HOLD_TIME = 5.0
 REFRESH_RATE = 3
+ID_FILE_PATH = "/boot/ticker_id.txt"
+ID_FILE_FALLBACK = "ticker_id.txt"
 
 # --- TINY PIXEL FONT (4x5) - USED FOR MOTORSPORTS ---
 TINY_FONT_MAP = {
@@ -90,6 +94,33 @@ def draw_hybrid_text(draw, x, y, text, color):
         x_cursor += 5 
     return x_cursor - x
 
+def get_device_id():
+    """Gets or generates the UUID for this specific ticker."""
+    path_to_use = ID_FILE_PATH
+    if not os.path.isfile(ID_FILE_PATH):
+        try:
+            # Try creating file in /boot
+            test_uuid = str(uuid.uuid4())
+            with open(ID_FILE_PATH, 'w') as f:
+                f.write(test_uuid)
+        except PermissionError:
+            print(f"Warning: Cannot write to {ID_FILE_PATH}. Using local fallback.")
+            path_to_use = ID_FILE_FALLBACK
+
+    if os.path.exists(path_to_use):
+        with open(path_to_use, 'r') as f:
+            return f.read().strip()
+    else:
+        new_id = str(uuid.uuid4())
+        try:
+            with open(path_to_use, 'w') as f:
+                f.write(new_id)
+            print(f"Generated new ID: {new_id}")
+            return new_id
+        except Exception as e:
+            print(f"CRITICAL: Could not save ID. {e}")
+            return new_id
+
 class WifiPortal:
     def __init__(self, matrix, font):
         self.matrix = matrix
@@ -138,13 +169,16 @@ class WifiPortal:
 class TickerStreamer:
     def __init__(self):
         print("Starting Ticker System...")
+        self.device_id = get_device_id()
+        print(f"Device ID: {self.device_id}")
+
         options = RGBMatrixOptions()
         options.rows = 32
         options.cols = 64
         options.chain_length = 2
         options.parallel = 1
         options.hardware_mapping = 'regular'
-        options.gpio_slowdown = 4                      
+        options.gpio_slowdown = 4                        
         options.disable_hardware_pulsing = True
         options.drop_privileges = False 
         self.matrix = RGBMatrix(options=options)
@@ -180,10 +214,14 @@ class TickerStreamer:
         self.logo_cache = {}
         self.anim_tick = 0
         
+        # === PAIRING STATE ===
+        self.is_pairing = False
+        self.pairing_code = ""
+
         # === OPTIMIZATION VARS ===
         self.config_updated = False
-        self.bg_strip = None # The strip being built in background
-        self.active_strip = None # The strip currently being displayed
+        self.bg_strip = None
+        self.active_strip = None
         self.bg_strip_ready = False
         
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
@@ -209,6 +247,16 @@ class TickerStreamer:
         d = ImageDraw.Draw(img)
         d.rectangle((0,0, PANEL_W-1, PANEL_H-1), outline=(255,0,0))
         d.text((10, 10), "TEST", font=self.font, fill=(0,0,255))
+        return img
+    
+    def draw_pairing_screen(self):
+        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
+        d = ImageDraw.Draw(img)
+        d.text((2, 2), "PAIR CODE:", font=self.font, fill=(255, 255, 0)) 
+        code = self.pairing_code if self.pairing_code else "..."
+        w = d.textlength(code, font=self.big_font)
+        x = (PANEL_W - w) // 2
+        d.text((x, 12), code, font=self.big_font, fill=(255, 255, 255))
         return img
 
     def download_and_process_logo(self, url, size=(24,24)):
@@ -275,6 +323,57 @@ class TickerStreamer:
                 if pattern[y][x] == 1: draw.point((sx+x, sy+y), fill=WOOD)
                 elif pattern[y][x] == 2: draw.point((sx+x, sy+y), fill=TAPE)
 
+    def draw_shootout_indicators(self, draw, results, start_x, y):
+        """Draws shootout circles (4x4 box)"""
+        display_results = results[:]
+        while len(display_results) < 3: display_results.append('pending')
+        if len(display_results) > 3: display_results = display_results[-3:]
+
+        x_off = start_x
+        for res in display_results:
+            if res == 'pending':
+                draw.rectangle((x_off, y, x_off+3, y+3), outline=(80,80,80)) 
+            elif res == 'miss':
+                draw.line((x_off, y, x_off+3, y+3), fill=(255,0,0))
+                draw.line((x_off, y+3, x_off+3, y), fill=(255,0,0))
+            elif res == 'goal':
+                draw.rectangle((x_off, y, x_off+3, y+3), fill=(0,255,0))
+            x_off += 6 
+
+    # --- NEW: BASEBALL HUD (Stacked 2,3,2) WITH LABELS ---
+    def draw_baseball_hud(self, draw, x, y, b, s, o):
+        # Draw Labels (Tiny 3x3 pixel text: S, B, O)
+        # S (Strikes) at y
+        draw.point((x-4, y), fill=(150,150,150))
+        draw.point((x-3, y), fill=(150,150,150))
+        draw.point((x-4, y+1), fill=(150,150,150))
+        draw.point((x-3, y+2), fill=(150,150,150))
+        draw.point((x-4, y+2), fill=(150,150,150)) # Tiny 'S' shape
+        
+        # B (Balls) at y+3
+        draw.line((x-4, y+3, x-4, y+5), fill=(150,150,150))
+        draw.point((x-3, y+3), fill=(150,150,150))
+        draw.point((x-3, y+4), fill=(150,150,150))
+        draw.point((x-3, y+5), fill=(150,150,150)) # Tiny 'B'
+        
+        # O (Outs) at y+6
+        draw.rectangle((x-4, y+6, x-3, y+7), outline=(150,150,150)) # Tiny 'O'
+
+        # STRIKES (Top, 2 dots) - RED
+        for i in range(2):
+            color = (255, 0, 0) if i < s else (40, 40, 40)
+            draw.rectangle((x + (i*4), y, x + (i*4)+1, y+1), fill=color)
+        
+        # BALLS (Middle, 3 dots) - GREEN
+        for i in range(3):
+            color = (0, 255, 0) if i < b else (40, 40, 40)
+            draw.rectangle((x + (i*4), y+3, x + (i*4)+1, y+4), fill=color)
+            
+        # OUTS (Bottom, 2 dots) - ORANGE/RED
+        for i in range(2):
+            color = (255, 100, 0) if i < o else (40, 40, 40)
+            draw.rectangle((x + (i*4), y+6, x + (i*4)+1, y+7), fill=color)
+
     def shorten_status(self, status):
         if not status: return ""
         s = str(status).upper()
@@ -338,18 +437,14 @@ class TickerStreamer:
         return img
 
     def build_seamless_strip(self, playlist):
-        """Constructs the long film strip image in memory."""
         if not playlist: return None
         total_w = len(playlist) * 64
         buffer = (PANEL_W // 64) + 1 
         film_w = total_w + (buffer * 64)
         strip = Image.new("RGBA", (film_w, PANEL_H), (0,0,0,255))
-        
-        # Draw all games
         for i, g in enumerate(playlist):
             g_img = self.draw_single_game(g)
             strip.paste(g_img, (i * 64, 0), g_img)
-        # Draw buffer (wrap around)
         for i in range(buffer):
             g_img = self.draw_single_game(playlist[i % len(playlist)])
             strip.paste(g_img, (total_w + (i * 64), 0), g_img)
@@ -359,17 +454,30 @@ class TickerStreamer:
         last_data_hash = ""
         while self.running:
             try:
-                r = requests.get(BACKEND_URL, timeout=5)
-                content = r.text
-                if content == last_data_hash:
+                url = f"{BACKEND_URL}/data?id={self.device_id}"
+                r = requests.get(url, timeout=5)
+                data = r.json()
+                status = data.get('status')
+                
+                if status == 'pairing':
+                    self.is_pairing = True
+                    self.pairing_code = data.get('code', 'ERROR')
+                    self.games = [] 
+                    time.sleep(2) 
+                    continue
+                else:
+                    self.is_pairing = False
+
+                content_block = data.get('content', {})
+                local_config = data.get('local_config', {})
+                content_str = str(content_block) + str(local_config)
+                if content_str == last_data_hash:
                     time.sleep(REFRESH_RATE)
                     continue
                 
-                last_data_hash = content
-                data = json.loads(content)
-                new_games = data.get('games', [])
+                last_data_hash = content_str
+                new_games = content_block.get('sports', [])
 
-                # 1. Download Logos
                 logos_to_fetch = []
                 for g in new_games:
                     if g.get('home_logo'): logos_to_fetch.append((g['home_logo'], (24,24)))
@@ -381,17 +489,12 @@ class TickerStreamer:
                     futures = [self.executor.submit(self.download_and_process_logo, url, size) for url, size in logos_to_fetch]
                     concurrent.futures.wait(futures)
 
-                # 2. Update Metadata
-                if 'meta' in data:
-                    self.seamless_mode = data['meta'].get('scroll_seamless', False)
-                    self.brightness = float(data['meta'].get('brightness', 0.5))
-                    self.inverted = bool(data['meta'].get('inverted', False))
-                    self.test_pattern = bool(data['meta'].get('test_pattern', False))
-                    speed_setting = int(data['meta'].get('scroll_speed', 5))
-                    self.scroll_sleep = max(0.005, 0.11 - (speed_setting * 0.01))
-                    if data['meta'].get('reboot_requested', False): subprocess.run(['sudo', 'reboot'])
+                self.seamless_mode = bool(local_config.get('scroll_seamless', True))
+                self.brightness = float(local_config.get('brightness', 100)) / 100.0
+                self.inverted = bool(local_config.get('inverted', False))
+                speed_val = float(local_config.get('scroll_speed', 0.03))
+                self.scroll_sleep = max(0.005, speed_val)
 
-                # 3. BACKGROUND RENDER: Build the strip here, off the main thread!
                 if self.seamless_mode and new_games and not (len(new_games) == 1 and new_games[0].get('sport') in ['weather', 'clock']):
                     new_strip = self.build_seamless_strip(new_games)
                     self.bg_strip = new_strip
@@ -399,11 +502,10 @@ class TickerStreamer:
                 else:
                     self.bg_strip_ready = False
 
-                # 4. Finalize
                 self.games = new_games
                 self.config_updated = True
 
-            except: pass
+            except Exception as e: pass
             time.sleep(REFRESH_RATE)
 
     def draw_leaderboard_card(self, game):
@@ -462,6 +564,8 @@ class TickerStreamer:
             is_active = (game.get('state') == 'in')
             sit = game.get('situation', {}) or {} 
             poss = sit.get('possession')
+            shootout = sit.get('shootout')
+            
             a_score = str(game.get('away_score', ''))
             h_score = str(game.get('home_score', ''))
             has_indicator = is_active and (poss or sit.get('powerPlay') or sit.get('emptyNet'))
@@ -487,34 +591,49 @@ class TickerStreamer:
             status = self.shorten_status(game.get('status', ''))
             st_width = 0
             for ch in status: st_width += 2 if ch == '~' else 5
-            
-            # === FIXED CENTERING LOGIC ===
-            # Subtract 1 from width to ignore trailing space for visual centering
             visual_width = st_width - 1 if st_width > 0 else 0
             st_x = (64 - visual_width) // 2
-            
             draw_hybrid_text(d, st_x, 25, status, (180, 180, 180))
 
-            if is_active:
+            # === SHOOTOUT INDICATORS ===
+            if is_hockey and shootout:
+                away_so = shootout.get('away', []) if isinstance(shootout, dict) else []
+                home_so = shootout.get('home', []) if isinstance(shootout, dict) else []
+                self.draw_shootout_indicators(d, away_so, 2, 26)
+                self.draw_shootout_indicators(d, home_so, 46, 26)
+
+            # === STANDARD INDICATORS ===
+            elif is_active:
                 icon_y = logo_y + logo_size[1] + 3; tx = -1; side = None
                 if (is_football or is_baseball or is_soccer) and poss: side = poss
                 elif is_hockey and (sit.get('powerPlay') or sit.get('emptyNet')) and poss: side = poss
+                
                 away_id = str(game.get('away_id', '')); home_id = str(game.get('home_id', ''))
                 away_abbr = str(game.get('away_abbr', '')); home_abbr = str(game.get('home_abbr', ''))
                 side_str = str(side)
-                if side_str and (side_str == away_abbr or side_str == away_id): tx = l1_pos[0] + (logo_size[0]//2) - 2 
-                elif side_str and (side_str == home_abbr or side_str == home_id): tx = l2_pos[0] + (logo_size[0]//2) + 2 
+                
+                # Determine Side (Batting Team / Possession Team)
+                poss_side = "none"
+                if side_str and (side_str == away_abbr or side_str == away_id): 
+                    tx = l1_pos[0] + (logo_size[0]//2) - 2; poss_side = "away"
+                elif side_str and (side_str == home_abbr or side_str == home_id): 
+                    tx = l2_pos[0] + (logo_size[0]//2) + 2; poss_side = "home"
+                
                 if tx != -1:
                     if is_football:
                         d.ellipse([tx-3, icon_y, tx+3, icon_y+4], fill=(170,85,0))
                         d.line([(tx, icon_y+1), (tx, icon_y+3)], fill='white', width=1)
                     elif is_baseball:
-                        d.ellipse((tx-2, icon_y, tx+2, icon_y+4), fill='white')
-                        d.point((tx-1, icon_y+1), fill='red'); d.point((tx+1, icon_y+3), fill='red')
+                        # RESTORED POSSESSION BASEBALL (Larger 7x7)
+                        d.ellipse((tx-3, icon_y, tx+3, icon_y+6), fill='white')
+                        d.point((tx-1, icon_y+2), fill='red')
+                        d.point((tx, icon_y+3), fill='red')
+                        d.point((tx+1, icon_y+4), fill='red')
                     elif is_hockey: self.draw_hockey_stick(d, tx+2, icon_y+5, 3) 
                     elif is_soccer:
                         d.ellipse((tx-2, icon_y, tx+2, icon_y+4), fill='white')
                         d.point((tx, icon_y+2), fill='black')
+                        
                 if is_hockey:
                     if sit.get('emptyNet'): 
                         w = d.textlength("EN", font=self.micro)
@@ -523,11 +642,29 @@ class TickerStreamer:
                         w = d.textlength("PP", font=self.micro)
                         d.text(((64-w)/2, -1), "PP", font=self.micro, fill=(255,255,0))
                 elif is_baseball:
-                    bases = [(32,2), (29,5), (35,5)] 
+                    # DRAW BASES (Solid 4x4 Squares)
+                    # Coordinates for centered diamond: Top(31,2), Left(27,6), Right(35,6)
+                    
+                    bases = [(31,2), (27,6), (35,6)] # 2nd, 3rd, 1st
                     active = [sit.get('onSecond'), sit.get('onThird'), sit.get('onFirst')]
+                    
                     for i, p in enumerate(bases): 
-                        color = (255,255,0) if active[i] else (60,60,60)
-                        d.rectangle((p[0], p[1], p[0]+2, p[1]+2), fill=color)
+                        color = (255,255,150) if active[i] else (45,45,45)
+                        d.rectangle((p[0], p[1], p[0]+3, p[1]+3), fill=color)
+                    
+                    # === BASEBALL HUD (S-B-O) ===
+                    # Position: Opposite side of batting team (possession)
+                    b_count = int(sit.get('balls', 0))
+                    s_count = int(sit.get('strikes', 0))
+                    o_count = int(sit.get('outs', 0))
+                    
+                    if poss_side == "away": # Batting Left -> HUD Right
+                        self.draw_baseball_hud(d, 54, 22, b_count, s_count, o_count)
+                    elif poss_side == "home": # Batting Right -> HUD Left
+                        self.draw_baseball_hud(d, 2, 22, b_count, s_count, o_count)
+                    else: # Default Right if unknown
+                        self.draw_baseball_hud(d, 54, 22, b_count, s_count, o_count)
+
                 elif is_football:
                     dd = sit.get('downDist', '')
                     if dd: 
@@ -543,6 +680,11 @@ class TickerStreamer:
         strip_offset = 0.0
         
         while self.running:
+            if self.is_pairing:
+                self.update_display(self.draw_pairing_screen())
+                time.sleep(0.5)
+                continue
+
             if self.brightness <= 0.01:
                 self.matrix.Clear()
                 time.sleep(1.0); continue
@@ -569,20 +711,16 @@ class TickerStreamer:
             if is_weather: self.update_display(self.draw_weather_scene_simple(playlist[0])); time.sleep(0.1); continue
 
             if self.seamless_mode:
-                # === NEW: INSTANT STRIP SWAPPING ===
-                # If backend prepared a new strip, swap it in instantly
                 if self.bg_strip_ready and self.bg_strip:
                     self.active_strip = self.bg_strip
-                    self.bg_strip_ready = False # Consumed
+                    self.bg_strip_ready = False 
                 
-                # Fallback: if active_strip is missing (first run), build it here once
                 if not self.active_strip:
                     self.active_strip = self.build_seamless_strip(playlist)
                 
                 if self.active_strip:
                     total_w = self.active_strip.width - ( (PANEL_W // 64) + 1 ) * 64
                     
-                    # Safety check to prevent div by zero
                     if total_w <= 0: total_w = 1 
                     
                     x = int(strip_offset)
@@ -594,7 +732,7 @@ class TickerStreamer:
                 else:
                     time.sleep(0.1)
                     
-            else: # PAGED MODE (Simpler, redraws every page flip)
+            else: # PAGED MODE
                 chunk = 2
                 for i in range(0, len(playlist), chunk):
                     if self.config_updated or self.seamless_mode or self.test_pattern or self.brightness <= 0.01: break 
@@ -623,7 +761,6 @@ class TickerStreamer:
                         if self.config_updated or self.seamless_mode or self.test_pattern or self.brightness <= 0.01: break
                         time.sleep(0.1)
                 
-                # Reset update flag after a full page cycle if we broke out
                 if self.config_updated: self.config_updated = False
 
 if __name__ == "__main__":
