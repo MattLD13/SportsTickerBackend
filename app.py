@@ -66,7 +66,10 @@ default_state = {
     'scroll_seamless': True, 
     'scroll_speed': 5,
     'brightness': 100,
-    # Controls visibility of debug menu in iOS App
+    
+    # --- DEBUG MENU VISIBILITY ---
+    # Change this to True or False. The server will ALWAYS use this value 
+    # and ignore whatever is saved in the config file.
     'show_debug_options': True 
 }
 
@@ -87,16 +90,14 @@ if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
             for k, v in loaded.items():
+                # *** FORCE DEFAULT: Ignore 'show_debug_options' from file ***
+                if k == 'show_debug_options': continue 
+                
                 if k in state:
                     if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
                     else: state[k] = v
     except Exception as e:
         print(f"Error loading config: {e}")
-
-# *** FORCE OVERRIDE ***
-# This ensures that even if 'True' is saved in the config file, 
-# the code takes precedence and hides the menu on restart.
-state['show_debug_options'] = False
 
 # --- LOAD TICKERS ---
 if os.path.exists(TICKER_REGISTRY_FILE):
@@ -127,7 +128,8 @@ def save_config_file():
                 'utc_offset': state['utc_offset'],
                 'demo_mode': state.get('demo_mode', False),
                 'scroll_seamless': state.get('scroll_seamless', True),
-                'show_debug_options': state.get('show_debug_options', False)
+                # We save this, but the loading logic above ignores it on restart
+                'show_debug_options': state.get('show_debug_options', True)
             }
             tickers_snap = tickers.copy()
         
