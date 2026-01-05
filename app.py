@@ -13,7 +13,6 @@ from flask import Flask, jsonify, request, render_template_string
 from flask_cors import CORS
 
 # ================= LOGGING SETUP =================
-# This class duplicates output to both the console (for systemd) and a file (for the /error endpoint)
 class Tee(object):
     def __init__(self, name, mode):
         self.file = open(name, mode)
@@ -29,7 +28,6 @@ class Tee(object):
         self.file.flush()
         self.stdout.flush()
 
-# Start logging immediately
 try:
     if not os.path.exists("ticker.log"):
         with open("ticker.log", "w") as f: f.write("--- Log Started ---\n")
@@ -86,7 +84,6 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # Deep update to safely merge defaults
             for k, v in loaded.items():
                 if k in state:
                     if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
@@ -103,7 +100,6 @@ if os.path.exists(TICKER_REGISTRY_FILE):
         print(f"Error loading tickers: {e}")
 
 def save_json_atomically(filepath, data):
-    """Writes to temp file first to prevent corruption."""
     temp = f"{filepath}.tmp"
     try:
         with open(temp, 'w') as f:
@@ -169,13 +165,14 @@ SPORT_DURATIONS = {
 def generate_demo_data():
     return [
         {
-            'type': 'leaderboard', 'sport': 'f1', 'id': 'demo_f1', 'status': 'Lap 45/78', 'state': 'in',
-            'tourney_name': 'Monaco Grand Prix', 'startTimeUTC': dt.now(timezone.utc).isoformat(), 'is_shown': True,
-            'leaders': [
-                {'rank': '1', 'name': 'Verstappen', 'score': 'LEADER'},
-                {'rank': '2', 'name': 'Norris', 'score': '+2.4s'},
-                {'rank': '3', 'name': 'Leclerc', 'score': '+5.1s'}
-            ]
+            'type': 'scoreboard', 'sport': 'nhl', 'id': 'demo_so', 'status': 'S/O', 'state': 'in', 'is_shown': True,
+            'home_abbr': 'NYR', 'home_score': '3', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png', 'home_color': '#0038A8', 'home_alt_color': '#CE1126',
+            'away_abbr': 'NJD', 'away_score': '3', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nj.png', 'away_color': '#CE1126', 'away_alt_color': '#000000',
+            'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
+            'situation': {
+                'possession': '', 'isRedZone': False, 'downDist': '',
+                'shootout': { 'away': ['goal', 'miss', 'goal'], 'home': ['miss', 'goal', 'pending'] }
+            }
         },
         {
             'type': 'scoreboard', 'sport': 'soccer', 'id': 'demo_soc', 'status': "88'", 'state': 'in', 'is_shown': True,
@@ -370,13 +367,13 @@ class SportsFetcher:
                     athlete = c.get('athlete', {})
                     disp_name = athlete.get('displayName', c.get('team',{}).get('displayName','Unk'))
                     if ' ' in disp_name: disp_name = disp_name.split(' ')[-1]
-                     
+                      
                     rank = c.get('curatedRank', c.get('order', '-'))
                     score = c.get('score', '')
                     if not score:
                         lines = c.get('linescores', [])
                         if lines: score = lines[-1].get('value', '')
-                     
+                      
                     leaders.append({'rank': str(rank), 'name': disp_name, 'score': str(score)})
 
                 game_obj = {
@@ -389,6 +386,36 @@ class SportsFetcher:
                 }
                 games_list.append(game_obj)
         except: pass
+
+    # --- SHOOTOUT DATA FETCHER ---
+    def fetch_shootout_details(self, game_id):
+        """Fetches detailed shootout info."""
+        try:
+            url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3)
+            if r.status_code != 200: return None
+            data = r.json()
+            
+            plays = data.get("plays", [])
+            away_id = data.get("awayTeam", {}).get("id")
+            home_id = data.get("homeTeam", {}).get("id")
+            
+            results = {'away': [], 'home': []}
+            
+            for play in plays:
+                if play.get("periodDescriptor", {}).get("periodType") != "SO": continue
+                type_key = play.get("typeDescKey")
+                if type_key not in {"goal", "shot-on-goal", "missed-shot"}: continue
+                
+                details = play.get("details", {})
+                team_id = details.get("eventOwnerTeamId")
+                
+                res_code = "goal" if type_key == "goal" else "miss"
+                
+                if team_id == away_id: results['away'].append(res_code)
+                elif team_id == home_id: results['home'].append(res_code)
+            return results
+        except: return None
 
     def _fetch_nhl_native(self, games_list, target_date_str):
         with data_lock: 
@@ -419,7 +446,7 @@ class SportsFetcher:
                          
                         h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
                         a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
-                         
+                        
                         h_info = self.lookup_team_info_from_cache('nhl', h_ab)
                         a_info = self.lookup_team_info_from_cache('nhl', a_ab)
 
@@ -427,7 +454,6 @@ class SportsFetcher:
                          
                         with data_lock:
                             mode = state['mode']; my_teams = state['my_teams']
-                         
                         is_shown = True
                         if mode == 'live' and map_st != 'in': is_shown = False
                         if mode == 'my_teams':
@@ -435,21 +461,23 @@ class SportsFetcher:
                             if (h_k not in my_teams and h_ab not in my_teams) and (a_k not in my_teams and a_ab not in my_teams): is_shown = False
 
                         disp = "Scheduled"; pp = False; poss = ""; en = False
+                        shootout_data = None 
+                        
                         utc_start = g.get('startTimeUTC', '') 
                         dur = self.calculate_game_timing('nhl', utc_start, 1, st)
+
                         if st in ['PRE', 'FUT'] and utc_start:
                              try:
                                  dt_obj = dt.fromisoformat(utc_start.replace('Z', '+00:00'))
                                  local = dt_obj.astimezone(timezone(timedelta(hours=utc_offset)))
                                  disp = local.strftime("%I:%M %p").lstrip('0')
                              except: pass
+
                         elif st in ['FINAL', 'OFF']:
                              disp = "FINAL"
                              pd = g.get('periodDescriptor', {})
                              pt = pd.get('periodType', '')
-                             p_num = pd.get('number', 3)
-                             if pt == 'OT' or (p_num == 4 and pt != 'REG'): disp = "FINAL OT"
-                             elif pt == 'SHOOTOUT' or p_num > 4: disp = "FINAL S/O"
+                             if pt == 'SHOOTOUT': disp = "FINAL S/O"
 
                         if map_st == 'in':
                             try:
@@ -461,22 +489,25 @@ class SportsFetcher:
                                     pd = d2.get('periodDescriptor', {})
                                     clk = d2.get('clock', {})
                                     time_rem = clk.get('timeRemaining', '00:00')
-                                    is_intermission = clk.get('inIntermission', False)
                                     p_type = pd.get('periodType', '')
-                                    p_num = pd.get('number', 1)
-                                    dur = self.calculate_game_timing('nhl', utc_start, p_num, p_type)
-                                    if p_type == 'SHOOTOUT': disp = "S/O"
-                                    elif is_intermission or time_rem == "00:00":
-                                        if p_num == 1: disp = "End 1st"
-                                        elif p_num == 2: disp = "End 2nd"
-                                        elif p_num == 3: disp = "End 3rd"
-                                        elif p_num >= 4: disp = "S/O" 
-                                        else: disp = "Intermission"
+                                    
+                                    if p_type == 'SHOOTOUT':
+                                        disp = "S/O"
+                                        shootout_data = self.fetch_shootout_details(gid)
                                     else:
-                                        p_lbl = "OT" if p_num > 3 else f"P{p_num}"
-                                        disp = f"{p_lbl} {time_rem}"
+                                        p_num = pd.get('number', 1)
+                                        is_intermission = clk.get('inIntermission', False)
+                                        if is_intermission or time_rem == "00:00":
+                                            if p_num == 1: disp = "End 1st"
+                                            elif p_num == 2: disp = "End 2nd"
+                                            elif p_num == 3: disp = "End 3rd"
+                                            else: disp = "Intermission"
+                                        else:
+                                            p_lbl = "OT" if p_num > 3 else f"P{p_num}"
+                                            disp = f"{p_lbl} {time_rem}"
+                                    
                                     sit_obj = d2.get('situation', {})
-                                    if sit_obj:
+                                    if sit_obj and p_type != 'SHOOTOUT':
                                         sit = sit_obj.get('situationCode', '1551')
                                         ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
                                         if as_ > hs: pp=True; poss=a_ab
@@ -493,7 +524,7 @@ class SportsFetcher:
                             'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
                             'startTimeUTC': utc_start,
                             'estimated_duration': dur,
-                            'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en }
+                            'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en, 'shootout': shootout_data }
                         })
         except: pass
 
@@ -501,7 +532,6 @@ class SportsFetcher:
         games = []
         with data_lock: 
             conf = state.copy()
-            # === DEMO MODE OVERRIDE ===
             if conf.get('demo_mode', False):
                 state['current_games'] = generate_demo_data()
                 return
@@ -531,12 +561,10 @@ class SportsFetcher:
             check_key = config.get('group', league_key)
             if not conf['active_sports'].get(check_key, False): continue
              
-            # --- LEADERBOARD LOGIC ---
             if config.get('type') == 'leaderboard':
                 self.fetch_leaderboard_event(league_key, config, games, conf)
                 continue
              
-            # === HYBRID NHL LOGIC ===
             if league_key == 'nhl' and not conf['debug_mode']:
                 prev_count = len(games)
                 self._fetch_nhl_native(games, target_date_str)
@@ -554,14 +582,14 @@ class SportsFetcher:
                     game_dt_server = game_dt_utc.astimezone(timezone(timedelta(hours=utc_offset)))
                     game_date_str = game_dt_server.strftime("%Y-%m-%d")
                     st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
-                     
+                      
                     keep_date = (gst == 'in') or (game_date_str == target_date_str)
                     if league_key == 'mlb' and not keep_date: continue
                     if not keep_date: continue
 
                     comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
                     h_ab = h['team']['abbreviation']; a_ab = a['team']['abbreviation']
-                     
+                      
                     if league_key == 'ncf_fbs' and (h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS): continue
                     if league_key == 'ncf_fcs' and (h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS): continue
 
@@ -618,7 +646,7 @@ class SportsFetcher:
                     elif is_halftime or gst in ['post', 'final']: curr_poss = ''; self.possession_cache[e['id']] = '' 
                     else:
                          if not curr_poss: curr_poss = self.possession_cache.get(e['id'], '')
-                     
+                      
                     down_text = sit.get('downDistanceText', '')
                     if is_halftime: down_text = ''
 
@@ -642,7 +670,7 @@ class SportsFetcher:
                     }
                     if league_key == 'mlb':
                         game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
-                     
+                      
                     games.append(game_obj)
             except: pass
          
@@ -658,8 +686,6 @@ def background_updater():
 app = Flask(__name__)
 CORS(app) 
 
-# --- NEW ROUTES FOR PAIRING & MANAGEMENT ---
-
 @app.route('/error', methods=['GET'])
 def view_error_log():
     try:
@@ -667,12 +693,10 @@ def view_error_log():
             return "No log file found."
         
         with open("ticker.log", "r") as f:
-            # Read last 50KB to avoid memory issues if file is huge
             f.seek(0, 2)
             size = f.tell()
             f.seek(max(0, size - 50000), 0)
             lines = f.readlines()
-            # If we started reading in the middle of a line, drop the first partial line
             if size > 50000: lines = lines[1:] 
             content = "".join(lines)
             return f"<body style='background:#111;color:#0f0;font-family:monospace;padding:20px'><h2>Server Log (Last 50KB)</h2><pre>{content}</pre></body>"
@@ -681,7 +705,6 @@ def view_error_log():
 
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
-    """Polled by the physical Ticker Device."""
     ticker_id = request.args.get('id')
     if not ticker_id: return jsonify({"error": "No ticker ID provided"}), 400
 
@@ -691,7 +714,7 @@ def get_ticker_data():
         print(f"New ticker detected: {ticker_id}")
         tickers[ticker_id] = {
             "paired": False,
-            "clients": [], # NEW: List of Client IDs that own this ticker
+            "clients": [], 
             "settings": DEFAULT_TICKER_SETTINGS.copy(),
             "pairing_code": generate_pairing_code(),
             "last_seen": current_time,
@@ -702,13 +725,9 @@ def get_ticker_data():
         tickers[ticker_id]['last_seen'] = current_time
 
     ticker_record = tickers[ticker_id]
-
-    # Hardware logic: If NO clients are paired, show code.
-    # If at least one client is paired, show data.
     is_paired_hardware = len(ticker_record.get('clients', [])) > 0
 
     if not is_paired_hardware:
-        # Ensure code exists
         if not ticker_record.get('pairing_code'):
             ticker_record['pairing_code'] = generate_pairing_code()
             
@@ -742,7 +761,6 @@ def get_ticker_data():
 
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
-    """Pairs a client to a ticker using the 6-digit code."""
     client_id = request.headers.get('X-Client-ID')
     if not client_id: return jsonify({"error": "Client ID missing"}), 400
     
@@ -754,20 +772,18 @@ def pair_ticker():
 
     target_uuid = None
     for uuid_key, record in tickers.items():
-        # Allow pairing if unpaired OR if already paired but code matches (rare)
         if record.get('pairing_code') == code:
             target_uuid = uuid_key
             break
     
     if target_uuid:
-        # Add client to list
         clients = tickers[target_uuid].get('clients', [])
         if client_id not in clients:
             clients.append(client_id)
         tickers[target_uuid]['clients'] = clients
         
         tickers[target_uuid]['paired'] = True
-        tickers[target_uuid]['pairing_code'] = None # Clear code once paired to first user
+        tickers[target_uuid]['pairing_code'] = None 
         tickers[target_uuid]['name'] = friendly_name
         
         save_config_file()
@@ -777,7 +793,6 @@ def pair_ticker():
 
 @app.route('/pair/id', methods=['POST'])
 def pair_ticker_by_id():
-    """Pairs a client to a ticker using the UUID (Shared by another user)."""
     client_id = request.headers.get('X-Client-ID')
     if not client_id: return jsonify({"error": "Client ID missing"}), 400
 
@@ -788,7 +803,6 @@ def pair_ticker_by_id():
     if not target_uuid: return jsonify({"error": "Missing ID"}), 400
     
     if target_uuid in tickers:
-        # Add client to list
         clients = tickers[target_uuid].get('clients', [])
         if client_id not in clients:
             clients.append(client_id)
@@ -804,7 +818,6 @@ def pair_ticker_by_id():
 
 @app.route('/ticker/<ticker_id>/unpair', methods=['POST'])
 def unpair_ticker(ticker_id):
-    """Removes ONLY the requesting client from the ticker."""
     client_id = request.headers.get('X-Client-ID')
     if not client_id: return jsonify({"error": "Client ID missing"}), 400
 
@@ -817,7 +830,6 @@ def unpair_ticker(ticker_id):
         clients.remove(client_id)
         tickers[ticker_id]['clients'] = clients
         
-        # If NO clients left, reset to pairing mode
         if len(clients) == 0:
             tickers[ticker_id]['paired'] = False
             tickers[ticker_id]['pairing_code'] = generate_pairing_code()
@@ -829,9 +841,7 @@ def unpair_ticker(ticker_id):
 
 @app.route('/tickers', methods=['GET'])
 def list_tickers():
-    """Returns only tickers associated with the requesting Client ID."""
     client_id = request.headers.get('X-Client-ID')
-    # If no client ID provided (legacy check), return empty to be safe
     if not client_id: return jsonify([])
 
     paired_list = []
@@ -882,10 +892,8 @@ def api_hardware():
         threading.Timer(10, lambda: state.update({'reboot_requested': False})).start()
     return jsonify({"status": "ok"})
 
-# --- LEGACY / WEB UI ---
 @app.route('/')
 def root():
-    # [Simple placeholder for web UI - relies on /api/state]
     html = """<!DOCTYPE html><html><head><title>Ticker</title><meta charset='utf-8'></head>
     <body style='background:#111;color:#eee;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;'>
     <h1>Sports Ticker Server</h1><p>Use the iOS App to configure.</p></body></html>"""
