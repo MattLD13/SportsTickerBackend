@@ -144,16 +144,33 @@ def generate_pairing_code():
         if code not in active_codes:
             return code
 
-# ================= TEAMS & LOGOS =================
-# HARDCODED FILTER LISTS FOR COLLEGE FOOTBALL
+# ================= HARDCODED TEAMS =================
+# College Football Lists (Provided by User)
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
+
+# Olympic Hockey (Manual List to ensure they appear)
+OLYMPIC_HOCKEY_TEAMS = [
+    {"abbr": "CAN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/can.png"},
+    {"abbr": "USA", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/usa.png"},
+    {"abbr": "SWE", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/swe.png"},
+    {"abbr": "FIN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/fin.png"},
+    {"abbr": "RUS", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/rus.png"},
+    {"abbr": "CZE", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png"},
+    {"abbr": "GER", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/ger.png"},
+    {"abbr": "SUI", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/sui.png"},
+    {"abbr": "SVK", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/svk.png"},
+    {"abbr": "LAT", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/lat.png"},
+    {"abbr": "DEN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/den.png"},
+    {"abbr": "CHN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/chn.png"}
+]
 
 LOGO_OVERRIDES = {
     "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png", 
     "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
     "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png",
-    "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png"
+    "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+    "NCF_FBS:WASH": "https://a.espncdn.com/i/teamlogos/ncaa/500/264.png"
 }
 
 SPORT_DURATIONS = {
@@ -237,24 +254,24 @@ class SportsFetcher:
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.possession_cache = {}
         
-        # --- DYNAMIC LEAGUE CONFIG ---
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'team_params': {'groups': '80', 'limit': 1000}, 'type': 'scoreboard' },
-            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'team_params': {'groups': '81', 'limit': 1000}, 'type': 'scoreboard' },
             'mlb': { 'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'nhl': { 'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'nba': { 'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             
-            # --- SOCCER LEAGUES (Explicitly defined to fetch teams correctly) ---
+            # EXPLICIT SOCCER LEAGUES
             'soccer_epl':   { 'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             'soccer_champ': { 'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             'soccer_l1':    { 'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             'soccer_l2':    { 'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             'soccer_wc':    { 'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             
-            # --- OLYMPIC HOCKEY ---
-            # Corrected endpoint for Olympic Hockey
+            # COLLEGE (Config only for scoreboard, teams handled manually)
+            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard' },
+            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard' },
+            
+            # OLYMPIC HOCKEY (Config only for scoreboard)
             'hockey_olympics': { 'path': 'hockey/mens-olympic-hockey', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
             
             'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
@@ -268,16 +285,55 @@ class SportsFetcher:
         return LOGO_OVERRIDES.get(f"{league_key.upper()}:{abbr}", default_logo)
 
     def fetch_all_teams(self):
-        """Fetches teams dynamically. For College, fetches strictly by Group ID and filters against hardcoded list."""
+        """Builds team catalog. Hardcodes problematic leagues, fetches dynamic ones."""
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
-            print("Starting Team Fetch...")
             
-            # 1. Fetch Standard Leagues + Soccer + Olympics
+            # 1. HARDCODE OLYMPIC HOCKEY
+            for t in OLYMPIC_HOCKEY_TEAMS:
+                teams_catalog['hockey_olympics'].append({
+                    'abbr': t['abbr'], 'logo': t['logo'],
+                    'color': '000000', 'alt_color': '444444'
+                })
+
+            # 2. HARDCODE COLLEGE (With Default Logos initially)
+            # Use generic NCAA logo for default
+            def_logo = "https://a.espncdn.com/i/teamlogos/ncaa/500/ncaa.png"
+            
+            for abbr in FBS_TEAMS:
+                teams_catalog['ncf_fbs'].append({'abbr': abbr, 'logo': def_logo, 'color': '000000', 'alt_color': '444444'})
+            
+            for abbr in FCS_TEAMS:
+                teams_catalog['ncf_fcs'].append({'abbr': abbr, 'logo': def_logo, 'color': '000000', 'alt_color': '444444'})
+
+            # 3. ATTEMPT TO ENRICH COLLEGE LOGOS (Background Fetch)
+            # We try to fetch the list. If it fails, the lists above still exist.
+            try:
+                for grp, key, t_list in [(80, 'ncf_fbs', FBS_TEAMS), (81, 'ncf_fcs', FCS_TEAMS)]:
+                    url = f"{self.base_url}football/college-football/teams"
+                    r = requests.get(url, params={'groups': grp, 'limit': 900}, headers=HEADERS, timeout=5)
+                    if r.status_code == 200:
+                        data = r.json()
+                        if 'sports' in data:
+                            # If successful, wipe the hardcoded defaults and replace with real data
+                            teams_catalog[key] = [] 
+                            for item in data['sports'][0]['leagues'][0].get('teams', []):
+                                t = item['team']
+                                abbr = t.get('abbreviation', 'UNK')
+                                if abbr in t_list:
+                                    teams_catalog[key].append({
+                                        'abbr': abbr,
+                                        'logo': t.get('logos', [{}])[0].get('href', def_logo),
+                                        'color': t.get('color', '000000'),
+                                        'alt_color': t.get('alternateColor', '444444')
+                                    })
+            except: 
+                print("College logo fetch failed - using hardcoded defaults.")
+
+            # 4. FETCH STANDARD PRO LEAGUES
             for league_key, config in self.leagues.items():
+                if league_key in ['ncf_fbs', 'ncf_fcs', 'hockey_olympics']: continue # Already handled
                 if config['type'] == 'scoreboard' and 'team_params' in config:
-                    if 'college-football' in config['path']: continue
-                    
                     try:
                         url = f"{self.base_url}{config['path']}/teams"
                         r = requests.get(url, params=config['team_params'], headers=HEADERS, timeout=5)
@@ -300,30 +356,9 @@ class SportsFetcher:
                                         })
                     except Exception as e: print(f"Error fetching {league_key}: {e}")
 
-            # 2. Fetch College Football (USING GROUP IDs for efficiency, filtering with HARDCODED lists)
-            for group_id, league_key, filter_list in [(80, 'ncf_fbs', FBS_TEAMS), (81, 'ncf_fcs', FCS_TEAMS)]:
-                try:
-                    url = f"{self.base_url}football/college-football/teams"
-                    # Using groups parameter is much faster/cleaner than limiting to 1000
-                    r = requests.get(url, params={'groups': group_id, 'limit': 1000}, headers=HEADERS, timeout=10)
-                    data = r.json()
-                    if 'sports' in data:
-                        for item in data['sports'][0]['leagues'][0].get('teams', []):
-                            t = item['team']
-                            abbr = t.get('abbreviation', 'UNK')
-                            
-                            if abbr in filter_list:
-                                teams_catalog[league_key].append({
-                                    'abbr': abbr,
-                                    'logo': t.get('logos', [{}])[0].get('href', ''),
-                                    'color': t.get('color', '000000'),
-                                    'alt_color': t.get('alternateColor', '444444')
-                                })
-                except Exception as e: print(f"Error fetching {league_key}: {e}")
-
             with data_lock:
                 state['all_teams_data'] = teams_catalog
-                print(f"Teams Loaded. NFL: {len(teams_catalog['nfl'])}, FBS: {len(teams_catalog['ncf_fbs'])}")
+                print("Team catalogs updated.")
         except Exception as e: print(f"Global Team Fetch Error: {e}")
 
     def fetch_shootout_details(self, game_id, sport='nhl'):
