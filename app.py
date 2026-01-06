@@ -49,20 +49,37 @@ HEADERS = {
 default_state = {
     'active_sports': { 
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
-        'soccer_epl': True, 'soccer_champ': False, 'soccer_l1': False, 'soccer_l2': False,
-        'soccer_wc': False, 'hockey_olympics': False,
+        'soccer_epl': True,         # Premier League
+        'soccer_champ': False,      # EFL Championship
+        'soccer_l1': False,         # EFL League One
+        'soccer_l2': False,         # EFL League Two
+        'soccer_wc': False,         # FIFA World Cup
+        'hockey_olympics': False,   # Olympic Hockey
         'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
         'weather': False, 'clock': False 
     },
-    'mode': 'all', 'layout_mode': 'schedule',
-    'my_teams': [], 'current_games': [], 'all_teams_data': {}, 
-    'debug_mode': False, 'demo_mode': False,
-    'custom_date': None, 'weather_location': "New York", 'utc_offset': -5,
-    'scroll_seamless': True, 'scroll_speed': 5, 'brightness': 100, 'show_debug_options': True 
+    'mode': 'all', 
+    'layout_mode': 'schedule',
+    'my_teams': [], 
+    'current_games': [],
+    'all_teams_data': {}, 
+    'debug_mode': False,
+    'demo_mode': False,
+    'custom_date': None,
+    'weather_location': "New York",
+    'utc_offset': -5,
+    'scroll_seamless': True, 
+    'scroll_speed': 5,
+    'brightness': 100,
+    'show_debug_options': True 
 }
 
 DEFAULT_TICKER_SETTINGS = {
-    "brightness": 100, "scroll_speed": 0.03, "scroll_seamless": True, "inverted": False, "panel_count": 2
+    "brightness": 100,
+    "scroll_speed": 0.03,
+    "scroll_seamless": True,
+    "inverted": False,
+    "panel_count": 2
 }
 
 state = default_state.copy()
@@ -78,45 +95,61 @@ if os.path.exists(CONFIG_FILE):
                 if k in state:
                     if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
                     else: state[k] = v
-    except Exception as e: print(f"Error loading config: {e}")
+    except Exception as e:
+        print(f"Error loading config: {e}")
 
 # --- LOAD TICKERS ---
 if os.path.exists(TICKER_REGISTRY_FILE):
     try:
-        with open(TICKER_REGISTRY_FILE, 'r') as f: tickers = json.load(f)
-    except Exception as e: print(f"Error loading tickers: {e}")
+        with open(TICKER_REGISTRY_FILE, 'r') as f:
+            tickers = json.load(f)
+            print(f"Loaded {len(tickers)} paired tickers.")
+    except Exception as e:
+        print(f"Error loading tickers: {e}")
 
 def save_json_atomically(filepath, data):
     temp = f"{filepath}.tmp"
     try:
-        with open(temp, 'w') as f: json.dump(data, f, indent=4)
+        with open(temp, 'w') as f:
+            json.dump(data, f, indent=4)
         os.replace(temp, filepath)
-    except Exception as e: print(f"Failed to save {filepath}: {e}")
+    except Exception as e:
+        print(f"Failed to save {filepath}: {e}")
 
 def save_config_file():
     try:
         with data_lock:
             export_data = {
-                'active_sports': state['active_sports'], 'mode': state['mode'], 'layout_mode': state['layout_mode'],
-                'my_teams': state['my_teams'], 'weather_location': state['weather_location'], 'utc_offset': state['utc_offset'],
-                'demo_mode': state.get('demo_mode', False), 'scroll_seamless': state.get('scroll_seamless', True),
+                'active_sports': state['active_sports'], 
+                'mode': state['mode'], 
+                'layout_mode': state['layout_mode'],
+                'my_teams': state['my_teams'],
+                'weather_location': state['weather_location'],
+                'utc_offset': state['utc_offset'],
+                'demo_mode': state.get('demo_mode', False),
+                'scroll_seamless': state.get('scroll_seamless', True),
                 'show_debug_options': state.get('show_debug_options', True)
             }
             tickers_snap = tickers.copy()
+        
         save_json_atomically(CONFIG_FILE, export_data)
         save_json_atomically(TICKER_REGISTRY_FILE, tickers_snap)
-    except Exception as e: print(f"Save error: {e}")
+    except Exception as e:
+        print(f"Save error: {e}")
 
 def generate_pairing_code():
     while True:
         code = ''.join(random.choices(string.digits, k=6))
         active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
-        if code not in active_codes: return code
+        if code not in active_codes:
+            return code
 
-# ================= TEAMS & LOGOS (HARDCODED) =================
+# ================= HARDCODED TEAMS =================
+# College Football Lists (Provided by User)
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 
+# Olympic Hockey (Manual List to ensure they appear)
 OLYMPIC_HOCKEY_TEAMS = [
     {"abbr": "CAN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/can.png"},
     {"abbr": "USA", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/usa.png"},
@@ -139,7 +172,8 @@ LOGO_OVERRIDES = {
 }
 
 SPORT_DURATIONS = {
-    'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195, 'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115, 'hockey_olympics': 150
+    'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
+    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115, 'hockey_olympics': 150
 }
 
 # === DEMO DATA ===
