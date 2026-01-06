@@ -169,6 +169,10 @@ LOGO_OVERRIDES = {
     "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
     "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png", "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png", "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png", "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png", "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
 }
+ABBR_MAPPING = {
+    'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI',
+    'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS'
+}
 
 SPORT_DURATIONS = {
     'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
@@ -222,7 +226,7 @@ class WeatherFetcher:
 class SportsFetcher:
     def __init__(self, initial_loc):
         self.weather = WeatherFetcher(initial_loc)
-        self.possession_cache = {} # RESTORED: Possession cache for football
+        self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
@@ -246,6 +250,17 @@ class SportsFetcher:
 
     def get_corrected_logo(self, league_key, abbr, default_logo):
         return LOGO_OVERRIDES.get(f"{league_key.upper()}:{abbr}", default_logo)
+
+    def lookup_team_info_from_cache(self, league, abbr):
+        search_abbr = ABBR_MAPPING.get(abbr, abbr)
+        try:
+            with data_lock:
+                teams = state['all_teams_data'].get(league, [])
+                for t in teams:
+                    if t['abbr'] == search_abbr:
+                        return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
+        except: pass
+        return {'color': '000000', 'alt_color': '444444'}
 
     def calculate_game_timing(self, sport, start_utc, period, status_detail):
         duration = SPORT_DURATIONS.get(sport, 180) 
@@ -318,54 +333,120 @@ class SportsFetcher:
             print("Teams fetched successfully.")
         except Exception as e: print(f"Global Team Fetch Error: {e}")
 
-    # RESTORED: Special Old Logic for NHL Shootouts (Native API)
-    def fetch_shootout_details_nhl_native(self, game_id, away_id, home_id):
+    # === NHL NATIVE FETCHER (RESTORED FROM OLD CODE) ===
+    def fetch_shootout_details(self, game_id, away_id, home_id):
         try:
             url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
             r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3)
             if r.status_code != 200: return None
-            data = r.json()
-            plays = data.get("plays", [])
-            
-            # Note: NHL Native uses integer IDs. We need to match based on the logic in the play feed
-            # Usually we just look at the eventOwnerTeamId
-            
+            data = r.json(); plays = data.get("plays", [])
+            native_away = data.get("awayTeam", {}).get("id")
+            native_home = data.get("homeTeam", {}).get("id")
             results = {'away': [], 'home': []}
-            
-            # Determine mapping if IDs are passed as ints or strings.
-            # The play feed returns int IDs.
-            
             for play in plays:
                 if play.get("periodDescriptor", {}).get("periodType") != "SO": continue
                 type_key = play.get("typeDescKey")
                 if type_key not in {"goal", "shot-on-goal", "missed-shot"}: continue
-                
                 details = play.get("details", {})
-                team_id = details.get("eventOwnerTeamId") # Int
-                
+                team_id = details.get("eventOwnerTeamId")
                 res_code = "goal" if type_key == "goal" else "miss"
-                
-                # Simple logic: If we don't know the exact INT ids, we guess based on order? 
-                # Better: The ESPN loop usually has the IDs. 
-                # For safety, if we can't match, we assume Away shoots first? No, that's risky.
-                # In the old code, it matched against IDs passed in.
-                
-                # Logic: We will check if the ID matches what we passed. 
-                # NOTE: ESPN IDs and NHL Native IDs ARE DIFFERENT.
-                # However, the old code relied on this working. Let's assume the user knows
-                # the old code worked because they used specific IDs.
-                # Correction: The old code fetched `landing` to get the Home/Away IDs.
-                # To keep it simple in this hybrid: We will assume `away_id` and `home_id` provided are ESPN IDs, 
-                # and this Native fetcher gets the Native IDs from the same payload if possible?
-                # Actually, `data.get('awayTeam', {}).get('id')` in this native payload gives the native ID.
-                
-                native_away = data.get("awayTeam", {}).get("id")
-                native_home = data.get("homeTeam", {}).get("id")
-                
                 if team_id == native_away: results['away'].append(res_code)
                 elif team_id == native_home: results['home'].append(res_code)
             return results
         except: return None
+
+    def _fetch_nhl_native(self, games_list, target_date_str):
+        with data_lock: 
+            is_nhl = state['active_sports'].get('nhl', False)
+            utc_offset = state.get('utc_offset', -5)
+        if not is_nhl: return
+        processed_ids = set()
+        try:
+            r = requests.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
+            if r.status_code != 200: return
+            for d in r.json().get('gameWeek', []):
+                day_games = d.get('games', [])
+                is_target_date = (d.get('date') == target_date_str)
+                has_active_games = any(g.get('gameState') in ['LIVE', 'CRIT'] for g in day_games)
+                if is_target_date or has_active_games:
+                    for g in day_games:
+                        gid = g['id']
+                        if gid in processed_ids: continue
+                        processed_ids.add(gid)
+                        h_ab = g['homeTeam']['abbrev']; a_ab = g['awayTeam']['abbrev']
+                        h_sc = str(g['homeTeam'].get('score', 0)); a_sc = str(g['awayTeam'].get('score', 0))
+                        st = g.get('gameState', 'OFF')
+                        h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
+                        a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
+                        h_info = self.lookup_team_info_from_cache('nhl', h_ab)
+                        a_info = self.lookup_team_info_from_cache('nhl', a_ab)
+                        map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
+                        with data_lock:
+                            mode = state['mode']; my_teams = state['my_teams']
+                        is_shown = True
+                        if mode == 'live' and map_st != 'in': is_shown = False
+                        if mode == 'my_teams':
+                            h_k = f"nhl:{h_ab}"; a_k = f"nhl:{a_ab}"
+                            if (h_k not in my_teams and h_ab not in my_teams) and (a_k not in my_teams and a_ab not in my_teams): is_shown = False
+                        
+                        disp = "Scheduled"; pp = False; poss = ""; en = False; shootout_data = None 
+                        utc_start = g.get('startTimeUTC', '') 
+                        dur = self.calculate_game_timing('nhl', utc_start, 1, st)
+
+                        if st in ['PRE', 'FUT'] and utc_start:
+                             try:
+                                 dt_obj = dt.fromisoformat(utc_start.replace('Z', '+00:00'))
+                                 local = dt_obj.astimezone(timezone(timedelta(hours=utc_offset)))
+                                 disp = local.strftime("%I:%M %p").lstrip('0')
+                             except: pass
+                        elif st in ['FINAL', 'OFF']:
+                             disp = "FINAL"
+                             pd = g.get('periodDescriptor', {})
+                             if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
+
+                        if map_st == 'in':
+                            try:
+                                r2 = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{gid}/landing", headers=HEADERS, timeout=2)
+                                if r2.status_code == 200:
+                                    d2 = r2.json()
+                                    h_sc = str(d2['homeTeam'].get('score', h_sc)); a_sc = str(d2['awayTeam'].get('score', a_sc))
+                                    pd = d2.get('periodDescriptor', {})
+                                    clk = d2.get('clock', {}); time_rem = clk.get('timeRemaining', '00:00')
+                                    p_type = pd.get('periodType', '')
+                                    if p_type == 'SHOOTOUT':
+                                        disp = "S/O"; shootout_data = self.fetch_shootout_details(gid, 0, 0)
+                                    else:
+                                        p_num = pd.get('number', 1)
+                                        if clk.get('inIntermission', False) or time_rem == "00:00":
+                                            if p_num == 1: disp = "End 1st"
+                                            elif p_num == 2: disp = "End 2nd"
+                                            elif p_num == 3: disp = "End 3rd"
+                                            else: disp = "Intermission"
+                                        else:
+                                            p_lbl = "OT" if p_num > 3 else f"P{p_num}"
+                                            disp = f"{p_lbl} {time_rem}"
+                                        
+                                        sit_obj = d2.get('situation', {})
+                                        if sit_obj and p_type != 'SHOOTOUT':
+                                            sit = sit_obj.get('situationCode', '1551')
+                                            ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
+                                            if as_ > hs: pp=True; poss=a_ab
+                                            elif hs > as_: pp=True; poss=h_ab
+                                            en = (ag==0 or hg==0)
+                            except: disp = "Live" 
+
+                        games_list.append({
+                            'type': 'scoreboard',
+                            'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': is_shown,
+                            'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
+                            'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
+                            'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
+                            'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
+                            'startTimeUTC': utc_start,
+                            'estimated_duration': dur,
+                            'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en, 'shootout': shootout_data }
+                        })
+        except: pass
 
     # NEW: Generic Shootout for Soccer (ESPN API)
     def fetch_shootout_details_soccer(self, game_id, sport):
@@ -383,25 +464,6 @@ class SportsFetcher:
                 else: results['away'].append(res)
             return results
         except: return None
-
-    # RESTORED: Helper to get NHL "Situation" (PP/EN) from Native API
-    def get_nhl_live_situation(self, game_id):
-        try:
-            r = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{game_id}/landing", headers=HEADERS, timeout=2)
-            if r.status_code != 200: return {}
-            d2 = r.json()
-            sit_obj = d2.get('situation', {})
-            # situationCode format: 1551 (AwayGoalie, AwaySkaters, HomeSkaters, HomeGoalie)
-            code = sit_obj.get('situationCode', '1551')
-            ag = int(code[0]); as_ = int(code[1]); hs = int(code[2]); hg = int(code[3])
-            
-            pp = False; poss_team = ""
-            if as_ > hs: pp=True; poss_team = "away"
-            elif hs > as_: pp=True; poss_team = "home"
-            en = (ag == 0 or hg == 0)
-            
-            return { 'powerPlay': pp, 'emptyNet': en, 'possession': poss_team }
-        except: return {}
 
     def fetch_leaderboard_event(self, league_key, config, games_list, conf, window_start, window_end):
         try:
@@ -467,12 +529,21 @@ class SportsFetcher:
             if w: games.append(w)
         if conf['active_sports'].get('clock'): games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
 
+        # --- PROCESS LEAGUES ---
         for league_key, config in self.leagues.items():
             if not conf['active_sports'].get(league_key, False): continue
             
+            # Leaderboards (Racing)
             if config.get('type') == 'leaderboard': 
                 self.fetch_leaderboard_event(league_key, config, games, conf, window_start_utc, window_end_utc)
                 continue
+
+            # NHL NATIVE OVERRIDE
+            if league_key == 'nhl' and not conf['debug_mode']:
+                prev_count = len(games)
+                self._fetch_nhl_native(games, target_date_str)
+                # If we got games from native, skip ESPN fetch for NHL
+                if len(games) > prev_count: continue 
 
             try:
                 curr_p = config.get('scoreboard_params', {}).copy()
@@ -546,42 +617,28 @@ class SportsFetcher:
                         if league_key == 'nhl' and "SO" in s_disp: s_disp = "FINAL S/O"
                         elif p > 4 and "OT" not in s_disp and league_key == 'nhl': s_disp = "FINAL OT"
 
-                    # === SITUATION LOGIC (RESTORED) ===
+                    # === SITUATION LOGIC ===
                     sit = comp.get('situation', {})
                     shootout_data = None
                     is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
                     
-                    # 1. SHOOTOUTS
-                    if is_shootout:
-                        if league_key == 'nhl':
-                            shootout_data = self.fetch_shootout_details_nhl_native(e['id'], h['team'].get('id'), a['team'].get('id'))
-                        elif 'soccer' in league_key:
-                            shootout_data = self.fetch_shootout_details_soccer(e['id'], league_key)
+                    if is_shootout and 'soccer' in league_key:
+                        shootout_data = self.fetch_shootout_details_soccer(e['id'], league_key)
                     
-                    # 2. POSSESSION (Football / Baseball)
-                    poss_raw = sit.get('possession') # This returns Team ID in ESPN
-                    # Cache logic for football because ESPN clears it between plays
+                    # POSSESSION (RESTORED OLD LOGIC)
+                    poss_raw = sit.get('possession')
                     if poss_raw: self.possession_cache[e['id']] = poss_raw
                     elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
                     
-                    # Convert Possession ID to ABBR if possible
+                    if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime':
+                        poss_raw = None
+                        self.possession_cache.pop(e['id'], None)
+
                     poss_abbr = ""
                     if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
                     elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
                     
-                    if gst == 'pre' or gst == 'post' or gst == 'half': poss_abbr = ''
                     down_text = sit.get('downDistanceText', '') if s_disp != "Halftime" else ''
-
-                    # 3. NHL POWER PLAY & EMPTY NET
-                    pp = False; en = False
-                    if league_key == 'nhl' and gst == 'in':
-                        # Use helper to get the native situation code data
-                        native_data = self.get_nhl_live_situation(e['id'])
-                        pp = native_data.get('powerPlay', False)
-                        en = native_data.get('emptyNet', False)
-                        # Native data returns 'home' or 'away' for possession, map to abbr
-                        if native_data.get('possession') == 'home': poss_abbr = h_ab
-                        elif native_data.get('possession') == 'away': poss_abbr = a_ab
 
                     game_obj = {
                         'type': 'scoreboard', 'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
@@ -596,8 +653,8 @@ class SportsFetcher:
                             'isRedZone': sit.get('isRedZone', False), 
                             'downDist': down_text, 
                             'shootout': shootout_data,
-                            'powerPlay': pp,
-                            'emptyNet': en
+                            'powerPlay': False, # ESPN doesn't give this easily, NHL is handled in native block above
+                            'emptyNet': False
                         }
                     }
                     if league_key == 'mlb':
