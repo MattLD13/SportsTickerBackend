@@ -37,7 +37,7 @@ except Exception as e:
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
-UPDATE_INTERVAL = 60 
+UPDATE_INTERVAL = 5 
 data_lock = threading.Lock()
 
 HEADERS = {
