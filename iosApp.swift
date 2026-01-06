@@ -2,9 +2,7 @@ import SwiftUI
 import Foundation
 import Combine
 import UIKit
-// ==========================================
-// MARK: - 0. EXTENSIONS
-// ==========================================
+
 extension Color {
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
@@ -12,38 +10,24 @@ extension Color {
         Scanner(string: hex).scanHexInt64(&int)
         let a, r, g, b: UInt64
         switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (1, 1, 1, 0)
+        case 3: (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default: (a, r, g, b) = (1, 1, 1, 0)
         }
-        self.init(
-            .sRGB,
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue:  Double(b) / 255,
-            opacity: Double(a) / 255
-        )
+        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue:  Double(b) / 255, opacity: Double(a) / 255)
     }
-    
     var isGrayscaleOrBlack: Bool {
         guard let components = self.cgColor?.components, components.count >= 3 else { return true }
         let r = components[0], g = components[1], b = components[2]
         let maxC = max(r, max(g, b))
-        let minC = min(r, min(g, b))
-        let delta = maxC - minC
+        let delta = maxC - min(r, min(g, b))
         let saturation = maxC == 0 ? 0 : delta / maxC
         let brightness = (r * 0.299) + (g * 0.587) + (b * 0.114)
         return brightness < 0.1 || saturation < 0.15
     }
 }
-// ==========================================
-// MARK: - 1. DATA MODELS
-// ==========================================
+
 struct ShootoutData: Decodable, Hashable, Sendable {
     let away: [String]?
     let home: [String]?
@@ -69,11 +53,9 @@ struct Situation: Decodable, Hashable, Sendable {
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if let stringPoss = try? container.decode(String.self, forKey: .possession) {
-            possession = stringPoss
-        } else if let intPoss = try? container.decode(Int.self, forKey: .possession) {
-            possession = String(intPoss)
-        } else { possession = nil }
+        if let stringPoss = try? container.decode(String.self, forKey: .possession) { possession = stringPoss }
+        else if let intPoss = try? container.decode(Int.self, forKey: .possession) { possession = String(intPoss) }
+        else { possession = nil }
         downDist = try? container.decode(String.self, forKey: .downDist)
         isRedZone = try? container.decode(Bool.self, forKey: .isRedZone)
         balls = try? container.decode(Int.self, forKey: .balls)
@@ -93,21 +75,18 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     let sport: String
     let status: String
     let state: String?
-    
     let home_abbr: String?
     let home_id: String?
     let home_score: String
     let home_logo: String?
     let home_color: String?
     let home_alt_color: String?
-    
     let away_abbr: String?
     let away_id: String?
     let away_score: String
     let away_logo: String?
     let away_color: String?
     let away_alt_color: String?
-    
     let is_shown: Bool
     let situation: Situation?
     let type: String?
@@ -123,41 +102,34 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     }
     
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
-        sport = try container.decode(String.self, forKey: .sport)
-        status = try container.decode(String.self, forKey: .status)
-        state = try? container.decode(String.self, forKey: .state)
-        
-        home_abbr = try? container.decode(String.self, forKey: .home_abbr)
-        home_logo = try? container.decode(String.self, forKey: .home_logo)
-        home_color = try? container.decode(String.self, forKey: .home_color)
-        home_alt_color = try? container.decode(String.self, forKey: .home_alt_color)
-        
-        away_abbr = try? container.decode(String.self, forKey: .away_abbr)
-        away_logo = try? container.decode(String.self, forKey: .away_logo)
-        away_color = try? container.decode(String.self, forKey: .away_color)
-        away_alt_color = try? container.decode(String.self, forKey: .away_alt_color)
-        
-        is_shown = try container.decode(Bool.self, forKey: .is_shown)
-        situation = try? container.decode(Situation.self, forKey: .situation)
-        type = try? container.decode(String.self, forKey: .type)
-        tourney_name = try? container.decode(String.self, forKey: .tourney_name)
-        
-        if let hid = try? container.decode(String.self, forKey: .home_id) { home_id = hid }
-        else if let hidInt = try? container.decode(Int.self, forKey: .home_id) { home_id = String(hidInt) }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        sport = try c.decode(String.self, forKey: .sport)
+        status = try c.decode(String.self, forKey: .status)
+        state = try? c.decode(String.self, forKey: .state)
+        home_abbr = try? c.decode(String.self, forKey: .home_abbr)
+        home_logo = try? c.decode(String.self, forKey: .home_logo)
+        home_color = try? c.decode(String.self, forKey: .home_color)
+        home_alt_color = try? c.decode(String.self, forKey: .home_alt_color)
+        away_abbr = try? c.decode(String.self, forKey: .away_abbr)
+        away_logo = try? c.decode(String.self, forKey: .away_logo)
+        away_color = try? c.decode(String.self, forKey: .away_color)
+        away_alt_color = try? c.decode(String.self, forKey: .away_alt_color)
+        is_shown = try c.decode(Bool.self, forKey: .is_shown)
+        situation = try? c.decode(Situation.self, forKey: .situation)
+        type = try? c.decode(String.self, forKey: .type)
+        tourney_name = try? c.decode(String.self, forKey: .tourney_name)
+        if let hid = try? c.decode(String.self, forKey: .home_id) { home_id = hid }
+        else if let hidInt = try? c.decode(Int.self, forKey: .home_id) { home_id = String(hidInt) }
         else { home_id = nil }
-        
-        if let aid = try? container.decode(String.self, forKey: .away_id) { away_id = aid }
-        else if let aidInt = try? container.decode(Int.self, forKey: .away_id) { away_id = String(aidInt) }
+        if let aid = try? c.decode(String.self, forKey: .away_id) { away_id = aid }
+        else if let aidInt = try? c.decode(Int.self, forKey: .away_id) { away_id = String(aidInt) }
         else { away_id = nil }
-        
-        if let hs = try? container.decode(String.self, forKey: .home_score) { home_score = hs }
-        else if let hsInt = try? container.decode(Int.self, forKey: .home_score) { home_score = String(hsInt) }
+        if let hs = try? c.decode(String.self, forKey: .home_score) { home_score = hs }
+        else if let hsInt = try? c.decode(Int.self, forKey: .home_score) { home_score = String(hsInt) }
         else { home_score = "0" }
-        
-        if let `as` = try? container.decode(String.self, forKey: .away_score) { away_score = `as` }
-        else if let asInt = try? container.decode(Int.self, forKey: .away_score) { away_score = String(asInt) }
+        if let `as` = try? c.decode(String.self, forKey: .away_score) { away_score = `as` }
+        else if let asInt = try? c.decode(Int.self, forKey: .away_score) { away_score = String(asInt) }
         else { away_score = "0" }
     }
 }
@@ -199,64 +171,28 @@ struct PairResponse: Decodable, Sendable {
     let message: String?
     let ticker_id: String?
 }
-// ==========================================
-// MARK: - 2. VIEW MODEL
-// ==========================================
+
 @MainActor
 class TickerViewModel: ObservableObject {
     @Published var games: [Game] = []
     @Published var allTeams: [String: [TeamData]] = [:]
-    
     @Published var state: TickerState = TickerState(
         active_sports: ["nfl": true], mode: "all", scroll_seamless: false,
         my_teams: [], debug_mode: false, demo_mode: false, custom_date: nil, weather_location: "New York", scroll_speed: 5
     )
-    
     @Published var devices: [TickerDevice] = []
     @Published var pairCode: String = ""
     @Published var pairName: String = ""
     @Published var pairID: String = ""
     @Published var pairError: String?
     @Published var showPairSuccess: Bool = false
-    
     @Published var serverURL: String { didSet { UserDefaults.standard.set(serverURL, forKey: "serverURL") } }
     @Published var weatherLoc: String = "New York"
-    
     @Published var connectionStatus: String = "Connecting..."
     @Published var statusColor: Color = .gray
-    
     @Published var isEditing: Bool = false
-    
     private var isServerReachable = false
-    
-    // Static fallback
-    private let staticTeams: [String: [TeamData]] = [
-        "soccer": [
-            TeamData(abbr: "ARS", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/359.png"),
-            TeamData(abbr: "AVL", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/362.png"),
-            TeamData(abbr: "BOU", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/349.png"),
-            TeamData(abbr: "BRE", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/337.png"),
-            TeamData(abbr: "BHA", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/331.png"),
-            TeamData(abbr: "CHE", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/363.png"),
-            TeamData(abbr: "CRY", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/384.png"),
-            TeamData(abbr: "EVE", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/368.png"),
-            TeamData(abbr: "FUL", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/370.png"),
-            TeamData(abbr: "IPS", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/365.png"),
-            TeamData(abbr: "LEI", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/375.png"),
-            TeamData(abbr: "LIV", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/364.png"),
-            TeamData(abbr: "MCI", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/382.png"),
-            TeamData(abbr: "MUN", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/360.png"),
-            TeamData(abbr: "NEW", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/361.png"),
-            TeamData(abbr: "NFO", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/393.png"),
-            TeamData(abbr: "SOU", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/376.png"),
-            TeamData(abbr: "TOT", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/367.png"),
-            TeamData(abbr: "WHU", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/371.png"),
-            TeamData(abbr: "WOL", logo: "https://a.espncdn.com/i/teamlogos/soccer/500/380.png")
-        ]
-    ]
-    
     private var timer: Timer?
-    
     private var clientID: String {
         if let saved = UserDefaults.standard.string(forKey: "clientID") { return saved }
         let newID = UUID().uuidString
@@ -267,18 +203,10 @@ class TickerViewModel: ObservableObject {
     init() {
         let savedURL = UserDefaults.standard.string(forKey: "serverURL") ?? "https://ticker.mattdicks.org"
         self.serverURL = savedURL
-        self.allTeams = self.staticTeams
-        
-        fetchData()
-        fetchAllTeams()
-        fetchDevices()
-        
+        fetchData(); fetchAllTeams(); fetchDevices()
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             Task { @MainActor in
-                if !self.isEditing {
-                    self.fetchData()
-                    self.fetchDevices()
-                }
+                if !self.isEditing { self.fetchData(); self.fetchDevices() }
             }
         }
     }
@@ -288,55 +216,21 @@ class TickerViewModel: ObservableObject {
     }
     
     func updateOverallStatus() {
-        if !isServerReachable {
-            self.connectionStatus = "Server Offline"
-            self.statusColor = .red
-            return
-        }
-        
+        if !isServerReachable { self.connectionStatus = "Server Offline"; self.statusColor = .red; return }
         let now = Date().timeIntervalSince1970
         var activeDeviceFound = false
-        
-        if devices.isEmpty {
-            self.connectionStatus = "Server Online (No Ticker)"
-            self.statusColor = .orange
-            return
-        }
-        
-        for d in devices {
-            if let seen = d.last_seen {
-                if (now - seen) < 60 {
-                    activeDeviceFound = true
-                }
-            }
-        }
-        
-        if activeDeviceFound {
-            self.connectionStatus = "Connected • \(self.games.count) Items"
-            self.statusColor = .green
-        } else {
-            self.connectionStatus = "Ticker Offline • \(self.games.count) Items"
-            self.statusColor = .orange
-            
-            if self.state.mode != "all" && self.state.mode != "live" {
-                self.state.mode = "all"
-            }
-        }
+        if devices.isEmpty { self.connectionStatus = "Server Online (No Ticker)"; self.statusColor = .orange; return }
+        for d in devices { if let seen = d.last_seen, (now - seen) < 60 { activeDeviceFound = true } }
+        if activeDeviceFound { self.connectionStatus = "Connected • \(self.games.count) Items"; self.statusColor = .green }
+        else { self.connectionStatus = "Ticker Offline • \(self.games.count) Items"; self.statusColor = .orange }
     }
     
     func fetchData() {
         let base = getBaseURL()
         if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
         guard let url = URL(string: "\(base)/api/state") else { self.connectionStatus = "Bad URL"; self.statusColor = .red; return }
-        
         URLSession.shared.dataTask(with: url) { data, _, error in
-            if let _ = error {
-                DispatchQueue.main.async {
-                    self.isServerReachable = false
-                    self.updateOverallStatus()
-                }
-                return
-            }
+            if let _ = error { DispatchQueue.main.async { self.isServerReachable = false; self.updateOverallStatus() }; return }
             guard let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
@@ -347,19 +241,10 @@ class TickerViewModel: ObservableObject {
                         if g1.state != "in" && g2.state == "in" { return false }
                         return false
                     }
-                    if !self.isEditing {
-                        self.state = decoded.settings
-                        self.weatherLoc = decoded.settings.weather_location ?? "New York"
-                    }
+                    if !self.isEditing { self.state = decoded.settings; self.weatherLoc = decoded.settings.weather_location ?? "New York" }
                     self.updateOverallStatus()
                 }
-            } catch {
-                DispatchQueue.main.async {
-                    self.isServerReachable = true
-                    self.connectionStatus = "Data Error"
-                    self.statusColor = .red
-                }
-            }
+            } catch { DispatchQueue.main.async { self.isServerReachable = true; self.connectionStatus = "Data Error"; self.statusColor = .red } }
         }.resume()
     }
     
@@ -370,9 +255,7 @@ class TickerViewModel: ObservableObject {
             guard let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode([String: [TeamData]].self, from: data)
-                DispatchQueue.main.async {
-                    self.allTeams = self.staticTeams.merging(decoded) { (_, new) in new }
-                }
+                DispatchQueue.main.async { self.allTeams = decoded }
             } catch { print("Teams Decode Error") }
         }.resume()
     }
@@ -394,19 +277,14 @@ class TickerViewModel: ObservableObject {
     func fetchDevices() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/tickers") else { return }
-        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        
         URLSession.shared.dataTask(with: request) { data, _, _ in
             guard let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode([TickerDevice].self, from: data)
-                DispatchQueue.main.async {
-                    self.devices = decoded
-                    self.updateOverallStatus()
-                }
+                DispatchQueue.main.async { self.devices = decoded; self.updateOverallStatus() }
             } catch { print("Devices Decode Error") }
         }.resume()
     }
@@ -416,12 +294,10 @@ class TickerViewModel: ObservableObject {
         guard let url = URL(string: "\(base)/pair") else { return }
         let body: [String: Any] = ["code": code, "name": name]
         guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else { return }
-        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        
         request.httpBody = jsonData
         performPairRequest(request: request)
     }
@@ -431,12 +307,10 @@ class TickerViewModel: ObservableObject {
         guard let url = URL(string: "\(base)/pair/id") else { return }
         let body: [String: Any] = ["id": id, "name": name]
         guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else { return }
-        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        
         request.httpBody = jsonData
         performPairRequest(request: request)
     }
@@ -444,23 +318,10 @@ class TickerViewModel: ObservableObject {
     private func performPairRequest(request: URLRequest) {
         URLSession.shared.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
-                if let error = error {
-                    self.pairError = "Network Error: \(error.localizedDescription)"
-                    return
-                }
-                guard let data = data, let result = try? JSONDecoder().decode(PairResponse.self, from: data) else {
-                    self.pairError = "Invalid Response"
-                    return
-                }
-                if result.success {
-                    self.showPairSuccess = true
-                    self.pairCode = ""
-                    self.pairName = ""
-                    self.pairID = ""
-                    self.fetchDevices()
-                } else {
-                    self.pairError = result.message ?? "Pairing Failed"
-                }
+                if let error = error { self.pairError = "Network Error: \(error.localizedDescription)"; return }
+                guard let data = data, let result = try? JSONDecoder().decode(PairResponse.self, from: data) else { self.pairError = "Invalid Response"; return }
+                if result.success { self.showPairSuccess = true; self.pairCode = ""; self.pairName = ""; self.pairID = ""; self.fetchDevices() }
+                else { self.pairError = result.message ?? "Pairing Failed" }
             }
         }.resume()
     }
@@ -473,7 +334,6 @@ class TickerViewModel: ObservableObject {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        
         URLSession.shared.dataTask(with: request).resume()
     }
     
@@ -527,6 +387,7 @@ class TickerViewModel: ObservableObject {
         saveSettings()
     }
 }
+
 // ==========================================
 // MARK: - 3. UI COMPONENTS
 // ==========================================
@@ -540,6 +401,7 @@ struct NativeLiquidGlass: ViewModifier {
     }
 }
 extension View { func liquidGlass() -> some View { modifier(NativeLiquidGlass()) } }
+
 struct SituationPill: View {
     let text: String; let color: Color
     var body: some View {
@@ -548,11 +410,13 @@ struct SituationPill: View {
             .cornerRadius(4).overlay(RoundedRectangle(cornerRadius: 4).stroke(color.opacity(0.3), lineWidth: 1))
     }
 }
+
 struct ShootoutBubbles: View {
     let results: [String]
+    let maxDots: Int
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(0..<max(3, results.count), id: \.self) { i in
+            ForEach(0..<max(maxDots, results.count), id: \.self) { i in
                 if i < results.count {
                     let res = results[i]
                     if res == "goal" {
@@ -579,6 +443,163 @@ struct ShootoutBubbles: View {
         }
     }
 }
+
+struct TabButton: View {
+    let icon: String; let label: String; let idx: Int; @Binding var sel: Int
+    var body: some View { Button { sel = idx } label: { VStack(spacing: 4) { Image(systemName: icon).font(.system(size: 20)); Text(label).font(.caption2) }.frame(maxWidth: .infinity).foregroundColor(sel == idx ? .white : .gray).padding(.vertical, 8).background(sel == idx ? Color.white.opacity(0.15) : Color.clear).cornerRadius(12) } }
+}
+
+struct FilterBtn: View {
+    let title: String; let val: String; let cur: String; let act: () -> Void
+    var body: some View { Button(action: act) { Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12).background(cur == val ? Color(red: 0.0, green: 0.47, blue: 1.0) : Color.white.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(cur == val ? Color.blue : Color.white.opacity(0.1), lineWidth: 1)).foregroundColor(.white) } }
+}
+
+struct ScrollBtn: View {
+    let title: String; let val: Bool; let cur: Bool; let act: () -> Void
+    var body: some View { Button(action: act) { Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12).background(cur == val ? Color(red: 0.0, green: 0.47, blue: 1.0) : Color.white.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(cur == val ? Color.blue : Color.white.opacity(0.1), lineWidth: 1)).foregroundColor(.white) } }
+}
+
+struct TeamLogoView: View {
+    let url: String?; let abbr: String; let size: CGFloat
+    var body: some View { AsyncImage(url: URL(string: url ?? "")) { phase in if let image = phase.image { image.resizable().scaledToFit() } else { ZStack { Circle().fill(Color.gray.opacity(0.3)); Text(abbr).font(.system(size: size * 0.35, weight: .bold)).foregroundColor(.white.opacity(0.8)) } } }.frame(width: size, height: size) }
+}
+
+struct GameRow: View {
+    let game: Game
+    
+    var activeSituation: String {
+        guard let s = game.situation else { return "" }
+        if let en = s.emptyNet, en { return "EMPTY NET" }
+        if let pp = s.powerPlay, pp { return "PWR PLAY" }
+        if let dd = s.downDist { return dd }
+        if let rz = s.isRedZone, rz { return "RED ZONE" }
+        if let b = s.balls, let str = s.strikes, let o = s.outs { return "\(b)-\(str), \(o) Out" }
+        return ""
+    }
+    var situationColor: Color {
+        if let s = game.situation {
+            if s.isRedZone == true { return Color.red }
+            if s.emptyNet == true { return Color.red }
+        }
+        return Color.yellow
+    }
+    func hasPossession(isHome: Bool) -> Bool {
+        guard let s = game.situation, let p = s.possession else { return false }
+        let pClean = p.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if pClean.isEmpty { return false }
+        let abbr = (isHome ? game.safeHomeAbbr : game.safeAwayAbbr).uppercased()
+        let id = (isHome ? game.home_id : game.away_id) ?? ""
+        let logo = isHome ? game.safeHomeLogo : game.safeAwayLogo
+        if pClean == abbr { return true }
+        if pClean == id { return true }
+        if logo.contains("/\(pClean).png") || logo.contains("/\(pClean).svg") { return true }
+        return false
+    }
+    var isSituationGlobal: Bool {
+        guard game.situation != nil else { return false }
+        return !activeSituation.isEmpty && !hasPossession(isHome: true) && !hasPossession(isHome: false)
+    }
+    var formattedSport: String { 
+        switch game.sport { 
+        case "ncf_fbs": return "FBS"
+        case "ncf_fcs": return "FCS"
+        case "soccer_epl": return "EPL"
+        case "soccer_champ": return "EFL"
+        case "soccer_wc": return "FIFA"
+        case "hockey_olympics": return "OLY"
+        default: return game.sport.uppercased() 
+        } 
+    }
+    var isLive: Bool { return game.state == "in" }
+    var isSoccer: Bool { return game.sport.contains("soccer") }
+    
+    func prioritizeVibrantColor(primary: String?, alternate: String?) -> Color {
+        let pColor = Color(hex: primary ?? "#000000")
+        let aColor = Color(hex: alternate ?? "#000000")
+        if pColor.isGrayscaleOrBlack && !aColor.isGrayscaleOrBlack { return aColor }
+        return pColor
+    }
+    
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+        if game.type == "leaderboard" {
+            HStack(spacing: 12) {
+                Capsule().fill(game.is_shown ? Color.green : Color.red).frame(width: 4, height: 55)
+                VStack(alignment: .leading) {
+                    Text(game.tourney_name ?? "Event").font(.headline).bold().foregroundColor(.white)
+                    Text(game.status).font(.caption).foregroundColor(.gray)
+                }
+                Spacer()
+                Text(game.sport.uppercased()).font(.system(size: 14, weight: .bold)).foregroundColor(.white).padding(6).background(Color.white.opacity(0.1)).cornerRadius(6)
+            }
+            .padding(12).background(Color(white: 0.15))
+            .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
+            .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
+        } else {
+            let homeColor = prioritizeVibrantColor(primary: game.home_color, alternate: game.home_alt_color)
+            let awayColor = prioritizeVibrantColor(primary: game.away_color, alternate: game.away_alt_color)
+            let bg = LinearGradient(gradient: Gradient(colors: [awayColor.opacity(0.3), homeColor.opacity(0.3)]), startPoint: .leading, endPoint: .trailing)
+            
+            HStack(spacing: 12) {
+                Capsule().fill(game.is_shown ? Color.green : Color.red).frame(width: 4, height: 55)
+                if game.sport == "weather" {
+                    HStack {
+                        Image(systemName: game.situation?.icon == "sun" ? "sun.max.fill" : "cloud.fill").font(.title).foregroundColor(.yellow)
+                        VStack(alignment: .leading) {
+                            Text(game.safeAwayAbbr).font(.headline).bold().foregroundColor(.white)
+                            Text(game.status).font(.caption).foregroundColor(.gray)
+                        }
+                        Spacer()
+                        Text(game.safeHomeAbbr).font(.system(size: 24, weight: .bold)).foregroundColor(.white)
+                    }
+                } else if game.sport == "clock" {
+                    HStack {
+                        Image(systemName: "clock.fill").font(.title).foregroundColor(.blue)
+                        Text("Clock Mode Active").font(.headline).bold().foregroundColor(.white)
+                        Spacer()
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            TeamLogoView(url: game.safeAwayLogo, abbr: game.safeAwayAbbr, size: 22)
+                            Text(game.safeAwayAbbr).font(.headline).bold().foregroundColor(.white)
+                            if let so = game.situation?.shootout, let awayRes = so.away {
+                                ShootoutBubbles(results: awayRes, maxDots: isSoccer ? 5 : 3)
+                                    .padding(.horizontal, 4).padding(.vertical, 2)
+                                    .background(Color.black.opacity(0.3)).cornerRadius(4)
+                            }
+                            else if !activeSituation.isEmpty, hasPossession(isHome: false) { SituationPill(text: activeSituation, color: situationColor) }
+                            Spacer(); Text(game.away_score).font(.headline).bold().foregroundColor(.white)
+                        }
+                        HStack {
+                            TeamLogoView(url: game.safeHomeLogo, abbr: game.safeHomeAbbr, size: 22)
+                            Text(game.safeHomeAbbr).font(.headline).bold().foregroundColor(.white)
+                            if let so = game.situation?.shootout, let homeRes = so.home {
+                                ShootoutBubbles(results: homeRes, maxDots: isSoccer ? 5 : 3)
+                                    .padding(.horizontal, 4).padding(.vertical, 2)
+                                    .background(Color.black.opacity(0.3)).cornerRadius(4)
+                            }
+                            else if !activeSituation.isEmpty, hasPossession(isHome: true) { SituationPill(text: activeSituation, color: situationColor) }
+                            Spacer(); Text(game.home_score).font(.headline).bold().foregroundColor(.white)
+                        }
+                    }
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text(game.status)
+                            .font(.caption).bold().padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(isLive ? Color.red.opacity(0.1) : Color.white.opacity(0.1))
+                            .cornerRadius(6).foregroundColor(.white)
+                        Text(formattedSport).font(.caption2).foregroundStyle(.gray)
+                        if isSituationGlobal { SituationPill(text: activeSituation, color: situationColor) }
+                    }.frame(width: 80, alignment: .trailing)
+                }
+            }
+            .padding(12).background(bg)
+            .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
+            .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
+        }
+    }
+}
+
 // ==========================================
 // MARK: - 4. MAIN VIEW
 // ==========================================
@@ -589,6 +610,7 @@ struct ContentView: View {
     
     var body: some View {
         ZStack(alignment: .bottom) {
+            // Original Grey-Blue Gradient
             LinearGradient(gradient: Gradient(colors: [Color(red: 0.22, green: 0.28, blue: 0.35), Color(red: 0.05, green: 0.07, blue: 0.10)]), startPoint: .top, endPoint: .bottom).ignoresSafeArea()
             
             TabView(selection: $selectedTab) {
@@ -613,6 +635,7 @@ struct ContentView: View {
         }.preferredColorScheme(.dark)
     }
 }
+
 struct HomeView: View {
     @ObservedObject var vm: TickerViewModel
     var body: some View {
@@ -648,6 +671,7 @@ struct HomeView: View {
         }
     }
 }
+
 struct ModesView: View {
     @ObservedObject var vm: TickerViewModel
     var currentMode: String {
@@ -655,12 +679,18 @@ struct ModesView: View {
         if vm.state.active_sports["clock"] == true { return "clock" }
         return "sports"
     }
+    
+    // Updated friendly list
     let leagues = [
         ("nfl", "NFL"), ("nba", "NBA"), ("nhl", "NHL"), ("mlb", "MLB"),
-        ("ncf_fbs", "NCAA FBS"), ("ncf_fcs", "NCAA FCS"), ("soccer", "Soccer"),
+        ("ncf_fbs", "NCAA FBS"), ("ncf_fcs", "NCAA FCS"),
+        ("soccer_epl", "Premier League"),
+        ("soccer_champ", "EFL Championship"), ("soccer_l1", "EFL League One"), ("soccer_l2", "EFL League Two"),
+        ("soccer_wc", "Fifa World Cup"), ("hockey_olympics", "Olympic Hockey"),
         ("f1", "Formula 1"), ("nascar", "NASCAR"), ("indycar", "IndyCar"),
         ("imsa", "IMSA"), ("wec", "WEC")
     ]
+    
     func setMode(_ mode: String) {
         vm.state.active_sports["weather"] = false
         vm.state.active_sports["clock"] = false
@@ -668,6 +698,7 @@ struct ModesView: View {
         else if mode == "clock" { vm.state.active_sports["clock"] = true }
         vm.saveSettings()
     }
+    
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -677,6 +708,7 @@ struct ModesView: View {
                     FilterBtn(title: "Weather", val: "weather", cur: currentMode) { setMode("weather") }
                     FilterBtn(title: "Clock", val: "clock", cur: currentMode) { setMode("clock") }
                 }.padding(.horizontal)
+                
                 VStack(alignment: .leading, spacing: 8) {
                     Text("SCROLL STYLE").font(.caption).bold().foregroundStyle(.secondary)
                     HStack(spacing: 12) {
@@ -684,6 +716,7 @@ struct ModesView: View {
                         ScrollBtn(title: "Seamless", val: true, cur: vm.state.scroll_seamless ?? false) { vm.state.scroll_seamless = true; vm.saveSettings() }
                     }
                 }.padding(.horizontal)
+                
                 if currentMode == "weather" {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("WEATHER CONFIGURATION").font(.caption).bold().foregroundStyle(.secondary)
@@ -693,21 +726,20 @@ struct ModesView: View {
                             TextField("City or Zip", text: $vm.weatherLoc).multilineTextAlignment(.trailing).foregroundColor(.white).onSubmit { vm.saveSettings() }
                         }.padding().liquidGlass()
                     }.padding(.horizontal)
-                }
-                if currentMode == "clock" {
+                } else if currentMode == "clock" {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("CLOCK MODE").font(.caption).bold().foregroundStyle(.secondary)
                         Text("Displaying large time and date.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     }.padding(.horizontal)
-                }
-                if currentMode == "sports" {
+                } else {
+                    // BUTTON GRID (Tap to toggle) - UPDATED
                     VStack(alignment: .leading, spacing: 10) {
                         Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 12) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
                             ForEach(leagues, id: \.0) { key, name in
                                 let isActive = vm.state.active_sports[key] ?? false
                                 Button { vm.state.active_sports[key] = !isActive; vm.saveSettings() } label: {
-                                    Text(name).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+                                    Text(name).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
                                         .background(isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
                                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
@@ -722,38 +754,53 @@ struct ModesView: View {
         }
     }
 }
+
 struct TeamsView: View {
     @ObservedObject var vm: TickerViewModel
     @State private var selectedLeague = "nfl"
+    
+    // UPDATED: Friendly list matching API keys
     let leagues = [
         ("nfl", "NFL"), ("nba", "NBA"), ("nhl", "NHL"), ("mlb", "MLB"),
-        ("ncf_fbs", "FBS"), ("ncf_fcs", "FCS"), ("soccer", "Premier League")
+        ("soccer_epl", "Premier League"), 
+        ("soccer_champ", "EFL Champ"), 
+        ("soccer_l1", "EFL League 1"), 
+        ("soccer_l2", "EFL League 2"),
+        ("soccer_wc", "Fifa World Cup"),
+        ("hockey_olympics", "Olympic Hockey"), 
+        ("ncf_fbs", "FBS"), ("ncf_fcs", "FCS")
     ]
-    let gridColumns = [GridItem(.adaptive(minimum: 100), spacing: 10)]
+    
     let teamColumns = [GridItem(.adaptive(minimum: 60))]
+    
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                HStack { Text("My Teams").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80)
-                VStack(alignment: .leading, spacing: 15) {
-                    Text("MANAGE TEAMS").font(.caption).bold().foregroundStyle(.secondary)
-                    LazyVGrid(columns: gridColumns, spacing: 10) {
+        VStack(spacing: 0) {
+            HStack { Text("My Teams").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80).padding(.bottom, 10)
+            
+            // STACKED GRID SELECTOR (Not scrolling)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
                         ForEach(leagues, id: \.0) { key, name in
                             Button { selectedLeague = key } label: {
                                 Text(name).bold().font(.caption)
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(selectedLeague == key ? Color.blue : Color.white.opacity(0.1))
+                                    .padding(.vertical, 8)
+                                    .background(selectedLeague == key ? Color.blue : Color(white: 0.2))
                                     .foregroundColor(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(selectedLeague == key ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                         }
                     }
+                    
+                    Divider().background(Color.white.opacity(0.2))
+                    
+                    // TEAM GRID
                     if let teams = vm.allTeams[selectedLeague], !teams.isEmpty {
                         let filteredTeams = teams
                             .filter { $0.abbr.trimmingCharacters(in: .whitespaces).count > 0 && $0.abbr != "TBD" && $0.abbr != "null" }
                             .sorted { $0.abbr < $1.abbr }
+                        
                         LazyVGrid(columns: teamColumns, spacing: 15) {
                             ForEach(filteredTeams, id: \.self) { team in
                                 let isSelected = vm.state.my_teams.contains(team.abbr)
@@ -767,9 +814,9 @@ struct TeamsView: View {
                                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2))
                                 }
                             }
-                        }.padding(10).liquidGlass()
+                        }
                     } else {
-                        Text("Loading teams...").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
+                        Text("Loading teams or no teams available...").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     }
                 }.padding(.horizontal)
                 Spacer(minLength: 120)
@@ -777,6 +824,7 @@ struct TeamsView: View {
         }
     }
 }
+
 struct SettingsView: View {
     @ObservedObject var vm: TickerViewModel
     @State private var showPairing = false
@@ -817,26 +865,17 @@ struct SettingsView: View {
                 }.padding(.horizontal)
                 
                 // --- DEBUG (CONDITIONAL) ---
-                // Only show this section if the server says so
                 if vm.state.show_debug_options == true {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("DEBUG").font(.caption).bold().foregroundStyle(.secondary)
                         VStack(spacing: 0) {
-                            
-                            // --- FIXED TOGGLE WITH POLLING PAUSE ---
                             Toggle("Debug Mode", isOn: Binding(
                                 get: { vm.state.debug_mode },
                                 set: { val in
-                                    // 1. Pause background refreshing
                                     vm.isEditing = true
-                                    // 2. Update local state
                                     vm.state.debug_mode = val
-                                    // 3. Send to server
                                     vm.sendDebug()
-                                    // 4. Resume refreshing after 2 seconds
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                        vm.isEditing = false
-                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { vm.isEditing = false }
                                 }
                             ))
                             .padding()
@@ -883,6 +922,7 @@ struct SettingsView: View {
         }
     }
 }
+
 struct DeviceRow: View {
     let device: TickerDevice
     @ObservedObject var vm: TickerViewModel
@@ -986,6 +1026,7 @@ struct DeviceRow: View {
         }.padding().liquidGlass()
     }
 }
+
 struct PairingView: View {
     @ObservedObject var vm: TickerViewModel
     @Binding var isPresented: Bool
@@ -1007,144 +1048,3 @@ struct PairingView: View {
         }
     }
 }
-struct TabButton: View {
-    let icon: String; let label: String; let idx: Int; @Binding var sel: Int
-    var body: some View { Button { sel = idx } label: { VStack(spacing: 4) { Image(systemName: icon).font(.system(size: 20)); Text(label).font(.caption2) }.frame(maxWidth: .infinity).foregroundColor(sel == idx ? .white : .gray).padding(.vertical, 8).background(sel == idx ? Color.white.opacity(0.15) : Color.clear).cornerRadius(12) } }
-}
-struct FilterBtn: View {
-    let title: String; let val: String; let cur: String; let act: () -> Void
-    var body: some View { Button(action: act) { Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12).background(cur == val ? Color(red: 0.0, green: 0.47, blue: 1.0) : Color.white.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(cur == val ? Color.blue : Color.white.opacity(0.1), lineWidth: 1)).foregroundColor(.white) } }
-}
-struct ScrollBtn: View {
-    let title: String; let val: Bool; let cur: Bool; let act: () -> Void
-    var body: some View { Button(action: act) { Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12).background(cur == val ? Color(red: 0.0, green: 0.47, blue: 1.0) : Color.white.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(cur == val ? Color.blue : Color.white.opacity(0.1), lineWidth: 1)).foregroundColor(.white) } }
-}
-struct TeamLogoView: View {
-    let url: String?; let abbr: String; let size: CGFloat
-    var body: some View { AsyncImage(url: URL(string: url ?? "")) { phase in if let image = phase.image { image.resizable().scaledToFit() } else { ZStack { Circle().fill(Color.gray.opacity(0.3)); Text(abbr).font(.system(size: size * 0.35, weight: .bold)).foregroundColor(.white.opacity(0.8)) } } }.frame(width: size, height: size) }
-}
-struct GameRow: View {
-    let game: Game
-    var activeSituation: String {
-        guard let s = game.situation else { return "" }
-        if let en = s.emptyNet, en { return "EMPTY NET" }
-        if let pp = s.powerPlay, pp { return "PWR PLAY" }
-        if let dd = s.downDist { return dd }
-        if let rz = s.isRedZone, rz { return "RED ZONE" }
-        if let b = s.balls, let str = s.strikes, let o = s.outs { return "\(b)-\(str), \(o) Out" }
-        return ""
-    }
-    var situationColor: Color {
-        if let s = game.situation {
-            if s.isRedZone == true { return Color.red }
-            if s.emptyNet == true { return Color.red }
-        }
-        return Color.yellow
-    }
-    func hasPossession(isHome: Bool) -> Bool {
-        guard let s = game.situation, let p = s.possession else { return false }
-        let pClean = p.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        if pClean.isEmpty { return false }
-        let abbr = (isHome ? game.safeHomeAbbr : game.safeAwayAbbr).uppercased()
-        let id = (isHome ? game.home_id : game.away_id) ?? ""
-        let logo = isHome ? game.safeHomeLogo : game.safeAwayLogo
-        if pClean == abbr { return true }
-        if pClean == id { return true }
-        if logo.contains("/\(pClean).png") || logo.contains("/\(pClean).svg") { return true }
-        return false
-    }
-    var isSituationGlobal: Bool {
-        guard game.situation != nil else { return false }
-        return !activeSituation.isEmpty && !hasPossession(isHome: true) && !hasPossession(isHome: false)
-    }
-    var formattedSport: String { switch game.sport { case "ncf_fbs": return "FBS"; case "ncf_fcs": return "FCS"; default: return game.sport.uppercased() } }
-    var isLive: Bool { return game.state == "in" }
-    func prioritizeVibrantColor(primary: String?, alternate: String?) -> Color {
-        let pColor = Color(hex: primary ?? "#000000")
-        let aColor = Color(hex: alternate ?? "#000000")
-        if pColor.isGrayscaleOrBlack && !aColor.isGrayscaleOrBlack { return aColor }
-        return pColor
-    }
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
-        if game.type == "leaderboard" {
-            HStack(spacing: 12) {
-                Capsule().fill(game.is_shown ? Color.green : Color.red).frame(width: 4, height: 55)
-                VStack(alignment: .leading) {
-                    Text(game.tourney_name ?? "Event").font(.headline).bold().foregroundColor(.white)
-                    Text(game.status).font(.caption).foregroundColor(.gray)
-                }
-                Spacer()
-                Text(game.sport.uppercased()).font(.system(size: 14, weight: .bold)).foregroundColor(.white).padding(6).background(Color.white.opacity(0.1)).cornerRadius(6)
-            }
-            .padding(12).background(Color(white: 0.15))
-            .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
-            .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
-        } else {
-            let homeColor = prioritizeVibrantColor(primary: game.home_color, alternate: game.home_alt_color)
-            let awayColor = prioritizeVibrantColor(primary: game.away_color, alternate: game.away_alt_color)
-            let bg = LinearGradient(gradient: Gradient(colors: [awayColor.opacity(0.3), homeColor.opacity(0.3)]), startPoint: .leading, endPoint: .trailing)
-            HStack(spacing: 12) {
-                Capsule().fill(game.is_shown ? Color.green : Color.red).frame(width: 4, height: 55)
-                if game.sport == "weather" {
-                    HStack {
-                        Image(systemName: game.situation?.icon == "sun" ? "sun.max.fill" : "cloud.fill").font(.title).foregroundColor(.yellow)
-                        VStack(alignment: .leading) {
-                            Text(game.safeAwayAbbr).font(.headline).bold().foregroundColor(.white)
-                            Text(game.status).font(.caption).foregroundColor(.gray)
-                        }
-                        Spacer()
-                        Text(game.safeHomeAbbr).font(.system(size: 24, weight: .bold)).foregroundColor(.white)
-                    }
-                } else if game.sport == "clock" {
-                    HStack {
-                        Image(systemName: "clock.fill").font(.title).foregroundColor(.blue)
-                        Text("Clock Mode Active").font(.headline).bold().foregroundColor(.white)
-                        Spacer()
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            TeamLogoView(url: game.safeAwayLogo, abbr: game.safeAwayAbbr, size: 22)
-                            Text(game.safeAwayAbbr).font(.headline).bold().foregroundColor(.white)
-                            if let so = game.situation?.shootout, let awayRes = so.away {
-                                ShootoutBubbles(results: awayRes)
-                                    .padding(.horizontal, 4).padding(.vertical, 2)
-                                    .background(Color.black.opacity(0.3)).cornerRadius(4)
-                            }
-                            else if !activeSituation.isEmpty, hasPossession(isHome: false) { SituationPill(text: activeSituation, color: situationColor) }
-                            Spacer(); Text(game.away_score).font(.headline).bold().foregroundColor(.white)
-                        }
-                        HStack {
-                            TeamLogoView(url: game.safeHomeLogo, abbr: game.safeHomeAbbr, size: 22)
-                            Text(game.safeHomeAbbr).font(.headline).bold().foregroundColor(.white)
-                            if let so = game.situation?.shootout, let homeRes = so.home {
-                                ShootoutBubbles(results: homeRes)
-                                    .padding(.horizontal, 4).padding(.vertical, 2)
-                                    .background(Color.black.opacity(0.3)).cornerRadius(4)
-                            }
-                            else if !activeSituation.isEmpty, hasPossession(isHome: true) { SituationPill(text: activeSituation, color: situationColor) }
-                            Spacer(); Text(game.home_score).font(.headline).bold().foregroundColor(.white)
-                        }
-                    }
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text(game.status)
-                            .font(.caption).bold().padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(isLive ? Color.red.opacity(0.1) : Color.white.opacity(0.1))
-                            .cornerRadius(6).foregroundColor(.white)
-                        Text(formattedSport).font(.caption2).foregroundStyle(.gray)
-                        if isSituationGlobal { SituationPill(text: activeSituation, color: situationColor) }
-                    }.frame(width: 80, alignment: .trailing)
-                }
-            }
-            .padding(12).background(bg)
-            .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
-            .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
-        }
-    }
-}
-
-
-
-
-
