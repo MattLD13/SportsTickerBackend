@@ -37,7 +37,7 @@ except Exception as e:
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
-UPDATE_INTERVAL = 5 
+UPDATE_INTERVAL = 60 # Increased to 60s to prevent API rate limiting
 data_lock = threading.Lock()
 
 HEADERS = {
@@ -144,12 +144,9 @@ def generate_pairing_code():
         if code not in active_codes:
             return code
 
-# ================= HARDCODED TEAMS =================
-# College Football Lists (Provided by User)
+# ================= LISTS =================
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
-
-# Olympic Hockey (Manual List to ensure they appear)
 OLYMPIC_HOCKEY_TEAMS = [
     {"abbr": "CAN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/can.png"},
     {"abbr": "USA", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/usa.png"},
@@ -169,11 +166,6 @@ LOGO_OVERRIDES = {
     "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png", "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png",
     "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
     "NCF_FBS:WASH": "https://a.espncdn.com/i/teamlogos/ncaa/500/264.png"
-}
-
-SPORT_DURATIONS = {
-    'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
-    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115, 'hockey_olympics': 150
 }
 
 # === DEMO DATA ===
@@ -202,7 +194,7 @@ class WeatherFetcher:
             d = r.json()
             if 'results' in d and len(d['results']) > 0:
                 res = d['results'][0]; self.lat = res['latitude']; self.lon = res['longitude']; self.location_name = res['name']; self.last_fetch = 0 
-        except: pass
+        except Exception as e: print(f"Weather update error: {e}")
     def get_weather(self):
         if time.time() - self.last_fetch < 900 and self.cache: return self.cache
         try:
@@ -224,7 +216,6 @@ class SportsFetcher:
     def __init__(self, initial_loc):
         self.weather = WeatherFetcher(initial_loc)
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
-        self.possession_cache = {}
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'mlb': { 'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
@@ -265,45 +256,28 @@ class SportsFetcher:
                             logo = self.get_corrected_logo(league_key, abbr, logo)
                             if not any(x['abbr'] == abbr for x in catalog[league_key]):
                                 catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
-        except: pass
+        except Exception as e: print(f"Error fetching teams for {league_key}: {e}")
 
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
             print("Starting Team Fetch...")
             
-            # 1. HARDCODE OLYMPIC HOCKEY (No API Fetch)
+            # 1. HARDCODE OLYMPIC HOCKEY
             for t in OLYMPIC_HOCKEY_TEAMS:
-                teams_catalog['hockey_olympics'].append({'abbr': t['abbr'], 'logo': t['logo'], 'color': t.get('color','000000'), 'alt_color': t.get('alt_color','444444')})
+                teams_catalog['hockey_olympics'].append({'abbr': t['abbr'], 'logo': t['logo'], 'color': '000000', 'alt_color': '444444'})
 
-            # 2. COLLEGE FOOTBALL (Hybrid: Default -> Enrich)
+            # 2. COLLEGE FOOTBALL
             def_logo = "https://a.espncdn.com/i/teamlogos/ncaa/500/ncaa.png"
             for abbr in FBS_TEAMS: teams_catalog['ncf_fbs'].append({'abbr': abbr, 'logo': def_logo, 'color': '000000', 'alt_color': '444444'})
             for abbr in FCS_TEAMS: teams_catalog['ncf_fcs'].append({'abbr': abbr, 'logo': def_logo, 'color': '000000', 'alt_color': '444444'})
-
-            try:
-                for grp, key, t_list in [(80, 'ncf_fbs', FBS_TEAMS), (81, 'ncf_fcs', FCS_TEAMS)]:
-                    url = f"{self.base_url}football/college-football/teams"
-                    r = requests.get(url, params={'groups': grp, 'limit': 900}, headers=HEADERS, timeout=5)
-                    if r.status_code == 200:
-                        data = r.json()
-                        if 'sports' in data:
-                            teams_catalog[key] = [] 
-                            for item in data['sports'][0]['leagues'][0].get('teams', []):
-                                t = item['team']
-                                abbr = t.get('abbreviation', 'UNK')
-                                if abbr in t_list:
-                                    teams_catalog[key].append({
-                                        'abbr': abbr, 'logo': t.get('logos', [{}])[0].get('href', def_logo),
-                                        'color': t.get('color', '000000'), 'alt_color': t.get('alternateColor', '444444')
-                                    })
-            except: pass
 
             # 3. PRO LEAGUES
             for league_key in ['nfl', 'mlb', 'nhl', 'nba', 'soccer_epl', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc']:
                  self._fetch_simple_league(league_key, teams_catalog)
 
             with data_lock: state['all_teams_data'] = teams_catalog
+            print("Teams fetched successfully.")
         except Exception as e: print(f"Global Team Fetch Error: {e}")
 
     def fetch_shootout_details(self, game_id, sport='nhl'):
@@ -333,15 +307,33 @@ class SportsFetcher:
             r = requests.get(url, headers=HEADERS, timeout=5)
             data = r.json()
             for e in data.get('events', []):
-                name = e.get('name', e.get('shortName', 'Tournament'))
-                status_obj = e.get('status', {}); state = status_obj.get('type', {}).get('state', 'pre')
+                name = e.get('name', e.get('shortName', 'Race'))
+                status_obj = e.get('status', {})
+                state = status_obj.get('type', {}).get('state', 'pre')
+                
+                # Fetch top 5 if available
+                leaders = []
+                try:
+                    comps = e.get('competitions', [{}])[0].get('competitors', [])
+                    sorted_comps = sorted(comps, key=lambda x: int(x.get('curatedRank', x.get('order', 999))))
+                    for c in sorted_comps[:5]:
+                        athlete = c.get('athlete', {})
+                        disp_name = athlete.get('displayName', c.get('team',{}).get('displayName','Unk'))
+                        # Shorten name if needed
+                        if ' ' in disp_name: disp_name = disp_name.split(' ')[-1]
+                        
+                        rank = c.get('curatedRank', c.get('order', '-'))
+                        leaders.append({'rank': str(rank), 'name': disp_name})
+                except: pass
+
                 game_obj = {
                     'type': 'leaderboard', 'sport': league_key, 'id': e['id'],
                     'status': status_obj.get('type', {}).get('shortDetail', 'Live'),
-                    'state': state, 'tourney_name': name, 'is_shown': True, 'startTimeUTC': e['date']
+                    'state': state, 'tourney_name': name, 'is_shown': True, 'startTimeUTC': e['date'],
+                    'leaders': leaders
                 }
                 games_list.append(game_obj)
-        except: pass
+        except Exception as e: print(f"Racing fetch error {league_key}: {e}")
 
     def get_real_games(self):
         games = []
@@ -349,9 +341,17 @@ class SportsFetcher:
             conf = state.copy()
             if conf.get('demo_mode', False):
                 state['current_games'] = generate_demo_data(); return
-        utc_offset = conf.get('utc_offset', -4)
-        target_date_str = conf['custom_date'] if (conf['debug_mode'] and conf['custom_date']) else dt.now(timezone(timedelta(hours=utc_offset))).strftime("%Y-%m-%d")
+
+        utc_offset = conf.get('utc_offset', -5)
         
+        # Calculate Target Date
+        now_utc = dt.now(timezone.utc)
+        target_date_obj = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+        target_date_str = target_date_obj.strftime("%Y-%m-%d")
+        
+        if conf['debug_mode'] and conf['custom_date']:
+            target_date_str = conf['custom_date']
+
         if conf['active_sports'].get('weather'):
             if conf['weather_location'] != self.weather.location_name: self.weather.update_coords(conf['weather_location'])
             w = self.weather.get_weather()
@@ -360,19 +360,39 @@ class SportsFetcher:
 
         for league_key, config in self.leagues.items():
             if not conf['active_sports'].get(league_key, False): continue
-            if config.get('type') == 'leaderboard': self.fetch_leaderboard_event(league_key, config, games, conf); continue
+            
+            # Racing Logic
+            if config.get('type') == 'leaderboard': 
+                self.fetch_leaderboard_event(league_key, config, games, conf); continue
 
+            # Scoreboard Logic
             try:
-                curr_p = config.get('scoreboard_params', {}).copy(); curr_p['dates'] = target_date_str.replace('-', '')
+                curr_p = config.get('scoreboard_params', {}).copy()
+                curr_p['dates'] = target_date_str.replace('-', '')
+                
                 r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
                 data = r.json()
+                
                 for e in data.get('events', []):
-                    utc_str = e['date'].replace('Z', ''); st = e.get('status', {}); tp = st.get('type', {}); gst = tp.get('state', 'pre')
-                    game_date = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=utc_offset))).strftime("%Y-%m-%d")
-                    if gst != 'in' and game_date != target_date_str: continue
+                    utc_str = e['date'].replace('Z', '')
+                    st = e.get('status', {})
+                    tp = st.get('type', {})
+                    gst = tp.get('state', 'pre')
+                    
+                    # DATE CHECK: Only filter strict dates if game is NOT live
+                    # This fixes the issue where late night games disappear because the date changed
+                    game_date_local = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=utc_offset))).strftime("%Y-%m-%d")
+                    
+                    if gst not in ['in', 'half'] and game_date_local != target_date_str:
+                        continue
 
-                    comp = e['competitions'][0]; h = comp['competitors'][0]; a = comp['competitors'][1]
-                    h_ab = h['team'].get('abbreviation', 'UNK'); a_ab = a['team'].get('abbreviation', 'UNK')
+                    comp = e['competitions'][0]
+                    h = comp['competitors'][0]
+                    a = comp['competitors'][1]
+                    h_ab = h['team'].get('abbreviation', 'UNK')
+                    a_ab = a['team'].get('abbreviation', 'UNK')
+                    
+                    # Filtering for College Football
                     if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
                     if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
 
@@ -384,20 +404,28 @@ class SportsFetcher:
 
                     h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
                     a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
-                    h_score = h.get('score','0'); a_score = a.get('score','0')
-                    if 'soccer' in league_key: h_score = re.sub(r'\s*\(.*?\)', '', h_score); a_score = re.sub(r'\s*\(.*?\)', '', a_score)
+                    h_score = h.get('score','0')
+                    a_score = a.get('score','0')
+                    
+                    # Soccer score formatting (remove penalties form score string like "3 (4)")
+                    if 'soccer' in league_key: 
+                        h_score = re.sub(r'\s*\(.*?\)', '', str(h_score))
+                        a_score = re.sub(r'\s*\(.*?\)', '', str(a_score))
 
                     s_disp = tp.get('shortDetail', 'TBD')
                     if gst == 'pre':
                         try: s_disp = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
                         except: pass
                     elif 'soccer' in league_key and (gst == 'in' or gst == 'half'):
-                        clk = st.get('displayClock', '0:00').replace("'", ""); s_disp = f"{clk}'"
+                        clk = st.get('displayClock', '0:00').replace("'", "")
+                        s_disp = f"{clk}'"
                         if gst == 'half': s_disp = "Half"
 
-                    sit = comp.get('situation', {}); shootout_data = None
+                    sit = comp.get('situation', {})
+                    shootout_data = None
                     is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
                     if is_shootout: shootout_data = self.fetch_shootout_details(e['id'], league_key)
+                    
                     poss = sit.get('possession', '')
                     if gst == 'pre' or gst == 'post' or 'soccer' in league_key: poss = ''
                     down_text = sit.get('downDistanceText', '') if s_disp != "Halftime" else ''
@@ -415,14 +443,26 @@ class SportsFetcher:
                         game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 
                             'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
                     games.append(game_obj)
-            except Exception as e: pass
+            except Exception as e: 
+                print(f"Error fetching {league_key}: {e}") # CHANGED from 'pass' to 'print' so we can see why it fails
+        
         with data_lock: state['current_games'] = games
 
 fetcher = SportsFetcher(state['weather_location'])
 
 def background_updater():
-    fetcher.fetch_all_teams()
-    while True: fetcher.get_real_games(); time.sleep(UPDATE_INTERVAL)
+    # Initial Fetch - Don't let this block main execution forever if it fails
+    try:
+        fetcher.fetch_all_teams()
+    except Exception as e:
+        print(f"Initial team fetch failed: {e}")
+        
+    while True: 
+        try:
+            fetcher.get_real_games()
+        except Exception as e:
+            print(f"Loop error: {e}")
+        time.sleep(UPDATE_INTERVAL)
 
 # ================= FLASK API =================
 app = Flask(__name__)
@@ -451,9 +491,11 @@ def get_ticker_data():
     else: tickers[ticker_id]['last_seen'] = time.time()
     rec = tickers[ticker_id]
     if not rec.get('clients'): return jsonify({"status": "pairing", "code": rec['pairing_code']})
+    
     with data_lock:
         games = [g for g in state['current_games'] if g['is_shown']]
         conf = { "active_sports": state['active_sports'], "mode": state['mode'], "weather": state['weather_location'] }
+    
     return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": games } })
 
 @app.route('/pair', methods=['POST'])
@@ -488,7 +530,8 @@ def unpair(tid):
 
 @app.route('/tickers', methods=['GET'])
 def list_tickers():
-    cid = request.headers.get('X-Client-ID'); if not cid: return jsonify([])
+    cid = request.headers.get('X-Client-ID'); 
+    if not cid: return jsonify([])
     res = []
     for uid, rec in tickers.items():
         if cid in rec.get('clients', []): res.append({ "id": uid, "name": rec.get('name', 'Ticker'), "settings": rec['settings'], "last_seen": rec.get('last_seen', 0) })
