@@ -226,7 +226,9 @@ class TickerStreamer:
         except: self.huge_font = self.big_font
         
         self.portal = WifiPortal(self.matrix, self.font)
-        if not self.portal.check_internet(): self.portal.run() 
+        # Check for force file OR missing internet
+        if os.path.exists("setup_mode") or not self.portal.check_internet(): 
+            self.portal.run()
         
         self.games = []
         self.seamless_mode = False
