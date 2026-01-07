@@ -18,7 +18,7 @@ from flask import Flask, request, render_template_string
 
 # ================= CONFIGURATION =================
 BACKEND_URL = "https://ticker.mattdicks.org" 
-PANEL_W = 128
+PANEL_W = 256
 PANEL_H = 32
 SETUP_SSID = "SportsTicker_Setup"
 PAGE_HOLD_TIME = 8.0 
@@ -151,7 +151,12 @@ class WifiPortal:
             return False
 
     def start_hotspot(self):
-        subprocess.run(['nmcli', 'con', 'up', SETUP_SSID], capture_output=True)
+        # FORCE DISCONNECT: Kill the current connection first
+        # This prevents the Pi from clinging to the home network
+        subprocess.run(['nmcli', 'dev', 'disconnect', 'wlan0']) 
+        time.sleep(2)
+        # NOW start the hotspot
+        subprocess.run(['nmcli', 'con', 'up', SETUP_SSID])
 
     def draw_status(self, text):
         img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
@@ -163,7 +168,7 @@ class WifiPortal:
         # FORCE TRIGGER: Check if "setup_mode" file exists
         if os.path.exists("setup_mode"):
             print("Force Setup Mode Detected")
-            try: os.remove("setup_mode") # Delete it so we don't loop forever
+            try: os.remove("setup_mode") 
             except: pass
         # Standard Internet Check
         elif self.check_internet(): 
@@ -182,7 +187,6 @@ class TickerStreamer:
         self.device_id = get_device_id()
         print(f"Device ID: {self.device_id}")
 
-        # Ensure assets directory exists
         if not os.path.exists(ASSETS_DIR):
             try: os.makedirs(ASSETS_DIR)
             except Exception as e: print(f"Error creating asset dir: {e}")
@@ -190,16 +194,13 @@ class TickerStreamer:
         options = RGBMatrixOptions()
         options.rows = 32
         options.cols = 64
-        options.chain_length = 2
+        options.chain_length = 4
         options.parallel = 1
         
         # === ZERO 2 W OPTIMIZATIONS ===
         options.hardware_mapping = 'regular'
-        options.gpio_slowdown = 2  # <--- SET TO 2
-        
-        # === ARTIFACT FIXES REMOVED ===
+        options.gpio_slowdown = 2  
         options.show_refresh_rate = 0
-        
         options.disable_hardware_pulsing = True
         options.drop_privileges = False 
         options.limit_refresh_rate_hz = 120
@@ -226,9 +227,8 @@ class TickerStreamer:
         except: self.huge_font = self.big_font
         
         self.portal = WifiPortal(self.matrix, self.font)
-        # Check for force file OR missing internet
-        if os.path.exists("setup_mode") or not self.portal.check_internet(): 
-            self.portal.run()
+        # Logic is now handled inside self.portal.run()
+        self.portal.run() 
         
         self.games = []
         self.seamless_mode = False
