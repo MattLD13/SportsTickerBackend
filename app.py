@@ -49,7 +49,8 @@ HEADERS = {
 default_state = {
     'active_sports': { 
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
-        'soccer_epl': True, 'soccer_champ': False, 'soccer_l1': False, 'soccer_l2': False, 
+        # UPDATED: Set lower leagues to True so they appear by default
+        'soccer_epl': True, 'soccer_champ': True, 'soccer_l1': True, 'soccer_l2': True, 
         'soccer_wc': False, 'hockey_olympics': False, 
         'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
         'weather': False, 'clock': False 
@@ -425,14 +426,14 @@ class SportsFetcher:
                                         else:
                                             p_lbl = "OT" if p_num > 3 else f"P{p_num}"
                                             disp = f"{p_lbl} {time_rem}"
-                                        
-                                        sit_obj = d2.get('situation', {})
-                                        if sit_obj and p_type != 'SHOOTOUT':
-                                            sit = sit_obj.get('situationCode', '1551')
-                                            ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
-                                            if as_ > hs: pp=True; poss=a_ab
-                                            elif hs > as_: pp=True; poss=h_ab
-                                            en = (ag==0 or hg==0)
+                                    
+                                    sit_obj = d2.get('situation', {})
+                                    if sit_obj and p_type != 'SHOOTOUT':
+                                        sit = sit_obj.get('situationCode', '1551')
+                                        ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
+                                        if as_ > hs: pp=True; poss=a_ab
+                                        elif hs > as_: pp=True; poss=h_ab
+                                        en = (ag==0 or hg==0)
                             except: disp = "Live" 
 
                         games_list.append({
