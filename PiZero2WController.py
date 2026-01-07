@@ -18,17 +18,87 @@ from flask import Flask, request, render_template_string
 
 # ================= CONFIGURATION =================
 BACKEND_URL = "https://ticker.mattdicks.org" 
-PANEL_W = 256
+PANEL_W = 128
 PANEL_H = 32
 SETUP_SSID = "SportsTicker_Setup"
-SETUP_PASS = "setup1234"  # Password is required for stable NM hotspot
+SETUP_PASS = "setup1234"
 PAGE_HOLD_TIME = 8.0 
 REFRESH_RATE = 3
 ID_FILE_PATH = "/boot/ticker_id.txt"
 ID_FILE_FALLBACK = "ticker_id.txt"
 ASSETS_DIR = os.path.expanduser("~/ticker/assets")
 
-# --- FONTS (Kept from previous version) ---
+# --- UI TEMPLATE (IMPROVED DROPDOWN & FEEDBACK) ---
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { background-color: #121212; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background-color: #1e1e1e; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); width: 100%; max-width: 350px; }
+        h2 { text-align: center; color: #ffffff; margin-top: 0; margin-bottom: 0.5rem; }
+        p.desc { text-align: center; color: #888; font-size: 0.9rem; margin-bottom: 1.5rem; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #aaa; font-weight: 500; }
+        
+        /* Styled Inputs */
+        select, input { width: 100%; padding: 12px; margin-bottom: 15px; background: #2c2c2c; border: 1px solid #333; border-radius: 8px; color: white; font-size: 16px; box-sizing: border-box; appearance: none; -webkit-appearance: none; }
+        
+        /* Custom Arrow for Select */
+        .select-wrapper { position: relative; }
+        .select-wrapper::after { content: '▼'; position: absolute; top: 18px; right: 15px; color: #888; font-size: 12px; pointer-events: none; }
+        
+        input:focus, select:focus { outline: none; border-color: #4a90e2; background: #333; }
+        
+        button { width: 100%; padding: 14px; background-color: #4a90e2; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; margin-top: 10px; }
+        button:hover { background-color: #357abd; }
+        
+        .hidden { display: none; }
+    </style>
+    <script>
+        function checkManual() {
+            var val = document.getElementById("net_select").value;
+            var manualInput = document.getElementById("manual_ssid");
+            if (val === "__manual__") {
+                manualInput.classList.remove("hidden");
+                manualInput.required = true;
+                manualInput.focus();
+            } else {
+                manualInput.classList.add("hidden");
+                manualInput.required = false;
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="card">
+        <h2>Setup Wi-Fi</h2>
+        <p class="desc">Select your network to get started.</p>
+        <form action="/connect" method="POST">
+            <label for="net_select">Network</label>
+            <div class="select-wrapper">
+                <select id="net_select" name="ssid_select" onchange="checkManual()" required>
+                    <option value="" disabled selected>Choose a Network...</option>
+                    {% for net in networks %}
+                    <option value="{{ net }}">{{ net }}</option>
+                    {% endfor %}
+                    <option value="__manual__">Enter Manually...</option>
+                </select>
+            </div>
+            
+            <input type="text" name="ssid_manual" id="manual_ssid" class="hidden" placeholder="Type Network Name">
+            
+            <label for="password">Password</label>
+            <input type="password" name="password" placeholder="Enter password" required>
+            
+            <button type="submit">Connect</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
+
+# --- FONTS ---
 TINY_FONT_MAP = {
     'A': [0x6, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x9, 0x6],
     'D': [0xE, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8],
@@ -119,25 +189,58 @@ class WifiPortal:
         self.matrix = matrix
         self.font = font
         self.app = Flask(__name__)
-        self.html_template = """<html><body><h2>Connect Ticker</h2><form action="/connect" method="POST"><input type="text" name="ssid" placeholder="SSID"><br><input type="password" name="password" placeholder="Password"><br><button type="submit">Connect</button></form></body></html>"""
         
         @self.app.route('/')
-        def home(): return render_template_string(self.html_template)
+        def home(): 
+            networks = self.get_available_networks()
+            return render_template_string(HTML_TEMPLATE, networks=networks)
         
         @self.app.route('/connect', methods=['POST'])
         def connect():
-            ssid = request.form['ssid']
+            ssid_sel = request.form.get('ssid_select', '')
+            ssid_man = request.form.get('ssid_manual', '')
+            ssid = ssid_man if ssid_sel == "__manual__" else ssid_sel
+            
             pw = request.form['password']
             self.draw_status(f"CONNECTING:\n{ssid}")
-            try: 
-                # Use nmcli to connect to client wifi
-                subprocess.run(['nmcli', 'dev', 'wifi', 'connect', ssid, 'password', pw], check=True)
-                return "Connected! Rebooting..."
-            except: 
-                return "Failed to connect."
-            finally: 
-                time.sleep(2)
+            
+            # Optimistic Feedback Page
+            SUCCESS_HTML = """
+            <html><body style='background:#121212;color:white;text-align:center;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;'>
+                <div>
+                    <h2 style='color:#4a90e2;'>Settings Saved!</h2>
+                    <p>The device is rebooting to connect to <b>""" + ssid + """</b>.</p>
+                    <p style='color:#888;'>Please verify the ticker comes online in ~30 seconds.</p>
+                </div>
+            </body></html>
+            """
+            
+            FAILURE_HTML = "<html><body style='background:#121212;color:white;text-align:center;font-family:sans-serif;'><h2>Error</h2><p>Could not save settings.</p><p><a href='/' style='color:#4a90e2;'>Try Again</a></p></body></html>"
+
+            def apply_and_reboot(s, p):
+                try:
+                    subprocess.run(['nmcli', 'dev', 'wifi', 'connect', s, 'password', p])
+                except: pass
+                time.sleep(3)
                 subprocess.run(['reboot'])
+
+            # Return success immediately to browser, then run connect logic in background
+            # This prevents "Connection Failed" timeouts in the browser
+            threading.Thread(target=apply_and_reboot, args=(ssid, pw)).start()
+            return SUCCESS_HTML
+
+    def get_available_networks(self):
+        try:
+            # Run nmcli to get SSID list
+            result = subprocess.run(['nmcli', '-t', '-f', 'SSID', 'dev', 'wifi', 'list'], capture_output=True, text=True)
+            if result.returncode == 0:
+                raw_list = result.stdout.split('\n')
+                # Deduplicate and sort, remove blanks
+                networks = sorted(list(set([n for n in raw_list if n.strip()])))
+                return networks
+        except:
+            pass
+        return []
 
     def check_internet(self):
         try: 
@@ -148,22 +251,15 @@ class WifiPortal:
 
     def start_hotspot(self):
         print("Starting WiFi setup hotspot...")
-        # 1. Unblock WiFi
         subprocess.run(['rfkill', 'unblock', 'wifi'], stderr=subprocess.DEVNULL)
-        
-        # 2. Kill any lingering connection profile with the same name
         subprocess.run(['nmcli', 'con', 'down', SETUP_SSID], stderr=subprocess.DEVNULL)
         subprocess.run(['nmcli', 'con', 'delete', SETUP_SSID], stderr=subprocess.DEVNULL)
-
-        # 3. Create and Start the Hotspot atomically
-        # This creates the connection profile AND starts it in one go
         cmd = [
             'nmcli', 'dev', 'wifi', 'hotspot',
             'ifname', 'wlan0',
             'ssid', SETUP_SSID,
             'password', SETUP_PASS
         ]
-        
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             print(f"Hotspot failed: {result.stderr}")
@@ -177,19 +273,16 @@ class WifiPortal:
         self.matrix.SetImage(img.convert("RGB"))
 
     def run(self):
-        # Force Setup Mode check
         if os.path.exists("setup_mode"):
             print("Force Setup Mode Detected")
             try: os.remove("setup_mode") 
             except: pass
-        # Check NetworkManager status first
         elif self.check_internet():
             return True 
             
         self.draw_status(f"WIFI SETUP\nPW:{SETUP_PASS}")
         self.start_hotspot()
         try:
-            # Host 0.0.0.0 port 80 requires Root privileges (systemd handles this)
             self.app.run(host='0.0.0.0', port=80) 
         except Exception as e:
             print(f"Flask failed: {e}")
@@ -205,9 +298,9 @@ class TickerStreamer:
         options = RGBMatrixOptions()
         options.rows = 32
         options.cols = 64
-        options.chain_length = 4
+        options.chain_length = 2
         options.parallel = 1
-        options.hardware_mapping = 'regular'
+        options.hardware_mapping = 'adafruit-hat'
         options.gpio_slowdown = 2  
         options.show_refresh_rate = 0
         options.disable_hardware_pulsing = True
