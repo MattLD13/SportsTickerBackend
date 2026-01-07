@@ -160,7 +160,15 @@ class WifiPortal:
         self.matrix.SetImage(img.convert("RGB"))
 
     def run(self):
-        if self.check_internet(): return True 
+        # FORCE TRIGGER: Check if "setup_mode" file exists
+        if os.path.exists("setup_mode"):
+            print("Force Setup Mode Detected")
+            try: os.remove("setup_mode") # Delete it so we don't loop forever
+            except: pass
+        # Standard Internet Check
+        elif self.check_internet(): 
+            return True 
+            
         self.draw_status(f"SETUP WIFI\n{SETUP_SSID}")
         self.start_hotspot()
         try:
@@ -187,7 +195,7 @@ class TickerStreamer:
         
         # === ZERO 2 W OPTIMIZATIONS ===
         options.hardware_mapping = 'regular'
-        options.gpio_slowdown = 2  # <--- CHANGED TO 2
+        options.gpio_slowdown = 2  # <--- SET TO 2
         
         # === ARTIFACT FIXES REMOVED ===
         options.show_refresh_rate = 0
