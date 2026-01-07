@@ -21,10 +21,11 @@ BACKEND_URL = "https://ticker.mattdicks.org"
 PANEL_W = 128
 PANEL_H = 32
 SETUP_SSID = "SportsTicker_Setup"
-PAGE_HOLD_TIME = 8.0  # Increased hold time for weather/clock
+PAGE_HOLD_TIME = 8.0 
 REFRESH_RATE = 3
 ID_FILE_PATH = "/boot/ticker_id.txt"
 ID_FILE_FALLBACK = "ticker_id.txt"
+ASSETS_DIR = os.path.expanduser("~/ticker/assets")
 
 # --- TINY PIXEL FONT (4x5) - USED FOR MOTORSPORTS ---
 TINY_FONT_MAP = {
@@ -95,7 +96,6 @@ def draw_hybrid_text(draw, x, y, text, color):
     return x_cursor - x
 
 def get_device_id():
-    """Gets or generates the UUID for this specific ticker."""
     path_to_use = ID_FILE_PATH
     if not os.path.isfile(ID_FILE_PATH):
         try:
@@ -170,9 +170,14 @@ class WifiPortal:
 
 class TickerStreamer:
     def __init__(self):
-        print("Starting Ticker System (Zero 2 W Optimized)...")
+        print("Starting Ticker System (Disk Cache Enabled)...")
         self.device_id = get_device_id()
         print(f"Device ID: {self.device_id}")
+
+        # Ensure assets directory exists
+        if not os.path.exists(ASSETS_DIR):
+            try: os.makedirs(ASSETS_DIR)
+            except Exception as e: print(f"Error creating asset dir: {e}")
 
         options = RGBMatrixOptions()
         options.rows = 32
@@ -180,9 +185,12 @@ class TickerStreamer:
         options.chain_length = 2
         options.parallel = 1
         
-        # === ZERO 2 W HARDWARE SETTINGS ===
-        options.hardware_mapping = 'adafruit-hat'  # MUST be adafruit-hat for Bonnet
-        options.gpio_slowdown = 4                  # 4 is safe for Zero 2 W
+        # === ZERO 2 W OPTIMIZATIONS ===
+        options.hardware_mapping = 'regular'
+        options.gpio_slowdown = 2  # <--- CHANGED TO 2
+        
+        # === ARTIFACT FIXES REMOVED ===
+        options.show_refresh_rate = 0
         
         options.disable_hardware_pulsing = True
         options.drop_privileges = False 
@@ -206,7 +214,6 @@ class TickerStreamer:
         try: self.big_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 16)
         except: self.big_font = ImageFont.load_default()
         
-        # NEW HUGE FONT FOR WEATHER/CLOCK
         try: self.huge_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 24)
         except: self.huge_font = self.big_font
         
@@ -268,10 +275,24 @@ class TickerStreamer:
         return img
 
     def download_and_process_logo(self, url, size=(24,24)):
+        # === DISK CACHING LOGIC ===
         cache_key = f"{url}_{size}"
         if cache_key in self.logo_cache: return
+
         try:
-            r = requests.get(url, timeout=3)
+            url_hash = hashlib.md5(url.encode()).hexdigest()
+            filename = f"{url_hash}_{size[0]}x{size[1]}.png"
+            local_path = os.path.join(ASSETS_DIR, filename)
+
+            if os.path.exists(local_path):
+                try:
+                    loaded_img = Image.open(local_path).convert("RGBA")
+                    self.logo_cache[cache_key] = loaded_img
+                    return
+                except:
+                    pass
+
+            r = requests.get(url, timeout=5)
             original = Image.open(io.BytesIO(r.content)).convert("RGBA")
             target_w, target_h = size
             check_img = original.resize((32, 32), Image.Resampling.NEAREST)
@@ -318,10 +339,16 @@ class TickerStreamer:
                 offset_x = (target_w - new_w) // 2
                 offset_y = (target_h - new_h) // 2
                 final_img.paste(resized_img, (offset_x, offset_y))
-                
+            
+            try:
+                final_img.save(local_path, "PNG")
+            except Exception as e:
+                print(f"Failed to save cache: {e}")
+
             self.logo_cache[cache_key] = final_img
-        except Exception: 
-            pass 
+
+        except Exception as e: 
+            print(f"Logo Error: {e}")
 
     def get_logo(self, url, size=(24,24)):
         if not url: return None
@@ -426,7 +453,6 @@ class TickerStreamer:
             d.ellipse((x+6, y+2, x+18, y+14), fill=color)
             if icon == 'partly_cloudy': d.ellipse((x+16, y-2, x+26, y+8), fill=(255,220,0))
 
-    # --- UPDATED WEATHER: FILLS SCREEN ---
     def draw_weather_scene_simple(self, game):
         img = Image.new("RGBA", (128, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
@@ -440,43 +466,31 @@ class TickerStreamer:
         
         # 2. Main Temp (Huge, Center-Left: 34-80)
         temp_str = str(game.get('home_abbr', '00')).replace('°','') + "°"
-        # Draw text higher up (y=0) to fit
         d.text((36, 0), temp_str, font=self.huge_font, fill=(255, 255, 255))
         
         # 3. Location/Condition (Tiny, Under Temp)
         cond_text = sit.get('condition', '')
         if not cond_text: cond_text = str(game.get('away_abbr', 'CITY')).upper()
-        # Cap length to prevent overlap
         d.text((38, 25), cond_text[:12], font=self.micro, fill=(150, 150, 150))
         
         # 4. Detailed Stats (Right Stack: 85-128)
         high = stats.get('high', '-')
         low = stats.get('low', '-')
-        pop = stats.get('pop', '0') # Precip probability
-        
+        pop = stats.get('pop', '0')
         x_stats = 90
         d.text((x_stats, 2), f"HI: {high}", font=self.tiny, fill=(255, 100, 100))
         d.text((x_stats, 11), f"LO: {low}", font=self.tiny, fill=(100, 100, 255))
         d.text((x_stats, 20), f"RAIN:{pop}%", font=self.tiny, fill=(0, 200, 255))
-
         return img
 
-    # --- UPDATED CLOCK: DARK BLUE 12HR ---
     def draw_clock_scene(self):
         img = Image.new("RGBA", (128, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
         now = datetime.now()
-        
-        # Format: 12:45:30 (remove leading zero for hours)
         t_str = now.strftime("%I:%M:%S").lstrip('0')
-        
-        # Dark Blue Color (R, G, B) - (0, 41, 91) or slightly brighter to be visible
         clock_color = (0, 50, 200) 
-        
-        # Center using huge font
         w = d.textlength(t_str, font=self.huge_font)
         x_pos = (128 - w) / 2
-        
         d.text((x_pos, 4), t_str, font=self.huge_font, fill=clock_color)
         return img
 
@@ -529,8 +543,9 @@ class TickerStreamer:
                     if g.get('away_logo'): logos_to_fetch.append((g['away_logo'], (24,24)))
                     if g.get('home_logo'): logos_to_fetch.append((g['home_logo'], (16,16)))
                     if g.get('away_logo'): logos_to_fetch.append((g['away_logo'], (16,16)))
-                logos_to_fetch = [x for x in list(set(logos_to_fetch)) if f"{x[0]}_{x[1]}" not in self.logo_cache]
                 
+                logos_to_fetch = list(set(logos_to_fetch))
+
                 if logos_to_fetch:
                     futures = [self.executor.submit(self.download_and_process_logo, url, size) for url, size in logos_to_fetch]
                     concurrent.futures.wait(futures)
@@ -754,18 +769,14 @@ class TickerStreamer:
             if self.test_pattern:
                 self.update_display(self.generate_test_pattern()); time.sleep(0.1); continue
 
-            # === DISPLAY LOGIC: CLOCK OR WEATHER ===
-            # If the only "game" in the playlist is weather or clock, show that scene.
-            # Clock Scene
             if len(playlist) == 1 and playlist[0].get('sport') == 'clock':
                 self.update_display(self.draw_clock_scene())
-                time.sleep(1) # Update every second for seconds counter
+                time.sleep(1) 
                 continue
             
-            # Weather Scene
             if len(playlist) == 1 and playlist[0].get('type') == 'weather':
                 self.update_display(self.draw_weather_scene_simple(playlist[0]))
-                time.sleep(0.1) # Keep animations smooth
+                time.sleep(0.1) 
                 continue
 
             if self.seamless_mode:
@@ -786,7 +797,7 @@ class TickerStreamer:
                     time.sleep(self.scroll_sleep)
                 else:
                     time.sleep(0.1)
-            else: # PAGED MODE
+            else: 
                 chunk = 2
                 for i in range(0, len(playlist), chunk):
                     if self.config_updated or self.seamless_mode or self.test_pattern or self.brightness <= 0.01: break 
