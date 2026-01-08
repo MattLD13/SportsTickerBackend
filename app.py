@@ -48,15 +48,22 @@ HEADERS = {
 # ================= DEFAULT STATE =================
 default_state = {
     'active_sports': { 
+        # Sports
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
         'soccer_epl': True, 'soccer_champ': True, 'soccer_l1': True, 'soccer_l2': True, 
         'soccer_wc': False, 'hockey_olympics': False, 
         'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
+        
+        # Utilities
         'weather': False, 'clock': False,
+        
         # Stock Categories
-        'stock_movers': False, 'stock_indices': False, 'stock_tech': False, 'stock_ai': False, 'stock_consulting': False
+        'stock_movers': False, 'stock_indices': False, 'stock_tech': False, 
+        'stock_ai': False, 'stock_consulting': False, 'stock_crypto': False,
+        'stock_auto': False, 'stock_semi': False, 'stock_finance': False,
+        'stock_energy': False, 'stock_pharma': False, 'stock_consumer': False
     },
-    'mode': 'all', 
+    'mode': 'all',  # 'all', 'live', 'my_teams', 'sports', 'stocks', 'weather', 'clock'
     'layout_mode': 'schedule',
     'my_teams': [], 
     'current_games': [],
@@ -189,14 +196,12 @@ def generate_demo_data():
          'away_abbr': 'NJD', 'away_score': '3', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nj.png', 'away_color': '#CE1126', 'away_alt_color': '#000000',
          'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
          'situation': {'shootout': { 'away': ['goal', 'miss', 'miss'], 'home': ['miss', 'goal', 'pending'] }}},
-        {'type': 'scoreboard', 'sport': 'soccer_wc', 'id': 'demo_wc_pens', 'status': 'Pens', 'state': 'in', 'is_shown': True,
-         'home_abbr': 'ARG', 'home_score': '3', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/202.png', 'home_color': '#75AADB', 'home_alt_color': '#FFFFFF',
-         'away_abbr': 'FRA', 'away_score': '3', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/478.png', 'away_color': '#002395', 'away_alt_color': '#ED2939',
-         'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 140,
-         'situation': {'shootout': { 'away': ['goal', 'miss', 'goal', 'miss'], 'home': ['goal', 'goal', 'goal', 'goal'] }, 'possession': ''}, 'tourney_name': 'Final'},
-        # Demo Stock
+        {'type': 'stock_ticker', 'sport': 'stock_tech', 'id': 'demo_tsla', 'status': 'OPEN', 'state': 'in', 'is_shown': True,
+         'home_abbr': 'TSLA', 'home_score': '184.86', 'away_score': '-1.38%', 'home_logo': 'https://logo.clearbit.com/tesla.com',
+         'situation': {'change': '-2.54'}},
         {'type': 'stock_ticker', 'sport': 'stock_tech', 'id': 'demo_aapl', 'status': 'OPEN', 'state': 'in', 'is_shown': True,
-         'home_abbr': 'AAPL', 'home_score': '215.30', 'away_score': '+1.25%', 'situation': {}}
+         'home_abbr': 'AAPL', 'home_score': '212.00', 'away_score': '+0.45%', 'home_logo': 'https://logo.clearbit.com/apple.com',
+         'situation': {'change': '+1.20'}}
     ]
 
 # ================= FETCHING LOGIC =================
@@ -233,16 +238,44 @@ class StockFetcher:
         self.api_key = api_key
         self.cache = {}
         self.last_fetch_times = {}
-        self.fetch_interval = 300 # 5 minutes per category to avoid limits
-        self.symbols = {
-            'stock_indices': ["SPY", "QQQ", "DIA"],
-            'stock_tech': ["NVDA", "MSFT", "AAPL", "AMD", "PLTR"],
-            'stock_ai': ["NVDA", "SMCI", "PLTR", "AI", "GOOG"],
-            'stock_consulting': ["ACN", "IT", "BAH", "IBM"]
+        self.fetch_interval = 300 # 5 minutes
+        
+        # DOMAIN MAPPING FOR LOGOS
+        self.domains = {
+            "NVDA": "nvidia.com", "MSFT": "microsoft.com", "AAPL": "apple.com", "GOOG": "google.com", "META": "meta.com", "TSLA": "tesla.com", "AMZN": "amazon.com", "AMD": "amd.com", "PLTR": "palantir.com", "NFLX": "netflix.com",
+            "JPM": "jpmorganchase.com", "BAC": "bankofamerica.com", "GS": "goldmansachs.com", "MS": "morganstanley.com", "V": "visa.com", "MA": "mastercard.com",
+            "XOM": "exxonmobil.com", "CVX": "chevron.com", "SHEL": "shell.com", "BP": "bp.com",
+            "BTC": "bitcoin.org", "ETH": "ethereum.org", "COIN": "coinbase.com",
+            "F": "ford.com", "GM": "gm.com", "TM": "toyota.com", "HMC": "honda.com",
+            "INTC": "intel.com", "QCOM": "qualcomm.com", "AVGO": "broadcom.com", "TXN": "ti.com", "MU": "micron.com",
+            "PFE": "pfizer.com", "JNJ": "jnj.com", "LLY": "lilly.com", "MRK": "merck.com",
+            "WMT": "walmart.com", "TGT": "target.com", "COST": "costco.com", "HD": "homedepot.com", "NKE": "nike.com",
+            "ACN": "accenture.com", "IBM": "ibm.com", "ORCL": "oracle.com", "SAP": "sap.com", "CRM": "salesforce.com"
         }
 
+        self.symbols = {
+            'stock_indices': ["SPY", "QQQ", "DIA", "IWM"],
+            'stock_tech': ["NVDA", "MSFT", "AAPL", "AMD", "META", "GOOG", "AMZN", "NFLX"],
+            'stock_ai': ["NVDA", "SMCI", "PLTR", "AI", "GOOG", "MSFT", "AMD"],
+            'stock_consulting': ["ACN", "IT", "BAH", "IBM", "SAP", "ORCL"],
+            'stock_crypto': ["COIN", "MSTR", "MARA", "HOOD", "SQ"],
+            'stock_auto': ["TSLA", "F", "GM", "TM", "HMC", "RIVN", "LCID"],
+            'stock_semi': ["NVDA", "AMD", "INTC", "QCOM", "AVGO", "TXN", "MU", "TSM"],
+            'stock_finance': ["JPM", "BAC", "GS", "MS", "WFC", "C", "V", "MA", "AXP"],
+            'stock_energy': ["XOM", "CVX", "SHEL", "BP", "COP", "SLB"],
+            'stock_pharma': ["LLY", "JNJ", "PFE", "MRK", "ABBV", "AMGN"],
+            'stock_consumer': ["WMT", "TGT", "COST", "HD", "LOW", "NKE", "SBUX", "MCD", "KO", "PEP"]
+        }
+
+    def get_logo_url(self, symbol):
+        dom = self.domains.get(symbol)
+        if not dom: 
+            # Simple heuristic fallback
+            if len(symbol) > 4: return None
+            dom = f"{symbol.lower()}.com"
+        return f"https://logo.clearbit.com/{dom}"
+
     def fetch_movers(self):
-        # Top Gainers/Losers
         key = 'stock_movers'
         if time.time() - self.last_fetch_times.get(key, 0) < self.fetch_interval: return self.cache.get(key, [])
         try:
@@ -252,51 +285,48 @@ class StockFetcher:
             results = []
             if "top_gainers" in data:
                 for item in data["top_gainers"][:5]:
-                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], "MOVER"))
+                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], item['change_amount'], "MOVER"))
             self.cache[key] = results
             self.last_fetch_times[key] = time.time()
             return results
-        except Exception as e: 
-            print(f"Stock Fetch Error ({key}): {e}")
-            return self.cache.get(key, [])
+        except Exception as e: return self.cache.get(key, [])
 
     def fetch_list(self, category_key):
         if time.time() - self.last_fetch_times.get(category_key, 0) < self.fetch_interval: return self.cache.get(category_key, [])
         sym_list = self.symbols.get(category_key, [])
         results = []
         try:
-            # Alpha Vantage standard fetch is 1 symbol per call usually, or batch.
-            # Free tier is 5 calls/min. We must be careful.
-            # We will just fetch 2 random symbols from the list per cycle to save calls, or strictly cache.
-            # For simplicity in this example, we assume we fetch them sequentially but throttled by the 300s interval.
-            for sym in sym_list:
+            # Throttle fetching to avoid API limits (5/min). 
+            # We will just fetch the first 3 for now to be safe on free tier per cycle
+            # In production with premium, remove slice.
+            for sym in sym_list[:3]: 
                 url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={sym}&apikey={self.api_key}"
                 r = requests.get(url, timeout=5)
                 data = r.json()
                 q = data.get("Global Quote", {})
                 if q:
-                    results.append(self.format_stock_obj(q.get("01. symbol"), q.get("05. price"), q.get("10. change percent"), category_key.split('_')[1].upper()))
-                time.sleep(1) # Safety throttle
+                    results.append(self.format_stock_obj(q.get("01. symbol"), q.get("05. price"), q.get("10. change percent"), q.get("09. change"), category_key.split('_')[1].upper()))
+                time.sleep(1.1) 
             
             self.cache[category_key] = results
             self.last_fetch_times[category_key] = time.time()
             return results
-        except Exception as e:
-            print(f"Stock Fetch Error ({category_key}): {e}")
-            return self.cache.get(category_key, [])
+        except Exception as e: return self.cache.get(category_key, [])
 
-    def format_stock_obj(self, symbol, price, change, status_lbl):
+    def format_stock_obj(self, symbol, price, change_pct, change_amt, status_lbl):
+        logo = self.get_logo_url(symbol)
         return {
             'type': 'stock_ticker',
-            'sport': 'stock', # Generic sport for filtering logic if needed, or specific
+            'sport': 'stock',
             'id': f"stk_{symbol}",
             'status': status_lbl,
             'state': 'in',
             'is_shown': True,
             'home_abbr': symbol,
-            'home_score': str(price)[:6], # Truncate price
-            'away_score': str(change), # Store change % in away_score for transport
-            'situation': {},
+            'home_score': str(float(price)) if price else "0.00",
+            'away_score': str(change_pct),
+            'home_logo': logo,
+            'situation': {'change': str(change_amt)}, # Store dollar change here
             'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
         }
 
@@ -588,164 +618,191 @@ class SportsFetcher:
             if conf.get('demo_mode', False):
                 state['current_games'] = generate_demo_data(); return
 
-        utc_offset = conf.get('utc_offset', -5)
+        current_mode = conf.get('mode', 'all')
         
-        now_utc = dt.now(timezone.utc)
-        now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-        window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-        window_end_local = window_start_local + timedelta(days=1, hours=3)
-        window_start_utc = window_start_local.astimezone(timezone.utc)
-        window_end_utc = window_end_local.astimezone(timezone.utc)
-
-        target_date_str = now_local.strftime("%Y-%m-%d")
-        if conf['debug_mode'] and conf['custom_date']:
-            target_date_str = conf['custom_date']
-
-        if conf['active_sports'].get('weather'):
+        # --- STRICT MODE ISOLATION ---
+        
+        # 1. WEATHER & CLOCK (Can coexist or be solo)
+        if current_mode == 'weather' or conf['active_sports'].get('weather'):
             if conf['weather_location'] != self.weather.location_name: self.weather.update_coords(conf['weather_location'])
             w = self.weather.get_weather()
             if w: games.append(w)
-        if conf['active_sports'].get('clock'): games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
+            if current_mode == 'weather': # If strictly weather mode, return now
+                with data_lock: state['current_games'] = games; return
 
-        # --- PROCESS STOCKS ---
-        if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.fetch_movers())
-        for cat in ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting']:
-            if conf['active_sports'].get(cat): games.extend(self.stocks.fetch_list(cat))
+        if current_mode == 'clock' or conf['active_sports'].get('clock'):
+            games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
+            if current_mode == 'clock': 
+                with data_lock: state['current_games'] = games; return
 
-        # --- PROCESS LEAGUES ---
-        for league_key, config in self.leagues.items():
-            if not conf['active_sports'].get(league_key, False): continue
+        # 2. STOCKS
+        if current_mode == 'stocks' or current_mode == 'all':
+            if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.fetch_movers())
+            # Fetch enabled lists
+            stock_cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 'stock_auto', 'stock_semi', 'stock_finance', 'stock_energy', 'stock_pharma', 'stock_consumer']
+            for cat in stock_cats:
+                if conf['active_sports'].get(cat): games.extend(self.stocks.fetch_list(cat))
             
-            # Leaderboards (Racing)
-            if config.get('type') == 'leaderboard': 
-                self.fetch_leaderboard_event(league_key, config, games, conf, window_start_utc, window_end_utc)
-                continue
+            # If strictly stocks mode, return now (skip sports)
+            if current_mode == 'stocks':
+                with data_lock: state['current_games'] = games; return
 
-            # NHL NATIVE OVERRIDE
-            if league_key == 'nhl' and not conf['debug_mode']:
-                prev_count = len(games)
-                self._fetch_nhl_native(games, target_date_str)
-                # If we got games from native, skip ESPN fetch for NHL
-                if len(games) > prev_count: continue 
-
-            try:
-                curr_p = config.get('scoreboard_params', {}).copy()
-                curr_p['dates'] = target_date_str.replace('-', '')
+        # 3. SPORTS
+        if current_mode in ['sports', 'live', 'my_teams', 'all']:
+            # --- PROCESS LEAGUES ---
+            for league_key, config in self.leagues.items():
+                if not conf['active_sports'].get(league_key, False): continue
                 
-                r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
-                data = r.json()
+                # Leaderboards (Racing)
+                if config.get('type') == 'leaderboard': 
+                    # Need time windows
+                    utc_offset = conf.get('utc_offset', -5)
+                    now_utc = dt.now(timezone.utc)
+                    now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+                    window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                    window_end_local = window_start_local + timedelta(days=1, hours=3)
+                    window_start_utc = window_start_local.astimezone(timezone.utc)
+                    window_end_utc = window_end_local.astimezone(timezone.utc)
+                    self.fetch_leaderboard_event(league_key, config, games, conf, window_start_utc, window_end_utc)
+                    continue
+
+                # NHL NATIVE OVERRIDE
+                target_date_str = dt.now().strftime("%Y-%m-%d")
+                if conf['debug_mode'] and conf['custom_date']: target_date_str = conf['custom_date']
                 
-                for e in data.get('events', []):
-                    utc_str = e['date'].replace('Z', '')
-                    st = e.get('status', {})
-                    tp = st.get('type', {})
-                    gst = tp.get('state', 'pre')
+                if league_key == 'nhl' and not conf['debug_mode']:
+                    prev_count = len(games)
+                    self._fetch_nhl_native(games, target_date_str)
+                    # If we got games from native, skip ESPN fetch for NHL
+                    if len(games) > prev_count: continue 
+
+                try:
+                    curr_p = config.get('scoreboard_params', {}).copy()
+                    curr_p['dates'] = target_date_str.replace('-', '')
                     
-                    try:
-                        game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                        if gst != 'in' and gst != 'half':
-                            if not (window_start_utc <= game_dt <= window_end_utc):
-                                continue
-                    except: continue
-
-                    comp = e['competitions'][0]
-                    h = comp['competitors'][0]
-                    a = comp['competitors'][1]
-                    h_ab = h['team'].get('abbreviation', 'UNK')
-                    a_ab = a['team'].get('abbreviation', 'UNK')
+                    r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
+                    data = r.json()
                     
-                    if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
-                    if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
+                    for e in data.get('events', []):
+                        utc_str = e['date'].replace('Z', '')
+                        st = e.get('status', {})
+                        tp = st.get('type', {})
+                        gst = tp.get('state', 'pre')
+                        
+                        try:
+                            # Re-calc time windows locally for sports loop
+                            utc_offset = conf.get('utc_offset', -5)
+                            now_utc = dt.now(timezone.utc)
+                            now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+                            window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                            window_end_local = window_start_local + timedelta(days=1, hours=3)
+                            window_start_utc = window_start_local.astimezone(timezone.utc)
+                            window_end_utc = window_end_local.astimezone(timezone.utc)
+                            
+                            game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+                            if gst != 'in' and gst != 'half':
+                                if not (window_start_utc <= game_dt <= window_end_utc):
+                                    continue
+                        except: continue
 
-                    is_shown = True
-                    if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
-                    elif conf['mode'] == 'my_teams':
-                        in_my = (f"{league_key}:{h_ab}" in conf['my_teams'] or h_ab in conf['my_teams'] or f"{league_key}:{a_ab}" in conf['my_teams'] or a_ab in conf['my_teams'])
-                        if not in_my: is_shown = False
+                        comp = e['competitions'][0]
+                        h = comp['competitors'][0]
+                        a = comp['competitors'][1]
+                        h_ab = h['team'].get('abbreviation', 'UNK')
+                        a_ab = a['team'].get('abbreviation', 'UNK')
+                        
+                        if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
+                        if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
 
-                    h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
-                    a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
-                    h_score = h.get('score','0')
-                    a_score = a.get('score','0')
-                    
-                    if 'soccer' in league_key: 
-                        h_score = re.sub(r'\s*\(.*?\)', '', str(h_score))
-                        a_score = re.sub(r'\s*\(.*?\)', '', str(a_score))
+                        is_shown = True
+                        if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
+                        elif conf['mode'] == 'my_teams':
+                            in_my = (f"{league_key}:{h_ab}" in conf['my_teams'] or h_ab in conf['my_teams'] or f"{league_key}:{a_ab}" in conf['my_teams'] or a_ab in conf['my_teams'])
+                            if not in_my: is_shown = False
 
-                    s_disp = tp.get('shortDetail', 'TBD')
-                    p = st.get('period', 1)
-                    duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
+                        h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
+                        a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
+                        h_score = h.get('score','0')
+                        a_score = a.get('score','0')
+                        
+                        if 'soccer' in league_key: 
+                            h_score = re.sub(r'\s*\(.*?\)', '', str(h_score))
+                            a_score = re.sub(r'\s*\(.*?\)', '', str(a_score))
 
-                    if gst == 'pre':
-                        try: s_disp = game_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
-                        except: pass
-                    elif gst == 'in' or gst == 'half':
-                        clk = st.get('displayClock', '0:00').replace("'", "")
-                        if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
-                            s_disp = "Halftime"
-                        elif 'hockey' in config['path'] and clk == '0:00':
-                             if p == 1: s_disp = "End 1st"
-                             elif p == 2: s_disp = "End 2nd"
-                             elif p == 3: s_disp = "End 3rd"
-                             else: s_disp = "Intermission"
-                        else:
-                            prefix = "P" if 'hockey' in config['path'] else "Q"
-                            s_disp = f"{prefix}{p} {clk}"
-                            if 'soccer' in config['path']:
-                                s_disp = f"{clk}'"
-                                if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
+                        s_disp = tp.get('shortDetail', 'TBD')
+                        p = st.get('period', 1)
+                        duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
 
-                    s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
-                    if "FINAL" in s_disp:
-                        if league_key == 'nhl' and "SO" in s_disp: s_disp = "FINAL S/O"
-                        elif p > 4 and "OT" not in s_disp and league_key == 'nhl': s_disp = "FINAL OT"
+                        if gst == 'pre':
+                            try: s_disp = game_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
+                            except: pass
+                        elif gst == 'in' or gst == 'half':
+                            clk = st.get('displayClock', '0:00').replace("'", "")
+                            if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
+                                s_disp = "Halftime"
+                            elif 'hockey' in config['path'] and clk == '0:00':
+                                 if p == 1: s_disp = "End 1st"
+                                 elif p == 2: s_disp = "End 2nd"
+                                 elif p == 3: s_disp = "End 3rd"
+                                 else: s_disp = "Intermission"
+                            else:
+                                prefix = "P" if 'hockey' in config['path'] else "Q"
+                                s_disp = f"{prefix}{p} {clk}"
+                                if 'soccer' in config['path']:
+                                    s_disp = f"{clk}'"
+                                    if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
 
-                    # === SITUATION LOGIC ===
-                    sit = comp.get('situation', {})
-                    shootout_data = None
-                    is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
-                    
-                    if is_shootout and 'soccer' in league_key:
-                        shootout_data = self.fetch_shootout_details_soccer(e['id'], league_key)
-                    
-                    # POSSESSION (RESTORED OLD LOGIC)
-                    poss_raw = sit.get('possession')
-                    if poss_raw: self.possession_cache[e['id']] = poss_raw
-                    elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
-                    
-                    if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime':
-                        poss_raw = None
-                        self.possession_cache.pop(e['id'], None)
+                        s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
+                        if "FINAL" in s_disp:
+                            if league_key == 'nhl' and "SO" in s_disp: s_disp = "FINAL S/O"
+                            elif p > 4 and "OT" not in s_disp and league_key == 'nhl': s_disp = "FINAL OT"
 
-                    poss_abbr = ""
-                    if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
-                    elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
-                    
-                    down_text = sit.get('downDistanceText', '') if s_disp != "Halftime" else ''
+                        # === SITUATION LOGIC ===
+                        sit = comp.get('situation', {})
+                        shootout_data = None
+                        is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
+                        
+                        if is_shootout and 'soccer' in league_key:
+                            shootout_data = self.fetch_shootout_details_soccer(e['id'], league_key)
+                        
+                        # POSSESSION (RESTORED OLD LOGIC)
+                        poss_raw = sit.get('possession')
+                        if poss_raw: self.possession_cache[e['id']] = poss_raw
+                        elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
+                        
+                        if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime':
+                            poss_raw = None
+                            self.possession_cache.pop(e['id'], None)
 
-                    game_obj = {
-                        'type': 'scoreboard', 'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
-                        'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg,
-                        'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg,
-                        'home_color': f"#{h['team'].get('color','000000')}", 'home_alt_color': f"#{h['team'].get('alternateColor','ffffff')}",
-                        'away_color': f"#{a['team'].get('color','000000')}", 'away_alt_color': f"#{a['team'].get('alternateColor','ffffff')}",
-                        'startTimeUTC': e['date'],
-                        'estimated_duration': duration_est,
-                        'situation': { 
-                            'possession': poss_abbr, 
-                            'isRedZone': sit.get('isRedZone', False), 
-                            'downDist': down_text, 
-                            'shootout': shootout_data,
-                            'powerPlay': False, # ESPN doesn't give this easily, NHL is handled in native block above
-                            'emptyNet': False
+                        poss_abbr = ""
+                        if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
+                        elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
+                        
+                        down_text = sit.get('downDistanceText', '') if s_disp != "Halftime" else ''
+
+                        game_obj = {
+                            'type': 'scoreboard', 'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
+                            'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg,
+                            'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg,
+                            'home_color': f"#{h['team'].get('color','000000')}", 'home_alt_color': f"#{h['team'].get('alternateColor','ffffff')}",
+                            'away_color': f"#{a['team'].get('color','000000')}", 'away_alt_color': f"#{a['team'].get('alternateColor','ffffff')}",
+                            'startTimeUTC': e['date'],
+                            'estimated_duration': duration_est,
+                            'situation': { 
+                                'possession': poss_abbr, 
+                                'isRedZone': sit.get('isRedZone', False), 
+                                'downDist': down_text, 
+                                'shootout': shootout_data,
+                                'powerPlay': False, # ESPN doesn't give this easily, NHL is handled in native block above
+                                'emptyNet': False
+                            }
                         }
-                    }
-                    if league_key == 'mlb':
-                        game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 
-                            'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
-                    games.append(game_obj)
-            except Exception as e: 
-                print(f"Error fetching {league_key}: {e}")
+                        if league_key == 'mlb':
+                            game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 
+                                'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
+                        games.append(game_obj)
+                except Exception as e: 
+                    print(f"Error fetching {league_key}: {e}")
         
         with data_lock: state['current_games'] = games
 
