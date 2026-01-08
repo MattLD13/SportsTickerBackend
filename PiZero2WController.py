@@ -18,7 +18,7 @@ from flask import Flask, request, render_template_string
 
 # ================= CONFIGURATION =================
 BACKEND_URL = "https://ticker.mattdicks.org" 
-PANEL_W = 128
+PANEL_W = 384
 PANEL_H = 32
 SETUP_SSID = "SportsTicker_Setup"
 SETUP_PASS = "setup1234"
@@ -298,9 +298,9 @@ class TickerStreamer:
         options = RGBMatrixOptions()
         options.rows = 32
         options.cols = 64
-        options.chain_length = 2
+        options.chain_length = 6
         options.parallel = 1
-        options.hardware_mapping = 'adafruit-hat'
+        options.hardware_mapping = 'regular'
         options.gpio_slowdown = 2  
         options.show_refresh_rate = 0
         options.disable_hardware_pulsing = True
