@@ -57,13 +57,14 @@ default_state = {
         # Utilities
         'weather': False, 'clock': False,
         
-        # Stock Categories
-        'stock_movers': False, 'stock_indices': False, 'stock_tech': False, 
+        # Stock Categories (Expanded)
+        'stock_movers': False, 'stock_indices': True, 'stock_tech': False, 
         'stock_ai': False, 'stock_consulting': False, 'stock_crypto': False,
         'stock_auto': False, 'stock_semi': False, 'stock_finance': False,
-        'stock_energy': False, 'stock_pharma': False, 'stock_consumer': False
+        'stock_energy': False, 'stock_pharma': False, 'stock_consumer': False,
+        'stock_nyse': False, 'stock_etf': False, 'stock_commodities': False, 'stock_forex': False
     },
-    'mode': 'all',  # 'all', 'live', 'my_teams', 'sports', 'stocks', 'weather', 'clock'
+    'mode': 'all', 
     'layout_mode': 'schedule',
     'my_teams': [], 
     'current_games': [],
@@ -196,12 +197,9 @@ def generate_demo_data():
          'away_abbr': 'NJD', 'away_score': '3', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nj.png', 'away_color': '#CE1126', 'away_alt_color': '#000000',
          'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
          'situation': {'shootout': { 'away': ['goal', 'miss', 'miss'], 'home': ['miss', 'goal', 'pending'] }}},
-        {'type': 'stock_ticker', 'sport': 'stock_tech', 'id': 'demo_tsla', 'status': 'OPEN', 'state': 'in', 'is_shown': True,
-         'home_abbr': 'TSLA', 'home_score': '184.86', 'away_score': '-1.38%', 'home_logo': 'https://logo.clearbit.com/tesla.com',
-         'situation': {'change': '-2.54'}},
-        {'type': 'stock_ticker', 'sport': 'stock_tech', 'id': 'demo_aapl', 'status': 'OPEN', 'state': 'in', 'is_shown': True,
-         'home_abbr': 'AAPL', 'home_score': '212.00', 'away_score': '+0.45%', 'home_logo': 'https://logo.clearbit.com/apple.com',
-         'situation': {'change': '+1.20'}}
+        {'type': 'stock_ticker', 'sport': 'stock_tech', 'id': 'demo_tsla', 'status': 'TECH', 'state': 'in', 'is_shown': True,
+         'home_abbr': 'TSLA', 'home_score': '184.86', 'away_score': '-1.38%', 'home_logo': 'https://raw.githubusercontent.com/nvstly/icons/main/ticker_icons/TSLA.png',
+         'tourney_name': 'TECH', 'situation': {'change': '-2.54'}}
     ]
 
 # ================= FETCHING LOGIC =================
@@ -236,48 +234,37 @@ class WeatherFetcher:
 class StockFetcher:
     def __init__(self, api_key):
         self.api_key = api_key
-        self.cache = {}
-        self.last_fetch_times = {}
-        self.fetch_interval = 300 # 5 minutes
+        self.cache = {} 
+        self.cursor = {} 
+        self.last_fetch_times = {} 
+        self.fetch_interval = 60 
         
-        # DOMAIN MAPPING FOR LOGOS
-        self.domains = {
-            "NVDA": "nvidia.com", "MSFT": "microsoft.com", "AAPL": "apple.com", "GOOG": "google.com", "META": "meta.com", "TSLA": "tesla.com", "AMZN": "amazon.com", "AMD": "amd.com", "PLTR": "palantir.com", "NFLX": "netflix.com",
-            "JPM": "jpmorganchase.com", "BAC": "bankofamerica.com", "GS": "goldmansachs.com", "MS": "morganstanley.com", "V": "visa.com", "MA": "mastercard.com",
-            "XOM": "exxonmobil.com", "CVX": "chevron.com", "SHEL": "shell.com", "BP": "bp.com",
-            "BTC": "bitcoin.org", "ETH": "ethereum.org", "COIN": "coinbase.com",
-            "F": "ford.com", "GM": "gm.com", "TM": "toyota.com", "HMC": "honda.com",
-            "INTC": "intel.com", "QCOM": "qualcomm.com", "AVGO": "broadcom.com", "TXN": "ti.com", "MU": "micron.com",
-            "PFE": "pfizer.com", "JNJ": "jnj.com", "LLY": "lilly.com", "MRK": "merck.com",
-            "WMT": "walmart.com", "TGT": "target.com", "COST": "costco.com", "HD": "homedepot.com", "NKE": "nike.com",
-            "ACN": "accenture.com", "IBM": "ibm.com", "ORCL": "oracle.com", "SAP": "sap.com", "CRM": "salesforce.com"
-        }
-
+        # EXPANDED LISTS (10-20 Stocks each)
         self.symbols = {
-            'stock_indices': ["SPY", "QQQ", "DIA", "IWM"],
-            'stock_tech': ["NVDA", "MSFT", "AAPL", "AMD", "META", "GOOG", "AMZN", "NFLX"],
-            'stock_ai': ["NVDA", "SMCI", "PLTR", "AI", "GOOG", "MSFT", "AMD"],
-            'stock_consulting': ["ACN", "IT", "BAH", "IBM", "SAP", "ORCL"],
-            'stock_crypto': ["COIN", "MSTR", "MARA", "HOOD", "SQ"],
-            'stock_auto': ["TSLA", "F", "GM", "TM", "HMC", "RIVN", "LCID"],
-            'stock_semi': ["NVDA", "AMD", "INTC", "QCOM", "AVGO", "TXN", "MU", "TSM"],
-            'stock_finance': ["JPM", "BAC", "GS", "MS", "WFC", "C", "V", "MA", "AXP"],
-            'stock_energy': ["XOM", "CVX", "SHEL", "BP", "COP", "SLB"],
-            'stock_pharma': ["LLY", "JNJ", "PFE", "MRK", "ABBV", "AMGN"],
-            'stock_consumer': ["WMT", "TGT", "COST", "HD", "LOW", "NKE", "SBUX", "MCD", "KO", "PEP"]
+            'stock_indices': ["SPY", "QQQ", "DIA", "IWM", "VOO", "VTI", "IVV", "VEA", "VWO", "TLT", "EEM", "AGG"],
+            'stock_tech': ["NVDA", "MSFT", "AAPL", "AMD", "META", "GOOG", "AMZN", "NFLX", "CRM", "ADBE", "CSCO", "INTC", "IBM", "ORCL", "UBER", "ABNB"],
+            'stock_ai': ["NVDA", "SMCI", "PLTR", "AI", "GOOG", "MSFT", "AMD", "META", "PATH", "SNOW", "DDOG", "CRWD", "ZS", "PANW"],
+            'stock_consulting': ["ACN", "IT", "BAH", "IBM", "SAP", "ORCL", "INFY", "WIT", "CTSH", "EPAM", "GIB", "CACI"],
+            'stock_crypto': ["COIN", "MSTR", "MARA", "HOOD", "SQ", "RIOT", "CLSK", "HUT", "BITF", "CORZ", "CIFR", "WULF", "GREE"],
+            'stock_auto': ["TSLA", "F", "GM", "TM", "HMC", "RIVN", "LCID", "STLA", "NIO", "XPEV", "LI", "RACE", "TTM"],
+            'stock_semi': ["NVDA", "AMD", "INTC", "QCOM", "AVGO", "TXN", "MU", "TSM", "ASML", "LRCX", "AMAT", "ADI", "MRVL", "STM"],
+            'stock_finance': ["JPM", "BAC", "GS", "MS", "WFC", "C", "V", "MA", "AXP", "BLK", "SCHW", "PYPL", "USB", "PNC", "TFC"],
+            'stock_energy': ["XOM", "CVX", "SHEL", "BP", "COP", "SLB", "EOG", "PXD", "MPC", "PSX", "VLO", "OXY", "HAL", "KMI"],
+            'stock_pharma': ["LLY", "JNJ", "PFE", "MRK", "ABBV", "AMGN", "GILD", "BIIB", "REGN", "VRTX", "BMY", "AZN", "SNY", "NVS"],
+            'stock_consumer': ["WMT", "TGT", "COST", "HD", "LOW", "NKE", "SBUX", "MCD", "KO", "PEP", "PG", "CL", "KMB", "EL", "LULU"],
+            'stock_nyse': ["JPM", "WMT", "PG", "XOM", "JNJ", "V", "MA", "HD", "LLY", "MRK", "KO", "PEP", "BAC", "CVX", "MCD", "DIS", "T", "VZ", "BA", "CAT", "GE", "MMM", "IBM", "GS", "MS", "AXP", "UNH", "CVX", "WFC"],
+            'stock_etf': ["SPY", "QQQ", "DIA", "IWM", "VOO", "IVV", "VTI", "VEA", "VWO", "IEFA", "AGG", "BND", "GLD", "SLV", "GDX", "XLE", "XLF", "XLK", "XLV"],
+            'stock_commodities': ["GLD", "SLV", "USO", "UNG", "DBC", "GSG", "CORN", "SOYB", "WEAT", "PPLT", "PALL", "CPER"],
+            'stock_forex': ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"]
         }
 
     def get_logo_url(self, symbol):
-        dom = self.domains.get(symbol)
-        if not dom: 
-            # Simple heuristic fallback
-            if len(symbol) > 4: return None
-            dom = f"{symbol.lower()}.com"
-        return f"https://logo.clearbit.com/{dom}"
+        # Use NVSTLY Github Repo for reliable logos
+        return f"https://raw.githubusercontent.com/nvstly/icons/main/ticker_icons/{symbol.upper()}.png"
 
     def fetch_movers(self):
         key = 'stock_movers'
-        if time.time() - self.last_fetch_times.get(key, 0) < self.fetch_interval: return self.cache.get(key, [])
+        if time.time() - self.last_fetch_times.get(key, 0) < 300: return self.cache.get(key, [])
         try:
             url = f"https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey={self.api_key}"
             r = requests.get(url, timeout=10)
@@ -285,48 +272,85 @@ class StockFetcher:
             results = []
             if "top_gainers" in data:
                 for item in data["top_gainers"][:5]:
-                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], item['change_amount'], "MOVER"))
+                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], item['change_amount'], "MOVERS"))
             self.cache[key] = results
             self.last_fetch_times[key] = time.time()
             return results
         except Exception as e: return self.cache.get(key, [])
 
     def fetch_list(self, category_key):
-        if time.time() - self.last_fetch_times.get(category_key, 0) < self.fetch_interval: return self.cache.get(category_key, [])
+        if category_key not in self.cache: self.cache[category_key] = []
+        if category_key not in self.cursor: self.cursor[category_key] = 0
+        
+        # Throttled Fetching: 2 stocks per minute per category
+        if time.time() - self.last_fetch_times.get(category_key, 0) < self.fetch_interval: 
+            return self.cache[category_key]
+            
         sym_list = self.symbols.get(category_key, [])
-        results = []
+        if not sym_list: return []
+        
+        idx = self.cursor[category_key]
+        batch = [sym_list[idx % len(sym_list)]]
+        if len(sym_list) > 1:
+            batch.append(sym_list[(idx + 1) % len(sym_list)])
+            
         try:
-            # Throttle fetching to avoid API limits (5/min). 
-            # We will just fetch the first 3 for now to be safe on free tier per cycle
-            # In production with premium, remove slice.
-            for sym in sym_list[:3]: 
-                url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={sym}&apikey={self.api_key}"
-                r = requests.get(url, timeout=5)
-                data = r.json()
-                q = data.get("Global Quote", {})
-                if q:
-                    results.append(self.format_stock_obj(q.get("01. symbol"), q.get("05. price"), q.get("10. change percent"), q.get("09. change"), category_key.split('_')[1].upper()))
+            for sym in batch:
+                func = "GLOBAL_QUOTE"
+                if category_key == "stock_forex": func = "CURRENCY_EXCHANGE_RATE" # Different endpoint if needed, but quote often works. Using Quote for simplicity as many are ETFs in list or mapped.
+                # Actually for forex pure pairs AlphaVantage uses CURRENCY_EXCHANGE_RATE. 
+                # For simplicity here we assume symbols in list are fetchable via GLOBAL_QUOTE (many wrappers do this) or are ETFs representing them.
+                # If using pure Forex pairs (EURUSD), use CURRENCY_EXCHANGE_RATE:
+                
+                if len(sym) == 6 and category_key == "stock_forex": # Rough heuristic
+                    url = f"https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency={sym[:3]}&to_currency={sym[3:]}&apikey={self.api_key}"
+                    r = requests.get(url, timeout=5)
+                    d = r.json().get("Realtime Currency Exchange Rate", {})
+                    if d:
+                        obj = self.format_stock_obj(sym, d.get("05. Exchange Rate"), d.get("09. Ask Price"), "0.00", "FOREX") # Change not always avail in free forex, faking it or omitting
+                        # Forex on AV free doesn't give change %, calculating manually if cache exists? 
+                        # For now, just show rate.
+                        obj['away_score'] = "" 
+                        self.update_cache(category_key, sym, obj)
+                else:
+                    url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={sym}&apikey={self.api_key}"
+                    r = requests.get(url, timeout=5)
+                    data = r.json()
+                    q = data.get("Global Quote", {})
+                    if q:
+                        label = category_key.split('_')[1].upper()
+                        if label == "INDICES": label = "INDEX"
+                        obj = self.format_stock_obj(q.get("01. symbol"), q.get("05. price"), q.get("10. change percent"), q.get("09. change"), label)
+                        self.update_cache(category_key, sym, obj)
                 time.sleep(1.1) 
             
-            self.cache[category_key] = results
+            self.cursor[category_key] = (idx + 2) % len(sym_list)
             self.last_fetch_times[category_key] = time.time()
-            return results
+            return self.cache[category_key]
         except Exception as e: return self.cache.get(category_key, [])
+
+    def update_cache(self, key, sym, obj):
+        existing = next((i for i, x in enumerate(self.cache[key]) if x['home_abbr'] == sym), None)
+        if existing is not None: self.cache[key][existing] = obj
+        else: self.cache[key].append(obj)
 
     def format_stock_obj(self, symbol, price, change_pct, change_amt, status_lbl):
         logo = self.get_logo_url(symbol)
+        if not change_pct: change_pct = "0.00%"
+        if not change_amt: change_amt = "0.00"
         return {
             'type': 'stock_ticker',
             'sport': 'stock',
             'id': f"stk_{symbol}",
-            'status': status_lbl,
+            'status': status_lbl, 
+            'tourney_name': status_lbl,
             'state': 'in',
             'is_shown': True,
             'home_abbr': symbol,
             'home_score': str(float(price)) if price else "0.00",
             'away_score': str(change_pct),
             'home_logo': logo,
-            'situation': {'change': str(change_amt)}, # Store dollar change here
+            'situation': {'change': str(change_amt)}, 
             'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
         }
 
@@ -638,12 +662,12 @@ class SportsFetcher:
         # 2. STOCKS
         if current_mode == 'stocks' or current_mode == 'all':
             if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.fetch_movers())
-            # Fetch enabled lists
-            stock_cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 'stock_auto', 'stock_semi', 'stock_finance', 'stock_energy', 'stock_pharma', 'stock_consumer']
+            stock_cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 
+                          'stock_auto', 'stock_semi', 'stock_finance', 'stock_energy', 'stock_pharma', 
+                          'stock_consumer', 'stock_nyse', 'stock_etf', 'stock_commodities', 'stock_forex']
             for cat in stock_cats:
                 if conf['active_sports'].get(cat): games.extend(self.stocks.fetch_list(cat))
             
-            # If strictly stocks mode, return now (skip sports)
             if current_mode == 'stocks':
                 with data_lock: state['current_games'] = games; return
 
@@ -655,7 +679,6 @@ class SportsFetcher:
                 
                 # Leaderboards (Racing)
                 if config.get('type') == 'leaderboard': 
-                    # Need time windows
                     utc_offset = conf.get('utc_offset', -5)
                     now_utc = dt.now(timezone.utc)
                     now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
@@ -673,7 +696,6 @@ class SportsFetcher:
                 if league_key == 'nhl' and not conf['debug_mode']:
                     prev_count = len(games)
                     self._fetch_nhl_native(games, target_date_str)
-                    # If we got games from native, skip ESPN fetch for NHL
                     if len(games) > prev_count: continue 
 
                 try:
@@ -793,7 +815,7 @@ class SportsFetcher:
                                 'isRedZone': sit.get('isRedZone', False), 
                                 'downDist': down_text, 
                                 'shootout': shootout_data,
-                                'powerPlay': False, # ESPN doesn't give this easily, NHL is handled in native block above
+                                'powerPlay': False, 
                                 'emptyNet': False
                             }
                         }
