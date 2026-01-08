@@ -1,789 +1,976 @@
 import time
 import threading
-import io
-import requests
-import traceback
-import sys
-import os
-import uuid
-import subprocess
-import socket
 import json
-import concurrent.futures
-from datetime import datetime
-from PIL import Image, ImageDraw, ImageFont, ImageStat, ImageOps
+import os
+import sys
+import re
 import random
-from rgbmatrix import RGBMatrix, RGBMatrixOptions
-from flask import Flask, request, render_template_string
+import string
+from datetime import datetime as dt, timezone, timedelta
+import requests
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+
+# ================= LOGGING SETUP =================
+class Tee(object):
+    def __init__(self, name, mode):
+        self.file = open(name, mode)
+        self.stdout = sys.stdout
+        self.stdout = self
+        self.stderr = self
+    def write(self, data):
+        self.file.write(data)
+        self.stdout.write(data)
+        self.file.flush()
+        self.stdout.flush()
+    def flush(self):
+        self.file.flush()
+        self.stdout.flush()
+
+try:
+    if not os.path.exists("ticker.log"):
+        with open("ticker.log", "w") as f: f.write("--- Log Started ---\n")
+    Tee("ticker.log", "a")
+except Exception as e:
+    print(f"Logging setup failed: {e}")
 
 # ================= CONFIGURATION =================
-BACKEND_URL = "https://ticker.mattdicks.org" 
-PANEL_W = 128
-PANEL_H = 32
-SETUP_SSID = "SportsTicker_Setup"
-PAGE_HOLD_TIME = 5.0
-REFRESH_RATE = 3
-ID_FILE_PATH = "/boot/ticker_id.txt"
-ID_FILE_FALLBACK = "ticker_id.txt"
+CONFIG_FILE = "ticker_config.json"
+TICKER_REGISTRY_FILE = "tickers.json" 
 
-# --- TINY PIXEL FONT (4x5) - USED FOR MOTORSPORTS ---
-TINY_FONT_MAP = {
-    'A': [0x6, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x9, 0x6],
-    'D': [0xE, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8],
-    'G': [0x6, 0x9, 0xB, 0x9, 0x6], 'H': [0x9, 0x9, 0xF, 0x9, 0x9], 'I': [0xE, 0x4, 0x4, 0x4, 0xE],
-    'J': [0x7, 0x2, 0x2, 0xA, 0x4], 'K': [0x9, 0xA, 0xC, 0xA, 0x9], 'L': [0x8, 0x8, 0x8, 0x8, 0xF],
-    'M': [0x9, 0xF, 0xF, 0x9, 0x9], 'N': [0x9, 0xD, 0xF, 0xB, 0x9], 'O': [0x6, 0x9, 0x9, 0x9, 0x6],
-    'P': [0xE, 0x9, 0xE, 0x8, 0x8], 'Q': [0x6, 0x9, 0x9, 0xA, 0x5], 'R': [0xE, 0x9, 0xE, 0xA, 0x9],
-    'S': [0x7, 0x8, 0x6, 0x1, 0xE], 'T': [0xF, 0x4, 0x4, 0x4, 0x4], 'U': [0x9, 0x9, 0x9, 0x9, 0x6],
-    'V': [0x9, 0x9, 0x9, 0xA, 0x4], 'W': [0x9, 0x9, 0xF, 0xF, 0x9], 'X': [0x9, 0x9, 0x6, 0x9, 0x9],
-    'Y': [0x9, 0x9, 0x6, 0x2, 0x2], 'Z': [0xF, 0x1, 0x6, 0x8, 0xF], 
-    '0': [0x6, 0x9, 0x9, 0x9, 0x6], '1': [0x4, 0xC, 0x4, 0x4, 0xE], '2': [0xE, 0x1, 0x6, 0x8, 0xF],
-    '3': [0xE, 0x1, 0x6, 0x1, 0xE], '4': [0x9, 0x9, 0xF, 0x1, 0x1], '5': [0xF, 0x8, 0xE, 0x1, 0xE],
-    '6': [0x6, 0x8, 0xE, 0x9, 0x6], '7': [0xF, 0x1, 0x2, 0x4, 0x4], '8': [0x6, 0x9, 0x6, 0x9, 0x6],
-    '9': [0x6, 0x9, 0x7, 0x1, 0x6], '+': [0x0, 0x4, 0xE, 0x4, 0x0], '-': [0x0, 0x0, 0xE, 0x0, 0x0],
-    '.': [0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x4, 0x8, 0x0],
-    "'": [0x4, 0x4, 0x0, 0x0, 0x0]
+# --- DUAL FETCH TIMERS ---
+# Sports: Fast (5s) for live game clock
+# Stocks: Throttled (15s) = 4 calls/min (Safe limit is 5/min)
+INTERVAL_SPORTS = 5
+INTERVAL_STOCKS = 15 
+
+data_lock = threading.Lock()
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Cache-Control": "no-cache"
 }
 
-# --- HYBRID PIXEL FONT (4x6) - USED FOR GAME STATUS ---
-HYBRID_FONT_MAP = {
-    'A': [0x6, 0x9, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x8, 0x9, 0x6],
-    'D': [0xE, 0x9, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8, 0x8],
-    'G': [0x6, 0x9, 0x8, 0xB, 0x9, 0x6], 'H': [0x9, 0x9, 0x9, 0xF, 0x9, 0x9], 'I': [0xE, 0x4, 0x4, 0x4, 0x4, 0xE],
-    'J': [0x7, 0x2, 0x2, 0x2, 0xA, 0x4], 'K': [0x9, 0xA, 0xC, 0xC, 0xA, 0x9], 'L': [0x8, 0x8, 0x8, 0x8, 0x8, 0xF],
-    'M': [0x9, 0xF, 0xF, 0x9, 0x9, 0x9], 'N': [0x9, 0xD, 0xF, 0xB, 0x9, 0x9], 'O': [0x6, 0x9, 0x9, 0x9, 0x9, 0x6],
-    'P': [0xE, 0x9, 0x9, 0xE, 0x8, 0x8], 'Q': [0x6, 0x9, 0x9, 0x9, 0xA, 0x5], 'R': [0xE, 0x9, 0x9, 0xE, 0xA, 0x9],
-    'S': [0x7, 0x8, 0x6, 0x1, 0x1, 0xE], 'T': [0xF, 0x4, 0x4, 0x4, 0x4, 0x4], 'U': [0x9, 0x9, 0x9, 0x9, 0x9, 0x6],
-    'V': [0x9, 0x9, 0x9, 0x9, 0xA, 0x4], 'W': [0x9, 0x9, 0x9, 0xF, 0xF, 0x9], 'X': [0x9, 0x9, 0x6, 0x6, 0x9, 0x9],
-    'Y': [0x9, 0x9, 0x9, 0x6, 0x2, 0x2], 'Z': [0xF, 0x1, 0x2, 0x4, 0x8, 0xF], 
-    '0': [0x6, 0x9, 0x9, 0x9, 0x9, 0x6], '1': [0x4, 0xC, 0x4, 0x4, 0x4, 0xE], '2': [0xE, 0x9, 0x2, 0x4, 0x8, 0xF],
-    '3': [0xE, 0x9, 0x2, 0x1, 0x9, 0xE], '4': [0x9, 0x9, 0xF, 0x1, 0x1, 0x1], '5': [0xF, 0x8, 0xE, 0x1, 0x9, 0xE],
-    '6': [0x6, 0x8, 0xE, 0x9, 0x9, 0x6], '7': [0xF, 0x1, 0x2, 0x4, 0x8, 0x8], '8': [0x6, 0x9, 0x6, 0x9, 0x9, 0x6],
-    '9': [0x6, 0x9, 0x9, 0x7, 0x1, 0x6], '+': [0x0, 0x0, 0x4, 0xE, 0x4, 0x0], '-': [0x0, 0x0, 0x0, 0xE, 0x0, 0x0],
-    '.': [0x0, 0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], ':': [0x0, 0x6, 0x6, 0x0, 0x6, 0x6],
-    '~': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x2, 0x4, 0x4, 0x8], "'": [0x4, 0x4, 0x0, 0x0, 0x0, 0x0]
-}
-
-def draw_tiny_text(draw, x, y, text, color):
-    text = str(text).upper()
-    x_cursor = x
-    for char in text:
-        bitmap = TINY_FONT_MAP.get(char, TINY_FONT_MAP[' '])
-        for r, row_byte in enumerate(bitmap):
-            if row_byte & 0x8: draw.point((x_cursor+0, y+r), fill=color)
-            if row_byte & 0x4: draw.point((x_cursor+1, y+r), fill=color)
-            if row_byte & 0x2: draw.point((x_cursor+2, y+r), fill=color)
-            if row_byte & 0x1: draw.point((x_cursor+3, y+r), fill=color)
-        x_cursor += 4 
-    return x_cursor - x
-
-def draw_hybrid_text(draw, x, y, text, color):
-    text = str(text).upper()
-    x_cursor = x
-    for char in text:
-        if char == '~':
-            x_cursor += 2
-            continue
-            
-        bitmap = HYBRID_FONT_MAP.get(char, HYBRID_FONT_MAP[' '])
-        for r, row_byte in enumerate(bitmap):
-            if row_byte & 0x8: draw.point((x_cursor+0, y+r), fill=color)
-            if row_byte & 0x4: draw.point((x_cursor+1, y+r), fill=color)
-            if row_byte & 0x2: draw.point((x_cursor+2, y+r), fill=color)
-            if row_byte & 0x1: draw.point((x_cursor+3, y+r), fill=color)
-        x_cursor += 5 
-    return x_cursor - x
-
-def get_device_id():
-    """Gets or generates the UUID for this specific ticker."""
-    path_to_use = ID_FILE_PATH
-    if not os.path.isfile(ID_FILE_PATH):
-        try:
-            # Try creating file in /boot
-            test_uuid = str(uuid.uuid4())
-            with open(ID_FILE_PATH, 'w') as f:
-                f.write(test_uuid)
-        except PermissionError:
-            print(f"Warning: Cannot write to {ID_FILE_PATH}. Using local fallback.")
-            path_to_use = ID_FILE_FALLBACK
-
-    if os.path.exists(path_to_use):
-        with open(path_to_use, 'r') as f:
-            return f.read().strip()
-    else:
-        new_id = str(uuid.uuid4())
-        try:
-            with open(path_to_use, 'w') as f:
-                f.write(new_id)
-            print(f"Generated new ID: {new_id}")
-            return new_id
-        except Exception as e:
-            print(f"CRITICAL: Could not save ID. {e}")
-            return new_id
-
-class WifiPortal:
-    def __init__(self, matrix, font):
-        self.matrix = matrix
-        self.font = font
-        self.app = Flask(__name__)
-        self.html_template = """<html><body><h2>Connect Ticker</h2><form action="/connect" method="POST"><input type="text" name="ssid" placeholder="SSID"><br><input type="password" name="password" placeholder="Password"><br><button type="submit">Connect</button></form></body></html>"""
+# ================= DEFAULT STATE =================
+default_state = {
+    'active_sports': { 
+        # Sports
+        'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
+        'soccer_epl': True, 'soccer_champ': True, 'soccer_l1': True, 'soccer_l2': True, 
+        'soccer_wc': False, 'hockey_olympics': False, 
+        'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
         
-        @self.app.route('/')
-        def home(): return render_template_string(self.html_template)
+        # Utilities
+        'weather': False, 'clock': False,
         
-        @self.app.route('/connect', methods=['POST'])
-        def connect():
-            ssid = request.form['ssid']; pw = request.form['password']
-            self.draw_status(f"CONNECTING:\n{ssid}")
-            try: 
-                subprocess.run(['nmcli', 'dev', 'wifi', 'connect', ssid, 'password', pw], check=True)
-                return "Rebooting..."
-            except: 
-                return "Failed"
-            finally: 
-                time.sleep(2)
-                subprocess.run(['reboot'])
-
-    def check_internet(self):
-        try: 
-            socket.gethostbyname("google.com")
-            return True
-        except: 
-            return False
-
-    def start_hotspot(self):
-        subprocess.run(['nmcli', 'con', 'up', SETUP_SSID], capture_output=True)
-
-    def draw_status(self, text):
-        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
-        d = ImageDraw.Draw(img)
-        d.text((2, 2), text, font=self.font, fill=(255, 255, 0))
-        self.matrix.SetImage(img.convert("RGB"))
-
-    def run(self):
-        if self.check_internet(): return True 
-        self.draw_status(f"SETUP WIFI\n{SETUP_SSID}")
-        self.start_hotspot()
-        self.app.run(host='0.0.0.0', port=80) 
-
-class TickerStreamer:
-    def __init__(self):
-        print("Starting Ticker System...")
-        self.device_id = get_device_id()
-        print(f"Device ID: {self.device_id}")
-
-        options = RGBMatrixOptions()
-        options.rows = 32
-        options.cols = 64
-        options.chain_length = 2
-        options.parallel = 1
-        options.hardware_mapping = 'regular'
-        options.gpio_slowdown = 4                        
-        options.disable_hardware_pulsing = True
-        options.drop_privileges = False 
-        self.matrix = RGBMatrix(options=options)
-
-        try: self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 10)
-        except: self.font = ImageFont.load_default()
-        
-        try: self.tiny = ImageFont.truetype("DejaVuSans.ttf", 9) 
-        except: self.tiny = ImageFont.load_default()
-        
-        try: self.micro = ImageFont.truetype("DejaVuSans.ttf", 7)
-        except: self.micro = ImageFont.load_default()
-
-        try: self.nano = ImageFont.truetype("DejaVuSans.ttf", 5)
-        except: self.nano = ImageFont.load_default()
-        
-        try: self.big_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 16)
-        except: self.big_font = ImageFont.load_default()
-        
-        try: self.clock_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
-        except: self.clock_font = ImageFont.load_default()
-        
-        self.portal = WifiPortal(self.matrix, self.font)
-        if not self.portal.check_internet(): self.portal.run() 
-        
-        self.games = []
-        self.seamless_mode = False
-        self.brightness = 0.5
-        self.scroll_sleep = 0.05
-        self.inverted = False
-        self.test_pattern = False
-        self.running = True
-        self.logo_cache = {}
-        self.anim_tick = 0
-        
-        # === PAIRING STATE ===
-        self.is_pairing = False
-        self.pairing_code = ""
-
-        # === OPTIMIZATION VARS ===
-        self.config_updated = False
-        self.bg_strip = None
-        self.active_strip = None
-        self.bg_strip_ready = False
-        
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
-
-        threading.Thread(target=self.poll_backend, daemon=True).start()
-        threading.Thread(target=self.render_loop, daemon=True).start()
-
-    def update_display(self, pil_image):
-        if self.test_pattern: pil_image = self.generate_test_pattern()
-        img = pil_image.resize((self.matrix.width, self.matrix.height)).convert("RGB")
-        
-        val = self.brightness
-        if val > 1.0: val = val / 100.0
-        
-        target_b = int(max(0, min(100, val * 100)))
-        if self.matrix.brightness != target_b: self.matrix.brightness = target_b
-        
-        if self.inverted: img = img.rotate(180)
-        self.matrix.SetImage(img)
-
-    def generate_test_pattern(self):
-        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
-        d = ImageDraw.Draw(img)
-        d.rectangle((0,0, PANEL_W-1, PANEL_H-1), outline=(255,0,0))
-        d.text((10, 10), "TEST", font=self.font, fill=(0,0,255))
-        return img
+        # Stock Categories
+        'stock_movers': True, 'stock_indices': True, 'stock_tech': False, 
+        'stock_ai': False, 'stock_consulting': False, 'stock_crypto': False,
+        'stock_auto': False, 'stock_semi': False, 'stock_finance': False,
+        'stock_energy': False, 'stock_pharma': False, 'stock_consumer': False,
+        'stock_nyse': False, 'stock_etf': False, 'stock_commodities': False, 'stock_forex': False
+    },
+    'mode': 'all', 
+    'layout_mode': 'schedule',
+    'my_teams': [], 
+    'current_games': [],     # The Final Combined List sent to Ticker
     
-    def draw_pairing_screen(self):
-        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
-        d = ImageDraw.Draw(img)
-        d.text((2, 2), "PAIR CODE:", font=self.font, fill=(255, 255, 0)) 
-        code = self.pairing_code if self.pairing_code else "..."
-        w = d.textlength(code, font=self.big_font)
-        x = (PANEL_W - w) // 2
-        d.text((x, 12), code, font=self.big_font, fill=(255, 255, 255))
-        return img
+    # Internal Buffers
+    'buffer_sports': [],
+    'buffer_stocks': [],
+    
+    'all_teams_data': {}, 
+    'debug_mode': False,
+    'demo_mode': False,
+    'custom_date': None,
+    'weather_location': "New York",
+    'utc_offset': -5,
+    'scroll_seamless': True, 
+    'scroll_speed': 5,
+    'brightness': 100,
+    'show_debug_options': True 
+}
 
-    def download_and_process_logo(self, url, size=(24,24)):
-        cache_key = f"{url}_{size}"
-        if cache_key in self.logo_cache: return
+DEFAULT_TICKER_SETTINGS = {
+    "brightness": 100,
+    "scroll_speed": 0.03,
+    "scroll_seamless": True,
+    "inverted": False,
+    "panel_count": 2
+}
+
+state = default_state.copy()
+tickers = {} 
+
+# --- LOAD CONFIG ---
+if os.path.exists(CONFIG_FILE):
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            loaded = json.load(f)
+            for k, v in loaded.items():
+                if k == 'show_debug_options': continue 
+                if k in state:
+                    if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
+                    else: state[k] = v
+    except Exception as e:
+        print(f"Error loading config: {e}")
+
+# --- LOAD TICKERS ---
+if os.path.exists(TICKER_REGISTRY_FILE):
+    try:
+        with open(TICKER_REGISTRY_FILE, 'r') as f:
+            tickers = json.load(f)
+    except: pass
+
+def save_json_atomically(filepath, data):
+    temp = f"{filepath}.tmp"
+    try:
+        with open(temp, 'w') as f:
+            json.dump(data, f, indent=4)
+        os.replace(temp, filepath)
+    except: pass
+
+def save_config_file():
+    try:
+        with data_lock:
+            # Save clean state (exclude volatile game data)
+            export_data = state.copy()
+            for k in ['current_games', 'buffer_sports', 'buffer_stocks', 'all_teams_data']:
+                if k in export_data: del export_data[k]
+            tickers_snap = tickers.copy()
+        save_json_atomically(CONFIG_FILE, export_data)
+        save_json_atomically(TICKER_REGISTRY_FILE, tickers_snap)
+    except: pass
+
+def generate_pairing_code():
+    while True:
+        code = ''.join(random.choices(string.digits, k=6))
+        active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
+        if code not in active_codes: return code
+
+# ================= LISTS & OVERRIDES =================
+FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
+FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
+OLYMPIC_HOCKEY_TEAMS = [
+    {"abbr": "CAN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/can.png"},
+    {"abbr": "USA", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/usa.png"},
+    {"abbr": "SWE", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/swe.png"},
+    {"abbr": "FIN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/fin.png"},
+    {"abbr": "RUS", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/rus.png"},
+    {"abbr": "CZE", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png"},
+    {"abbr": "GER", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/ger.png"},
+    {"abbr": "SUI", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/sui.png"},
+    {"abbr": "SVK", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/svk.png"},
+    {"abbr": "LAT", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/lat.png"},
+    {"abbr": "DEN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/den.png"},
+    {"abbr": "CHN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/chn.png"}
+]
+
+LOGO_OVERRIDES = {
+    "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png", "NBA:HOU": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png", "MLB:HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png", "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
+    "NFL:MIA": "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png", "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png", "MLB:MIA": "https://a.espncdn.com/i/teamlogos/mlb/500/mia.png", "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png", "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
+    "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png", "NBA:IND": "https://a.espncdn.com/i/teamlogos/nba/500/ind.png", "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
+    "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png", "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+    "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png", "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
+    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "NCF_FBS:WASH": "https://a.espncdn.com/i/teamlogos/ncaa/500/264.png",
+    "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png", "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png", "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png", "NHL:LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
+    "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+    "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png", "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png", "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png", "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png", "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
+}
+ABBR_MAPPING = {
+    'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI',
+    'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS'
+}
+
+SPORT_DURATIONS = {
+    'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
+    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
+}
+
+# === DEMO DATA ===
+def generate_demo_data():
+    return [
+        {'type': 'scoreboard', 'sport': 'nhl', 'id': 'demo_so', 'status': 'S/O', 'state': 'in', 'is_shown': True,
+         'home_abbr': 'NYR', 'home_score': '3', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png', 'home_color': '#0038A8', 'home_alt_color': '#CE1126',
+         'away_abbr': 'NJD', 'away_score': '3', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nj.png', 'away_color': '#CE1126', 'away_alt_color': '#000000',
+         'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
+         'situation': {'shootout': { 'away': ['goal', 'miss', 'miss'], 'home': ['miss', 'goal', 'pending'] }}},
+        {'type': 'stock_ticker', 'sport': 'stock_tech', 'id': 'demo_tsla', 'status': 'TECH', 'state': 'in', 'is_shown': True,
+         'home_abbr': 'TSLA', 'home_score': '184.86', 'away_score': '-1.38%', 'home_logo': 'https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/TSLA.png',
+         'tourney_name': 'TECH', 'situation': {'change': '-2.54'}}
+    ]
+
+# ================= FETCHING LOGIC =================
+class WeatherFetcher:
+    def __init__(self, initial_loc):
+        self.lat = 40.7128; self.lon = -74.0060; self.location_name = "New York"; self.last_fetch = 0; self.cache = None
+        if initial_loc: self.update_coords(initial_loc)
+    def update_coords(self, location_query):
         try:
-            r = requests.get(url, timeout=3)
-            original = Image.open(io.BytesIO(r.content)).convert("RGBA")
-            target_w, target_h = size
-            check_img = original.resize((32, 32), Image.Resampling.NEAREST)
-            rgb_img = check_img.convert("RGB")
-            alpha = check_img.split()[-1]
-            visible_pixels = 0; dark_pixels = 0
-            for y in range(check_img.height):
-                for x in range(check_img.width):
-                    if alpha.getpixel((x, y)) > 50:
-                        visible_pixels += 1
-                        r_val, g_val, b_val = rgb_img.getpixel((x, y))
-                        if r_val < 60 and g_val < 60 and b_val < 60: dark_pixels += 1
-            
-            needs_outline = (visible_pixels > 0 and (dark_pixels / visible_pixels) > 0.40)
-            if needs_outline:
-                icon_w, icon_h = target_w - 2, target_h - 2
-                img_ratio = original.width / original.height
-                target_ratio = icon_w / icon_h
-                if img_ratio > target_ratio: new_w = icon_w; new_h = int(icon_w / img_ratio)
-                else: new_h = icon_h; new_w = int(icon_h * img_ratio)
-                resized_icon = original.resize((new_w, new_h), Image.Resampling.LANCZOS)
-                base = Image.new("RGBA", size, (0, 0, 0, 0))
-                center_x = (target_w - new_w) // 2
-                center_y = (target_h - new_h) // 2
-                _, _, _, alpha_ch = resized_icon.split()
-                white_mask = Image.new("RGBA", (new_w, new_h), (255, 255, 255, 255))
-                white_mask.putalpha(alpha_ch)
-                offsets = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
-                for ox, oy in offsets: base.paste(white_mask, (center_x + ox, center_y + oy), white_mask)
-                base.paste(resized_icon, (center_x, center_y), resized_icon)
-                final_img = base
-            else:
-                img_w, img_h = original.size
-                ratio = min(target_w / img_w, target_h / img_h)
-                new_w = int(img_w * ratio)
-                new_h = int(img_h * ratio)
-                resized_img = original.resize((new_w, new_h), Image.Resampling.LANCZOS)
-                final_img = Image.new("RGBA", size, (0,0,0,0))
-                offset_x = (target_w - new_w) // 2
-                offset_y = (target_h - new_h) // 2
-                final_img.paste(resized_img, (offset_x, offset_y))
-            self.logo_cache[cache_key] = final_img
-        except Exception as e: pass
+            r = requests.get(f"https://geocoding-api.open-meteo.com/v1/search?name={str(location_query).strip()}&count=1&language=en&format=json", timeout=5)
+            d = r.json()
+            if 'results' in d and len(d['results']) > 0:
+                res = d['results'][0]; self.lat = res['latitude']; self.lon = res['longitude']; self.location_name = res['name']; self.last_fetch = 0 
+        except Exception as e: print(f"Weather update error: {e}")
+    def get_weather(self):
+        if time.time() - self.last_fetch < 900 and self.cache: return self.cache
+        try:
+            r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto", timeout=5)
+            d = r.json(); c = d.get('current', {}); dl = d.get('daily', {})
+            code = c.get('weather_code', 0); is_day = c.get('is_day', 1)
+            icon = "cloud"
+            if code in [0, 1]: icon = "sun" if is_day else "moon"
+            elif code in [51, 53, 55, 61, 63, 65, 80, 81, 82]: icon = "rain"
+            elif code in [71, 73, 75, 77, 85, 86]: icon = "snow"
+            elif code in [95, 96, 99]: icon = "storm"
+            w_obj = { "type": "weather", "sport": "weather", "id": "weather_widget", "status": "Live",
+                "home_abbr": f"{int(c.get('temperature_2m', 0))}°", "away_abbr": self.location_name, "home_score": "", "away_score": "", "is_shown": True, "home_logo": "", "away_logo": "", "home_color": "#000000", "away_color": "#000000",
+                "situation": { "icon": icon, "stats": { "high": int(dl['temperature_2m_max'][0]), "low": int(dl['temperature_2m_min'][0]), "uv": float(dl['uv_index_max'][0]) } } }
+            self.cache = w_obj; self.last_fetch = time.time(); return w_obj
+        except: return None
 
-    def get_logo(self, url, size=(24,24)):
-        if not url: return None
-        cache_key = f"{url}_{size}"
-        return self.logo_cache.get(cache_key)
-
-    def draw_hockey_stick(self, draw, cx, cy, size):
-        WOOD = (150, 75, 0); TAPE = (255, 255, 255)
-        pattern = [[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,1,1,1,0],
-                   [0,0,0,0,1,1,0,0],[1,2,2,1,1,1,0,0],[1,2,2,1,1,0,0,0],[0,0,0,0,0,0,0,0]]
-        sx, sy = cx - 4, cy - 4
-        for y in range(8):
-            for x in range(8):
-                if pattern[y][x] == 1: draw.point((sx+x, sy+y), fill=WOOD)
-                elif pattern[y][x] == 2: draw.point((sx+x, sy+y), fill=TAPE)
-
-    def draw_shootout_indicators(self, draw, results, start_x, y):
-        """Draws hockey shootout circles (3 max)"""
-        display_results = results[:]
-        while len(display_results) < 3: display_results.append('pending')
-        if len(display_results) > 3: display_results = display_results[-3:]
-
-        x_off = start_x
-        for res in display_results:
-            if res == 'pending':
-                draw.rectangle((x_off, y, x_off+3, y+3), outline=(80,80,80)) 
-            elif res == 'miss':
-                draw.line((x_off, y, x_off+3, y+3), fill=(255,0,0))
-                draw.line((x_off, y+3, x_off+3, y), fill=(255,0,0))
-            elif res == 'goal':
-                draw.rectangle((x_off, y, x_off+3, y+3), fill=(0,255,0))
-            x_off += 6 
-
-    def draw_soccer_shootout(self, draw, results, start_x, y):
-        """Draws soccer penalty indicators (5 max, smaller dots)"""
-        # Limit to last 5 shots to fit
-        display_results = results[:]
-        if len(display_results) > 5: display_results = display_results[-5:]
+class StockFetcher:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.market_cache = {} 
+        self.last_fetch = 0
         
-        # Pad with pending if < 5 (standard round)
-        while len(display_results) < 5: display_results.append('pending')
+        # Massive Lists
+        self.lists = {
+            'stock_indices': ["SPY", "QQQ", "DIA", "IWM", "VOO", "VTI", "IVV", "VEA", "VWO", "TLT", "EEM", "AGG"],
+            'stock_tech': ["NVDA", "MSFT", "AAPL", "AMD", "META", "GOOG", "AMZN", "NFLX", "CRM", "ADBE", "CSCO", "INTC", "IBM", "ORCL", "UBER", "ABNB", "PLTR", "SQ", "SHOP", "ZM"],
+            'stock_ai': ["NVDA", "SMCI", "PLTR", "AI", "GOOG", "MSFT", "AMD", "META", "PATH", "SNOW", "DDOG", "CRWD", "ZS", "PANW", "AVGO", "MRVL"],
+            'stock_consulting': ["ACN", "IT", "BAH", "IBM", "SAP", "ORCL", "INFY", "WIT", "CTSH", "EPAM", "GIB", "CACI"],
+            'stock_crypto': ["COIN", "MSTR", "MARA", "HOOD", "SQ", "RIOT", "CLSK", "HUT", "BITF", "CORZ", "CIFR", "WULF", "GREE", "IBIT", "FBTC"],
+            'stock_auto': ["TSLA", "F", "GM", "TM", "HMC", "RIVN", "LCID", "STLA", "NIO", "XPEV", "LI", "RACE", "TTM"],
+            'stock_semi': ["NVDA", "AMD", "INTC", "QCOM", "AVGO", "TXN", "MU", "TSM", "ASML", "LRCX", "AMAT", "ADI", "MRVL", "STM", "ON"],
+            'stock_finance': ["JPM", "BAC", "GS", "MS", "WFC", "C", "V", "MA", "AXP", "BLK", "SCHW", "PYPL", "USB", "PNC", "TFC"],
+            'stock_energy': ["XOM", "CVX", "SHEL", "BP", "COP", "SLB", "EOG", "PXD", "MPC", "PSX", "VLO", "OXY", "HAL", "KMI"],
+            'stock_pharma': ["LLY", "JNJ", "PFE", "MRK", "ABBV", "AMGN", "GILD", "BIIB", "REGN", "VRTX", "BMY", "AZN", "SNY", "NVS"],
+            'stock_consumer': ["WMT", "TGT", "COST", "HD", "LOW", "NKE", "SBUX", "MCD", "KO", "PEP", "PG", "CL", "KMB", "EL", "LULU", "CMG", "YUM"],
+            'stock_nyse': ["JPM", "WMT", "PG", "XOM", "JNJ", "V", "MA", "HD", "LLY", "MRK", "KO", "PEP", "BAC", "CVX", "MCD", "DIS", "T", "VZ", "BA", "CAT", "GE", "MMM", "IBM", "GS", "MS", "AXP", "UNH", "CVX", "WFC"],
+            'stock_etf': ["SPY", "QQQ", "DIA", "IWM", "VOO", "IVV", "VTI", "VEA", "VWO", "IEFA", "AGG", "BND", "GLD", "SLV", "GDX", "XLE", "XLF", "XLK", "XLV", "ARKK", "SMH"],
+            'stock_commodities': ["GLD", "SLV", "USO", "UNG", "DBC", "GSG", "CORN", "SOYB", "WEAT", "PPLT", "PALL", "CPER"],
+            'stock_forex': ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"]
+        }
+
+    def get_logo_url(self, symbol):
+        # Primary: Davide Palazzo
+        # Fallback will happen in controller side (if 404, it might download broken image)
+        # But we can try multiple URLs here if we want to be fancy, but simple is better for speed.
+        # We'll serve Davide Palazzo as primary.
+        # Controller should handle fallbacks ideally, but here's a cascading URL:
+        return f"https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/{symbol.upper()}.png"
+
+    def fetch_entire_market(self):
+        # 1 API CALL to rule them all. (Polygon Grouped Daily)
+        # Allows us to filter 100+ stocks instantly without hitting rate limits.
         
-        x_off = start_x
-        # Using smaller 3x3 box with 1px padding = 4px stride
-        # Adjust start_x slightly left since we fit 5
-        if len(results) > 0: x_off -= 2 
-
-        for res in display_results:
-            # 2x2 DOT
-            if res == 'pending':
-                draw.rectangle((x_off, y, x_off+1, y+1), outline=(60,60,60))
-            elif res == 'miss':
-                draw.point((x_off, y), fill=(255,0,0))
-                draw.point((x_off+1, y+1), fill=(255,0,0)) # Tiny X
-            elif res == 'goal':
-                draw.rectangle((x_off, y, x_off+1, y+1), fill=(0,255,0))
-            x_off += 4
-
-    # --- NEW: BASEBALL HUD (Stacked 2,3,2) WITH LABELS ---
-    def draw_baseball_hud(self, draw, x, y, b, s, o):
-        # Draw Labels (Tiny 3x3 pixel text: S, B, O)
-        # S (Strikes) at y
-        draw.point((x-4, y), fill=(150,150,150))
-        draw.point((x-3, y), fill=(150,150,150))
-        draw.point((x-4, y+1), fill=(150,150,150))
-        draw.point((x-3, y+2), fill=(150,150,150))
-        draw.point((x-4, y+2), fill=(150,150,150)) # Tiny 'S' shape
+        # Enforce Cache Interval
+        if time.time() - self.last_fetch < INTERVAL_STOCKS: return
         
-        # B (Balls) at y+3
-        draw.line((x-4, y+3, x-4, y+5), fill=(150,150,150))
-        draw.point((x-3, y+3), fill=(150,150,150))
-        draw.point((x-3, y+4), fill=(150,150,150))
-        draw.point((x-3, y+5), fill=(150,150,150)) # Tiny 'B'
-        
-        # O (Outs) at y+6
-        draw.rectangle((x-4, y+6, x-3, y+7), outline=(150,150,150)) # Tiny 'O'
-
-        # STRIKES (Top, 2 dots) - RED
-        for i in range(2):
-            color = (255, 0, 0) if i < s else (40, 40, 40)
-            draw.rectangle((x + (i*4), y, x + (i*4)+1, y+1), fill=color)
-        
-        # BALLS (Middle, 3 dots) - GREEN
-        for i in range(3):
-            color = (0, 255, 0) if i < b else (40, 40, 40)
-            draw.rectangle((x + (i*4), y+3, x + (i*4)+1, y+4), fill=color)
-            
-        # OUTS (Bottom, 2 dots) - ORANGE/RED
-        for i in range(2):
-            color = (255, 100, 0) if i < o else (40, 40, 40)
-            draw.rectangle((x + (i*4), y+6, x + (i*4)+1, y+7), fill=color)
-
-    def shorten_status(self, status):
-        if not status: return ""
-        s = str(status).upper()
-        s = s.replace(" - ", " ").replace("FINAL", "FINAL").replace("/OT", " OT").replace("HALFTIME", "HALF").replace("DELAY", "DLY")
-        s = s.replace("1ST", "P1").replace("2ND", "P2").replace("3RD", "P3").replace("4TH", "P4").replace("FULL TIME", "FT")
-        replacements = ["P1", "P2", "P3", "P4", "Q1", "Q2", "Q3", "Q4", "OT"]
-        for r in replacements: s = s.replace(f"{r} ", f"{r}~")
-        return s
-
-    def draw_weather_icon_large(self, d, icon, x, y):
-        offset = 0 if (self.anim_tick % 10 < 5) else 1
-        if icon == 'sun':
-            d.ellipse((x+4, y+4, x+20, y+20), fill=(255,220,0))
-            d.line((x+12, y, x+12, y+3), fill=(255,220,0))
-            d.line((x+12, y+21, x+12, y+24), fill=(255,220,0))
-            d.line((x, y+12, x+3, y+12), fill=(255,220,0))
-            d.line((x+21, y+12, x+24, y+12), fill=(255,220,0))
-        elif icon == 'rain' or icon == 'storm':
-            d.ellipse((x+2, y+4, x+22, y+14), fill=(100,100,100))
-            d.ellipse((x+6, y, x+18, y+10), fill=(100,100,100))
-            d.line((x+6, y+16+offset, x+6, y+18+offset), fill=(0,0,255))
-            d.line((x+12, y+14-offset, x+12, y+16-offset), fill=(0,0,255))
-            d.line((x+18, y+16+offset, x+18, y+18+offset), fill=(0,0,255))
-            if icon == 'storm': 
-                d.line((x+10, y+10, x+8, y+16), fill=(255,255,0))
-                d.line((x+8, y+16, x+12, y+22), fill=(255,255,0))
-        else: 
-            color = (200,200,200)
-            d.ellipse((x+2, y+6, x+22, y+18), fill=color)
-            d.ellipse((x+6, y+2, x+18, y+14), fill=color)
-            if icon == 'partly_cloudy': d.ellipse((x+16, y-2, x+26, y+8), fill=(255,220,0))
-
-    def draw_weather_scene_simple(self, game):
-        img = Image.new("RGBA", (128, 32), (0, 0, 0, 255)) 
-        d = ImageDraw.Draw(img)
-        sit = game.get('situation', {}); stats = sit.get('stats', {})
-        cur_icon = sit.get('icon', 'cloud')
-        temp_str = str(game.get('home_abbr', '00')).replace('°','')
-        loc_str = str(game.get('away_abbr', 'CITY')).upper()[:10]
-        self.draw_weather_icon_large(d, cur_icon, 4, 4)
-        d.text((36, -1), loc_str, font=self.micro, fill=(180,180,180))
-        d.text((36, 9), temp_str + "°", font=self.big_font, fill=(255,255,255))
-        high = stats.get('high', 0); low = stats.get('low', 0); uv = int(stats.get('uv', 0))
-        d.text((92, 1), f"H:{high}", font=self.tiny, fill=(255,100,100))
-        d.text((92, 11), f"L:{low}", font=self.tiny, fill=(100,100,255))
-        d.text((92, 21), f"UV:{uv}", font=self.tiny, fill=(255,255,0))
-        return img
-
-    def draw_clock_scene(self):
-        img = Image.new("RGBA", (128, 32), (0, 0, 0, 255))
-        d = ImageDraw.Draw(img)
-        now = datetime.now()
-        t_str = now.strftime("%I:%M:%S"); 
-        if t_str.startswith('0'): t_str = t_str[1:]
-        ampm = now.strftime("%p")
-        w = d.textlength(t_str, font=self.clock_font)
-        x_pos = (128 - w) / 2
-        d.text((x_pos, 4), t_str, font=self.clock_font, fill=(0, 41, 91)) 
-        w_ap = d.textlength(ampm, font=self.font)
-        d.text(((128-w_ap)/2, 22), ampm, font=self.font, fill=(100,100,100))
-        return img
-
-    def build_seamless_strip(self, playlist):
-        if not playlist: return None
-        total_w = len(playlist) * 64
-        buffer = (PANEL_W // 64) + 1 
-        film_w = total_w + (buffer * 64)
-        strip = Image.new("RGBA", (film_w, PANEL_H), (0,0,0,255))
-        for i, g in enumerate(playlist):
-            g_img = self.draw_single_game(g)
-            strip.paste(g_img, (i * 64, 0), g_img)
-        for i in range(buffer):
-            g_img = self.draw_single_game(playlist[i % len(playlist)])
-            strip.paste(g_img, (total_w + (i * 64), 0), g_img)
-        return strip
-
-    def poll_backend(self):
-        last_data_hash = ""
-        while self.running:
+        # Try today, if no data (weekend/holiday), try going back 3 days
+        for i in range(0, 4):
+            d = (dt.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+            url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{d}?adjusted=true&apiKey={self.api_key}"
             try:
-                url = f"{BACKEND_URL}/data?id={self.device_id}"
-                r = requests.get(url, timeout=5)
+                r = requests.get(url, timeout=10)
                 data = r.json()
-                status = data.get('status')
-                
-                if status == 'pairing':
-                    self.is_pairing = True
-                    self.pairing_code = data.get('code', 'ERROR')
-                    self.games = [] 
-                    time.sleep(2) 
-                    continue
-                else:
-                    self.is_pairing = False
-
-                content_block = data.get('content', {})
-                local_config = data.get('local_config', {})
-                content_str = str(content_block) + str(local_config)
-                if content_str == last_data_hash:
-                    time.sleep(REFRESH_RATE)
-                    continue
-                
-                last_data_hash = content_str
-                new_games = content_block.get('sports', [])
-
-                logos_to_fetch = []
-                for g in new_games:
-                    if g.get('home_logo'): logos_to_fetch.append((g['home_logo'], (24,24)))
-                    if g.get('away_logo'): logos_to_fetch.append((g['away_logo'], (24,24)))
-                    if g.get('home_logo'): logos_to_fetch.append((g['home_logo'], (16,16)))
-                    if g.get('away_logo'): logos_to_fetch.append((g['away_logo'], (16,16)))
-                logos_to_fetch = [x for x in list(set(logos_to_fetch)) if f"{x[0]}_{x[1]}" not in self.logo_cache]
-                if logos_to_fetch:
-                    futures = [self.executor.submit(self.download_and_process_logo, url, size) for url, size in logos_to_fetch]
-                    concurrent.futures.wait(futures)
-
-                self.seamless_mode = bool(local_config.get('scroll_seamless', True))
-                self.brightness = float(local_config.get('brightness', 100)) / 100.0
-                self.inverted = bool(local_config.get('inverted', False))
-                speed_val = float(local_config.get('scroll_speed', 0.03))
-                self.scroll_sleep = max(0.005, speed_val)
-
-                if self.seamless_mode and new_games and not (len(new_games) == 1 and new_games[0].get('sport') in ['weather', 'clock']):
-                    new_strip = self.build_seamless_strip(new_games)
-                    self.bg_strip = new_strip
-                    self.bg_strip_ready = True
-                else:
-                    self.bg_strip_ready = False
-
-                self.games = new_games
-                self.config_updated = True
-
-            except Exception as e: pass
-            time.sleep(REFRESH_RATE)
-
-    def draw_leaderboard_card(self, game):
-        img = Image.new("RGBA", (64, 32), (0, 0, 0, 255))
-        d = ImageDraw.Draw(img)
-        try:
-            sport = str(game.get('sport', '')).lower()
-            accent_color = (100, 100, 100)
-            if 'f1' in sport: accent_color = (255, 0, 0)
-            elif 'nascar' in sport: accent_color = (255, 215, 0)
-            elif 'indy' in sport: accent_color = (0, 144, 255)
-            d.rectangle((0, 0, 63, 7), fill=(20, 20, 20))
-            d.line((0, 8, 63, 8), fill=accent_color, width=1)
-            t_name = str(game.get('tourney_name', '')).upper()
-            t_name = t_name.replace("GRAND PRIX", "GP").replace("TT", "").strip()
-            full_header = t_name[:14] 
-            header_w = len(full_header) * 4
-            hx = (64 - header_w) // 2
-            draw_tiny_text(d, hx, 1, full_header, (220, 220, 220))
-            leaders = game.get('leaders', [])
-            if not isinstance(leaders, list): leaders = []
-            y_off = 10; row_step = 8 
-            for i, p in enumerate(leaders[:3]):
-                rank_color = (200, 200, 200)
-                if i == 0: rank_color = (255, 215, 0)
-                elif i == 1: rank_color = (192, 192, 192)
-                elif i == 2: rank_color = (205, 127, 50)
-                full_name = str(p.get('name', 'UNK'))
-                acronym = full_name[:3].upper()
-                raw_score = str(p.get('score', ''))
-                if "LEADER" in raw_score.upper(): 
-                    display_score = "LDR"; score_color = (255, 215, 0) 
-                else:
-                    display_score = raw_score
-                    if not display_score.startswith('+') and not display_score.startswith('-'): display_score = "+" + display_score
-                    score_color = (255, 100, 100) 
-                draw_tiny_text(d, 1, y_off, str(i+1), rank_color)
-                draw_tiny_text(d, 8, y_off, acronym, (255, 255, 255))
-                score_width = len(display_score) * 4
-                draw_tiny_text(d, 63 - score_width, y_off, display_score, score_color)
-                y_off += row_step
-        except Exception as e: return Image.new("RGBA", (64, 32), (0, 0, 0, 255))
-        return img
-
-    def draw_single_game(self, game):
-        img = Image.new("RGBA", (64, 32), (0, 0, 0, 0)) 
-        if not isinstance(game, dict): return img
-        if game.get('type') == 'leaderboard': return self.draw_leaderboard_card(game)
-        try:
-            d = ImageDraw.Draw(img)
-            sport = str(game.get('sport', '')).lower()
-            is_football = 'football' in sport or 'nfl' in sport or 'ncf' in sport
-            is_hockey = 'hockey' in sport or 'nhl' in sport
-            is_baseball = 'baseball' in sport or 'mlb' in sport
-            is_soccer = 'soccer' in sport
-            is_active = (game.get('state') == 'in')
-            sit = game.get('situation', {}) or {} 
-            poss = sit.get('possession')
-            shootout = sit.get('shootout')
-            
-            a_score = str(game.get('away_score', ''))
-            h_score = str(game.get('home_score', ''))
-            has_indicator = is_active and (poss or sit.get('powerPlay') or sit.get('emptyNet'))
-            is_wide = ((is_football and is_active) or len(a_score) >= 2 or len(h_score) >= 2 or has_indicator)
-            
-            logo_size = (16, 16) if is_wide else (24, 24)
-            logo_y = 5 if is_wide else 0
-            l1_pos = (2, logo_y) if is_wide else (0, logo_y)
-            l2_pos = (46, logo_y) if is_wide else (40, logo_y)
-            score_y = 10 if is_wide else 12
-
-            l1 = self.get_logo(game.get('away_logo'), logo_size)
-            if l1: img.paste(l1, l1_pos, l1)
-            else: d.text(l1_pos, str(game.get('away_abbr','UNK'))[:3], font=self.micro, fill=(150,150,150))
-            l2 = self.get_logo(game.get('home_logo'), logo_size)
-            if l2: img.paste(l2, l2_pos, l2)
-            else: d.text(l2_pos, str(game.get('home_abbr','UNK'))[:3], font=self.micro, fill=(150,150,150))
-
-            score = f"{a_score}-{h_score}"
-            w_sc = d.textlength(score, font=self.font)
-            d.text(((64-w_sc)/2, score_y), score, font=self.font, fill=(255,255,255), stroke_width=1, stroke_fill=(0,0,0))
-
-            status = self.shorten_status(game.get('status', ''))
-            st_width = 0
-            for ch in status: st_width += 2 if ch == '~' else 5
-            visual_width = st_width - 1 if st_width > 0 else 0
-            st_x = (64 - visual_width) // 2
-            draw_hybrid_text(d, st_x, 25, status, (180, 180, 180))
-
-            # === SHOOTOUT INDICATORS ===
-            if shootout:
-                away_so = shootout.get('away', []) if isinstance(shootout, dict) else []
-                home_so = shootout.get('home', []) if isinstance(shootout, dict) else []
-                
-                if is_soccer:
-                    self.draw_soccer_shootout(d, away_so, 2, 26)
-                    self.draw_soccer_shootout(d, home_so, 46, 26)
-                else:
-                    self.draw_shootout_indicators(d, away_so, 2, 26)
-                    self.draw_shootout_indicators(d, home_so, 46, 26)
-
-            # === STANDARD INDICATORS ===
-            elif is_active:
-                icon_y = logo_y + logo_size[1] + 3; tx = -1; side = None
-                if (is_football or is_baseball or is_soccer) and poss: side = poss
-                elif is_hockey and (sit.get('powerPlay') or sit.get('emptyNet')) and poss: side = poss
-                
-                away_id = str(game.get('away_id', '')); home_id = str(game.get('home_id', ''))
-                away_abbr = str(game.get('away_abbr', '')); home_abbr = str(game.get('home_abbr', ''))
-                side_str = str(side)
-                
-                # Determine Side (Batting Team / Possession Team)
-                poss_side = "none"
-                if side_str and (side_str == away_abbr or side_str == away_id): 
-                    tx = l1_pos[0] + (logo_size[0]//2) - 2; poss_side = "away"
-                elif side_str and (side_str == home_abbr or side_str == home_id): 
-                    tx = l2_pos[0] + (logo_size[0]//2) + 2; poss_side = "home"
-                
-                if tx != -1:
-                    if is_football:
-                        d.ellipse([tx-3, icon_y, tx+3, icon_y+4], fill=(170,85,0))
-                        d.line([(tx, icon_y+1), (tx, icon_y+3)], fill='white', width=1)
-                    elif is_baseball:
-                        d.ellipse((tx-3, icon_y, tx+3, icon_y+6), fill='white')
-                        d.point((tx-1, icon_y+2), fill='red')
-                        d.point((tx, icon_y+3), fill='red')
-                        d.point((tx+1, icon_y+4), fill='red')
-                    elif is_hockey: self.draw_hockey_stick(d, tx+2, icon_y+5, 3) 
-                    elif is_soccer:
-                        d.ellipse((tx-2, icon_y, tx+2, icon_y+4), fill='white')
-                        d.point((tx, icon_y+2), fill='black')
-                        
-                if is_hockey:
-                    if sit.get('emptyNet'): 
-                        w = d.textlength("EN", font=self.micro)
-                        d.text(((64-w)/2, -1), "EN", font=self.micro, fill=(255,255,0))
-                    elif sit.get('powerPlay'): 
-                        w = d.textlength("PP", font=self.micro)
-                        d.text(((64-w)/2, -1), "PP", font=self.micro, fill=(255,255,0))
-                elif is_baseball:
-                    # DRAW BASES (Solid 4x4 Squares)
-                    bases = [(31,2), (27,6), (35,6)] # 2nd, 3rd, 1st
-                    active = [sit.get('onSecond'), sit.get('onThird'), sit.get('onFirst')]
-                    for i, p in enumerate(bases): 
-                        color = (255,255,150) if active[i] else (45,45,45)
-                        d.rectangle((p[0], p[1], p[0]+3, p[1]+3), fill=color)
-                    
-                    # === BASEBALL HUD (S-B-O) ===
-                    b_count = int(sit.get('balls', 0))
-                    s_count = int(sit.get('strikes', 0))
-                    o_count = int(sit.get('outs', 0))
-                    
-                    if poss_side == "away": self.draw_baseball_hud(d, 54, 22, b_count, s_count, o_count)
-                    elif poss_side == "home": self.draw_baseball_hud(d, 2, 22, b_count, s_count, o_count)
-                    else: self.draw_baseball_hud(d, 54, 22, b_count, s_count, o_count)
-
-                elif is_football:
-                    dd = sit.get('downDist', '')
-                    if dd: 
-                        s_dd = dd.split(' at ')[0].replace("1st", "1st")
-                        w = d.textlength(s_dd, font=self.micro)
-                        d.text(((64-w)/2, -1), s_dd, font=self.micro, fill=(0,255,0))
-                if is_football and sit.get('isRedZone'): d.rectangle((0, 0, 63, 31), outline=(255, 0, 0), width=1)
-        except Exception as e: return img 
-        return img
-
-    def render_loop(self):
-        last_frame = None
-        strip_offset = 0.0
+                if data.get('resultsCount', 0) > 0:
+                    # Found data!
+                    print(f"Fetched Market Data for {d}. Items: {data['resultsCount']}")
+                    new_cache = {}
+                    for item in data.get('results', []):
+                        ticker = item.get('T')
+                        close = item.get('c')
+                        open_p = item.get('o')
+                        if ticker and close and open_p:
+                            change_amt = close - open_p
+                            change_pct = (change_amt / open_p) * 100
+                            new_cache[ticker] = {
+                                'price': f"{close:.2f}",
+                                'change_amt': f"{change_amt:+.2f}",
+                                'change_pct': f"{change_pct:+.2f}%"
+                            }
+                    self.market_cache = new_cache
+                    self.last_fetch = time.time()
+                    return
+            except Exception as e: print(f"Poly Fetch Err: {e}")
         
-        while self.running:
-            if self.is_pairing:
-                self.update_display(self.draw_pairing_screen())
-                time.sleep(0.5)
-                continue
+    def get_stock_obj(self, symbol, label):
+        data = self.market_cache.get(symbol)
+        if not data: return None
+        return {
+            'type': 'stock_ticker',
+            'sport': 'stock',
+            'id': f"stk_{symbol}",
+            'status': label,
+            'tourney_name': label,
+            'state': 'in',
+            'is_shown': True,
+            'home_abbr': symbol,
+            'home_score': data['price'],
+            'away_score': data['change_pct'],
+            'home_logo': self.get_logo_url(symbol),
+            'situation': {'change': data['change_amt']},
+            'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
+        }
 
-            if self.brightness <= 0.01:
-                self.matrix.Clear()
-                time.sleep(1.0); continue
+    def get_list(self, list_key):
+        # Ensure we have data
+        self.fetch_entire_market()
+        
+        res = []
+        label = list_key.split('_')[1].upper()
+        if label == "INDICES": label = "INDEX"
+        
+        for sym in self.lists.get(list_key, []):
+            obj = self.get_stock_obj(sym, label)
+            if obj: res.append(obj)
+        return res
+
+    def get_movers(self):
+        self.fetch_entire_market()
+        # Sort cache by abs(change_pct)
+        # Convert cache to list
+        all_stocks = []
+        for k, v in self.market_cache.items():
+            try:
+                pct = float(v['change_pct'].replace('%','').replace('+',''))
+                all_stocks.append((k, v, pct))
+            except: pass
+        
+        # Sort by gain and loss
+        sorted_stocks = sorted(all_stocks, key=lambda x: x[2], reverse=True)
+        top = sorted_stocks[:5]
+        bottom = sorted_stocks[-5:]
+        
+        res = []
+        for s in top:
+            res.append(self.get_stock_obj(s[0], "TOP GAINER"))
+        for s in bottom:
+            res.append(self.get_stock_obj(s[0], "TOP LOSER"))
+        return res
+
+class SportsFetcher:
+    def __init__(self, initial_loc):
+        self.weather = WeatherFetcher(initial_loc)
+        self.stocks = StockFetcher("efAYbpvLyZ0H1FJT4m898zByYS119W0l")
+        self.possession_cache = {} 
+        self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
+        self.leagues = {
+            'nfl': { 'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
+            'mlb': { 'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
+            'nhl': { 'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
+            'nba': { 'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
+            'soccer_epl':   { 'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
+            'soccer_champ': { 'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
+            'soccer_l1':    { 'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
+            'soccer_l2':    { 'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
+            'soccer_wc':    { 'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
+            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard' },
+            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard' },
+            'hockey_olympics': { 'path': 'hockey/mens-olympic-hockey', 'type': 'scoreboard' },
+            'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
+            'nascar': { 'path': 'racing/nascar', 'type': 'leaderboard' },
+            'indycar': { 'path': 'racing/indycar', 'type': 'leaderboard' },
+            'wec': { 'path': 'racing/wec', 'type': 'leaderboard' },
+            'imsa': { 'path': 'racing/imsa', 'type': 'leaderboard' }
+        }
+
+    def get_corrected_logo(self, league_key, abbr, default_logo):
+        return LOGO_OVERRIDES.get(f"{league_key.upper()}:{abbr}", default_logo)
+
+    def lookup_team_info_from_cache(self, league, abbr):
+        search_abbr = ABBR_MAPPING.get(abbr, abbr)
+        try:
+            with data_lock:
+                teams = state['all_teams_data'].get(league, [])
+                for t in teams:
+                    if t['abbr'] == search_abbr:
+                        return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
+        except: pass
+        return {'color': '000000', 'alt_color': '444444'}
+
+    def calculate_game_timing(self, sport, start_utc, period, status_detail):
+        duration = SPORT_DURATIONS.get(sport, 180) 
+        ot_padding = 0
+        if 'OT' in str(status_detail) or 'S/O' in str(status_detail):
+            if sport in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs']:
+                ot_count = 1
+                if '2OT' in status_detail: ot_count = 2
+                elif '3OT' in status_detail: ot_count = 3
+                ot_padding = ot_count * 20
+            elif sport == 'nhl':
+                ot_padding = 20
+            elif sport == 'mlb' and period > 9:
+                ot_padding = (period - 9) * 20
+        return duration + ot_padding
+
+    def _fetch_simple_league(self, league_key, catalog):
+        config = self.leagues[league_key]
+        if 'team_params' not in config: return
+        try:
+            r = requests.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=10)
+            data = r.json()
+            if 'sports' in data:
+                for sport in data['sports']:
+                    for league in sport['leagues']:
+                        for item in league.get('teams', []):
+                            abbr = item['team'].get('abbreviation', 'unk')
+                            clr = item['team'].get('color', '000000')
+                            alt = item['team'].get('alternateColor', '444444')
+                            logo = item['team'].get('logos', [{}])[0].get('href', '')
+                            logo = self.get_corrected_logo(league_key, abbr, logo)
+                            if not any(x['abbr'] == abbr for x in catalog[league_key]):
+                                catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
+        except Exception as e: print(f"Error fetching teams for {league_key}: {e}")
+
+    def fetch_all_teams(self):
+        try:
+            teams_catalog = {k: [] for k in self.leagues.keys()}
             
-            self.anim_tick += 1
-            playlist = list(self.games)
+            for t in OLYMPIC_HOCKEY_TEAMS:
+                teams_catalog['hockey_olympics'].append({'abbr': t['abbr'], 'logo': t['logo'], 'color': '000000', 'alt_color': '444444'})
+
+            url = f"{self.base_url}football/college-football/teams"
+            r = requests.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
+            data = r.json()
+            if 'sports' in data:
+                for sport in data['sports']:
+                    for league in sport['leagues']:
+                        for item in league.get('teams', []):
+                            t_abbr = item['team'].get('abbreviation', 'unk')
+                            t_clr = item['team'].get('color', '000000')
+                            t_alt = item['team'].get('alternateColor', '444444')
+                            logos = item['team'].get('logos', [])
+                            t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
+                            
+                            if t_abbr in FBS_TEAMS:
+                                t_logo = self.get_corrected_logo('ncf_fbs', t_abbr, t_logo)
+                                if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']):
+                                    teams_catalog['ncf_fbs'].append({'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
+                            elif t_abbr in FCS_TEAMS:
+                                t_logo = self.get_corrected_logo('ncf_fcs', t_abbr, t_logo)
+                                if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fcs']):
+                                    teams_catalog['ncf_fcs'].append({'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
+
+            for league_key in ['nfl', 'mlb', 'nhl', 'nba', 'soccer_epl', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc']:
+                 self._fetch_simple_league(league_key, teams_catalog)
+
+            with data_lock: state['all_teams_data'] = teams_catalog
+        except Exception as e: print(f"Global Team Fetch Error: {e}")
+
+    # === NHL NATIVE FETCHER ===
+    def fetch_shootout_details(self, game_id, away_id, home_id):
+        try:
+            url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3)
+            if r.status_code != 200: return None
+            data = r.json(); plays = data.get("plays", [])
+            native_away = data.get("awayTeam", {}).get("id")
+            native_home = data.get("homeTeam", {}).get("id")
+            results = {'away': [], 'home': []}
+            for play in plays:
+                if play.get("periodDescriptor", {}).get("periodType") != "SO": continue
+                type_key = play.get("typeDescKey")
+                if type_key not in {"goal", "shot-on-goal", "missed-shot"}: continue
+                details = play.get("details", {})
+                team_id = details.get("eventOwnerTeamId")
+                res_code = "goal" if type_key == "goal" else "miss"
+                if team_id == native_away: results['away'].append(res_code)
+                elif team_id == native_home: results['home'].append(res_code)
+            return results
+        except: return None
+
+    def _fetch_nhl_native(self, games_list, target_date_str):
+        with data_lock: 
+            is_nhl = state['active_sports'].get('nhl', False)
+            utc_offset = state.get('utc_offset', -5)
+        if not is_nhl: return
+        processed_ids = set()
+        try:
+            r = requests.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
+            if r.status_code != 200: return
+            for d in r.json().get('gameWeek', []):
+                day_games = d.get('games', [])
+                is_target_date = (d.get('date') == target_date_str)
+                has_active_games = any(g.get('gameState') in ['LIVE', 'CRIT'] for g in day_games)
+                if is_target_date or has_active_games:
+                    for g in day_games:
+                        gid = g['id']
+                        if gid in processed_ids: continue
+                        processed_ids.add(gid)
+                        h_ab = g['homeTeam']['abbrev']; a_ab = g['awayTeam']['abbrev']
+                        h_sc = str(g['homeTeam'].get('score', 0)); a_sc = str(g['awayTeam'].get('score', 0))
+                        st = g.get('gameState', 'OFF')
+                        h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
+                        a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
+                        h_info = self.lookup_team_info_from_cache('nhl', h_ab)
+                        a_info = self.lookup_team_info_from_cache('nhl', a_ab)
+                        map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
+                        with data_lock:
+                            mode = state['mode']; my_teams = state['my_teams']
+                        is_shown = True
+                        if mode == 'live' and map_st != 'in': is_shown = False
+                        if mode == 'my_teams':
+                            h_k = f"nhl:{h_ab}"; a_k = f"nhl:{a_ab}"
+                            if (h_k not in my_teams and h_ab not in my_teams) and (a_k not in my_teams and a_ab not in my_teams): is_shown = False
+                        
+                        disp = "Scheduled"; pp = False; poss = ""; en = False; shootout_data = None 
+                        utc_start = g.get('startTimeUTC', '') 
+                        dur = self.calculate_game_timing('nhl', utc_start, 1, st)
+
+                        if st in ['PRE', 'FUT'] and utc_start:
+                             try:
+                                 dt_obj = dt.fromisoformat(utc_start.replace('Z', '+00:00'))
+                                 local = dt_obj.astimezone(timezone(timedelta(hours=utc_offset)))
+                                 disp = local.strftime("%I:%M %p").lstrip('0')
+                             except: pass
+                        elif st in ['FINAL', 'OFF']:
+                             disp = "FINAL"
+                             pd = g.get('periodDescriptor', {})
+                             if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
+
+                        if map_st == 'in':
+                            try:
+                                r2 = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{gid}/landing", headers=HEADERS, timeout=2)
+                                if r2.status_code == 200:
+                                    d2 = r2.json()
+                                    h_sc = str(d2['homeTeam'].get('score', h_sc)); a_sc = str(d2['awayTeam'].get('score', a_sc))
+                                    pd = d2.get('periodDescriptor', {})
+                                    clk = d2.get('clock', {}); time_rem = clk.get('timeRemaining', '00:00')
+                                    p_type = pd.get('periodType', '')
+                                    if p_type == 'SHOOTOUT':
+                                        disp = "S/O"; shootout_data = self.fetch_shootout_details(gid, 0, 0)
+                                    else:
+                                        p_num = pd.get('number', 1)
+                                        if clk.get('inIntermission', False) or time_rem == "00:00":
+                                            if p_num == 1: disp = "End 1st"
+                                            elif p_num == 2: disp = "End 2nd"
+                                            elif p_num == 3: disp = "End 3rd"
+                                            else: disp = "Intermission"
+                                        else:
+                                            p_lbl = "OT" if p_num > 3 else f"P{p_num}"
+                                            disp = f"{p_lbl} {time_rem}"
+                                    
+                                    sit_obj = d2.get('situation', {})
+                                    if sit_obj and p_type != 'SHOOTOUT':
+                                        sit = sit_obj.get('situationCode', '1551')
+                                        ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
+                                        if as_ > hs: pp=True; poss=a_ab
+                                        elif hs > as_: pp=True; poss=h_ab
+                                        en = (ag==0 or hg==0)
+                            except: disp = "Live" 
+
+                        games_list.append({
+                            'type': 'scoreboard',
+                            'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': is_shown,
+                            'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
+                            'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
+                            'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
+                            'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
+                            'startTimeUTC': utc_start,
+                            'estimated_duration': dur,
+                            'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en, 'shootout': shootout_data }
+                        })
+        except: pass
+
+    # NEW: Generic Shootout for Soccer (ESPN API)
+    def fetch_shootout_details_soccer(self, game_id, sport):
+        try:
+            path_part = "soccer/eng.1"
+            if 'soccer' in sport: path_part = f"soccer/{sport.replace('soccer_','')}"
+            url = f"https://site.api.espn.com/apis/site/v2/sports/{path_part}/summary?event={game_id}"
+            r = requests.get(url, headers=HEADERS, timeout=3)
+            data = r.json(); results = {'away': [], 'home': []}
+            plays = data.get("shootout", [])
+            if not plays: return None
+            for p in plays:
+                res = "goal" if (p.get("result") == "scored" or "Goal" in p.get("text", "")) else "miss"
+                if p.get("homeAway") == "home": results['home'].append(res)
+                else: results['away'].append(res)
+            return results
+        except: return None
+
+    def fetch_leaderboard_event(self, league_key, config, games_list, conf, window_start, window_end):
+        try:
+            url = f"{self.base_url}{config['path']}/scoreboard"
+            r = requests.get(url, headers=HEADERS, timeout=5)
+            data = r.json()
+            for e in data.get('events', []):
+                name = e.get('name', e.get('shortName', 'Race'))
+                status_obj = e.get('status', {})
+                state = status_obj.get('type', {}).get('state', 'pre')
+                
+                utc_str = e['date'].replace('Z', '')
+                try:
+                    event_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+                    if not (window_start <= event_dt <= window_end) and state != 'in':
+                        continue
+                except: continue
+
+                leaders = []
+                try:
+                    comps = e.get('competitions', [{}])[0].get('competitors', [])
+                    sorted_comps = sorted(comps, key=lambda x: int(x.get('curatedRank', x.get('order', 999))))
+                    for c in sorted_comps[:5]:
+                        athlete = c.get('athlete', {})
+                        disp_name = athlete.get('displayName', c.get('team',{}).get('displayName','Unk'))
+                        if ' ' in disp_name: disp_name = disp_name.split(' ')[-1]
+                        rank = c.get('curatedRank', c.get('order', '-'))
+                        leaders.append({'rank': str(rank), 'name': disp_name})
+                except: pass
+
+                game_obj = {
+                    'type': 'leaderboard', 'sport': league_key, 'id': e['id'],
+                    'status': status_obj.get('type', {}).get('shortDetail', 'Live'),
+                    'state': state, 'tourney_name': name, 'is_shown': True, 'startTimeUTC': e['date'],
+                    'leaders': leaders
+                }
+                games_list.append(game_obj)
+        except Exception as e: print(f"Racing fetch error {league_key}: {e}")
+
+    def update_buffer_sports(self):
+        # WORKER FUNCTION FOR SPORTS
+        games = []
+        with data_lock: 
+            conf = state.copy()
+            if conf.get('demo_mode', False): return # Demo handled elsewhere
+
+        # 1. WEATHER & CLOCK
+        if conf['active_sports'].get('weather'):
+            if conf['weather_location'] != self.weather.location_name: self.weather.update_coords(conf['weather_location'])
+            w = self.weather.get_weather()
+            if w: games.append(w)
+
+        if conf['active_sports'].get('clock'):
+            games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
+
+        # 2. SPORTS
+        if conf['mode'] in ['sports', 'live', 'my_teams', 'all']:
+            # ... (Full Sports Loop Logic - Simplified for readability) ...
+            # Normally iterates through self.leagues
+            # Since this is "full code", I will include the loop
+            for league_key, config in self.leagues.items():
+                if not conf['active_sports'].get(league_key, False): continue
+                
+                # Racing
+                if config.get('type') == 'leaderboard':
+                    utc_offset = conf.get('utc_offset', -5)
+                    now_utc = dt.now(timezone.utc)
+                    now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+                    window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                    window_end_local = window_start_local + timedelta(days=1, hours=3)
+                    window_start_utc = window_start_local.astimezone(timezone.utc)
+                    window_end_utc = window_end_local.astimezone(timezone.utc)
+                    self.fetch_leaderboard_event(league_key, config, games, conf, window_start_utc, window_end_utc)
+                    continue
+
+                # NHL Native
+                target_date_str = dt.now().strftime("%Y-%m-%d")
+                if conf['debug_mode'] and conf['custom_date']: target_date_str = conf['custom_date']
+                
+                if league_key == 'nhl' and not conf['debug_mode']:
+                    prev_count = len(games)
+                    self._fetch_nhl_native(games, target_date_str)
+                    if len(games) > prev_count: continue 
+
+                try:
+                    curr_p = config.get('scoreboard_params', {}).copy()
+                    curr_p['dates'] = target_date_str.replace('-', '')
+                    
+                    r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
+                    data = r.json()
+                    
+                    for e in data.get('events', []):
+                        utc_str = e['date'].replace('Z', '')
+                        st = e.get('status', {})
+                        tp = st.get('type', {})
+                        gst = tp.get('state', 'pre')
+                        
+                        try:
+                            utc_offset = conf.get('utc_offset', -5)
+                            now_utc = dt.now(timezone.utc)
+                            now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+                            window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                            window_end_local = window_start_local + timedelta(days=1, hours=3)
+                            window_start_utc = window_start_local.astimezone(timezone.utc)
+                            window_end_utc = window_end_local.astimezone(timezone.utc)
+                            
+                            game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+                            if gst != 'in' and gst != 'half':
+                                if not (window_start_utc <= game_dt <= window_end_utc):
+                                    continue
+                        except: continue
+
+                        comp = e['competitions'][0]
+                        h = comp['competitors'][0]
+                        a = comp['competitors'][1]
+                        h_ab = h['team'].get('abbreviation', 'UNK')
+                        a_ab = a['team'].get('abbreviation', 'UNK')
+                        
+                        if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
+                        if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
+
+                        is_shown = True
+                        if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
+                        elif conf['mode'] == 'my_teams':
+                            in_my = (f"{league_key}:{h_ab}" in conf['my_teams'] or h_ab in conf['my_teams'] or f"{league_key}:{a_ab}" in conf['my_teams'] or a_ab in conf['my_teams'])
+                            if not in_my: is_shown = False
+
+                        h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
+                        a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
+                        h_score = h.get('score','0')
+                        a_score = a.get('score','0')
+                        
+                        if 'soccer' in league_key: 
+                            h_score = re.sub(r'\s*\(.*?\)', '', str(h_score))
+                            a_score = re.sub(r'\s*\(.*?\)', '', str(a_score))
+
+                        s_disp = tp.get('shortDetail', 'TBD')
+                        p = st.get('period', 1)
+                        duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
+
+                        if gst == 'pre':
+                            try: s_disp = game_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
+                            except: pass
+                        elif gst == 'in' or gst == 'half':
+                            clk = st.get('displayClock', '0:00').replace("'", "")
+                            if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
+                                s_disp = "Halftime"
+                            elif 'hockey' in config['path'] and clk == '0:00':
+                                 if p == 1: s_disp = "End 1st"
+                                 elif p == 2: s_disp = "End 2nd"
+                                 elif p == 3: s_disp = "End 3rd"
+                                 else: s_disp = "Intermission"
+                            else:
+                                prefix = "P" if 'hockey' in config['path'] else "Q"
+                                s_disp = f"{prefix}{p} {clk}"
+                                if 'soccer' in config['path']:
+                                    s_disp = f"{clk}'"
+                                    if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
+
+                        s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
+                        if "FINAL" in s_disp:
+                            if league_key == 'nhl' and "SO" in s_disp: s_disp = "FINAL S/O"
+                            elif p > 4 and "OT" not in s_disp and league_key == 'nhl': s_disp = "FINAL OT"
+
+                        # === SITUATION LOGIC ===
+                        sit = comp.get('situation', {})
+                        shootout_data = None
+                        is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
+                        
+                        if is_shootout and 'soccer' in league_key:
+                            shootout_data = self.fetch_shootout_details_soccer(e['id'], league_key)
+                        
+                        # POSSESSION (RESTORED OLD LOGIC)
+                        poss_raw = sit.get('possession')
+                        if poss_raw: self.possession_cache[e['id']] = poss_raw
+                        elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
+                        
+                        if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime':
+                            poss_raw = None
+                            self.possession_cache.pop(e['id'], None)
+
+                        poss_abbr = ""
+                        if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
+                        elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
+                        
+                        down_text = sit.get('downDistanceText', '') if s_disp != "Halftime" else ''
+
+                        game_obj = {
+                            'type': 'scoreboard', 'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
+                            'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg,
+                            'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg,
+                            'home_color': f"#{h['team'].get('color','000000')}", 'home_alt_color': f"#{h['team'].get('alternateColor','ffffff')}",
+                            'away_color': f"#{a['team'].get('color','000000')}", 'away_alt_color': f"#{a['team'].get('alternateColor','ffffff')}",
+                            'startTimeUTC': e['date'],
+                            'estimated_duration': duration_est,
+                            'situation': { 
+                                'possession': poss_abbr, 
+                                'isRedZone': sit.get('isRedZone', False), 
+                                'downDist': down_text, 
+                                'shootout': shootout_data,
+                                'powerPlay': False, 
+                                'emptyNet': False
+                            }
+                        }
+                        if league_key == 'mlb':
+                            game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 
+                                'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
+                        games.append(game_obj)
+                except Exception as e: pass
+        
+        with data_lock: 
+            state['buffer_sports'] = games
+            self.merge_buffers()
+
+    def update_buffer_stocks(self):
+        # WORKER FUNCTION FOR STOCKS
+        games = []
+        with data_lock: conf = state.copy()
+        
+        if conf['mode'] in ['stocks', 'all']:
+            if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.get_movers())
+            cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 
+                          'stock_auto', 'stock_semi', 'stock_finance', 'stock_energy', 'stock_pharma', 
+                          'stock_consumer', 'stock_nyse', 'stock_etf', 'stock_commodities', 'stock_forex']
+            for cat in cats:
+                if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
+        
+        with data_lock:
+            state['buffer_stocks'] = games
+            self.merge_buffers()
+
+    def merge_buffers(self):
+        # Combines the two separate buffers into 'current_games' for the frontend
+        if state.get('demo_mode', False):
+            state['current_games'] = generate_demo_data()
+            return
+
+        mode = state['mode']
+        final_list = []
+        
+        sports = state.get('buffer_sports', [])
+        stocks = state.get('buffer_stocks', [])
+        
+        if mode == 'stocks': final_list = stocks
+        elif mode in ['sports', 'live', 'my_teams']: final_list = sports
+        elif mode == 'weather': 
+            final_list = [g for g in sports if g.get('type') == 'weather']
+        elif mode == 'clock':
+            final_list = [g for g in sports if g.get('sport') == 'clock']
+        else: # ALL
+            # Put util cards (weather/clock) first, then sports, then stocks
+            utils = [g for g in sports if g.get('type') == 'weather' or g.get('sport') == 'clock']
+            pure_sports = [g for g in sports if g not in utils]
+            final_list = utils + pure_sports + stocks
             
-            if not playlist:
-                img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
-                d = ImageDraw.Draw(img)
-                t_str = time.strftime("%I:%M")
-                w = d.textlength(t_str, font=self.font)
-                d.text(((PANEL_W - w)/2, 10), t_str, font=self.font, fill=(50,50,50))
-                self.update_display(img)
-                time.sleep(1); continue
+        state['current_games'] = final_list
 
-            if self.test_pattern:
-                self.update_display(self.generate_test_pattern()); time.sleep(0.1); continue
+fetcher = SportsFetcher(state['weather_location'])
 
-            is_weather = (len(playlist) == 1 and playlist[0].get('type') == 'weather')
-            is_clock = (len(playlist) == 1 and playlist[0].get('sport') == 'clock')
+def sports_worker():
+    # Initial Team Fetch
+    try: fetcher.fetch_all_teams()
+    except: pass
+    
+    while True:
+        try: fetcher.update_buffer_sports()
+        except: pass
+        time.sleep(INTERVAL_SPORTS)
 
-            if is_clock: self.update_display(self.draw_clock_scene()); time.sleep(1); continue
-            if is_weather: self.update_display(self.draw_weather_scene_simple(playlist[0])); time.sleep(0.1); continue
+def stocks_worker():
+    while True:
+        try: fetcher.update_buffer_stocks()
+        except: pass
+        time.sleep(INTERVAL_STOCKS)
 
-            if self.seamless_mode:
-                if self.bg_strip_ready and self.bg_strip:
-                    self.active_strip = self.bg_strip
-                    self.bg_strip_ready = False 
-                
-                if not self.active_strip:
-                    self.active_strip = self.build_seamless_strip(playlist)
-                
-                if self.active_strip:
-                    total_w = self.active_strip.width - ( (PANEL_W // 64) + 1 ) * 64
-                    if total_w <= 0: total_w = 1 
-                    x = int(strip_offset)
-                    view = self.active_strip.crop((x, 0, x + PANEL_W, PANEL_H))
-                    self.update_display(view)
-                    strip_offset = (strip_offset + 1) % total_w
-                    time.sleep(self.scroll_sleep)
-                else:
-                    time.sleep(0.1)
-            else: # PAGED MODE
-                chunk = 2
-                for i in range(0, len(playlist), chunk):
-                    if self.config_updated or self.seamless_mode or self.test_pattern or self.brightness <= 0.01: break 
-                    if (len(self.games) == 1 and self.games[0].get('sport') in ['weather', 'clock']): break
+# ================= FLASK API =================
+app = Flask(__name__)
+CORS(app) 
 
-                    frame = Image.new("RGBA", (PANEL_W, PANEL_H), (0,0,0,255))
-                    g1 = self.draw_single_game(playlist[i])
-                    frame.paste(g1, (0,0), g1)
-                    if i + 1 < len(playlist):
-                        g2 = self.draw_single_game(playlist[i+1])
-                        frame.paste(g2, (64,0), g2)
-                    
-                    if last_frame:
-                        for x in range(0, PANEL_W + 1, 4):
-                            if self.config_updated or self.brightness <= 0.01: break
-                            c = Image.new("RGBA", (PANEL_W, PANEL_H), (0,0,0,255))
-                            c.paste(last_frame, (-x, 0))
-                            c.paste(frame, (PANEL_W - x, 0))
-                            self.update_display(c)
-                            time.sleep(self.scroll_sleep) 
-                    else:
-                        self.update_display(frame)
-                    last_frame = frame
-                    
-                    for _ in range(int(PAGE_HOLD_TIME * 10)):
-                        if self.config_updated or self.seamless_mode or self.test_pattern or self.brightness <= 0.01: break
-                        time.sleep(0.1)
-                
-                if self.config_updated: self.config_updated = False
+@app.route('/api/config', methods=['POST'])
+def api_config():
+    try:
+        new_data = request.json
+        with data_lock:
+            was_demo = state.get('demo_mode', False)
+            is_demo = new_data.get('demo_mode', was_demo)
+            state.update(new_data)
+            if was_demo and not is_demo: 
+                # Clear buffers to force refresh
+                state['buffer_sports'] = []
+                state['buffer_stocks'] = []
+        save_config_file()
+        return jsonify({"status": "ok"})
+    except: return jsonify({"error": "Failed"}), 500
+
+@app.route('/data', methods=['GET'])
+def get_ticker_data():
+    ticker_id = request.args.get('id')
+    if not ticker_id: return jsonify({"error": "No ID"}), 400
+    if ticker_id not in tickers:
+        tickers[ticker_id] = { "paired": False, "clients": [], "settings": DEFAULT_TICKER_SETTINGS.copy(), "pairing_code": generate_pairing_code(), "last_seen": time.time(), "name": "New Ticker" }
+        save_config_file()
+    else: tickers[ticker_id]['last_seen'] = time.time()
+    rec = tickers[ticker_id]
+    if not rec.get('clients'): return jsonify({"status": "pairing", "code": rec['pairing_code']})
+    
+    with data_lock:
+        games = [g for g in state['current_games'] if g.get('is_shown', True)]
+        conf = { "active_sports": state['active_sports'], "mode": state['mode'], "weather": state['weather_location'] }
+    
+    return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": games } })
+
+@app.route('/pair', methods=['POST'])
+def pair_ticker():
+    cid = request.headers.get('X-Client-ID'); code = request.json.get('code'); friendly_name = request.json.get('name', 'My Ticker')
+    if not cid or not code: return jsonify({"success": False}), 400
+    for uid, rec in tickers.items():
+        if rec.get('pairing_code') == code:
+            if cid not in rec['clients']: rec['clients'].append(cid)
+            rec['paired'] = True; rec['name'] = friendly_name; save_config_file()
+            return jsonify({"success": True, "ticker_id": uid})
+    return jsonify({"success": False}), 404
+
+@app.route('/pair/id', methods=['POST'])
+def pair_ticker_by_id():
+    cid = request.headers.get('X-Client-ID'); tid = request.json.get('id'); friendly_name = request.json.get('name', 'My Ticker')
+    if not cid or not tid: return jsonify({"success": False}), 400
+    if tid in tickers:
+        if cid not in tickers[tid]['clients']: tickers[tid]['clients'].append(cid)
+        tickers[tid]['paired'] = True; tickers[tid]['name'] = friendly_name; save_config_file()
+        return jsonify({"success": True, "ticker_id": tid})
+    return jsonify({"success": False}), 404
+
+@app.route('/ticker/<tid>/unpair', methods=['POST'])
+def unpair(tid):
+    cid = request.headers.get('X-Client-ID')
+    if tid in tickers and cid in tickers[tid]['clients']:
+        tickers[tid]['clients'].remove(cid)
+        if not tickers[tid]['clients']: tickers[tid]['paired'] = False; tickers[tid]['pairing_code'] = generate_pairing_code()
+        save_config_file()
+    return jsonify({"success": True})
+
+@app.route('/tickers', methods=['GET'])
+def list_tickers():
+    cid = request.headers.get('X-Client-ID'); 
+    if not cid: return jsonify([])
+    res = []
+    for uid, rec in tickers.items():
+        if cid in rec.get('clients', []): res.append({ "id": uid, "name": rec.get('name', 'Ticker'), "settings": rec['settings'], "last_seen": rec.get('last_seen', 0) })
+    return jsonify(res)
+
+@app.route('/ticker/<tid>', methods=['POST'])
+def update_settings(tid):
+    if tid not in tickers: return jsonify({"error":"404"}), 404
+    tickers[tid]['settings'].update(request.json); save_config_file()
+    return jsonify({"success": True})
+
+@app.route('/api/state')
+def api_state():
+    with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
+@app.route('/api/teams')
+def api_teams():
+    with data_lock: return jsonify(state['all_teams_data'])
+@app.route('/api/hardware', methods=['POST'])
+def api_hardware():
+    if request.json.get('action') == 'reboot':
+        with data_lock: state['reboot_requested'] = True
+        threading.Timer(10, lambda: state.update({'reboot_requested': False})).start()
+    return jsonify({"status": "ok"})
+@app.route('/api/debug', methods=['POST'])
+def api_debug():
+    with data_lock: state.update(request.json)
+    return jsonify({"status": "ok"})
+@app.route('/')
+def root(): return "Ticker Server Running"
 
 if __name__ == "__main__":
-    app = TickerStreamer()
-    try:
-        while True: time.sleep(1)
-    except KeyboardInterrupt:
-        print("Stopping...")
+    # Start separate threads
+    threading.Thread(target=sports_worker, daemon=True).start()
+    threading.Thread(target=stocks_worker, daemon=True).start()
+    
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
