@@ -37,10 +37,11 @@ except Exception as e:
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
+STOCK_CACHE_FILE = "stock_cache.json" # <--- NEW CACHE FILE
 
 # FETCH INTERVALS
 SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks (4 calls/min)
+STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks
 
 data_lock = threading.Lock()
 
@@ -61,7 +62,7 @@ default_state = {
         # Utilities
         'weather': False, 'clock': False,
         
-        # NEW STOCK GROUPS (User Requested)
+        # Stock Categories
         'stock_tech_ai': True,      # Mega Cap Tech & AI
         'stock_momentum': False,    # High Volatility Momentum
         'stock_energy': False,      # Energy & Commodities
@@ -103,7 +104,7 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # FORCE RESET if old keys persist to prevent empty list bugs
+            # CHECK FOR OLD KEYS TO FORCE RESET
             old_keys = ['stock_indices', 'stock_etf', 'stock_forex']
             has_old = False
             if 'active_sports' in loaded:
@@ -247,17 +248,63 @@ class StockFetcher:
             'stock_energy': ["XOM", "CVX", "COP", "FCX", "NEM", "EOG", "SLB", "OXY", "MPC", "PSX", "VLO", "KMI", "HAL"],
             'stock_finance': ["JPM", "GS", "BAC", "MS", "BLK", "WFC", "C", "V", "MA", "AXP", "SCHW", "USB", "PNC"],
             'stock_consumer': ["WMT", "COST", "NKE", "SBUX", "MCD", "HD", "LOW", "KO", "PEP", "PG", "TGT", "CMG", "LULU", "YUM"],
+            
+            # NYSE TOP 50 (Subset for display)
             'stock_nyse_50': [
                 "NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "TSLA", "BRK.B",
                 "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "PLTR",
                 "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM",
                 "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC",
                 "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"
-            ]
+            ],
+            
+            # CURRENCIES & METALS
+            'stock_forex': ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "GLD", "SLV", "PPLT", "PALL"]
         }
+        
+        # SPECIAL LOGOS
+        self.CUSTOM_ICONS = {
+            "GLD": "https://cdn-icons-png.flaticon.com/512/1995/1995540.png",
+            "SLV": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
+            "PPLT": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
+            "PALL": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
+            "EURUSD": "https://cdn-icons-png.flaticon.com/512/32/32976.png",
+            "GBPUSD": "https://cdn-icons-png.flaticon.com/512/32/32979.png",
+            "USDJPY": "https://cdn-icons-png.flaticon.com/512/32/32982.png",
+            "AUDUSD": "https://cdn-icons-png.flaticon.com/512/32/32936.png",
+            "USDCAD": "https://cdn-icons-png.flaticon.com/512/32/32936.png"
+        }
+        
+        # Load cache from disk on startup
+        self.load_cache()
+
+    def load_cache(self):
+        if os.path.exists(STOCK_CACHE_FILE):
+            try:
+                with open(STOCK_CACHE_FILE, 'r') as f:
+                    self.market_cache = json.load(f)
+                print(f"Loaded {len(self.market_cache)} stocks from cache.")
+            except: pass
+
+    def save_cache(self):
+        # Save ONLY relevant stocks to keep file small
+        export_cache = {}
+        all_symbols = set()
+        for lst in self.lists.values():
+            all_symbols.update(lst)
+        
+        for sym in all_symbols:
+            if sym in self.market_cache:
+                export_cache[sym] = self.market_cache[sym]
+                
+        try:
+            save_json_atomically(STOCK_CACHE_FILE, export_cache)
+        except: pass
 
     def get_logo_url(self, symbol):
-        # Clean symbol for filename (e.g. BRK.B -> BRK-B)
+        if symbol.upper() in self.CUSTOM_ICONS:
+            return self.CUSTOM_ICONS[symbol.upper()]
+        # Fix for BRK.B -> BRK-B
         clean_sym = symbol.upper().replace('.', '-')
         return f"https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/{clean_sym}.png"
 
@@ -289,6 +336,7 @@ class StockFetcher:
                             }
                     self.market_cache = new_cache
                     self.last_fetch = time.time()
+                    self.save_cache() # <--- SAVE TO DISK
                     return
             except Exception as e: print(f"Poly Fetch Err: {e}")
         
@@ -322,13 +370,32 @@ class StockFetcher:
             'stock_energy': 'ENERGY',
             'stock_finance': 'FINANCE',
             'stock_consumer': 'CONSUMER',
-            'stock_nyse_50': 'NYSE 50'
+            'stock_nyse_50': 'NYSE 50',
+            'stock_forex': 'CURRENCY'
         }
         label = labels.get(list_key, "MARKET")
         
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
+        return res
+
+    def get_movers(self):
+        self.fetch_entire_market()
+        all_stocks = []
+        for k, v in self.market_cache.items():
+            try:
+                pct = float(v['change_pct'].replace('%','').replace('+',''))
+                all_stocks.append((k, v, pct))
+            except: pass
+        
+        sorted_stocks = sorted(all_stocks, key=lambda x: x[2], reverse=True)
+        top = sorted_stocks[:5]
+        bottom = sorted_stocks[-5:]
+        
+        res = []
+        for s in top: res.append(self.get_stock_obj(s[0], "TOP GAINER"))
+        for s in bottom: res.append(self.get_stock_obj(s[0], "TOP LOSER"))
         return res
 
 class SportsFetcher:
@@ -789,7 +856,7 @@ class SportsFetcher:
         
         if conf['mode'] in ['stocks', 'all']:
             # New Keys: stock_tech_ai, stock_momentum, etc.
-            cats = ['stock_tech_ai', 'stock_momentum', 'stock_energy', 'stock_finance', 'stock_consumer', 'stock_nyse_50']
+            cats = ['stock_tech_ai', 'stock_momentum', 'stock_energy', 'stock_finance', 'stock_consumer', 'stock_nyse_50', 'stock_forex']
             for cat in cats:
                 if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
         
