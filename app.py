@@ -37,7 +37,9 @@ except Exception as e:
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
-UPDATE_INTERVAL = 5 
+# Polygon Free Tier allows 5 calls/min. We fetch ONCE every 5 mins to be super safe
+# and get ALL data at once.
+UPDATE_INTERVAL = 10 
 data_lock = threading.Lock()
 
 HEADERS = {
@@ -57,7 +59,7 @@ default_state = {
         # Utilities
         'weather': False, 'clock': False,
         
-        # Stock Categories (Expanded)
+        # Stock Categories
         'stock_movers': True, 'stock_indices': True, 'stock_tech': False, 
         'stock_ai': False, 'stock_consulting': False, 'stock_crypto': False,
         'stock_auto': False, 'stock_semi': False, 'stock_finance': False,
@@ -234,134 +236,120 @@ class WeatherFetcher:
 class StockFetcher:
     def __init__(self, api_key):
         self.api_key = api_key
-        self.cache = {} 
-        self.cursor = {} 
-        self.last_fetch_times = {} 
-        self.fetch_interval = 60 
+        self.market_cache = {} # Map "AAPL" -> {price, change_pct, change_amt}
+        self.last_fetch = 0
         
-        self.symbols = {
+        # Massive Lists
+        self.lists = {
             'stock_indices': ["SPY", "QQQ", "DIA", "IWM", "VOO", "VTI", "IVV", "VEA", "VWO", "TLT", "EEM", "AGG"],
-            'stock_tech': ["NVDA", "MSFT", "AAPL", "AMD", "META", "GOOG", "AMZN", "NFLX", "CRM", "ADBE", "CSCO", "INTC", "IBM", "ORCL", "UBER", "ABNB"],
-            'stock_ai': ["NVDA", "SMCI", "PLTR", "AI", "GOOG", "MSFT", "AMD", "META", "PATH", "SNOW", "DDOG", "CRWD", "ZS", "PANW"],
+            'stock_tech': ["NVDA", "MSFT", "AAPL", "AMD", "META", "GOOG", "AMZN", "NFLX", "CRM", "ADBE", "CSCO", "INTC", "IBM", "ORCL", "UBER", "ABNB", "PLTR", "SQ", "SHOP", "ZM"],
+            'stock_ai': ["NVDA", "SMCI", "PLTR", "AI", "GOOG", "MSFT", "AMD", "META", "PATH", "SNOW", "DDOG", "CRWD", "ZS", "PANW", "AVGO", "MRVL"],
             'stock_consulting': ["ACN", "IT", "BAH", "IBM", "SAP", "ORCL", "INFY", "WIT", "CTSH", "EPAM", "GIB", "CACI"],
-            'stock_crypto': ["COIN", "MSTR", "MARA", "HOOD", "SQ", "RIOT", "CLSK", "HUT", "BITF", "CORZ", "CIFR", "WULF", "GREE"],
+            'stock_crypto': ["COIN", "MSTR", "MARA", "HOOD", "SQ", "RIOT", "CLSK", "HUT", "BITF", "CORZ", "CIFR", "WULF", "GREE", "IBIT", "FBTC"],
             'stock_auto': ["TSLA", "F", "GM", "TM", "HMC", "RIVN", "LCID", "STLA", "NIO", "XPEV", "LI", "RACE", "TTM"],
-            'stock_semi': ["NVDA", "AMD", "INTC", "QCOM", "AVGO", "TXN", "MU", "TSM", "ASML", "LRCX", "AMAT", "ADI", "MRVL", "STM"],
+            'stock_semi': ["NVDA", "AMD", "INTC", "QCOM", "AVGO", "TXN", "MU", "TSM", "ASML", "LRCX", "AMAT", "ADI", "MRVL", "STM", "ON"],
             'stock_finance': ["JPM", "BAC", "GS", "MS", "WFC", "C", "V", "MA", "AXP", "BLK", "SCHW", "PYPL", "USB", "PNC", "TFC"],
             'stock_energy': ["XOM", "CVX", "SHEL", "BP", "COP", "SLB", "EOG", "PXD", "MPC", "PSX", "VLO", "OXY", "HAL", "KMI"],
             'stock_pharma': ["LLY", "JNJ", "PFE", "MRK", "ABBV", "AMGN", "GILD", "BIIB", "REGN", "VRTX", "BMY", "AZN", "SNY", "NVS"],
-            'stock_consumer': ["WMT", "TGT", "COST", "HD", "LOW", "NKE", "SBUX", "MCD", "KO", "PEP", "PG", "CL", "KMB", "EL", "LULU"],
+            'stock_consumer': ["WMT", "TGT", "COST", "HD", "LOW", "NKE", "SBUX", "MCD", "KO", "PEP", "PG", "CL", "KMB", "EL", "LULU", "CMG", "YUM"],
             'stock_nyse': ["JPM", "WMT", "PG", "XOM", "JNJ", "V", "MA", "HD", "LLY", "MRK", "KO", "PEP", "BAC", "CVX", "MCD", "DIS", "T", "VZ", "BA", "CAT", "GE", "MMM", "IBM", "GS", "MS", "AXP", "UNH", "CVX", "WFC"],
-            'stock_etf': ["SPY", "QQQ", "DIA", "IWM", "VOO", "IVV", "VTI", "VEA", "VWO", "IEFA", "AGG", "BND", "GLD", "SLV", "GDX", "XLE", "XLF", "XLK", "XLV"],
+            'stock_etf': ["SPY", "QQQ", "DIA", "IWM", "VOO", "IVV", "VTI", "VEA", "VWO", "IEFA", "AGG", "BND", "GLD", "SLV", "GDX", "XLE", "XLF", "XLK", "XLV", "ARKK", "SMH"],
             'stock_commodities': ["GLD", "SLV", "USO", "UNG", "DBC", "GSG", "CORN", "SOYB", "WEAT", "PPLT", "PALL", "CPER"],
             'stock_forex': ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"]
         }
 
-    def get_logo_url(self, symbol):
-        return f"https://raw.githubusercontent.com/nvstly/icons/main/ticker_icons/{symbol.upper()}.png"
-
-    def fetch_movers(self):
-        key = 'stock_movers'
-        # Fetch every 5 minutes
-        if time.time() - self.last_fetch_times.get(key, 0) < 300: return self.cache.get(key, [])
-        try:
-            url = f"https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey={self.api_key}"
-            r = requests.get(url, timeout=10)
-            data = r.json()
-            results = []
-            
-            # PARSE ALL SECTIONS to get maximum data (~60 stocks)
-            if "top_gainers" in data:
-                for item in data["top_gainers"]:
-                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], item['change_amount'], "TOP GAINER"))
-            if "top_losers" in data:
-                for item in data["top_losers"]:
-                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], item['change_amount'], "TOP LOSER"))
-            if "most_actively_traded" in data:
-                for item in data["most_actively_traded"]:
-                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], item['change_amount'], "ACTIVE"))
-            
-            self.cache[key] = results
-            self.last_fetch_times[key] = time.time()
-            return results
-        except Exception as e: 
-            print(f"Movers Error: {e}")
-            return self.cache.get(key, [])
-
-    def fetch_list(self, category_key):
-        if category_key not in self.cache: self.cache[category_key] = []
-        if category_key not in self.cursor: self.cursor[category_key] = 0
+    def fetch_entire_market(self):
+        # 1 API CALL to rule them all. (Polygon Grouped Daily)
+        # Allows us to filter 100+ stocks instantly without hitting rate limits.
+        if time.time() - self.last_fetch < 300: return # Cache for 5 mins
         
-        # Round Robin Fetching: Fetch 2 stocks every 60 seconds
-        if time.time() - self.last_fetch_times.get(category_key, 0) < self.fetch_interval: 
-            return self.cache[category_key]
-            
-        sym_list = self.symbols.get(category_key, [])
-        if not sym_list: return []
+        # Try today, if no data (weekend/holiday), try going back 3 days
+        for i in range(0, 4):
+            d = (dt.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+            url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{d}?adjusted=true&apiKey={self.api_key}"
+            try:
+                r = requests.get(url, timeout=10)
+                data = r.json()
+                if data.get('resultsCount', 0) > 0:
+                    # Found data!
+                    print(f"Fetched Market Data for {d}. Items: {data['resultsCount']}")
+                    new_cache = {}
+                    for item in data.get('results', []):
+                        ticker = item.get('T')
+                        close = item.get('c')
+                        open_p = item.get('o')
+                        if ticker and close and open_p:
+                            change_amt = close - open_p
+                            change_pct = (change_amt / open_p) * 100
+                            new_cache[ticker] = {
+                                'price': f"{close:.2f}",
+                                'change_amt': f"{change_amt:+.2f}",
+                                'change_pct': f"{change_pct:+.2f}%"
+                            }
+                    self.market_cache = new_cache
+                    self.last_fetch = time.time()
+                    return
+            except Exception as e: print(f"Poly Fetch Err: {e}")
         
-        # Determine next 2 symbols to fetch
-        idx = self.cursor[category_key]
-        batch = [sym_list[idx % len(sym_list)]]
-        if len(sym_list) > 1:
-            batch.append(sym_list[(idx + 1) % len(sym_list)])
-            
-        try:
-            for sym in batch:
-                if len(sym) == 6 and category_key == "stock_forex": 
-                    # Use Currency endpoint for Forex if needed, or fallback to Quote
-                    url = f"https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency={sym[:3]}&to_currency={sym[3:]}&apikey={self.api_key}"
-                    r = requests.get(url, timeout=5)
-                    d = r.json().get("Realtime Currency Exchange Rate", {})
-                    if d:
-                        obj = self.format_stock_obj(sym, d.get("05. Exchange Rate"), d.get("09. Ask Price"), "0.00", "FOREX")
-                        obj['away_score'] = "" 
-                        self.update_cache(category_key, sym, obj)
-                else:
-                    url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={sym}&apikey={self.api_key}"
-                    r = requests.get(url, timeout=5)
-                    data = r.json()
-                    q = data.get("Global Quote", {})
-                    if q:
-                        label = category_key.split('_')[1].upper()
-                        if label == "INDICES": label = "INDEX"
-                        obj = self.format_stock_obj(q.get("01. symbol"), q.get("05. price"), q.get("10. change percent"), q.get("09. change"), label)
-                        self.update_cache(category_key, sym, obj)
-                time.sleep(1.1) 
-            
-            self.cursor[category_key] = (idx + 2) % len(sym_list)
-            self.last_fetch_times[category_key] = time.time()
-            return self.cache[category_key]
-        except Exception as e: return self.cache.get(category_key, [])
-
-    def update_cache(self, key, sym, obj):
-        existing = next((i for i, x in enumerate(self.cache[key]) if x['home_abbr'] == sym), None)
-        if existing is not None: self.cache[key][existing] = obj
-        else: self.cache[key].append(obj)
-
-    def format_stock_obj(self, symbol, price, change_pct, change_amt, status_lbl):
-        logo = self.get_logo_url(symbol)
-        if not change_pct: change_pct = "0.00%"
-        if not change_amt: change_amt = "0.00"
+    def get_stock_obj(self, symbol, label):
+        data = self.market_cache.get(symbol)
+        if not data: return None
         return {
             'type': 'stock_ticker',
             'sport': 'stock',
             'id': f"stk_{symbol}",
-            'status': status_lbl, 
-            'tourney_name': status_lbl,
+            'status': label,
+            'tourney_name': label,
             'state': 'in',
             'is_shown': True,
             'home_abbr': symbol,
-            'home_score': str(float(price)) if price else "0.00",
-            'away_score': str(change_pct),
-            'home_logo': logo,
-            'situation': {'change': str(change_amt)}, 
+            'home_score': data['price'],
+            'away_score': data['change_pct'],
+            'home_logo': f"https://raw.githubusercontent.com/nvstly/icons/main/ticker_icons/{symbol}.png",
+            'situation': {'change': data['change_amt']},
             'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
         }
+
+    def get_list(self, list_key):
+        self.fetch_entire_market()
+        res = []
+        label = list_key.split('_')[1].upper()
+        if label == "INDICES": label = "INDEX"
+        
+        # Specific overrides for Forex (Polygon uses weird symbols sometimes, skipping complexity for now)
+        # Just standard stocks/ETFs from the cache
+        for sym in self.lists.get(list_key, []):
+            obj = self.get_stock_obj(sym, label)
+            if obj: res.append(obj)
+        return res
+
+    def get_movers(self):
+        self.fetch_entire_market()
+        # Sort cache by abs(change_pct)
+        # Convert cache to list
+        all_stocks = []
+        for k, v in self.market_cache.items():
+            try:
+                pct = float(v['change_pct'].replace('%','').replace('+',''))
+                all_stocks.append((k, v, pct))
+            except: pass
+        
+        # Sort by gain and loss
+        sorted_stocks = sorted(all_stocks, key=lambda x: x[2], reverse=True)
+        top = sorted_stocks[:5]
+        bottom = sorted_stocks[-5:]
+        
+        res = []
+        for s in top:
+            res.append(self.get_stock_obj(s[0], "TOP GAINER"))
+        for s in bottom:
+            res.append(self.get_stock_obj(s[0], "TOP LOSER"))
+        return res
 
 class SportsFetcher:
     def __init__(self, initial_loc):
         self.weather = WeatherFetcher(initial_loc)
-        self.stocks = StockFetcher("JJIKCMZD4EPHMYF0")
+        self.stocks = StockFetcher("efAYbpvLyZ0H1FJT4m898zByYS119W0l")
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.leagues = {
@@ -469,7 +457,7 @@ class SportsFetcher:
             print("Teams fetched successfully.")
         except Exception as e: print(f"Global Team Fetch Error: {e}")
 
-    # === NHL NATIVE FETCHER (RESTORED FROM OLD CODE) ===
+    # === NHL NATIVE FETCHER ===
     def fetch_shootout_details(self, game_id, away_id, home_id):
         try:
             url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
@@ -665,15 +653,13 @@ class SportsFetcher:
 
         # 2. STOCKS
         if current_mode == 'stocks' or current_mode == 'all':
-            if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.fetch_movers())
-            # Fetch enabled lists
-            stock_cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 
+            if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.get_movers())
+            cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 
                           'stock_auto', 'stock_semi', 'stock_finance', 'stock_energy', 'stock_pharma', 
                           'stock_consumer', 'stock_nyse', 'stock_etf', 'stock_commodities', 'stock_forex']
-            for cat in stock_cats:
-                if conf['active_sports'].get(cat): games.extend(self.stocks.fetch_list(cat))
+            for cat in cats:
+                if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
             
-            # If strictly stocks mode, return now (skip sports)
             if current_mode == 'stocks':
                 with data_lock: state['current_games'] = games; return
 
@@ -823,7 +809,7 @@ class SportsFetcher:
                                 'isRedZone': sit.get('isRedZone', False), 
                                 'downDist': down_text, 
                                 'shootout': shootout_data,
-                                'powerPlay': False, # ESPN doesn't give this easily, NHL is handled in native block above
+                                'powerPlay': False, 
                                 'emptyNet': False
                             }
                         }
