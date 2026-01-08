@@ -74,7 +74,7 @@ default_state = {
     'mode': 'all', 
     'layout_mode': 'schedule',
     'my_teams': [], 
-    'current_games': [],     
+    'current_games': [],      
     'buffer_sports': [],
     'buffer_stocks': [],
     'all_teams_data': {}, 
@@ -203,7 +203,7 @@ def generate_demo_data():
          'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
          'situation': {'shootout': { 'away': ['goal', 'miss', 'miss'], 'home': ['miss', 'goal', 'pending'] }}},
         {'type': 'stock_ticker', 'sport': 'stock_tech', 'id': 'demo_tsla', 'status': 'TECH', 'state': 'in', 'is_shown': True,
-         'home_abbr': 'TSLA', 'home_score': '184.86', 'away_score': '-1.38%', 'home_logo': 'https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/TSLA.png',
+         'home_abbr': 'TSLA', 'home_score': '184.86', 'away_score': '-1.38%', 'home_logo': 'https://financialmodelingprep.com/image-stock/TSLA.png',
          'tourney_name': 'TECH', 'situation': {'change': '-2.54'}}
     ]
 
@@ -249,8 +249,6 @@ class StockFetcher:
             'stock_energy': ["XOM", "CVX", "COP", "FCX", "NEM", "EOG", "SLB", "OXY", "MPC", "PSX", "VLO", "KMI", "HAL"],
             'stock_finance': ["JPM", "GS", "BAC", "MS", "BLK", "WFC", "C", "V", "MA", "AXP", "SCHW", "USB", "PNC"],
             'stock_consumer': ["WMT", "COST", "NKE", "SBUX", "MCD", "HD", "LOW", "KO", "PEP", "PG", "TGT", "CMG", "LULU", "YUM"],
-            
-            # NYSE TOP 50 (Subset for display)
             'stock_nyse_50': [
                 "NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "TSLA", "BRK.B",
                 "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "PLTR",
@@ -258,34 +256,28 @@ class StockFetcher:
                 "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC",
                 "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"
             ],
-            
-            # CURRENCIES & METALS (Using ETFs as Proxies)
             'stock_forex': ["FXE", "FXB", "FXY", "UUP", "GLD", "SLV", "PPLT", "PALL"]
         }
         
         # FRIENDLY NAMES FOR CURRENCIES/METALS
         self.DISPLAY_NAMES = {
-            "FXE": "EURO",
-            "FXB": "POUND",
-            "FXY": "YEN",
-            "UUP": "DOLLAR",
-            "GLD": "GOLD",
-            "SLV": "SILVER",
-            "PPLT": "PLATINUM",
-            "PALL": "PALLADIUM"
+            "FXE": "EURO", "FXB": "POUND", "FXY": "YEN", "UUP": "DOLLAR",
+            "GLD": "GOLD", "SLV": "SILVER", "PPLT": "PLATINUM", "PALL": "PALLADIUM"
         }
         
-        # CUSTOM ICONS (Ingots/Coins/Symbols)
+        # DOMAIN MAPPING (For ETFs to get nice logos via Clearbit)
+        self.ETF_DOMAINS = {
+            "FXE": "invesco.com", "FXB": "invesco.com", "FXY": "invesco.com", "UUP": "invesco.com",
+            "GLD": "spdrs.com", "SLV": "ishares.com", "PPLT": "aberdeen.com", "PALL": "aberdeen.com",
+            "QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"
+        }
+
+        # CUSTOM ICONS (Ingots/Coins) - Using high-res PNGs where possible
         self.CUSTOM_ICONS = {
             "GLD": "https://cdn-icons-png.flaticon.com/512/1995/1995540.png",
             "SLV": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
             "PPLT": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
-            "PALL": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
-            
-            "FXE": "https://cdn-icons-png.flaticon.com/512/32/32976.png",   # Euro Symbol
-            "FXB": "https://cdn-icons-png.flaticon.com/512/32/32979.png",   # Pound Symbol
-            "FXY": "https://cdn-icons-png.flaticon.com/512/32/32982.png",   # Yen Symbol
-            "UUP": "https://cdn-icons-png.flaticon.com/512/32/32936.png",   # Dollar Symbol
+            "PALL": "https://cdn-icons-png.flaticon.com/512/566/566302.png"
         }
         
         self.load_cache()
@@ -313,10 +305,18 @@ class StockFetcher:
         except: pass
 
     def get_logo_url(self, symbol):
-        if symbol.upper() in self.CUSTOM_ICONS:
-            return self.CUSTOM_ICONS[symbol.upper()]
-        clean_sym = symbol.upper().replace('.', '-')
-        return f"https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/{clean_sym}.png"
+        sym = symbol.upper()
+        # 1. Custom Overrides (Metals/Coins)
+        if sym in self.CUSTOM_ICONS:
+            return self.CUSTOM_ICONS[sym]
+        
+        # 2. Clearbit Domain Map (Best for ETFs/Funds/Currencies)
+        if sym in self.ETF_DOMAINS:
+            return f"https://logo.clearbit.com/{self.ETF_DOMAINS[sym]}"
+            
+        # 3. Financial Modeling Prep (Best General Fallback - Covers Movers & Obscure Tickers)
+        clean_sym = sym.replace('.', '-')
+        return f"https://financialmodelingprep.com/image-stock/{clean_sym}.png"
 
     def fetch_entire_market(self):
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
@@ -352,7 +352,6 @@ class StockFetcher:
         data = self.market_cache.get(symbol)
         if not data: return None
         
-        # Display Name Override (for ETFs masking as currencies)
         display_name = self.DISPLAY_NAMES.get(symbol, symbol)
         
         return {
