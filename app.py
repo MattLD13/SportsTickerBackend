@@ -58,7 +58,7 @@ default_state = {
         'weather': False, 'clock': False,
         
         # Stock Categories (Expanded)
-        'stock_movers': False, 'stock_indices': True, 'stock_tech': False, 
+        'stock_movers': True, 'stock_indices': True, 'stock_tech': False, 
         'stock_ai': False, 'stock_consulting': False, 'stock_crypto': False,
         'stock_auto': False, 'stock_semi': False, 'stock_finance': False,
         'stock_energy': False, 'stock_pharma': False, 'stock_consumer': False,
@@ -239,7 +239,6 @@ class StockFetcher:
         self.last_fetch_times = {} 
         self.fetch_interval = 60 
         
-        # EXPANDED LISTS (10-20 Stocks each)
         self.symbols = {
             'stock_indices': ["SPY", "QQQ", "DIA", "IWM", "VOO", "VTI", "IVV", "VEA", "VWO", "TLT", "EEM", "AGG"],
             'stock_tech': ["NVDA", "MSFT", "AAPL", "AMD", "META", "GOOG", "AMZN", "NFLX", "CRM", "ADBE", "CSCO", "INTC", "IBM", "ORCL", "UBER", "ABNB"],
@@ -259,36 +258,48 @@ class StockFetcher:
         }
 
     def get_logo_url(self, symbol):
-        # Use NVSTLY Github Repo for reliable logos
         return f"https://raw.githubusercontent.com/nvstly/icons/main/ticker_icons/{symbol.upper()}.png"
 
     def fetch_movers(self):
         key = 'stock_movers'
+        # Fetch every 5 minutes
         if time.time() - self.last_fetch_times.get(key, 0) < 300: return self.cache.get(key, [])
         try:
             url = f"https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey={self.api_key}"
             r = requests.get(url, timeout=10)
             data = r.json()
             results = []
+            
+            # PARSE ALL SECTIONS to get maximum data (~60 stocks)
             if "top_gainers" in data:
-                for item in data["top_gainers"][:5]:
-                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], item['change_amount'], "MOVERS"))
+                for item in data["top_gainers"]:
+                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], item['change_amount'], "TOP GAINER"))
+            if "top_losers" in data:
+                for item in data["top_losers"]:
+                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], item['change_amount'], "TOP LOSER"))
+            if "most_actively_traded" in data:
+                for item in data["most_actively_traded"]:
+                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], item['change_amount'], "ACTIVE"))
+            
             self.cache[key] = results
             self.last_fetch_times[key] = time.time()
             return results
-        except Exception as e: return self.cache.get(key, [])
+        except Exception as e: 
+            print(f"Movers Error: {e}")
+            return self.cache.get(key, [])
 
     def fetch_list(self, category_key):
         if category_key not in self.cache: self.cache[category_key] = []
         if category_key not in self.cursor: self.cursor[category_key] = 0
         
-        # Throttled Fetching: 2 stocks per minute per category
+        # Round Robin Fetching: Fetch 2 stocks every 60 seconds
         if time.time() - self.last_fetch_times.get(category_key, 0) < self.fetch_interval: 
             return self.cache[category_key]
             
         sym_list = self.symbols.get(category_key, [])
         if not sym_list: return []
         
+        # Determine next 2 symbols to fetch
         idx = self.cursor[category_key]
         batch = [sym_list[idx % len(sym_list)]]
         if len(sym_list) > 1:
@@ -296,20 +307,13 @@ class StockFetcher:
             
         try:
             for sym in batch:
-                func = "GLOBAL_QUOTE"
-                if category_key == "stock_forex": func = "CURRENCY_EXCHANGE_RATE" # Different endpoint if needed, but quote often works. Using Quote for simplicity as many are ETFs in list or mapped.
-                # Actually for forex pure pairs AlphaVantage uses CURRENCY_EXCHANGE_RATE. 
-                # For simplicity here we assume symbols in list are fetchable via GLOBAL_QUOTE (many wrappers do this) or are ETFs representing them.
-                # If using pure Forex pairs (EURUSD), use CURRENCY_EXCHANGE_RATE:
-                
-                if len(sym) == 6 and category_key == "stock_forex": # Rough heuristic
+                if len(sym) == 6 and category_key == "stock_forex": 
+                    # Use Currency endpoint for Forex if needed, or fallback to Quote
                     url = f"https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency={sym[:3]}&to_currency={sym[3:]}&apikey={self.api_key}"
                     r = requests.get(url, timeout=5)
                     d = r.json().get("Realtime Currency Exchange Rate", {})
                     if d:
-                        obj = self.format_stock_obj(sym, d.get("05. Exchange Rate"), d.get("09. Ask Price"), "0.00", "FOREX") # Change not always avail in free forex, faking it or omitting
-                        # Forex on AV free doesn't give change %, calculating manually if cache exists? 
-                        # For now, just show rate.
+                        obj = self.format_stock_obj(sym, d.get("05. Exchange Rate"), d.get("09. Ask Price"), "0.00", "FOREX")
                         obj['away_score'] = "" 
                         self.update_cache(category_key, sym, obj)
                 else:
@@ -662,12 +666,14 @@ class SportsFetcher:
         # 2. STOCKS
         if current_mode == 'stocks' or current_mode == 'all':
             if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.fetch_movers())
+            # Fetch enabled lists
             stock_cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 
                           'stock_auto', 'stock_semi', 'stock_finance', 'stock_energy', 'stock_pharma', 
                           'stock_consumer', 'stock_nyse', 'stock_etf', 'stock_commodities', 'stock_forex']
             for cat in stock_cats:
                 if conf['active_sports'].get(cat): games.extend(self.stocks.fetch_list(cat))
             
+            # If strictly stocks mode, return now (skip sports)
             if current_mode == 'stocks':
                 with data_lock: state['current_games'] = games; return
 
@@ -679,6 +685,7 @@ class SportsFetcher:
                 
                 # Leaderboards (Racing)
                 if config.get('type') == 'leaderboard': 
+                    # Need time windows
                     utc_offset = conf.get('utc_offset', -5)
                     now_utc = dt.now(timezone.utc)
                     now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
@@ -696,6 +703,7 @@ class SportsFetcher:
                 if league_key == 'nhl' and not conf['debug_mode']:
                     prev_count = len(games)
                     self._fetch_nhl_native(games, target_date_str)
+                    # If we got games from native, skip ESPN fetch for NHL
                     if len(games) > prev_count: continue 
 
                 try:
@@ -815,7 +823,7 @@ class SportsFetcher:
                                 'isRedZone': sit.get('isRedZone', False), 
                                 'downDist': down_text, 
                                 'shootout': shootout_data,
-                                'powerPlay': False, 
+                                'powerPlay': False, # ESPN doesn't give this easily, NHL is handled in native block above
                                 'emptyNet': False
                             }
                         }
