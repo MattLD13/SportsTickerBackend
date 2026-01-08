@@ -37,11 +37,11 @@ except Exception as e:
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
-STOCK_CACHE_FILE = "stock_cache.json" # <--- NEW CACHE FILE
+STOCK_CACHE_FILE = "stock_cache.json"
 
 # FETCH INTERVALS
 SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks
+STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks (4 calls/min)
 
 data_lock = threading.Lock()
 
@@ -56,19 +56,20 @@ default_state = {
         # Sports
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
         'soccer_epl': True, 'soccer_champ': True, 'soccer_l1': True, 'soccer_l2': True, 
-        'soccer_wc': False, 'hockey_olympics': False, 
-        'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
+        'soccer_wc': True, 'hockey_olympics': True, 
+        'f1': True, 'nascar': True, 'indycar': True, 'wec': True, 'imsa': True,
         
         # Utilities
         'weather': False, 'clock': False,
         
         # Stock Categories
-        'stock_tech_ai': True,      # Mega Cap Tech & AI
-        'stock_momentum': False,    # High Volatility Momentum
-        'stock_energy': False,      # Energy & Commodities
-        'stock_finance': False,     # Financial System Pulse
-        'stock_consumer': False,    # Consumer & Lifestyle
-        'stock_nyse_50': False      # NYSE Top 50
+        'stock_tech_ai': True,      
+        'stock_momentum': False,    
+        'stock_energy': False,      
+        'stock_finance': False,     
+        'stock_consumer': False,    
+        'stock_nyse_50': False,
+        'stock_forex': False        # Currencies & Metals
     },
     'mode': 'all', 
     'layout_mode': 'schedule',
@@ -104,8 +105,8 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # CHECK FOR OLD KEYS TO FORCE RESET
-            old_keys = ['stock_indices', 'stock_etf', 'stock_forex']
+            # FORCE RESET if old keys persist
+            old_keys = ['stock_indices', 'stock_etf']
             has_old = False
             if 'active_sports' in loaded:
                 for k in old_keys:
@@ -258,24 +259,35 @@ class StockFetcher:
                 "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"
             ],
             
-            # CURRENCIES & METALS
-            'stock_forex': ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "GLD", "SLV", "PPLT", "PALL"]
+            # CURRENCIES & METALS (Using ETFs as Proxies)
+            'stock_forex': ["FXE", "FXB", "FXY", "UUP", "GLD", "SLV", "PPLT", "PALL"]
         }
         
-        # SPECIAL LOGOS
+        # FRIENDLY NAMES FOR CURRENCIES/METALS
+        self.DISPLAY_NAMES = {
+            "FXE": "EURO",
+            "FXB": "POUND",
+            "FXY": "YEN",
+            "UUP": "DOLLAR",
+            "GLD": "GOLD",
+            "SLV": "SILVER",
+            "PPLT": "PLATINUM",
+            "PALL": "PALLADIUM"
+        }
+        
+        # CUSTOM ICONS (Ingots/Coins/Symbols)
         self.CUSTOM_ICONS = {
             "GLD": "https://cdn-icons-png.flaticon.com/512/1995/1995540.png",
             "SLV": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
             "PPLT": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
             "PALL": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
-            "EURUSD": "https://cdn-icons-png.flaticon.com/512/32/32976.png",
-            "GBPUSD": "https://cdn-icons-png.flaticon.com/512/32/32979.png",
-            "USDJPY": "https://cdn-icons-png.flaticon.com/512/32/32982.png",
-            "AUDUSD": "https://cdn-icons-png.flaticon.com/512/32/32936.png",
-            "USDCAD": "https://cdn-icons-png.flaticon.com/512/32/32936.png"
+            
+            "FXE": "https://cdn-icons-png.flaticon.com/512/32/32976.png",   # Euro Symbol
+            "FXB": "https://cdn-icons-png.flaticon.com/512/32/32979.png",   # Pound Symbol
+            "FXY": "https://cdn-icons-png.flaticon.com/512/32/32982.png",   # Yen Symbol
+            "UUP": "https://cdn-icons-png.flaticon.com/512/32/32936.png",   # Dollar Symbol
         }
         
-        # Load cache from disk on startup
         self.load_cache()
 
     def load_cache(self):
@@ -287,7 +299,6 @@ class StockFetcher:
             except: pass
 
     def save_cache(self):
-        # Save ONLY relevant stocks to keep file small
         export_cache = {}
         all_symbols = set()
         for lst in self.lists.values():
@@ -304,15 +315,12 @@ class StockFetcher:
     def get_logo_url(self, symbol):
         if symbol.upper() in self.CUSTOM_ICONS:
             return self.CUSTOM_ICONS[symbol.upper()]
-        # Fix for BRK.B -> BRK-B
         clean_sym = symbol.upper().replace('.', '-')
         return f"https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/{clean_sym}.png"
 
     def fetch_entire_market(self):
-        # 1 API CALL to rule them all. (Polygon Grouped Daily)
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
         
-        # Try today, if no data (weekend/holiday), try going back 3 days
         for i in range(0, 4):
             d = (dt.now() - timedelta(days=i)).strftime("%Y-%m-%d")
             url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{d}?adjusted=true&apiKey={self.api_key}"
@@ -336,13 +344,17 @@ class StockFetcher:
                             }
                     self.market_cache = new_cache
                     self.last_fetch = time.time()
-                    self.save_cache() # <--- SAVE TO DISK
+                    self.save_cache()
                     return
             except Exception as e: print(f"Poly Fetch Err: {e}")
         
     def get_stock_obj(self, symbol, label):
         data = self.market_cache.get(symbol)
         if not data: return None
+        
+        # Display Name Override (for ETFs masking as currencies)
+        display_name = self.DISPLAY_NAMES.get(symbol, symbol)
+        
         return {
             'type': 'stock_ticker',
             'sport': 'stock',
@@ -351,7 +363,7 @@ class StockFetcher:
             'tourney_name': label,
             'state': 'in',
             'is_shown': True,
-            'home_abbr': symbol,
+            'home_abbr': display_name,
             'home_score': data['price'],
             'away_score': data['change_pct'],
             'home_logo': self.get_logo_url(symbol),
@@ -363,7 +375,6 @@ class StockFetcher:
         self.fetch_entire_market()
         res = []
         
-        # Pretty Labels
         labels = {
             'stock_tech_ai': 'TECH / AI',
             'stock_momentum': 'MOMENTUM',
@@ -855,7 +866,7 @@ class SportsFetcher:
         with data_lock: conf = state.copy()
         
         if conf['mode'] in ['stocks', 'all']:
-            # New Keys: stock_tech_ai, stock_momentum, etc.
+            if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.get_movers())
             cats = ['stock_tech_ai', 'stock_momentum', 'stock_energy', 'stock_finance', 'stock_consumer', 'stock_nyse_50', 'stock_forex']
             for cat in cats:
                 if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
