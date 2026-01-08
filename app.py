@@ -37,9 +37,11 @@ except Exception as e:
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
-# Polygon Free Tier allows 5 calls/min. We fetch ONCE every 5 mins to be super safe
-# and get ALL data at once.
-UPDATE_INTERVAL = 10 
+
+# FETCH INTERVALS
+SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
+STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks (4 calls/min - Safe for 5/min limit)
+
 data_lock = threading.Lock()
 
 HEADERS = {
@@ -59,17 +61,21 @@ default_state = {
         # Utilities
         'weather': False, 'clock': False,
         
-        # Stock Categories
-        'stock_movers': True, 'stock_indices': True, 'stock_tech': False, 
-        'stock_ai': False, 'stock_consulting': False, 'stock_crypto': False,
-        'stock_auto': False, 'stock_semi': False, 'stock_finance': False,
-        'stock_energy': False, 'stock_pharma': False, 'stock_consumer': False,
-        'stock_nyse': False, 'stock_etf': False, 'stock_commodities': False, 'stock_forex': False
+        # NEW STOCK CATEGORIES (Corrected)
+        'stock_tech_ai': True,      # Mega Cap Tech & AI
+        'stock_momentum': False,    # High Volatility Momentum
+        'stock_energy': False,      # Energy & Commodities
+        'stock_finance': False,     # Financial System Pulse
+        'stock_consumer': False,    # Consumer & Lifestyle
+        'stock_nyse_50': False,     # NYSE Top 50
+        'stock_forex': False        # Currencies & Metals
     },
     'mode': 'all', 
     'layout_mode': 'schedule',
     'my_teams': [], 
-    'current_games': [],
+    'current_games': [],     
+    'buffer_sports': [],
+    'buffer_stocks': [],
     'all_teams_data': {}, 
     'debug_mode': False,
     'demo_mode': False,
@@ -93,16 +99,27 @@ DEFAULT_TICKER_SETTINGS = {
 state = default_state.copy()
 tickers = {} 
 
-# --- LOAD CONFIG ---
+# --- LOAD CONFIG (WITH RESET LOGIC) ---
 if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            for k, v in loaded.items():
-                if k == 'show_debug_options': continue 
-                if k in state:
-                    if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
-                    else: state[k] = v
+            # CHECK FOR OLD KEYS TO FORCE RESET
+            old_keys = ['stock_semi', 'stock_auto', 'stock_crypto']
+            has_old = False
+            if 'active_sports' in loaded:
+                for k in old_keys:
+                    if k in loaded['active_sports']: has_old = True
+            
+            if has_old:
+                print("Old config detected. Resetting to defaults.")
+                # We do not load the old config
+            else:
+                for k, v in loaded.items():
+                    if k == 'show_debug_options': continue 
+                    if k in state:
+                        if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
+                        else: state[k] = v
     except Exception as e:
         print(f"Error loading config: {e}")
 
@@ -111,9 +128,7 @@ if os.path.exists(TICKER_REGISTRY_FILE):
     try:
         with open(TICKER_REGISTRY_FILE, 'r') as f:
             tickers = json.load(f)
-            print(f"Loaded {len(tickers)} paired tickers.")
-    except Exception as e:
-        print(f"Error loading tickers: {e}")
+    except: pass
 
 def save_json_atomically(filepath, data):
     temp = f"{filepath}.tmp"
@@ -121,36 +136,24 @@ def save_json_atomically(filepath, data):
         with open(temp, 'w') as f:
             json.dump(data, f, indent=4)
         os.replace(temp, filepath)
-    except Exception as e:
-        print(f"Failed to save {filepath}: {e}")
+    except: pass
 
 def save_config_file():
     try:
         with data_lock:
-            export_data = {
-                'active_sports': state['active_sports'], 
-                'mode': state['mode'], 
-                'layout_mode': state['layout_mode'],
-                'my_teams': state['my_teams'],
-                'weather_location': state['weather_location'],
-                'utc_offset': state['utc_offset'],
-                'demo_mode': state.get('demo_mode', False),
-                'scroll_seamless': state.get('scroll_seamless', True),
-                'show_debug_options': state.get('show_debug_options', True)
-            }
+            export_data = state.copy()
+            for k in ['current_games', 'buffer_sports', 'buffer_stocks', 'all_teams_data']:
+                if k in export_data: del export_data[k]
             tickers_snap = tickers.copy()
-        
         save_json_atomically(CONFIG_FILE, export_data)
         save_json_atomically(TICKER_REGISTRY_FILE, tickers_snap)
-    except Exception as e:
-        print(f"Save error: {e}")
+    except: pass
 
 def generate_pairing_code():
     while True:
         code = ''.join(random.choices(string.digits, k=6))
         active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
-        if code not in active_codes:
-            return code
+        if code not in active_codes: return code
 
 # ================= LISTS & OVERRIDES =================
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
@@ -200,7 +203,7 @@ def generate_demo_data():
          'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
          'situation': {'shootout': { 'away': ['goal', 'miss', 'miss'], 'home': ['miss', 'goal', 'pending'] }}},
         {'type': 'stock_ticker', 'sport': 'stock_tech', 'id': 'demo_tsla', 'status': 'TECH', 'state': 'in', 'is_shown': True,
-         'home_abbr': 'TSLA', 'home_score': '184.86', 'away_score': '-1.38%', 'home_logo': 'https://raw.githubusercontent.com/nvstly/icons/main/ticker_icons/TSLA.png',
+         'home_abbr': 'TSLA', 'home_score': '184.86', 'away_score': '-1.38%', 'home_logo': 'https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/TSLA.png',
          'tourney_name': 'TECH', 'situation': {'change': '-2.54'}}
     ]
 
@@ -236,34 +239,51 @@ class WeatherFetcher:
 class StockFetcher:
     def __init__(self, api_key):
         self.api_key = api_key
-        self.market_cache = {} # Map "AAPL" -> {price, change_pct, change_amt}
+        self.market_cache = {} 
         self.last_fetch = 0
         
-        # Massive Lists
+        # === NEW CATEGORIES (Fixed) ===
         self.lists = {
-            'stock_indices': ["SPY", "QQQ", "DIA", "IWM", "VOO", "VTI", "IVV", "VEA", "VWO", "TLT", "EEM", "AGG"],
-            'stock_tech': ["NVDA", "MSFT", "AAPL", "AMD", "META", "GOOG", "AMZN", "NFLX", "CRM", "ADBE", "CSCO", "INTC", "IBM", "ORCL", "UBER", "ABNB", "PLTR", "SQ", "SHOP", "ZM"],
-            'stock_ai': ["NVDA", "SMCI", "PLTR", "AI", "GOOG", "MSFT", "AMD", "META", "PATH", "SNOW", "DDOG", "CRWD", "ZS", "PANW", "AVGO", "MRVL"],
-            'stock_consulting': ["ACN", "IT", "BAH", "IBM", "SAP", "ORCL", "INFY", "WIT", "CTSH", "EPAM", "GIB", "CACI"],
-            'stock_crypto': ["COIN", "MSTR", "MARA", "HOOD", "SQ", "RIOT", "CLSK", "HUT", "BITF", "CORZ", "CIFR", "WULF", "GREE", "IBIT", "FBTC"],
-            'stock_auto': ["TSLA", "F", "GM", "TM", "HMC", "RIVN", "LCID", "STLA", "NIO", "XPEV", "LI", "RACE", "TTM"],
-            'stock_semi': ["NVDA", "AMD", "INTC", "QCOM", "AVGO", "TXN", "MU", "TSM", "ASML", "LRCX", "AMAT", "ADI", "MRVL", "STM", "ON"],
-            'stock_finance': ["JPM", "BAC", "GS", "MS", "WFC", "C", "V", "MA", "AXP", "BLK", "SCHW", "PYPL", "USB", "PNC", "TFC"],
-            'stock_energy': ["XOM", "CVX", "SHEL", "BP", "COP", "SLB", "EOG", "PXD", "MPC", "PSX", "VLO", "OXY", "HAL", "KMI"],
-            'stock_pharma': ["LLY", "JNJ", "PFE", "MRK", "ABBV", "AMGN", "GILD", "BIIB", "REGN", "VRTX", "BMY", "AZN", "SNY", "NVS"],
-            'stock_consumer': ["WMT", "TGT", "COST", "HD", "LOW", "NKE", "SBUX", "MCD", "KO", "PEP", "PG", "CL", "KMB", "EL", "LULU", "CMG", "YUM"],
-            'stock_nyse': ["JPM", "WMT", "PG", "XOM", "JNJ", "V", "MA", "HD", "LLY", "MRK", "KO", "PEP", "BAC", "CVX", "MCD", "DIS", "T", "VZ", "BA", "CAT", "GE", "MMM", "IBM", "GS", "MS", "AXP", "UNH", "CVX", "WFC"],
-            'stock_etf': ["SPY", "QQQ", "DIA", "IWM", "VOO", "IVV", "VTI", "VEA", "VWO", "IEFA", "AGG", "BND", "GLD", "SLV", "GDX", "XLE", "XLF", "XLK", "XLV", "ARKK", "SMH"],
-            'stock_commodities': ["GLD", "SLV", "USO", "UNG", "DBC", "GSG", "CORN", "SOYB", "WEAT", "PPLT", "PALL", "CPER"],
-            'stock_forex': ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"]
+            'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOG", "AMZN", "META", "TSM", "AVGO", "ORCL", "PLTR", "CRM", "AMD", "IBM", "INTC", "SMCI"],
+            'stock_momentum': ["TSLA", "PLTR", "COIN", "RBLX", "GME", "HOOD", "MARA", "RIOT", "DKNG", "UBER", "ABNB", "SQ", "SOFI"],
+            'stock_energy': ["XOM", "CVX", "COP", "FCX", "NEM", "EOG", "SLB", "OXY", "MPC", "PSX", "VLO", "KMI", "HAL"],
+            'stock_finance': ["JPM", "GS", "BAC", "MS", "BLK", "WFC", "C", "V", "MA", "AXP", "SCHW", "USB", "PNC"],
+            'stock_consumer': ["WMT", "COST", "NKE", "SBUX", "MCD", "HD", "LOW", "KO", "PEP", "PG", "TGT", "CMG", "LULU", "YUM"],
+            
+            # NYSE TOP 50 (Subset for display)
+            'stock_nyse_50': [
+                "NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "TSLA", "BRK.B",
+                "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "PLTR",
+                "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM",
+                "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC",
+                "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"
+            ],
+            
+            # CURRENCIES & METALS
+            'stock_forex': ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "GLD", "SLV", "PPLT", "PALL"]
+        }
+        
+        # SPECIAL LOGOS
+        self.CUSTOM_ICONS = {
+            "GLD": "https://cdn-icons-png.flaticon.com/512/1995/1995540.png",
+            "SLV": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
+            "PPLT": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
+            "PALL": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
+            "EURUSD": "https://cdn-icons-png.flaticon.com/512/32/32976.png",
+            "GBPUSD": "https://cdn-icons-png.flaticon.com/512/32/32979.png",
+            "USDJPY": "https://cdn-icons-png.flaticon.com/512/32/32982.png",
+            "AUDUSD": "https://cdn-icons-png.flaticon.com/512/32/32936.png",
+            "USDCAD": "https://cdn-icons-png.flaticon.com/512/32/32936.png"
         }
 
+    def get_logo_url(self, symbol):
+        if symbol.upper() in self.CUSTOM_ICONS:
+            return self.CUSTOM_ICONS[symbol.upper()]
+        return f"https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/{symbol.upper()}.png"
+
     def fetch_entire_market(self):
-        # 1 API CALL to rule them all. (Polygon Grouped Daily)
-        # Allows us to filter 100+ stocks instantly without hitting rate limits.
-        if time.time() - self.last_fetch < 300: return # Cache for 5 mins
+        if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
         
-        # Try today, if no data (weekend/holiday), try going back 3 days
         for i in range(0, 4):
             d = (dt.now() - timedelta(days=i)).strftime("%Y-%m-%d")
             url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{d}?adjusted=true&apiKey={self.api_key}"
@@ -271,7 +291,6 @@ class StockFetcher:
                 r = requests.get(url, timeout=10)
                 data = r.json()
                 if data.get('resultsCount', 0) > 0:
-                    # Found data!
                     print(f"Fetched Market Data for {d}. Items: {data['resultsCount']}")
                     new_cache = {}
                     for item in data.get('results', []):
@@ -305,7 +324,7 @@ class StockFetcher:
             'home_abbr': symbol,
             'home_score': data['price'],
             'away_score': data['change_pct'],
-            'home_logo': f"https://raw.githubusercontent.com/nvstly/icons/main/ticker_icons/{symbol}.png",
+            'home_logo': self.get_logo_url(symbol),
             'situation': {'change': data['change_amt']},
             'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
         }
@@ -313,11 +332,17 @@ class StockFetcher:
     def get_list(self, list_key):
         self.fetch_entire_market()
         res = []
-        label = list_key.split('_')[1].upper()
-        if label == "INDICES": label = "INDEX"
+        labels = {
+            'stock_tech_ai': 'TECH / AI',
+            'stock_momentum': 'MOMENTUM',
+            'stock_energy': 'ENERGY',
+            'stock_finance': 'FINANCE',
+            'stock_consumer': 'CONSUMER',
+            'stock_nyse_50': 'NYSE 50',
+            'stock_forex': 'CURRENCY'
+        }
+        label = labels.get(list_key, "MARKET")
         
-        # Specific overrides for Forex (Polygon uses weird symbols sometimes, skipping complexity for now)
-        # Just standard stocks/ETFs from the cache
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
@@ -325,8 +350,6 @@ class StockFetcher:
 
     def get_movers(self):
         self.fetch_entire_market()
-        # Sort cache by abs(change_pct)
-        # Convert cache to list
         all_stocks = []
         for k, v in self.market_cache.items():
             try:
@@ -334,16 +357,13 @@ class StockFetcher:
                 all_stocks.append((k, v, pct))
             except: pass
         
-        # Sort by gain and loss
         sorted_stocks = sorted(all_stocks, key=lambda x: x[2], reverse=True)
         top = sorted_stocks[:5]
         bottom = sorted_stocks[-5:]
         
         res = []
-        for s in top:
-            res.append(self.get_stock_obj(s[0], "TOP GAINER"))
-        for s in bottom:
-            res.append(self.get_stock_obj(s[0], "TOP LOSER"))
+        for s in top: res.append(self.get_stock_obj(s[0], "TOP GAINER"))
+        for s in bottom: res.append(self.get_stock_obj(s[0], "TOP LOSER"))
         return res
 
 class SportsFetcher:
@@ -423,7 +443,6 @@ class SportsFetcher:
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
-            print("Starting Team Fetch...")
             
             for t in OLYMPIC_HOCKEY_TEAMS:
                 teams_catalog['hockey_olympics'].append({'abbr': t['abbr'], 'logo': t['logo'], 'color': '000000', 'alt_color': '444444'})
@@ -454,7 +473,6 @@ class SportsFetcher:
                  self._fetch_simple_league(league_key, teams_catalog)
 
             with data_lock: state['all_teams_data'] = teams_catalog
-            print("Teams fetched successfully.")
         except Exception as e: print(f"Global Team Fetch Error: {e}")
 
     # === NHL NATIVE FETCHER ===
@@ -627,51 +645,29 @@ class SportsFetcher:
                 games_list.append(game_obj)
         except Exception as e: print(f"Racing fetch error {league_key}: {e}")
 
-    def get_real_games(self):
+    def update_buffer_sports(self):
+        # WORKER FUNCTION FOR SPORTS
         games = []
         with data_lock: 
             conf = state.copy()
-            if conf.get('demo_mode', False):
-                state['current_games'] = generate_demo_data(); return
+            if conf.get('demo_mode', False): return # Demo handled elsewhere
 
-        current_mode = conf.get('mode', 'all')
-        
-        # --- STRICT MODE ISOLATION ---
-        
-        # 1. WEATHER & CLOCK (Can coexist or be solo)
-        if current_mode == 'weather' or conf['active_sports'].get('weather'):
+        # 1. WEATHER & CLOCK
+        if conf['active_sports'].get('weather'):
             if conf['weather_location'] != self.weather.location_name: self.weather.update_coords(conf['weather_location'])
             w = self.weather.get_weather()
             if w: games.append(w)
-            if current_mode == 'weather': # If strictly weather mode, return now
-                with data_lock: state['current_games'] = games; return
 
-        if current_mode == 'clock' or conf['active_sports'].get('clock'):
+        if conf['active_sports'].get('clock'):
             games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
-            if current_mode == 'clock': 
-                with data_lock: state['current_games'] = games; return
 
-        # 2. STOCKS
-        if current_mode == 'stocks' or current_mode == 'all':
-            if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.get_movers())
-            cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 
-                          'stock_auto', 'stock_semi', 'stock_finance', 'stock_energy', 'stock_pharma', 
-                          'stock_consumer', 'stock_nyse', 'stock_etf', 'stock_commodities', 'stock_forex']
-            for cat in cats:
-                if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
-            
-            if current_mode == 'stocks':
-                with data_lock: state['current_games'] = games; return
-
-        # 3. SPORTS
-        if current_mode in ['sports', 'live', 'my_teams', 'all']:
-            # --- PROCESS LEAGUES ---
+        # 2. SPORTS
+        if conf['mode'] in ['sports', 'live', 'my_teams', 'all']:
             for league_key, config in self.leagues.items():
                 if not conf['active_sports'].get(league_key, False): continue
                 
-                # Leaderboards (Racing)
-                if config.get('type') == 'leaderboard': 
-                    # Need time windows
+                # Racing
+                if config.get('type') == 'leaderboard':
                     utc_offset = conf.get('utc_offset', -5)
                     now_utc = dt.now(timezone.utc)
                     now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
@@ -682,14 +678,13 @@ class SportsFetcher:
                     self.fetch_leaderboard_event(league_key, config, games, conf, window_start_utc, window_end_utc)
                     continue
 
-                # NHL NATIVE OVERRIDE
+                # NHL Native
                 target_date_str = dt.now().strftime("%Y-%m-%d")
                 if conf['debug_mode'] and conf['custom_date']: target_date_str = conf['custom_date']
                 
                 if league_key == 'nhl' and not conf['debug_mode']:
                     prev_count = len(games)
                     self._fetch_nhl_native(games, target_date_str)
-                    # If we got games from native, skip ESPN fetch for NHL
                     if len(games) > prev_count: continue 
 
                 try:
@@ -706,7 +701,6 @@ class SportsFetcher:
                         gst = tp.get('state', 'pre')
                         
                         try:
-                            # Re-calc time windows locally for sports loop
                             utc_offset = conf.get('utc_offset', -5)
                             now_utc = dt.now(timezone.utc)
                             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
@@ -817,25 +811,72 @@ class SportsFetcher:
                             game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 
                                 'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
                         games.append(game_obj)
-                except Exception as e: 
-                    print(f"Error fetching {league_key}: {e}")
+                except Exception as e: pass
         
-        with data_lock: state['current_games'] = games
+        with data_lock: 
+            state['buffer_sports'] = games
+            self.merge_buffers()
+
+    def update_buffer_stocks(self):
+        # WORKER FUNCTION FOR STOCKS
+        games = []
+        with data_lock: conf = state.copy()
+        
+        if conf['mode'] in ['stocks', 'all']:
+            if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.get_movers())
+            cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 
+                          'stock_auto', 'stock_semi', 'stock_finance', 'stock_energy', 'stock_pharma', 
+                          'stock_consumer', 'stock_nyse', 'stock_etf', 'stock_forex']
+            for cat in cats:
+                if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
+        
+        with data_lock:
+            state['buffer_stocks'] = games
+            self.merge_buffers()
+
+    def merge_buffers(self):
+        # Combines the two separate buffers into 'current_games' for the frontend
+        if state.get('demo_mode', False):
+            state['current_games'] = generate_demo_data()
+            return
+
+        mode = state['mode']
+        final_list = []
+        
+        sports = state.get('buffer_sports', [])
+        stocks = state.get('buffer_stocks', [])
+        
+        if mode == 'stocks': final_list = stocks
+        elif mode in ['sports', 'live', 'my_teams']: final_list = sports
+        elif mode == 'weather': 
+            final_list = [g for g in sports if g.get('type') == 'weather']
+        elif mode == 'clock':
+            final_list = [g for g in sports if g.get('sport') == 'clock']
+        else: # ALL
+            # Put util cards (weather/clock) first, then sports, then stocks
+            utils = [g for g in sports if g.get('type') == 'weather' or g.get('sport') == 'clock']
+            pure_sports = [g for g in sports if g not in utils]
+            final_list = utils + pure_sports + stocks
+            
+        state['current_games'] = final_list
 
 fetcher = SportsFetcher(state['weather_location'])
 
-def background_updater():
-    try:
-        fetcher.fetch_all_teams()
-    except Exception as e:
-        print(f"Initial team fetch failed: {e}")
-        
-    while True: 
-        try:
-            fetcher.get_real_games()
-        except Exception as e:
-            print(f"Loop error: {e}")
-        time.sleep(UPDATE_INTERVAL)
+def sports_worker():
+    # Initial Team Fetch
+    try: fetcher.fetch_all_teams()
+    except: pass
+    
+    while True:
+        try: fetcher.update_buffer_sports()
+        except: pass
+        time.sleep(SPORTS_UPDATE_INTERVAL)
+
+def stocks_worker():
+    while True:
+        try: fetcher.update_buffer_stocks()
+        except: pass
+        time.sleep(STOCKS_UPDATE_INTERVAL)
 
 # ================= FLASK API =================
 app = Flask(__name__)
@@ -849,7 +890,10 @@ def api_config():
             was_demo = state.get('demo_mode', False)
             is_demo = new_data.get('demo_mode', was_demo)
             state.update(new_data)
-            if was_demo and not is_demo: state['current_games'] = []
+            if was_demo and not is_demo: 
+                # Clear buffers to force refresh
+                state['buffer_sports'] = []
+                state['buffer_stocks'] = []
         save_config_file()
         return jsonify({"status": "ok"})
     except: return jsonify({"error": "Failed"}), 500
@@ -866,7 +910,7 @@ def get_ticker_data():
     if not rec.get('clients'): return jsonify({"status": "pairing", "code": rec['pairing_code']})
     
     with data_lock:
-        games = [g for g in state['current_games'] if g['is_shown']]
+        games = [g for g in state['current_games'] if g.get('is_shown', True)]
         conf = { "active_sports": state['active_sports'], "mode": state['mode'], "weather": state['weather_location'] }
     
     return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": games } })
@@ -936,5 +980,8 @@ def api_debug():
 def root(): return "Ticker Server Running"
 
 if __name__ == "__main__":
-    threading.Thread(target=background_updater, daemon=True).start()
+    # Start separate threads
+    threading.Thread(target=sports_worker, daemon=True).start()
+    threading.Thread(target=stocks_worker, daemon=True).start()
+    
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
