@@ -40,7 +40,7 @@ TICKER_REGISTRY_FILE = "tickers.json"
 
 # FETCH INTERVALS
 SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks (4 calls/min - Safe for 5/min limit)
+STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks (4 calls/min)
 
 data_lock = threading.Lock()
 
@@ -61,14 +61,13 @@ default_state = {
         # Utilities
         'weather': False, 'clock': False,
         
-        # NEW STOCK CATEGORIES (Corrected)
+        # NEW STOCK GROUPS (User Requested)
         'stock_tech_ai': True,      # Mega Cap Tech & AI
         'stock_momentum': False,    # High Volatility Momentum
         'stock_energy': False,      # Energy & Commodities
         'stock_finance': False,     # Financial System Pulse
         'stock_consumer': False,    # Consumer & Lifestyle
-        'stock_nyse_50': False,     # NYSE Top 50
-        'stock_forex': False        # Currencies & Metals
+        'stock_nyse_50': False      # NYSE Top 50
     },
     'mode': 'all', 
     'layout_mode': 'schedule',
@@ -99,13 +98,13 @@ DEFAULT_TICKER_SETTINGS = {
 state = default_state.copy()
 tickers = {} 
 
-# --- LOAD CONFIG (WITH RESET LOGIC) ---
+# --- LOAD CONFIG ---
 if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # CHECK FOR OLD KEYS TO FORCE RESET
-            old_keys = ['stock_semi', 'stock_auto', 'stock_crypto']
+            # FORCE RESET if old keys persist to prevent empty list bugs
+            old_keys = ['stock_indices', 'stock_etf', 'stock_forex']
             has_old = False
             if 'active_sports' in loaded:
                 for k in old_keys:
@@ -113,7 +112,6 @@ if os.path.exists(CONFIG_FILE):
             
             if has_old:
                 print("Old config detected. Resetting to defaults.")
-                # We do not load the old config
             else:
                 for k, v in loaded.items():
                     if k == 'show_debug_options': continue 
@@ -242,48 +240,32 @@ class StockFetcher:
         self.market_cache = {} 
         self.last_fetch = 0
         
-        # === NEW CATEGORIES (Fixed) ===
+        # === STOCK LISTS (UPDATED) ===
         self.lists = {
             'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOG", "AMZN", "META", "TSM", "AVGO", "ORCL", "PLTR", "CRM", "AMD", "IBM", "INTC", "SMCI"],
             'stock_momentum': ["TSLA", "PLTR", "COIN", "RBLX", "GME", "HOOD", "MARA", "RIOT", "DKNG", "UBER", "ABNB", "SQ", "SOFI"],
             'stock_energy': ["XOM", "CVX", "COP", "FCX", "NEM", "EOG", "SLB", "OXY", "MPC", "PSX", "VLO", "KMI", "HAL"],
             'stock_finance': ["JPM", "GS", "BAC", "MS", "BLK", "WFC", "C", "V", "MA", "AXP", "SCHW", "USB", "PNC"],
             'stock_consumer': ["WMT", "COST", "NKE", "SBUX", "MCD", "HD", "LOW", "KO", "PEP", "PG", "TGT", "CMG", "LULU", "YUM"],
-            
-            # NYSE TOP 50 (Subset for display)
             'stock_nyse_50': [
                 "NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "TSLA", "BRK.B",
                 "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "PLTR",
                 "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM",
                 "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC",
                 "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"
-            ],
-            
-            # CURRENCIES & METALS
-            'stock_forex': ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "GLD", "SLV", "PPLT", "PALL"]
-        }
-        
-        # SPECIAL LOGOS
-        self.CUSTOM_ICONS = {
-            "GLD": "https://cdn-icons-png.flaticon.com/512/1995/1995540.png",
-            "SLV": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
-            "PPLT": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
-            "PALL": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
-            "EURUSD": "https://cdn-icons-png.flaticon.com/512/32/32976.png",
-            "GBPUSD": "https://cdn-icons-png.flaticon.com/512/32/32979.png",
-            "USDJPY": "https://cdn-icons-png.flaticon.com/512/32/32982.png",
-            "AUDUSD": "https://cdn-icons-png.flaticon.com/512/32/32936.png",
-            "USDCAD": "https://cdn-icons-png.flaticon.com/512/32/32936.png"
+            ]
         }
 
     def get_logo_url(self, symbol):
-        if symbol.upper() in self.CUSTOM_ICONS:
-            return self.CUSTOM_ICONS[symbol.upper()]
-        return f"https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/{symbol.upper()}.png"
+        # Clean symbol for filename (e.g. BRK.B -> BRK-B)
+        clean_sym = symbol.upper().replace('.', '-')
+        return f"https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/{clean_sym}.png"
 
     def fetch_entire_market(self):
+        # 1 API CALL to rule them all. (Polygon Grouped Daily)
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
         
+        # Try today, if no data (weekend/holiday), try going back 3 days
         for i in range(0, 4):
             d = (dt.now() - timedelta(days=i)).strftime("%Y-%m-%d")
             url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{d}?adjusted=true&apiKey={self.api_key}"
@@ -332,38 +314,21 @@ class StockFetcher:
     def get_list(self, list_key):
         self.fetch_entire_market()
         res = []
+        
+        # Pretty Labels
         labels = {
             'stock_tech_ai': 'TECH / AI',
             'stock_momentum': 'MOMENTUM',
             'stock_energy': 'ENERGY',
             'stock_finance': 'FINANCE',
             'stock_consumer': 'CONSUMER',
-            'stock_nyse_50': 'NYSE 50',
-            'stock_forex': 'CURRENCY'
+            'stock_nyse_50': 'NYSE 50'
         }
         label = labels.get(list_key, "MARKET")
         
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
-        return res
-
-    def get_movers(self):
-        self.fetch_entire_market()
-        all_stocks = []
-        for k, v in self.market_cache.items():
-            try:
-                pct = float(v['change_pct'].replace('%','').replace('+',''))
-                all_stocks.append((k, v, pct))
-            except: pass
-        
-        sorted_stocks = sorted(all_stocks, key=lambda x: x[2], reverse=True)
-        top = sorted_stocks[:5]
-        bottom = sorted_stocks[-5:]
-        
-        res = []
-        for s in top: res.append(self.get_stock_obj(s[0], "TOP GAINER"))
-        for s in bottom: res.append(self.get_stock_obj(s[0], "TOP LOSER"))
         return res
 
 class SportsFetcher:
@@ -823,10 +788,8 @@ class SportsFetcher:
         with data_lock: conf = state.copy()
         
         if conf['mode'] in ['stocks', 'all']:
-            if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.get_movers())
-            cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 
-                          'stock_auto', 'stock_semi', 'stock_finance', 'stock_energy', 'stock_pharma', 
-                          'stock_consumer', 'stock_nyse', 'stock_etf', 'stock_forex']
+            # New Keys: stock_tech_ai, stock_momentum, etc.
+            cats = ['stock_tech_ai', 'stock_momentum', 'stock_energy', 'stock_finance', 'stock_consumer', 'stock_nyse_50']
             for cat in cats:
                 if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
         
