@@ -49,11 +49,12 @@ HEADERS = {
 default_state = {
     'active_sports': { 
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
-        # UPDATED: Set lower leagues to True so they appear by default
         'soccer_epl': True, 'soccer_champ': True, 'soccer_l1': True, 'soccer_l2': True, 
         'soccer_wc': False, 'hockey_olympics': False, 
         'f1': True, 'nascar': True, 'indycar': True, 'wec': False, 'imsa': False,
-        'weather': False, 'clock': False 
+        'weather': False, 'clock': False,
+        # Stock Categories
+        'stock_movers': False, 'stock_indices': False, 'stock_tech': False, 'stock_ai': False, 'stock_consulting': False
     },
     'mode': 'all', 
     'layout_mode': 'schedule',
@@ -192,7 +193,10 @@ def generate_demo_data():
          'home_abbr': 'ARG', 'home_score': '3', 'home_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/202.png', 'home_color': '#75AADB', 'home_alt_color': '#FFFFFF',
          'away_abbr': 'FRA', 'away_score': '3', 'away_logo': 'https://a.espncdn.com/i/teamlogos/soccer/500/478.png', 'away_color': '#002395', 'away_alt_color': '#ED2939',
          'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 140,
-         'situation': {'shootout': { 'away': ['goal', 'miss', 'goal', 'miss'], 'home': ['goal', 'goal', 'goal', 'goal'] }, 'possession': ''}, 'tourney_name': 'Final'}
+         'situation': {'shootout': { 'away': ['goal', 'miss', 'goal', 'miss'], 'home': ['goal', 'goal', 'goal', 'goal'] }, 'possession': ''}, 'tourney_name': 'Final'},
+        # Demo Stock
+        {'type': 'stock_ticker', 'sport': 'stock_tech', 'id': 'demo_aapl', 'status': 'OPEN', 'state': 'in', 'is_shown': True,
+         'home_abbr': 'AAPL', 'home_score': '215.30', 'away_score': '+1.25%', 'situation': {}}
     ]
 
 # ================= FETCHING LOGIC =================
@@ -224,9 +228,82 @@ class WeatherFetcher:
             self.cache = w_obj; self.last_fetch = time.time(); return w_obj
         except: return None
 
+class StockFetcher:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.cache = {}
+        self.last_fetch_times = {}
+        self.fetch_interval = 300 # 5 minutes per category to avoid limits
+        self.symbols = {
+            'stock_indices': ["SPY", "QQQ", "DIA"],
+            'stock_tech': ["NVDA", "MSFT", "AAPL", "AMD", "PLTR"],
+            'stock_ai': ["NVDA", "SMCI", "PLTR", "AI", "GOOG"],
+            'stock_consulting': ["ACN", "IT", "BAH", "IBM"]
+        }
+
+    def fetch_movers(self):
+        # Top Gainers/Losers
+        key = 'stock_movers'
+        if time.time() - self.last_fetch_times.get(key, 0) < self.fetch_interval: return self.cache.get(key, [])
+        try:
+            url = f"https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey={self.api_key}"
+            r = requests.get(url, timeout=10)
+            data = r.json()
+            results = []
+            if "top_gainers" in data:
+                for item in data["top_gainers"][:5]:
+                    results.append(self.format_stock_obj(item['ticker'], item['price'], item['change_percentage'], "MOVER"))
+            self.cache[key] = results
+            self.last_fetch_times[key] = time.time()
+            return results
+        except Exception as e: 
+            print(f"Stock Fetch Error ({key}): {e}")
+            return self.cache.get(key, [])
+
+    def fetch_list(self, category_key):
+        if time.time() - self.last_fetch_times.get(category_key, 0) < self.fetch_interval: return self.cache.get(category_key, [])
+        sym_list = self.symbols.get(category_key, [])
+        results = []
+        try:
+            # Alpha Vantage standard fetch is 1 symbol per call usually, or batch.
+            # Free tier is 5 calls/min. We must be careful.
+            # We will just fetch 2 random symbols from the list per cycle to save calls, or strictly cache.
+            # For simplicity in this example, we assume we fetch them sequentially but throttled by the 300s interval.
+            for sym in sym_list:
+                url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={sym}&apikey={self.api_key}"
+                r = requests.get(url, timeout=5)
+                data = r.json()
+                q = data.get("Global Quote", {})
+                if q:
+                    results.append(self.format_stock_obj(q.get("01. symbol"), q.get("05. price"), q.get("10. change percent"), category_key.split('_')[1].upper()))
+                time.sleep(1) # Safety throttle
+            
+            self.cache[category_key] = results
+            self.last_fetch_times[category_key] = time.time()
+            return results
+        except Exception as e:
+            print(f"Stock Fetch Error ({category_key}): {e}")
+            return self.cache.get(category_key, [])
+
+    def format_stock_obj(self, symbol, price, change, status_lbl):
+        return {
+            'type': 'stock_ticker',
+            'sport': 'stock', # Generic sport for filtering logic if needed, or specific
+            'id': f"stk_{symbol}",
+            'status': status_lbl,
+            'state': 'in',
+            'is_shown': True,
+            'home_abbr': symbol,
+            'home_score': str(price)[:6], # Truncate price
+            'away_score': str(change), # Store change % in away_score for transport
+            'situation': {},
+            'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
+        }
+
 class SportsFetcher:
     def __init__(self, initial_loc):
         self.weather = WeatherFetcher(initial_loc)
+        self.stocks = StockFetcher("JJIKCMZD4EPHMYF0")
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.leagues = {
@@ -529,6 +606,11 @@ class SportsFetcher:
             w = self.weather.get_weather()
             if w: games.append(w)
         if conf['active_sports'].get('clock'): games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
+
+        # --- PROCESS STOCKS ---
+        if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.fetch_movers())
+        for cat in ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting']:
+            if conf['active_sports'].get(cat): games.extend(self.stocks.fetch_list(cat))
 
         # --- PROCESS LEAGUES ---
         for league_key, config in self.leagues.items():
