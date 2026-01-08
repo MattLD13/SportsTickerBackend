@@ -38,11 +38,9 @@ except Exception as e:
 CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
 
-# --- DUAL FETCH TIMERS ---
-# Sports: Fast (5s) for live game clock
-# Stocks: Throttled (15s) = 4 calls/min (Safe limit is 5/min)
-INTERVAL_SPORTS = 5
-INTERVAL_STOCKS = 15 
+# FETCH INTERVALS
+SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
+STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks (4 calls/min - Safe for 5/min limit)
 
 data_lock = threading.Lock()
 
@@ -63,22 +61,19 @@ default_state = {
         # Utilities
         'weather': False, 'clock': False,
         
-        # Stock Categories
+        # Stock Categories (Commodities Removed, Metals moved to Forex)
         'stock_movers': True, 'stock_indices': True, 'stock_tech': False, 
         'stock_ai': False, 'stock_consulting': False, 'stock_crypto': False,
         'stock_auto': False, 'stock_semi': False, 'stock_finance': False,
         'stock_energy': False, 'stock_pharma': False, 'stock_consumer': False,
-        'stock_nyse': False, 'stock_etf': False, 'stock_commodities': False, 'stock_forex': False
+        'stock_nyse': False, 'stock_etf': False, 'stock_forex': False
     },
     'mode': 'all', 
     'layout_mode': 'schedule',
     'my_teams': [], 
-    'current_games': [],     # The Final Combined List sent to Ticker
-    
-    # Internal Buffers
+    'current_games': [],     
     'buffer_sports': [],
     'buffer_stocks': [],
-    
     'all_teams_data': {}, 
     'debug_mode': False,
     'demo_mode': False,
@@ -133,7 +128,6 @@ def save_json_atomically(filepath, data):
 def save_config_file():
     try:
         with data_lock:
-            # Save clean state (exclude volatile game data)
             export_data = state.copy()
             for k in ['current_games', 'buffer_sports', 'buffer_stocks', 'all_teams_data']:
                 if k in export_data: del export_data[k]
@@ -250,16 +244,29 @@ class StockFetcher:
             'stock_consumer': ["WMT", "TGT", "COST", "HD", "LOW", "NKE", "SBUX", "MCD", "KO", "PEP", "PG", "CL", "KMB", "EL", "LULU", "CMG", "YUM"],
             'stock_nyse': ["JPM", "WMT", "PG", "XOM", "JNJ", "V", "MA", "HD", "LLY", "MRK", "KO", "PEP", "BAC", "CVX", "MCD", "DIS", "T", "VZ", "BA", "CAT", "GE", "MMM", "IBM", "GS", "MS", "AXP", "UNH", "CVX", "WFC"],
             'stock_etf': ["SPY", "QQQ", "DIA", "IWM", "VOO", "IVV", "VTI", "VEA", "VWO", "IEFA", "AGG", "BND", "GLD", "SLV", "GDX", "XLE", "XLF", "XLK", "XLV", "ARKK", "SMH"],
-            'stock_commodities': ["GLD", "SLV", "USO", "UNG", "DBC", "GSG", "CORN", "SOYB", "WEAT", "PPLT", "PALL", "CPER"],
-            'stock_forex': ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"]
+            # Combined Currencies & Metals into Forex
+            'stock_forex': ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "GLD", "SLV", "PPLT", "PALL"]
+        }
+        
+        # SPECIAL LOGOS FOR FOREX/METALS
+        self.CUSTOM_ICONS = {
+            "GLD": "https://cdn-icons-png.flaticon.com/512/1995/1995540.png",  # Gold Ingot
+            "SLV": "https://cdn-icons-png.flaticon.com/512/566/566302.png",    # Silver Ingot
+            "PPLT": "https://cdn-icons-png.flaticon.com/512/566/566302.png",   # Platinum
+            "PALL": "https://cdn-icons-png.flaticon.com/512/566/566302.png",   # Palladium
+            "EURUSD": "https://cdn-icons-png.flaticon.com/512/32/32976.png",   # Euro Symbol
+            "GBPUSD": "https://cdn-icons-png.flaticon.com/512/32/32979.png",   # Pound Symbol
+            "USDJPY": "https://cdn-icons-png.flaticon.com/512/32/32982.png",   # Yen Symbol
+            "AUDUSD": "https://cdn-icons-png.flaticon.com/512/32/32936.png",   # Dollar Symbol
+            "USDCAD": "https://cdn-icons-png.flaticon.com/512/32/32936.png"    # Dollar Symbol
         }
 
     def get_logo_url(self, symbol):
-        # Primary: Davide Palazzo
-        # Fallback will happen in controller side (if 404, it might download broken image)
-        # But we can try multiple URLs here if we want to be fancy, but simple is better for speed.
-        # We'll serve Davide Palazzo as primary.
-        # Controller should handle fallbacks ideally, but here's a cascading URL:
+        # 1. Check Custom Icons (Metals/Forex)
+        if symbol.upper() in self.CUSTOM_ICONS:
+            return self.CUSTOM_ICONS[symbol.upper()]
+            
+        # 2. Check Primary Repo (Davide Palazzo)
         return f"https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/{symbol.upper()}.png"
 
     def fetch_entire_market(self):
@@ -267,7 +274,7 @@ class StockFetcher:
         # Allows us to filter 100+ stocks instantly without hitting rate limits.
         
         # Enforce Cache Interval
-        if time.time() - self.last_fetch < INTERVAL_STOCKS: return
+        if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
         
         # Try today, if no data (weekend/holiday), try going back 3 days
         for i in range(0, 4):
@@ -649,9 +656,6 @@ class SportsFetcher:
 
         # 2. SPORTS
         if conf['mode'] in ['sports', 'live', 'my_teams', 'all']:
-            # ... (Full Sports Loop Logic - Simplified for readability) ...
-            # Normally iterates through self.leagues
-            # Since this is "full code", I will include the loop
             for league_key, config in self.leagues.items():
                 if not conf['active_sports'].get(league_key, False): continue
                 
@@ -815,7 +819,7 @@ class SportsFetcher:
             if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.get_movers())
             cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 
                           'stock_auto', 'stock_semi', 'stock_finance', 'stock_energy', 'stock_pharma', 
-                          'stock_consumer', 'stock_nyse', 'stock_etf', 'stock_commodities', 'stock_forex']
+                          'stock_consumer', 'stock_nyse', 'stock_etf', 'stock_forex'] # Commodities removed
             for cat in cats:
                 if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
         
@@ -859,13 +863,13 @@ def sports_worker():
     while True:
         try: fetcher.update_buffer_sports()
         except: pass
-        time.sleep(INTERVAL_SPORTS)
+        time.sleep(SPORTS_UPDATE_INTERVAL)
 
 def stocks_worker():
     while True:
         try: fetcher.update_buffer_stocks()
         except: pass
-        time.sleep(INTERVAL_STOCKS)
+        time.sleep(STOCKS_UPDATE_INTERVAL)
 
 # ================= FLASK API =================
 app = Flask(__name__)
