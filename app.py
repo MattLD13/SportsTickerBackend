@@ -40,13 +40,13 @@ TICKER_REGISTRY_FILE = "tickers.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 
 # FETCH INTERVALS
-SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks (4 calls/min)
+SPORTS_UPDATE_INTERVAL = 5      
+STOCKS_UPDATE_INTERVAL = 15     
 
 data_lock = threading.Lock()
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "User-Agent": "Mozilla/5.0",
     "Cache-Control": "no-cache"
 }
 
@@ -69,7 +69,7 @@ default_state = {
         'stock_finance': False,     
         'stock_consumer': False,    
         'stock_nyse_50': False,
-        'stock_forex': False        # Currencies & Metals
+        'stock_forex': False        
     },
     'mode': 'all', 
     'layout_mode': 'schedule',
@@ -100,12 +100,11 @@ DEFAULT_TICKER_SETTINGS = {
 state = default_state.copy()
 tickers = {} 
 
-# --- LOAD CONFIG ---
 if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # FORCE RESET if old keys persist
+            # Reset check
             old_keys = ['stock_indices', 'stock_etf']
             has_old = False
             if 'active_sports' in loaded:
@@ -120,21 +119,16 @@ if os.path.exists(CONFIG_FILE):
                     if k in state:
                         if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
                         else: state[k] = v
-    except Exception as e:
-        print(f"Error loading config: {e}")
+    except Exception as e: print(f"Error loading config: {e}")
 
-# --- LOAD TICKERS ---
 if os.path.exists(TICKER_REGISTRY_FILE):
-    try:
-        with open(TICKER_REGISTRY_FILE, 'r') as f:
-            tickers = json.load(f)
+    try: with open(TICKER_REGISTRY_FILE, 'r') as f: tickers = json.load(f)
     except: pass
 
 def save_json_atomically(filepath, data):
     temp = f"{filepath}.tmp"
     try:
-        with open(temp, 'w') as f:
-            json.dump(data, f, indent=4)
+        with open(temp, 'w') as f: json.dump(data, f, indent=4)
         os.replace(temp, filepath)
     except: pass
 
@@ -203,7 +197,7 @@ def generate_demo_data():
          'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
          'situation': {'shootout': { 'away': ['goal', 'miss', 'miss'], 'home': ['miss', 'goal', 'pending'] }}},
         {'type': 'stock_ticker', 'sport': 'stock_tech', 'id': 'demo_tsla', 'status': 'TECH', 'state': 'in', 'is_shown': True,
-         'home_abbr': 'TSLA', 'home_score': '184.86', 'away_score': '-1.38%', 'home_logo': 'https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/TSLA.png',
+         'home_abbr': 'TSLA', 'home_score': '184.86', 'away_score': '-1.38%', 'home_logo': 'https://upload.wikimedia.org/wikipedia/commons/e/e8/Tesla_logo.png',
          'tourney_name': 'TECH', 'situation': {'change': '-2.54'}}
     ]
 
@@ -242,50 +236,44 @@ class StockFetcher:
         self.market_cache = {} 
         self.last_fetch = 0
         
-        # === STOCK LISTS (UPDATED) ===
         self.lists = {
             'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOG", "AMZN", "META", "TSM", "AVGO", "ORCL", "PLTR", "CRM", "AMD", "IBM", "INTC", "SMCI"],
             'stock_momentum': ["TSLA", "PLTR", "COIN", "RBLX", "GME", "HOOD", "MARA", "RIOT", "DKNG", "UBER", "ABNB", "SQ", "SOFI"],
             'stock_energy': ["XOM", "CVX", "COP", "FCX", "NEM", "EOG", "SLB", "OXY", "MPC", "PSX", "VLO", "KMI", "HAL"],
             'stock_finance': ["JPM", "GS", "BAC", "MS", "BLK", "WFC", "C", "V", "MA", "AXP", "SCHW", "USB", "PNC"],
             'stock_consumer': ["WMT", "COST", "NKE", "SBUX", "MCD", "HD", "LOW", "KO", "PEP", "PG", "TGT", "CMG", "LULU", "YUM"],
-            
-            # NYSE TOP 50 (Subset for display)
-            'stock_nyse_50': [
-                "NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "TSLA", "BRK.B",
-                "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "PLTR",
-                "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM",
-                "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC",
-                "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"
-            ],
-            
-            # CURRENCIES & METALS (Using ETFs as Proxies)
+            'stock_nyse_50': ["NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "TSLA", "BRK.B", "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "PLTR", "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM", "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC", "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"],
             'stock_forex': ["FXE", "FXB", "FXY", "UUP", "GLD", "SLV", "PPLT", "PALL"]
         }
         
-        # FRIENDLY NAMES FOR CURRENCIES/METALS
-        self.DISPLAY_NAMES = {
-            "FXE": "EURO",
-            "FXB": "POUND",
-            "FXY": "YEN",
-            "UUP": "DOLLAR",
-            "GLD": "GOLD",
-            "SLV": "SILVER",
-            "PPLT": "PLATINUM",
-            "PALL": "PALLADIUM"
-        }
+        self.DISPLAY_NAMES = { "FXE": "EURO", "FXB": "POUND", "FXY": "YEN", "UUP": "DOLLAR", "GLD": "GOLD", "SLV": "SILVER", "PPLT": "PLATINUM", "PALL": "PALLADIUM" }
         
-        # CUSTOM ICONS (Ingots/Coins/Symbols)
-        self.CUSTOM_ICONS = {
+        self.HARDCODED_LOGOS = {
+            "AAPL": "https://upload.wikimedia.org/wikipedia/commons/8/84/Apple_Computer_Logo_rainbow.svg",
+            "MSFT": "https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg",
+            "NVDA": "https://upload.wikimedia.org/wikipedia/commons/2/21/Nvidia_logo.svg",
+            "GOOG": "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg",
+            "GOOGL": "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg",
+            "AMZN": "https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg",
+            "META": "https://upload.wikimedia.org/wikipedia/commons/7/7b/Meta_Platforms_Inc._logo.svg",
+            "TSLA": "https://upload.wikimedia.org/wikipedia/commons/e/e8/Tesla_logo.png",
+            "WMT": "https://upload.wikimedia.org/wikipedia/commons/c/ca/Walmart_logo.svg",
+            "COST": "https://upload.wikimedia.org/wikipedia/commons/5/59/Costco_Wholesale_logo_2010-10-26.svg",
+            "NKE": "https://upload.wikimedia.org/wikipedia/commons/a/a6/Logo_NIKE.svg",
+            "SBUX": "https://upload.wikimedia.org/wikipedia/en/d/d3/Starbucks_Corporation_Logo_2011.svg",
+            "MCD": "https://upload.wikimedia.org/wikipedia/commons/3/36/McDonald%27s_Golden_Arches.svg",
+            "JPM": "https://upload.wikimedia.org/wikipedia/commons/0/09/Chase_logo_2007.svg",
+            "BAC": "https://upload.wikimedia.org/wikipedia/commons/2/23/Bank_of_America_logo.svg",
+            "GS": "https://upload.wikimedia.org/wikipedia/commons/6/61/Goldman_Sachs.svg",
             "GLD": "https://cdn-icons-png.flaticon.com/512/1995/1995540.png",
             "SLV": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
             "PPLT": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
             "PALL": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
-            
-            "FXE": "https://cdn-icons-png.flaticon.com/512/32/32976.png",   # Euro Symbol
-            "FXB": "https://cdn-icons-png.flaticon.com/512/32/32979.png",   # Pound Symbol
-            "FXY": "https://cdn-icons-png.flaticon.com/512/32/32982.png",   # Yen Symbol
-            "UUP": "https://cdn-icons-png.flaticon.com/512/32/32936.png",   # Dollar Symbol
+            "FXE": "https://cdn-icons-png.flaticon.com/512/32/32976.png",
+            "FXB": "https://cdn-icons-png.flaticon.com/512/32/32979.png",
+            "FXY": "https://cdn-icons-png.flaticon.com/512/32/32982.png",
+            "UUP": "https://cdn-icons-png.flaticon.com/512/32/32936.png",
+            "BRK.B": "https://assets.parqet.com/logos/symbol/BRK.B?format=png"
         }
         
         self.load_cache()
@@ -301,26 +289,21 @@ class StockFetcher:
     def save_cache(self):
         export_cache = {}
         all_symbols = set()
-        for lst in self.lists.values():
-            all_symbols.update(lst)
-        
+        for lst in self.lists.values(): all_symbols.update(lst)
         for sym in all_symbols:
-            if sym in self.market_cache:
-                export_cache[sym] = self.market_cache[sym]
-                
-        try:
-            save_json_atomically(STOCK_CACHE_FILE, export_cache)
+            if sym in self.market_cache: export_cache[sym] = self.market_cache[sym]
+        try: save_json_atomically(STOCK_CACHE_FILE, export_cache)
         except: pass
 
     def get_logo_url(self, symbol):
-        if symbol.upper() in self.CUSTOM_ICONS:
-            return self.CUSTOM_ICONS[symbol.upper()]
-        clean_sym = symbol.upper().replace('.', '-')
-        return f"https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/{clean_sym}.png"
+        # 1. Hardcoded Override
+        if symbol.upper() in self.HARDCODED_LOGOS: return self.HARDCODED_LOGOS[symbol.upper()]
+        
+        # 2. Parqet (Reliable)
+        return f"https://assets.parqet.com/logos/symbol/{symbol.upper()}?format=png"
 
     def fetch_entire_market(self):
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
-        
         for i in range(0, 4):
             d = (dt.now() - timedelta(days=i)).strftime("%Y-%m-%d")
             url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{d}?adjusted=true&apiKey={self.api_key}"
@@ -351,62 +334,25 @@ class StockFetcher:
     def get_stock_obj(self, symbol, label):
         data = self.market_cache.get(symbol)
         if not data: return None
-        
-        # Display Name Override (for ETFs masking as currencies)
         display_name = self.DISPLAY_NAMES.get(symbol, symbol)
-        
         return {
-            'type': 'stock_ticker',
-            'sport': 'stock',
-            'id': f"stk_{symbol}",
-            'status': label,
-            'tourney_name': label,
-            'state': 'in',
-            'is_shown': True,
-            'home_abbr': display_name,
-            'home_score': data['price'],
-            'away_score': data['change_pct'],
-            'home_logo': self.get_logo_url(symbol),
-            'situation': {'change': data['change_amt']},
-            'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
+            'type': 'stock_ticker', 'sport': 'stock', 'id': f"stk_{symbol}", 'status': label, 'tourney_name': label,
+            'state': 'in', 'is_shown': True, 'home_abbr': display_name, 'home_score': data['price'],
+            'away_score': data['change_pct'], 'home_logo': self.get_logo_url(symbol),
+            'situation': {'change': data['change_amt']}, 'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
         }
 
     def get_list(self, list_key):
         self.fetch_entire_market()
         res = []
-        
         labels = {
-            'stock_tech_ai': 'TECH / AI',
-            'stock_momentum': 'MOMENTUM',
-            'stock_energy': 'ENERGY',
-            'stock_finance': 'FINANCE',
-            'stock_consumer': 'CONSUMER',
-            'stock_nyse_50': 'NYSE 50',
-            'stock_forex': 'CURRENCY'
+            'stock_tech_ai': 'TECH / AI', 'stock_momentum': 'MOMENTUM', 'stock_energy': 'ENERGY',
+            'stock_finance': 'FINANCE', 'stock_consumer': 'CONSUMER', 'stock_nyse_50': 'NYSE 50', 'stock_forex': 'CURRENCY'
         }
         label = labels.get(list_key, "MARKET")
-        
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
-        return res
-
-    def get_movers(self):
-        self.fetch_entire_market()
-        all_stocks = []
-        for k, v in self.market_cache.items():
-            try:
-                pct = float(v['change_pct'].replace('%','').replace('+',''))
-                all_stocks.append((k, v, pct))
-            except: pass
-        
-        sorted_stocks = sorted(all_stocks, key=lambda x: x[2], reverse=True)
-        top = sorted_stocks[:5]
-        bottom = sorted_stocks[-5:]
-        
-        res = []
-        for s in top: res.append(self.get_stock_obj(s[0], "TOP GAINER"))
-        for s in bottom: res.append(self.get_stock_obj(s[0], "TOP LOSER"))
         return res
 
 class SportsFetcher:
@@ -866,7 +812,7 @@ class SportsFetcher:
         with data_lock: conf = state.copy()
         
         if conf['mode'] in ['stocks', 'all']:
-            if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.get_movers())
+            # New Keys: stock_tech_ai, stock_momentum, etc.
             cats = ['stock_tech_ai', 'stock_momentum', 'stock_energy', 'stock_finance', 'stock_consumer', 'stock_nyse_50', 'stock_forex']
             for cat in cats:
                 if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
@@ -904,10 +850,8 @@ class SportsFetcher:
 fetcher = SportsFetcher(state['weather_location'])
 
 def sports_worker():
-    # Initial Team Fetch
     try: fetcher.fetch_all_teams()
     except: pass
-    
     while True:
         try: fetcher.update_buffer_sports()
         except: pass
@@ -919,7 +863,6 @@ def stocks_worker():
         except: pass
         time.sleep(STOCKS_UPDATE_INTERVAL)
 
-# ================= FLASK API =================
 app = Flask(__name__)
 CORS(app) 
 
@@ -932,7 +875,6 @@ def api_config():
             is_demo = new_data.get('demo_mode', was_demo)
             state.update(new_data)
             if was_demo and not is_demo: 
-                # Clear buffers to force refresh
                 state['buffer_sports'] = []
                 state['buffer_stocks'] = []
         save_config_file()
@@ -1021,8 +963,6 @@ def api_debug():
 def root(): return "Ticker Server Running"
 
 if __name__ == "__main__":
-    # Start separate threads
     threading.Thread(target=sports_worker, daemon=True).start()
     threading.Thread(target=stocks_worker, daemon=True).start()
-    
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
