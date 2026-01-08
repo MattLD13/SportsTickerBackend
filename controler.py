@@ -61,12 +61,13 @@ default_state = {
         # Utilities
         'weather': False, 'clock': False,
         
-        # Stock Categories (Commodities Removed, Metals moved to Forex)
-        'stock_movers': True, 'stock_indices': True, 'stock_tech': False, 
-        'stock_ai': False, 'stock_consulting': False, 'stock_crypto': False,
-        'stock_auto': False, 'stock_semi': False, 'stock_finance': False,
-        'stock_energy': False, 'stock_pharma': False, 'stock_consumer': False,
-        'stock_nyse': False, 'stock_etf': False, 'stock_forex': False
+        # NEW STOCK GROUPS (User Requested)
+        'stock_tech_ai': True,      # Mega Cap Tech & AI
+        'stock_momentum': False,    # High Volatility Momentum
+        'stock_energy': False,      # Energy & Commodities
+        'stock_finance': False,     # Financial System Pulse
+        'stock_consumer': False,    # Consumer & Lifestyle
+        'stock_nyse_50': False      # NYSE Top 50
     },
     'mode': 'all', 
     'layout_mode': 'schedule',
@@ -229,51 +230,38 @@ class StockFetcher:
         self.market_cache = {} 
         self.last_fetch = 0
         
-        # Massive Lists
+        # === NEW CATEGORIES (User Request) ===
         self.lists = {
-            'stock_indices': ["SPY", "QQQ", "DIA", "IWM", "VOO", "VTI", "IVV", "VEA", "VWO", "TLT", "EEM", "AGG"],
-            'stock_tech': ["NVDA", "MSFT", "AAPL", "AMD", "META", "GOOG", "AMZN", "NFLX", "CRM", "ADBE", "CSCO", "INTC", "IBM", "ORCL", "UBER", "ABNB", "PLTR", "SQ", "SHOP", "ZM"],
-            'stock_ai': ["NVDA", "SMCI", "PLTR", "AI", "GOOG", "MSFT", "AMD", "META", "PATH", "SNOW", "DDOG", "CRWD", "ZS", "PANW", "AVGO", "MRVL"],
-            'stock_consulting': ["ACN", "IT", "BAH", "IBM", "SAP", "ORCL", "INFY", "WIT", "CTSH", "EPAM", "GIB", "CACI"],
-            'stock_crypto': ["COIN", "MSTR", "MARA", "HOOD", "SQ", "RIOT", "CLSK", "HUT", "BITF", "CORZ", "CIFR", "WULF", "GREE", "IBIT", "FBTC"],
-            'stock_auto': ["TSLA", "F", "GM", "TM", "HMC", "RIVN", "LCID", "STLA", "NIO", "XPEV", "LI", "RACE", "TTM"],
-            'stock_semi': ["NVDA", "AMD", "INTC", "QCOM", "AVGO", "TXN", "MU", "TSM", "ASML", "LRCX", "AMAT", "ADI", "MRVL", "STM", "ON"],
-            'stock_finance': ["JPM", "BAC", "GS", "MS", "WFC", "C", "V", "MA", "AXP", "BLK", "SCHW", "PYPL", "USB", "PNC", "TFC"],
-            'stock_energy': ["XOM", "CVX", "SHEL", "BP", "COP", "SLB", "EOG", "PXD", "MPC", "PSX", "VLO", "OXY", "HAL", "KMI"],
-            'stock_pharma': ["LLY", "JNJ", "PFE", "MRK", "ABBV", "AMGN", "GILD", "BIIB", "REGN", "VRTX", "BMY", "AZN", "SNY", "NVS"],
-            'stock_consumer': ["WMT", "TGT", "COST", "HD", "LOW", "NKE", "SBUX", "MCD", "KO", "PEP", "PG", "CL", "KMB", "EL", "LULU", "CMG", "YUM"],
-            'stock_nyse': ["JPM", "WMT", "PG", "XOM", "JNJ", "V", "MA", "HD", "LLY", "MRK", "KO", "PEP", "BAC", "CVX", "MCD", "DIS", "T", "VZ", "BA", "CAT", "GE", "MMM", "IBM", "GS", "MS", "AXP", "UNH", "CVX", "WFC"],
-            'stock_etf': ["SPY", "QQQ", "DIA", "IWM", "VOO", "IVV", "VTI", "VEA", "VWO", "IEFA", "AGG", "BND", "GLD", "SLV", "GDX", "XLE", "XLF", "XLK", "XLV", "ARKK", "SMH"],
-            # Combined Currencies & Metals into Forex
-            'stock_forex': ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "GLD", "SLV", "PPLT", "PALL"]
-        }
-        
-        # SPECIAL LOGOS FOR FOREX/METALS
-        self.CUSTOM_ICONS = {
-            "GLD": "https://cdn-icons-png.flaticon.com/512/1995/1995540.png",  # Gold Ingot
-            "SLV": "https://cdn-icons-png.flaticon.com/512/566/566302.png",    # Silver Ingot
-            "PPLT": "https://cdn-icons-png.flaticon.com/512/566/566302.png",   # Platinum
-            "PALL": "https://cdn-icons-png.flaticon.com/512/566/566302.png",   # Palladium
-            "EURUSD": "https://cdn-icons-png.flaticon.com/512/32/32976.png",   # Euro Symbol
-            "GBPUSD": "https://cdn-icons-png.flaticon.com/512/32/32979.png",   # Pound Symbol
-            "USDJPY": "https://cdn-icons-png.flaticon.com/512/32/32982.png",   # Yen Symbol
-            "AUDUSD": "https://cdn-icons-png.flaticon.com/512/32/32936.png",   # Dollar Symbol
-            "USDCAD": "https://cdn-icons-png.flaticon.com/512/32/32936.png"    # Dollar Symbol
+            # 1. Mega Cap Tech & AI
+            'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOG", "AMZN"],
+            
+            # 2. High Volatility Momentum
+            'stock_momentum': ["TSLA", "PLTR", "COIN", "RBLX", "GME"],
+            
+            # 3. Energy & Commodities Exposure
+            'stock_energy': ["XOM", "CVX", "COP", "FCX", "NEM"],
+            
+            # 4. Financial System Pulse
+            'stock_finance': ["JPM", "GS", "BAC", "MS", "BLK"],
+            
+            # 5. Consumer & Lifestyle
+            'stock_consumer': ["WMT", "COST", "NKE", "SBUX", "MCD"],
+            
+            # 6. NYSE TOP 50 (Market Cap Weighted)
+            'stock_nyse_50': [
+                "NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "TSLA", "BRK.B",
+                "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "PLTR",
+                "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM",
+                "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC",
+                "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"
+            ]
         }
 
     def get_logo_url(self, symbol):
-        # 1. Check Custom Icons (Metals/Forex)
-        if symbol.upper() in self.CUSTOM_ICONS:
-            return self.CUSTOM_ICONS[symbol.upper()]
-            
-        # 2. Check Primary Repo (Davide Palazzo)
         return f"https://raw.githubusercontent.com/davidepalazzo/ticker-logos/main/ticker_icons/{symbol.upper()}.png"
 
     def fetch_entire_market(self):
         # 1 API CALL to rule them all. (Polygon Grouped Daily)
-        # Allows us to filter 100+ stocks instantly without hitting rate limits.
-        
-        # Enforce Cache Interval
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
         
         # Try today, if no data (weekend/holiday), try going back 3 days
@@ -284,7 +272,6 @@ class StockFetcher:
                 r = requests.get(url, timeout=10)
                 data = r.json()
                 if data.get('resultsCount', 0) > 0:
-                    # Found data!
                     print(f"Fetched Market Data for {d}. Items: {data['resultsCount']}")
                     new_cache = {}
                     for item in data.get('results', []):
@@ -324,39 +311,23 @@ class StockFetcher:
         }
 
     def get_list(self, list_key):
-        # Ensure we have data
         self.fetch_entire_market()
-        
         res = []
-        label = list_key.split('_')[1].upper()
-        if label == "INDICES": label = "INDEX"
+        
+        # Pretty Labels
+        labels = {
+            'stock_tech_ai': 'TECH / AI',
+            'stock_momentum': 'MOMENTUM',
+            'stock_energy': 'ENERGY',
+            'stock_finance': 'FINANCE',
+            'stock_consumer': 'CONSUMER',
+            'stock_nyse_50': 'NYSE 50'
+        }
+        label = labels.get(list_key, "MARKET")
         
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
-        return res
-
-    def get_movers(self):
-        self.fetch_entire_market()
-        # Sort cache by abs(change_pct)
-        # Convert cache to list
-        all_stocks = []
-        for k, v in self.market_cache.items():
-            try:
-                pct = float(v['change_pct'].replace('%','').replace('+',''))
-                all_stocks.append((k, v, pct))
-            except: pass
-        
-        # Sort by gain and loss
-        sorted_stocks = sorted(all_stocks, key=lambda x: x[2], reverse=True)
-        top = sorted_stocks[:5]
-        bottom = sorted_stocks[-5:]
-        
-        res = []
-        for s in top:
-            res.append(self.get_stock_obj(s[0], "TOP GAINER"))
-        for s in bottom:
-            res.append(self.get_stock_obj(s[0], "TOP LOSER"))
         return res
 
 class SportsFetcher:
@@ -816,10 +787,8 @@ class SportsFetcher:
         with data_lock: conf = state.copy()
         
         if conf['mode'] in ['stocks', 'all']:
-            if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.get_movers())
-            cats = ['stock_indices', 'stock_tech', 'stock_ai', 'stock_consulting', 'stock_crypto', 
-                          'stock_auto', 'stock_semi', 'stock_finance', 'stock_energy', 'stock_pharma', 
-                          'stock_consumer', 'stock_nyse', 'stock_etf', 'stock_forex'] # Commodities removed
+            # New Keys: stock_tech_ai, stock_momentum, etc.
+            cats = ['stock_tech_ai', 'stock_momentum', 'stock_energy', 'stock_finance', 'stock_consumer', 'stock_nyse_50']
             for cat in cats:
                 if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
         
