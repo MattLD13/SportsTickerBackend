@@ -789,11 +789,11 @@ class SportsFetcher:
                 try:
                     curr_p = config.get('scoreboard_params', {}).copy()
                     
-                    # --- FIX: Only force date if in Debug Mode ---
-                    # Otherwise, let ESPN decide (this fixes NBA/EPL not showing up)
+                    # --- FIXED LOGIC ---
+                    # Only force specific date if in Debug Mode with Custom Date.
+                    # Otherwise, use default fetch to get all relevant games, then filter in Python below.
                     if conf['debug_mode'] and conf['custom_date']:
                         curr_p['dates'] = target_date_str.replace('-', '')
-                    # ---------------------------------------------
                     
                     r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
                     data = r.json()
@@ -810,15 +810,17 @@ class SportsFetcher:
                             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
                             window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
                             
-                            # Expand window to 2 days to catch late games or early tomorrow games
-                            window_end_local = window_start_local + timedelta(days=2, hours=3)
+                            # --- TIGHTENED FILTER ---
+                            # Only show games starting between Today 00:00 and Tomorrow 04:00 AM
+                            # This excludes games strictly scheduled for tomorrow daytime/evening.
+                            window_end_local = window_start_local + timedelta(hours=28)
                             
                             window_start_utc = window_start_local.astimezone(timezone.utc)
                             window_end_utc = window_end_local.astimezone(timezone.utc)
                             
                             game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
                             
-                            # Filter: Show if Live/Half, OR if it falls within the window
+                            # Show if Live/Half/Delay OR if strictly within "Today + late night" window
                             if gst != 'in' and gst != 'half':
                                 if not (window_start_utc <= game_dt <= window_end_utc):
                                     continue
