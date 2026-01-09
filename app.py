@@ -612,7 +612,7 @@ class SportsFetcher:
                          pd = g.get('periodDescriptor', {})
                          pt = pd.get('periodType', '')
                          if pt == 'SHOOTOUT': disp = "FINAL S/O"
-                         elif pt == 'OT' or g.get('period', 0) > 3: disp = "FINAL OT"
+                         elif pt == 'OT': disp = "FINAL OT"
 
                     # === SUSPENDED CHECK (NHL Native) ===
                     if st in ['SUSP', 'SUSPENDED', 'PPD', 'POSTPONED']:
@@ -772,10 +772,12 @@ class SportsFetcher:
                 
                 # Standardize FINAL logic
                 if "FINAL" in s_disp:
+                    # Check period count for specific sports to append OT if missing from text
                     if league_key == 'nhl':
                         if "SO" in s_disp or "Shootout" in s_disp or p >= 5: s_disp = "FINAL S/O"
                         elif p == 4 and "OT" not in s_disp: s_disp = "FINAL OT"
                     elif league_key in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs'] and p > 4 and "OT" not in s_disp:
+                         # NFL/NBA regulation is 4 quarters
                          s_disp = "FINAL OT"
 
                 sit = comp.get('situation', {})
@@ -797,7 +799,10 @@ class SportsFetcher:
                 poss_abbr = ""
                 if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
                 elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
-                down_text = sit.get('downDistanceText', '') if s_disp != "Halftime" else ''
+                
+                # Ensure downDist is populated if available (it might be in 'downDistanceText' or 'shortDownDistanceText')
+                down_text = sit.get('downDistanceText') or sit.get('shortDownDistanceText') or ''
+                if s_disp == "Halftime": down_text = ''
 
                 game_obj = {
                     'type': 'scoreboard', 'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
