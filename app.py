@@ -8,6 +8,7 @@ import random
 import string
 from datetime import datetime as dt, timezone, timedelta
 import requests
+import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -64,10 +65,10 @@ default_state = {
         
         # Stock Categories
         'stock_tech_ai': True,        
-        'stock_momentum': False,    
-        'stock_energy': False,      
-        'stock_finance': False,     
-        'stock_consumer': False,    
+        'stock_momentum': False,     
+        'stock_energy': False,       
+        'stock_finance': False,      
+        'stock_consumer': False,     
         'stock_nyse_50': False,
         'stock_automotive': False,
         'stock_defense': False
@@ -217,6 +218,7 @@ class WeatherFetcher:
         self.city_name = city
         self.last_fetch = 0
         self.cache = None
+        self.session = requests.Session()
 
     def update_config(self, city=None, lat=None, lon=None):
         if lat is not None: self.lat = lat
@@ -244,10 +246,10 @@ class WeatherFetcher:
         
         try:
             w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto"
-            w_res = requests.get(w_url, timeout=5).json()
+            w_res = self.session.get(w_url, timeout=5).json()
 
             a_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={self.lat}&longitude={self.lon}&current=us_aqi"
-            a_res = requests.get(a_url, timeout=5).json()
+            a_res = self.session.get(a_url, timeout=5).json()
 
             current_temp = int(round(w_res['current']['temperature_2m']))
             current_code = w_res['current']['weather_code']
@@ -299,6 +301,8 @@ class StockFetcher:
         self.api_key = api_key
         self.market_cache = {} 
         self.last_fetch = 0
+        self.session = requests.Session()
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
         
         self.lists = {
             'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"],
@@ -336,30 +340,41 @@ class StockFetcher:
         clean_sym = sym.replace('.', '-')
         return f"https://financialmodelingprep.com/image-stock/{clean_sym}.png"
 
+    def fetch_market_date(self, offset):
+        d = (dt.now() - timedelta(days=offset)).strftime("%Y-%m-%d")
+        url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{d}?adjusted=true&apiKey={self.api_key}"
+        try:
+            r = self.session.get(url, timeout=10)
+            data = r.json()
+            if data.get('resultsCount', 0) > 0:
+                return data
+        except: pass
+        return None
+
     def fetch_entire_market(self):
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
-        for i in range(0, 4):
-            d = (dt.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-            url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{d}?adjusted=true&apiKey={self.api_key}"
-            try:
-                r = requests.get(url, timeout=10)
-                data = r.json()
-                if data.get('resultsCount', 0) > 0:
-                    new_cache = {}
-                    for item in data.get('results', []):
-                        ticker = item.get('T')
-                        close = item.get('c')
-                        open_p = item.get('o')
-                        if ticker and close and open_p:
-                            change_amt = close - open_p
-                            change_pct = (change_amt / open_p) * 100
-                            new_cache[ticker] = {'price': f"{close:.2f}", 'change_amt': f"{change_amt:+.2f}", 'change_pct': f"{change_pct:+.2f}%"}
-                    self.market_cache = new_cache
-                    self.last_fetch = time.time()
-                    self.save_cache()
-                    return
-            except Exception as e: print(f"Poly Fetch Err: {e}")
         
+        # Parallelize checking the last 4 days
+        futures = [self.executor.submit(self.fetch_market_date, i) for i in range(4)]
+        
+        for f in concurrent.futures.as_completed(futures):
+            data = f.result()
+            if data:
+                print(f"Fetched Market Data. Items: {data['resultsCount']}")
+                new_cache = {}
+                for item in data.get('results', []):
+                    ticker = item.get('T')
+                    close = item.get('c')
+                    open_p = item.get('o')
+                    if ticker and close and open_p:
+                        change_amt = close - open_p
+                        change_pct = (change_amt / open_p) * 100
+                        new_cache[ticker] = {'price': f"{close:.2f}", 'change_amt': f"{change_amt:+.2f}", 'change_pct': f"{change_pct:+.2f}%"}
+                self.market_cache = new_cache
+                self.last_fetch = time.time()
+                self.save_cache()
+                return
+
     def get_stock_obj(self, symbol, label):
         data = self.market_cache.get(symbol)
         if not data: return None
@@ -385,6 +400,10 @@ class SportsFetcher:
         self.stocks = StockFetcher("efAYbpvLyZ0H1FJT4m898zByYS119W0l")
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
+        self.session = requests.Session()
+        # Increased workers for parallel fetching
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10) 
+        
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
             'mlb': { 'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
@@ -438,7 +457,7 @@ class SportsFetcher:
         config = self.leagues[league_key]
         if 'team_params' not in config: return
         try:
-            r = requests.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=10)
+            r = self.session.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=10)
             data = r.json()
             if 'sports' in data:
                 for sport in data['sports']:
@@ -455,12 +474,14 @@ class SportsFetcher:
 
     def fetch_all_teams(self):
         try:
+            # Parallelize team fetching
             teams_catalog = {k: [] for k in self.leagues.keys()}
             for t in OLYMPIC_HOCKEY_TEAMS:
                 teams_catalog['hockey_olympics'].append({'abbr': t['abbr'], 'logo': t['logo'], 'color': '000000', 'alt_color': '444444'})
 
+            # FBS/FCS is large, do it separately
             url = f"{self.base_url}football/college-football/teams"
-            r = requests.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
+            r = self.session.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
             data = r.json()
             if 'sports' in data:
                 for sport in data['sports']:
@@ -480,8 +501,12 @@ class SportsFetcher:
                                 if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fcs']):
                                     teams_catalog['ncf_fcs'].append({'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
 
-            for league_key in ['nfl', 'mlb', 'nhl', 'nba', 'soccer_epl', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc']:
-                 self._fetch_simple_league(league_key, teams_catalog)
+            # Fetch other leagues in parallel
+            futures = []
+            leagues_to_fetch = ['nfl', 'mlb', 'nhl', 'nba', 'soccer_epl', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc']
+            for lk in leagues_to_fetch:
+                futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog))
+            concurrent.futures.wait(futures)
 
             with data_lock: state['all_teams_data'] = teams_catalog
         except Exception as e: print(f"Global Team Fetch Error: {e}")
@@ -490,7 +515,7 @@ class SportsFetcher:
     def fetch_shootout_details(self, game_id, away_id, home_id):
         try:
             url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
-            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3)
+            r = self.session.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3)
             if r.status_code != 200: return None
             data = r.json(); plays = data.get("plays", [])
             native_away = data.get("awayTeam", {}).get("id")
@@ -508,44 +533,68 @@ class SportsFetcher:
             return results
         except: return None
 
-    def _fetch_nhl_native(self, games_list, conf):
-        # Strict logic for NHL date
+    # Helper to fetch single game landing page
+    def _fetch_nhl_landing(self, gid):
+        try:
+            r = self.session.get(f"https://api-web.nhle.com/v1/gamecenter/{gid}/landing", headers=HEADERS, timeout=2)
+            if r.status_code == 200: return r.json()
+        except: pass
+        return None
+
+    def _fetch_nhl_native(self, conf):
+        # Returns list of games
+        games_found = []
         is_nhl = conf['active_sports'].get('nhl', False)
         utc_offset = conf.get('utc_offset', -5)
-        if not is_nhl: return
+        if not is_nhl: return []
         
-        # Calculate local today string YYYY-MM-DD
         now_utc = dt.now(timezone.utc)
         now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
         local_today_str = now_local.strftime("%Y-%m-%d")
         
         processed_ids = set()
         try:
-            r = requests.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
-            if r.status_code != 200: return
+            r = self.session.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
+            if r.status_code != 200: return []
             
-            # Iterate through the entire schedule week returned
+            landing_futures = {} # gid -> future
+
             for d in r.json().get('gameWeek', []):
                 for g in d.get('games', []):
-                    # STRICT DATE CHECK:
-                    # Convert this specific game's UTC start time to user's local time
-                    # Only include if it matches local_today_str
                     try:
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
                         g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
                         g_local = g_dt.astimezone(timezone(timedelta(hours=utc_offset)))
-                        g_local_str = g_local.strftime("%Y-%m-%d")
-                        
-                        if g_local_str != local_today_str:
-                            continue # Skip games not matching strict local today
+                        if g_local.strftime("%Y-%m-%d") != local_today_str: continue
                     except: continue
 
                     gid = g['id']
                     if gid in processed_ids: continue
                     processed_ids.add(gid)
                     
-                    # Process Game Data
+                    st = g.get('gameState', 'OFF')
+                    # If Live or Critical, queue a fetch for details
+                    if st in ['LIVE', 'CRIT']:
+                        landing_futures[gid] = self.executor.submit(self._fetch_nhl_landing, gid)
+            
+            # Process results now that requests are fired
+            # We iterate again to build the objects, checking futures if needed
+            processed_ids.clear() 
+            for d in r.json().get('gameWeek', []):
+                for g in d.get('games', []):
+                    try:
+                        g_utc = g.get('startTimeUTC')
+                        if not g_utc: continue
+                        g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
+                        g_local = g_dt.astimezone(timezone(timedelta(hours=utc_offset)))
+                        if g_local.strftime("%Y-%m-%d") != local_today_str: continue
+                    except: continue
+
+                    gid = g['id']
+                    if gid in processed_ids: continue
+                    processed_ids.add(gid)
+
                     h_ab = g['homeTeam']['abbrev']; a_ab = g['awayTeam']['abbrev']
                     h_sc = str(g['homeTeam'].get('score', 0)); a_sc = str(g['awayTeam'].get('score', 0))
                     st = g.get('gameState', 'OFF')
@@ -557,7 +606,6 @@ class SportsFetcher:
                     
                     map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
                     
-                    # Filtering modes
                     mode = conf['mode']; my_teams = conf['my_teams']
                     is_shown = True
                     if mode == 'live' and map_st != 'in': is_shown = False
@@ -568,21 +616,18 @@ class SportsFetcher:
                     disp = "Scheduled"; pp = False; poss = ""; en = False; shootout_data = None 
                     dur = self.calculate_game_timing('nhl', g_utc, 1, st)
 
-                    # Status Text Logic
                     if st in ['PRE', 'FUT']:
-                         try:
-                             disp = g_local.strftime("%I:%M %p").lstrip('0')
+                         try: disp = g_local.strftime("%I:%M %p").lstrip('0')
                          except: pass
                     elif st in ['FINAL', 'OFF']:
                          disp = "FINAL"
                          pd = g.get('periodDescriptor', {})
                          if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
 
-                    if map_st == 'in':
+                    if map_st == 'in' and gid in landing_futures:
                         try:
-                            r2 = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{gid}/landing", headers=HEADERS, timeout=2)
-                            if r2.status_code == 200:
-                                d2 = r2.json()
+                            d2 = landing_futures[gid].result()
+                            if d2:
                                 h_sc = str(d2['homeTeam'].get('score', h_sc)); a_sc = str(d2['awayTeam'].get('score', a_sc))
                                 pd = d2.get('periodDescriptor', {})
                                 clk = d2.get('clock', {}); time_rem = clk.get('timeRemaining', '00:00')
@@ -609,7 +654,7 @@ class SportsFetcher:
                                     en = (ag==0 or hg==0)
                         except: disp = "Live" 
 
-                    games_list.append({
+                    games_found.append({
                         'type': 'scoreboard',
                         'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': is_shown,
                         'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
@@ -620,15 +665,15 @@ class SportsFetcher:
                         'estimated_duration': dur,
                         'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en, 'shootout': shootout_data }
                     })
-        except: pass
+            return games_found
+        except: return []
 
-    # NEW: Generic Shootout for Soccer (ESPN API)
     def fetch_shootout_details_soccer(self, game_id, sport):
         try:
             path_part = "soccer/eng.1"
             if 'soccer' in sport: path_part = f"soccer/{sport.replace('soccer_','')}"
             url = f"https://site.api.espn.com/apis/site/v2/sports/{path_part}/summary?event={game_id}"
-            r = requests.get(url, headers=HEADERS, timeout=3)
+            r = self.session.get(url, headers=HEADERS, timeout=3)
             data = r.json(); results = {'away': [], 'home': []}
             plays = data.get("shootout", [])
             if not plays: return None
@@ -639,232 +684,193 @@ class SportsFetcher:
             return results
         except: return None
 
-    def fetch_leaderboard_event(self, league_key, config, games_list, conf, window_start, window_end):
+    # Helper function for threaded execution
+    def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset):
+        local_games = []
+        if not conf['active_sports'].get(league_key, False): return []
+
+        # Racing Leaderboard
+        if config.get('type') == 'leaderboard':
+            self.fetch_leaderboard_event(league_key, config, local_games, conf, window_start_utc, window_end_utc)
+            return local_games
+
+        # ESPN Scoreboard
         try:
-            url = f"{self.base_url}{config['path']}/scoreboard"
-            r = requests.get(url, headers=HEADERS, timeout=5)
+            curr_p = config.get('scoreboard_params', {}).copy()
+            if conf['debug_mode'] and conf['custom_date']:
+                curr_p['dates'] = conf['custom_date'].replace('-', '')
+            
+            r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
             data = r.json()
+            
             for e in data.get('events', []):
-                name = e.get('name', e.get('shortName', 'Race'))
-                status_obj = e.get('status', {})
-                state = status_obj.get('type', {}).get('state', 'pre')
-                
                 utc_str = e['date'].replace('Z', '')
+                st = e.get('status', {})
+                tp = st.get('type', {})
+                gst = tp.get('state', 'pre')
+                
                 try:
-                    event_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                    if not (window_start <= event_dt <= window_end) and state != 'in':
-                        continue
+                    game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+                    # Filter: if not live, must be within window
+                    if gst != 'in' and gst != 'half':
+                        if not (window_start_utc <= game_dt <= window_end_utc): continue
                 except: continue
 
-                leaders = []
-                try:
-                    comps = e.get('competitions', [{}])[0].get('competitors', [])
-                    sorted_comps = sorted(comps, key=lambda x: int(x.get('curatedRank', x.get('order', 999))))
-                    for c in sorted_comps[:5]:
-                        athlete = c.get('athlete', {})
-                        disp_name = athlete.get('displayName', c.get('team',{}).get('displayName','Unk'))
-                        if ' ' in disp_name: disp_name = disp_name.split(' ')[-1]
-                        rank = c.get('curatedRank', c.get('order', '-'))
-                        leaders.append({'rank': str(rank), 'name': disp_name})
-                except: pass
+                comp = e['competitions'][0]
+                h = comp['competitors'][0]
+                a = comp['competitors'][1]
+                h_ab = h['team'].get('abbreviation', 'UNK')
+                a_ab = a['team'].get('abbreviation', 'UNK')
+                
+                if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
+                if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
+
+                is_shown = True
+                if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
+                elif conf['mode'] == 'my_teams':
+                    in_my = (f"{league_key}:{h_ab}" in conf['my_teams'] or h_ab in conf['my_teams'] or f"{league_key}:{a_ab}" in conf['my_teams'] or a_ab in conf['my_teams'])
+                    if not in_my: is_shown = False
+
+                h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
+                a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
+                h_score = h.get('score','0')
+                a_score = a.get('score','0')
+                if 'soccer' in league_key: 
+                    h_score = re.sub(r'\s*\(.*?\)', '', str(h_score))
+                    a_score = re.sub(r'\s*\(.*?\)', '', str(a_score))
+
+                s_disp = tp.get('shortDetail', 'TBD')
+                p = st.get('period', 1)
+                duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
+
+                if gst == 'pre':
+                    try: s_disp = game_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
+                    except: pass
+                elif gst == 'in' or gst == 'half':
+                    clk = st.get('displayClock', '0:00').replace("'", "")
+                    if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']): s_disp = "Halftime"
+                    elif 'hockey' in config['path'] and clk == '0:00':
+                            if p == 1: s_disp = "End 1st"
+                            elif p == 2: s_disp = "End 2nd"
+                            elif p == 3: s_disp = "End 3rd"
+                            else: s_disp = "Intermission"
+                    else:
+                        prefix = "P" if 'hockey' in config['path'] else "Q"
+                        s_disp = f"{prefix}{p} {clk}"
+                        if 'soccer' in config['path']:
+                            s_disp = f"{clk}'"
+                            if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
+
+                s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
+                if "FINAL" in s_disp:
+                    if league_key == 'nhl' and "SO" in s_disp: s_disp = "FINAL S/O"
+                    elif p > 4 and "OT" not in s_disp and league_key == 'nhl': s_disp = "FINAL OT"
+
+                sit = comp.get('situation', {})
+                shootout_data = None
+                is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
+                
+                if is_shootout and 'soccer' in league_key:
+                    shootout_data = self.fetch_shootout_details_soccer(e['id'], league_key)
+                
+                poss_raw = sit.get('possession')
+                if poss_raw: self.possession_cache[e['id']] = poss_raw
+                elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
+                if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime':
+                    poss_raw = None
+                    self.possession_cache.pop(e['id'], None)
+
+                poss_abbr = ""
+                if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
+                elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
+                down_text = sit.get('downDistanceText', '') if s_disp != "Halftime" else ''
 
                 game_obj = {
-                    'type': 'leaderboard', 'sport': league_key, 'id': e['id'],
-                    'status': status_obj.get('type', {}).get('shortDetail', 'Live'),
-                    'state': state, 'tourney_name': name, 'is_shown': True, 'startTimeUTC': e['date'],
-                    'leaders': leaders
+                    'type': 'scoreboard', 'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
+                    'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg,
+                    'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg,
+                    'home_color': f"#{h['team'].get('color','000000')}", 'home_alt_color': f"#{h['team'].get('alternateColor','ffffff')}",
+                    'away_color': f"#{a['team'].get('color','000000')}", 'away_alt_color': f"#{a['team'].get('alternateColor','ffffff')}",
+                    'startTimeUTC': e['date'],
+                    'estimated_duration': duration_est,
+                    'situation': { 
+                        'possession': poss_abbr, 
+                        'isRedZone': sit.get('isRedZone', False), 
+                        'downDist': down_text, 
+                        'shootout': shootout_data,
+                        'powerPlay': False, 
+                        'emptyNet': False
+                    }
                 }
-                games_list.append(game_obj)
-        except Exception as e: print(f"Racing fetch error {league_key}: {e}")
+                if league_key == 'mlb':
+                    game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 
+                        'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
+                local_games.append(game_obj)
+        except: pass
+        return local_games
 
     def update_buffer_sports(self):
-        # WORKER FUNCTION FOR SPORTS
-        games = []
+        all_games = []
         with data_lock: 
             conf = state.copy()
-            if conf.get('demo_mode', False): return # Demo handled elsewhere
+            if conf.get('demo_mode', False): return
 
-        # 1. WEATHER & CLOCK
+        # 1. WEATHER & CLOCK (Simple, fast)
         if conf['active_sports'].get('weather'):
             if (conf['weather_lat'] != self.weather.lat or 
                 conf['weather_lon'] != self.weather.lon or 
                 conf['weather_city'] != self.weather.city_name):
                 self.weather.update_config(city=conf['weather_city'], lat=conf['weather_lat'], lon=conf['weather_lon'])
-            
             w = self.weather.get_weather()
-            if w: games.append(w)
+            if w: all_games.append(w)
 
         if conf['active_sports'].get('clock'):
-            games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
+            all_games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
 
-        # 2. SPORTS
+        # 2. SPORTS (Parallelized)
         if conf['mode'] in ['sports', 'live', 'my_teams', 'all']:
+            # Calculate Time Windows once
+            utc_offset = conf.get('utc_offset', -5)
+            now_utc = dt.now(timezone.utc)
+            now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+            window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            window_end_local = window_start_local + timedelta(days=1, hours=3) # Today + 3 AM tomorrow
+            window_start_utc = window_start_local.astimezone(timezone.utc)
+            window_end_utc = window_end_local.astimezone(timezone.utc)
+
+            # Submit tasks
+            futures = []
+            
+            # NHL Native Special Case
+            if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
+                futures.append(self.executor.submit(self._fetch_nhl_native, conf))
+            
+            # All other ESPN leagues
             for league_key, config in self.leagues.items():
-                if not conf['active_sports'].get(league_key, False): continue
+                # Skip NHL here if we are using native mode
+                if league_key == 'nhl' and not conf['debug_mode']: continue 
                 
-                # Racing
-                if config.get('type') == 'leaderboard':
-                    utc_offset = conf.get('utc_offset', -5)
-                    now_utc = dt.now(timezone.utc)
-                    now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-                    window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-                    window_end_local = window_start_local + timedelta(days=1, hours=3)
-                    window_start_utc = window_start_local.astimezone(timezone.utc)
-                    window_end_utc = window_end_local.astimezone(timezone.utc)
-                    self.fetch_leaderboard_event(league_key, config, games, conf, window_start_utc, window_end_utc)
-                    continue
-
-                # NHL Native
-                if league_key == 'nhl' and not conf['debug_mode']:
-                    prev_count = len(games)
-                    self._fetch_nhl_native(games, conf)
-                    if len(games) > prev_count: continue 
-
-                # ESPN FETCHING (General Window Logic)
+                futures.append(self.executor.submit(
+                    self.fetch_single_league, 
+                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset
+                ))
+            
+            # Gather Results
+            for f in concurrent.futures.as_completed(futures):
                 try:
-                    curr_p = config.get('scoreboard_params', {}).copy()
-                    
-                    if conf['debug_mode'] and conf['custom_date']:
-                        curr_p['dates'] = conf['custom_date'].replace('-', '')
-                    
-                    r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
-                    data = r.json()
-                    
-                    for e in data.get('events', []):
-                        utc_str = e['date'].replace('Z', '')
-                        st = e.get('status', {})
-                        tp = st.get('type', {})
-                        gst = tp.get('state', 'pre')
-                        
-                        try:
-                            utc_offset = conf.get('utc_offset', -5)
-                            now_utc = dt.now(timezone.utc)
-                            now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-                            window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-                            
-                            # Expand window to include late night games (up to 4 AM tomorrow)
-                            window_end_local = window_start_local + timedelta(hours=28)
-                            
-                            window_start_utc = window_start_local.astimezone(timezone.utc)
-                            window_end_utc = window_end_local.astimezone(timezone.utc)
-                            
-                            game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                            
-                            # Show if Live/Half/Delay OR if within Today+Late Night window
-                            if gst != 'in' and gst != 'half':
-                                if not (window_start_utc <= game_dt <= window_end_utc):
-                                    continue
-                        except: continue
+                    res = f.result()
+                    if res: all_games.extend(res)
+                except Exception as e: print(f"League fetch error: {e}")
 
-                        comp = e['competitions'][0]
-                        h = comp['competitors'][0]
-                        a = comp['competitors'][1]
-                        h_ab = h['team'].get('abbreviation', 'UNK')
-                        a_ab = a['team'].get('abbreviation', 'UNK')
-                        
-                        if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
-                        if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
-
-                        is_shown = True
-                        if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
-                        elif conf['mode'] == 'my_teams':
-                            in_my = (f"{league_key}:{h_ab}" in conf['my_teams'] or h_ab in conf['my_teams'] or f"{league_key}:{a_ab}" in conf['my_teams'] or a_ab in conf['my_teams'])
-                            if not in_my: is_shown = False
-
-                        h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
-                        a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
-                        h_score = h.get('score','0')
-                        a_score = a.get('score','0')
-                        
-                        if 'soccer' in league_key: 
-                            h_score = re.sub(r'\s*\(.*?\)', '', str(h_score))
-                            a_score = re.sub(r'\s*\(.*?\)', '', str(a_score))
-
-                        s_disp = tp.get('shortDetail', 'TBD')
-                        p = st.get('period', 1)
-                        duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
-
-                        if gst == 'pre':
-                            try: s_disp = game_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
-                            except: pass
-                        elif gst == 'in' or gst == 'half':
-                            clk = st.get('displayClock', '0:00').replace("'", "")
-                            if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
-                                s_disp = "Halftime"
-                            elif 'hockey' in config['path'] and clk == '0:00':
-                                 if p == 1: s_disp = "End 1st"
-                                 elif p == 2: s_disp = "End 2nd"
-                                 elif p == 3: s_disp = "End 3rd"
-                                 else: s_disp = "Intermission"
-                            else:
-                                prefix = "P" if 'hockey' in config['path'] else "Q"
-                                s_disp = f"{prefix}{p} {clk}"
-                                if 'soccer' in config['path']:
-                                    s_disp = f"{clk}'"
-                                    if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
-
-                        s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
-                        if "FINAL" in s_disp:
-                            if league_key == 'nhl' and "SO" in s_disp: s_disp = "FINAL S/O"
-                            elif p > 4 and "OT" not in s_disp and league_key == 'nhl': s_disp = "FINAL OT"
-
-                        # === SITUATION LOGIC ===
-                        sit = comp.get('situation', {})
-                        shootout_data = None
-                        is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
-                        
-                        if is_shootout and 'soccer' in league_key:
-                            shootout_data = self.fetch_shootout_details_soccer(e['id'], league_key)
-                        
-                        # POSSESSION
-                        poss_raw = sit.get('possession')
-                        if poss_raw: self.possession_cache[e['id']] = poss_raw
-                        elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
-                        
-                        if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime':
-                            poss_raw = None
-                            self.possession_cache.pop(e['id'], None)
-
-                        poss_abbr = ""
-                        if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
-                        elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
-                        
-                        down_text = sit.get('downDistanceText', '') if s_disp != "Halftime" else ''
-
-                        game_obj = {
-                            'type': 'scoreboard', 'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': is_shown,
-                            'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg,
-                            'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg,
-                            'home_color': f"#{h['team'].get('color','000000')}", 'home_alt_color': f"#{h['team'].get('alternateColor','ffffff')}",
-                            'away_color': f"#{a['team'].get('color','000000')}", 'away_alt_color': f"#{a['team'].get('alternateColor','ffffff')}",
-                            'startTimeUTC': e['date'],
-                            'estimated_duration': duration_est,
-                            'situation': { 
-                                'possession': poss_abbr, 
-                                'isRedZone': sit.get('isRedZone', False), 
-                                'downDist': down_text, 
-                                'shootout': shootout_data,
-                                'powerPlay': False, 
-                                'emptyNet': False
-                            }
-                        }
-                        if league_key == 'mlb':
-                            game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 
-                                'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
-                        games.append(game_obj)
-                except Exception as e: pass
-        
         with data_lock: 
-            state['buffer_sports'] = games
+            state['buffer_sports'] = all_games
             self.merge_buffers()
 
     def update_buffer_stocks(self):
-        # WORKER FUNCTION FOR STOCKS
         games = []
         with data_lock: conf = state.copy()
         
         if conf['mode'] in ['stocks', 'all']:
-            # UPDATED CATEGORY LIST
             cats = ['stock_tech_ai', 'stock_momentum', 'stock_energy', 'stock_finance', 'stock_consumer', 'stock_nyse_50', 
                     'stock_automotive', 'stock_defense']
             
@@ -876,7 +882,6 @@ class SportsFetcher:
             self.merge_buffers()
 
     def merge_buffers(self):
-        # Combines the two separate buffers into 'current_games' for the frontend
         if state.get('demo_mode', False):
             state['current_games'] = generate_demo_data()
             return
@@ -894,7 +899,6 @@ class SportsFetcher:
         elif mode == 'clock':
             final_list = [g for g in sports if g.get('sport') == 'clock']
         else: # ALL
-            # Put util cards (weather/clock) first, then sports, then stocks
             utils = [g for g in sports if g.get('type') == 'weather' or g.get('sport') == 'clock']
             pure_sports = [g for g in sports if g not in utils]
             final_list = utils + pure_sports + stocks
@@ -936,7 +940,6 @@ def api_config():
             was_demo = state.get('demo_mode', False)
             is_demo = new_data.get('demo_mode', was_demo)
             
-            # Handle specific location updates to pass to fetcher
             new_city = new_data.get('weather_city')
             new_lat = new_data.get('weather_lat')
             new_lon = new_data.get('weather_lon')
@@ -947,7 +950,6 @@ def api_config():
             state.update(new_data)
             
             if was_demo and not is_demo: 
-                # Clear buffers to force refresh
                 state['buffer_sports'] = []
                 state['buffer_stocks'] = []
         save_config_file()
