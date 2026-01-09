@@ -249,7 +249,13 @@ class TickerStreamer:
         self.games = []; self.seamless_mode = True; self.brightness = 0.5; self.scroll_sleep = 0.05
         self.inverted = False; self.test_pattern = False; self.running = True; self.logo_cache = {}
         self.game_render_cache = {}; self.anim_tick = 0; self.is_pairing = False; self.pairing_code = ""
-        self.config_updated = False; self.bg_strip = None; self.active_strip = None; self.bg_strip_ready = False
+        self.config_updated = False; 
+        
+        # ACTIVE STATE MANAGEMENT
+        self.active_strip = None
+        self.bg_strip = None
+        self.bg_strip_ready = False
+        self.new_games_list = [] # Needed for mapping calculation
         
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
@@ -694,16 +700,24 @@ class TickerStreamer:
         self.game_render_cache[game_hash] = img
         return img
 
+    def get_item_width(self, game):
+        # Helper to know how wide an item is in pixels
+        t = game.get('type')
+        s = game.get('sport')
+        if t == 'stock_ticker' or (s and s.startswith('stock')): return 128
+        if t == 'weather': return 384 # 6 panels
+        return 64 # Standard scoreboard/leaderboard/clock
+
     def build_seamless_strip(self, playlist):
         if not playlist: return None
         safe_playlist = playlist[:60]
         total_w = 0
         for g in safe_playlist:
-            if g.get('type') == 'stock_ticker': total_w += 128
-            elif g.get('type') == 'weather': total_w += 384
-            else: total_w += 64
+            total_w += self.get_item_width(g)
         
+        # Create strip with padding for seamless looping
         strip = Image.new("RGBA", (total_w + PANEL_W, PANEL_H), (0,0,0,255))
+        
         x = 0
         for g in safe_playlist:
             img = self.draw_single_game(g)
@@ -722,6 +736,7 @@ class TickerStreamer:
 
     def render_loop(self):
         strip_offset = 0.0
+        
         while self.running:
             try:
                 if self.is_pairing:
@@ -729,40 +744,80 @@ class TickerStreamer:
                     
                 if self.brightness <= 0.01:
                     self.matrix.Clear(); time.sleep(1.0); continue
-                    
-                playlist = list(self.games)
                 
-                if not playlist:
-                    img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0)); d = ImageDraw.Draw(img)
-                    t_str = time.strftime("%I:%M"); w = d.textlength(t_str, font=self.font)
-                    d.text(((PANEL_W - w)/2, 10), t_str, font=self.font, fill=(50,50,50))
-                    self.update_display(img); time.sleep(1); continue
-
-                if len(playlist) == 1 and playlist[0].get('sport') == 'clock':
-                    self.update_display(self.draw_clock_modern()); time.sleep(0.1); continue
-                
-                if len(playlist) == 1 and playlist[0].get('type') == 'weather':
-                    self.update_display(self.draw_weather_detailed(playlist[0])); time.sleep(0.1); continue
-
-                if self.seamless_mode:
-                    if self.bg_strip_ready: 
+                # --- SEAMLESS UPDATE LOGIC ---
+                if self.bg_strip_ready:
+                    # Case 1: Startup (no active strip) - Just take it
+                    if self.active_strip is None:
                         self.active_strip = self.bg_strip
+                        self.games = self.new_games_list # Update reference
                         self.bg_strip_ready = False
+                        strip_offset = 0
                     
-                    if not self.active_strip: 
-                        self.active_strip = self.build_seamless_strip(playlist)
+                    else:
+                        # Case 2: Mid-scroll update
+                        # Goal: Find the item currently at x=0 (left edge)
+                        # and map it to the new list to find the new offset.
+                        
+                        current_x = int(strip_offset)
+                        accum_w = 0
+                        visible_item_id = None
+                        pixel_delta = 0
+                        
+                        # 2a. Find visible item in CURRENT list
+                        for g in self.games: # Uses old list
+                            w = self.get_item_width(g)
+                            if accum_w + w > current_x:
+                                # Found the item spanning the left edge
+                                visible_item_id = g.get('id')
+                                pixel_delta = current_x - accum_w
+                                break
+                            accum_w += w
+                        
+                        # 2b. Find that item in NEW list
+                        new_offset = -1
+                        new_accum_w = 0
+                        if visible_item_id:
+                            for g in self.new_games_list:
+                                w = self.get_item_width(g)
+                                if g.get('id') == visible_item_id:
+                                    new_offset = new_accum_w + pixel_delta
+                                    break
+                                new_accum_w += w
+                        
+                        # 2c. Execute Swap
+                        if new_offset >= 0:
+                            # Match found! Seamless transition.
+                            self.active_strip = self.bg_strip
+                            self.games = self.new_games_list
+                            strip_offset = float(new_offset)
+                            self.bg_strip_ready = False
+                        else:
+                            # Item removed or not found.
+                            # Fallback: Wait for reset (standard logic)
+                            if int(strip_offset) == 0:
+                                self.active_strip = self.bg_strip
+                                self.games = self.new_games_list
+                                self.bg_strip_ready = False
+                                strip_offset = 0
+
+                if self.active_strip:
+                    total_w = self.active_strip.width - PANEL_W
+                    if total_w <= 0: total_w = 1
                     
-                    if self.active_strip:
-                        total_w = self.active_strip.width - PANEL_W
-                        if total_w <= 0: total_w = 1
-                        view = self.active_strip.crop((int(strip_offset), 0, int(strip_offset) + PANEL_W, PANEL_H))
-                        self.update_display(view)
-                        strip_offset += 1
-                        if strip_offset >= total_w: strip_offset = 0
-                        time.sleep(self.scroll_sleep)
-                    else: time.sleep(0.1)
+                    # Wrap around logic for offset
+                    if strip_offset >= total_w:
+                        strip_offset = 0
+                        
+                    x = int(strip_offset)
+                    view = self.active_strip.crop((x, 0, x + PANEL_W, PANEL_H))
+                    self.update_display(view)
+                    
+                    strip_offset += 1
+                    time.sleep(self.scroll_sleep)
                 else:
                     time.sleep(0.1)
+                    
             except Exception as e:
                 print(f"Render Loop Crash Prevented: {e}")
                 time.sleep(1)
@@ -787,8 +842,6 @@ class TickerStreamer:
                 
                 current_hash = str(new_games) + str(data.get('local_config'))
                 if current_hash != last_hash:
-                    print(f"Received {len(new_games)} items.")
-                    
                     logos = []
                     for g in new_games:
                         if g.get('home_logo'): 
@@ -798,9 +851,7 @@ class TickerStreamer:
                             logos.append((g.get('away_logo'), (24, 24)))
                             logos.append((g.get('away_logo'), (16, 16)))
                     
-                    # Deduplicate downloads
                     unique_logos = list(set(logos))
-                    
                     fs = [self.executor.submit(self.download_and_process_logo, u, s) for u, s in unique_logos]
                     concurrent.futures.wait(fs)
                     
@@ -808,9 +859,11 @@ class TickerStreamer:
                     self.scroll_sleep = data.get('local_config', {}).get('scroll_speed', 0.05)
                     self.inverted = data.get('local_config', {}).get('inverted', False)
                     
+                    # Prepare new data for the render thread
+                    self.new_games_list = new_games # Store for mapping logic
                     self.bg_strip = self.build_seamless_strip(new_games)
                     self.bg_strip_ready = True
-                    self.games = new_games
+                    
                     last_hash = current_hash
                     self.game_render_cache.clear()
                     
