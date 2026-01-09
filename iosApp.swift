@@ -2,7 +2,11 @@ import SwiftUI
 import Foundation
 import Combine
 import UIKit
+import CoreLocation // <--- REQUIRED FOR GEOCODING
 
+// ==========================================
+// MARK: - 0. EXTENSIONS
+// ==========================================
 extension Color {
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
@@ -17,6 +21,7 @@ extension Color {
         }
         self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue:  Double(b) / 255, opacity: Double(a) / 255)
     }
+    
     var isGrayscaleOrBlack: Bool {
         guard let components = self.cgColor?.components, components.count >= 3 else { return true }
         let r = components[0], g = components[1], b = components[2]
@@ -28,10 +33,14 @@ extension Color {
     }
 }
 
+// ==========================================
+// MARK: - 1. DATA MODELS
+// ==========================================
 struct ShootoutData: Decodable, Hashable, Sendable {
     let away: [String]?
     let home: [String]?
 }
+
 struct Situation: Decodable, Hashable, Sendable {
     let possession: String?
     let downDist: String?
@@ -45,10 +54,11 @@ struct Situation: Decodable, Hashable, Sendable {
     let powerPlay: Bool?
     let emptyNet: Bool?
     let icon: String?
+    let change: String?
     let shootout: ShootoutData?
     
     enum CodingKeys: String, CodingKey {
-        case possession, downDist, isRedZone, balls, strikes, outs, onFirst, onSecond, onThird, powerPlay, emptyNet, icon, shootout
+        case possession, downDist, isRedZone, balls, strikes, outs, onFirst, onSecond, onThird, powerPlay, emptyNet, icon, change, shootout
     }
     
     init(from decoder: Decoder) throws {
@@ -56,6 +66,7 @@ struct Situation: Decodable, Hashable, Sendable {
         if let stringPoss = try? container.decode(String.self, forKey: .possession) { possession = stringPoss }
         else if let intPoss = try? container.decode(Int.self, forKey: .possession) { possession = String(intPoss) }
         else { possession = nil }
+        
         downDist = try? container.decode(String.self, forKey: .downDist)
         isRedZone = try? container.decode(Bool.self, forKey: .isRedZone)
         balls = try? container.decode(Int.self, forKey: .balls)
@@ -67,9 +78,11 @@ struct Situation: Decodable, Hashable, Sendable {
         powerPlay = try? container.decode(Bool.self, forKey: .powerPlay)
         emptyNet = try? container.decode(Bool.self, forKey: .emptyNet)
         icon = try? container.decode(String.self, forKey: .icon)
+        change = try? container.decode(String.self, forKey: .change)
         shootout = try? container.decode(ShootoutData.self, forKey: .shootout)
     }
 }
+
 struct Game: Identifiable, Decodable, Hashable, Sendable {
     let id: String
     let sport: String
@@ -119,25 +132,31 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
         situation = try? c.decode(Situation.self, forKey: .situation)
         type = try? c.decode(String.self, forKey: .type)
         tourney_name = try? c.decode(String.self, forKey: .tourney_name)
+        
         if let hid = try? c.decode(String.self, forKey: .home_id) { home_id = hid }
         else if let hidInt = try? c.decode(Int.self, forKey: .home_id) { home_id = String(hidInt) }
         else { home_id = nil }
+        
         if let aid = try? c.decode(String.self, forKey: .away_id) { away_id = aid }
         else if let aidInt = try? c.decode(Int.self, forKey: .away_id) { away_id = String(aidInt) }
         else { away_id = nil }
+        
         if let hs = try? c.decode(String.self, forKey: .home_score) { home_score = hs }
         else if let hsInt = try? c.decode(Int.self, forKey: .home_score) { home_score = String(hsInt) }
         else { home_score = "0" }
+        
         if let `as` = try? c.decode(String.self, forKey: .away_score) { away_score = `as` }
         else if let asInt = try? c.decode(Int.self, forKey: .away_score) { away_score = String(asInt) }
         else { away_score = "0" }
     }
 }
+
 struct TeamData: Decodable, Identifiable, Hashable, Sendable {
     var id: String { abbr }
     let abbr: String
     let logo: String?
 }
+
 struct TickerState: Codable, Sendable {
     var active_sports: [String: Bool]
     var mode: String
@@ -146,39 +165,53 @@ struct TickerState: Codable, Sendable {
     var debug_mode: Bool
     var demo_mode: Bool?
     var custom_date: String?
-    var weather_location: String?
     var scroll_speed: Int?
     var show_debug_options: Bool?
+    
+    // Updated Weather Keys for Server v2
+    var weather_location: String? // Legacy, kept for UI text
+    var weather_city: String?
+    var weather_lat: Double?
+    var weather_lon: Double?
 }
+
 struct APIResponse: Decodable, Sendable {
     let settings: TickerState
     let games: [Game]
 }
+
 struct DeviceSettings: Codable, Sendable {
     var brightness: Int
     var scroll_speed: Double
     var scroll_seamless: Bool?
     var inverted: Bool?
 }
+
 struct TickerDevice: Identifiable, Decodable, Sendable {
     let id: String
     let name: String
     var settings: DeviceSettings
     let last_seen: Double?
 }
+
 struct PairResponse: Decodable, Sendable {
     let success: Bool
     let message: String?
     let ticker_id: String?
 }
 
+// ==========================================
+// MARK: - 2. VIEW MODEL
+// ==========================================
 @MainActor
 class TickerViewModel: ObservableObject {
     @Published var games: [Game] = []
     @Published var allTeams: [String: [TeamData]] = [:]
     @Published var state: TickerState = TickerState(
         active_sports: ["nfl": true], mode: "all", scroll_seamless: false,
-        my_teams: [], debug_mode: false, demo_mode: false, custom_date: nil, weather_location: "New York", scroll_speed: 5
+        my_teams: [], debug_mode: false, demo_mode: false, custom_date: nil,
+        scroll_speed: 5,
+        weather_location: "New York", weather_city: "New York", weather_lat: 40.7128, weather_lon: -74.0060
     )
     @Published var devices: [TickerDevice] = []
     @Published var pairCode: String = ""
@@ -187,10 +220,11 @@ class TickerViewModel: ObservableObject {
     @Published var pairError: String?
     @Published var showPairSuccess: Bool = false
     @Published var serverURL: String { didSet { UserDefaults.standard.set(serverURL, forKey: "serverURL") } }
-    @Published var weatherLoc: String = "New York"
+    @Published var weatherLocInput: String = "New York"
     @Published var connectionStatus: String = "Connecting..."
     @Published var statusColor: Color = .gray
     @Published var isEditing: Bool = false
+    
     private var isServerReachable = false
     private var timer: Timer?
     private var clientID: String {
@@ -236,12 +270,21 @@ class TickerViewModel: ObservableObject {
                 let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
                 DispatchQueue.main.async {
                     self.isServerReachable = true
+                    // Sort stocks to top if mixed
                     self.games = decoded.games.sorted { g1, g2 in
+                        if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
                         if g1.state == "in" && g2.state != "in" { return true }
-                        if g1.state != "in" && g2.state == "in" { return false }
                         return false
                     }
-                    if !self.isEditing { self.state = decoded.settings; self.weatherLoc = decoded.settings.weather_location ?? "New York" }
+                    if !self.isEditing {
+                        self.state = decoded.settings
+                        // Only update text input if not editing
+                        if let city = decoded.settings.weather_city {
+                            self.weatherLocInput = city
+                        } else if let loc = decoded.settings.weather_location {
+                            self.weatherLocInput = loc
+                        }
+                    }
                     self.updateOverallStatus()
                 }
             } catch { DispatchQueue.main.async { self.isServerReachable = true; self.connectionStatus = "Data Error"; self.statusColor = .red } }
@@ -260,6 +303,29 @@ class TickerViewModel: ObservableObject {
         }.resume()
     }
     
+    // === UPDATED: Geocoding + Saving ===
+    func updateWeatherAndSave() {
+        let geocoder = CLGeocoder()
+        geocoder.geocodeAddressString(weatherLocInput) { placemarks, error in
+            DispatchQueue.main.async {
+                if let pm = placemarks?.first, let loc = pm.location, let name = pm.locality ?? pm.name {
+                    // Success! Update State with Lat/Lon/City
+                    self.state.weather_city = name
+                    self.state.weather_lat = loc.coordinate.latitude
+                    self.state.weather_lon = loc.coordinate.longitude
+                    self.state.weather_location = self.weatherLocInput // Keep text for UI
+                    print("Geocoded: \(name) at \(loc.coordinate.latitude), \(loc.coordinate.longitude)")
+                    self.saveSettings()
+                } else {
+                    // Fallback: Just save the text (old behavior, likely wont work on new server but prevents crash)
+                    print("Geocode failed, saving text only")
+                    self.state.weather_location = self.weatherLocInput
+                    self.saveSettings()
+                }
+            }
+        }
+    }
+    
     func saveSettings() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/api/config") else { return }
@@ -267,7 +333,6 @@ class TickerViewModel: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         do {
-            state.weather_location = weatherLoc
             let body = try JSONEncoder().encode(state)
             request.httpBody = body
             URLSession.shared.dataTask(with: request).resume()
@@ -420,24 +485,14 @@ struct ShootoutBubbles: View {
                 if i < results.count {
                     let res = results[i]
                     if res == "goal" {
-                        Image(systemName: "checkmark.circle.fill")
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, .green)
-                            .font(.system(size: 8))
+                        Image(systemName: "checkmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .green).font(.system(size: 8))
                     } else if res == "miss" {
-                        Image(systemName: "xmark.circle.fill")
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, .red)
-                            .font(.system(size: 8))
+                        Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .red).font(.system(size: 8))
                     } else {
-                        Image(systemName: "circle")
-                            .foregroundStyle(.gray)
-                            .font(.system(size: 8))
+                        Image(systemName: "circle").foregroundStyle(.gray).font(.system(size: 8))
                     }
                 } else {
-                    Image(systemName: "circle")
-                        .foregroundStyle(.gray.opacity(0.5))
-                        .font(.system(size: 8))
+                    Image(systemName: "circle").foregroundStyle(.gray.opacity(0.5)).font(.system(size: 8))
                 }
             }
         }
@@ -461,7 +516,7 @@ struct ScrollBtn: View {
 
 struct TeamLogoView: View {
     let url: String?; let abbr: String; let size: CGFloat
-    var body: some View { AsyncImage(url: URL(string: url ?? "")) { phase in if let image = phase.image { image.resizable().scaledToFit() } else { ZStack { Circle().fill(Color.gray.opacity(0.3)); Text(abbr).font(.system(size: size * 0.35, weight: .bold)).foregroundColor(.white.opacity(0.8)) } } }.frame(width: size, height: size) }
+    var body: some View { AsyncImage(url: URL(string: url ?? "")) { phase in if let image = phase.image { image.resizable().scaledToFit() } else { Text(abbr).font(.system(size: size * 0.4, weight: .bold)).foregroundColor(.white.opacity(0.8)) } }.frame(width: size, height: size) }
 }
 
 struct GameRow: View {
@@ -476,6 +531,7 @@ struct GameRow: View {
         if let b = s.balls, let str = s.strikes, let o = s.outs { return "\(b)-\(str), \(o) Out" }
         return ""
     }
+    
     var situationColor: Color {
         if let s = game.situation {
             if s.isRedZone == true { return Color.red }
@@ -483,6 +539,7 @@ struct GameRow: View {
         }
         return Color.yellow
     }
+    
     func hasPossession(isHome: Bool) -> Bool {
         guard let s = game.situation, let p = s.possession else { return false }
         let pClean = p.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -495,21 +552,24 @@ struct GameRow: View {
         if logo.contains("/\(pClean).png") || logo.contains("/\(pClean).svg") { return true }
         return false
     }
+    
     var isSituationGlobal: Bool {
         guard game.situation != nil else { return false }
         return !activeSituation.isEmpty && !hasPossession(isHome: true) && !hasPossession(isHome: false)
     }
-    var formattedSport: String { 
-        switch game.sport { 
+    
+    var formattedSport: String {
+        switch game.sport {
         case "ncf_fbs": return "FBS"
         case "ncf_fcs": return "FCS"
         case "soccer_epl": return "EPL"
         case "soccer_champ": return "EFL"
         case "soccer_wc": return "FIFA"
         case "hockey_olympics": return "OLY"
-        default: return game.sport.uppercased() 
-        } 
+        default: return game.sport.uppercased()
+        }
     }
+    
     var isLive: Bool { return game.state == "in" }
     var isSoccer: Bool { return game.sport.contains("soccer") }
     
@@ -522,7 +582,40 @@ struct GameRow: View {
     
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
-        if game.type == "leaderboard" {
+        
+        // --- STOCK TICKER UI ---
+        if game.type == "stock_ticker" {
+            HStack(spacing: 12) {
+                Capsule().fill(Color.blue).frame(width: 4, height: 55)
+                if let u = game.home_logo, !u.isEmpty {
+                    TeamLogoView(url: u, abbr: game.safeHomeAbbr, size: 32)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(game.safeHomeAbbr).font(.headline).bold().foregroundColor(.white)
+                    Text(game.tourney_name ?? "MARKET").font(.caption2).bold().foregroundColor(.gray)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("$\(game.home_score)").font(.title3).bold().foregroundColor(.white)
+                    HStack(spacing: 4) {
+                        let changePct = game.away_score
+                        let changeAmt = game.situation?.change ?? ""
+                        let isUp = !changePct.contains("-")
+                        Image(systemName: isUp ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill").font(.system(size: 8))
+                        Text("\(changeAmt) (\(changePct))").font(.caption).bold()
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(game.away_score.contains("-") ? Color.red.opacity(0.2) : Color.green.opacity(0.2))
+                    .foregroundColor(game.away_score.contains("-") ? .red : .green)
+                    .cornerRadius(6)
+                }
+            }
+            .padding(12).background(Color(white: 0.15))
+            .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
+            .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
+            
+        // --- LEADERBOARD UI ---
+        } else if game.type == "leaderboard" {
             HStack(spacing: 12) {
                 Capsule().fill(game.is_shown ? Color.green : Color.red).frame(width: 4, height: 55)
                 VStack(alignment: .leading) {
@@ -535,6 +628,8 @@ struct GameRow: View {
             .padding(12).background(Color(white: 0.15))
             .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
             .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
+            
+        // --- STANDARD SPORTS UI ---
         } else {
             let homeColor = prioritizeVibrantColor(primary: game.home_color, alternate: game.home_alt_color)
             let awayColor = prioritizeVibrantColor(primary: game.away_color, alternate: game.away_alt_color)
@@ -610,7 +705,6 @@ struct ContentView: View {
     
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Original Grey-Blue Gradient
             LinearGradient(gradient: Gradient(colors: [Color(red: 0.22, green: 0.28, blue: 0.35), Color(red: 0.05, green: 0.07, blue: 0.10)]), startPoint: .top, endPoint: .bottom).ignoresSafeArea()
             
             TabView(selection: $selectedTab) {
@@ -661,7 +755,7 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("ACTIVE FEED").font(.caption).bold().foregroundStyle(.secondary)
                     if vm.games.isEmpty {
-                        Text("No active games found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
+                        Text("No active items found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     } else {
                         ForEach(vm.games) { game in GameRow(game: game) }
                     }
@@ -674,13 +768,8 @@ struct HomeView: View {
 
 struct ModesView: View {
     @ObservedObject var vm: TickerViewModel
-    var currentMode: String {
-        if vm.state.active_sports["weather"] == true { return "weather" }
-        if vm.state.active_sports["clock"] == true { return "clock" }
-        return "sports"
-    }
+    var currentMode: String { return vm.state.mode }
     
-    // Updated friendly list
     let leagues = [
         ("nfl", "NFL"), ("nba", "NBA"), ("nhl", "NHL"), ("mlb", "MLB"),
         ("ncf_fbs", "NCAA FBS"), ("ncf_fcs", "NCAA FCS"),
@@ -691,11 +780,27 @@ struct ModesView: View {
         ("imsa", "IMSA"), ("wec", "WEC")
     ]
     
+    let stockCats = [
+        ("stock_tech_ai", "Tech & AI"),
+        ("stock_momentum", "Momentum"),
+        ("stock_energy", "Energy"),
+        ("stock_finance", "Finance"),
+        ("stock_consumer", "Consumer"),
+        ("stock_nyse_50", "NYSE Top 50"),
+        ("stock_automotive", "Auto / Mobility"),
+        ("stock_defense", "Defense")
+    ]
+    
     func setMode(_ mode: String) {
-        vm.state.active_sports["weather"] = false
-        vm.state.active_sports["clock"] = false
-        if mode == "weather" { vm.state.active_sports["weather"] = true }
-        else if mode == "clock" { vm.state.active_sports["clock"] = true }
+        vm.state.mode = mode
+        if mode == "stocks" {
+            vm.state.active_sports["weather"] = false; vm.state.active_sports["clock"] = false
+            let hasStock = stockCats.map{ $0.0 }.contains { vm.state.active_sports[$0] == true }
+            if !hasStock { vm.state.active_sports["stock_tech_ai"] = true }
+        } else if mode == "sports" {
+            vm.state.active_sports["weather"] = false; vm.state.active_sports["clock"] = false
+        } else if mode == "weather" { vm.state.active_sports["weather"] = true
+        } else if mode == "clock" { vm.state.active_sports["clock"] = true }
         vm.saveSettings()
     }
     
@@ -705,6 +810,7 @@ struct ModesView: View {
                 HStack { Text("Modes").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80)
                 HStack(spacing: 12) {
                     FilterBtn(title: "Sports", val: "sports", cur: currentMode) { setMode("sports") }
+                    FilterBtn(title: "Stocks", val: "stocks", cur: currentMode) { setMode("stocks") }
                     FilterBtn(title: "Weather", val: "weather", cur: currentMode) { setMode("weather") }
                     FilterBtn(title: "Clock", val: "clock", cur: currentMode) { setMode("clock") }
                 }.padding(.horizontal)
@@ -723,7 +829,11 @@ struct ModesView: View {
                         HStack {
                             Text("Location:")
                             Spacer()
-                            TextField("City or Zip", text: $vm.weatherLoc).multilineTextAlignment(.trailing).foregroundColor(.white).onSubmit { vm.saveSettings() }
+                            // === UPDATED: Uses vm.weatherLocInput and calls new geocoding func ===
+                            TextField("City or Zip", text: $vm.weatherLocInput)
+                                .multilineTextAlignment(.trailing)
+                                .foregroundColor(.white)
+                                .onSubmit { vm.updateWeatherAndSave() }
                         }.padding().liquidGlass()
                     }.padding(.horizontal)
                 } else if currentMode == "clock" {
@@ -731,8 +841,26 @@ struct ModesView: View {
                         Text("CLOCK MODE").font(.caption).bold().foregroundStyle(.secondary)
                         Text("Displaying large time and date.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     }.padding(.horizontal)
+                } else if currentMode == "stocks" {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("MARKET SECTORS").font(.caption).bold().foregroundStyle(.secondary)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
+                            ForEach(stockCats, id: \.0) { key, name in
+                                let isActive = vm.state.active_sports[key] ?? false
+                                Button { 
+                                    vm.state.active_sports[key] = !isActive
+                                    vm.saveSettings() 
+                                } label: {
+                                    Text(name).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
+                                        .background(isActive ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                        }
+                    }.padding(.horizontal)
                 } else {
-                    // BUTTON GRID (Tap to toggle) - UPDATED
                     VStack(alignment: .leading, spacing: 10) {
                         Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
@@ -759,15 +887,14 @@ struct TeamsView: View {
     @ObservedObject var vm: TickerViewModel
     @State private var selectedLeague = "nfl"
     
-    // UPDATED: Friendly list matching API keys
     let leagues = [
         ("nfl", "NFL"), ("nba", "NBA"), ("nhl", "NHL"), ("mlb", "MLB"),
-        ("soccer_epl", "Premier League"), 
-        ("soccer_champ", "EFL Champ"), 
-        ("soccer_l1", "EFL League 1"), 
+        ("soccer_epl", "Premier League"),
+        ("soccer_champ", "EFL Champ"),
+        ("soccer_l1", "EFL League 1"),
         ("soccer_l2", "EFL League 2"),
         ("soccer_wc", "Fifa World Cup"),
-        ("hockey_olympics", "Olympic Hockey"), 
+        ("hockey_olympics", "Olympic Hockey"),
         ("ncf_fbs", "FBS"), ("ncf_fcs", "FCS")
     ]
     
@@ -777,7 +904,6 @@ struct TeamsView: View {
         VStack(spacing: 0) {
             HStack { Text("My Teams").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80).padding(.bottom, 10)
             
-            // STACKED GRID SELECTOR (Not scrolling)
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
@@ -792,10 +918,8 @@ struct TeamsView: View {
                             }
                         }
                     }
-                    
                     Divider().background(Color.white.opacity(0.2))
                     
-                    // TEAM GRID
                     if let teams = vm.allTeams[selectedLeague], !teams.isEmpty {
                         let filteredTeams = teams
                             .filter { $0.abbr.trimmingCharacters(in: .whitespaces).count > 0 && $0.abbr != "TBD" && $0.abbr != "null" }
@@ -836,7 +960,6 @@ struct SettingsView: View {
             VStack(spacing: 24) {
                 HStack { Text("Settings").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80)
                 
-                // --- CONNECTION ---
                 VStack(alignment: .leading, spacing: 10) {
                     Text("CONNECTION").font(.caption).bold().foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 4) {
@@ -846,7 +969,6 @@ struct SettingsView: View {
                     }.padding().liquidGlass()
                 }.padding(.horizontal)
                 
-                // --- MY DEVICES ---
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Text("MY DEVICES").font(.caption).bold().foregroundStyle(.secondary)
@@ -864,7 +986,6 @@ struct SettingsView: View {
                     }
                 }.padding(.horizontal)
                 
-                // --- DEBUG (CONDITIONAL) ---
                 if vm.state.show_debug_options == true {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("DEBUG").font(.caption).bold().foregroundStyle(.secondary)
@@ -891,7 +1012,6 @@ struct SettingsView: View {
                     }.padding(.horizontal)
                 }
                 
-                // --- REBOOT ---
                 VStack(spacing: 12) {
                     Button {
                         if rebootConfirm {
@@ -997,6 +1117,7 @@ struct DeviceRow: View {
                     set: { vm.updateDeviceSettings(id: device.id, inverted: $0) }
                 )).fixedSize()
                 .labelsHidden()
+                .toggleStyle(SwitchToggleStyle(tint: .white))
                 Text("Inverted").font(.caption)
                 
                 Spacer()
@@ -1005,7 +1126,7 @@ struct DeviceRow: View {
                     Toggle("Demo", isOn: Binding(
                         get: { vm.state.demo_mode ?? false },
                         set: { val in
-                            vm.isEditing = true // PAUSE POLLING
+                            vm.isEditing = true
                             vm.state.demo_mode = val
                             vm.saveSettings()
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { vm.isEditing = false }
