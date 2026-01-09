@@ -55,24 +55,13 @@ HEADERS = {
 # ================= DEFAULT STATE =================
 default_state = {
     'active_sports': { 
-        # Sports
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
         'soccer_epl': True, 'soccer_champ': True, 'soccer_l1': True, 'soccer_l2': True, 
         'soccer_wc': True, 'hockey_olympics': True, 
         'f1': True, 'nascar': True, 'indycar': True, 'wec': True, 'imsa': True,
-        
-        # Utilities
         'weather': True, 'clock': True,
-        
-        # Stock Categories
-        'stock_tech_ai': True,        
-        'stock_momentum': False,     
-        'stock_energy': False,       
-        'stock_finance': False,      
-        'stock_consumer': False,     
-        'stock_nyse_50': False,
-        'stock_automotive': False,
-        'stock_defense': False
+        'stock_tech_ai': True, 'stock_momentum': False, 'stock_energy': False, 'stock_finance': False,      
+        'stock_consumer': False, 'stock_nyse_50': False, 'stock_automotive': False, 'stock_defense': False
     },
     'mode': 'all', 
     'layout_mode': 'schedule',
@@ -84,7 +73,6 @@ default_state = {
     'debug_mode': False,
     'demo_mode': False,
     'custom_date': None,
-    # Weather Config
     'weather_city': "New York",
     'weather_lat': 40.7128,
     'weather_lon': -74.0060,
@@ -511,7 +499,7 @@ class SportsFetcher:
             with data_lock: state['all_teams_data'] = teams_catalog
         except Exception as e: print(f"Global Team Fetch Error: {e}")
 
-    # === SHOOTOUT LOGIC (Restored) ===
+    # === SHOOTOUT LOGIC ===
     def fetch_shootout_details(self, game_id, away_id, home_id):
         try:
             url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
@@ -623,7 +611,9 @@ class SportsFetcher:
                     elif st in ['FINAL', 'OFF']:
                          disp = "FINAL"
                          pd = g.get('periodDescriptor', {})
-                         if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
+                         pt = pd.get('periodType', '')
+                         if pt == 'SHOOTOUT': disp = "FINAL S/O"
+                         elif pt == 'OT' or g.get('period', 0) > 3: disp = "FINAL OT"
 
                     # === SUSPENDED CHECK (NHL Native) ===
                     if st in ['SUSP', 'SUSPENDED', 'PPD', 'POSTPONED']:
@@ -779,10 +769,17 @@ class SportsFetcher:
                                 s_disp = f"{clk}'"
                                 if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
 
-                s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
+                s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
+                
+                # Standardize FINAL logic
                 if "FINAL" in s_disp:
-                    if league_key == 'nhl' and "SO" in s_disp: s_disp = "FINAL S/O"
-                    elif p > 4 and "OT" not in s_disp and league_key == 'nhl': s_disp = "FINAL OT"
+                    # Check period count for specific sports to append OT if missing from text
+                    if league_key == 'nhl':
+                        if "SO" in s_disp or "Shootout" in s_disp: s_disp = "FINAL S/O"
+                        elif p > 3 and "OT" not in s_disp: s_disp = "FINAL OT"
+                    elif league_key in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs'] and p > 4 and "OT" not in s_disp:
+                         # NFL/NBA regulation is 4 quarters
+                         s_disp = "FINAL OT"
 
                 sit = comp.get('situation', {})
                 shootout_data = None
