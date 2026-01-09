@@ -11,7 +11,6 @@ import requests
 import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from stockdex import Ticker  # <--- NEW LIBRARY
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -43,7 +42,7 @@ STOCK_CACHE_FILE = "stock_cache.json"
 
 # FETCH INTERVALS
 SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 60     # 60 Seconds for Stocks (Yahoo Finance limits)
+STOCKS_UPDATE_INTERVAL = 5      # 5 Seconds for Stocks (Safe due to Batching)
 
 data_lock = threading.Lock()
 
@@ -299,11 +298,13 @@ class WeatherFetcher:
 
 class StockFetcher:
     def __init__(self):
-        # removed api_key requirement as stockdex uses public yahoo data
         self.market_cache = {} 
         self.last_fetch = 0
-        # Increased workers for individual stock fetching
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10) 
+        self.session = requests.Session()
+        # Fake a browser browser header to avoid Yahoo rejecting the request
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        })
         
         self.lists = {
             'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"],
@@ -336,45 +337,13 @@ class StockFetcher:
         clean_sym = sym.replace('.', '-')
         return f"https://financialmodelingprep.com/image-stock/{clean_sym}.png"
 
-    def _fetch_single_ticker(self, symbol):
-        """
-        Worker function to fetch a single stock using stockdex
-        """
-        try:
-            ticker = Ticker(ticker=symbol)
-            # stockdex returns a pandas DataFrame
-            df = ticker.yahoo_api_price_data
-            
-            if df is None or df.empty:
-                return None
-
-            # Convert DataFrame to dictionary (taking the first row)
-            data = df.iloc[0].to_dict()
-            
-            # Extract relevant fields safely
-            price = data.get('currentPrice', 0.0)
-            change_amt = data.get('regularMarketChange', 0.0)
-            change_pct = data.get('regularMarketChangePercent', 0.0)
-            
-            # Use raw values if they are 0.0 (sometimes Yahoo returns 0 for change during pre-market, check preMarketChange if needed)
-            # Formatting to match original structure
-            return {
-                'symbol': symbol,
-                'price': f"{price:.2f}",
-                'change_amt': f"{change_amt:+.2f}",
-                'change_pct': f"{change_pct * 100:+.2f}%"  # stockdex usually returns decimal (0.015), we want percentage (1.50%)
-            }
-        except Exception as e:
-            # print(f"Failed {symbol}: {e}") # Optional debug
-            return None
-
     def update_market_data(self, active_lists):
         """
-        Updates cache only for symbols currently in active lists
+        Batched Fetcher: Gets ALL stocks in ONE request (Safe for 5s updates)
         """
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
 
-        # 1. Gather all unique symbols we need to fetch right now
+        # 1. Gather all unique symbols from active lists
         target_symbols = set()
         for list_key in active_lists:
             if list_key in self.lists:
@@ -382,26 +351,51 @@ class StockFetcher:
         
         if not target_symbols: return
 
-        print(f"Fetching data for {len(target_symbols)} stocks via Yahoo Finance...")
+        # 2. Create the Batch URL (Comma separated symbols)
+        symbols_list = list(target_symbols)
+        chunk_size = 100
+        
+        # print(f"Batch fetching {len(symbols_list)} stocks...")
 
-        # 2. Fetch in parallel
-        futures = {self.executor.submit(self._fetch_single_ticker, sym): sym for sym in target_symbols}
-        
-        new_data_count = 0
-        for future in concurrent.futures.as_completed(futures):
-            res = future.result()
-            if res:
-                sym = res['symbol']
-                self.market_cache[sym] = {
-                    'price': res['price'],
-                    'change_amt': res['change_amt'],
-                    'change_pct': res['change_pct']
-                }
-                new_data_count += 1
-        
+        for i in range(0, len(symbols_list), chunk_size):
+            chunk = symbols_list[i:i + chunk_size]
+            symbols_str = ",".join(chunk)
+            
+            try:
+                # Direct Yahoo Finance Quote API (What libraries use under the hood)
+                url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbols_str}"
+                r = self.session.get(url, timeout=5)
+                
+                if r.status_code == 200:
+                    data = r.json()
+                    result = data.get('quoteResponse', {}).get('result', [])
+                    
+                    for item in result:
+                        sym = item.get('symbol')
+                        price = item.get('regularMarketPrice', 0.0)
+                        change_amt = item.get('regularMarketChange', 0.0)
+                        change_pct = item.get('regularMarketChangePercent', 0.0)
+                        
+                        market_state = item.get('marketState', 'REGULAR')
+                        if market_state in ['PRE', 'PREPRE'] and item.get('preMarketPrice'):
+                            price = item.get('preMarketPrice')
+                            change_amt = item.get('preMarketChange')
+                            change_pct = item.get('preMarketChangePercent')
+                        elif market_state in ['POST', 'POSTPOST'] and item.get('postMarketPrice'):
+                            price = item.get('postMarketPrice')
+                            change_amt = item.get('postMarketChange')
+                            change_pct = item.get('postMarketChangePercent')
+
+                        self.market_cache[sym] = {
+                            'price': f"{price:.2f}",
+                            'change_amt': f"{change_amt:+.2f}",
+                            'change_pct': f"{change_pct:.2f}%"
+                        }
+            except Exception as e:
+                print(f"Batch fetch failed: {e}")
+
         self.last_fetch = time.time()
         self.save_cache()
-        print(f"Updated {new_data_count} stocks.")
 
     def get_stock_obj(self, symbol, label):
         data = self.market_cache.get(symbol)
@@ -417,10 +411,6 @@ class StockFetcher:
         }
 
     def get_list(self, list_key):
-        # We trigger the update check inside the loop in SportsFetcher, 
-        # but we can also trigger a lightweight check here if needed.
-        # However, to avoid blocking the render thread, we rely on the background worker to call update_market_data.
-        
         res = []
         labels = {'stock_tech_ai': 'TECH / AI', 'stock_momentum': 'MOMENTUM', 'stock_energy': 'ENERGY', 'stock_finance': 'FINANCE', 'stock_consumer': 'CONSUMER', 'stock_nyse_50': 'NYSE 50', 'stock_automotive': 'AUTO / MOBILITY', 'stock_defense': 'DEFENSE'}
         label = labels.get(list_key, "MARKET")
@@ -1021,7 +1011,7 @@ def stocks_worker():
             fetcher.update_buffer_stocks()
         except Exception as e: 
             print(f"Stock worker error: {e}")
-        time.sleep(2) # Check frequently, but update_market_data respects STOCKS_UPDATE_INTERVAL
+        time.sleep(STOCKS_UPDATE_INTERVAL) # Sleeps 5 seconds
 
 # ================= FLASK API =================
 app = Flask(__name__)
