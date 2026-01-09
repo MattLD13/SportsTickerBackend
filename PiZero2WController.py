@@ -18,7 +18,8 @@ from flask import Flask, request, render_template_string
 
 # ================= CONFIGURATION =================
 BACKEND_URL = "https://ticker.mattdicks.org" 
-PANEL_W = 384
+# 6 Panels wide (64 * 6 = 384)
+PANEL_W = 384 
 PANEL_H = 32
 SETUP_SSID = "SportsTicker_Setup"
 SETUP_PASS = "setup1234"
@@ -28,7 +29,7 @@ ID_FILE_PATH = "/boot/ticker_id.txt"
 ID_FILE_FALLBACK = "ticker_id.txt"
 ASSETS_DIR = os.path.expanduser("~/ticker/assets")
 
-# --- UI TEMPLATE (IMPROVED DROPDOWN & FEEDBACK) ---
+# --- UI TEMPLATE ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -40,19 +41,12 @@ HTML_TEMPLATE = """
         h2 { text-align: center; color: #ffffff; margin-top: 0; margin-bottom: 0.5rem; }
         p.desc { text-align: center; color: #888; font-size: 0.9rem; margin-bottom: 1.5rem; }
         label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #aaa; font-weight: 500; }
-        
-        /* Styled Inputs */
         select, input { width: 100%; padding: 12px; margin-bottom: 15px; background: #2c2c2c; border: 1px solid #333; border-radius: 8px; color: white; font-size: 16px; box-sizing: border-box; appearance: none; -webkit-appearance: none; }
-        
-        /* Custom Arrow for Select */
         .select-wrapper { position: relative; }
         .select-wrapper::after { content: '▼'; position: absolute; top: 18px; right: 15px; color: #888; font-size: 12px; pointer-events: none; }
-        
         input:focus, select:focus { outline: none; border-color: #4a90e2; background: #333; }
-        
         button { width: 100%; padding: 14px; background-color: #4a90e2; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; margin-top: 10px; }
         button:hover { background-color: #357abd; }
-        
         .hidden { display: none; }
     </style>
     <script>
@@ -85,12 +79,9 @@ HTML_TEMPLATE = """
                     <option value="__manual__">Enter Manually...</option>
                 </select>
             </div>
-            
             <input type="text" name="ssid_manual" id="manual_ssid" class="hidden" placeholder="Type Network Name">
-            
             <label for="password">Password</label>
             <input type="password" name="password" placeholder="Enter password" required>
-            
             <button type="submit">Connect</button>
         </form>
     </div>
@@ -98,7 +89,7 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# --- FONTS ---
+# --- FONTS & BITMAPS ---
 TINY_FONT_MAP = {
     'A': [0x6, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x9, 0x6],
     'D': [0xE, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8],
@@ -114,9 +105,12 @@ TINY_FONT_MAP = {
     '6': [0x6, 0x8, 0xE, 0x9, 0x6], '7': [0xF, 0x1, 0x2, 0x4, 0x4], '8': [0x6, 0x9, 0x6, 0x9, 0x6],
     '9': [0x6, 0x9, 0x7, 0x1, 0x6], '+': [0x0, 0x4, 0xE, 0x4, 0x0], '-': [0x0, 0x0, 0xE, 0x0, 0x0],
     '.': [0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x4, 0x8, 0x0],
-    "'": [0x4, 0x4, 0x0, 0x0, 0x0]
+    "'": [0x4, 0x4, 0x0, 0x0, 0x0], '$': [0x4, 0xF, 0x5, 0xF, 0x4], '%': [0x9, 0x2, 0x4, 0x8, 0x12],
+    '^': [0x4, 0xA, 0x0, 0x0, 0x0], '▲': [0x4, 0xE, 0x1F, 0x0, 0x0], '▼': [0x1F, 0xE, 0x4, 0x0, 0x0],
+    '(': [0x2, 0x4, 0x4, 0x4, 0x2], ')': [0x4, 0x2, 0x2, 0x2, 0x4]
 }
 
+# HYBRID FONT (4x6) FOR STATUS
 HYBRID_FONT_MAP = {
     'A': [0x6, 0x9, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x8, 0x9, 0x6],
     'D': [0xE, 0x9, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8, 0x8],
@@ -145,6 +139,7 @@ def draw_tiny_text(draw, x, y, text, color):
             if row_byte & 0x4: draw.point((x_cursor+1, y+r), fill=color)
             if row_byte & 0x2: draw.point((x_cursor+2, y+r), fill=color)
             if row_byte & 0x1: draw.point((x_cursor+3, y+r), fill=color)
+            if len(bitmap) > 4 and (row_byte & 0x10): draw.point((x_cursor+4, y+r), fill=color)
         x_cursor += 4 
     return x_cursor - x
 
@@ -153,8 +148,7 @@ def draw_hybrid_text(draw, x, y, text, color):
     x_cursor = x
     for char in text:
         if char == '~':
-            x_cursor += 2
-            continue
+            x_cursor += 2; continue
         bitmap = HYBRID_FONT_MAP.get(char, HYBRID_FONT_MAP[' '])
         for r, row_byte in enumerate(bitmap):
             if row_byte & 0x8: draw.point((x_cursor+0, y+r), fill=color)
@@ -162,479 +156,459 @@ def draw_hybrid_text(draw, x, y, text, color):
             if row_byte & 0x2: draw.point((x_cursor+2, y+r), fill=color)
             if row_byte & 0x1: draw.point((x_cursor+3, y+r), fill=color)
         x_cursor += 5 
-    return x_cursor - x
+    return x_cursor
 
 def get_device_id():
     path_to_use = ID_FILE_PATH
     if not os.path.isfile(ID_FILE_PATH):
         try:
-            test_uuid = str(uuid.uuid4())
-            with open(ID_FILE_PATH, 'w') as f:
-                f.write(test_uuid)
-        except PermissionError:
-            path_to_use = ID_FILE_FALLBACK
+            test_uuid = str(uuid.uuid4()); 
+            with open(ID_FILE_PATH, 'w') as f: f.write(test_uuid)
+        except: path_to_use = ID_FILE_FALLBACK
     if os.path.exists(path_to_use):
-        with open(path_to_use, 'r') as f:
-            return f.read().strip()
-    else:
-        new_id = str(uuid.uuid4())
-        try:
-            with open(path_to_use, 'w') as f: f.write(new_id)
-            return new_id
-        except:
-            return new_id
+        with open(path_to_use, 'r') as f: return f.read().strip()
+    return str(uuid.uuid4())
 
+# --- WIFI PORTAL ---
 class WifiPortal:
     def __init__(self, matrix, font):
-        self.matrix = matrix
-        self.font = font
-        self.app = Flask(__name__)
-        
+        self.matrix = matrix; self.font = font; self.app = Flask(__name__)
         @self.app.route('/')
-        def home(): 
-            networks = self.get_available_networks()
-            return render_template_string(HTML_TEMPLATE, networks=networks)
-        
+        def home(): return render_template_string(HTML_TEMPLATE, networks=self.get_available_networks())
         @self.app.route('/connect', methods=['POST'])
         def connect():
-            ssid_sel = request.form.get('ssid_select', '')
-            ssid_man = request.form.get('ssid_manual', '')
-            ssid = ssid_man if ssid_sel == "__manual__" else ssid_sel
-            
-            pw = request.form['password']
-            self.draw_status(f"CONNECTING:\n{ssid}")
-            
-            # Optimistic Feedback Page
-            SUCCESS_HTML = """
-            <html><body style='background:#121212;color:white;text-align:center;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;'>
-                <div>
-                    <h2 style='color:#4a90e2;'>Settings Saved!</h2>
-                    <p>The device is rebooting to connect to <b>""" + ssid + """</b>.</p>
-                    <p style='color:#888;'>Please verify the ticker comes online in ~30 seconds.</p>
-                </div>
-            </body></html>
-            """
-            
-            FAILURE_HTML = "<html><body style='background:#121212;color:white;text-align:center;font-family:sans-serif;'><h2>Error</h2><p>Could not save settings.</p><p><a href='/' style='color:#4a90e2;'>Try Again</a></p></body></html>"
-
-            def apply_and_reboot(s, p):
-                try:
-                    subprocess.run(['nmcli', 'dev', 'wifi', 'connect', s, 'password', p])
-                except: pass
-                time.sleep(3)
-                subprocess.run(['reboot'])
-
-            # Return success immediately to browser, then run connect logic in background
-            # This prevents "Connection Failed" timeouts in the browser
-            threading.Thread(target=apply_and_reboot, args=(ssid, pw)).start()
-            return SUCCESS_HTML
-
+            ssid = request.form.get('ssid_manual') if request.form.get('ssid_select') == "__manual__" else request.form.get('ssid_select')
+            threading.Thread(target=self.apply_and_reboot, args=(ssid, request.form['password'])).start()
+            return "<html><body><h2>Settings Saved. Rebooting...</h2></body></html>"
+    def apply_and_reboot(self, s, p):
+        try: subprocess.run(['nmcli', 'dev', 'wifi', 'connect', s, 'password', p])
+        except: pass
+        time.sleep(3); subprocess.run(['reboot'])
     def get_available_networks(self):
         try:
-            # Run nmcli to get SSID list
-            result = subprocess.run(['nmcli', '-t', '-f', 'SSID', 'dev', 'wifi', 'list'], capture_output=True, text=True)
-            if result.returncode == 0:
-                raw_list = result.stdout.split('\n')
-                # Deduplicate and sort, remove blanks
-                networks = sorted(list(set([n for n in raw_list if n.strip()])))
-                return networks
-        except:
-            pass
-        return []
-
+            r = subprocess.run(['nmcli', '-t', '-f', 'SSID', 'dev', 'wifi', 'list'], capture_output=True, text=True)
+            return sorted(list(set([n for n in r.stdout.split('\n') if n.strip()])))
+        except: return []
     def check_internet(self):
-        try: 
-            socket.create_connection(("8.8.8.8", 53), timeout=3)
-            return True
-        except OSError: 
-            return False
-
-    def start_hotspot(self):
-        print("Starting WiFi setup hotspot...")
-        subprocess.run(['rfkill', 'unblock', 'wifi'], stderr=subprocess.DEVNULL)
-        subprocess.run(['nmcli', 'con', 'down', SETUP_SSID], stderr=subprocess.DEVNULL)
-        subprocess.run(['nmcli', 'con', 'delete', SETUP_SSID], stderr=subprocess.DEVNULL)
-        cmd = [
-            'nmcli', 'dev', 'wifi', 'hotspot',
-            'ifname', 'wlan0',
-            'ssid', SETUP_SSID,
-            'password', SETUP_PASS
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"Hotspot failed: {result.stderr}")
-        else:
-            print(f"Hotspot started: {SETUP_SSID}")
-
-    def draw_status(self, text):
-        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
-        d = ImageDraw.Draw(img)
-        d.text((2, 2), text, font=self.font, fill=(255, 255, 0))
-        self.matrix.SetImage(img.convert("RGB"))
-
+        try: socket.create_connection(("8.8.8.8", 53), timeout=3); return True
+        except: return False
     def run(self):
-        if os.path.exists("setup_mode"):
-            print("Force Setup Mode Detected")
-            try: os.remove("setup_mode") 
-            except: pass
-        elif self.check_internet():
-            return True 
-            
-        self.draw_status(f"WIFI SETUP\nPW:{SETUP_PASS}")
-        self.start_hotspot()
-        try:
-            self.app.run(host='0.0.0.0', port=80) 
-        except Exception as e:
-            print(f"Flask failed: {e}")
+        if self.check_internet(): return True
+        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0)); d = ImageDraw.Draw(img)
+        d.text((2, 2), "WIFI SETUP MODE", font=self.font, fill=(255, 255, 0))
+        d.text((2, 12), f"SSID: {SETUP_SSID}", font=self.font, fill=(255, 255, 255))
+        self.matrix.SetImage(img.convert("RGB"))
+        subprocess.run(['nmcli', 'dev', 'wifi', 'hotspot', 'ifname', 'wlan0', 'ssid', SETUP_SSID, 'password', SETUP_PASS])
+        try: self.app.run(host='0.0.0.0', port=80)
+        except: pass
 
+# --- MAIN CONTROLLER ---
 class TickerStreamer:
     def __init__(self):
         print("Starting Ticker System...")
         self.device_id = get_device_id()
-        if not os.path.exists(ASSETS_DIR):
-            try: os.makedirs(ASSETS_DIR)
-            except: pass
-
+        if not os.path.exists(ASSETS_DIR): os.makedirs(ASSETS_DIR, exist_ok=True)
+        
         options = RGBMatrixOptions()
         options.rows = 32
         options.cols = 64
-        options.chain_length = 6
+        options.chain_length = 6 # 384px wide
         options.parallel = 1
-        options.hardware_mapping = 'regular'
-        options.gpio_slowdown = 2  
-        options.show_refresh_rate = 0
-        options.disable_hardware_pulsing = True
-        options.drop_privileges = False 
-        
+        options.hardware_mapping = 'regular' 
+        options.gpio_slowdown = 2
+        options.disable_hardware_pulsing = True 
+        options.drop_privileges = False
         self.matrix = RGBMatrix(options=options)
-
-        # Cache font loading
+        
         try: self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 10)
         except: self.font = ImageFont.load_default()
+        
+        try: self.medium_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 12)
+        except: self.medium_font = ImageFont.load_default()
+        
+        try: self.big_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
+        except: self.big_font = ImageFont.load_default()
+        
+        try: self.huge_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 20)
+        except: self.huge_font = ImageFont.load_default()
+        
+        # Clock Font: 32px
+        try: self.clock_giant = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
+        except: self.clock_giant = ImageFont.load_default()
+
         try: self.tiny = ImageFont.truetype("DejaVuSans.ttf", 9) 
         except: self.tiny = ImageFont.load_default()
         try: self.micro = ImageFont.truetype("DejaVuSans.ttf", 7)
         except: self.micro = ImageFont.load_default()
         try: self.nano = ImageFont.truetype("DejaVuSans.ttf", 5)
         except: self.nano = ImageFont.load_default()
-        try: self.big_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 16)
-        except: self.big_font = ImageFont.load_default()
-        try: self.huge_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 24)
-        except: self.huge_font = self.big_font
-        
+
         self.portal = WifiPortal(self.matrix, self.font)
-        # Logic is now handled inside self.portal.run()
-        self.portal.run() 
+        threading.Thread(target=self.portal.run, daemon=True).start()
         
-        self.games = []
-        self.seamless_mode = False
-        self.brightness = 0.5
-        self.scroll_sleep = 0.05
-        self.inverted = False
-        self.test_pattern = False
-        self.running = True
-        self.logo_cache = {}
-        self.game_render_cache = {} 
-        self.anim_tick = 0
-        self.is_pairing = False
-        self.pairing_code = ""
-        self.config_updated = False
-        self.bg_strip = None
-        self.active_strip = None
-        self.bg_strip_ready = False
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+        self.games = []; self.seamless_mode = True; self.brightness = 0.5; self.scroll_sleep = 0.05
+        self.inverted = False; self.test_pattern = False; self.running = True; self.logo_cache = {}
+        self.game_render_cache = {}; self.anim_tick = 0; self.is_pairing = False; self.pairing_code = ""
+        self.config_updated = False; self.bg_strip = None; self.active_strip = None; self.bg_strip_ready = False
+        
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
         threading.Thread(target=self.poll_backend, daemon=True).start()
         threading.Thread(target=self.render_loop, daemon=True).start()
 
     def update_display(self, pil_image):
         if self.test_pattern: pil_image = self.generate_test_pattern()
-        if pil_image.mode != "RGB": img = pil_image.convert("RGB")
-        else: img = pil_image
-
-        val = self.brightness
-        if val > 1.0: val = val / 100.0
-        target_b = int(max(0, min(100, val * 100)))
-        if self.matrix.brightness != target_b: self.matrix.brightness = target_b
+        img = pil_image.convert("RGB")
         if self.inverted: img = img.rotate(180)
+        target_b = int(max(0, min(100, self.brightness * 100)))
+        self.matrix.brightness = target_b
         self.matrix.SetImage(img)
 
     def generate_test_pattern(self):
-        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
-        d = ImageDraw.Draw(img)
+        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0)); d = ImageDraw.Draw(img)
         d.rectangle((0,0, PANEL_W-1, PANEL_H-1), outline=(255,0,0))
-        d.text((10, 10), "TEST", font=self.font, fill=(0,0,255))
+        d.line((0,0, PANEL_W, PANEL_H), fill=(0,255,0))
+        d.text((10, 10), "TEST PATTERN", font=self.font, fill=(0,0,255))
         return img
     
     def draw_pairing_screen(self):
-        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
-        d = ImageDraw.Draw(img)
-        d.text((2, 2), "PAIR CODE:", font=self.font, fill=(255, 255, 0)) 
-        code = self.pairing_code if self.pairing_code else "..."
-        w = d.textlength(code, font=self.big_font)
-        x = (PANEL_W - w) // 2
-        d.text((x, 12), code, font=self.big_font, fill=(255, 255, 255))
+        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0)); d = ImageDraw.Draw(img)
+        d.text((2, 2), "PAIR CODE:", font=self.font, fill=(255, 255, 0))
+        d.text(((PANEL_W - d.textlength(self.pairing_code, font=self.big_font)) // 2, 12), self.pairing_code, font=self.big_font, fill=(255, 255, 255))
         return img
 
     def download_and_process_logo(self, url, size=(24,24)):
+        if not url: return
         cache_key = f"{url}_{size}"
         if cache_key in self.logo_cache: return
         try:
-            url_hash = hashlib.md5(url.encode()).hexdigest()
-            filename = f"{url_hash}_{size[0]}x{size[1]}.png"
-            local_path = os.path.join(ASSETS_DIR, filename)
-
-            if os.path.exists(local_path):
-                try:
-                    loaded_img = Image.open(local_path).convert("RGBA")
-                    self.logo_cache[cache_key] = loaded_img
-                    return
-                except: pass
-
+            filename = f"{hashlib.md5(url.encode()).hexdigest()}_{size[0]}x{size[1]}.png"
+            local = os.path.join(ASSETS_DIR, filename)
+            if os.path.exists(local):
+                self.logo_cache[cache_key] = Image.open(local).convert("RGBA"); return
+            
             r = requests.get(url, timeout=5)
-            original = Image.open(io.BytesIO(r.content)).convert("RGBA")
-            target_w, target_h = size
-            check_img = original.resize((32, 32), Image.Resampling.NEAREST)
-            rgb_img = check_img.convert("RGB")
-            alpha = check_img.split()[-1]
-            visible_pixels = 0; dark_pixels = 0
-            width, height = check_img.size
-            for y in range(height):
-                for x in range(width):
-                    if alpha.getpixel((x, y)) > 50:
-                        visible_pixels += 1
-                        r_val, g_val, b_val = rgb_img.getpixel((x, y))
-                        if r_val < 60 and g_val < 60 and b_val < 60: dark_pixels += 1
-            needs_outline = (visible_pixels > 0 and (dark_pixels / visible_pixels) > 0.40)
-            final_img = Image.new("RGBA", size, (0,0,0,0))
-            if needs_outline:
-                icon_w, icon_h = target_w - 2, target_h - 2
-                img_ratio = original.width / original.height
-                target_ratio = icon_w / icon_h
-                if img_ratio > target_ratio: new_w = icon_w; new_h = int(icon_w / img_ratio)
-                else: new_h = icon_h; new_w = int(icon_h * img_ratio)
-                resized_icon = original.resize((new_w, new_h), Image.Resampling.LANCZOS)
-                center_x = (target_w - new_w) // 2
-                center_y = (target_h - new_h) // 2
-                _, _, _, alpha_ch = resized_icon.split()
-                white_mask = Image.new("RGBA", (new_w, new_h), (255, 255, 255, 255))
-                white_mask.putalpha(alpha_ch)
-                offsets = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
-                for ox, oy in offsets: 
-                    final_img.paste(white_mask, (center_x + ox, center_y + oy), white_mask)
-                final_img.paste(resized_icon, (center_x, center_y), resized_icon)
-            else:
-                img_w, img_h = original.size
-                ratio = min(target_w / img_w, target_h / img_h)
-                new_w = int(img_w * ratio)
-                new_h = int(img_h * ratio)
-                resized_img = original.resize((new_w, new_h), Image.Resampling.LANCZOS)
-                offset_x = (target_w - new_w) // 2
-                offset_y = (target_h - new_h) // 2
-                final_img.paste(resized_img, (offset_x, offset_y))
-            try: final_img.save(local_path, "PNG")
-            except: pass
-            self.logo_cache[cache_key] = final_img
+            if r.status_code == 200:
+                img = Image.open(io.BytesIO(r.content)).convert("RGBA")
+                img.thumbnail(size, Image.Resampling.LANCZOS)
+                final = Image.new("RGBA", size, (0,0,0,0))
+                final.paste(img, ((size[0]-img.width)//2, (size[1]-img.height)//2))
+                final.save(local, "PNG")
+                self.logo_cache[cache_key] = final
         except: pass
 
     def get_logo(self, url, size=(24,24)):
-        if not url: return None
-        cache_key = f"{url}_{size}"
-        return self.logo_cache.get(cache_key)
+        return self.logo_cache.get(f"{url}_{size}")
 
+    def draw_arrow(self, d, x, y, is_up, color):
+        if is_up: d.polygon([(x+2, y), (x, y+4), (x+4, y+4)], fill=color)
+        else: d.polygon([(x, y), (x+4, y), (x+2, y+4)], fill=color)
+
+    # --- SPORTS HELPER DRAWING FUNCTIONS ---
     def draw_hockey_stick(self, draw, cx, cy, size):
         WOOD = (150, 75, 0); TAPE = (255, 255, 255)
-        pattern = [(5,0),(6,0),(5,1),(6,1),(5,2),(6,2),(4,3),(5,3),(6,3),(4,4),(5,4),(0,5),(1,5),(2,5),(3,5),(4,5),(0,6),(1,6),(2,6),(3,6),(4,6)]
-        colors = {(5,0):1,(6,0):1,(5,1):1,(6,1):1,(5,2):1,(6,2):1,(4,3):1,(5,3):1,(6,3):1,(4,4):1,(5,4):1,(0,5):1,(1,5):2,(2,5):2,(3,5):1,(4,5):1,(0,6):1,(1,6):2,(2,6):2,(3,6):1,(4,6):1}
+        pattern = [[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,1,1,1,0],
+                   [0,0,0,0,1,1,0,0],[1,2,2,1,1,1,0,0],[1,2,2,1,1,0,0,0],[0,0,0,0,0,0,0,0]]
         sx, sy = cx - 4, cy - 4
-        for x, y in pattern:
-            if colors.get((x,y)) == 1: draw.point((sx+x, sy+y), fill=WOOD)
-            elif colors.get((x,y)) == 2: draw.point((sx+x, sy+y), fill=TAPE)
+        for y in range(8):
+            for x in range(8):
+                if pattern[y][x] == 1: draw.point((sx+x, sy+y), fill=WOOD)
+                elif pattern[y][x] == 2: draw.point((sx+x, sy+y), fill=TAPE)
 
     def draw_shootout_indicators(self, draw, results, start_x, y):
-        display_results = results[-3:] if len(results) > 3 else results[:]
+        display_results = results[-3:]
         while len(display_results) < 3: display_results.append('pending')
         x_off = start_x
         for res in display_results:
             if res == 'pending': draw.rectangle((x_off, y, x_off+3, y+3), outline=(80,80,80)) 
-            elif res == 'miss':
-                draw.line((x_off, y, x_off+3, y+3), fill=(255,0,0))
-                draw.line((x_off, y+3, x_off+3, y), fill=(255,0,0))
+            elif res == 'miss': draw.line((x_off, y, x_off+3, y+3), fill=(255,0,0)); draw.line((x_off, y+3, x_off+3, y), fill=(255,0,0))
             elif res == 'goal': draw.rectangle((x_off, y, x_off+3, y+3), fill=(0,255,0))
             x_off += 6 
 
     def draw_soccer_shootout(self, draw, results, start_x, y):
-        display_results = results[-5:] if len(results) > 5 else results[:]
+        display_results = results[-5:]
         while len(display_results) < 5: display_results.append('pending')
-        x_off = start_x
+        x_off = start_x; 
         if len(results) > 0: x_off -= 2 
         for res in display_results:
             if res == 'pending': draw.rectangle((x_off, y, x_off+1, y+1), outline=(60,60,60))
-            elif res == 'miss':
-                draw.point((x_off, y), fill=(255,0,0))
-                draw.point((x_off+1, y+1), fill=(255,0,0))
+            elif res == 'miss': draw.point((x_off, y), fill=(255,0,0)); draw.point((x_off+1, y+1), fill=(255,0,0))
             elif res == 'goal': draw.rectangle((x_off, y, x_off+1, y+1), fill=(0,255,0))
             x_off += 4
 
     def draw_baseball_hud(self, draw, x, y, b, s, o):
-        draw.point((x-4, y), fill=(150,150,150)); draw.point((x-3, y), fill=(150,150,150))
-        draw.point((x-4, y+1), fill=(150,150,150)); draw.point((x-3, y+2), fill=(150,150,150))
-        draw.point((x-4, y+2), fill=(150,150,150)); draw.line((x-4, y+3, x-4, y+5), fill=(150,150,150))
-        draw.point((x-3, y+3), fill=(150,150,150)); draw.point((x-3, y+4), fill=(150,150,150))
-        draw.point((x-3, y+5), fill=(150,150,150)); draw.rectangle((x-4, y+6, x-3, y+7), outline=(150,150,150))
+        draw.point((x-4, y), fill=(150,150,150)); draw.point((x-3, y), fill=(150,150,150)); draw.point((x-4, y+1), fill=(150,150,150)); draw.point((x-3, y+2), fill=(150,150,150)); draw.point((x-4, y+2), fill=(150,150,150))
+        draw.line((x-4, y+3, x-4, y+5), fill=(150,150,150)); draw.point((x-3, y+3), fill=(150,150,150)); draw.point((x-3, y+4), fill=(150,150,150)); draw.point((x-3, y+5), fill=(150,150,150))
+        draw.rectangle((x-4, y+6, x-3, y+7), outline=(150,150,150))
         for i in range(2): draw.rectangle((x+(i*4), y, x+(i*4)+1, y+1), fill=((255, 0, 0) if i < s else (40, 40, 40)))
         for i in range(3): draw.rectangle((x+(i*4), y+3, x+(i*4)+1, y+4), fill=((0, 255, 0) if i < b else (40, 40, 40)))
         for i in range(2): draw.rectangle((x+(i*4), y+6, x+(i*4)+1, y+7), fill=((255, 100, 0) if i < o else (40, 40, 40)))
 
     def shorten_status(self, status):
         if not status: return ""
-        s = str(status).upper()
-        s = s.replace(" - ", " ").replace("FINAL", "FINAL").replace("/OT", " OT").replace("HALFTIME", "HALF").replace("DELAY", "DLY")
+        s = str(status).upper().replace(" - ", " ").replace("FINAL", "FINAL").replace("/OT", " OT").replace("HALFTIME", "HALF")
         s = s.replace("1ST", "P1").replace("2ND", "P2").replace("3RD", "P3").replace("4TH", "P4").replace("FULL TIME", "FT")
         replacements = ["P1", "P2", "P3", "P4", "Q1", "Q2", "Q3", "Q4", "OT"]
         for r in replacements: s = s.replace(f"{r} ", f"{r}~")
         return s
 
-    def draw_weather_icon_large(self, d, icon, x, y):
-        offset = 0 if (self.anim_tick % 10 < 5) else 1
-        if icon == 'sun':
-            d.ellipse((x+4, y+4, x+20, y+20), fill=(255,220,0))
-            d.line((x+12, y, x+12, y+3), fill=(255,220,0)); d.line((x+12, y+21, x+12, y+24), fill=(255,220,0))
-            d.line((x, y+12, x+3, y+12), fill=(255,220,0)); d.line((x+21, y+12, x+24, y+12), fill=(255,220,0))
-        elif icon == 'rain' or icon == 'storm':
-            d.ellipse((x+2, y+4, x+22, y+14), fill=(100,100,100)); d.ellipse((x+6, y, x+18, y+10), fill=(100,100,100))
-            d.line((x+6, y+16+offset, x+6, y+18+offset), fill=(0,0,255)); d.line((x+12, y+14-offset, x+12, y+16-offset), fill=(0,0,255))
-            d.line((x+18, y+16+offset, x+18, y+18+offset), fill=(0,0,255))
-            if icon == 'storm': d.line((x+10, y+10, x+8, y+16), fill=(255,255,0)); d.line((x+8, y+16, x+12, y+22), fill=(255,255,0))
-        else: 
-            d.ellipse((x+2, y+6, x+22, y+18), fill=(200,200,200)); d.ellipse((x+6, y+2, x+18, y+14), fill=(200,200,200))
-            if icon == 'partly_cloudy': d.ellipse((x+16, y-2, x+26, y+8), fill=(255,220,0))
-
-    def draw_weather_scene_simple(self, game):
+    # --- DYNAMIC STOCK CARD RENDERER ---
+    def draw_stock_card(self, game):
         img = Image.new("RGBA", (128, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
-        sit = game.get('situation', {}); stats = sit.get('stats', {}); cur_icon = sit.get('icon', 'cloud')
-        self.draw_weather_icon_large(d, cur_icon, 4, 4)
-        temp_str = str(game.get('home_abbr', '00')).replace('°','') + "°"
-        d.text((36, 0), temp_str, font=self.huge_font, fill=(255, 255, 255))
-        cond_text = sit.get('condition', '') or str(game.get('away_abbr', 'CITY')).upper()
-        d.text((38, 25), cond_text[:12], font=self.micro, fill=(150, 150, 150))
-        high = stats.get('high', '-'); low = stats.get('low', '-'); pop = stats.get('pop', '0')
-        d.text((90, 2), f"HI: {high}", font=self.tiny, fill=(255, 100, 100))
-        d.text((90, 11), f"LO: {low}", font=self.tiny, fill=(100, 100, 255))
-        d.text((90, 20), f"RAIN:{pop}%", font=self.tiny, fill=(0, 200, 255))
+        try:
+            symbol = str(game.get('home_abbr', 'UNK'))
+            if not symbol.startswith('$') and not any(c.isdigit() for c in symbol): symbol = "$" + symbol
+            
+            price = str(game.get('home_score', '0.00'))
+            if not price.startswith('$'): price = "$" + price
+            
+            change_pct = str(game.get('away_score', '0.00%'))
+            change_amt = str(game.get('situation', {}).get('change', '0.00'))
+            if not change_amt.startswith('$') and not change_amt.startswith('-'): change_amt = "$" + change_amt
+            if change_amt.startswith('-'): change_amt = change_amt.replace('-', '-$')
+
+            logo = self.get_logo(game.get('home_logo'), size=(24, 24))
+            
+            is_up = not change_pct.startswith('-')
+            color = (0, 255, 0) if is_up else (255, 0, 0)
+            
+            if logo: img.paste(logo, (2, 4), logo)
+            x_text_start = 28 if logo else 2
+            
+            d.text((x_text_start, -2), symbol, font=self.big_font, fill=(255, 255, 255))
+            d.text((x_text_start, 11), price, font=self.huge_font, fill=color)
+            
+            RIGHT_ALIGN = 126
+            w_pct = d.textlength(change_pct, font=self.medium_font)
+            pct_x = int(RIGHT_ALIGN - w_pct)
+            
+            arrow_x = pct_x - 6
+            self.draw_arrow(d, arrow_x, 4, is_up, color)
+            d.text((pct_x, -1), change_pct, font=self.medium_font, fill=color)
+            
+            w_price = d.textlength(price, font=self.huge_font)
+            overlap_x = x_text_start + w_price + 6
+            
+            if arrow_x > overlap_x:
+                w_amt = d.textlength(change_amt, font=self.medium_font)
+                amt_x = int(RIGHT_ALIGN - w_amt)
+                d.text((amt_x, 15), change_amt, font=self.medium_font, fill=color)
+            else: pass
+        except Exception as e: print(f"Render Err: {e}")
         return img
-
-    def draw_clock_scene(self):
-        img = Image.new("RGBA", (128, 32), (0, 0, 0, 255))
-        d = ImageDraw.Draw(img)
-        t_str = datetime.now().strftime("%I:%M:%S").lstrip('0')
-        w = d.textlength(t_str, font=self.huge_font)
-        d.text(((128 - w) / 2, 4), t_str, font=self.huge_font, fill=(0, 50, 200))
-        return img
-
-    def build_seamless_strip(self, playlist):
-        if not playlist: return None
-        safe_playlist = playlist[:30] if len(playlist) > 30 else playlist
-        total_w = len(safe_playlist) * 64; buffer = (PANEL_W // 64) + 1 
-        film_w = total_w + (buffer * 64)
-        strip = Image.new("RGBA", (film_w, PANEL_H), (0,0,0,255))
-        for i, g in enumerate(safe_playlist):
-            g_img = self.draw_single_game(g)
-            strip.paste(g_img, (i * 64, 0), g_img)
-        for i in range(buffer):
-            g_img = self.draw_single_game(safe_playlist[i % len(safe_playlist)])
-            strip.paste(g_img, (total_w + (i * 64), 0), g_img)
-        return strip
-
-    def poll_backend(self):
-        last_data_hash = ""
-        while self.running:
-            try:
-                url = f"{BACKEND_URL}/data?id={self.device_id}"
-                r = requests.get(url, timeout=5)
-                data = r.json()
-                status = data.get('status')
-                if status == 'pairing':
-                    self.is_pairing = True
-                    self.pairing_code = data.get('code', 'ERROR')
-                    self.games = [] 
-                    time.sleep(2); continue
-                else: self.is_pairing = False
-
-                content_block = data.get('content', {})
-                local_config = data.get('local_config', {})
-                content_str = str(content_block) + str(local_config)
-                if content_str == last_data_hash: time.sleep(REFRESH_RATE); continue
-                last_data_hash = content_str
-                new_games = content_block.get('sports', [])
-
-                logos_to_fetch = []
-                for g in new_games:
-                    if g.get('home_logo'): logos_to_fetch.append((g['home_logo'], (24,24))); logos_to_fetch.append((g['home_logo'], (16,16)))
-                    if g.get('away_logo'): logos_to_fetch.append((g['away_logo'], (24,24))); logos_to_fetch.append((g['away_logo'], (16,16)))
-                
-                logos_to_fetch = list(set(logos_to_fetch))
-                if logos_to_fetch:
-                    futures = [self.executor.submit(self.download_and_process_logo, url, size) for url, size in logos_to_fetch]
-                    concurrent.futures.wait(futures)
-
-                self.seamless_mode = bool(local_config.get('scroll_seamless', True))
-                self.brightness = float(local_config.get('brightness', 100)) / 100.0
-                self.inverted = bool(local_config.get('inverted', False))
-                self.scroll_sleep = max(0.005, float(local_config.get('scroll_speed', 0.03)))
-
-                if self.seamless_mode and new_games and not (len(new_games) == 1 and new_games[0].get('sport') in ['weather', 'clock']):
-                    new_strip = self.build_seamless_strip(new_games)
-                    self.bg_strip = new_strip; self.bg_strip_ready = True
-                else: self.bg_strip_ready = False
-                self.games = new_games; self.config_updated = True; self.game_render_cache.clear() 
-            except: pass
-            time.sleep(REFRESH_RATE)
-
+    
     def draw_leaderboard_card(self, game):
         img = Image.new("RGBA", (64, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
         try:
             sport = str(game.get('sport', '')).lower()
-            accent_color = (255, 0, 0) if 'f1' in sport else ((255, 215, 0) if 'nascar' in sport else ((0, 144, 255) if 'indy' in sport else (100, 100, 100)))
-            d.rectangle((0, 0, 63, 7), fill=(20, 20, 20)); d.line((0, 8, 63, 8), fill=accent_color, width=1)
-            t_name = str(game.get('tourney_name', '')).upper().replace("GRAND PRIX", "GP").replace("TT", "").strip()
-            header_w = len(t_name[:14]) * 4
-            draw_tiny_text(d, (64 - header_w) // 2, 1, t_name[:14], (220, 220, 220))
-            leaders = game.get('leaders', []) if isinstance(game.get('leaders'), list) else []
-            y_off = 10
+            accent_color = (100, 100, 100)
+            if 'f1' in sport: accent_color = (255, 0, 0)
+            elif 'nascar' in sport: accent_color = (255, 215, 0)
+            elif 'indy' in sport: accent_color = (0, 144, 255)
+            d.rectangle((0, 0, 63, 7), fill=(20, 20, 20))
+            d.line((0, 8, 63, 8), fill=accent_color, width=1)
+            t_name = str(game.get('tourney_name', '')).upper().replace("GRAND PRIX", "GP").replace("TT", "").strip()[:14]
+            header_w = len(t_name) * 4
+            hx = (64 - header_w) // 2
+            draw_tiny_text(d, hx, 1, t_name, (220, 220, 220))
+            leaders = game.get('leaders', [])
+            if not isinstance(leaders, list): leaders = []
+            y_off = 10; row_step = 8 
             for i, p in enumerate(leaders[:3]):
-                rank_color = (255, 215, 0) if i == 0 else ((192, 192, 192) if i == 1 else ((205, 127, 50) if i == 2 else (200, 200, 200)))
-                full_name = str(p.get('name', 'UNK')); acronym = full_name[:3].upper(); raw_score = str(p.get('score', ''))
-                display_score = "LDR" if "LEADER" in raw_score.upper() else (raw_score if raw_score.startswith(('+','-')) else "+" + raw_score)
-                score_color = (255, 215, 0) if "LDR" in display_score else (255, 100, 100)
-                draw_tiny_text(d, 1, y_off, str(i+1), rank_color); draw_tiny_text(d, 8, y_off, acronym, (255, 255, 255))
-                score_width = len(display_score) * 4
-                draw_tiny_text(d, 63 - score_width, y_off, display_score, score_color)
+                rank_color = (200, 200, 200)
+                if i == 0: rank_color = (255, 215, 0)
+                elif i == 1: rank_color = (192, 192, 192)
+                elif i == 2: rank_color = (205, 127, 50)
+                acronym = str(p.get('name', 'UNK'))[:3].upper()
+                raw_score = str(p.get('score', ''))
+                display_score = "LDR" if "LEADER" in raw_score.upper() else raw_score
+                draw_tiny_text(d, 1, y_off, str(i+1), rank_color)
+                draw_tiny_text(d, 8, y_off, acronym, (255, 255, 255))
+                score_w = len(display_score) * 4
+                draw_tiny_text(d, 63 - score_w, y_off, display_score, (255, 100, 100))
                 y_off += 8
-        except: return Image.new("RGBA", (64, 32), (0, 0, 0, 255))
+        except Exception as e: return Image.new("RGBA", (64, 32), (0, 0, 0, 255))
+        return img
+
+    def draw_weather_pixel_art(self, d, icon_name, x, y):
+        icon = str(icon_name).lower()
+        SUN_Y = (255, 200, 0); CLOUD_W = (200, 200, 200); RAIN_B = (60, 100, 255); SNOW_W = (255, 255, 255)
+        if 'sun' in icon or 'clear' in icon:
+            d.ellipse((x+2, y+2, x+12, y+12), fill=SUN_Y)
+            rays = [(x+7, y), (x+7, y+14), (x, y+7), (x+14, y+7), (x+2, y+2), (x+12, y+2), (x+2, y+12), (x+12, y+12)]
+            for rx, ry in rays: d.point((rx, ry), fill=SUN_Y)
+        elif 'rain' in icon or 'drizzle' in icon:
+            d.ellipse((x+2, y+2, x+14, y+10), fill=CLOUD_W)
+            d.line((x+4, y+11, x+3, y+14), fill=RAIN_B); d.line((x+8, y+11, x+7, y+14), fill=RAIN_B); d.line((x+12, y+11, x+11, y+14), fill=RAIN_B)
+        elif 'snow' in icon:
+            d.ellipse((x+2, y+2, x+14, y+10), fill=CLOUD_W)
+            d.point((x+4, y+12), fill=SNOW_W); d.point((x+8, y+14), fill=SNOW_W); d.point((x+12, y+12), fill=SNOW_W); d.point((x+6, y+15), fill=SNOW_W)
+        elif 'storm' in icon or 'thunder' in icon:
+            d.ellipse((x+2, y+2, x+14, y+10), fill=(100, 100, 100))
+            bolt = [(x+8, y+10), (x+6, y+13), (x+9, y+13), (x+7, y+16)]; d.line(bolt, fill=SUN_Y, width=1)
+        elif 'cloud' in icon or 'overcast' in icon:
+            d.ellipse((x+4, y+4, x+16, y+12), fill=CLOUD_W); d.ellipse((x, y+6, x+10, y+12), fill=(180,180,180))
+        else:
+            d.ellipse((x+6, y+2, x+12, y+8), fill=SUN_Y); d.ellipse((x+2, y+6, x+14, y+14), fill=CLOUD_W)
+
+    def get_aqi_color(self, aqi):
+        try:
+            val = int(aqi)
+            if val <= 50: return (0, 255, 0) 
+            if val <= 100: return (255, 255, 0)
+            if val <= 150: return (255, 126, 0) 
+            return (255, 0, 0)
+        except: return (100, 100, 100)
+
+    def draw_weather_detailed(self, game):
+        # 384px wide fixed canvas
+        img = Image.new("RGBA", (384, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        
+        sit = game.get('situation', {})
+        stats = sit.get('stats', {})
+        forecast = sit.get('forecast', []) 
+        
+        # --- LEFT SIDE: CURRENT CONDITIONS (0-120px) ---
+        cur_icon = sit.get('icon', 'cloud')
+        self.draw_weather_pixel_art(d, cur_icon, 4, 8) 
+        
+        location_name = str(game.get('away_abbr', 'CITY')).upper()
+        d.text((28, -2), location_name, font=self.tiny, fill=(255, 255, 255))
+        
+        # Temp F (Moved to y=8)
+        temp_f = str(game.get('home_abbr', '00')).replace('°', '')
+        f_str = f"{temp_f}°F"
+        d.text((28, 8), f_str, font=self.big_font, fill=(255, 255, 255))
+        
+        # AQI and UV (Moved to y=20)
+        aqi_val = stats.get('aqi', '0')
+        aqi_col = self.get_aqi_color(aqi_val)
+        uv_val = str(stats.get('uv', '0'))
+        
+        # AQI Badge (Solid Box)
+        d.rectangle((28, 20, 70, 27), fill=aqi_col)
+        d.text((30, 19), f"AQI:{aqi_val}", font=self.micro, fill=(0,0,0))
+
+        # UV Line
+        d.text((75, 19), f"UV:{uv_val}", font=self.micro, fill=(255, 100, 255))
+
+        # --- SEPARATOR ---
+        d.line((115, 2, 115, 30), fill=(50, 50, 50))
+
+        # --- RIGHT SIDE: FORECAST (120px - 384px) ---
+        if not forecast: 
+            forecast = [
+                {'day': 'MON', 'icon': 'sun', 'high': 80, 'low': 70},
+                {'day': 'TUE', 'icon': 'rain', 'high': 75, 'low': 65},
+                {'day': 'WED', 'icon': 'cloud', 'high': 78, 'low': 68},
+                {'day': 'THU', 'icon': 'storm', 'high': 72, 'low': 60},
+                {'day': 'FRI', 'icon': 'sun', 'high': 82, 'low': 72}
+            ]
+
+        x_cursor = 125
+        for day in forecast[:5]:
+            d.text((x_cursor, 0), day.get('day', 'UNK')[:3], font=self.micro, fill=(150, 150, 150))
+            self.draw_weather_pixel_art(d, day.get('icon', 'cloud'), x_cursor, 11)
+            
+            hi = day.get('high', '--')
+            lo = day.get('low', '--')
+            
+            # Side-by-side Temps (Using NANO font)
+            d.text((x_cursor, 22), f"{hi}", font=self.nano, fill=(255, 100, 100))
+            d.text((x_cursor + 14, 22), "/", font=self.nano, fill=(100, 100, 100))
+            d.text((x_cursor + 20, 22), f"{lo}", font=self.nano, fill=(100, 100, 255))
+            
+            x_cursor += 50 
+
+        return img
+
+    def draw_clock_modern(self):
+        """Centered HUGE time with full date and bottom progress bar"""
+        img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        d.rectangle((0,0, PANEL_W, 32), fill=(0,0,0,255))
+        
+        now = datetime.now()
+        
+        # 1. Date: FULLY WRITTEN OUT (Top Center)
+        date_str = now.strftime("%A %B %d").upper()
+        w_date = d.textlength(date_str, font=self.tiny)
+        d.text(((PANEL_W - w_date)/2, 0), date_str, font=self.tiny, fill=(200, 200, 200))
+
+        # 2. Time: HH:MM:SS (Huge, Center) - Moved down to y=14
+        time_str = now.strftime("%I:%M:%S").lstrip('0')
+        w_time = d.textlength(time_str, font=self.clock_giant)
+        d.text(((PANEL_W - w_time)/2, 14), time_str, font=self.clock_giant, fill=(255, 255, 255))
+        
+        # 3. Seconds Bar (Bottom, Edge to Edge)
+        sec_val = now.second
+        ms_val = now.microsecond
+        total_seconds = sec_val + (ms_val / 1000000.0)
+        bar_width = int((total_seconds / 60.0) * PANEL_W)
+        
+        d.rectangle((0, 31, PANEL_W, 31), fill=(30, 30, 30)) # Grey Background
+        d.rectangle((0, 31, bar_width, 31), fill=(0, 200, 255)) # Blue Progress
+
         return img
 
     def get_game_hash(self, game):
-        s = f"{game.get('id')}_{game.get('status')}_{game.get('away_score')}_{game.get('home_score')}_{str(game.get('situation'))}"
+        # Unique hash to cache rendered images
+        s = f"{game.get('id')}_{game.get('home_score')}_{game.get('away_score')}_{game.get('situation', {}).get('change')}"
         return hashlib.md5(s.encode()).hexdigest()
 
     def draw_single_game(self, game):
         game_hash = self.get_game_hash(game)
-        if game_hash in self.game_render_cache: return self.game_render_cache[game_hash]
+        
+        if game.get('type') != 'weather' and game.get('sport') != 'clock':
+             if game_hash in self.game_render_cache: return self.game_render_cache[game_hash]
+        
+        if game.get('type') == 'weather':
+            img = self.draw_weather_detailed(game)
+            self.game_render_cache[game_hash] = img
+            return img
+
+        if game.get('sport') == 'clock':
+            return self.draw_clock_modern()
+        
+        # Route to stock renderer
+        if game.get('type') == 'stock_ticker' or game.get('sport', '').startswith('stock'): 
+            img = self.draw_stock_card(game)
+            self.game_render_cache[game_hash] = img
+            return img
+        
+        if game.get('type') == 'leaderboard':
+            img = self.draw_leaderboard_card(game)
+            self.game_render_cache[game_hash] = img
+            return img
+        
+        # --- MERGED SPORTS CARD RENDERER ---
         img = Image.new("RGBA", (64, 32), (0, 0, 0, 0)) 
         if not isinstance(game, dict): return img
-        if game.get('type') == 'leaderboard': return self.draw_leaderboard_card(game)
         try:
             d = ImageDraw.Draw(img)
             sport = str(game.get('sport', '')).lower()
+            is_football = 'football' in sport or 'nfl' in sport or 'ncf' in sport
+            is_hockey = 'hockey' in sport or 'nhl' in sport
+            is_baseball = 'baseball' in sport or 'mlb' in sport
+            is_soccer = 'soccer' in sport
             is_active = (game.get('state') == 'in')
-            sit = game.get('situation', {}) or {}; poss = sit.get('possession'); shootout = sit.get('shootout')
-            a_score = str(game.get('away_score', '')); h_score = str(game.get('home_score', ''))
-            is_wide = (('football' in sport and is_active) or len(a_score) >= 2 or len(h_score) >= 2 or (is_active and (poss or sit.get('powerPlay') or sit.get('emptyNet'))))
-            logo_size = (16, 16) if is_wide else (24, 24); logo_y = 5 if is_wide else 0
-            l1_pos = (2, logo_y) if is_wide else (0, logo_y); l2_pos = (46, logo_y) if is_wide else (40, logo_y)
+            sit = game.get('situation', {}) or {} 
+            poss = sit.get('possession')
+            shootout = sit.get('shootout')
+            
+            a_score = str(game.get('away_score', ''))
+            h_score = str(game.get('home_score', ''))
+            has_indicator = is_active and (poss or sit.get('powerPlay') or sit.get('emptyNet'))
+            # Force small logos if football active or long score or indicators present
+            is_wide = ((is_football and is_active) or len(a_score) >= 2 or len(h_score) >= 2 or has_indicator)
+            
+            logo_size = (16, 16) if is_wide else (24, 24)
+            logo_y = 5 if is_wide else 0
+            l1_pos = (2, logo_y) if is_wide else (0, logo_y)
+            l2_pos = (46, logo_y) if is_wide else (40, logo_y)
             score_y = 10 if is_wide else 12
 
             l1 = self.get_logo(game.get('away_logo'), logo_size)
@@ -649,94 +623,200 @@ class TickerStreamer:
             d.text(((64-w_sc)/2, score_y), score, font=self.font, fill=(255,255,255), stroke_width=1, stroke_fill=(0,0,0))
 
             status = self.shorten_status(game.get('status', ''))
-            st_width = 0
-            for ch in status: st_width += 2 if ch == '~' else 5
-            visual_width = st_width - 1 if st_width > 0 else 0
-            draw_hybrid_text(d, (64 - visual_width) // 2, 25, status, (180, 180, 180))
+            st_x = (64 - len(status.replace('~', ''))*5) // 2
+            draw_hybrid_text(d, st_x, 25, status, (180, 180, 180))
 
+            # === SHOOTOUT INDICATORS ===
             if shootout:
-                away_so = shootout.get('away', []) if isinstance(shootout, dict) else []; home_so = shootout.get('home', []) if isinstance(shootout, dict) else []
-                if 'soccer' in sport: self.draw_soccer_shootout(d, away_so, 2, 26); self.draw_soccer_shootout(d, home_so, 46, 26)
-                else: self.draw_shootout_indicators(d, away_so, 2, 26); self.draw_shootout_indicators(d, home_so, 46, 26)
+                away_so = shootout.get('away', []) if isinstance(shootout, dict) else []
+                home_so = shootout.get('home', []) if isinstance(shootout, dict) else []
+                if is_soccer:
+                    self.draw_soccer_shootout(d, away_so, 2, 26)
+                    self.draw_soccer_shootout(d, home_so, 46, 26)
+                else:
+                    self.draw_shootout_indicators(d, away_so, 2, 26)
+                    self.draw_shootout_indicators(d, home_so, 46, 26)
+
+            # === STANDARD INDICATORS ===
             elif is_active:
                 icon_y = logo_y + logo_size[1] + 3; tx = -1; side = None
-                if ('hockey' in sport and (sit.get('powerPlay') or sit.get('emptyNet')) and poss) or (poss): side = poss
+                if (is_football or is_baseball or is_soccer) and poss: side = poss
+                elif is_hockey and (sit.get('powerPlay') or sit.get('emptyNet')) and poss: side = poss
                 
+                away_id = str(game.get('away_id', '')); home_id = str(game.get('home_id', ''))
+                away_abbr = str(game.get('away_abbr', '')); home_abbr = str(game.get('home_abbr', ''))
                 side_str = str(side)
-                if side_str and (side_str == str(game.get('away_abbr', '')) or side_str == str(game.get('away_id', ''))): tx = l1_pos[0] + (logo_size[0]//2) - 2; poss_side = "away"
-                elif side_str and (side_str == str(game.get('home_abbr', '')) or side_str == str(game.get('home_id', ''))): tx = l2_pos[0] + (logo_size[0]//2) + 2; poss_side = "home"
-                else: poss_side = "none"
+                
+                poss_side = "none"
+                if side_str and (side_str == away_abbr or side_str == away_id): 
+                    tx = l1_pos[0] + (logo_size[0]//2) - 2; poss_side = "away"
+                elif side_str and (side_str == home_abbr or side_str == home_id): 
+                    tx = l2_pos[0] + (logo_size[0]//2) + 2; poss_side = "home"
                 
                 if tx != -1:
-                    if 'football' in sport: d.ellipse([tx-3, icon_y, tx+3, icon_y+4], fill=(170,85,0)); d.line([(tx, icon_y+1), (tx, icon_y+3)], fill='white', width=1)
-                    elif 'baseball' in sport: d.ellipse((tx-3, icon_y, tx+3, icon_y+6), fill='white'); d.point((tx-1, icon_y+2), fill='red'); d.point((tx, icon_y+3), fill='red'); d.point((tx+1, icon_y+4), fill='red')
-                    elif 'hockey' in sport: self.draw_hockey_stick(d, tx+2, icon_y+5, 3) 
-                    elif 'soccer' in sport: d.ellipse((tx-2, icon_y, tx+2, icon_y+4), fill='white'); d.point((tx, icon_y+2), fill='black')
-                
-                if 'hockey' in sport:
-                    if sit.get('emptyNet'): w = d.textlength("EN", font=self.micro); d.text(((64-w)/2, -1), "EN", font=self.micro, fill=(255,255,0))
-                    elif sit.get('powerPlay'): w = d.textlength("PP", font=self.micro); d.text(((64-w)/2, -1), "PP", font=self.micro, fill=(255,255,0))
-                elif 'baseball' in sport:
-                    bases = [(31,2), (27,6), (35,6)]; active = [sit.get('onSecond'), sit.get('onThird'), sit.get('onFirst')]
-                    for i, p in enumerate(bases): d.rectangle((p[0], p[1], p[0]+3, p[1]+3), fill=((255,255,150) if active[i] else (45,45,45)))
+                    if is_football:
+                        d.ellipse([tx-3, icon_y, tx+3, icon_y+4], fill=(170,85,0))
+                        d.line([(tx, icon_y+1), (tx, icon_y+3)], fill='white', width=1)
+                    elif is_baseball:
+                        d.ellipse((tx-3, icon_y, tx+3, icon_y+6), fill='white')
+                        d.point((tx-1, icon_y+2), fill='red'); d.point((tx, icon_y+3), fill='red'); d.point((tx+1, icon_y+4), fill='red')
+                    elif is_hockey: self.draw_hockey_stick(d, tx+2, icon_y+5, 3) 
+                    elif is_soccer:
+                        d.ellipse((tx-2, icon_y, tx+2, icon_y+4), fill='white'); d.point((tx, icon_y+2), fill='black')
+                        
+                if is_hockey:
+                    if sit.get('emptyNet'): 
+                        w = d.textlength("EN", font=self.micro)
+                        d.text(((64-w)/2, -1), "EN", font=self.micro, fill=(255,255,0))
+                    elif sit.get('powerPlay'): 
+                        w = d.textlength("PP", font=self.micro)
+                        d.text(((64-w)/2, -1), "PP", font=self.micro, fill=(255,255,0))
+                elif is_baseball:
+                    bases = [(31,2), (27,6), (35,6)] # 2nd, 3rd, 1st
+                    active = [sit.get('onSecond'), sit.get('onThird'), sit.get('onFirst')]
+                    for i, p in enumerate(bases): 
+                        color = (255,255,150) if active[i] else (45,45,45)
+                        d.rectangle((p[0], p[1], p[0]+3, p[1]+3), fill=color)
                     b_count = int(sit.get('balls', 0)); s_count = int(sit.get('strikes', 0)); o_count = int(sit.get('outs', 0))
-                    self.draw_baseball_hud(d, (54 if poss_side == "away" else (2 if poss_side == "home" else 54)), 22, b_count, s_count, o_count)
-                elif 'football' in sport:
+                    if poss_side == "away": self.draw_baseball_hud(d, 54, 22, b_count, s_count, o_count)
+                    elif poss_side == "home": self.draw_baseball_hud(d, 2, 22, b_count, s_count, o_count)
+                    else: self.draw_baseball_hud(d, 54, 22, b_count, s_count, o_count)
+
+                elif is_football:
                     dd = sit.get('downDist', '')
-                    if dd: s_dd = dd.split(' at ')[0].replace("1st", "1st"); w = d.textlength(s_dd, font=self.micro); d.text(((64-w)/2, -1), s_dd, font=self.micro, fill=(0,255,0))
-                if 'football' in sport and sit.get('isRedZone'): d.rectangle((0, 0, 63, 31), outline=(255, 0, 0), width=1)
-        except: return img 
+                    if dd: 
+                        s_dd = dd.split(' at ')[0].replace("1st", "1st")
+                        w = d.textlength(s_dd, font=self.micro)
+                        d.text(((64-w)/2, -1), s_dd, font=self.micro, fill=(0,255,0))
+                if is_football and sit.get('isRedZone'): d.rectangle((0, 0, 63, 31), outline=(255, 0, 0), width=1)
+        except Exception as e: return img 
+        
         self.game_render_cache[game_hash] = img
         return img
 
-    def render_loop(self):
-        last_frame = None; strip_offset = 0.0
-        while self.running:
-            if self.is_pairing:
-                self.update_display(self.draw_pairing_screen()); time.sleep(0.5); continue
-            if self.brightness <= 0.01:
-                self.matrix.Clear(); time.sleep(1.0); continue
-            self.anim_tick += 1; playlist = list(self.games)
-            if not playlist:
-                img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0)); d = ImageDraw.Draw(img)
-                t_str = time.strftime("%I:%M"); w = d.textlength(t_str, font=self.font)
-                d.text(((PANEL_W - w)/2, 10), t_str, font=self.font, fill=(50,50,50))
-                self.update_display(img); time.sleep(1); continue
-            if self.test_pattern:
-                self.update_display(self.generate_test_pattern()); time.sleep(0.1); continue
-            if len(playlist) == 1 and playlist[0].get('sport') == 'clock':
-                self.update_display(self.draw_clock_scene()); time.sleep(1); continue
-            if len(playlist) == 1 and playlist[0].get('type') == 'weather':
-                self.update_display(self.draw_weather_scene_simple(playlist[0])); time.sleep(0.1); continue
+    def build_seamless_strip(self, playlist):
+        if not playlist: return None
+        safe_playlist = playlist[:60]
+        total_w = 0
+        for g in safe_playlist:
+            if g.get('type') == 'stock_ticker': total_w += 128
+            elif g.get('type') == 'weather': total_w += 384
+            else: total_w += 64
+        
+        strip = Image.new("RGBA", (total_w + PANEL_W, PANEL_H), (0,0,0,255))
+        x = 0
+        for g in safe_playlist:
+            img = self.draw_single_game(g)
+            strip.paste(img, (x, 0), img)
+            x += img.width
+            
+        bx = x; i = 0
+        while bx < total_w + PANEL_W and len(safe_playlist) > 0:
+            g = safe_playlist[i % len(safe_playlist)]
+            img = self.draw_single_game(g)
+            strip.paste(img, (bx, 0), img)
+            bx += img.width
+            i += 1
+            
+        return strip
 
-            if self.seamless_mode:
-                if self.bg_strip_ready and self.bg_strip: self.active_strip = self.bg_strip; self.bg_strip_ready = False 
-                if not self.active_strip: self.active_strip = self.build_seamless_strip(playlist)
-                if self.active_strip:
-                    total_w = self.active_strip.width - ((PANEL_W // 64) + 1) * 64; total_w = max(1, total_w)
-                    x = int(strip_offset); view = self.active_strip.crop((x, 0, x + PANEL_W, PANEL_H))
-                    self.update_display(view); strip_offset = (strip_offset + 1) % total_w; time.sleep(self.scroll_sleep)
-                else: time.sleep(0.1)
-            else: 
-                chunk = 2
-                for i in range(0, len(playlist), chunk):
-                    if self.config_updated or self.seamless_mode or self.test_pattern or self.brightness <= 0.01: break 
-                    if (len(self.games) == 1 and self.games[0].get('sport') in ['weather', 'clock']): break
-                    frame = Image.new("RGBA", (PANEL_W, PANEL_H), (0,0,0,255))
-                    g1 = self.draw_single_game(playlist[i]); frame.paste(g1, (0,0), g1)
-                    if i + 1 < len(playlist): g2 = self.draw_single_game(playlist[i+1]); frame.paste(g2, (64,0), g2)
-                    if last_frame:
-                        for x in range(0, PANEL_W + 1, 4):
-                            if self.config_updated or self.brightness <= 0.01: break
-                            c = Image.new("RGBA", (PANEL_W, PANEL_H), (0,0,0,255))
-                            c.paste(last_frame, (-x, 0)); c.paste(frame, (PANEL_W - x, 0))
-                            self.update_display(c); time.sleep(self.scroll_sleep) 
-                    else: self.update_display(frame)
-                    last_frame = frame
-                    for _ in range(int(PAGE_HOLD_TIME * 10)):
-                        if self.config_updated or self.seamless_mode or self.test_pattern or self.brightness <= 0.01: break
-                        time.sleep(0.1)
-                if self.config_updated: self.config_updated = False
+    def render_loop(self):
+        strip_offset = 0.0
+        while self.running:
+            try:
+                if self.is_pairing:
+                    self.update_display(self.draw_pairing_screen()); time.sleep(0.5); continue
+                    
+                if self.brightness <= 0.01:
+                    self.matrix.Clear(); time.sleep(1.0); continue
+                    
+                playlist = list(self.games)
+                
+                if not playlist:
+                    img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0)); d = ImageDraw.Draw(img)
+                    t_str = time.strftime("%I:%M"); w = d.textlength(t_str, font=self.font)
+                    d.text(((PANEL_W - w)/2, 10), t_str, font=self.font, fill=(50,50,50))
+                    self.update_display(img); time.sleep(1); continue
+
+                if len(playlist) == 1 and playlist[0].get('sport') == 'clock':
+                    self.update_display(self.draw_clock_modern()); time.sleep(0.1); continue
+                
+                if len(playlist) == 1 and playlist[0].get('type') == 'weather':
+                    self.update_display(self.draw_weather_detailed(playlist[0])); time.sleep(0.1); continue
+
+                if self.seamless_mode:
+                    if self.bg_strip_ready: 
+                        self.active_strip = self.bg_strip
+                        self.bg_strip_ready = False
+                    
+                    if not self.active_strip: 
+                        self.active_strip = self.build_seamless_strip(playlist)
+                    
+                    if self.active_strip:
+                        total_w = self.active_strip.width - PANEL_W
+                        if total_w <= 0: total_w = 1
+                        view = self.active_strip.crop((int(strip_offset), 0, int(strip_offset) + PANEL_W, PANEL_H))
+                        self.update_display(view)
+                        strip_offset += 1
+                        if strip_offset >= total_w: strip_offset = 0
+                        time.sleep(self.scroll_sleep)
+                    else: time.sleep(0.1)
+                else:
+                    time.sleep(0.1)
+            except Exception as e:
+                print(f"Render Loop Crash Prevented: {e}")
+                time.sleep(1)
+
+    def poll_backend(self):
+        last_hash = ""
+        while self.running:
+            try:
+                url = f"{BACKEND_URL}/data?id={self.device_id}"
+                r = requests.get(url, timeout=5)
+                data = r.json()
+                
+                if data.get('status') == 'pairing':
+                    self.is_pairing = True
+                    self.pairing_code = data.get('code')
+                    self.games = []
+                    time.sleep(2); continue
+                else: self.is_pairing = False
+                
+                content = data.get('content', {})
+                new_games = content.get('sports', [])
+                
+                current_hash = str(new_games) + str(data.get('local_config'))
+                if current_hash != last_hash:
+                    print(f"Received {len(new_games)} items.")
+                    
+                    logos = []
+                    for g in new_games:
+                        if g.get('home_logo'): 
+                            logos.append((g.get('home_logo'), (24, 24)))
+                            logos.append((g.get('home_logo'), (16, 16)))
+                        if g.get('away_logo'): 
+                            logos.append((g.get('away_logo'), (24, 24)))
+                            logos.append((g.get('away_logo'), (16, 16)))
+                    
+                    # Deduplicate downloads
+                    unique_logos = list(set(logos))
+                    
+                    fs = [self.executor.submit(self.download_and_process_logo, u, s) for u, s in unique_logos]
+                    concurrent.futures.wait(fs)
+                    
+                    self.brightness = float(data.get('local_config', {}).get('brightness', 100)) / 100.0
+                    self.scroll_sleep = data.get('local_config', {}).get('scroll_speed', 0.05)
+                    self.inverted = data.get('local_config', {}).get('inverted', False)
+                    
+                    self.bg_strip = self.build_seamless_strip(new_games)
+                    self.bg_strip_ready = True
+                    self.games = new_games
+                    last_hash = current_hash
+                    self.game_render_cache.clear()
+                    
+            except Exception as e:
+                print(f"Poll Error: {e}")
+            time.sleep(REFRESH_RATE)
 
 if __name__ == "__main__":
     app = TickerStreamer()
