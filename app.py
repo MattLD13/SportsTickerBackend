@@ -11,6 +11,7 @@ import requests
 import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import yfinance as yf  # <--- CRITICAL NEW IMPORT
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -42,7 +43,7 @@ STOCK_CACHE_FILE = "stock_cache.json"
 
 # FETCH INTERVALS
 SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 10     # 10 Seconds for Yahoo (To avoid rate limits)
+STOCKS_UPDATE_INTERVAL = 10     # 10 Seconds for Stocks
 
 data_lock = threading.Lock()
 
@@ -297,13 +298,9 @@ class WeatherFetcher:
 
 class StockFetcher:
     def __init__(self):
-        self.market_cache = {} 
+        self.market_cache = {}
         self.last_fetch = 0
-        self.session = requests.Session()
-        # Fake a browser browser header to avoid Yahoo rejecting the request
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        })
+        self.update_interval = 10  # Seconds
         
         self.lists = {
             'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"],
@@ -334,70 +331,63 @@ class StockFetcher:
         sym = symbol.upper()
         if sym in self.ETF_DOMAINS: return f"https://logo.clearbit.com/{self.ETF_DOMAINS[sym]}"
         clean_sym = sym.replace('.', '-')
-        # FMP images are usually free/public access
         return f"https://financialmodelingprep.com/image-stock/{clean_sym}.png"
 
-    def update_market_data(self, active_lists):
-        """
-        Batched Fetcher using YAHOO FINANCE (Free)
-        """
-        if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
+    def _fetch_single_stock(self, symbol):
+        """Helper to fetch a single stock safely using yfinance fast_info"""
+        try:
+            ticker = yf.Ticker(symbol)
+            # fast_info uses the live query endpoint, bypassing many blocking issues
+            # and ensuring we don't get 'stale' cached data from days ago.
+            price = ticker.fast_info.last_price
+            prev_close = ticker.fast_info.previous_close
+            
+            if price is None or prev_close is None: return None
 
-        # 1. Gather all unique symbols from active lists
+            change_raw = price - prev_close
+            change_pct = (change_raw / prev_close) * 100
+
+            return {
+                'symbol': symbol,
+                'price': f"{price:.2f}",
+                'change_amt': f"{'+' if change_raw >= 0 else ''}{change_raw:.2f}",
+                'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%"
+            }
+        except Exception as e:
+            # print(f"Failed {symbol}: {e}")
+            return None
+
+    def update_market_data(self, active_lists):
+        if time.time() - self.last_fetch < self.update_interval: return
+
+        # 1. Gather symbols
         target_symbols = set()
         for list_key in active_lists:
             if list_key in self.lists:
                 target_symbols.update(self.lists[list_key])
         
         if not target_symbols: return
-
-        # 2. Create the Batch URL (Comma separated symbols)
         symbols_list = list(target_symbols)
-        chunk_size = 100
+
+        # 2. Parallel Fetch using Threads (Fast)
+        # yfinance is synchronous, so threading speeds up batch processing significanty
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(self._fetch_single_stock, symbols_list))
+
+        # 3. Update Cache
+        updated_count = 0
+        for res in results:
+            if res:
+                self.market_cache[res['symbol']] = {
+                    'price': res['price'],
+                    'change_amt': res['change_amt'],
+                    'change_pct': res['change_pct']
+                }
+                updated_count += 1
         
-        for i in range(0, len(symbols_list), chunk_size):
-            chunk = symbols_list[i:i + chunk_size]
-            symbols_str = ",".join(chunk)
-            
-            try:
-                # Direct Yahoo Finance Quote API
-                url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbols_str}"
-                r = self.session.get(url, timeout=5)
-                
-                if r.status_code == 200:
-                    data = r.json()
-                    result = data.get('quoteResponse', {}).get('result', [])
-                    
-                    for item in result:
-                        sym = item.get('symbol')
-                        
-                        # Use regularMarketPrice by default
-                        price = item.get('regularMarketPrice', 0.0)
-                        change_amt = item.get('regularMarketChange', 0.0)
-                        change_pct = item.get('regularMarketChangePercent', 0.0)
-                        
-                        # Handle Pre/Post Market Automatically
-                        market_state = item.get('marketState', 'REGULAR')
-                        
-                        if market_state in ['PRE', 'PREPRE'] and item.get('preMarketPrice'):
-                            price = item.get('preMarketPrice')
-                            change_amt = item.get('preMarketChange')
-                            change_pct = item.get('preMarketChangePercent')
-                        elif market_state in ['POST', 'POSTPOST'] and item.get('postMarketPrice'):
-                            price = item.get('postMarketPrice')
-                            change_amt = item.get('postMarketChange')
-                            change_pct = item.get('postMarketChangePercent')
-
-                        self.market_cache[sym] = {
-                            'price': f"{price:.2f}",
-                            'change_amt': f"{change_amt:+.2f}",       # Adds + sign for positive numbers
-                            'change_pct': f"{change_pct:+.2f}%"       # Adds + sign for positive numbers
-                        }
-            except Exception as e:
-                print(f"Batch fetch failed: {e}")
-
-        self.last_fetch = time.time()
-        self.save_cache()
+        if updated_count > 0:
+            self.last_fetch = time.time()
+            self.save_cache()
 
     def get_stock_obj(self, symbol, label):
         data = self.market_cache.get(symbol)
