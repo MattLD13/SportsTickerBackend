@@ -60,10 +60,10 @@ default_state = {
         'f1': True, 'nascar': True, 'indycar': True, 'wec': True, 'imsa': True,
         
         # Utilities
-        'weather': False, 'clock': False,
+        'weather': True, 'clock': True,
         
-        # Stock Categories (Updated)
-        'stock_tech_ai': True,      
+        # Stock Categories
+        'stock_tech_ai': True,       
         'stock_momentum': False,    
         'stock_energy': False,      
         'stock_finance': False,     
@@ -82,7 +82,10 @@ default_state = {
     'debug_mode': False,
     'demo_mode': False,
     'custom_date': None,
-    'weather_location': "New York",
+    # Weather Config
+    'weather_city': "New York",
+    'weather_lat': 40.7128,
+    'weather_lon': -74.0060,
     'utc_offset': -5,
     'scroll_seamless': True, 
     'scroll_speed': 5,
@@ -206,33 +209,96 @@ def generate_demo_data():
     ]
 
 # ================= FETCHING LOGIC =================
+
 class WeatherFetcher:
-    def __init__(self, initial_loc):
-        self.lat = 40.7128; self.lon = -74.0060; self.location_name = "New York"; self.last_fetch = 0; self.cache = None
-        if initial_loc: self.update_coords(initial_loc)
-    def update_coords(self, location_query):
+    def __init__(self, initial_lat=40.7128, initial_lon=-74.0060, city="New York"):
+        self.lat = initial_lat
+        self.lon = initial_lon
+        self.city_name = city
+        self.last_fetch = 0
+        self.cache = None
+
+    def update_config(self, city=None, lat=None, lon=None):
+        if lat is not None: self.lat = lat
+        if lon is not None: self.lon = lon
+        if city is not None: self.city_name = city
+        # Reset cache fetch time to force refresh on next call
+        self.last_fetch = 0 
+
+    def get_weather_icon(self, wmo_code):
+        """Maps WMO codes (Open-Meteo) to pixel art icons"""
+        code = int(wmo_code)
+        if code == 0: return 'sun'
+        if code in [1, 2, 3, 45, 48]: return 'cloud'
+        if code in [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82]: return 'rain'
+        if code in [71, 73, 75, 77, 85, 86]: return 'snow'
+        if code in [95, 96, 99]: return 'storm'
+        return 'cloud'
+
+    def get_day_name(self, date_str):
         try:
-            r = requests.get(f"https://geocoding-api.open-meteo.com/v1/search?name={str(location_query).strip()}&count=1&language=en&format=json", timeout=5)
-            d = r.json()
-            if 'results' in d and len(d['results']) > 0:
-                res = d['results'][0]; self.lat = res['latitude']; self.lon = res['longitude']; self.location_name = res['name']; self.last_fetch = 0 
-        except Exception as e: print(f"Weather update error: {e}")
+            date_obj = dt.strptime(date_str, '%Y-%m-%d')
+            return date_obj.strftime('%a').upper()
+        except: return "DAY"
+
     def get_weather(self):
         if time.time() - self.last_fetch < 900 and self.cache: return self.cache
+        
         try:
-            r = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto", timeout=5)
-            d = r.json(); c = d.get('current', {}); dl = d.get('daily', {})
-            code = c.get('weather_code', 0); is_day = c.get('is_day', 1)
-            icon = "cloud"
-            if code in [0, 1]: icon = "sun" if is_day else "moon"
-            elif code in [51, 53, 55, 61, 63, 65, 80, 81, 82]: icon = "rain"
-            elif code in [71, 73, 75, 77, 85, 86]: icon = "snow"
-            elif code in [95, 96, 99]: icon = "storm"
-            w_obj = { "type": "weather", "sport": "weather", "id": "weather_widget", "status": "Live",
-                "home_abbr": f"{int(c.get('temperature_2m', 0))}°", "away_abbr": self.location_name, "home_score": "", "away_score": "", "is_shown": True, "home_logo": "", "away_logo": "", "home_color": "#000000", "away_color": "#000000",
-                "situation": { "icon": icon, "stats": { "high": int(dl['temperature_2m_max'][0]), "low": int(dl['temperature_2m_min'][0]), "uv": float(dl['uv_index_max'][0]) } } }
-            self.cache = w_obj; self.last_fetch = time.time(); return w_obj
-        except: return None
+            # 1. Fetch Forecast & UV
+            w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto"
+            w_res = requests.get(w_url, timeout=5).json()
+
+            # 2. Fetch AQI
+            a_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={self.lat}&longitude={self.lon}&current=us_aqi"
+            a_res = requests.get(a_url, timeout=5).json()
+
+            # --- PROCESS DATA ---
+            current_temp = int(round(w_res['current']['temperature_2m']))
+            current_code = w_res['current']['weather_code']
+            current_icon = self.get_weather_icon(current_code)
+            
+            aqi = a_res.get('current', {}).get('us_aqi', 0)
+            uv = w_res['daily']['uv_index_max'][0]
+
+            forecast_list = []
+            daily = w_res['daily']
+            
+            # Forecast loop (next 5 days)
+            for i in range(0, 5): 
+                f_day = {
+                    "day": self.get_day_name(daily['time'][i]),
+                    "icon": self.get_weather_icon(daily['weather_code'][i]),
+                    "high": int(round(daily['temperature_2m_max'][i])),
+                    "low": int(round(daily['temperature_2m_min'][i]))
+                }
+                forecast_list.append(f_day)
+
+            self.cache = {
+                "type": "weather",
+                "sport": "weather",
+                "id": "weather_main",
+                "away_abbr": self.city_name.upper(), 
+                "home_abbr": str(current_temp), 
+                "situation": {
+                    "icon": current_icon,
+                    "stats": {
+                        "aqi": str(aqi),
+                        "uv": str(uv)
+                    },
+                    "forecast": forecast_list
+                },
+                "home_score": str(current_temp), # Fallback for simple rendering
+                "away_score": "0",
+                "status": "Active",
+                "is_shown": True
+            }
+            self.last_fetch = time.time()
+            return self.cache
+
+        except Exception as e:
+            print(f"Weather fetch failed: {e}")
+            return None
 
 class StockFetcher:
     def __init__(self, api_key):
@@ -242,12 +308,12 @@ class StockFetcher:
         
         # === STOCK LISTS (EXPANDED TO ~20 PER COL) ===
         self.lists = {
-            # TECH / AI (Removed TSLA, PLTR to avoid duplicates)
+            # TECH / AI
             'stock_tech_ai': [
                 "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", 
                 "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"
             ],
-            # MOMENTUM (Removed TSLA, PLTR)
+            # MOMENTUM
             'stock_momentum': [
                 "COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", 
                 "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"
@@ -267,7 +333,7 @@ class StockFetcher:
                 "WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", 
                 "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"
             ],
-            # NYSE 50 (Subset, kept distinct)
+            # NYSE 50
             'stock_nyse_50': [
                 "NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "BRK.B",
                 "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML",
@@ -275,19 +341,19 @@ class StockFetcher:
                 "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC",
                 "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"
             ],
-            # AUTOMOTIVE (NEW - Includes TSLA)
+            # AUTOMOTIVE
             'stock_automotive': [
                 "TSLA", "F", "GM", "TM", "STLA", "HMC", "RACE", "RIVN", "LCID", "NIO", 
                 "XPEV", "LI", "BYDDY", "BLNK", "CHPT", "LAZR", "MGA", "ALV", "APTV", "BWA"
             ],
-            # DEFENSE (NEW - Includes PLTR)
+            # DEFENSE
             'stock_defense': [
                 "LMT", "RTX", "NOC", "GD", "BA", "LHX", "HII", "LDOS", "BAH", "SAIC", 
                 "KTOS", "AVAV", "TXT", "AXON", "PLTR", "CACI", "BWXT", "GE", "HON", "HEI"
             ]
         }
         
-        # DOMAIN MAPPING (For remaining ETFs if needed in future)
+        # DOMAIN MAPPING
         self.ETF_DOMAINS = {
             "QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"
         }
@@ -318,12 +384,8 @@ class StockFetcher:
 
     def get_logo_url(self, symbol):
         sym = symbol.upper()
-        
-        # 1. Clearbit Domain Map (Best for ETFs/Funds)
         if sym in self.ETF_DOMAINS:
             return f"https://logo.clearbit.com/{self.ETF_DOMAINS[sym]}"
-            
-        # 2. Financial Modeling Prep (Best General Fallback)
         clean_sym = sym.replace('.', '-')
         return f"https://financialmodelingprep.com/image-stock/{clean_sym}.png"
 
@@ -399,8 +461,9 @@ class StockFetcher:
         return res
 
 class SportsFetcher:
-    def __init__(self, initial_loc):
-        self.weather = WeatherFetcher(initial_loc)
+    def __init__(self, initial_city, initial_lat, initial_lon):
+        # Initial Weather setup
+        self.weather = WeatherFetcher(initial_lat=initial_lat, initial_lon=initial_lon, city=initial_city)
         self.stocks = StockFetcher("efAYbpvLyZ0H1FJT4m898zByYS119W0l")
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
@@ -686,7 +749,12 @@ class SportsFetcher:
 
         # 1. WEATHER & CLOCK
         if conf['active_sports'].get('weather'):
-            if conf['weather_location'] != self.weather.location_name: self.weather.update_coords(conf['weather_location'])
+            # Check if location needs update based on state
+            if (conf['weather_lat'] != self.weather.lat or 
+                conf['weather_lon'] != self.weather.lon or 
+                conf['weather_city'] != self.weather.city_name):
+                self.weather.update_config(city=conf['weather_city'], lat=conf['weather_lat'], lon=conf['weather_lon'])
+            
             w = self.weather.get_weather()
             if w: games.append(w)
 
@@ -807,7 +875,7 @@ class SportsFetcher:
                         if is_shootout and 'soccer' in league_key:
                             shootout_data = self.fetch_shootout_details_soccer(e['id'], league_key)
                         
-                        # POSSESSION (RESTORED OLD LOGIC)
+                        # POSSESSION
                         poss_raw = sit.get('possession')
                         if poss_raw: self.possession_cache[e['id']] = poss_raw
                         elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
@@ -892,7 +960,12 @@ class SportsFetcher:
             
         state['current_games'] = final_list
 
-fetcher = SportsFetcher(state['weather_location'])
+# Initialize Global Fetcher
+fetcher = SportsFetcher(
+    initial_city=state['weather_city'], 
+    initial_lat=state['weather_lat'], 
+    initial_lon=state['weather_lon']
+)
 
 def sports_worker():
     # Initial Team Fetch
@@ -921,7 +994,17 @@ def api_config():
         with data_lock:
             was_demo = state.get('demo_mode', False)
             is_demo = new_data.get('demo_mode', was_demo)
+            
+            # Handle specific location updates to pass to fetcher
+            new_city = new_data.get('weather_city')
+            new_lat = new_data.get('weather_lat')
+            new_lon = new_data.get('weather_lon')
+            
+            if new_city or new_lat or new_lon:
+                fetcher.weather.update_config(city=new_city, lat=new_lat, lon=new_lon)
+
             state.update(new_data)
+            
             if was_demo and not is_demo: 
                 # Clear buffers to force refresh
                 state['buffer_sports'] = []
@@ -943,7 +1026,7 @@ def get_ticker_data():
     
     with data_lock:
         games = [g for g in state['current_games'] if g.get('is_shown', True)]
-        conf = { "active_sports": state['active_sports'], "mode": state['mode'], "weather": state['weather_location'] }
+        conf = { "active_sports": state['active_sports'], "mode": state['mode'], "weather": state['weather_city'] }
     
     return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": games } })
 
