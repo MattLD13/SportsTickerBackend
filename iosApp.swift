@@ -2,7 +2,7 @@ import SwiftUI
 import Foundation
 import Combine
 import UIKit
-import CoreLocation // <--- REQUIRED FOR GEOCODING
+import CoreLocation
 
 // ==========================================
 // MARK: - 0. EXTENSIONS
@@ -167,9 +167,7 @@ struct TickerState: Codable, Sendable {
     var custom_date: String?
     var scroll_speed: Int?
     var show_debug_options: Bool?
-    
-    // Updated Weather Keys for Server v2
-    var weather_location: String? // Legacy, kept for UI text
+    var weather_location: String?
     var weather_city: String?
     var weather_lat: Double?
     var weather_lon: Double?
@@ -207,6 +205,8 @@ struct PairResponse: Decodable, Sendable {
 class TickerViewModel: ObservableObject {
     @Published var games: [Game] = []
     @Published var allTeams: [String: [TeamData]] = [:]
+    
+    // Default mode is "all", meaning Show All is selected on Home View
     @Published var state: TickerState = TickerState(
         active_sports: ["nfl": true], mode: "all", scroll_seamless: false,
         my_teams: [], debug_mode: false, demo_mode: false, custom_date: nil,
@@ -270,7 +270,6 @@ class TickerViewModel: ObservableObject {
                 let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
                 DispatchQueue.main.async {
                     self.isServerReachable = true
-                    // Sort stocks to top if mixed
                     self.games = decoded.games.sorted { g1, g2 in
                         if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
                         if g1.state == "in" && g2.state != "in" { return true }
@@ -278,7 +277,6 @@ class TickerViewModel: ObservableObject {
                     }
                     if !self.isEditing {
                         self.state = decoded.settings
-                        // Only update text input if not editing
                         if let city = decoded.settings.weather_city {
                             self.weatherLocInput = city
                         } else if let loc = decoded.settings.weather_location {
@@ -303,21 +301,18 @@ class TickerViewModel: ObservableObject {
         }.resume()
     }
     
-    // === UPDATED: Geocoding + Saving ===
     func updateWeatherAndSave() {
         let geocoder = CLGeocoder()
         geocoder.geocodeAddressString(weatherLocInput) { placemarks, error in
             DispatchQueue.main.async {
                 if let pm = placemarks?.first, let loc = pm.location, let name = pm.locality ?? pm.name {
-                    // Success! Update State with Lat/Lon/City
                     self.state.weather_city = name
                     self.state.weather_lat = loc.coordinate.latitude
                     self.state.weather_lon = loc.coordinate.longitude
-                    self.state.weather_location = self.weatherLocInput // Keep text for UI
+                    self.state.weather_location = self.weatherLocInput
                     print("Geocoded: \(name) at \(loc.coordinate.latitude), \(loc.coordinate.longitude)")
                     self.saveSettings()
                 } else {
-                    // Fallback: Just save the text (old behavior, likely wont work on new server but prevents crash)
                     print("Geocode failed, saving text only")
                     self.state.weather_location = self.weatherLocInput
                     self.saveSettings()
@@ -809,19 +804,19 @@ struct ModesView: View {
             VStack(spacing: 24) {
                 HStack { Text("Modes").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80)
                 HStack(spacing: 12) {
-                    FilterBtn(title: "Sports", val: "sports", cur: currentMode) { setMode("sports") }
-                    FilterBtn(title: "Stocks", val: "stocks", cur: currentMode) { setMode("stocks") }
-                    FilterBtn(title: "Weather", val: "weather", cur: currentMode) { setMode("weather") }
-                    FilterBtn(title: "Clock", val: "clock", cur: currentMode) { setMode("clock") }
+                    
+                    // === UPDATED LOGIC: If mode is NOT specifically stocks/weather/clock, treat it as Sports ===
+                    // This covers "all", "live", "my_teams", and "sports"
+                    let nonSportsModes = ["stocks", "weather", "clock"]
+                    let effectiveMode = nonSportsModes.contains(currentMode) ? currentMode : "sports"
+                    
+                    FilterBtn(title: "Sports", val: "sports", cur: effectiveMode) { setMode("sports") }
+                    FilterBtn(title: "Stocks", val: "stocks", cur: effectiveMode) { setMode("stocks") }
+                    FilterBtn(title: "Weather", val: "weather", cur: effectiveMode) { setMode("weather") }
+                    FilterBtn(title: "Clock", val: "clock", cur: effectiveMode) { setMode("clock") }
                 }.padding(.horizontal)
                 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("SCROLL STYLE").font(.caption).bold().foregroundStyle(.secondary)
-                    HStack(spacing: 12) {
-                        ScrollBtn(title: "Paged", val: false, cur: vm.state.scroll_seamless ?? false) { vm.state.scroll_seamless = false; vm.saveSettings() }
-                        ScrollBtn(title: "Seamless", val: true, cur: vm.state.scroll_seamless ?? false) { vm.state.scroll_seamless = true; vm.saveSettings() }
-                    }
-                }.padding(.horizontal)
+                // === REMOVED "SCROLL STYLE" SECTION HERE ===
                 
                 if currentMode == "weather" {
                     VStack(alignment: .leading, spacing: 10) {
@@ -829,7 +824,6 @@ struct ModesView: View {
                         HStack {
                             Text("Location:")
                             Spacer()
-                            // === UPDATED: Uses vm.weatherLocInput and calls new geocoding func ===
                             TextField("City or Zip", text: $vm.weatherLocInput)
                                 .multilineTextAlignment(.trailing)
                                 .foregroundColor(.white)
@@ -847,9 +841,9 @@ struct ModesView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
                             ForEach(stockCats, id: \.0) { key, name in
                                 let isActive = vm.state.active_sports[key] ?? false
-                                Button { 
+                                Button {
                                     vm.state.active_sports[key] = !isActive
-                                    vm.saveSettings() 
+                                    vm.saveSettings()
                                 } label: {
                                     Text(name).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
                                         .background(isActive ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
@@ -1117,7 +1111,8 @@ struct DeviceRow: View {
                     set: { vm.updateDeviceSettings(id: device.id, inverted: $0) }
                 )).fixedSize()
                 .labelsHidden()
-                .toggleStyle(SwitchToggleStyle(tint: .white))
+                // === MODIFIED: Set tint to .blue ===
+                .toggleStyle(SwitchToggleStyle(tint: .blue))
                 Text("Inverted").font(.caption)
                 
                 Spacer()
