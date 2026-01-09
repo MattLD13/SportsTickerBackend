@@ -9,6 +9,7 @@ import string
 from datetime import datetime as dt, timezone, timedelta
 import requests
 import concurrent.futures
+import hashlib
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -110,12 +111,11 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # Remove deprecated keys from active_sports
+            # Cleanup old keys
             deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf']
             if 'active_sports' in loaded:
                 for k in deprecated:
-                    if k in loaded['active_sports']: 
-                        del loaded['active_sports'][k]
+                    if k in loaded['active_sports']: del loaded['active_sports'][k]
             
             for k, v in loaded.items():
                 if k == 'show_debug_options': continue 
@@ -511,7 +511,7 @@ class SportsFetcher:
             with data_lock: state['all_teams_data'] = teams_catalog
         except Exception as e: print(f"Global Team Fetch Error: {e}")
 
-    # === NHL NATIVE FETCHER ===
+    # === SHOOTOUT LOGIC (Restored) ===
     def fetch_shootout_details(self, game_id, away_id, home_id):
         try:
             url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
@@ -566,6 +566,7 @@ class SportsFetcher:
                         if not g_utc: continue
                         g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
                         g_local = g_dt.astimezone(timezone(timedelta(hours=utc_offset)))
+                        # STRICT CHECK: Game local date MUST equal today's local date
                         if g_local.strftime("%Y-%m-%d") != local_today_str: continue
                     except: continue
 
@@ -650,7 +651,7 @@ class SportsFetcher:
                                     else:
                                         p_lbl = "OT" if p_num > 3 else f"P{p_num}"
                                         disp = f"{p_lbl} {time_rem}"
-                                
+                                    
                                 sit_obj = d2.get('situation', {})
                                 if sit_obj and p_type != 'SHOOTOUT':
                                     sit = sit_obj.get('situationCode', '1551')
@@ -881,6 +882,11 @@ class SportsFetcher:
                     if res: all_games.extend(res)
                 except Exception as e: print(f"League fetch error: {e}")
 
+        # === FIX FOR JUMPING: SORT SPORTS GAMES ===
+        # We sort by 'type' (to keep clock/weather at top if needed) and then startTimeUTC
+        # 'clock'/'weather' have no startTimeUTC, so we default to a very old date or rely on python sort stability
+        all_games.sort(key=lambda x: (x.get('type') != 'clock', x.get('type') != 'weather', x.get('startTimeUTC', '9999')))
+
         with data_lock: 
             state['buffer_sports'] = all_games
             self.merge_buffers()
@@ -920,6 +926,8 @@ class SportsFetcher:
         else: # ALL
             utils = [g for g in sports if g.get('type') == 'weather' or g.get('sport') == 'clock']
             pure_sports = [g for g in sports if g not in utils]
+            # Ensure pure sports remain sorted
+            pure_sports.sort(key=lambda x: x.get('startTimeUTC', '9999'))
             final_list = utils + pure_sports + stocks
             
         state['current_games'] = final_list
@@ -932,11 +940,9 @@ fetcher = SportsFetcher(
 )
 
 def sports_worker():
-    # Initial Team Fetch
     try: fetcher.fetch_all_teams()
     except: pass
-    
-    while True:
+    while True: 
         try: fetcher.update_buffer_sports()
         except: pass
         time.sleep(SPORTS_UPDATE_INTERVAL)
