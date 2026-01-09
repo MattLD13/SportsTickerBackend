@@ -222,11 +222,9 @@ class WeatherFetcher:
         if lat is not None: self.lat = lat
         if lon is not None: self.lon = lon
         if city is not None: self.city_name = city
-        # Reset cache fetch time to force refresh on next call
         self.last_fetch = 0 
 
     def get_weather_icon(self, wmo_code):
-        """Maps WMO codes (Open-Meteo) to pixel art icons"""
         code = int(wmo_code)
         if code == 0: return 'sun'
         if code in [1, 2, 3, 45, 48]: return 'cloud'
@@ -245,15 +243,12 @@ class WeatherFetcher:
         if time.time() - self.last_fetch < 900 and self.cache: return self.cache
         
         try:
-            # 1. Fetch Forecast & UV
             w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto"
             w_res = requests.get(w_url, timeout=5).json()
 
-            # 2. Fetch AQI
             a_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={self.lat}&longitude={self.lon}&current=us_aqi"
             a_res = requests.get(a_url, timeout=5).json()
 
-            # --- PROCESS DATA ---
             current_temp = int(round(w_res['current']['temperature_2m']))
             current_code = w_res['current']['weather_code']
             current_icon = self.get_weather_icon(current_code)
@@ -264,7 +259,6 @@ class WeatherFetcher:
             forecast_list = []
             daily = w_res['daily']
             
-            # Forecast loop (next 5 days)
             for i in range(0, 5): 
                 f_day = {
                     "day": self.get_day_name(daily['time'][i]),
@@ -288,7 +282,7 @@ class WeatherFetcher:
                     },
                     "forecast": forecast_list
                 },
-                "home_score": str(current_temp), # Fallback for simple rendering
+                "home_score": str(current_temp),
                 "away_score": "0",
                 "status": "Active",
                 "is_shown": True
@@ -306,58 +300,17 @@ class StockFetcher:
         self.market_cache = {} 
         self.last_fetch = 0
         
-        # === STOCK LISTS (EXPANDED TO ~20 PER COL) ===
         self.lists = {
-            # TECH / AI
-            'stock_tech_ai': [
-                "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", 
-                "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"
-            ],
-            # MOMENTUM
-            'stock_momentum': [
-                "COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", 
-                "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"
-            ],
-            # ENERGY
-            'stock_energy': [
-                "XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", 
-                "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"
-            ],
-            # FINANCE
-            'stock_finance': [
-                "JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", 
-                "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"
-            ],
-            # CONSUMER
-            'stock_consumer': [
-                "WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", 
-                "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"
-            ],
-            # NYSE 50
-            'stock_nyse_50': [
-                "NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "BRK.B",
-                "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML",
-                "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM",
-                "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC",
-                "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"
-            ],
-            # AUTOMOTIVE
-            'stock_automotive': [
-                "TSLA", "F", "GM", "TM", "STLA", "HMC", "RACE", "RIVN", "LCID", "NIO", 
-                "XPEV", "LI", "BYDDY", "BLNK", "CHPT", "LAZR", "MGA", "ALV", "APTV", "BWA"
-            ],
-            # DEFENSE
-            'stock_defense': [
-                "LMT", "RTX", "NOC", "GD", "BA", "LHX", "HII", "LDOS", "BAH", "SAIC", 
-                "KTOS", "AVAV", "TXT", "AXON", "PLTR", "CACI", "BWXT", "GE", "HON", "HEI"
-            ]
+            'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"],
+            'stock_momentum': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"],
+            'stock_energy': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"],
+            'stock_finance': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"],
+            'stock_consumer': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"],
+            'stock_nyse_50': ["NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "BRK.B", "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM", "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC", "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"],
+            'stock_automotive': ["TSLA", "F", "GM", "TM", "STLA", "HMC", "RACE", "RIVN", "LCID", "NIO", "XPEV", "LI", "BYDDY", "BLNK", "CHPT", "LAZR", "MGA", "ALV", "APTV", "BWA"],
+            'stock_defense': ["LMT", "RTX", "NOC", "GD", "BA", "LHX", "HII", "LDOS", "BAH", "SAIC", "KTOS", "AVAV", "TXT", "AXON", "PLTR", "CACI", "BWXT", "GE", "HON", "HEI"]
         }
-        
-        # DOMAIN MAPPING
-        self.ETF_DOMAINS = {
-            "QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"
-        }
-        
+        self.ETF_DOMAINS = {"QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"}
         self.load_cache()
 
     def load_cache(self):
@@ -365,33 +318,26 @@ class StockFetcher:
             try:
                 with open(STOCK_CACHE_FILE, 'r') as f:
                     self.market_cache = json.load(f)
-                print(f"Loaded {len(self.market_cache)} stocks from cache.")
             except: pass
 
     def save_cache(self):
         export_cache = {}
         all_symbols = set()
-        for lst in self.lists.values():
-            all_symbols.update(lst)
-        
+        for lst in self.lists.values(): all_symbols.update(lst)
         for sym in all_symbols:
-            if sym in self.market_cache:
-                export_cache[sym] = self.market_cache[sym]
-                
+            if sym in self.market_cache: export_cache[sym] = self.market_cache[sym]
         try:
             save_json_atomically(STOCK_CACHE_FILE, export_cache)
         except: pass
 
     def get_logo_url(self, symbol):
         sym = symbol.upper()
-        if sym in self.ETF_DOMAINS:
-            return f"https://logo.clearbit.com/{self.ETF_DOMAINS[sym]}"
+        if sym in self.ETF_DOMAINS: return f"https://logo.clearbit.com/{self.ETF_DOMAINS[sym]}"
         clean_sym = sym.replace('.', '-')
         return f"https://financialmodelingprep.com/image-stock/{clean_sym}.png"
 
     def fetch_entire_market(self):
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
-        
         for i in range(0, 4):
             d = (dt.now() - timedelta(days=i)).strftime("%Y-%m-%d")
             url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{d}?adjusted=true&apiKey={self.api_key}"
@@ -399,7 +345,6 @@ class StockFetcher:
                 r = requests.get(url, timeout=10)
                 data = r.json()
                 if data.get('resultsCount', 0) > 0:
-                    print(f"Fetched Market Data for {d}. Items: {data['resultsCount']}")
                     new_cache = {}
                     for item in data.get('results', []):
                         ticker = item.get('T')
@@ -408,11 +353,7 @@ class StockFetcher:
                         if ticker and close and open_p:
                             change_amt = close - open_p
                             change_pct = (change_amt / open_p) * 100
-                            new_cache[ticker] = {
-                                'price': f"{close:.2f}",
-                                'change_amt': f"{change_amt:+.2f}",
-                                'change_pct': f"{change_pct:+.2f}%"
-                            }
+                            new_cache[ticker] = {'price': f"{close:.2f}", 'change_amt': f"{change_amt:+.2f}", 'change_pct': f"{change_pct:+.2f}%"}
                     self.market_cache = new_cache
                     self.last_fetch = time.time()
                     self.save_cache()
@@ -422,39 +363,17 @@ class StockFetcher:
     def get_stock_obj(self, symbol, label):
         data = self.market_cache.get(symbol)
         if not data: return None
-        
         return {
-            'type': 'stock_ticker',
-            'sport': 'stock',
-            'id': f"stk_{symbol}",
-            'status': label,
-            'tourney_name': label,
-            'state': 'in',
-            'is_shown': True,
-            'home_abbr': symbol,
-            'home_score': data['price'],
-            'away_score': data['change_pct'],
-            'home_logo': self.get_logo_url(symbol),
-            'situation': {'change': data['change_amt']},
-            'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
+            'type': 'stock_ticker', 'sport': 'stock', 'id': f"stk_{symbol}", 'status': label, 'tourney_name': label,
+            'state': 'in', 'is_shown': True, 'home_abbr': symbol, 'home_score': data['price'], 'away_score': data['change_pct'],
+            'home_logo': self.get_logo_url(symbol), 'situation': {'change': data['change_amt']}, 'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
         }
 
     def get_list(self, list_key):
         self.fetch_entire_market()
         res = []
-        
-        labels = {
-            'stock_tech_ai': 'TECH / AI',
-            'stock_momentum': 'MOMENTUM',
-            'stock_energy': 'ENERGY',
-            'stock_finance': 'FINANCE',
-            'stock_consumer': 'CONSUMER',
-            'stock_nyse_50': 'NYSE 50',
-            'stock_automotive': 'AUTO / MOBILITY',
-            'stock_defense': 'DEFENSE'
-        }
+        labels = {'stock_tech_ai': 'TECH / AI', 'stock_momentum': 'MOMENTUM', 'stock_energy': 'ENERGY', 'stock_finance': 'FINANCE', 'stock_consumer': 'CONSUMER', 'stock_nyse_50': 'NYSE 50', 'stock_automotive': 'AUTO / MOBILITY', 'stock_defense': 'DEFENSE'}
         label = labels.get(list_key, "MARKET")
-        
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
@@ -462,7 +381,6 @@ class StockFetcher:
 
 class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
-        # Initial Weather setup
         self.weather = WeatherFetcher(initial_lat=initial_lat, initial_lon=initial_lon, city=initial_city)
         self.stocks = StockFetcher("efAYbpvLyZ0H1FJT4m898zByYS119W0l")
         self.possession_cache = {} 
@@ -538,7 +456,6 @@ class SportsFetcher:
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
-            
             for t in OLYMPIC_HOCKEY_TEAMS:
                 teams_catalog['hockey_olympics'].append({'abbr': t['abbr'], 'logo': t['logo'], 'color': '000000', 'alt_color': '444444'})
 
@@ -554,7 +471,6 @@ class SportsFetcher:
                             t_alt = item['team'].get('alternateColor', '444444')
                             logos = item['team'].get('logos', [])
                             t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
-                            
                             if t_abbr in FBS_TEAMS:
                                 t_logo = self.get_corrected_logo('ncf_fbs', t_abbr, t_logo)
                                 if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']):
@@ -592,97 +508,118 @@ class SportsFetcher:
             return results
         except: return None
 
-    def _fetch_nhl_native(self, games_list, target_date_str):
-        with data_lock: 
-            is_nhl = state['active_sports'].get('nhl', False)
-            utc_offset = state.get('utc_offset', -5)
+    def _fetch_nhl_native(self, games_list, conf):
+        # Strict logic for NHL date
+        is_nhl = conf['active_sports'].get('nhl', False)
+        utc_offset = conf.get('utc_offset', -5)
         if not is_nhl: return
+        
+        # Calculate local today string YYYY-MM-DD
+        now_utc = dt.now(timezone.utc)
+        now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+        local_today_str = now_local.strftime("%Y-%m-%d")
+        
         processed_ids = set()
         try:
             r = requests.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
             if r.status_code != 200: return
+            
+            # Iterate through the entire schedule week returned
             for d in r.json().get('gameWeek', []):
-                day_games = d.get('games', [])
-                is_target_date = (d.get('date') == target_date_str)
-                has_active_games = any(g.get('gameState') in ['LIVE', 'CRIT'] for g in day_games)
-                if is_target_date or has_active_games:
-                    for g in day_games:
-                        gid = g['id']
-                        if gid in processed_ids: continue
-                        processed_ids.add(gid)
-                        h_ab = g['homeTeam']['abbrev']; a_ab = g['awayTeam']['abbrev']
-                        h_sc = str(g['homeTeam'].get('score', 0)); a_sc = str(g['awayTeam'].get('score', 0))
-                        st = g.get('gameState', 'OFF')
-                        h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
-                        a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
-                        h_info = self.lookup_team_info_from_cache('nhl', h_ab)
-                        a_info = self.lookup_team_info_from_cache('nhl', a_ab)
-                        map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
-                        with data_lock:
-                            mode = state['mode']; my_teams = state['my_teams']
-                        is_shown = True
-                        if mode == 'live' and map_st != 'in': is_shown = False
-                        if mode == 'my_teams':
-                            h_k = f"nhl:{h_ab}"; a_k = f"nhl:{a_ab}"
-                            if (h_k not in my_teams and h_ab not in my_teams) and (a_k not in my_teams and a_ab not in my_teams): is_shown = False
+                for g in d.get('games', []):
+                    # STRICT DATE CHECK:
+                    # Convert this specific game's UTC start time to user's local time
+                    # Only include if it matches local_today_str
+                    try:
+                        g_utc = g.get('startTimeUTC')
+                        if not g_utc: continue
+                        g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
+                        g_local = g_dt.astimezone(timezone(timedelta(hours=utc_offset)))
+                        g_local_str = g_local.strftime("%Y-%m-%d")
                         
-                        disp = "Scheduled"; pp = False; poss = ""; en = False; shootout_data = None 
-                        utc_start = g.get('startTimeUTC', '') 
-                        dur = self.calculate_game_timing('nhl', utc_start, 1, st)
+                        if g_local_str != local_today_str:
+                            continue # Skip games not matching strict local today
+                    except: continue
 
-                        if st in ['PRE', 'FUT'] and utc_start:
-                             try:
-                                 dt_obj = dt.fromisoformat(utc_start.replace('Z', '+00:00'))
-                                 local = dt_obj.astimezone(timezone(timedelta(hours=utc_offset)))
-                                 disp = local.strftime("%I:%M %p").lstrip('0')
-                             except: pass
-                        elif st in ['FINAL', 'OFF']:
-                             disp = "FINAL"
-                             pd = g.get('periodDescriptor', {})
-                             if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
+                    gid = g['id']
+                    if gid in processed_ids: continue
+                    processed_ids.add(gid)
+                    
+                    # Process Game Data
+                    h_ab = g['homeTeam']['abbrev']; a_ab = g['awayTeam']['abbrev']
+                    h_sc = str(g['homeTeam'].get('score', 0)); a_sc = str(g['awayTeam'].get('score', 0))
+                    st = g.get('gameState', 'OFF')
+                    
+                    h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
+                    a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
+                    h_info = self.lookup_team_info_from_cache('nhl', h_ab)
+                    a_info = self.lookup_team_info_from_cache('nhl', a_ab)
+                    
+                    map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
+                    
+                    # Filtering modes
+                    mode = conf['mode']; my_teams = conf['my_teams']
+                    is_shown = True
+                    if mode == 'live' and map_st != 'in': is_shown = False
+                    if mode == 'my_teams':
+                        h_k = f"nhl:{h_ab}"; a_k = f"nhl:{a_ab}"
+                        if (h_k not in my_teams and h_ab not in my_teams) and (a_k not in my_teams and a_ab not in my_teams): is_shown = False
+                    
+                    disp = "Scheduled"; pp = False; poss = ""; en = False; shootout_data = None 
+                    dur = self.calculate_game_timing('nhl', g_utc, 1, st)
 
-                        if map_st == 'in':
-                            try:
-                                r2 = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{gid}/landing", headers=HEADERS, timeout=2)
-                                if r2.status_code == 200:
-                                    d2 = r2.json()
-                                    h_sc = str(d2['homeTeam'].get('score', h_sc)); a_sc = str(d2['awayTeam'].get('score', a_sc))
-                                    pd = d2.get('periodDescriptor', {})
-                                    clk = d2.get('clock', {}); time_rem = clk.get('timeRemaining', '00:00')
-                                    p_type = pd.get('periodType', '')
-                                    if p_type == 'SHOOTOUT':
-                                        disp = "S/O"; shootout_data = self.fetch_shootout_details(gid, 0, 0)
+                    # Status Text Logic
+                    if st in ['PRE', 'FUT']:
+                         try:
+                             disp = g_local.strftime("%I:%M %p").lstrip('0')
+                         except: pass
+                    elif st in ['FINAL', 'OFF']:
+                         disp = "FINAL"
+                         pd = g.get('periodDescriptor', {})
+                         if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
+
+                    if map_st == 'in':
+                        try:
+                            r2 = requests.get(f"https://api-web.nhle.com/v1/gamecenter/{gid}/landing", headers=HEADERS, timeout=2)
+                            if r2.status_code == 200:
+                                d2 = r2.json()
+                                h_sc = str(d2['homeTeam'].get('score', h_sc)); a_sc = str(d2['awayTeam'].get('score', a_sc))
+                                pd = d2.get('periodDescriptor', {})
+                                clk = d2.get('clock', {}); time_rem = clk.get('timeRemaining', '00:00')
+                                p_type = pd.get('periodType', '')
+                                if p_type == 'SHOOTOUT':
+                                    disp = "S/O"; shootout_data = self.fetch_shootout_details(gid, 0, 0)
+                                else:
+                                    p_num = pd.get('number', 1)
+                                    if clk.get('inIntermission', False) or time_rem == "00:00":
+                                        if p_num == 1: disp = "End 1st"
+                                        elif p_num == 2: disp = "End 2nd"
+                                        elif p_num == 3: disp = "End 3rd"
+                                        else: disp = "Intermission"
                                     else:
-                                        p_num = pd.get('number', 1)
-                                        if clk.get('inIntermission', False) or time_rem == "00:00":
-                                            if p_num == 1: disp = "End 1st"
-                                            elif p_num == 2: disp = "End 2nd"
-                                            elif p_num == 3: disp = "End 3rd"
-                                            else: disp = "Intermission"
-                                        else:
-                                            p_lbl = "OT" if p_num > 3 else f"P{p_num}"
-                                            disp = f"{p_lbl} {time_rem}"
-                                    
-                                    sit_obj = d2.get('situation', {})
-                                    if sit_obj and p_type != 'SHOOTOUT':
-                                        sit = sit_obj.get('situationCode', '1551')
-                                        ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
-                                        if as_ > hs: pp=True; poss=a_ab
-                                        elif hs > as_: pp=True; poss=h_ab
-                                        en = (ag==0 or hg==0)
-                            except: disp = "Live" 
+                                        p_lbl = "OT" if p_num > 3 else f"P{p_num}"
+                                        disp = f"{p_lbl} {time_rem}"
+                                
+                                sit_obj = d2.get('situation', {})
+                                if sit_obj and p_type != 'SHOOTOUT':
+                                    sit = sit_obj.get('situationCode', '1551')
+                                    ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
+                                    if as_ > hs: pp=True; poss=a_ab
+                                    elif hs > as_: pp=True; poss=h_ab
+                                    en = (ag==0 or hg==0)
+                        except: disp = "Live" 
 
-                        games_list.append({
-                            'type': 'scoreboard',
-                            'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': is_shown,
-                            'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
-                            'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
-                            'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
-                            'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
-                            'startTimeUTC': utc_start,
-                            'estimated_duration': dur,
-                            'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en, 'shootout': shootout_data }
-                        })
+                    games_list.append({
+                        'type': 'scoreboard',
+                        'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': is_shown,
+                        'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
+                        'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
+                        'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
+                        'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
+                        'startTimeUTC': g_utc,
+                        'estimated_duration': dur,
+                        'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en, 'shootout': shootout_data }
+                    })
         except: pass
 
     # NEW: Generic Shootout for Soccer (ESPN API)
@@ -778,22 +715,17 @@ class SportsFetcher:
                     continue
 
                 # NHL Native
-                target_date_str = dt.now().strftime("%Y-%m-%d")
-                if conf['debug_mode'] and conf['custom_date']: target_date_str = conf['custom_date']
-                
                 if league_key == 'nhl' and not conf['debug_mode']:
                     prev_count = len(games)
-                    self._fetch_nhl_native(games, target_date_str)
+                    self._fetch_nhl_native(games, conf)
                     if len(games) > prev_count: continue 
 
+                # ESPN FETCHING (General Window Logic)
                 try:
                     curr_p = config.get('scoreboard_params', {}).copy()
                     
-                    # --- FIXED LOGIC ---
-                    # Only force specific date if in Debug Mode with Custom Date.
-                    # Otherwise, use default fetch to get all relevant games, then filter in Python below.
                     if conf['debug_mode'] and conf['custom_date']:
-                        curr_p['dates'] = target_date_str.replace('-', '')
+                        curr_p['dates'] = conf['custom_date'].replace('-', '')
                     
                     r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
                     data = r.json()
@@ -810,9 +742,7 @@ class SportsFetcher:
                             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
                             window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
                             
-                            # --- TIGHTENED FILTER ---
-                            # Only show games starting between Today 00:00 and Tomorrow 04:00 AM
-                            # This excludes games strictly scheduled for tomorrow daytime/evening.
+                            # Expand window to include late night games (up to 4 AM tomorrow)
                             window_end_local = window_start_local + timedelta(hours=28)
                             
                             window_start_utc = window_start_local.astimezone(timezone.utc)
@@ -820,7 +750,7 @@ class SportsFetcher:
                             
                             game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
                             
-                            # Show if Live/Half/Delay OR if strictly within "Today + late night" window
+                            # Show if Live/Half/Delay OR if within Today+Late Night window
                             if gst != 'in' and gst != 'half':
                                 if not (window_start_utc <= game_dt <= window_end_utc):
                                     continue
