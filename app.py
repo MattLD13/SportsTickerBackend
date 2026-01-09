@@ -612,7 +612,7 @@ class SportsFetcher:
                          pd = g.get('periodDescriptor', {})
                          pt = pd.get('periodType', '')
                          if pt == 'SHOOTOUT': disp = "FINAL S/O"
-                         elif pt == 'OT': disp = "FINAL OT"
+                         elif pt == 'OT' or g.get('period', 0) > 3: disp = "FINAL OT"
 
                     # === SUSPENDED CHECK (NHL Native) ===
                     if st in ['SUSP', 'SUSPENDED', 'PPD', 'POSTPONED']:
@@ -927,7 +927,9 @@ class SportsFetcher:
             pure_sports = [g for g in sports if g not in utils]
             # Ensure pure sports remain sorted
             pure_sports.sort(key=lambda x: x.get('startTimeUTC', '9999'))
-            final_list = utils + pure_sports + stocks
+            
+            # EXCLUDE STOCKS from "Show All" per user request
+            final_list = utils + pure_sports 
             
         state['current_games'] = final_list
 
