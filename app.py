@@ -63,7 +63,7 @@ default_state = {
         'weather': True, 'clock': True,
         
         # Stock Categories
-        'stock_tech_ai': True,       
+        'stock_tech_ai': True,        
         'stock_momentum': False,    
         'stock_energy': False,      
         'stock_finance': False,     
@@ -749,7 +749,6 @@ class SportsFetcher:
 
         # 1. WEATHER & CLOCK
         if conf['active_sports'].get('weather'):
-            # Check if location needs update based on state
             if (conf['weather_lat'] != self.weather.lat or 
                 conf['weather_lon'] != self.weather.lon or 
                 conf['weather_city'] != self.weather.city_name):
@@ -789,7 +788,12 @@ class SportsFetcher:
 
                 try:
                     curr_p = config.get('scoreboard_params', {}).copy()
-                    curr_p['dates'] = target_date_str.replace('-', '')
+                    
+                    # --- FIX: Only force date if in Debug Mode ---
+                    # Otherwise, let ESPN decide (this fixes NBA/EPL not showing up)
+                    if conf['debug_mode'] and conf['custom_date']:
+                        curr_p['dates'] = target_date_str.replace('-', '')
+                    # ---------------------------------------------
                     
                     r = requests.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
                     data = r.json()
@@ -805,11 +809,16 @@ class SportsFetcher:
                             now_utc = dt.now(timezone.utc)
                             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
                             window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-                            window_end_local = window_start_local + timedelta(days=1, hours=3)
+                            
+                            # Expand window to 2 days to catch late games or early tomorrow games
+                            window_end_local = window_start_local + timedelta(days=2, hours=3)
+                            
                             window_start_utc = window_start_local.astimezone(timezone.utc)
                             window_end_utc = window_end_local.astimezone(timezone.utc)
                             
                             game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+                            
+                            # Filter: Show if Live/Half, OR if it falls within the window
                             if gst != 'in' and gst != 'half':
                                 if not (window_start_utc <= game_dt <= window_end_utc):
                                     continue
