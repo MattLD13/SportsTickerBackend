@@ -41,7 +41,7 @@ STOCK_CACHE_FILE = "stock_cache.json"
 
 # FETCH INTERVALS
 SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks (4 calls/min)
+STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks
 
 data_lock = threading.Lock()
 
@@ -62,14 +62,15 @@ default_state = {
         # Utilities
         'weather': False, 'clock': False,
         
-        # Stock Categories
+        # Stock Categories (Updated)
         'stock_tech_ai': True,      
         'stock_momentum': False,    
         'stock_energy': False,      
         'stock_finance': False,     
         'stock_consumer': False,    
         'stock_nyse_50': False,
-        'stock_forex': False        # Currencies & Metals
+        'stock_automotive': False,
+        'stock_defense': False
     },
     'mode': 'all', 
     'layout_mode': 'schedule',
@@ -105,21 +106,18 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # FORCE RESET if old keys persist
-            old_keys = ['stock_indices', 'stock_etf']
-            has_old = False
+            # Remove deprecated keys from active_sports
+            deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf']
             if 'active_sports' in loaded:
-                for k in old_keys:
-                    if k in loaded['active_sports']: has_old = True
+                for k in deprecated:
+                    if k in loaded['active_sports']: 
+                        del loaded['active_sports'][k]
             
-            if has_old:
-                print("Old config detected. Resetting to defaults.")
-            else:
-                for k, v in loaded.items():
-                    if k == 'show_debug_options': continue 
-                    if k in state:
-                        if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
-                        else: state[k] = v
+            for k, v in loaded.items():
+                if k == 'show_debug_options': continue 
+                if k in state:
+                    if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
+                    else: state[k] = v
     except Exception as e:
         print(f"Error loading config: {e}")
 
@@ -242,42 +240,56 @@ class StockFetcher:
         self.market_cache = {} 
         self.last_fetch = 0
         
-        # === STOCK LISTS (UPDATED) ===
+        # === STOCK LISTS (EXPANDED TO ~20 PER COL) ===
         self.lists = {
-            'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOG", "AMZN", "META", "TSM", "AVGO", "ORCL", "PLTR", "CRM", "AMD", "IBM", "INTC", "SMCI"],
-            'stock_momentum': ["TSLA", "PLTR", "COIN", "RBLX", "GME", "HOOD", "MARA", "RIOT", "DKNG", "UBER", "ABNB", "SQ", "SOFI"],
-            'stock_energy': ["XOM", "CVX", "COP", "FCX", "NEM", "EOG", "SLB", "OXY", "MPC", "PSX", "VLO", "KMI", "HAL"],
-            'stock_finance': ["JPM", "GS", "BAC", "MS", "BLK", "WFC", "C", "V", "MA", "AXP", "SCHW", "USB", "PNC"],
-            'stock_consumer': ["WMT", "COST", "NKE", "SBUX", "MCD", "HD", "LOW", "KO", "PEP", "PG", "TGT", "CMG", "LULU", "YUM"],
+            # TECH / AI (Removed TSLA, PLTR to avoid duplicates)
+            'stock_tech_ai': [
+                "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", 
+                "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"
+            ],
+            # MOMENTUM (Removed TSLA, PLTR)
+            'stock_momentum': [
+                "COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", 
+                "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"
+            ],
+            # ENERGY
+            'stock_energy': [
+                "XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", 
+                "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"
+            ],
+            # FINANCE
+            'stock_finance': [
+                "JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", 
+                "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"
+            ],
+            # CONSUMER
+            'stock_consumer': [
+                "WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", 
+                "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"
+            ],
+            # NYSE 50 (Subset, kept distinct)
             'stock_nyse_50': [
-                "NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "TSLA", "BRK.B",
-                "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "PLTR",
+                "NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "BRK.B",
+                "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML",
                 "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM",
                 "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC",
                 "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"
             ],
-            'stock_forex': ["FXE", "FXB", "FXY", "UUP", "GLD", "SLV", "PPLT", "PALL"]
+            # AUTOMOTIVE (NEW - Includes TSLA)
+            'stock_automotive': [
+                "TSLA", "F", "GM", "TM", "STLA", "HMC", "RACE", "RIVN", "LCID", "NIO", 
+                "XPEV", "LI", "BYDDY", "BLNK", "CHPT", "LAZR", "MGA", "ALV", "APTV", "BWA"
+            ],
+            # DEFENSE (NEW - Includes PLTR)
+            'stock_defense': [
+                "LMT", "RTX", "NOC", "GD", "BA", "LHX", "HII", "LDOS", "BAH", "SAIC", 
+                "KTOS", "AVAV", "TXT", "AXON", "PLTR", "CACI", "BWXT", "GE", "HON", "HEI"
+            ]
         }
         
-        # FRIENDLY NAMES FOR CURRENCIES/METALS
-        self.DISPLAY_NAMES = {
-            "FXE": "EURO", "FXB": "POUND", "FXY": "YEN", "UUP": "DOLLAR",
-            "GLD": "GOLD", "SLV": "SILVER", "PPLT": "PLATINUM", "PALL": "PALLADIUM"
-        }
-        
-        # DOMAIN MAPPING (For ETFs to get nice logos via Clearbit)
+        # DOMAIN MAPPING (For remaining ETFs if needed in future)
         self.ETF_DOMAINS = {
-            "FXE": "invesco.com", "FXB": "invesco.com", "FXY": "invesco.com", "UUP": "invesco.com",
-            "GLD": "spdrs.com", "SLV": "ishares.com", "PPLT": "aberdeen.com", "PALL": "aberdeen.com",
             "QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"
-        }
-
-        # CUSTOM ICONS (Ingots/Coins) - Using high-res PNGs where possible
-        self.CUSTOM_ICONS = {
-            "GLD": "https://cdn-icons-png.flaticon.com/512/1995/1995540.png",
-            "SLV": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
-            "PPLT": "https://cdn-icons-png.flaticon.com/512/566/566302.png",
-            "PALL": "https://cdn-icons-png.flaticon.com/512/566/566302.png"
         }
         
         self.load_cache()
@@ -306,15 +318,12 @@ class StockFetcher:
 
     def get_logo_url(self, symbol):
         sym = symbol.upper()
-        # 1. Custom Overrides (Metals/Coins)
-        if sym in self.CUSTOM_ICONS:
-            return self.CUSTOM_ICONS[sym]
         
-        # 2. Clearbit Domain Map (Best for ETFs/Funds/Currencies)
+        # 1. Clearbit Domain Map (Best for ETFs/Funds)
         if sym in self.ETF_DOMAINS:
             return f"https://logo.clearbit.com/{self.ETF_DOMAINS[sym]}"
             
-        # 3. Financial Modeling Prep (Best General Fallback - Covers Movers & Obscure Tickers)
+        # 2. Financial Modeling Prep (Best General Fallback)
         clean_sym = sym.replace('.', '-')
         return f"https://financialmodelingprep.com/image-stock/{clean_sym}.png"
 
@@ -352,8 +361,6 @@ class StockFetcher:
         data = self.market_cache.get(symbol)
         if not data: return None
         
-        display_name = self.DISPLAY_NAMES.get(symbol, symbol)
-        
         return {
             'type': 'stock_ticker',
             'sport': 'stock',
@@ -362,7 +369,7 @@ class StockFetcher:
             'tourney_name': label,
             'state': 'in',
             'is_shown': True,
-            'home_abbr': display_name,
+            'home_abbr': symbol,
             'home_score': data['price'],
             'away_score': data['change_pct'],
             'home_logo': self.get_logo_url(symbol),
@@ -381,31 +388,14 @@ class StockFetcher:
             'stock_finance': 'FINANCE',
             'stock_consumer': 'CONSUMER',
             'stock_nyse_50': 'NYSE 50',
-            'stock_forex': 'CURRENCY'
+            'stock_automotive': 'AUTO / MOBILITY',
+            'stock_defense': 'DEFENSE'
         }
         label = labels.get(list_key, "MARKET")
         
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
-        return res
-
-    def get_movers(self):
-        self.fetch_entire_market()
-        all_stocks = []
-        for k, v in self.market_cache.items():
-            try:
-                pct = float(v['change_pct'].replace('%','').replace('+',''))
-                all_stocks.append((k, v, pct))
-            except: pass
-        
-        sorted_stocks = sorted(all_stocks, key=lambda x: x[2], reverse=True)
-        top = sorted_stocks[:5]
-        bottom = sorted_stocks[-5:]
-        
-        res = []
-        for s in top: res.append(self.get_stock_obj(s[0], "TOP GAINER"))
-        for s in bottom: res.append(self.get_stock_obj(s[0], "TOP LOSER"))
         return res
 
 class SportsFetcher:
@@ -865,8 +855,10 @@ class SportsFetcher:
         with data_lock: conf = state.copy()
         
         if conf['mode'] in ['stocks', 'all']:
-            if conf['active_sports'].get('stock_movers'): games.extend(self.stocks.get_movers())
-            cats = ['stock_tech_ai', 'stock_momentum', 'stock_energy', 'stock_finance', 'stock_consumer', 'stock_nyse_50', 'stock_forex']
+            # UPDATED CATEGORY LIST
+            cats = ['stock_tech_ai', 'stock_momentum', 'stock_energy', 'stock_finance', 'stock_consumer', 'stock_nyse_50', 
+                    'stock_automotive', 'stock_defense']
+            
             for cat in cats:
                 if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
         
