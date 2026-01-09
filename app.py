@@ -9,7 +9,6 @@ import string
 from datetime import datetime as dt, timezone, timedelta
 import requests
 import concurrent.futures
-import hashlib
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -43,7 +42,7 @@ STOCK_CACHE_FILE = "stock_cache.json"
 
 # FETCH INTERVALS
 SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 15     # 15 Seconds for Stocks
+STOCKS_UPDATE_INTERVAL = 60     # 60 Seconds for Stocks (Market data doesn't change that fast)
 
 data_lock = threading.Lock()
 
@@ -55,13 +54,24 @@ HEADERS = {
 # ================= DEFAULT STATE =================
 default_state = {
     'active_sports': { 
+        # Sports
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
         'soccer_epl': True, 'soccer_champ': True, 'soccer_l1': True, 'soccer_l2': True, 
         'soccer_wc': True, 'hockey_olympics': True, 
         'f1': True, 'nascar': True, 'indycar': True, 'wec': True, 'imsa': True,
+        
+        # Utilities
         'weather': True, 'clock': True,
-        'stock_tech_ai': True, 'stock_momentum': False, 'stock_energy': False, 'stock_finance': False,      
-        'stock_consumer': False, 'stock_nyse_50': False, 'stock_automotive': False, 'stock_defense': False
+        
+        # Stock Categories
+        'stock_tech_ai': True,        
+        'stock_momentum': False,     
+        'stock_energy': False,       
+        'stock_finance': False,      
+        'stock_consumer': False,     
+        'stock_nyse_50': False,
+        'stock_automotive': False,
+        'stock_defense': False
     },
     'mode': 'all', 
     'layout_mode': 'schedule',
@@ -73,6 +83,7 @@ default_state = {
     'debug_mode': False,
     'demo_mode': False,
     'custom_date': None,
+    # Weather Config
     'weather_city': "New York",
     'weather_lat': 40.7128,
     'weather_lon': -74.0060,
@@ -99,10 +110,12 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
+            # Remove deprecated keys from active_sports
             deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf']
             if 'active_sports' in loaded:
                 for k in deprecated:
-                    if k in loaded['active_sports']: del loaded['active_sports'][k]
+                    if k in loaded['active_sports']: 
+                        del loaded['active_sports'][k]
             
             for k, v in loaded.items():
                 if k == 'show_debug_options': continue 
@@ -341,13 +354,12 @@ class StockFetcher:
     def fetch_entire_market(self):
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
         
-        # Parallelize checking the last 4 days
-        futures = [self.executor.submit(self.fetch_market_date, i) for i in range(4)]
-        
-        for f in concurrent.futures.as_completed(futures):
-            data = f.result()
-            if data:
-                print(f"Fetched Market Data. Items: {data['resultsCount']}")
+        # Check last 4 days strictly sequentially to find LATEST data
+        # Do NOT use parallel execution here to avoid race conditions overwriting new data with old
+        for i in range(4):
+            data = self.fetch_market_date(i)
+            if data and data.get('results'):
+                print(f"Fetched Market Data from {i} days ago. Items: {data['resultsCount']}")
                 new_cache = {}
                 for item in data.get('results', []):
                     ticker = item.get('T')
@@ -357,6 +369,8 @@ class StockFetcher:
                         change_amt = close - open_p
                         change_pct = (change_amt / open_p) * 100
                         new_cache[ticker] = {'price': f"{close:.2f}", 'change_amt': f"{change_amt:+.2f}", 'change_pct': f"{change_pct:+.2f}%"}
+                
+                # Update cache and STOP checking older dates
                 self.market_cache = new_cache
                 self.last_fetch = time.time()
                 self.save_cache()
@@ -498,7 +512,7 @@ class SportsFetcher:
             with data_lock: state['all_teams_data'] = teams_catalog
         except Exception as e: print(f"Global Team Fetch Error: {e}")
 
-    # === SHOOTOUT LOGIC ===
+    # === NHL NATIVE FETCHER ===
     def fetch_shootout_details(self, game_id, away_id, home_id):
         try:
             url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
@@ -553,7 +567,6 @@ class SportsFetcher:
                         if not g_utc: continue
                         g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
                         g_local = g_dt.astimezone(timezone(timedelta(hours=utc_offset)))
-                        # STRICT CHECK: Game local date MUST equal today's local date
                         if g_local.strftime("%Y-%m-%d") != local_today_str: continue
                     except: continue
 
@@ -562,8 +575,9 @@ class SportsFetcher:
                     processed_ids.add(gid)
                     
                     st = g.get('gameState', 'OFF')
-                    # If Live or Critical, queue a fetch for details
-                    if st in ['LIVE', 'CRIT']:
+                    
+                    # Fetch landing page if Live OR if it's FINAL (to check for S/O or OT details hidden from schedule)
+                    if st in ['LIVE', 'CRIT', 'FINAL', 'OFF']:
                         landing_futures[gid] = self.executor.submit(self._fetch_nhl_landing, gid)
             
             # Process results now that requests are fired
@@ -610,17 +624,16 @@ class SportsFetcher:
                     elif st in ['FINAL', 'OFF']:
                          disp = "FINAL"
                          pd = g.get('periodDescriptor', {})
-                         pt = pd.get('periodType', '')
-                         if pt == 'SHOOTOUT': disp = "FINAL S/O"
-                         elif pt == 'OT' or g.get('period', 0) > 3: disp = "FINAL OT"
+                         if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
+                         elif pd.get('periodType', '') == 'OT': disp = "FINAL OT"
 
                     # === SUSPENDED CHECK (NHL Native) ===
                     if st in ['SUSP', 'SUSPENDED', 'PPD', 'POSTPONED']:
                         disp = "Suspended"
-                        # Ensure clock logic doesn't overwrite
                         map_st = 'post' 
 
-                    if map_st == 'in' and gid in landing_futures:
+                    # CHECK LANDING PAGE for details (Live or Final)
+                    if gid in landing_futures:
                         try:
                             d2 = landing_futures[gid].result()
                             if d2:
@@ -628,27 +641,38 @@ class SportsFetcher:
                                 pd = d2.get('periodDescriptor', {})
                                 clk = d2.get('clock', {}); time_rem = clk.get('timeRemaining', '00:00')
                                 p_type = pd.get('periodType', '')
+                                
+                                # FIX: Update Final Status based on landing page detailed period descriptor
+                                if st in ['FINAL', 'OFF']:
+                                    if p_type == 'SHOOTOUT': disp = "FINAL S/O"
+                                    elif p_type == 'OT' or pd.get('number', 3) > 3: disp = "FINAL OT"
+                                
+                                # Process Shootout Data if exists (Even if Final)
                                 if p_type == 'SHOOTOUT':
-                                    disp = "S/O"; shootout_data = self.fetch_shootout_details(gid, 0, 0)
+                                    if map_st == 'in': disp = "S/O"
+                                    shootout_data = self.fetch_shootout_details(gid, 0, 0)
                                 else:
-                                    p_num = pd.get('number', 1)
-                                    if clk.get('inIntermission', False) or time_rem == "00:00":
-                                        if p_num == 1: disp = "End 1st"
-                                        elif p_num == 2: disp = "End 2nd"
-                                        elif p_num == 3: disp = "End 3rd"
-                                        else: disp = "Intermission"
-                                    else:
-                                        p_lbl = "OT" if p_num > 3 else f"P{p_num}"
-                                        disp = f"{p_lbl} {time_rem}"
+                                    # Regular Game Clock
+                                    if map_st == 'in':
+                                        p_num = pd.get('number', 1)
+                                        if clk.get('inIntermission', False) or time_rem == "00:00":
+                                            if p_num == 1: disp = "End 1st"
+                                            elif p_num == 2: disp = "End 2nd"
+                                            elif p_num == 3: disp = "End 3rd"
+                                            else: disp = "Intermission"
+                                        else:
+                                            p_lbl = "OT" if p_num > 3 else f"P{p_num}"
+                                            disp = f"{p_lbl} {time_rem}"
                                     
-                                sit_obj = d2.get('situation', {})
-                                if sit_obj and p_type != 'SHOOTOUT':
-                                    sit = sit_obj.get('situationCode', '1551')
-                                    ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
-                                    if as_ > hs: pp=True; poss=a_ab
-                                    elif hs > as_: pp=True; poss=h_ab
-                                    en = (ag==0 or hg==0)
-                        except: disp = "Live" 
+                                    # Situation (Power Play / Empty Net)
+                                    sit_obj = d2.get('situation', {})
+                                    if sit_obj:
+                                        sit = sit_obj.get('situationCode', '1551')
+                                        ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
+                                        if as_ > hs: pp=True; poss=a_ab
+                                        elif hs > as_: pp=True; poss=h_ab
+                                        en = (ag==0 or hg==0)
+                        except: pass 
 
                     games_found.append({
                         'type': 'scoreboard',
