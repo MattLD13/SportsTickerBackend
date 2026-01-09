@@ -99,7 +99,6 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # Cleanup old keys
             deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf']
             if 'active_sports' in loaded:
                 for k in deprecated:
@@ -773,12 +772,10 @@ class SportsFetcher:
                 
                 # Standardize FINAL logic
                 if "FINAL" in s_disp:
-                    # Check period count for specific sports to append OT if missing from text
                     if league_key == 'nhl':
-                        if "SO" in s_disp or "Shootout" in s_disp: s_disp = "FINAL S/O"
-                        elif p > 3 and "OT" not in s_disp: s_disp = "FINAL OT"
+                        if "SO" in s_disp or "Shootout" in s_disp or p >= 5: s_disp = "FINAL S/O"
+                        elif p == 4 and "OT" not in s_disp: s_disp = "FINAL OT"
                     elif league_key in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs'] and p > 4 and "OT" not in s_disp:
-                         # NFL/NBA regulation is 4 quarters
                          s_disp = "FINAL OT"
 
                 sit = comp.get('situation', {})
