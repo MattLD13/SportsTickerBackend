@@ -11,6 +11,7 @@ import requests
 import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from stockdex import Ticker  # <--- NEW LIBRARY
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -42,7 +43,7 @@ STOCK_CACHE_FILE = "stock_cache.json"
 
 # FETCH INTERVALS
 SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 15     # 60 Seconds for Stocks (Market data doesn't change that fast)
+STOCKS_UPDATE_INTERVAL = 60     # 60 Seconds for Stocks (Yahoo Finance limits)
 
 data_lock = threading.Lock()
 
@@ -66,7 +67,7 @@ default_state = {
         # Stock Categories
         'stock_tech_ai': True,        
         'stock_momentum': False,     
-        'stock_energy': False,       
+        'stock_energy': False,        
         'stock_finance': False,      
         'stock_consumer': False,     
         'stock_nyse_50': False,
@@ -76,7 +77,7 @@ default_state = {
     'mode': 'all', 
     'layout_mode': 'schedule',
     'my_teams': [], 
-    'current_games': [],      
+    'current_games': [],       
     'buffer_sports': [],
     'buffer_stocks': [],
     'all_teams_data': {}, 
@@ -297,12 +298,12 @@ class WeatherFetcher:
             return None
 
 class StockFetcher:
-    def __init__(self, api_key):
-        self.api_key = api_key
+    def __init__(self):
+        # removed api_key requirement as stockdex uses public yahoo data
         self.market_cache = {} 
         self.last_fetch = 0
-        self.session = requests.Session()
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        # Increased workers for individual stock fetching
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10) 
         
         self.lists = {
             'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"],
@@ -325,13 +326,8 @@ class StockFetcher:
             except: pass
 
     def save_cache(self):
-        export_cache = {}
-        all_symbols = set()
-        for lst in self.lists.values(): all_symbols.update(lst)
-        for sym in all_symbols:
-            if sym in self.market_cache: export_cache[sym] = self.market_cache[sym]
         try:
-            save_json_atomically(STOCK_CACHE_FILE, export_cache)
+            save_json_atomically(STOCK_CACHE_FILE, self.market_cache)
         except: pass
 
     def get_logo_url(self, symbol):
@@ -340,56 +336,95 @@ class StockFetcher:
         clean_sym = sym.replace('.', '-')
         return f"https://financialmodelingprep.com/image-stock/{clean_sym}.png"
 
-    def fetch_market_date(self, offset):
-        d = (dt.now() - timedelta(days=offset)).strftime("%Y-%m-%d")
-        url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{d}?adjusted=true&apiKey={self.api_key}"
+    def _fetch_single_ticker(self, symbol):
+        """
+        Worker function to fetch a single stock using stockdex
+        """
         try:
-            r = self.session.get(url, timeout=10)
-            data = r.json()
-            if data.get('resultsCount', 0) > 0:
-                return data
-        except: pass
-        return None
+            ticker = Ticker(ticker=symbol)
+            # stockdex returns a pandas DataFrame
+            df = ticker.yahoo_api_price_data
+            
+            if df is None or df.empty:
+                return None
 
-    def fetch_entire_market(self):
+            # Convert DataFrame to dictionary (taking the first row)
+            data = df.iloc[0].to_dict()
+            
+            # Extract relevant fields safely
+            price = data.get('currentPrice', 0.0)
+            change_amt = data.get('regularMarketChange', 0.0)
+            change_pct = data.get('regularMarketChangePercent', 0.0)
+            
+            # Use raw values if they are 0.0 (sometimes Yahoo returns 0 for change during pre-market, check preMarketChange if needed)
+            # Formatting to match original structure
+            return {
+                'symbol': symbol,
+                'price': f"{price:.2f}",
+                'change_amt': f"{change_amt:+.2f}",
+                'change_pct': f"{change_pct * 100:+.2f}%"  # stockdex usually returns decimal (0.015), we want percentage (1.50%)
+            }
+        except Exception as e:
+            # print(f"Failed {symbol}: {e}") # Optional debug
+            return None
+
+    def update_market_data(self, active_lists):
+        """
+        Updates cache only for symbols currently in active lists
+        """
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
+
+        # 1. Gather all unique symbols we need to fetch right now
+        target_symbols = set()
+        for list_key in active_lists:
+            if list_key in self.lists:
+                target_symbols.update(self.lists[list_key])
         
-        # Check last 4 days strictly sequentially to find LATEST data
-        # Do NOT use parallel execution here to avoid race conditions overwriting new data with old
-        for i in range(4):
-            data = self.fetch_market_date(i)
-            if data and data.get('results'):
-                print(f"Fetched Market Data from {i} days ago. Items: {data['resultsCount']}")
-                new_cache = {}
-                for item in data.get('results', []):
-                    ticker = item.get('T')
-                    close = item.get('c')
-                    open_p = item.get('o')
-                    if ticker and close and open_p:
-                        change_amt = close - open_p
-                        change_pct = (change_amt / open_p) * 100
-                        new_cache[ticker] = {'price': f"{close:.2f}", 'change_amt': f"{change_amt:+.2f}", 'change_pct': f"{change_pct:+.2f}%"}
-                
-                # Update cache and STOP checking older dates
-                self.market_cache = new_cache
-                self.last_fetch = time.time()
-                self.save_cache()
-                return
+        if not target_symbols: return
+
+        print(f"Fetching data for {len(target_symbols)} stocks via Yahoo Finance...")
+
+        # 2. Fetch in parallel
+        futures = {self.executor.submit(self._fetch_single_ticker, sym): sym for sym in target_symbols}
+        
+        new_data_count = 0
+        for future in concurrent.futures.as_completed(futures):
+            res = future.result()
+            if res:
+                sym = res['symbol']
+                self.market_cache[sym] = {
+                    'price': res['price'],
+                    'change_amt': res['change_amt'],
+                    'change_pct': res['change_pct']
+                }
+                new_data_count += 1
+        
+        self.last_fetch = time.time()
+        self.save_cache()
+        print(f"Updated {new_data_count} stocks.")
 
     def get_stock_obj(self, symbol, label):
         data = self.market_cache.get(symbol)
         if not data: return None
         return {
             'type': 'stock_ticker', 'sport': 'stock', 'id': f"stk_{symbol}", 'status': label, 'tourney_name': label,
-            'state': 'in', 'is_shown': True, 'home_abbr': symbol, 'home_score': data['price'], 'away_score': data['change_pct'],
-            'home_logo': self.get_logo_url(symbol), 'situation': {'change': data['change_amt']}, 'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
+            'state': 'in', 'is_shown': True, 'home_abbr': symbol, 
+            'home_score': data['price'], 
+            'away_score': data['change_pct'],
+            'home_logo': self.get_logo_url(symbol), 
+            'situation': {'change': data['change_amt']}, 
+            'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
         }
 
     def get_list(self, list_key):
-        self.fetch_entire_market()
+        # We trigger the update check inside the loop in SportsFetcher, 
+        # but we can also trigger a lightweight check here if needed.
+        # However, to avoid blocking the render thread, we rely on the background worker to call update_market_data.
+        
         res = []
         labels = {'stock_tech_ai': 'TECH / AI', 'stock_momentum': 'MOMENTUM', 'stock_energy': 'ENERGY', 'stock_finance': 'FINANCE', 'stock_consumer': 'CONSUMER', 'stock_nyse_50': 'NYSE 50', 'stock_automotive': 'AUTO / MOBILITY', 'stock_defense': 'DEFENSE'}
         label = labels.get(list_key, "MARKET")
+        
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
@@ -398,7 +433,7 @@ class StockFetcher:
 class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
         self.weather = WeatherFetcher(initial_lat=initial_lat, initial_lon=initial_lon, city=initial_city)
-        self.stocks = StockFetcher("efAYbpvLyZ0H1FJT4m898zByYS119W0l")
+        self.stocks = StockFetcher()
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.session = requests.Session()
@@ -711,7 +746,7 @@ class SportsFetcher:
 
         # Racing Leaderboard
         if config.get('type') == 'leaderboard':
-            self.fetch_leaderboard_event(league_key, config, local_games, conf, window_start_utc, window_end_utc)
+            # self.fetch_leaderboard_event(league_key, config, local_games, conf, window_start_utc, window_end_utc)
             return local_games
 
         # ESPN Scoreboard
@@ -974,9 +1009,19 @@ def sports_worker():
 
 def stocks_worker():
     while True:
-        try: fetcher.update_buffer_stocks()
-        except: pass
-        time.sleep(STOCKS_UPDATE_INTERVAL)
+        try: 
+            # 1. Identify active stock categories from state
+            with data_lock:
+                active_cats = [k for k, v in state['active_sports'].items() if k.startswith('stock_') and v]
+            
+            # 2. Trigger fetch (handles interval check internally)
+            fetcher.stocks.update_market_data(active_cats)
+            
+            # 3. Update the display buffer
+            fetcher.update_buffer_stocks()
+        except Exception as e: 
+            print(f"Stock worker error: {e}")
+        time.sleep(2) # Check frequently, but update_market_data respects STOCKS_UPDATE_INTERVAL
 
 # ================= FLASK API =================
 app = Flask(__name__)
