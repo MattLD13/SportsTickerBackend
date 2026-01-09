@@ -42,7 +42,7 @@ STOCK_CACHE_FILE = "stock_cache.json"
 
 # FETCH INTERVALS
 SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 5      # 5 Seconds for Stocks (Safe due to Batching)
+STOCKS_UPDATE_INTERVAL = 10     # 10 Seconds for Yahoo (To avoid rate limits)
 
 data_lock = threading.Lock()
 
@@ -65,10 +65,10 @@ default_state = {
         
         # Stock Categories
         'stock_tech_ai': True,        
-        'stock_momentum': False,     
+        'stock_momentum': False,      
         'stock_energy': False,        
-        'stock_finance': False,      
-        'stock_consumer': False,     
+        'stock_finance': False,       
+        'stock_consumer': False,      
         'stock_nyse_50': False,
         'stock_automotive': False,
         'stock_defense': False
@@ -76,7 +76,7 @@ default_state = {
     'mode': 'all', 
     'layout_mode': 'schedule',
     'my_teams': [], 
-    'current_games': [],       
+    'current_games': [],        
     'buffer_sports': [],
     'buffer_stocks': [],
     'all_teams_data': {}, 
@@ -110,7 +110,6 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # Remove deprecated keys from active_sports
             deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf']
             if 'active_sports' in loaded:
                 for k in deprecated:
@@ -303,7 +302,7 @@ class StockFetcher:
         self.session = requests.Session()
         # Fake a browser browser header to avoid Yahoo rejecting the request
         self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         })
         
         self.lists = {
@@ -335,11 +334,12 @@ class StockFetcher:
         sym = symbol.upper()
         if sym in self.ETF_DOMAINS: return f"https://logo.clearbit.com/{self.ETF_DOMAINS[sym]}"
         clean_sym = sym.replace('.', '-')
+        # FMP images are usually free/public access
         return f"https://financialmodelingprep.com/image-stock/{clean_sym}.png"
 
     def update_market_data(self, active_lists):
         """
-        Batched Fetcher: Gets ALL stocks in ONE request (Safe for 5s updates)
+        Batched Fetcher using YAHOO FINANCE (Free)
         """
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
 
@@ -355,14 +355,12 @@ class StockFetcher:
         symbols_list = list(target_symbols)
         chunk_size = 100
         
-        # print(f"Batch fetching {len(symbols_list)} stocks...")
-
         for i in range(0, len(symbols_list), chunk_size):
             chunk = symbols_list[i:i + chunk_size]
             symbols_str = ",".join(chunk)
             
             try:
-                # Direct Yahoo Finance Quote API (What libraries use under the hood)
+                # Direct Yahoo Finance Quote API
                 url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbols_str}"
                 r = self.session.get(url, timeout=5)
                 
@@ -372,11 +370,15 @@ class StockFetcher:
                     
                     for item in result:
                         sym = item.get('symbol')
+                        
+                        # Use regularMarketPrice by default
                         price = item.get('regularMarketPrice', 0.0)
                         change_amt = item.get('regularMarketChange', 0.0)
                         change_pct = item.get('regularMarketChangePercent', 0.0)
                         
+                        # Handle Pre/Post Market Automatically
                         market_state = item.get('marketState', 'REGULAR')
+                        
                         if market_state in ['PRE', 'PREPRE'] and item.get('preMarketPrice'):
                             price = item.get('preMarketPrice')
                             change_amt = item.get('preMarketChange')
@@ -388,8 +390,8 @@ class StockFetcher:
 
                         self.market_cache[sym] = {
                             'price': f"{price:.2f}",
-                            'change_amt': f"{change_amt:+.2f}",
-                            'change_pct': f"{change_pct:.2f}%"
+                            'change_amt': f"{change_amt:+.2f}",       # Adds + sign for positive numbers
+                            'change_pct': f"{change_pct:+.2f}%"       # Adds + sign for positive numbers
                         }
             except Exception as e:
                 print(f"Batch fetch failed: {e}")
@@ -1011,7 +1013,7 @@ def stocks_worker():
             fetcher.update_buffer_stocks()
         except Exception as e: 
             print(f"Stock worker error: {e}")
-        time.sleep(STOCKS_UPDATE_INTERVAL) # Sleeps 5 seconds
+        time.sleep(STOCKS_UPDATE_INTERVAL) # Sleeps 10 seconds
 
 # ================= FLASK API =================
 app = Flask(__name__)
