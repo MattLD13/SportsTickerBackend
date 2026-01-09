@@ -624,6 +624,12 @@ class SportsFetcher:
                          pd = g.get('periodDescriptor', {})
                          if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
 
+                    # === SUSPENDED CHECK (NHL Native) ===
+                    if st in ['SUSP', 'SUSPENDED', 'PPD', 'POSTPONED']:
+                        disp = "Suspended"
+                        # Ensure clock logic doesn't overwrite
+                        map_st = 'post' 
+
                     if map_st == 'in' and gid in landing_futures:
                         try:
                             d2 = landing_futures[gid].result()
@@ -743,23 +749,34 @@ class SportsFetcher:
                 p = st.get('period', 1)
                 duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
 
-                if gst == 'pre':
-                    try: s_disp = game_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
-                    except: pass
-                elif gst == 'in' or gst == 'half':
-                    clk = st.get('displayClock', '0:00').replace("'", "")
-                    if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']): s_disp = "Halftime"
-                    elif 'hockey' in config['path'] and clk == '0:00':
-                            if p == 1: s_disp = "End 1st"
-                            elif p == 2: s_disp = "End 2nd"
-                            elif p == 3: s_disp = "End 3rd"
-                            else: s_disp = "Intermission"
-                    else:
-                        prefix = "P" if 'hockey' in config['path'] else "Q"
-                        s_disp = f"{prefix}{p} {clk}"
-                        if 'soccer' in config['path']:
-                            s_disp = f"{clk}'"
-                            if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
+                # === SUSPENDED / POSTPONED CHECK ===
+                # Check for keywords in the short status detail
+                is_suspended = False
+                susp_keywords = ["Suspended", "Postponed", "Canceled", "Delayed", "PPD"]
+                for kw in susp_keywords:
+                    if kw in s_disp:
+                        is_suspended = True
+                        s_disp = kw # Force display to just the status word
+                        break
+
+                if not is_suspended:
+                    if gst == 'pre':
+                        try: s_disp = game_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
+                        except: pass
+                    elif gst == 'in' or gst == 'half':
+                        clk = st.get('displayClock', '0:00').replace("'", "")
+                        if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']): s_disp = "Halftime"
+                        elif 'hockey' in config['path'] and clk == '0:00':
+                                if p == 1: s_disp = "End 1st"
+                                elif p == 2: s_disp = "End 2nd"
+                                elif p == 3: s_disp = "End 3rd"
+                                else: s_disp = "Intermission"
+                        else:
+                            prefix = "P" if 'hockey' in config['path'] else "Q"
+                            s_disp = f"{prefix}{p} {clk}"
+                            if 'soccer' in config['path']:
+                                s_disp = f"{clk}'"
+                                if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
 
                 s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT")
                 if "FINAL" in s_disp:
@@ -776,7 +793,9 @@ class SportsFetcher:
                 poss_raw = sit.get('possession')
                 if poss_raw: self.possession_cache[e['id']] = poss_raw
                 elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
-                if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime':
+                
+                # Clear possession if game is not live/active
+                if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime' or is_suspended:
                     poss_raw = None
                     self.possession_cache.pop(e['id'], None)
 
