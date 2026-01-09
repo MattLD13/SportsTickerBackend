@@ -42,7 +42,7 @@ STOCK_CACHE_FILE = "stock_cache.json"
 
 # FETCH INTERVALS
 SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 60     # 60 Seconds for Stocks (Market data doesn't change that fast)
+STOCKS_UPDATE_INTERVAL = 15     # 60 Seconds for Stocks (Market data doesn't change that fast)
 
 data_lock = threading.Lock()
 
