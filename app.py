@@ -6,9 +6,12 @@ import sys
 import re
 import random
 import string
+import logging
+from logging.handlers import RotatingFileHandler
 from datetime import datetime as dt, timezone, timedelta
 import requests
 import concurrent.futures
+from stockdex import Ticker
 import hashlib
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -35,6 +38,18 @@ try:
     Tee("ticker.log", "a")
 except Exception as e:
     print(f"Logging setup failed: {e}")
+
+# Additional structured logging (non-breaking)
+logger = logging.getLogger("ticker")
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
+    try:
+        handler = RotatingFileHandler("ticker_api.log", maxBytes=1_000_000, backupCount=3)
+        fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+        handler.setFormatter(fmt)
+        logger.addHandler(handler)
+    except Exception as e:
+        print(f"Logger setup failed: {e}")
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
@@ -80,7 +95,12 @@ default_state = {
     'scroll_seamless': True, 
     'scroll_speed': 5,
     'brightness': 100,
-    'show_debug_options': True 
+    'show_debug_options': True,
+    'racing_overrides': {
+        'indycar': {'event_id': None, 'session': None, 'base_url': None},
+        'imsa': {'year': None, 'event': None, 'base_url': None},
+        'wec': {'year': None, 'event': None, 'base_url': None}
+    }
 }
 
 DEFAULT_TICKER_SETTINGS = {
@@ -125,7 +145,8 @@ def save_json_atomically(filepath, data):
         with open(temp, 'w') as f:
             json.dump(data, f, indent=4)
         os.replace(temp, filepath)
-    except: pass
+    except Exception as e:
+        logger.warning(f"Failed to save {filepath}: {e}")
 
 def save_config_file():
     try:
@@ -143,6 +164,11 @@ def generate_pairing_code():
         code = ''.join(random.choices(string.digits, k=6))
         active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
         if code not in active_codes: return code
+
+def sanitize_payload(payload, allowed_keys):
+    if not isinstance(payload, dict):
+        return {}
+    return {k: v for k, v in payload.items() if k in allowed_keys}
 
 # ================= LISTS & OVERRIDES =================
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
@@ -284,12 +310,11 @@ class WeatherFetcher:
             return None
 
 class StockFetcher:
-    def __init__(self, api_key):
-        self.api_key = api_key
+    def __init__(self):
         self.market_cache = {} 
         self.last_fetch = 0
         self.session = requests.Session()
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
         
         self.lists = {
             'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"],
@@ -301,6 +326,12 @@ class StockFetcher:
             'stock_automotive': ["TSLA", "F", "GM", "TM", "STLA", "HMC", "RACE", "RIVN", "LCID", "NIO", "XPEV", "LI", "BYDDY", "BLNK", "CHPT", "LAZR", "MGA", "ALV", "APTV", "BWA"],
             'stock_defense': ["LMT", "RTX", "NOC", "GD", "BA", "LHX", "HII", "LDOS", "BAH", "SAIC", "KTOS", "AVAV", "TXT", "AXON", "PLTR", "CACI", "BWXT", "GE", "HON", "HEI"]
         }
+        self.labels = {
+            'stock_tech_ai': 'TECH / AI', 'stock_momentum': 'MOMENTUM', 'stock_energy': 'ENERGY',
+            'stock_finance': 'FINANCE', 'stock_consumer': 'CONSUMER', 'stock_nyse_50': 'NYSE 50',
+            'stock_automotive': 'AUTO / MOBILITY', 'stock_defense': 'DEFENSE'
+        }
+        self.all_symbols = set().union(*self.lists.values())
         self.ETF_DOMAINS = {"QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"}
         self.load_cache()
 
@@ -313,9 +344,7 @@ class StockFetcher:
 
     def save_cache(self):
         export_cache = {}
-        all_symbols = set()
-        for lst in self.lists.values(): all_symbols.update(lst)
-        for sym in all_symbols:
+        for sym in self.all_symbols:
             if sym in self.market_cache: export_cache[sym] = self.market_cache[sym]
         try:
             save_json_atomically(STOCK_CACHE_FILE, export_cache)
@@ -327,40 +356,43 @@ class StockFetcher:
         clean_sym = sym.replace('.', '-')
         return f"https://financialmodelingprep.com/image-stock/{clean_sym}.png"
 
-    def fetch_market_date(self, offset):
-        d = (dt.now() - timedelta(days=offset)).strftime("%Y-%m-%d")
-        url = f"https://api.polygon.io/v2/aggs/grouped/locale/us/market/stocks/{d}?adjusted=true&apiKey={self.api_key}"
+    def _fetch_quote(self, symbol):
         try:
-            r = self.session.get(url, timeout=10)
-            data = r.json()
-            if data.get('resultsCount', 0) > 0:
-                return data
-        except: pass
-        return None
+            ticker = Ticker(ticker=symbol)
+            df = ticker.yahoo_api_price(range='1d', dataGranularity='1d')
+            if df is None or df.empty: return None
+            last = df.iloc[-1]
+            cols = {c.lower(): c for c in df.columns}
+            open_col = cols.get('open')
+            close_col = cols.get('close')
+            if not open_col or not close_col: return None
+            open_p = float(last[open_col])
+            close_p = float(last[close_col])
+            if open_p == 0: return None
+            change_amt = close_p - open_p
+            change_pct = (change_amt / open_p) * 100
+            return {'price': f"{close_p:.2f}", 'change_amt': f"{change_amt:+.2f}", 'change_pct': f"{change_pct:+.2f}%"}
+        except Exception as exc:
+            print(f"Stockdex fetch failed for {symbol}: {exc}")
+            return None
 
-    def fetch_entire_market(self):
+    def fetch_entire_market(self, symbols=None):
         if time.time() - self.last_fetch < STOCKS_UPDATE_INTERVAL: return
-        
-        # Parallelize checking the last 4 days
-        futures = [self.executor.submit(self.fetch_market_date, i) for i in range(4)]
-        
-        for f in concurrent.futures.as_completed(futures):
-            data = f.result()
-            if data:
-                print(f"Fetched Market Data. Items: {data['resultsCount']}")
-                new_cache = {}
-                for item in data.get('results', []):
-                    ticker = item.get('T')
-                    close = item.get('c')
-                    open_p = item.get('o')
-                    if ticker and close and open_p:
-                        change_amt = close - open_p
-                        change_pct = (change_amt / open_p) * 100
-                        new_cache[ticker] = {'price': f"{close:.2f}", 'change_amt': f"{change_amt:+.2f}", 'change_pct': f"{change_pct:+.2f}%"}
-                self.market_cache = new_cache
-                self.last_fetch = time.time()
-                self.save_cache()
-                return
+
+        targets = symbols if symbols else self.all_symbols
+        if not targets: return
+
+        new_cache = {}
+        try:
+            for sym, res in zip(targets, self.executor.map(self._fetch_quote, targets)):
+                if res: new_cache[sym] = res
+        except Exception as exc:
+            print(f"Stock fetch error: {exc}")
+
+        if new_cache:
+            self.market_cache = new_cache
+            self.last_fetch = time.time()
+            self.save_cache()
 
     def get_stock_obj(self, symbol, label):
         data = self.market_cache.get(symbol)
@@ -371,11 +403,11 @@ class StockFetcher:
             'home_logo': self.get_logo_url(symbol), 'situation': {'change': data['change_amt']}, 'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
         }
 
-    def get_list(self, list_key):
-        self.fetch_entire_market()
+    def get_list(self, list_key, prefetch=True):
+        if prefetch:
+            self.fetch_entire_market()
         res = []
-        labels = {'stock_tech_ai': 'TECH / AI', 'stock_momentum': 'MOMENTUM', 'stock_energy': 'ENERGY', 'stock_finance': 'FINANCE', 'stock_consumer': 'CONSUMER', 'stock_nyse_50': 'NYSE 50', 'stock_automotive': 'AUTO / MOBILITY', 'stock_defense': 'DEFENSE'}
-        label = labels.get(list_key, "MARKET")
+        label = self.labels.get(list_key, "MARKET")
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
@@ -384,10 +416,11 @@ class StockFetcher:
 class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
         self.weather = WeatherFetcher(initial_lat=initial_lat, initial_lon=initial_lon, city=initial_city)
-        self.stocks = StockFetcher("efAYbpvLyZ0H1FJT4m898zByYS119W0l")
+        self.stocks = StockFetcher()
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.session = requests.Session()
+        self.session.headers.update(HEADERS)
         # Increased workers for parallel fetching
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10) 
         
@@ -440,7 +473,18 @@ class SportsFetcher:
                 ot_padding = (period - 9) * 20
         return duration + ot_padding
 
-    def _fetch_simple_league(self, league_key, catalog):
+    def _is_nhl_shootout(self, game_obj):
+        """Best-effort detection for NHL shootouts across API shapes."""
+        pd = game_obj.get('periodDescriptor', {}) if isinstance(game_obj, dict) else {}
+        outcome = game_obj.get('gameOutcome', {}) if isinstance(game_obj, dict) else {}
+        last_pt = (outcome.get('lastPeriodType') or pd.get('periodType') or '').upper()
+        if last_pt in {'SHOOTOUT', 'SO'}:
+            return True
+        if game_obj.get('shootoutInUse'):
+            return True
+        return False
+
+    def _fetch_simple_league(self, league_key, catalog, catalog_sets):
         config = self.leagues[league_key]
         if 'team_params' not in config: return
         try:
@@ -455,7 +499,8 @@ class SportsFetcher:
                             alt = item['team'].get('alternateColor', '444444')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
                             logo = self.get_corrected_logo(league_key, abbr, logo)
-                            if not any(x['abbr'] == abbr for x in catalog[league_key]):
+                            if abbr not in catalog_sets[league_key]:
+                                catalog_sets[league_key].add(abbr)
                                 catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
         except Exception as e: print(f"Error fetching teams for {league_key}: {e}")
 
@@ -463,8 +508,11 @@ class SportsFetcher:
         try:
             # Parallelize team fetching
             teams_catalog = {k: [] for k in self.leagues.keys()}
+            teams_seen = {k: set() for k in self.leagues.keys()}
             for t in OLYMPIC_HOCKEY_TEAMS:
-                teams_catalog['hockey_olympics'].append({'abbr': t['abbr'], 'logo': t['logo'], 'color': '000000', 'alt_color': '444444'})
+                if t['abbr'] not in teams_seen['hockey_olympics']:
+                    teams_seen['hockey_olympics'].add(t['abbr'])
+                    teams_catalog['hockey_olympics'].append({'abbr': t['abbr'], 'logo': t['logo'], 'color': '000000', 'alt_color': '444444'})
 
             # FBS/FCS is large, do it separately
             url = f"{self.base_url}football/college-football/teams"
@@ -481,18 +529,20 @@ class SportsFetcher:
                             t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
                             if t_abbr in FBS_TEAMS:
                                 t_logo = self.get_corrected_logo('ncf_fbs', t_abbr, t_logo)
-                                if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']):
+                                if t_abbr not in teams_seen['ncf_fbs']:
+                                    teams_seen['ncf_fbs'].add(t_abbr)
                                     teams_catalog['ncf_fbs'].append({'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
                             elif t_abbr in FCS_TEAMS:
                                 t_logo = self.get_corrected_logo('ncf_fcs', t_abbr, t_logo)
-                                if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fcs']):
+                                if t_abbr not in teams_seen['ncf_fcs']:
+                                    teams_seen['ncf_fcs'].add(t_abbr)
                                     teams_catalog['ncf_fcs'].append({'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
 
             # Fetch other leagues in parallel
             futures = []
             leagues_to_fetch = ['nfl', 'mlb', 'nhl', 'nba', 'soccer_epl', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc']
             for lk in leagues_to_fetch:
-                futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog))
+                futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog, teams_seen))
             concurrent.futures.wait(futures)
 
             with data_lock: state['all_teams_data'] = teams_catalog
@@ -543,10 +593,11 @@ class SportsFetcher:
         try:
             r = self.session.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
             if r.status_code != 200: return []
+            schedule_data = r.json()
             
             landing_futures = {} # gid -> future
 
-            for d in r.json().get('gameWeek', []):
+            for d in schedule_data.get('gameWeek', []):
                 for g in d.get('games', []):
                     try:
                         g_utc = g.get('startTimeUTC')
@@ -569,7 +620,7 @@ class SportsFetcher:
             # Process results now that requests are fired
             # We iterate again to build the objects, checking futures if needed
             processed_ids.clear() 
-            for d in r.json().get('gameWeek', []):
+            for d in schedule_data.get('gameWeek', []):
                 for g in d.get('games', []):
                     try:
                         g_utc = g.get('startTimeUTC')
@@ -611,8 +662,10 @@ class SportsFetcher:
                          disp = "FINAL"
                          pd = g.get('periodDescriptor', {})
                          pt = pd.get('periodType', '')
-                         if pt == 'SHOOTOUT': disp = "FINAL S/O"
-                         elif pt == 'OT' or g.get('period', 0) > 3: disp = "FINAL OT"
+                         if self._is_nhl_shootout(g):
+                             disp = "FINAL S/O"
+                         elif pt == 'OT' or g.get('period', 0) > 3:
+                             disp = "FINAL OT"
 
                     # === SUSPENDED CHECK (NHL Native) ===
                     if st in ['SUSP', 'SUSPENDED', 'PPD', 'POSTPONED']:
@@ -680,15 +733,269 @@ class SportsFetcher:
             return results
         except: return None
 
+    # ==== RACING (LIVE) ====
+    def _build_racing_obj(self, league_key, status, leaders, start_iso):
+        # leaders: list of dict with abbr, name, team, gap, pos
+        home = leaders[0] if leaders else {'abbr': 'P1', 'gap': '0', 'name': '', 'team': ''}
+        away = leaders[1] if len(leaders) > 1 else {'abbr': 'P2', 'gap': '0', 'name': '', 'team': ''}
+        return {
+            'type': 'scoreboard', 'sport': league_key, 'id': f"{league_key}_live",
+            'status': status, 'state': 'in', 'is_shown': True,
+            'home_abbr': home.get('abbr', 'P1'), 'home_score': home.get('gap', '0'), 'home_logo': '',
+            'away_abbr': away.get('abbr', 'P2'), 'away_score': away.get('gap', '0'), 'away_logo': '',
+            'home_color': '#000000', 'home_alt_color': '#444444',
+            'away_color': '#000000', 'away_alt_color': '#444444',
+            'startTimeUTC': start_iso,
+            'estimated_duration': SPORT_DURATIONS.get(league_key, 180),
+            'situation': {
+                'leaders': leaders[:3],
+                'possession': '', 'isRedZone': False, 'downDist': '', 'shootout': None, 'powerPlay': False, 'emptyNet': False
+            }
+        }
+
+    def _fetch_f1_live(self):
+        try:
+            sess = self.session.get("https://api.openf1.org/v1/sessions?status=started&limit=1", timeout=5).json()
+            if not sess: return []
+            session_key = sess[0].get('session_key')
+            start_iso = sess[0].get('date_start', dt.now(timezone.utc).isoformat())
+            intervals = self.session.get(f"https://api.openf1.org/v1/intervals?session_key={session_key}&order=position&limit=3", timeout=5).json()
+            drivers = self.session.get(f"https://api.openf1.org/v1/drivers?session_key={session_key}", timeout=5).json()
+            driver_map = {d.get('driver_number'): d for d in drivers} if drivers else {}
+            leaders = []
+            for row in intervals or []:
+                num = row.get('driver_number')
+                drv = driver_map.get(num, {})
+                abbr = drv.get('tla') or drv.get('last_name') or str(num)
+                gap_ms = row.get('gap_to_leader_ms')
+                gap = "LEAD" if not gap_ms else f"+{gap_ms/1000:.1f}s"
+                leaders.append({
+                    'pos': row.get('position', len(leaders)+1),
+                    'abbr': str(abbr).upper(),
+                    'name': drv.get('last_name', ''),
+                    'team': drv.get('team_name', ''),
+                    'gap': gap
+                })
+            lap_info = self.session.get(f"https://api.openf1.org/v1/laps?session_key={session_key}&limit=1&order=lap_number.desc", timeout=5).json()
+            lap_num = lap_info[0].get('lap_number') if lap_info else None
+            status = f"Lap {lap_num}" if lap_num else "GREEN"
+            return [self._build_racing_obj('f1', status, leaders, start_iso)]
+        except Exception as e:
+            print(f"F1 live fetch failed: {e}")
+            return []
+
+    def _fetch_nascar_live(self):
+        try:
+            data = self.session.get("https://cf.nascar.com/live/feeds/live-feed.json", timeout=5).json()
+            vehicles = sorted(data.get('vehicles', []), key=lambda v: v.get('running_position', 9999))
+            if not vehicles: return []
+            leaders = []
+            for v in vehicles[:3]:
+                gap = v.get('delta') or v.get('interval') or 'LEAD'
+                leaders.append({
+                    'pos': v.get('running_position'),
+                    'abbr': v.get('driver').get('last_name', '') if v.get('driver') else f"#{v.get('car_number', '')}",
+                    'name': v.get('driver', {}).get('full_name', ''),
+                    'team': v.get('make', ''),
+                    'gap': gap
+                })
+            lap = data.get('lap_number')
+            laps_in_race = data.get('laps_in_race')
+            status = f"Lap {lap}/{laps_in_race}" if lap and laps_in_race else "GREEN"
+            start_iso = data.get('start_time_utc') or dt.now(timezone.utc).isoformat()
+            return [self._build_racing_obj('nascar', status, leaders, start_iso)]
+        except Exception as e:
+            print(f"NASCAR live fetch failed: {e}")
+            return []
+
+    def _fetch_indycar_live(self, conf):
+        # Relies on user-provided overrides because the season feed is not discoverable off-season.
+        try:
+            ov = (conf.get('racing_overrides') or {}).get('indycar', {})
+            event_id = ov.get('event_id'); session_id = ov.get('session')
+            base = (ov.get('base_url') or "https://api.indycar.com").rstrip('/')
+            if not event_id: return []
+            url = f"{base}/leaderboard?eventId={event_id}"
+            if session_id: url += f"&session={session_id}"
+            data = self.session.get(url, headers=HEADERS, timeout=5).json()
+            rows = data.get('records') or data.get('results') or data.get('cars') or []
+            if isinstance(rows, dict):
+                rows = rows.get('data', [])
+            leaders = []
+            for row in rows[:3]:
+                driver = row.get('driver') or row.get('Driver') or row.get('name', '')
+                if isinstance(driver, dict):
+                    name = driver.get('last_name') or driver.get('familyName') or driver.get('name') or ''
+                    abbr = driver.get('tla') or driver.get('code') or driver.get('short_name')
+                else:
+                    name = str(driver) if driver else ''
+                    abbr = None
+                car_no = row.get('car_number') or row.get('carNumber') or row.get('driver_number')
+                abbr = (abbr or car_no or row.get('abbr') or row.get('shortName') or '').upper()
+                gap = row.get('interval') or row.get('gap') or ('LEAD' if str(row.get('pos') or row.get('position')) == '1' else '')
+                team = row.get('team') or row.get('entrant') or ''
+                pos = row.get('pos') or row.get('position') or len(leaders) + 1
+                laps = row.get('laps') or row.get('lap')
+                leaders.append({'pos': pos, 'abbr': str(abbr), 'name': name, 'team': team, 'gap': gap or 'LEAD', 'laps': laps})
+            start_iso = data.get('sessionStart') or data.get('start_time') or dt.now(timezone.utc).isoformat()
+            status_lap = leaders[0].get('laps') if leaders else None
+            status = f"Lap {status_lap}" if status_lap else "LIVE"
+            return [self._build_racing_obj('indycar', status, leaders, start_iso)] if leaders else []
+        except Exception as e:
+            print(f"IndyCar live fetch failed: {e}")
+            return []
+
+    def _fetch_imsa_live(self, conf):
+        # Al Kamel IMSA live.json requires year and event slug; fall back quietly if unset/offline.
+        try:
+            ov = (conf.get('racing_overrides') or {}).get('imsa', {})
+            year = ov.get('year') or dt.now().year
+            event_slug = ov.get('event')
+            base = (ov.get('base_url') or "https://livetiming.alkamelsystems.com/IMSA").rstrip('/')
+            if not event_slug: return []
+            url = f"{base}/{year}/{event_slug}/live.json"
+            data = self.session.get(url, headers=HEADERS, timeout=5).json()
+            rows = data.get('results') or data.get('Results') or data.get('cars') or []
+            if isinstance(rows, dict):
+                rows = rows.get('data', [])
+            leaders = []
+            for row in rows[:3]:
+                pos = row.get('pos') or row.get('position') or len(leaders) + 1
+                car_no = row.get('car_number') or row.get('carNumber') or row.get('num')
+                abbr = str(car_no or row.get('abbr') or row.get('shortName') or f"P{pos}")
+                name = row.get('driver') or row.get('Driver') or ''
+                if isinstance(name, dict):
+                    name = name.get('last_name') or name.get('surname') or name.get('name') or ''
+                team = row.get('team') or row.get('entrant') or ''
+                gap = row.get('gap') or row.get('interval') or ('LEAD' if str(pos) == '1' else '')
+                laps = row.get('laps') or row.get('lap')
+                leaders.append({'pos': pos, 'abbr': abbr, 'name': str(name), 'team': team, 'gap': gap or 'LEAD', 'laps': laps})
+            status_lap = leaders[0].get('laps') if leaders else None
+            status = f"Lap {status_lap}" if status_lap else "LIVE"
+            start_iso = data.get('sessionStart') or data.get('start_time') or dt.now(timezone.utc).isoformat()
+            return [self._build_racing_obj('imsa', status, leaders, start_iso)] if leaders else []
+        except Exception as e:
+            print(f"IMSA live fetch failed: {e}")
+            return []
+
+    def _fetch_wec_live(self, conf):
+        # Al Kamel WEC live.json requires year and event slug; fall back quietly if unset/offline.
+        try:
+            ov = (conf.get('racing_overrides') or {}).get('wec', {})
+            year = ov.get('year') or dt.now().year
+            event_slug = ov.get('event')
+            base = (ov.get('base_url') or "https://fiawec.alkamelsystems.com").rstrip('/')
+            if not event_slug: return []
+            url = f"{base}/{year}/{event_slug}/live.json"
+            data = self.session.get(url, headers=HEADERS, timeout=5).json()
+            rows = data.get('results') or data.get('Results') or data.get('cars') or []
+            if isinstance(rows, dict):
+                rows = rows.get('data', [])
+            leaders = []
+            for row in rows[:3]:
+                pos = row.get('pos') or row.get('position') or len(leaders) + 1
+                car_no = row.get('car_number') or row.get('carNumber') or row.get('num')
+                abbr = str(car_no or row.get('abbr') or row.get('shortName') or f"P{pos}")
+                name = row.get('driver') or row.get('Driver') or ''
+                if isinstance(name, dict):
+                    name = name.get('last_name') or name.get('surname') or name.get('name') or ''
+                team = row.get('team') or row.get('entrant') or ''
+                gap = row.get('gap') or row.get('interval') or ('LEAD' if str(pos) == '1' else '')
+                laps = row.get('laps') or row.get('lap')
+                leaders.append({'pos': pos, 'abbr': abbr, 'name': str(name), 'team': team, 'gap': gap or 'LEAD', 'laps': laps})
+            status_lap = leaders[0].get('laps') if leaders else None
+            status = f"Lap {status_lap}" if status_lap else "LIVE"
+            start_iso = data.get('sessionStart') or data.get('start_time') or dt.now(timezone.utc).isoformat()
+            return [self._build_racing_obj('wec', status, leaders, start_iso)] if leaders else []
+        except Exception as e:
+            print(f"WEC live fetch failed: {e}")
+            return []
+
+    def fetch_racing_live(self, league_key, config, conf, window_start_utc, window_end_utc):
+        if league_key == 'f1':
+            return self._fetch_f1_live()
+        if league_key == 'nascar':
+            return self._fetch_nascar_live()
+        if league_key == 'indycar':
+            res = self._fetch_indycar_live(conf)
+            if res: return res
+        if league_key == 'imsa':
+            res = self._fetch_imsa_live(conf)
+            if res: return res
+        if league_key == 'wec':
+            res = self._fetch_wec_live(conf)
+            if res: return res
+        # Fallback to generic leaderboard (best available) for other series
+        bucket = []
+        self.fetch_leaderboard_event(league_key, config, bucket, conf, window_start_utc, window_end_utc)
+        # Filter to live only for racing
+        return [g for g in bucket if g.get('state') == 'in']
+
+    def fetch_leaderboard_event(self, league_key, config, local_games, conf, window_start_utc, window_end_utc):
+        try:
+            r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", headers=HEADERS, timeout=5)
+            data = r.json()
+            for e in data.get('events', []):
+                utc_str = e['date'].replace('Z', '')
+                try:
+                    event_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
+                    if not (window_start_utc <= event_dt <= window_end_utc):
+                        continue
+                except:
+                    continue
+
+                comp = e.get('competitions', [{}])[0]
+                comps = comp.get('competitors', []) or []
+                comps_sorted = sorted(comps, key=lambda c: c.get('order', 9999))
+                home = comps_sorted[0] if comps_sorted else {}
+                away = comps_sorted[1] if len(comps_sorted) > 1 else {}
+
+                def _score(c):
+                    if not c: return "0"
+                    if 'score' in c and c.get('score') not in [None, ""]:
+                        return str(c.get('score'))
+                    pos = c.get('status', {}).get('position')
+                    return str(pos) if pos is not None else "0"
+
+                h_ab = home.get('athlete', {}).get('shortName') or home.get('team', {}).get('abbreviation', 'LEAD')
+                a_ab = away.get('athlete', {}).get('shortName') or away.get('team', {}).get('abbreviation', '') or 'RUN'
+                h_logo = (home.get('athlete', {}).get('headshot', {}) or {}).get('href') or home.get('team', {}).get('logo', '')
+                a_logo = (away.get('athlete', {}).get('headshot', {}) or {}).get('href') or away.get('team', {}).get('logo', '')
+
+                st = e.get('status', {})
+                tp = st.get('type', {})
+                gst = tp.get('state', 'pre')
+                s_disp = tp.get('shortDetail', 'TBD')
+
+                duration_est = self.calculate_game_timing(league_key, e['date'], 1, s_disp)
+                is_shown = True
+                if conf['mode'] == 'live' and gst != 'in':
+                    is_shown = False
+                elif conf['mode'] == 'my_teams':
+                    # No team filtering for individual leaderboards
+                    is_shown = True
+
+                local_games.append({
+                    'type': 'scoreboard', 'sport': league_key, 'id': e.get('id'), 'status': s_disp, 'state': gst, 'is_shown': is_shown,
+                    'home_abbr': h_ab, 'home_score': _score(home), 'home_logo': h_logo,
+                    'away_abbr': a_ab, 'away_score': _score(away), 'away_logo': a_logo,
+                    'home_color': '#000000', 'home_alt_color': '#444444',
+                    'away_color': '#000000', 'away_alt_color': '#444444',
+                    'startTimeUTC': e['date'],
+                    'estimated_duration': duration_est,
+                    'situation': { 'possession': '', 'isRedZone': False, 'downDist': '', 'shootout': None, 'powerPlay': False, 'emptyNet': False }
+                })
+        except Exception as e:
+            print(f"Leaderboard fetch error for {league_key}: {e}")
+
     # Helper function for threaded execution
     def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset):
         local_games = []
         if not conf['active_sports'].get(league_key, False): return []
 
-        # Racing Leaderboard
+        # Racing Leaderboard (live)
         if config.get('type') == 'leaderboard':
-            self.fetch_leaderboard_event(league_key, config, local_games, conf, window_start_utc, window_end_utc)
-            return local_games
+            return self.fetch_racing_live(league_key, config, conf, window_start_utc, window_end_utc)
 
         # ESPN Scoreboard
         try:
@@ -769,20 +1076,46 @@ class SportsFetcher:
                                 if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
 
                 s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
+                s_disp_upper = s_disp.upper()
                 
                 # Standardize FINAL logic
-                if "FINAL" in s_disp:
-                    # Check period count for specific sports to append OT if missing from text
+                if "FINAL" in s_disp_upper:
                     if league_key == 'nhl':
-                        if "SO" in s_disp or "Shootout" in s_disp or p >= 5: s_disp = "FINAL S/O"
-                        elif p == 4 and "OT" not in s_disp: s_disp = "FINAL OT"
-                    elif league_key in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs'] and p > 4 and "OT" not in s_disp:
-                         # NFL/NBA regulation is 4 quarters
+                        comp_status = comp.get('status', st)
+                        comp_type = comp_status.get('type', {}) if isinstance(comp_status, dict) else {}
+                        detail_text = " ".join(filter(None, [
+                            tp.get('detail', ''), tp.get('shortDetail', ''), tp.get('description', ''),
+                            comp_type.get('detail', ''), comp_type.get('shortDetail', ''), comp_type.get('description', '')
+                        ])).upper()
+                        home_so = h.get('shootoutScore')
+                        away_so = a.get('shootoutScore')
+                        shootout_flag = any(key in detail_text for key in [" SHOOTOUT", " S/O", "SO ", " SO", "SHOOTOUT"])
+                        if home_so is not None or away_so is not None:
+                            shootout_flag = True
+                        period_val = comp_status.get('period', p) if isinstance(comp_status, dict) else p
+                        try:
+                            period_int = int(period_val)
+                        except (TypeError, ValueError):
+                            period_int = p
+                        if period_int >= 5:
+                            shootout_flag = True
+                        if shootout_flag:
+                            s_disp = "FINAL S/O"
+                        elif period_int >= 4 and "OT" not in s_disp_upper:
+                            s_disp = "FINAL OT"
+                        else:
+                            s_disp = s_disp_upper
+                    elif league_key in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs'] and p > 4 and "OT" not in s_disp_upper:
                          s_disp = "FINAL OT"
+
+                    s_disp_upper = s_disp.upper()
 
                 sit = comp.get('situation', {})
                 shootout_data = None
-                is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
+                is_shootout = (
+                    "SHOOTOUT" in s_disp_upper or "PENALTIES" in s_disp_upper or "S/O" in s_disp_upper or
+                    (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
+                )
                 
                 if is_shootout and 'soccer' in league_key:
                     shootout_data = self.fetch_shootout_details_soccer(e['id'], league_key)
@@ -897,9 +1230,12 @@ class SportsFetcher:
         if conf['mode'] in ['stocks', 'all']:
             cats = ['stock_tech_ai', 'stock_momentum', 'stock_energy', 'stock_finance', 'stock_consumer', 'stock_nyse_50', 
                     'stock_automotive', 'stock_defense']
-            
-            for cat in cats:
-                if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
+            active_cats = [c for c in cats if conf['active_sports'].get(c)]
+            if active_cats:
+                active_syms = set().union(*[self.stocks.lists[c] for c in active_cats])
+                self.stocks.fetch_entire_market(active_syms)
+                for cat in active_cats:
+                    games.extend(self.stocks.get_list(cat, prefetch=False))
         
         with data_lock:
             state['buffer_stocks'] = games
@@ -957,30 +1293,35 @@ def stocks_worker():
 # ================= FLASK API =================
 app = Flask(__name__)
 CORS(app) 
+app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024  # 1 MB cap to avoid oversized bodies
 
 @app.route('/api/config', methods=['POST'])
 def api_config():
     try:
-        new_data = request.json
+        new_data = request.get_json(silent=True) or {}
+        allowed_keys = set(state.keys())
+        sanitized = sanitize_payload(new_data, allowed_keys)
         with data_lock:
             was_demo = state.get('demo_mode', False)
-            is_demo = new_data.get('demo_mode', was_demo)
+            is_demo = sanitized.get('demo_mode', was_demo)
             
-            new_city = new_data.get('weather_city')
-            new_lat = new_data.get('weather_lat')
-            new_lon = new_data.get('weather_lon')
+            new_city = sanitized.get('weather_city')
+            new_lat = sanitized.get('weather_lat')
+            new_lon = sanitized.get('weather_lon')
             
             if new_city or new_lat or new_lon:
                 fetcher.weather.update_config(city=new_city, lat=new_lat, lon=new_lon)
 
-            state.update(new_data)
+            state.update(sanitized)
             
             if was_demo and not is_demo: 
                 state['buffer_sports'] = []
                 state['buffer_stocks'] = []
         save_config_file()
         return jsonify({"status": "ok"})
-    except: return jsonify({"error": "Failed"}), 500
+    except Exception as e:
+        logger.warning(f"/api/config failed: {e}")
+        return jsonify({"error": "Failed"}), 500
 
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
@@ -1001,7 +1342,8 @@ def get_ticker_data():
 
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
-    cid = request.headers.get('X-Client-ID'); code = request.json.get('code'); friendly_name = request.json.get('name', 'My Ticker')
+    body = request.get_json(silent=True) or {}
+    cid = request.headers.get('X-Client-ID'); code = body.get('code'); friendly_name = body.get('name', 'My Ticker')
     if not cid or not code: return jsonify({"success": False}), 400
     for uid, rec in tickers.items():
         if rec.get('pairing_code') == code:
@@ -1012,7 +1354,8 @@ def pair_ticker():
 
 @app.route('/pair/id', methods=['POST'])
 def pair_ticker_by_id():
-    cid = request.headers.get('X-Client-ID'); tid = request.json.get('id'); friendly_name = request.json.get('name', 'My Ticker')
+    body = request.get_json(silent=True) or {}
+    cid = request.headers.get('X-Client-ID'); tid = body.get('id'); friendly_name = body.get('name', 'My Ticker')
     if not cid or not tid: return jsonify({"success": False}), 400
     if tid in tickers:
         if cid not in tickers[tid]['clients']: tickers[tid]['clients'].append(cid)
@@ -1041,7 +1384,9 @@ def list_tickers():
 @app.route('/ticker/<tid>', methods=['POST'])
 def update_settings(tid):
     if tid not in tickers: return jsonify({"error":"404"}), 404
-    tickers[tid]['settings'].update(request.json); save_config_file()
+    payload = request.get_json(silent=True) or {}
+    allowed = set(DEFAULT_TICKER_SETTINGS.keys())
+    tickers[tid]['settings'].update(sanitize_payload(payload, allowed)); save_config_file()
     return jsonify({"success": True})
 
 @app.route('/api/state')
@@ -1058,7 +1403,9 @@ def api_hardware():
     return jsonify({"status": "ok"})
 @app.route('/api/debug', methods=['POST'])
 def api_debug():
-    with data_lock: state.update(request.json)
+    payload = request.get_json(silent=True) or {}
+    allowed_keys = set(state.keys())
+    with data_lock: state.update(sanitize_payload(payload, allowed_keys))
     return jsonify({"status": "ok"})
 @app.route('/')
 def root(): return "Ticker Server Running"
