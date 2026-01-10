@@ -1484,8 +1484,19 @@ def get_ticker_data():
     # Get games specifically for this delay
     games_for_ticker = fetcher.get_snapshot_for_delay(delay_seconds)
     
-    # Filter is_shown
-    visible_games = [g for g in games_for_ticker if g.get('is_shown', True)]
+    # Filter is_shown AND remove postponed games for ticker only
+    visible_games = []
+    for g in games_for_ticker:
+        # Check standard is_shown flag
+        if not g.get('is_shown', True):
+            continue
+            
+        # Check for postponed/suspended keywords
+        status_lower = str(g.get('status', '')).lower()
+        if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
+            continue
+            
+        visible_games.append(g)
     
     with data_lock:
         # CLEANER: No longer injecting the massive league_options list here.
