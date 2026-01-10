@@ -713,6 +713,12 @@ class SportsFetcher:
                         h_k = f"nhl:{h_ab}"; a_k = f"nhl:{a_ab}"
                         if (h_k not in my_teams and h_ab not in my_teams) and (a_k not in my_teams and a_ab not in my_teams): is_shown = False
                     
+                    # === SUSPENDED/POSTPONED CHECK (NHL Native) ===
+                    # If game is postponed, force is_shown to False
+                    if st in ['SUSP', 'SUSPENDED', 'PPD', 'POSTPONED']:
+                        is_shown = False
+                        map_st = 'post'
+
                     disp = "Scheduled"; pp = False; poss = ""; en = False; shootout_data = None 
                     dur = self.calculate_game_timing('nhl', g_utc, 1, st)
 
@@ -724,11 +730,6 @@ class SportsFetcher:
                           pd = g.get('periodDescriptor', {})
                           if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
                           elif pd.get('periodType', '') == 'OT': disp = "FINAL OT"
-
-                    # === SUSPENDED CHECK (NHL Native) ===
-                    if st in ['SUSP', 'SUSPENDED', 'PPD', 'POSTPONED']:
-                        disp = "Suspended"
-                        map_st = 'post' 
 
                     # CHECK LANDING PAGE for details (Live or Final)
                     if gid in landing_futures:
@@ -976,9 +977,15 @@ class SportsFetcher:
                     live_time = status.get("liveTime", {}).get("short", "")
                     
                     # --- FIX: Correct double quote/character issue using Regex ---
-                    # Keep only digits and plus sign (for added time)
+                    # Keep only digits and plus sign (for added time like 45+3)
                     clean_time = re.sub(r'[^\d\+]', '', str(live_time))
-                    disp = f"{clean_time}'"
+                    
+                    # If clean_time has numbers (e.g. "45+3" or "32"), use it with apostrophe
+                    if clean_time:
+                        disp = f"{clean_time}'"
+                    else:
+                        # If no numbers found (e.g. "HT", "Pause"), default to Half
+                        disp = "Half"
                     
                     if reason == "HT": disp = "Half"
                     # --- FIX: Map PET to "ET HT" ---
@@ -1019,6 +1026,10 @@ class SportsFetcher:
                 elif conf['mode'] == 'my_teams':
                     if internal_id not in conf['my_teams'] and h_ab not in conf['my_teams'] and a_ab not in conf['my_teams']: is_shown = False
                 
+                # === NEW FIX: Hide Postponed Games entirely ===
+                if "Postponed" in disp or "PPD" in reason or status.get("cancelled"):
+                    is_shown = False
+
                 # Build Game Object
                 h_id = match.get("home", {}).get("id")
                 a_id = match.get("away", {}).get("id")
@@ -1163,9 +1174,11 @@ class SportsFetcher:
                 for kw in susp_keywords:
                     if kw in s_disp:
                         is_suspended = True
-                        s_disp = kw # Force display to just the status word
-                        gst = 'post' # --- FIX: Force RED bar for postponed games ---
                         break
+                
+                # === NEW FIX: Hide Postponed Games ===
+                if is_suspended:
+                    is_shown = False
 
                 if not is_suspended:
                     if gst == 'pre':
@@ -1188,6 +1201,9 @@ class SportsFetcher:
 
                 s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
                 
+                # === NEW FIX: Clean up "End of..." messages for all sports ===
+                s_disp = s_disp.replace("End of ", "End ").replace(" Quarter", "").replace(" Inning", "").replace(" Period", "")
+
                 # Standardize FINAL logic
                 if "FINAL" in s_disp:
                     # Check period count for specific sports to append OT if missing from text
