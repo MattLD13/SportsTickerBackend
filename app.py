@@ -41,7 +41,7 @@ CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
 STOCK_CACHE_FILE = "stock_cache.json"
 
-SPORTS_UPDATE_INTERVAL = 10      
+SPORTS_UPDATE_INTERVAL = 5      
 STOCKS_UPDATE_INTERVAL = 10      
 
 data_lock = threading.Lock()
