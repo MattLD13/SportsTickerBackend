@@ -52,8 +52,7 @@ HEADERS = {
 }
 
 # ================= MASTER LEAGUE REGISTRY =================
-# Add new leagues here. The server will automatically fetch them, 
-# and the client can automatically render toggles for them.
+# The app will pull this list from /leagues to generate its UI.
 LEAGUE_OPTIONS = [
     # --- PRO SPORTS ---
     {'id': 'nfl',          'label': 'NFL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
@@ -1054,6 +1053,21 @@ def api_config():
         return jsonify({"status": "ok"})
     except: return jsonify({"error": "Failed"}), 500
 
+# === NEW READ-ONLY ENDPOINT FOR APP ===
+@app.route('/leagues', methods=['GET'])
+def get_league_options():
+    # Return just the static list of supported leagues/stocks
+    # This is lightweight and only needs to be fetched once by the app
+    league_meta = []
+    for item in LEAGUE_OPTIONS:
+         league_meta.append({
+             'id': item['id'], 
+             'label': item['label'], 
+             'type': item['type'],
+             'enabled': state['active_sports'].get(item['id'], False)
+         })
+    return jsonify(league_meta)
+
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
     ticker_id = request.args.get('id')
@@ -1078,21 +1092,12 @@ def get_ticker_data():
     visible_games = [g for g in games_for_ticker if g.get('is_shown', True)]
     
     with data_lock:
-        # Generate dynamic league list for the client to render settings
-        league_meta = []
-        for item in LEAGUE_OPTIONS:
-             league_meta.append({
-                 'id': item['id'], 
-                 'label': item['label'], 
-                 'type': item['type'],
-                 'enabled': state['active_sports'].get(item['id'], False)
-             })
-
+        # CLEANER: No longer injecting the massive league_options list here.
+        # The app should fetch that from /leagues instead.
         conf = { 
             "active_sports": state['active_sports'], 
             "mode": state['mode'], 
-            "weather": state['weather_city'],
-            "league_options": league_meta 
+            "weather": state['weather_city']
         }
     
     return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": visible_games } })
