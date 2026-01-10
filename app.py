@@ -55,6 +55,7 @@ HEADERS = {
 }
 
 # ================= FOTMOB MAPPING =================
+# REMOVED MLS AS REQUESTED
 FOTMOB_LEAGUE_MAP = {
     'soccer_epl': 47,
     'soccer_fa_cup': 132,
@@ -62,7 +63,6 @@ FOTMOB_LEAGUE_MAP = {
     'soccer_l1': 108,
     'soccer_l2': 109,
     'soccer_wc': 77,
-    'soccer_mls': 57,
     'soccer_champions_league': 42,
     'soccer_europa_league': 73
 }
@@ -86,7 +86,7 @@ LEAGUE_OPTIONS = [
     {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_l2',    'label': 'League Two',          'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_wc',    'label': 'FIFA World Cup',      'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'soccer_mls',   'label': 'MLS',                 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/usa.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    # REMOVED MLS
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_europa_league',    'label': 'Europa League',    'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
 
@@ -230,6 +230,17 @@ LOGO_OVERRIDES = {
 ABBR_MAPPING = {
     'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI',
     'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS'
+}
+
+# --- COMMON SOCCER COLORS FALLBACK ---
+SOCCER_COLOR_FALLBACK = {
+    "arsenal": "EF0107", "aston villa": "95BFE5", "bournemouth": "DA291C", "brentford": "E30613", "brighton": "0057B8",
+    "chelsea": "034694", "crystal palace": "1B458F", "everton": "003399", "fulham": "CC0000", "leeds": "FFCD00",
+    "leicester": "0053A0", "liverpool": "C8102E", "manchester city": "6CABDD", "man city": "6CABDD",
+    "manchester united": "DA291C", "man utd": "DA291C", "newcastle": "241F20", "nottingham": "DD0000",
+    "southampton": "D71920", "tottenham": "132257", "west ham": "7A263A", "wolves": "FDB913",
+    "barcelona": "A50044", "real madrid": "FEBE10", "atlético": "CB3524", "bayern": "DC052D", "dortmund": "FDE100",
+    "psg": "004170", "juventus": "000000", "milan": "FB090B", "inter": "010E80", "napoli": "003B94"
 }
 
 SPORT_DURATIONS = {
@@ -454,10 +465,19 @@ class SportsFetcher:
 
     def lookup_team_info_from_cache(self, league, abbr, name=None):
         search_abbr = ABBR_MAPPING.get(abbr, abbr)
+        
+        # 0. Check Hardcoded Fallback for Soccer first (fixes broken colors for big teams)
+        if 'soccer' in league and name:
+            name_clean = name.lower()
+            for k, v in SOCCER_COLOR_FALLBACK.items():
+                if k in name_clean:
+                     return {'color': v, 'alt_color': '444444'}
+
         try:
             with data_lock:
                 teams = state['all_teams_data'].get(league, [])
-                # 1. Try Abbreviation Match
+                
+                # 1. Try Exact Abbreviation Match
                 for t in teams:
                     if t['abbr'] == search_abbr:
                         return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
@@ -468,8 +488,11 @@ class SportsFetcher:
                     for t in teams:
                         t_name = t.get('name', '').lower()
                         t_short = t.get('shortName', '').lower()
-                        # Check exact string containment
-                        if name_lower == t_name or name_lower == t_short or t_name in name_lower or name_lower in t_name:
+                        
+                        # Check exact string containment (FotMob "Man City" vs ESPN "Manchester City")
+                        # We check if one is inside the other
+                        if (name_lower in t_name) or (t_name in name_lower) or \
+                           (name_lower in t_short) or (t_short in name_lower):
                              return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
 
         except: pass
@@ -554,7 +577,7 @@ class SportsFetcher:
             futures = []
             leagues_to_fetch = [
                 'nfl', 'mlb', 'nhl', 'nba',
-                'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_mls', 'soccer_champions_league', 'soccer_europa_league'
+                'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_champions_league', 'soccer_europa_league'
             ]
             for lk in leagues_to_fetch:
                 if lk in self.leagues:
@@ -716,7 +739,7 @@ class SportsFetcher:
                                         else:
                                             p_lbl = "OT" if p_num > 3 else f"P{p_num}"
                                             disp = f"{p_lbl} {time_rem}"
-                                        
+                                         
                                         # Situation (Power Play / Empty Net)
                                         sit_obj = d2.get('situation', {})
                                         if sit_obj:
@@ -928,8 +951,11 @@ class SportsFetcher:
                 if started and not finished:
                     gst = 'in'
                     live_time = status.get("liveTime", {}).get("short", "")
-                    # --- FIX: Ensure single quote (90') ---
-                    disp = f"{str(live_time).replace("'", "")}'"
+                    
+                    # --- FIX: Correct double quote issue ---
+                    # First, strip any existing quotes to be safe, then add exactly one
+                    clean_time = str(live_time).replace("'", "").replace('"', "")
+                    disp = f"{clean_time}'"
                     
                     if reason == "HT": disp = "Half"
                     # --- FIX: Map PET to "ET HT" ---
@@ -964,7 +990,7 @@ class SportsFetcher:
                 h_id = match.get("home", {}).get("id")
                 a_id = match.get("away", {}).get("id")
 
-                # --- FIX: Use ESPN Colors from Cache (Name matching included) ---
+                # --- FIX: Use ESPN Colors from Cache (Passing full name for fuzzy match) ---
                 h_info = self.lookup_team_info_from_cache(internal_id, h_ab, h_name)
                 a_info = self.lookup_team_info_from_cache(internal_id, a_ab, a_name)
                 
@@ -1230,7 +1256,7 @@ class SportsFetcher:
             # B. FOTMOB SOCCER (Batched by League ID)
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
-                     futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, fotmob_date_str))
+                      futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, fotmob_date_str))
 
             # C. All other ESPN leagues
             for league_key, config in self.leagues.items():
