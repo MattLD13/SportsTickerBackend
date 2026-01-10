@@ -48,7 +48,8 @@ data_lock = threading.Lock()
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Cache-Control": "no-cache"
+    "Cache-Control": "no-cache",
+    "Accept": "application/json, text/plain, */*"
 }
 
 # ================= FOTMOB MAPPING =================
@@ -747,14 +748,18 @@ class SportsFetcher:
         if not active_ids: return []
 
         utc_offset = conf.get('utc_offset', -5)
-        # FotMob expects date in YYYYMMDD. Use local date for user's context.
+        # FotMob expects date in YYYY-MM-DD (e.g., 2024-10-26)
         now_utc = dt.now(timezone.utc)
         now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-        date_str = now_local.strftime("%Y%m%d")
+        date_str = now_local.strftime("%Y-%m-%d")
 
         url = f"https://www.fotmob.com/api/matches?date={date_str}&timezone=America/New_York"
         try:
             r = self.session.get(url, headers=HEADERS, timeout=5)
+            if r.status_code != 200:
+                print(f"FotMob Fetch Error: Status {r.status_code} for {url}")
+                return []
+                
             data = r.json()
             
             games_found = []
