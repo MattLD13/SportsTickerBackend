@@ -41,7 +41,7 @@ CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
 STOCK_CACHE_FILE = "stock_cache.json"
 
-SPORTS_UPDATE_INTERVAL = 5      
+SPORTS_UPDATE_INTERVAL = 10      
 STOCKS_UPDATE_INTERVAL = 10      
 
 data_lock = threading.Lock()
@@ -941,6 +941,76 @@ class SportsFetcher:
         except Exception:
             return None, None
 
+    # --- Helper for Live Clock with Seconds ---
+    def _format_live_clock(self, status: dict, fallback_text: str = "") -> str | None:
+        """Format live match time as MM:SS' or base+extra:SS' when in added time."""
+
+        def _render_clock(minutes: int, seconds: int, max_time: int | None) -> str:
+            if max_time is not None and minutes > max_time:
+                extra_total = minutes * 60 + seconds - max_time * 60
+                extra_min, extra_sec = divmod(extra_total, 60)
+                return f"{max_time}+{extra_min:02d}:{extra_sec:02d}'"
+            return f"{minutes:02d}:{seconds:02d}'"
+
+        if not isinstance(status, dict):
+            return None
+
+        live_time = status.get("liveTime") or status.get("live_time") or {}
+        max_time = None
+        if isinstance(live_time, dict):
+            max_time_raw = live_time.get("maxTime") or live_time.get("max_time")
+            if isinstance(max_time_raw, (int, float)) or (isinstance(max_time_raw, str) and max_time_raw.isdigit()):
+                max_time = int(float(max_time_raw))
+
+            long_val = live_time.get("long") or live_time.get("clock") or live_time.get("elapsed")
+            if long_val:
+                text = str(long_val)
+                plus_match = re.match(r"\s*(\d+)\+(\d+)(?::(\d{1,2}))?", text)
+                if plus_match:
+                    base = int(plus_match.group(1))
+                    extra_min = int(plus_match.group(2))
+                    extra_sec = int(plus_match.group(3) or 0)
+                    return f"{base}+{extra_min:02d}:{extra_sec:02d}'"
+
+                clock_match = re.match(r"\s*(\d+):(\d{1,2})", text)
+                if clock_match:
+                    minutes = int(clock_match.group(1))
+                    seconds = int(clock_match.group(2))
+                    return _render_clock(minutes, seconds, max_time)
+
+            # Explicit minute/second fields if present
+            minute_val = live_time.get("minute")
+            second_val = live_time.get("second")
+            if minute_val is not None and second_val is not None:
+                try:
+                    minutes = int(minute_val)
+                    seconds = int(second_val)
+                    return _render_clock(minutes, seconds, max_time)
+                except Exception:
+                    pass
+
+            short_val = live_time.get("short")
+            if short_val:
+                short_match = re.match(r"\s*(\d+)(?:\+(\d+))?'", str(short_val))
+                if short_match:
+                    base = int(short_match.group(1))
+                    extra = int(short_match.group(2) or 0)
+                    if extra:
+                        return f"{base}+{extra:02d}:00'"
+                    return f"{base:02d}:00'"
+
+        if fallback_text:
+            text = str(fallback_text)
+            text_match = re.search(r"(\d+)(?:\+(\d+))?'", text)
+            if text_match:
+                base = int(text_match.group(1))
+                extra = int(text_match.group(2) or 0)
+                if extra:
+                    return f"{base}+{extra:02d}:00'"
+                return f"{base:02d}:00'"
+
+        return None
+
     def _extract_matches(self, sections, date_utc, internal_id, conf):
         matches = []
         for section in sections:
@@ -1025,34 +1095,12 @@ class SportsFetcher:
 
                 if started and not finished:
                     gst = 'in'
-                    live_time = status.get("liveTime", {}).get("short", "")
-                    
-                    # --- FIX: Correct double quote/character issue using Regex ---
-                    # Keep only digits and plus sign (for added time like 45+3)
-                    clean_time = re.sub(r'[^\d\+]', '', str(live_time))
-                    
-                    # Force 90+6 format if raw minutes > 90/45
-                    if "+" not in clean_time and clean_time.isdigit():
-                        mins = int(clean_time)
-                        if "2H" in reason or "2nd" in str(status):
-                            if mins > 90:
-                                clean_time = f"90+{mins-90}"
-                        elif "1H" in reason or "1st" in str(status):
-                            if mins > 45:
-                                clean_time = f"45+{mins-45}"
-                        elif "1ET" in reason:
-                            if mins > 105:
-                                clean_time = f"105+{mins-105}"
-                        elif "2ET" in reason:
-                            if mins > 120:
-                                clean_time = f"120+{mins-120}"
-
-                    # If clean_time has numbers (e.g. "45+3" or "32"), use it with apostrophe
-                    if clean_time:
-                        disp = f"{clean_time}'"
+                    # Use the new seconds-aware formatter
+                    clock_str = self._format_live_clock(status, match.get("status_text"))
+                    if clock_str:
+                        disp = clock_str
                     else:
-                        # If no numbers found (e.g. "HT", "Pause"), default to Half
-                        disp = "Half"
+                        disp = "In Progress"
                     
                     if reason == "HT": disp = "Half"
                     # --- FIX: Map PET to "ET HT" ---
