@@ -66,6 +66,7 @@ LEAGUE_OPTIONS = [
 
     # --- SOCCER ---
     {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.fa', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_l2',    'label': 'League Two',          'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
@@ -516,7 +517,7 @@ class SportsFetcher:
 
             # Fetch other leagues in parallel
             futures = []
-            leagues_to_fetch = ['nfl', 'mlb', 'nhl', 'nba', 'soccer_epl', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc']
+            leagues_to_fetch = ['nfl', 'mlb', 'nhl', 'nba', 'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc']
             for lk in leagues_to_fetch:
                 futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog))
             concurrent.futures.wait(futures)
@@ -631,13 +632,13 @@ class SportsFetcher:
                     dur = self.calculate_game_timing('nhl', g_utc, 1, st)
 
                     if st in ['PRE', 'FUT']:
-                         try: disp = g_local.strftime("%I:%M %p").lstrip('0')
-                         except: pass
+                          try: disp = g_local.strftime("%I:%M %p").lstrip('0')
+                          except: pass
                     elif st in ['FINAL', 'OFF']:
-                         disp = "FINAL"
-                         pd = g.get('periodDescriptor', {})
-                         if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
-                         elif pd.get('periodType', '') == 'OT': disp = "FINAL OT"
+                          disp = "FINAL"
+                          pd = g.get('periodDescriptor', {})
+                          if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
+                          elif pd.get('periodType', '') == 'OT': disp = "FINAL OT"
 
                     # === SUSPENDED CHECK (NHL Native) ===
                     if st in ['SUSP', 'SUSPENDED', 'PPD', 'POSTPONED']:
