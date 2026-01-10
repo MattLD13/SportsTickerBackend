@@ -929,6 +929,18 @@ class SportsFetcher:
             return None
         except: return None
 
+    # --- Helper for Robust Score Parsing ---
+    def _parse_score_str(self, score_str):
+        if not score_str or "-" not in str(score_str):
+            return None, None
+        try:
+            home_raw, away_raw = [part.strip() for part in str(score_str).split("-", 1)]
+            home_val = int(home_raw) if home_raw.isdigit() else None
+            away_val = int(away_raw) if away_raw.isdigit() else None
+            return home_val, away_val
+        except Exception:
+            return None, None
+
     def _extract_matches(self, sections, date_utc, internal_id, conf):
         matches = []
         for section in sections:
@@ -945,7 +957,7 @@ class SportsFetcher:
                 if not kickoff: continue
                 kickoff_date = kickoff.split("T", 1)[0]
                 
-                # Date filtering (User script logic)
+                # Date filtering
                 if section_date and section_date != date_utc: continue
                 if not section_date and kickoff_date and kickoff_date != date_utc: continue
 
@@ -960,6 +972,45 @@ class SportsFetcher:
                 started = bool(status.get("started"))
                 reason = (status.get("reason") or {}).get("short") or ""
                 
+                # === ROBUST SCORE EXTRACTION LOGIC ===
+                home_score = (match.get("home") or {}).get("score")
+                away_score = (match.get("away") or {}).get("score")
+
+                # 1. Check status.score / status.current
+                status_score = status.get("score") or status.get("current") or {}
+                if isinstance(status_score, dict):
+                    if home_score is None: home_score = status_score.get("home")
+                    if away_score is None: away_score = status_score.get("away")
+                    
+                    # 2. Check FT / Fulltime
+                    for key in ("ft", "fulltime"):
+                        ft_score = status_score.get(key)
+                        if isinstance(ft_score, (list, tuple)) and len(ft_score) >= 2:
+                            if home_score is None: home_score = ft_score[0]
+                            if away_score is None: away_score = ft_score[1]
+                elif isinstance(status_score, (list, tuple)) and len(status_score) >= 2:
+                    if home_score is None: home_score = status_score[0]
+                    if away_score is None: away_score = status_score[1]
+
+                # 3. String Fallback (scoreStr, statusText)
+                score_str_sources = [
+                    status.get("scoreStr"),
+                    (match.get("home") or {}).get("scoreStr"),
+                    (match.get("away") or {}).get("scoreStr"),
+                    status.get("statusText") if "-" in str(status.get("statusText", "")) else None 
+                ]
+
+                for s_str in score_str_sources:
+                    if home_score is not None and away_score is not None: break
+                    h_val, a_val = self._parse_score_str(s_str)
+                    if home_score is None: home_score = h_val
+                    if away_score is None: away_score = a_val
+
+                # Defaults to 0 if still None
+                final_home_score = str(home_score) if home_score is not None else "0"
+                final_away_score = str(away_score) if away_score is not None else "0"
+                # ======================================
+
                 # Determine state/status
                 gst = 'pre'
                 
@@ -1045,9 +1096,9 @@ class SportsFetcher:
                     'status': disp, 
                     'state': gst, 
                     'is_shown': is_shown,
-                    'home_abbr': h_ab, 'home_score': str(match.get("home", {}).get("score") or 0), 
+                    'home_abbr': h_ab, 'home_score': final_home_score, 
                     'home_logo': f"https://images.fotmob.com/image_resources/logo/teamlogo/{h_id}.png",
-                    'away_abbr': a_ab, 'away_score': str(match.get("away", {}).get("score") or 0), 
+                    'away_abbr': a_ab, 'away_score': final_away_score, 
                     'away_logo': f"https://images.fotmob.com/image_resources/logo/teamlogo/{a_id}.png",
                     'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
                     'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
