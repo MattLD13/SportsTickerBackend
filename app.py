@@ -42,7 +42,7 @@ TICKER_REGISTRY_FILE = "tickers.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 
 SPORTS_UPDATE_INTERVAL = 10      
-STOCKS_UPDATE_INTERVAL = 10     
+STOCKS_UPDATE_INTERVAL = 10      
 
 data_lock = threading.Lock()
 
@@ -69,22 +69,22 @@ FOTMOB_LEAGUE_MAP = {
 # ================= MASTER LEAGUE REGISTRY =================
 LEAGUE_OPTIONS = [
     # --- PRO SPORTS ---
-    {'id': 'nfl',          'label': 'NFL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'mlb',          'label': 'MLB',                 'type': 'sport', 'default': True,  'fetch': {'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'nhl',          'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'nba',          'label': 'NBA',                 'type': 'sport', 'default': True,  'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'nfl',           'label': 'NFL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'mlb',           'label': 'MLB',                 'type': 'sport', 'default': True,  'fetch': {'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'nhl',           'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'nba',           'label': 'NBA',                 'type': 'sport', 'default': True,  'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     
     # --- COLLEGE SPORTS ---
-    {'id': 'ncf_fbs',      'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
-    {'id': 'ncf_fcs',      'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
+    {'id': 'ncf_fbs',       'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
+    {'id': 'ncf_fcs',       'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
 
     # --- SOCCER (Colors fetched via ESPN, scores via FotMob) ---
-    {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
-    {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l2',    'label': 'League Two',          'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_wc',    'label': 'FIFA World Cup',      'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'soccer_epl',    'label': 'Premier League',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_fa_cup','label': 'FA Cup',               'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
+    {'id': 'soccer_champ', 'label': 'Championship',         'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l1',     'label': 'League One',           'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l2',     'label': 'League Two',           'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_wc',     'label': 'FIFA World Cup',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_europa_league',    'label': 'Europa League',    'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
 
@@ -92,19 +92,19 @@ LEAGUE_OPTIONS = [
     {'id': 'hockey_olympics', 'label': 'Olympic Hockey',   'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/mens-olympic-hockey', 'type': 'scoreboard'}},
 
     # --- RACING ---
-    {'id': 'f1',           'label': 'Formula 1',           'type': 'sport', 'default': True,  'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
-    {'id': 'nascar',       'label': 'NASCAR',              'type': 'sport', 'default': True,  'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
+    {'id': 'f1',            'label': 'Formula 1',            'type': 'sport', 'default': True,  'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
+    {'id': 'nascar',        'label': 'NASCAR',               'type': 'sport', 'default': True,  'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
 
     # --- UTILITIES ---
-    {'id': 'weather',      'label': 'Weather',             'type': 'util',  'default': True},
-    {'id': 'clock',        'label': 'Clock',               'type': 'util',  'default': True},
+    {'id': 'weather',       'label': 'Weather',              'type': 'util',  'default': True},
+    {'id': 'clock',         'label': 'Clock',                'type': 'util',  'default': True},
 
     # --- STOCKS ---
-    {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',    'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
-    {'id': 'stock_momentum',   'label': 'Momentum Stocks',     'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
-    {'id': 'stock_energy',     'label': 'Energy Stocks',       'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
-    {'id': 'stock_finance',    'label': 'Financial Stocks',    'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
-    {'id': 'stock_consumer',   'label': 'Consumer Stocks',     'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
+    {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',     'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
+    {'id': 'stock_momentum',   'label': 'Momentum Stocks',      'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
+    {'id': 'stock_energy',     'label': 'Energy Stocks',        'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
+    {'id': 'stock_finance',    'label': 'Financial Stocks',     'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
+    {'id': 'stock_consumer',   'label': 'Consumer Stocks',      'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
 ]
 
 # ================= DEFAULT STATE =================
@@ -494,7 +494,7 @@ class SportsFetcher:
             abbr_check = search_abbr.lower()
             for k, v in SOCCER_COLOR_FALLBACK.items():
                 if k in name_check or k == abbr_check:
-                     return {'color': v, 'alt_color': '444444'}
+                      return {'color': v, 'alt_color': '444444'}
 
         try:
             with data_lock:
@@ -762,15 +762,15 @@ class SportsFetcher:
                                         else:
                                             p_lbl = "OT" if p_num > 3 else f"P{p_num}"
                                             disp = f"{p_lbl} {time_rem}"
-                                         
-                                        # Situation (Power Play / Empty Net)
-                                        sit_obj = d2.get('situation', {})
-                                        if sit_obj:
-                                            sit = sit_obj.get('situationCode', '1551')
-                                            ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
-                                            if as_ > hs: pp=True; poss=a_ab
-                                            elif hs > as_: pp=True; poss=h_ab
-                                            en = (ag==0 or hg==0)
+                                    
+                                    # Situation (Power Play / Empty Net)
+                                    sit_obj = d2.get('situation', {})
+                                    if sit_obj:
+                                        sit = sit_obj.get('situationCode', '1551')
+                                        ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
+                                        if as_ > hs: pp=True; poss=a_ab
+                                        elif hs > as_: pp=True; poss=h_ab
+                                        en = (ag==0 or hg==0)
                         except: pass 
 
                     games_found.append({
@@ -986,16 +986,25 @@ class SportsFetcher:
 
                 elif finished:
                     gst = 'post'
-                    # --- FIX: Display "Final" even for penalty games (requested) ---
+                    # Default
                     disp = "Final" 
                     if "AET" in reason: disp = "Final AET"
+                    # --- FIX: Change "Final" to "FIN" for penalty games (Soccer Only) ---
+                    if "Pen" in reason or (status.get("reason") and "Pen" in str(status.get("reason"))):
+                        disp = "FIN"
+
                 elif status.get("cancelled"):
+                    gst = 'post'
+                    disp = "Postponed"
+                
+                # --- FIX: Ensure "Postponed" in reason triggers Red bar (post state) ---
+                if "Postponed" in reason or "PPD" in reason:
                     gst = 'post'
                     disp = "Postponed"
 
                 # Shootout check
                 is_shootout = False
-                if "Pen" in reason or (gst == 'in' and "Pen" in str(status)):
+                if "Pen" in reason or (gst == 'in' and "Pen" in str(status)) or disp == "FIN":
                     is_shootout = True
                     if gst == 'in': disp = "Pens"
                 
@@ -1155,6 +1164,7 @@ class SportsFetcher:
                     if kw in s_disp:
                         is_suspended = True
                         s_disp = kw # Force display to just the status word
+                        gst = 'post' # --- FIX: Force RED bar for postponed games ---
                         break
 
                 if not is_suspended:
@@ -1280,7 +1290,7 @@ class SportsFetcher:
             # B. FOTMOB SOCCER (Batched by League ID)
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
-                      futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, fotmob_date_str))
+                       futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, fotmob_date_str))
 
             # C. All other ESPN leagues
             for league_key, config in self.leagues.items():
@@ -1315,7 +1325,7 @@ class SportsFetcher:
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
             4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "canceled", "suspended", "ppd"]) else
-            3 if "FINAL" in str(x.get('status', '')).upper() else
+            3 if "FINAL" in str(x.get('status', '')).upper() or "FIN" == str(x.get('status', '')) else
             2, # Active
             x.get('startTimeUTC', '9999'),
             x.get('sport', ''),
