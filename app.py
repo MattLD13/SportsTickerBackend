@@ -11,7 +11,7 @@ import requests
 import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import yfinance as yf   # <--- OFFICIAL YAHOO LIBRARY
+import yfinance as yf
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -41,9 +41,8 @@ CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
 STOCK_CACHE_FILE = "stock_cache.json"
 
-# FETCH INTERVALS
-SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 10     # 10 Seconds for Stocks (Safe for Yahoo)
+SPORTS_UPDATE_INTERVAL = 5      
+STOCKS_UPDATE_INTERVAL = 10     
 
 data_lock = threading.Lock()
 
@@ -55,16 +54,11 @@ HEADERS = {
 # ================= DEFAULT STATE =================
 default_state = {
     'active_sports': { 
-        # Sports
         'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
         'soccer_epl': True, 'soccer_champ': True, 'soccer_l1': True, 'soccer_l2': True, 
         'soccer_wc': True, 'hockey_olympics': True, 
         'f1': True, 'nascar': True, 'indycar': True, 'wec': True, 'imsa': True,
-        
-        # Utilities
         'weather': True, 'clock': True,
-        
-        # Stock Categories
         'stock_tech_ai': True,        
         'stock_momentum': False,      
         'stock_energy': False,        
@@ -82,27 +76,24 @@ default_state = {
     'buffer_stocks': [],
     'all_teams_data': {}, 
     'debug_mode': False,
-    # === CHANGED: Live Delay Config (Replaces Demo Mode) ===
-    'live_delay_mode': False,
-    'live_delay_seconds': 45, # Default 45s (Good for streaming delays)
     'custom_date': None,
-    # Weather Config
     'weather_city': "New York",
     'weather_lat': 40.7128,
     'weather_lon': -74.0060,
     'utc_offset': -5,
-    'scroll_seamless': True, 
-    'scroll_speed': 5,
-    'brightness': 100,
-    'show_debug_options': False 
+    'show_debug_options': True 
 }
 
+# === PER-TICKER SETTINGS ===
 DEFAULT_TICKER_SETTINGS = {
     "brightness": 100,
     "scroll_speed": 0.03,
     "scroll_seamless": True,
     "inverted": False,
-    "panel_count": 2
+    "panel_count": 2,
+    # MOVED HERE:
+    "live_delay_mode": False,
+    "live_delay_seconds": 45
 }
 
 state = default_state.copy()
@@ -113,14 +104,13 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf', 'demo_mode']
+            # Cleanup old keys
+            deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf', 'demo_mode', 'live_delay_mode', 'live_delay_seconds']
             if 'active_sports' in loaded:
                 for k in deprecated:
-                    if k in loaded['active_sports']: 
-                        del loaded['active_sports'][k]
-            
-            # Clean up deprecated demo key from root if it exists
-            if 'demo_mode' in loaded: del loaded['demo_mode']
+                    if k in loaded['active_sports']: del loaded['active_sports'][k]
+            for k in deprecated:
+                if k in loaded: del loaded[k]
 
             for k, v in loaded.items():
                 if k == 'show_debug_options': continue 
@@ -135,6 +125,11 @@ if os.path.exists(TICKER_REGISTRY_FILE):
     try:
         with open(TICKER_REGISTRY_FILE, 'r') as f:
             tickers = json.load(f)
+            # Migrate old tickers to have new settings defaults
+            for t in tickers.values():
+                for k, v in DEFAULT_TICKER_SETTINGS.items():
+                    if k not in t['settings']:
+                        t['settings'][k] = v
     except: pass
 
 def save_json_atomically(filepath, data):
@@ -411,7 +406,7 @@ class SportsFetcher:
         # Increased workers for parallel fetching
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10) 
         
-        # === HISTORY BUFFER FOR DELAY MODE ===
+        # === HISTORY BUFFER FOR PER-TICKER DELAY ===
         self.history_buffer = [] # List of tuples: (timestamp, data_snapshot)
         
         self.leagues = {
@@ -915,37 +910,52 @@ class SportsFetcher:
                 except Exception as e: print(f"League fetch error: {e}")
 
         # === FIX FOR JUMPING: SORT SPORTS GAMES ===
-        # We sort by 'type' (to keep clock/weather at top if needed) and then startTimeUTC
-        # 'clock'/'weather' have no startTimeUTC, so we default to a very old date or rely on python sort stability
         all_games.sort(key=lambda x: (x.get('type') != 'clock', x.get('type') != 'weather', x.get('startTimeUTC', '9999')))
 
-        # === NEW: "Time Machine" Logic for Live Game Delay ===
+        # === HISTORY BUFFER UPDATE ===
         now_ts = time.time()
-        
-        # 1. Store snapshot in history buffer
         self.history_buffer.append((now_ts, all_games))
-        
-        # 2. Prune old history (Keep max 120 seconds to be safe)
+        # Keep 120s of history
         cutoff_time = now_ts - 120
         self.history_buffer = [x for x in self.history_buffer if x[0] > cutoff_time]
         
-        # 3. Determine which snapshot to use
-        snapshot_to_use = all_games
+        # NOTE: We no longer calculate 'state["current_games"]' based on a global delay.
+        # Instead, we just store the latest fetch as the default current_games (0 delay)
+        # Individual tickers asking for delay will call get_snapshot_for_delay()
+        with data_lock: 
+            state['buffer_sports'] = all_games
+            self.merge_buffers()
+
+    def get_snapshot_for_delay(self, delay_seconds):
+        # 1. If delay is 0 or negative, return latest
+        if delay_seconds <= 0 or not self.history_buffer:
+            with data_lock:
+                return state.get('current_games', [])
+        
+        # 2. Find closest snapshot
+        target_time = time.time() - delay_seconds
+        closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
+        # closest is (timestamp, list_of_games)
+        
+        # 3. We need to apply the filtering logic (Stocks/Weather merge) to this snapshot too
+        # But 'merge_buffers' relies on global state buffers.
+        # To avoid complexity, we assume the sports snapshot is what changes, 
+        # and we merge it with the *current* stock buffer (stocks don't need second-by-second delay usually)
+        sports_snap = closest[1]
         
         with data_lock:
-            delay_mode = state.get('live_delay_mode', False)
-            delay_seconds = state.get('live_delay_seconds', 45) # Default 45s
-
-        if delay_mode and len(self.history_buffer) > 1:
-            target_time = now_ts - delay_seconds
-            # Find the snapshot with timestamp closest to target_time
-            # We use min() to find closest value based on absolute difference
-            closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
-            snapshot_to_use = closest[1]
-
-        with data_lock: 
-            state['buffer_sports'] = snapshot_to_use
-            self.merge_buffers()
+            stocks_snap = state.get('buffer_stocks', [])
+            mode = state['mode']
+        
+        # Reuse merge logic manually
+        utils = [g for g in sports_snap if g.get('type') == 'weather' or g.get('sport') == 'clock']
+        pure_sports = [g for g in sports_snap if g not in utils]
+        
+        if mode == 'stocks': return stocks_snap
+        elif mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
+        elif mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
+        elif mode in ['sports', 'live', 'my_teams']: return pure_sports
+        else: return utils + pure_sports
 
     def update_buffer_stocks(self):
         games = []
@@ -963,40 +973,21 @@ class SportsFetcher:
             self.merge_buffers()
 
     def merge_buffers(self):
-        # REMOVED: Demo Mode Check
         mode = state['mode']
         final_list = []
         
-        # Raw buffers
+        # Raw buffers (Latest)
         sports_buffer = state.get('buffer_sports', [])
         stocks_buffer = state.get('buffer_stocks', [])
         
-        # 1. Separate "Utilities" (Weather/Clock) from "Pure Sports"
-        # We identify them by type/sport to filter them out of sports modes
         utils = [g for g in sports_buffer if g.get('type') == 'weather' or g.get('sport') == 'clock']
         pure_sports = [g for g in sports_buffer if g not in utils]
 
-        # 2. Apply Strict Exclusivity Logic
-        if mode == 'stocks':
-            # SHOW ONLY STOCKS
-            final_list = stocks_buffer
-
-        elif mode == 'weather':
-            # SHOW ONLY WEATHER
-            final_list = [g for g in utils if g.get('type') == 'weather']
-
-        elif mode == 'clock':
-            # SHOW ONLY CLOCK
-            final_list = [g for g in utils if g.get('sport') == 'clock']
-
-        elif mode in ['sports', 'live', 'my_teams']:
-            # SHOW ONLY SPORTS (Filter out Weather/Clock)
-            final_list = pure_sports
-
-        else: # mode == 'all'
-            # SHOW UTILITIES + SPORTS (Stocks usually excluded to prevent clutter, or add them if you want)
-            # Ensure Utils are first
-            final_list = utils + pure_sports
+        if mode == 'stocks': final_list = stocks_buffer
+        elif mode == 'weather': final_list = [g for g in utils if g.get('type') == 'weather']
+        elif mode == 'clock': final_list = [g for g in utils if g.get('sport') == 'clock']
+        elif mode in ['sports', 'live', 'my_teams']: final_list = pure_sports
+        else: final_list = utils + pure_sports
 
         state['current_games'] = final_list
 
@@ -1018,18 +1009,13 @@ def sports_worker():
 def stocks_worker():
     while True:
         try: 
-            # 1. Identify active stock categories from state
             with data_lock:
                 active_cats = [k for k, v in state['active_sports'].items() if k.startswith('stock_') and v]
-            
-            # 2. Trigger fetch (handles interval check internally)
             fetcher.stocks.update_market_data(active_cats)
-            
-            # 3. Update the display buffer
             fetcher.update_buffer_stocks()
         except Exception as e: 
             print(f"Stock worker error: {e}")
-        time.sleep(STOCKS_UPDATE_INTERVAL) # Sleeps 10 seconds
+        time.sleep(STOCKS_UPDATE_INTERVAL)
 
 # ================= FLASK API =================
 app = Flask(__name__)
@@ -1040,7 +1026,6 @@ def api_config():
     try:
         new_data = request.json
         with data_lock:
-            # === CHANGED: Removed Demo Mode Logic, Added Delay Mode Logic ===
             new_city = new_data.get('weather_city')
             new_lat = new_data.get('weather_lat')
             new_lon = new_data.get('weather_lon')
@@ -1049,12 +1034,6 @@ def api_config():
                 fetcher.weather.update_config(city=new_city, lat=new_lat, lon=new_lon)
 
             state.update(new_data)
-            
-            # Sanitize input for delay
-            if 'live_delay_seconds' in new_data:
-                try: state['live_delay_seconds'] = int(new_data['live_delay_seconds'])
-                except: state['live_delay_seconds'] = 45 # Fallback
-
         save_config_file()
         return jsonify({"status": "ok"})
     except: return jsonify({"error": "Failed"}), 500
@@ -1067,21 +1046,29 @@ def get_ticker_data():
         tickers[ticker_id] = { "paired": False, "clients": [], "settings": DEFAULT_TICKER_SETTINGS.copy(), "pairing_code": generate_pairing_code(), "last_seen": time.time(), "name": "New Ticker" }
         save_config_file()
     else: tickers[ticker_id]['last_seen'] = time.time()
+    
     rec = tickers[ticker_id]
     if not rec.get('clients'): return jsonify({"status": "pairing", "code": rec['pairing_code']})
     
+    # === PER TICKER DELAY LOGIC ===
+    t_settings = rec['settings']
+    delay_mode = t_settings.get('live_delay_mode', False)
+    delay_seconds = t_settings.get('live_delay_seconds', 0) if delay_mode else 0
+    
+    # Get games specifically for this delay
+    games_for_ticker = fetcher.get_snapshot_for_delay(delay_seconds)
+    
+    # Filter is_shown
+    visible_games = [g for g in games_for_ticker if g.get('is_shown', True)]
+    
     with data_lock:
-        games = [g for g in state['current_games'] if g.get('is_shown', True)]
-        # Pass delay state to frontend so it can render the switch correctly
         conf = { 
             "active_sports": state['active_sports'], 
             "mode": state['mode'], 
-            "weather": state['weather_city'],
-            "live_delay_mode": state.get('live_delay_mode', False),
-            "live_delay_seconds": state.get('live_delay_seconds', 45)
+            "weather": state['weather_city']
         }
     
-    return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": games } })
+    return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": visible_games } })
 
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
@@ -1130,6 +1117,7 @@ def update_settings(tid):
 
 @app.route('/api/state')
 def api_state():
+    # Return latest games for the UI
     with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
 @app.route('/api/teams')
 def api_teams():
