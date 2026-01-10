@@ -94,7 +94,7 @@ default_state = {
     'scroll_seamless': True, 
     'scroll_speed': 5,
     'brightness': 100,
-    'show_debug_options': True 
+    'show_debug_options': False 
 }
 
 DEFAULT_TICKER_SETTINGS = {
