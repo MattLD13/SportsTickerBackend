@@ -677,15 +677,15 @@ class SportsFetcher:
                                         else:
                                             p_lbl = "OT" if p_num > 3 else f"P{p_num}"
                                             disp = f"{p_lbl} {time_rem}"
-                                    
-                                    # Situation (Power Play / Empty Net)
-                                    sit_obj = d2.get('situation', {})
-                                    if sit_obj:
-                                        sit = sit_obj.get('situationCode', '1551')
-                                        ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
-                                        if as_ > hs: pp=True; poss=a_ab
-                                        elif hs > as_: pp=True; poss=h_ab
-                                        en = (ag==0 or hg==0)
+                                        
+                                        # Situation (Power Play / Empty Net)
+                                        sit_obj = d2.get('situation', {})
+                                        if sit_obj:
+                                            sit = sit_obj.get('situationCode', '1551')
+                                            ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
+                                            if as_ > hs: pp=True; poss=a_ab
+                                            elif hs > as_: pp=True; poss=h_ab
+                                            en = (ag==0 or hg==0)
                         except: pass 
 
                     games_found.append({
@@ -940,10 +940,21 @@ class SportsFetcher:
 
         # === FIX FOR JUMPING: SORT SPORTS GAMES ===
         # Use ID as tie-breaker so concurrent fetching doesn't random order for same start times
+        # LOGIC: 
+        # 1. Clock (Top)
+        # 2. Weather (Second)
+        # 3. "Deprioritized" Statuses (Postponed/Suspended/Cancelled go to bottom)
+        # 4. Time (Interleaves NHL and ESPN games chronologically)
+        # 5. Tie-breakers
+        
+        deprioritized_keywords = ["postponed", "cancelled", "canceled", "suspended", "ppd"]
+
         all_games.sort(key=lambda x: (
-            x.get('type') != 'clock', 
-            x.get('type') != 'weather', 
-            x.get('startTimeUTC', '9999'),
+            x.get('type') != 'clock',    # False (0) puts Clock first
+            x.get('type') != 'weather',  # False (0) puts Weather second
+            # Boolean: True (1) if status contains a bad keyword, False (0) if active/scheduled
+            any(k in str(x.get('status', '')).lower() for k in deprioritized_keywords),
+            x.get('startTimeUTC', '9999'), # Sorts NHL and ESPN games together by time
             x.get('sport', ''),
             x.get('id', '0')
         ))
