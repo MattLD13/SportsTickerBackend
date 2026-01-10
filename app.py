@@ -75,7 +75,7 @@ default_state = {
     'buffer_sports': [],
     'buffer_stocks': [],
     'all_teams_data': {}, 
-    'debug_mode': False,
+    'debug_mode': False, # FIXED: Set to False by default
     'custom_date': None,
     'weather_city': "New York",
     'weather_lat': 40.7128,
@@ -667,7 +667,7 @@ class SportsFetcher:
                                         else:
                                             p_lbl = "OT" if p_num > 3 else f"P{p_num}"
                                             disp = f"{p_lbl} {time_rem}"
-                                       
+                                    
                                     # Situation (Power Play / Empty Net)
                                     sit_obj = d2.get('situation', {})
                                     if sit_obj:
@@ -910,7 +910,14 @@ class SportsFetcher:
                 except Exception as e: print(f"League fetch error: {e}")
 
         # === FIX FOR JUMPING: SORT SPORTS GAMES ===
-        all_games.sort(key=lambda x: (x.get('type') != 'clock', x.get('type') != 'weather', x.get('startTimeUTC', '9999')))
+        # Use ID as tie-breaker so concurrent fetching doesn't random order for same start times
+        all_games.sort(key=lambda x: (
+            x.get('type') != 'clock', 
+            x.get('type') != 'weather', 
+            x.get('startTimeUTC', '9999'),
+            x.get('sport', ''),
+            x.get('id', '0')
+        ))
 
         # === HISTORY BUFFER UPDATE ===
         now_ts = time.time()
