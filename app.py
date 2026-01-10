@@ -66,7 +66,7 @@ LEAGUE_OPTIONS = [
 
     # --- SOCCER ---
     {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    # FA Cup: Using eng.fa, but REMOVED team_params because cups often lack a stable team list endpoint
+    # FA Cup: Using eng.fa, team_params removed to skip team list fetch
     {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
     {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
@@ -725,7 +725,6 @@ class SportsFetcher:
 
         # Racing Leaderboard
         if config.get('type') == 'leaderboard':
-            # self.fetch_leaderboard_event(league_key, config, local_games, conf, window_start_utc, window_end_utc)
             return local_games
 
         # ESPN Scoreboard
@@ -737,7 +736,16 @@ class SportsFetcher:
             r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
             data = r.json()
             
-            for e in data.get('events', []):
+            # --- FIX: Handle different JSON structures (Root events vs Nested in leagues) ---
+            events = data.get('events', [])
+            if not events:
+                # Check if events are nested inside 'leagues' (Common in Cups/Tournaments)
+                leagues = data.get('leagues', [])
+                if leagues and len(leagues) > 0:
+                    events = leagues[0].get('events', [])
+            # -------------------------------------------------------------------------------
+            
+            for e in events:
                 utc_str = e['date'].replace('Z', '')
                 st = e.get('status', {})
                 tp = st.get('type', {})
@@ -863,7 +871,7 @@ class SportsFetcher:
                     game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 
                         'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
                 local_games.append(game_obj)
-        except: pass
+        except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games
 
     def update_buffer_sports(self):
