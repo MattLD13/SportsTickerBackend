@@ -51,6 +51,20 @@ HEADERS = {
     "Cache-Control": "no-cache"
 }
 
+# ================= FOTMOB MAPPING =================
+# Maps internal IDs to FotMob League IDs
+FOTMOB_LEAGUE_MAP = {
+    'soccer_epl': 47,
+    'soccer_fa_cup': 132,
+    'soccer_champ': 48,
+    'soccer_l1': 108,
+    'soccer_l2': 109,
+    'soccer_wc': 77,
+    'soccer_mls': 57,
+    'soccer_champions_league': 42,
+    'soccer_europa_league': 73
+}
+
 # ================= MASTER LEAGUE REGISTRY =================
 # The app will pull this list from /leagues to generate its UI.
 LEAGUE_OPTIONS = [
@@ -64,14 +78,13 @@ LEAGUE_OPTIONS = [
     {'id': 'ncf_fbs',      'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs',      'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
 
-    # --- SOCCER ---
-    {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    # FA Cup
-    {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
-    {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l2',    'label': 'League Two',          'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_wc',    'label': 'FIFA World Cup',      'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    # --- SOCCER (Handled via FotMob now, but config remains for UI) ---
+    {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True},
+    {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True},
+    {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True},
+    {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True},
+    {'id': 'soccer_l2',    'label': 'League Two',          'type': 'sport', 'default': True},
+    {'id': 'soccer_wc',    'label': 'FIFA World Cup',      'type': 'sport', 'default': True},
 
     # --- OTHERS ---
     {'id': 'hockey_olympics', 'label': 'Olympic Hockey',   'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/mens-olympic-hockey', 'type': 'scoreboard'}},
@@ -136,7 +149,6 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # Cleanup old keys
             deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf', 'demo_mode', 'live_delay_mode', 'live_delay_seconds']
             if 'active_sports' in loaded:
                 for k in deprecated:
@@ -518,7 +530,7 @@ class SportsFetcher:
 
             # Fetch other leagues in parallel
             futures = []
-            leagues_to_fetch = ['nfl', 'mlb', 'nhl', 'nba', 'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc']
+            leagues_to_fetch = ['nfl', 'mlb', 'nhl', 'nba']
             for lk in leagues_to_fetch:
                 futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog))
             concurrent.futures.wait(futures)
@@ -664,6 +676,7 @@ class SportsFetcher:
                                 # Process Shootout Data if exists (Even if Final)
                                 if p_type == 'SHOOTOUT':
                                     if map_st == 'in': disp = "S/O"
+                                    # Fetch play-by-play for dots
                                     shootout_data = self.fetch_shootout_details(gid, 0, 0)
                                 else:
                                     # Regular Game Clock
@@ -702,21 +715,148 @@ class SportsFetcher:
             return games_found
         except: return []
 
-    def fetch_shootout_details_soccer(self, game_id, sport):
+    # === FOTMOB SOCCER FETCHER ===
+    def _fetch_fotmob_details(self, match_id):
+        # Specific fetch to get shootout details if a game goes to pens
         try:
-            path_part = "soccer/eng.1"
-            if 'soccer' in sport: path_part = f"soccer/{sport.replace('soccer_','')}"
-            url = f"https://site.api.espn.com/apis/site/v2/sports/{path_part}/summary?event={game_id}"
+            url = f"https://www.fotmob.com/api/matchDetails?matchId={match_id}"
             r = self.session.get(url, headers=HEADERS, timeout=3)
-            data = r.json(); results = {'away': [], 'home': []}
-            plays = data.get("shootout", [])
-            if not plays: return None
-            for p in plays:
-                res = "goal" if (p.get("result") == "scored" or "Goal" in p.get("text", "")) else "miss"
-                if p.get("homeAway") == "home": results['home'].append(res)
+            data = r.json()
+            
+            # Extract penalties
+            shootout = data.get('content', {}).get('shootout', {}).get('events', [])
+            if not shootout: return None
+            
+            results = {'home': [], 'away': []}
+            for evt in shootout:
+                is_home = evt.get('isHome', False)
+                res = "goal" if evt.get('result') == "Scored" else "miss"
+                if is_home: results['home'].append(res)
                 else: results['away'].append(res)
             return results
         except: return None
+
+    def _fetch_fotmob_day(self, conf):
+        # Fetches ALL soccer games for the day in one go, then filters by active leagues
+        active_ids = {} # map fotmob_id -> internal_id
+        for internal, default_val in conf['active_sports'].items():
+            if internal.startswith('soccer_') and default_val:
+                f_id = FOTMOB_LEAGUE_MAP.get(internal)
+                if f_id: active_ids[f_id] = internal
+        
+        if not active_ids: return []
+
+        utc_offset = conf.get('utc_offset', -5)
+        # FotMob expects date in YYYYMMDD. Use local date for user's context.
+        now_utc = dt.now(timezone.utc)
+        now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+        date_str = now_local.strftime("%Y%m%d")
+
+        url = f"https://www.fotmob.com/api/matches?date={date_str}&timezone=America/New_York"
+        try:
+            r = self.session.get(url, headers=HEADERS, timeout=5)
+            data = r.json()
+            
+            games_found = []
+            
+            for league in data.get('leagues', []):
+                l_id = league.get('id')
+                # Only process if this league is active in config
+                if l_id not in active_ids: continue
+                
+                internal_id = active_ids[l_id]
+
+                for m in league.get('matches', []):
+                    # Basic Info
+                    mid = m.get('id')
+                    h_name = m.get('home', {}).get('shortName') or m.get('home', {}).get('name')
+                    a_name = m.get('away', {}).get('shortName') or m.get('away', {}).get('name')
+                    h_score = m.get('home', {}).get('score', 0)
+                    a_score = m.get('away', {}).get('score', 0)
+                    
+                    # Formatting Names
+                    h_ab = h_name[:3].upper() if len(h_name) > 10 else h_name
+                    a_ab = a_name[:3].upper() if len(a_name) > 10 else a_name
+                    
+                    # Status Parsing
+                    status = m.get('status', {})
+                    started = status.get('started', False)
+                    finished = status.get('finished', False)
+                    cancelled = status.get('cancelled', False)
+                    reason = status.get('reason', {}).get('short', '')
+                    long_reason = status.get('reason', {}).get('long', '')
+                    
+                    gst = 'pre'
+                    disp = status.get('startTimeStr', '')
+
+                    if started and not finished:
+                        gst = 'in'
+                        live_time = status.get('liveTime', {}).get('short', '')
+                        disp = f"{live_time}'"
+                        if reason == "HT": disp = "Half"
+                    
+                    if finished:
+                        gst = 'post'
+                        disp = "FINAL"
+                        if "Pen" in reason or "After" in reason: disp = "FINAL PENS"
+                        elif "AET" in reason: disp = "FINAL AET"
+                    
+                    if cancelled:
+                        gst = 'post'
+                        disp = "Postponed"
+
+                    # Check for Shootout Details (Active or Finished)
+                    shootout_data = None
+                    is_shootout = False
+                    
+                    # Logic: If reason indicates penalties OR live status says penalties
+                    if "Pen" in reason or "Pen" in long_reason:
+                         is_shootout = True
+                    if gst == 'in' and ("Pen" in str(status) or "Pen" in reason):
+                         is_shootout = True
+                         disp = "Pens"
+                    
+                    # If confirmed shootout (even if Final), fetch details
+                    if is_shootout:
+                        shootout_data = self._fetch_fotmob_details(mid)
+
+                    # Colors & Logos
+                    h_id = m.get('home', {}).get('id')
+                    a_id = m.get('away', {}).get('id')
+                    h_lg = f"https://images.fotmob.com/image_resources/logo/teamlogo/{h_id}.png"
+                    a_lg = f"https://images.fotmob.com/image_resources/logo/teamlogo/{a_id}.png"
+
+                    # Filtering
+                    is_shown = True
+                    if conf['mode'] == 'live' and gst != 'in': is_shown = False
+                    elif conf['mode'] == 'my_teams':
+                        # Simple name check for now
+                        if internal_id not in conf['my_teams'] and h_ab not in conf['my_teams'] and a_ab not in conf['my_teams']: is_shown = False
+
+                    games_found.append({
+                        'type': 'scoreboard',
+                        'sport': internal_id, 
+                        'id': str(mid), 
+                        'status': disp, 
+                        'state': gst, 
+                        'is_shown': is_shown,
+                        'home_abbr': h_ab, 'home_score': str(h_score), 'home_logo': h_lg,
+                        'away_abbr': a_ab, 'away_score': str(a_score), 'away_logo': a_lg,
+                        'home_color': '#000000', 'home_alt_color': '#444444', 
+                        'away_color': '#000000', 'away_alt_color': '#444444',
+                        'startTimeUTC': m.get('status', {}).get('utcTime'),
+                        'estimated_duration': 115,
+                        'situation': { 
+                            'possession': '', 
+                            'shootout': shootout_data 
+                        }
+                    })
+
+            return games_found
+
+        except Exception as e:
+            print(f"FotMob Fetch Error: {e}")
+            return []
 
     # Helper function for threaded execution
     def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset):
@@ -839,10 +979,12 @@ class SportsFetcher:
 
                 sit = comp.get('situation', {})
                 shootout_data = None
-                is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
+                # Generic ESPN Shootout Logic (Fallback)
+                is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or "S/O" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
                 
-                if is_shootout and 'soccer' in league_key:
-                    shootout_data = self.fetch_shootout_details_soccer(e['id'], league_key)
+                # Note: Soccer fetcher (fetch_shootout_details_soccer) was removed in favor of FotMob, 
+                # but if we ever fallback to ESPN for soccer, we'd need to re-add it. 
+                # Since this function is only used for non-Soccer/non-NHL sports now (or NHL fallback), we leave it blank.
                 
                 poss_raw = sit.get('possession')
                 if poss_raw: self.possession_cache[e['id']] = poss_raw
@@ -917,15 +1059,22 @@ class SportsFetcher:
             # Submit tasks
             futures = []
             
-            # NHL Native Special Case
+            # A. NHL Native Special Case
             if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
                 futures.append(self.executor.submit(self._fetch_nhl_native, conf))
             
-            # All other ESPN leagues
+            # B. FOTMOB SOCCER (Batched)
+            # Submit one task to fetch ALL active soccer leagues from FotMob
+            futures.append(self.executor.submit(self._fetch_fotmob_day, conf))
+
+            # C. All other ESPN leagues
             for league_key, config in self.leagues.items():
                 # Skip NHL here if we are using native mode
                 if league_key == 'nhl' and not conf['debug_mode']: continue 
                 
+                # Skip Soccer here (Handled by FotMob now)
+                if league_key.startswith('soccer_'): continue
+
                 futures.append(self.executor.submit(
                     self.fetch_single_league, 
                     league_key, config, conf, window_start_utc, window_end_utc, utc_offset
