@@ -41,7 +41,7 @@ CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
 STOCK_CACHE_FILE = "stock_cache.json"
 
-# === CHANGED: REDUCED TO 5 SECONDS ===
+# === 5 SECOND UPDATES ===
 SPORTS_UPDATE_INTERVAL = 5      
 STOCKS_UPDATE_INTERVAL = 10      
 
@@ -1103,7 +1103,15 @@ class SportsFetcher:
                     else:
                         disp = "In Progress"
                     
-                    if reason == "HT": disp = "Half"
+                    # --- FIX: Check for Halftime ---
+                    is_ht = (
+                        reason == "HT" 
+                        or status.get("statusText") == "HT" 
+                        or status.get("liveTime", {}).get("short") == "HT"
+                    )
+                    if is_ht:
+                        disp = "HALF"
+                        
                     # --- FIX: Map PET to "ET HT" ---
                     if reason == "PET": disp = "ET HT"
 
