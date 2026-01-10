@@ -55,7 +55,6 @@ HEADERS = {
 }
 
 # ================= FOTMOB MAPPING =================
-# REMOVED MLS AS REQUESTED
 FOTMOB_LEAGUE_MAP = {
     'soccer_epl': 47,
     'soccer_fa_cup': 132,
@@ -86,7 +85,6 @@ LEAGUE_OPTIONS = [
     {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_l2',    'label': 'League Two',          'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_wc',    'label': 'FIFA World Cup',      'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    # REMOVED MLS
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_europa_league',    'label': 'Europa League',    'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
 
@@ -232,15 +230,39 @@ ABBR_MAPPING = {
     'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS'
 }
 
-# --- COMMON SOCCER COLORS FALLBACK ---
+# --- EXTENDED SOCCER COLORS FALLBACK ---
+# This ensures teams like West Ham (WES/WHU) and Grimsby (GRI) get colors even if ESPN cache misses.
 SOCCER_COLOR_FALLBACK = {
+    # EPL
     "arsenal": "EF0107", "aston villa": "95BFE5", "bournemouth": "DA291C", "brentford": "E30613", "brighton": "0057B8",
-    "chelsea": "034694", "crystal palace": "1B458F", "everton": "003399", "fulham": "CC0000", "leeds": "FFCD00",
+    "chelsea": "034694", "crystal palace": "1B458F", "everton": "003399", "fulham": "FFFFFF", "ipswich": "3A64A3",
     "leicester": "0053A0", "liverpool": "C8102E", "manchester city": "6CABDD", "man city": "6CABDD",
-    "manchester united": "DA291C", "man utd": "DA291C", "newcastle": "241F20", "nottingham": "DD0000",
-    "southampton": "D71920", "tottenham": "132257", "west ham": "7A263A", "wolves": "FDB913",
+    "manchester united": "DA291C", "man utd": "DA291C", "newcastle": "FFFFFF", "nottingham": "DD0000",
+    "southampton": "D71920", "tottenham": "FFFFFF", "west ham": "7A263A", "whu": "7A263A", "wes": "7A263A", "wolves": "FDB913",
+    
+    # Championship
+    "sunderland": "FF0000", "sheffield united": "EE2737", "burnley": "6C1D45", "luton": "F78F1E", 
+    "leeds": "FFCD00", "west brom": "122F67", "wba": "122F67", "watford": "FBEE23", "norwich": "FFF200", "hull": "F5A91D",
+    "stoke": "E03A3E", "middlesbrough": "E03A3E", "coventry": "00AEEF", "preston": "FFFFFF", "bristol city": "E03A3E",
+    "portsmouth": "001489", "derby": "FFFFFF", "blackburn": "009EE0", "sheffield wed": "0E00F0", "oxford": "F1C40F",
+    "qpr": "0053A0", "swansea": "FFFFFF", "cardiff": "0070B5", "millwall": "001E4D", "plymouth": "003A26",
+
+    # League One / League Two / Others
+    "grimsby": "FFFFFF", "gri": "FFFFFF", "wrexham": "D71920", "birmingham": "0000FF", "huddersfield": "0072CE", "stockport": "005DA4", 
+    "lincoln": "D71920", "reading": "004494", "blackpool": "F68712", "peterborough": "005090",
+    "charlton": "Dadd22", "bristol rovers": "003399", "shrewsbury": "0066CC", "leyton orient": "C70000",
+    "mansfield": "F5A91D", "wycombe": "88D1F1", "bolton": "FFFFFF", "barnsley": "D71920", "rotherham": "D71920",
+    "wigan": "0000FF", "exeter": "D71920", "crawley": "D71920", "northampton": "800000", "cambridge": "FDB913",
+    "burton": "FDB913", "port vale": "FFFFFF", "walsall": "D71920", "doncaster": "D71920", "notts county": "FFFFFF",
+    "gillingham": "0000FF", "mk dons": "FFFFFF", "chesterfield": "0000FF", "barrow": "FFFFFF", "bradford": "F5A91D",
+    "afc wimbledon": "0000FF", "bromley": "000000", "colchester": "0000FF", "crewe": "D71920", "harrogate": "FDB913",
+    "morecambe": "D71920", "newport": "F5A91D", "salford": "D71920", "swindon": "D71920", "tranmere": "FFFFFF",
+    
+    # Europe
     "barcelona": "A50044", "real madrid": "FEBE10", "atlético": "CB3524", "bayern": "DC052D", "dortmund": "FDE100",
-    "psg": "004170", "juventus": "000000", "milan": "FB090B", "inter": "010E80", "napoli": "003B94"
+    "psg": "004170", "juventus": "FFFFFF", "milan": "FB090B", "inter": "010E80", "napoli": "003B94",
+    "ajax": "D2122E", "feyenoord": "FF0000", "psv": "FF0000", "benfica": "FF0000", "porto": "00529F", 
+    "sporting": "008000", "celtic": "008000", "rangers": "0000FF"
 }
 
 SPORT_DURATIONS = {
@@ -467,10 +489,11 @@ class SportsFetcher:
         search_abbr = ABBR_MAPPING.get(abbr, abbr)
         
         # 0. Check Hardcoded Fallback for Soccer first (fixes broken colors for big teams)
-        if 'soccer' in league and name:
-            name_clean = name.lower()
+        if 'soccer' in league:
+            name_check = name.lower() if name else ""
+            abbr_check = search_abbr.lower()
             for k, v in SOCCER_COLOR_FALLBACK.items():
-                if k in name_clean:
+                if k in name_check or k == abbr_check:
                      return {'color': v, 'alt_color': '444444'}
 
         try:
@@ -901,7 +924,8 @@ class SportsFetcher:
                     home_shootout, away_shootout = h, a
                     
             if home_shootout or away_shootout:
-                return {'home': home_shootout, 'away': away_shootout}
+                # Reset to 5 for UI display
+                return {'home': home_shootout[:5], 'away': away_shootout[:5]}
             return None
         except: return None
 
@@ -952,9 +976,9 @@ class SportsFetcher:
                     gst = 'in'
                     live_time = status.get("liveTime", {}).get("short", "")
                     
-                    # --- FIX: Correct double quote issue ---
-                    # First, strip any existing quotes to be safe, then add exactly one
-                    clean_time = str(live_time).replace("'", "").replace('"', "")
+                    # --- FIX: Correct double quote/character issue using Regex ---
+                    # Keep only digits and plus sign (for added time)
+                    clean_time = re.sub(r'[^\d\+]', '', str(live_time))
                     disp = f"{clean_time}'"
                     
                     if reason == "HT": disp = "Half"
@@ -977,7 +1001,8 @@ class SportsFetcher:
                     if gst == 'in': disp = "Pens"
                 
                 shootout_data = None
-                if is_shootout:
+                # Only show dots if live
+                if is_shootout and gst == 'in':
                     shootout_data = self._fetch_fotmob_details(mid, match.get("home", {}).get("id"), match.get("away", {}).get("id"))
 
                 # Filtering (Mode)
