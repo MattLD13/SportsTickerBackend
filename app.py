@@ -1121,8 +1121,8 @@ def api_hardware():
 def api_debug():
     with data_lock: state.update(request.json)
     return jsonify({"status": "ok"})
-    
-# === RE-ADDED ERRORS ENDPOINT ===
+
+# === LOGS ENDPOINT (Auto-scrolling HTML) ===
 @app.route('/errors', methods=['GET'])
 def get_logs():
     log_file = "ticker.log"
@@ -1130,16 +1130,46 @@ def get_logs():
         return "Log file not found", 404
     
     try:
-        # Check size and read only last 50KB to avoid memory issues
         file_size = os.path.getsize(log_file)
-        read_size = min(file_size, 51200) # 50KB
+        read_size = min(file_size, 102400) # Read last 100KB
         
+        log_content = ""
         with open(log_file, 'rb') as f:
             if file_size > read_size:
                 f.seek(file_size - read_size)
             data = f.read()
-            # Decode carefully replacing errors to avoid crash on partial UTF-8
-            return data.decode('utf-8', errors='replace'), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+            log_content = data.decode('utf-8', errors='replace')
+
+        # Auto-scrolling HTML wrapper
+        html_response = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Server Logs</title>
+            <meta http-equiv="refresh" content="10">
+            <style>
+                body {{ background-color: #1e1e1e; color: #00ff00; font-family: 'Courier New', monospace; margin: 0; padding: 20px; }}
+                pre {{ white-space: pre-wrap; word-wrap: break-word; }}
+            </style>
+            <script>
+                window.onload = function() {{
+                    window.scrollTo(0, document.body.scrollHeight);
+                }};
+            </script>
+        </head>
+        <body>
+            <h3>Last {read_size / 1024:.0f}KB of Logs (Auto-scrolled)</h3>
+            <pre>{log_content}</pre>
+        </body>
+        </html>
+        """
+        
+        response = app.response_class(response=html_response, status=200, mimetype='text/html')
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
     except Exception as e:
         return f"Error reading log: {str(e)}", 500
 
