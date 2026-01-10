@@ -81,12 +81,15 @@ LEAGUE_OPTIONS = [
     {'id': 'ncf_fcs',      'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
 
     # --- SOCCER (Handled via FotMob) ---
-    {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True},
-    {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True},
-    {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True},
-    {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True},
-    {'id': 'soccer_l2',    'label': 'League Two',          'type': 'sport', 'default': True},
-    {'id': 'soccer_wc',    'label': 'FIFA World Cup',      'type': 'sport', 'default': True},
+    {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
+    {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l2',    'label': 'League Two',          'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_wc',    'label': 'FIFA World Cup',      'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'soccer_mls',   'label': 'MLS',                 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/usa.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_europa_league',    'label': 'Europa League',    'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
 
     # --- OTHERS ---
     {'id': 'hockey_olympics', 'label': 'Olympic Hockey',   'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/mens-olympic-hockey', 'type': 'scoreboard'}},
@@ -527,9 +530,13 @@ class SportsFetcher:
 
             # Fetch other leagues in parallel
             futures = []
-            leagues_to_fetch = ['nfl', 'mlb', 'nhl', 'nba']
+            leagues_to_fetch = [
+                'nfl', 'mlb', 'nhl', 'nba',
+                'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_mls', 'soccer_champions_league', 'soccer_europa_league'
+            ]
             for lk in leagues_to_fetch:
-                futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog))
+                if lk in self.leagues:
+                    futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog))
             concurrent.futures.wait(futures)
 
             with data_lock: state['all_teams_data'] = teams_catalog
@@ -885,13 +892,27 @@ class SportsFetcher:
                 reason = (status.get("reason") or {}).get("short") or ""
                 
                 # Determine state/status
-                gst = 'pre'; disp = kickoff.split("T")[1][:5] # HH:MM
+                gst = 'pre'
                 
+                # --- FIX: Convert UTC Kickoff to Local 12-hr Time ---
+                try:
+                    # Parse ISO format: 2025-01-11T12:30:00Z
+                    k_dt = dt.fromisoformat(kickoff.replace('Z', '+00:00'))
+                    local_k = k_dt.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
+                    disp = local_k.strftime("%I:%M %p").lstrip('0')
+                except:
+                    disp = kickoff.split("T")[1][:5]
+
                 if started and not finished:
                     gst = 'in'
                     live_time = status.get("liveTime", {}).get("short", "")
-                    disp = f"{live_time}'"
+                    # --- FIX: Ensure single quote (90') ---
+                    disp = f"{str(live_time).replace("'", "")}'"
+                    
                     if reason == "HT": disp = "Half"
+                    # --- FIX: Map PET to "ET HT" ---
+                    if reason == "PET": disp = "ET HT"
+
                 elif finished:
                     gst = 'post'
                     disp = "FINAL"
@@ -920,6 +941,10 @@ class SportsFetcher:
                 # Build Game Object
                 h_id = match.get("home", {}).get("id")
                 a_id = match.get("away", {}).get("id")
+
+                # --- FIX: Use ESPN Colors from Cache ---
+                h_info = self.lookup_team_info_from_cache(internal_id, h_ab)
+                a_info = self.lookup_team_info_from_cache(internal_id, a_ab)
                 
                 matches.append({
                     'type': 'scoreboard',
@@ -932,8 +957,8 @@ class SportsFetcher:
                     'home_logo': f"https://images.fotmob.com/image_resources/logo/teamlogo/{h_id}.png",
                     'away_abbr': a_ab, 'away_score': str(match.get("away", {}).get("score") or 0), 
                     'away_logo': f"https://images.fotmob.com/image_resources/logo/teamlogo/{a_id}.png",
-                    'home_color': '#000000', 'home_alt_color': '#444444', 
-                    'away_color': '#000000', 'away_alt_color': '#444444',
+                    'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
+                    'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
                     'startTimeUTC': kickoff,
                     'estimated_duration': 115,
                     'situation': { 'possession': '', 'shootout': shootout_data }
