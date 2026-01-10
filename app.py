@@ -41,7 +41,8 @@ CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
 STOCK_CACHE_FILE = "stock_cache.json"
 
-SPORTS_UPDATE_INTERVAL = 10      
+# === CHANGED: REDUCED TO 5 SECONDS ===
+SPORTS_UPDATE_INTERVAL = 5      
 STOCKS_UPDATE_INTERVAL = 10      
 
 data_lock = threading.Lock()
@@ -1180,7 +1181,8 @@ class SportsFetcher:
             
             # Iterate types like working script
             for l_type in ("cup", "league", None):
-                params = {"id": league_id, "tab": "matches", "timeZone": "UTC", "type": l_type} if l_type else {"id": league_id, "tab": "matches", "timeZone": "UTC"}
+                # --- CACHE BUSTING: Added timestamp param ---
+                params = {"id": league_id, "tab": "matches", "timeZone": "UTC", "type": l_type, "_": int(time.time())}
                 
                 try:
                     resp = self.session.get(url, params=params, headers=HEADERS, timeout=10)
