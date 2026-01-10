@@ -1031,6 +1031,22 @@ class SportsFetcher:
                     # Keep only digits and plus sign (for added time like 45+3)
                     clean_time = re.sub(r'[^\d\+]', '', str(live_time))
                     
+                    # Force 90+6 format if raw minutes > 90/45
+                    if "+" not in clean_time and clean_time.isdigit():
+                        mins = int(clean_time)
+                        if "2H" in reason or "2nd" in str(status):
+                            if mins > 90:
+                                clean_time = f"90+{mins-90}"
+                        elif "1H" in reason or "1st" in str(status):
+                            if mins > 45:
+                                clean_time = f"45+{mins-45}"
+                        elif "1ET" in reason:
+                            if mins > 105:
+                                clean_time = f"105+{mins-105}"
+                        elif "2ET" in reason:
+                            if mins > 120:
+                                clean_time = f"120+{mins-120}"
+
                     # If clean_time has numbers (e.g. "45+3" or "32"), use it with apostrophe
                     if clean_time:
                         disp = f"{clean_time}'"
