@@ -66,7 +66,7 @@ LEAGUE_OPTIONS = [
 
     # --- SOCCER ---
     {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    # FA Cup: Using eng.fa, team_params removed to skip team list fetch
+    # FA Cup
     {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
     {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
@@ -730,8 +730,19 @@ class SportsFetcher:
         # ESPN Scoreboard
         try:
             curr_p = config.get('scoreboard_params', {}).copy()
+            
+            # --- FORCE DATE TO TODAY (Fixes FA Cup showing yesterday's games) ---
+            # Calculate "today" in the user's local timezone
+            now_utc = dt.now(timezone.utc)
+            now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+            today_str = now_local.strftime("%Y%m%d")
+            
+            # Override dates unless custom_date is set in debug mode
             if conf['debug_mode'] and conf['custom_date']:
                 curr_p['dates'] = conf['custom_date'].replace('-', '')
+            else:
+                curr_p['dates'] = today_str
+            # ------------------------------------------------------------------
             
             r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
             data = r.json()
