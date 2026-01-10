@@ -1121,6 +1121,28 @@ def api_hardware():
 def api_debug():
     with data_lock: state.update(request.json)
     return jsonify({"status": "ok"})
+    
+# === RE-ADDED ERRORS ENDPOINT ===
+@app.route('/errors', methods=['GET'])
+def get_logs():
+    log_file = "ticker.log"
+    if not os.path.exists(log_file):
+        return "Log file not found", 404
+    
+    try:
+        # Check size and read only last 50KB to avoid memory issues
+        file_size = os.path.getsize(log_file)
+        read_size = min(file_size, 51200) # 50KB
+        
+        with open(log_file, 'rb') as f:
+            if file_size > read_size:
+                f.seek(file_size - read_size)
+            data = f.read()
+            # Decode carefully replacing errors to avoid crash on partial UTF-8
+            return data.decode('utf-8', errors='replace'), 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    except Exception as e:
+        return f"Error reading log: {str(e)}", 500
+
 @app.route('/')
 def root(): return "Ticker Server Running"
 
