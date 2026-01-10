@@ -51,23 +51,55 @@ HEADERS = {
     "Cache-Control": "no-cache"
 }
 
+# ================= MASTER LEAGUE REGISTRY =================
+# Add new leagues here. The server will automatically fetch them, 
+# and the client can automatically render toggles for them.
+LEAGUE_OPTIONS = [
+    # --- PRO SPORTS ---
+    {'id': 'nfl',          'label': 'NFL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'mlb',          'label': 'MLB',                 'type': 'sport', 'default': True,  'fetch': {'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'nhl',          'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'nba',          'label': 'NBA',                 'type': 'sport', 'default': True,  'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    
+    # --- COLLEGE SPORTS ---
+    {'id': 'ncf_fbs',      'label': 'NCAA Football (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
+    {'id': 'ncf_fcs',      'label': 'NCAA Football (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
+
+    # --- SOCCER ---
+    {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l2',    'label': 'League Two',          'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_wc',    'label': 'FIFA World Cup',      'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+
+    # --- OTHERS ---
+    {'id': 'hockey_olympics', 'label': 'Olympic Hockey',   'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/mens-olympic-hockey', 'type': 'scoreboard'}},
+
+    # --- RACING ---
+    {'id': 'f1',           'label': 'Formula 1',           'type': 'sport', 'default': True,  'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
+    {'id': 'nascar',       'label': 'NASCAR',              'type': 'sport', 'default': True,  'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
+    {'id': 'indycar',      'label': 'IndyCar',             'type': 'sport', 'default': True,  'fetch': {'path': 'racing/indycar', 'type': 'leaderboard'}},
+    {'id': 'wec',          'label': 'WEC',                 'type': 'sport', 'default': True,  'fetch': {'path': 'racing/wec', 'type': 'leaderboard'}},
+    {'id': 'imsa',         'label': 'IMSA',                'type': 'sport', 'default': True,  'fetch': {'path': 'racing/imsa', 'type': 'leaderboard'}},
+
+    # --- UTILITIES ---
+    {'id': 'weather',      'label': 'Weather',             'type': 'util',  'default': True},
+    {'id': 'clock',        'label': 'Clock',               'type': 'util',  'default': True},
+
+    # --- STOCKS ---
+    {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',    'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
+    {'id': 'stock_momentum',   'label': 'Momentum Stocks',     'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
+    {'id': 'stock_energy',     'label': 'Energy Stocks',       'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
+    {'id': 'stock_finance',    'label': 'Financial Stocks',    'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
+    {'id': 'stock_consumer',   'label': 'Consumer Stocks',     'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
+    {'id': 'stock_nyse_50',    'label': 'NYSE Top 50',         'type': 'stock', 'default': False, 'stock_list': ["NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "BRK.B", "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM", "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC", "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"]},
+    {'id': 'stock_automotive', 'label': 'Automotive',          'type': 'stock', 'default': False, 'stock_list': ["TSLA", "F", "GM", "TM", "STLA", "HMC", "RACE", "RIVN", "LCID", "NIO", "XPEV", "LI", "BYDDY", "BLNK", "CHPT", "LAZR", "MGA", "ALV", "APTV", "BWA"]},
+    {'id': 'stock_defense',    'label': 'Defense Stocks',      'type': 'stock', 'default': False, 'stock_list': ["LMT", "RTX", "NOC", "GD", "BA", "LHX", "HII", "LDOS", "BAH", "SAIC", "KTOS", "AVAV", "TXT", "AXON", "PLTR", "CACI", "BWXT", "GE", "HON", "HEI"]},
+]
+
 # ================= DEFAULT STATE =================
 default_state = {
-    'active_sports': { 
-        'nfl': True, 'ncf_fbs': True, 'ncf_fcs': True, 'mlb': True, 'nhl': True, 'nba': True, 
-        'soccer_epl': True, 'soccer_champ': True, 'soccer_l1': True, 'soccer_l2': True, 
-        'soccer_wc': True, 'hockey_olympics': True, 
-        'f1': True, 'nascar': True, 'indycar': True, 'wec': True, 'imsa': True,
-        'weather': True, 'clock': True,
-        'stock_tech_ai': True,        
-        'stock_momentum': False,      
-        'stock_energy': False,        
-        'stock_finance': False,       
-        'stock_consumer': False,      
-        'stock_nyse_50': False,
-        'stock_automotive': False,
-        'stock_defense': False
-    },
+    'active_sports': { item['id']: item['default'] for item in LEAGUE_OPTIONS },
     'mode': 'all', 
     'layout_mode': 'schedule',
     'my_teams': [], 
@@ -75,13 +107,13 @@ default_state = {
     'buffer_sports': [],
     'buffer_stocks': [],
     'all_teams_data': {}, 
-    'debug_mode': False, # FIXED: Set to False by default
+    'debug_mode': False,
     'custom_date': None,
     'weather_city': "New York",
     'weather_lat': 40.7128,
     'weather_lon': -74.0060,
     'utc_offset': -5,
-    'show_debug_options': False 
+    'show_debug_options': True 
 }
 
 # === PER-TICKER SETTINGS ===
@@ -91,7 +123,6 @@ DEFAULT_TICKER_SETTINGS = {
     "scroll_seamless": True,
     "inverted": False,
     "panel_count": 2,
-    # MOVED HERE:
     "live_delay_mode": False,
     "live_delay_seconds": 45
 }
@@ -125,7 +156,6 @@ if os.path.exists(TICKER_REGISTRY_FILE):
     try:
         with open(TICKER_REGISTRY_FILE, 'r') as f:
             tickers = json.load(f)
-            # Migrate old tickers to have new settings defaults
             for t in tickers.values():
                 for k, v in DEFAULT_TICKER_SETTINGS.items():
                     if k not in t['settings']:
@@ -288,17 +318,8 @@ class StockFetcher:
         self.market_cache = {}
         self.last_fetch = 0
         self.update_interval = 10  # Seconds
-        
-        self.lists = {
-            'stock_tech_ai': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"],
-            'stock_momentum': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"],
-            'stock_energy': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"],
-            'stock_finance': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"],
-            'stock_consumer': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"],
-            'stock_nyse_50': ["NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "BRK.B", "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM", "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC", "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"],
-            'stock_automotive': ["TSLA", "F", "GM", "TM", "STLA", "HMC", "RACE", "RIVN", "LCID", "NIO", "XPEV", "LI", "BYDDY", "BLNK", "CHPT", "LAZR", "MGA", "ALV", "APTV", "BWA"],
-            'stock_defense': ["LMT", "RTX", "NOC", "GD", "BA", "LHX", "HII", "LDOS", "BAH", "SAIC", "KTOS", "AVAV", "TXT", "AXON", "PLTR", "CACI", "BWXT", "GE", "HON", "HEI"]
-        }
+        # Dynamically load stock lists from LEAGUE_OPTIONS
+        self.lists = { item['id']: item['stock_list'] for item in LEAGUE_OPTIONS if item['type'] == 'stock' and 'stock_list' in item }
         self.ETF_DOMAINS = {"QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"}
         self.load_cache()
 
@@ -388,8 +409,9 @@ class StockFetcher:
 
     def get_list(self, list_key):
         res = []
-        labels = {'stock_tech_ai': 'TECH / AI', 'stock_momentum': 'MOMENTUM', 'stock_energy': 'ENERGY', 'stock_finance': 'FINANCE', 'stock_consumer': 'CONSUMER', 'stock_nyse_50': 'NYSE 50', 'stock_automotive': 'AUTO / MOBILITY', 'stock_defense': 'DEFENSE'}
-        label = labels.get(list_key, "MARKET")
+        # Find label dynamically from LEAGUE_OPTIONS
+        label_item = next((item for item in LEAGUE_OPTIONS if item['id'] == list_key), None)
+        label = label_item['label'] if label_item else "MARKET"
         
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
@@ -409,24 +431,11 @@ class SportsFetcher:
         # === HISTORY BUFFER FOR PER-TICKER DELAY ===
         self.history_buffer = [] # List of tuples: (timestamp, data_snapshot)
         
-        self.leagues = {
-            'nfl': { 'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'mlb': { 'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'nhl': { 'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'nba': { 'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'soccer_epl':   { 'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
-            'soccer_champ': { 'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
-            'soccer_l1':    { 'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
-            'soccer_l2':    { 'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard' },
-            'soccer_wc':    { 'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
-            'ncf_fbs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard' },
-            'ncf_fcs': { 'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard' },
-            'hockey_olympics': { 'path': 'hockey/mens-olympic-hockey', 'type': 'scoreboard' },
-            'f1': { 'path': 'racing/f1', 'type': 'leaderboard' },
-            'nascar': { 'path': 'racing/nascar', 'type': 'leaderboard' },
-            'indycar': { 'path': 'racing/indycar', 'type': 'leaderboard' },
-            'wec': { 'path': 'racing/wec', 'type': 'leaderboard' },
-            'imsa': { 'path': 'racing/imsa', 'type': 'leaderboard' }
+        # Dynamically build leagues dict from LEAGUE_OPTIONS
+        self.leagues = { 
+            item['id']: item['fetch'] 
+            for item in LEAGUE_OPTIONS 
+            if item['type'] == 'sport' and 'fetch' in item 
         }
 
     def get_corrected_logo(self, league_key, abbr, default_logo):
@@ -969,8 +978,8 @@ class SportsFetcher:
         with data_lock: conf = state.copy()
         
         if conf['mode'] in ['stocks', 'all']:
-            cats = ['stock_tech_ai', 'stock_momentum', 'stock_energy', 'stock_finance', 'stock_consumer', 'stock_nyse_50', 
-                    'stock_automotive', 'stock_defense']
+            # Dynamically get stock lists from LEAGUE_OPTIONS
+            cats = [item['id'] for item in LEAGUE_OPTIONS if item['type'] == 'stock']
             
             for cat in cats:
                 if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
@@ -1069,10 +1078,21 @@ def get_ticker_data():
     visible_games = [g for g in games_for_ticker if g.get('is_shown', True)]
     
     with data_lock:
+        # Generate dynamic league list for the client to render settings
+        league_meta = []
+        for item in LEAGUE_OPTIONS:
+             league_meta.append({
+                 'id': item['id'], 
+                 'label': item['label'], 
+                 'type': item['type'],
+                 'enabled': state['active_sports'].get(item['id'], False)
+             })
+
         conf = { 
             "active_sports": state['active_sports'], 
             "mode": state['mode'], 
-            "weather": state['weather_city']
+            "weather": state['weather_city'],
+            "league_options": league_meta 
         }
     
     return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": visible_games } })
