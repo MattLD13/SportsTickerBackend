@@ -11,7 +11,7 @@ import requests
 import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import yfinance as yf  # <--- CRITICAL NEW IMPORT
+import yfinance as yf  # <--- OFFICIAL YAHOO LIBRARY
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -43,7 +43,7 @@ STOCK_CACHE_FILE = "stock_cache.json"
 
 # FETCH INTERVALS
 SPORTS_UPDATE_INTERVAL = 5      # 5 Seconds for Live Sports
-STOCKS_UPDATE_INTERVAL = 10     # 10 Seconds for Stocks
+STOCKS_UPDATE_INTERVAL = 10     # 10 Seconds for Stocks (Safe for Yahoo)
 
 data_lock = threading.Lock()
 
@@ -337,8 +337,7 @@ class StockFetcher:
         """Helper to fetch a single stock safely using yfinance fast_info"""
         try:
             ticker = yf.Ticker(symbol)
-            # fast_info uses the live query endpoint, bypassing many blocking issues
-            # and ensuring we don't get 'stale' cached data from days ago.
+            # fast_info uses the live query endpoint
             price = ticker.fast_info.last_price
             prev_close = ticker.fast_info.previous_close
             
@@ -354,7 +353,6 @@ class StockFetcher:
                 'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%"
             }
         except Exception as e:
-            # print(f"Failed {symbol}: {e}")
             return None
 
     def update_market_data(self, active_lists):
@@ -370,7 +368,6 @@ class StockFetcher:
         symbols_list = list(target_symbols)
 
         # 2. Parallel Fetch using Threads (Fast)
-        # yfinance is synchronous, so threading speeds up batch processing significanty
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             results = list(executor.map(self._fetch_single_stock, symbols_list))
 
@@ -954,24 +951,37 @@ class SportsFetcher:
         mode = state['mode']
         final_list = []
         
-        sports = state.get('buffer_sports', [])
-        stocks = state.get('buffer_stocks', [])
+        # Raw buffers
+        sports_buffer = state.get('buffer_sports', [])
+        stocks_buffer = state.get('buffer_stocks', [])
         
-        if mode == 'stocks': final_list = stocks
-        elif mode in ['sports', 'live', 'my_teams']: final_list = sports
-        elif mode == 'weather': 
-            final_list = [g for g in sports if g.get('type') == 'weather']
+        # 1. Separate "Utilities" (Weather/Clock) from "Pure Sports"
+        # We identify them by type/sport to filter them out of sports modes
+        utils = [g for g in sports_buffer if g.get('type') == 'weather' or g.get('sport') == 'clock']
+        pure_sports = [g for g in sports_buffer if g not in utils]
+
+        # 2. Apply Strict Exclusivity Logic
+        if mode == 'stocks':
+            # SHOW ONLY STOCKS
+            final_list = stocks_buffer
+
+        elif mode == 'weather':
+            # SHOW ONLY WEATHER
+            final_list = [g for g in utils if g.get('type') == 'weather']
+
         elif mode == 'clock':
-            final_list = [g for g in sports if g.get('sport') == 'clock']
-        else: # ALL
-            utils = [g for g in sports if g.get('type') == 'weather' or g.get('sport') == 'clock']
-            pure_sports = [g for g in sports if g not in utils]
-            # Ensure pure sports remain sorted
-            pure_sports.sort(key=lambda x: x.get('startTimeUTC', '9999'))
-            
-            # EXCLUDE STOCKS from "Show All" per user request
-            final_list = utils + pure_sports 
-            
+            # SHOW ONLY CLOCK
+            final_list = [g for g in utils if g.get('sport') == 'clock']
+
+        elif mode in ['sports', 'live', 'my_teams']:
+            # SHOW ONLY SPORTS (Filter out Weather/Clock)
+            final_list = pure_sports
+
+        else: # mode == 'all'
+            # SHOW UTILITIES + SPORTS (Stocks usually excluded to prevent clutter, or add them if you want)
+            # Ensure Utils are first
+            final_list = utils + pure_sports
+
         state['current_games'] = final_list
 
 # Initialize Global Fetcher
