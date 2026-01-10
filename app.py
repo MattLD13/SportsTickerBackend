@@ -41,15 +41,17 @@ CONFIG_FILE = "ticker_config.json"
 TICKER_REGISTRY_FILE = "tickers.json" 
 STOCK_CACHE_FILE = "stock_cache.json"
 
-SPORTS_UPDATE_INTERVAL = 5      
+SPORTS_UPDATE_INTERVAL = 10      
 STOCKS_UPDATE_INTERVAL = 10     
 
 data_lock = threading.Lock()
 
+# Headers from your working script
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Cache-Control": "no-cache",
-    "Accept": "application/json, text/plain, */*"
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json",
+    "Accept-Language": "en",
+    "Referer": "https://www.fotmob.com/"
 }
 
 # ================= FOTMOB MAPPING =================
@@ -67,7 +69,6 @@ FOTMOB_LEAGUE_MAP = {
 }
 
 # ================= MASTER LEAGUE REGISTRY =================
-# The app will pull this list from /leagues to generate its UI.
 LEAGUE_OPTIONS = [
     # --- PRO SPORTS ---
     {'id': 'nfl',          'label': 'NFL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
@@ -79,7 +80,7 @@ LEAGUE_OPTIONS = [
     {'id': 'ncf_fbs',      'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs',      'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
 
-    # --- SOCCER (Handled via FotMob now, but config remains for UI) ---
+    # --- SOCCER (Handled via FotMob) ---
     {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True},
     {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True},
     {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True},
@@ -93,9 +94,6 @@ LEAGUE_OPTIONS = [
     # --- RACING ---
     {'id': 'f1',           'label': 'Formula 1',           'type': 'sport', 'default': True,  'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
     {'id': 'nascar',       'label': 'NASCAR',              'type': 'sport', 'default': True,  'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
-    {'id': 'indycar',      'label': 'IndyCar',             'type': 'sport', 'default': True,  'fetch': {'path': 'racing/indycar', 'type': 'leaderboard'}},
-    {'id': 'wec',          'label': 'WEC',                 'type': 'sport', 'default': True,  'fetch': {'path': 'racing/wec', 'type': 'leaderboard'}},
-    {'id': 'imsa',         'label': 'IMSA',                'type': 'sport', 'default': True,  'fetch': {'path': 'racing/imsa', 'type': 'leaderboard'}},
 
     # --- UTILITIES ---
     {'id': 'weather',      'label': 'Weather',             'type': 'util',  'default': True},
@@ -107,9 +105,6 @@ LEAGUE_OPTIONS = [
     {'id': 'stock_energy',     'label': 'Energy Stocks',       'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
     {'id': 'stock_finance',    'label': 'Financial Stocks',    'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
     {'id': 'stock_consumer',   'label': 'Consumer Stocks',     'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
-    {'id': 'stock_nyse_50',    'label': 'NYSE Top 50',         'type': 'stock', 'default': False, 'stock_list': ["NVDA", "AAPL", "GOOGL", "MSFT", "AMZN", "TSM", "META", "AVGO", "BRK.B", "LLY", "WMT", "JPM", "V", "ORCL", "MA", "XOM", "JNJ", "ASML", "BAC", "ABBV", "COST", "NFLX", "MU", "HD", "GE", "AMD", "PG", "TM", "SAP", "KO", "CRM", "TMUS", "NVO", "PEP", "DIS", "TMO", "ACN", "WFC", "LIN", "CSCO", "IBM", "ABT", "NVS", "AZN", "QCOM", "ISRG", "PM", "CAT"]},
-    {'id': 'stock_automotive', 'label': 'Automotive',          'type': 'stock', 'default': False, 'stock_list': ["TSLA", "F", "GM", "TM", "STLA", "HMC", "RACE", "RIVN", "LCID", "NIO", "XPEV", "LI", "BYDDY", "BLNK", "CHPT", "LAZR", "MGA", "ALV", "APTV", "BWA"]},
-    {'id': 'stock_defense',    'label': 'Defense Stocks',      'type': 'stock', 'default': False, 'stock_list': ["LMT", "RTX", "NOC", "GD", "BA", "LHX", "HII", "LDOS", "BAH", "SAIC", "KTOS", "AVAV", "TXT", "AXON", "PLTR", "CACI", "BWXT", "GE", "HON", "HEI"]},
 ]
 
 # ================= DEFAULT STATE =================
@@ -150,6 +145,7 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
+            # Cleanup old keys
             deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf', 'demo_mode', 'live_delay_mode', 'live_delay_seconds']
             if 'active_sports' in loaded:
                 for k in deprecated:
@@ -716,151 +712,264 @@ class SportsFetcher:
             return games_found
         except: return []
 
-    # === FOTMOB SOCCER FETCHER ===
-    def _fetch_fotmob_details(self, match_id):
-        # Specific fetch to get shootout details if a game goes to pens
+    # === FOTMOB SOCCER FETCHER (New Logic Based on Working Script) ===
+    
+    # -- Helpers from working script --
+    def parse_side_list(self, side_list):
+        seq = []
+        for attempt in side_list or []:
+            if not isinstance(attempt, dict):
+                seq.append("pending")
+                continue
+            result = (attempt.get("result") or attempt.get("outcome") or "").lower()
+            if result in {"goal", "scored", "score", "converted"}:
+                seq.append("goal")
+                continue
+            if result in {"miss", "missed", "failed", "saved", "fail"}:
+                seq.append("miss")
+                continue
+            if attempt.get("scored") is True:
+                seq.append("goal")
+                continue
+            if attempt.get("scored") is False:
+                seq.append("miss")
+                continue
+            seq.append("pending")
+        return seq
+
+    def parse_shootout(self, raw, home_id=None, away_id=None, general_home=None, general_away=None):
+        if not raw:
+            return [], [], None, None
+
+        pen_home_score = raw.get("homeScore") if isinstance(raw, dict) else None
+        pen_away_score = raw.get("awayScore") if isinstance(raw, dict) else None
+
+        for hk, ak in (("home", "away"), ("homeTeam", "awayTeam"), ("homePenalties", "awayPenalties")):
+            if hk in raw or ak in raw:
+                return (
+                    self.parse_side_list(raw.get(hk) or []),
+                    self.parse_side_list(raw.get(ak) or []),
+                    pen_home_score,
+                    pen_away_score,
+                )
+
+        seq = raw.get("sequence") if isinstance(raw, dict) else raw if isinstance(raw, list) else []
+        home_seq, away_seq = [], []
+        for attempt in seq or []:
+            if not isinstance(attempt, dict):
+                continue
+            team_id = attempt.get("teamId") or attempt.get("team")
+            side = attempt.get("side") or attempt.get("teamSide")
+            is_home = False
+            if team_id is not None:
+                is_home = team_id in {home_id, general_home} if home_id or general_home else False
+                if not is_home:
+                    is_home = team_id not in {away_id, general_away} if (home_id or general_home) else False
+            elif isinstance(side, str):
+                is_home = side.lower() in {"home", "h"}
+
+            parsed = self.parse_side_list([attempt])[0]
+            (home_seq if is_home else away_seq).append(parsed)
+
+        return home_seq, away_seq, pen_home_score, pen_away_score
+
+    def parse_shootout_events(self, events_container, home_id=None, away_id=None, general_home=None, general_away=None):
+        if not isinstance(events_container, dict):
+            return [], [], None, None
+
+        pen_events = events_container.get("penaltyShootoutEvents") or []
+        home_seq, away_seq = [], []
+        pen_home_score = pen_away_score = None
+
+        def classify(event):
+            text = (event.get("result") or event.get("outcome") or event.get("type") or "").lower()
+            if "goal" in text: return "goal"
+            if "miss" in text or "fail" in text or "save" in text: return "miss"
+            if event.get("scored") is True: return "goal"
+            if event.get("scored") is False: return "miss"
+            return "pending"
+
+        for ev in pen_events:
+            if not isinstance(ev, dict): continue
+
+            score = ev.get("penShootoutScore")
+            if isinstance(score, (list, tuple)) and len(score) >= 2:
+                pen_home_score, pen_away_score = score[0], score[1]
+
+            is_home = None
+            if ev.get("isHome") is not None:
+                is_home = bool(ev.get("isHome"))
+            if is_home is None:
+                team_id = ev.get("teamId") or (ev.get("shotmapEvent") or {}).get("teamId")
+                if team_id is not None:
+                    if home_id or general_home:
+                        is_home = team_id in {home_id, general_home}
+                    elif away_id or general_away:
+                        is_home = team_id not in {away_id, general_away}
+            if is_home is None:
+                side = ev.get("side")
+                if isinstance(side, str):
+                    is_home = side.lower().startswith("h")
+            if is_home is None:
+                is_home = True
+
+            outcome = classify(ev)
+            (home_seq if is_home else away_seq).append(outcome)
+
+        return home_seq, away_seq, pen_home_score, pen_away_score
+
+    def _fetch_fotmob_details(self, match_id, home_id=None, away_id=None):
         try:
             url = f"https://www.fotmob.com/api/matchDetails?matchId={match_id}"
-            r = self.session.get(url, headers=HEADERS, timeout=3)
-            data = r.json()
+            resp = self.session.get(url, headers=HEADERS, timeout=10)
+            resp.raise_for_status()
+            payload = resp.json()
             
-            # Extract penalties
-            shootout = data.get('content', {}).get('shootout', {}).get('events', [])
-            if not shootout: return None
+            info = payload.get("general", {})
+            general_home = (info.get("homeTeam") or {}).get("id")
+            general_away = (info.get("awayTeam") or {}).get("id")
+
+            containers = [
+                payload.get("shootout"),
+                payload.get("content", {}).get("shootout"),
+                payload.get("content", {}).get("penaltyShootout"),
+            ]
             
-            results = {'home': [], 'away': []}
-            for evt in shootout:
-                is_home = evt.get('isHome', False)
-                res = "goal" if evt.get('result') == "Scored" else "miss"
-                if is_home: results['home'].append(res)
-                else: results['away'].append(res)
-            return results
+            home_shootout, away_shootout = [], []
+            for raw in containers:
+                h, a, _, _ = self.parse_shootout(raw, home_id, away_id, general_home, general_away)
+                if h or a:
+                    home_shootout, away_shootout = h, a
+                    break
+            
+            if not home_shootout and not away_shootout and payload.get("content", {}).get("matchFacts"):
+                events_container = payload["content"].get("matchFacts", {}).get("events")
+                h, a, _, _ = self.parse_shootout_events(events_container, home_id, away_id, general_home, general_away)
+                if h or a:
+                    home_shootout, away_shootout = h, a
+                    
+            if home_shootout or away_shootout:
+                return {'home': home_shootout, 'away': away_shootout}
+            return None
         except: return None
 
-    def _fetch_fotmob_day(self, conf):
-        # Fetches ALL soccer games for the day in one go, then filters by active leagues
-        active_ids = {} # map fotmob_id -> internal_id
-        for internal, default_val in conf['active_sports'].items():
-            if internal.startswith('soccer_') and default_val:
-                f_id = FOTMOB_LEAGUE_MAP.get(internal)
-                if f_id: active_ids[f_id] = internal
-        
-        if not active_ids: return []
+    def _extract_matches(self, sections, date_utc, internal_id, conf):
+        matches = []
+        for section in sections:
+            candidate_matches = section.get("matches") if isinstance(section, dict) else None
+            if candidate_matches is None: candidate_matches = [section]
+            
+            section_date = section.get("date") if isinstance(section, dict) else None
+            
+            for match in candidate_matches:
+                if not isinstance(match, dict): continue
+                
+                status = match.get("status") or {}
+                kickoff = status.get("utcTime") or match.get("time")
+                if not kickoff: continue
+                kickoff_date = kickoff.split("T", 1)[0]
+                
+                # Date filtering (User script logic)
+                if section_date and section_date != date_utc: continue
+                if not section_date and kickoff_date and kickoff_date != date_utc: continue
 
-        utc_offset = conf.get('utc_offset', -5)
-        # FotMob expects date in YYYY-MM-DD (e.g., 2024-10-26)
-        now_utc = dt.now(timezone.utc)
-        now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-        date_str = now_local.strftime("%Y-%m-%d")
+                # Basic parsing
+                mid = match.get("id")
+                h_name = match.get("home", {}).get("name") or "Home"
+                a_name = match.get("away", {}).get("name") or "Away"
+                h_ab = h_name[:3].upper() if len(h_name) > 10 else h_name
+                a_ab = a_name[:3].upper() if len(a_name) > 10 else a_name
+                
+                finished = bool(status.get("finished"))
+                started = bool(status.get("started"))
+                reason = (status.get("reason") or {}).get("short") or ""
+                
+                # Determine state/status
+                gst = 'pre'; disp = kickoff.split("T")[1][:5] # HH:MM
+                
+                if started and not finished:
+                    gst = 'in'
+                    live_time = status.get("liveTime", {}).get("short", "")
+                    disp = f"{live_time}'"
+                    if reason == "HT": disp = "Half"
+                elif finished:
+                    gst = 'post'
+                    disp = "FINAL"
+                    if "Pen" in reason or "After" in reason: disp = "FINAL PENS"
+                    elif "AET" in reason: disp = "FINAL AET"
+                elif status.get("cancelled"):
+                    gst = 'post'
+                    disp = "Postponed"
 
-        url = f"https://www.fotmob.com/api/matches?date={date_str}&timezone=America/New_York"
+                # Shootout check
+                is_shootout = False
+                if "Pen" in reason or (gst == 'in' and "Pen" in str(status)):
+                    is_shootout = True
+                    if gst == 'in': disp = "Pens"
+                
+                shootout_data = None
+                if is_shootout:
+                    shootout_data = self._fetch_fotmob_details(mid, match.get("home", {}).get("id"), match.get("away", {}).get("id"))
+
+                # Filtering (Mode)
+                is_shown = True
+                if conf['mode'] == 'live' and gst != 'in': is_shown = False
+                elif conf['mode'] == 'my_teams':
+                    if internal_id not in conf['my_teams'] and h_ab not in conf['my_teams'] and a_ab not in conf['my_teams']: is_shown = False
+                
+                # Build Game Object
+                h_id = match.get("home", {}).get("id")
+                a_id = match.get("away", {}).get("id")
+                
+                matches.append({
+                    'type': 'scoreboard',
+                    'sport': internal_id, 
+                    'id': str(mid), 
+                    'status': disp, 
+                    'state': gst, 
+                    'is_shown': is_shown,
+                    'home_abbr': h_ab, 'home_score': str(match.get("home", {}).get("score") or 0), 
+                    'home_logo': f"https://images.fotmob.com/image_resources/logo/teamlogo/{h_id}.png",
+                    'away_abbr': a_ab, 'away_score': str(match.get("away", {}).get("score") or 0), 
+                    'away_logo': f"https://images.fotmob.com/image_resources/logo/teamlogo/{a_id}.png",
+                    'home_color': '#000000', 'home_alt_color': '#444444', 
+                    'away_color': '#000000', 'away_alt_color': '#444444',
+                    'startTimeUTC': kickoff,
+                    'estimated_duration': 115,
+                    'situation': { 'possession': '', 'shootout': shootout_data }
+                })
+        return matches
+
+    def _fetch_fotmob_league(self, league_id, internal_id, conf, date_utc):
+        # Implementation of "fetch_league_matches" from working script
         try:
-            r = self.session.get(url, headers=HEADERS, timeout=5)
-            if r.status_code != 200:
-                print(f"FotMob Fetch Error: Status {r.status_code} for {url}")
-                return []
-                
-            data = r.json()
+            url = "https://www.fotmob.com/api/leagues"
+            last_sections = []
             
-            games_found = []
-            
-            for league in data.get('leagues', []):
-                l_id = league.get('id')
-                # Only process if this league is active in config
-                if l_id not in active_ids: continue
+            # Iterate types like working script
+            for l_type in ("cup", "league", None):
+                params = {"id": league_id, "tab": "matches", "timeZone": "UTC", "type": l_type} if l_type else {"id": league_id, "tab": "matches", "timeZone": "UTC"}
                 
-                internal_id = active_ids[l_id]
-
-                for m in league.get('matches', []):
-                    # Basic Info
-                    mid = m.get('id')
-                    h_name = m.get('home', {}).get('shortName') or m.get('home', {}).get('name')
-                    a_name = m.get('away', {}).get('shortName') or m.get('away', {}).get('name')
-                    h_score = m.get('home', {}).get('score', 0)
-                    a_score = m.get('away', {}).get('score', 0)
+                try:
+                    resp = self.session.get(url, params=params, headers=HEADERS, timeout=10)
+                    resp.raise_for_status()
+                    payload = resp.json()
                     
-                    # Formatting Names
-                    h_ab = h_name[:3].upper() if len(h_name) > 10 else h_name
-                    a_ab = a_name[:3].upper() if len(a_name) > 10 else a_name
+                    sections = payload.get("matches", {}).get("allMatches", [])
+                    if not sections:
+                        sections = payload.get("fixtures", {}).get("allMatches", [])
                     
-                    # Status Parsing
-                    status = m.get('status', {})
-                    started = status.get('started', False)
-                    finished = status.get('finished', False)
-                    cancelled = status.get('cancelled', False)
-                    reason = status.get('reason', {}).get('short', '')
-                    long_reason = status.get('reason', {}).get('long', '')
-                    
-                    gst = 'pre'
-                    disp = status.get('startTimeStr', '')
-
-                    if started and not finished:
-                        gst = 'in'
-                        live_time = status.get('liveTime', {}).get('short', '')
-                        disp = f"{live_time}'"
-                        if reason == "HT": disp = "Half"
-                    
-                    if finished:
-                        gst = 'post'
-                        disp = "FINAL"
-                        if "Pen" in reason or "After" in reason: disp = "FINAL PENS"
-                        elif "AET" in reason: disp = "FINAL AET"
-                    
-                    if cancelled:
-                        gst = 'post'
-                        disp = "Postponed"
-
-                    # Check for Shootout Details (Active or Finished)
-                    shootout_data = None
-                    is_shootout = False
-                    
-                    # Logic: If reason indicates penalties OR live status says penalties
-                    if "Pen" in reason or "Pen" in long_reason:
-                         is_shootout = True
-                    if gst == 'in' and ("Pen" in str(status) or "Pen" in reason):
-                         is_shootout = True
-                         disp = "Pens"
-                    
-                    # If confirmed shootout (even if Final), fetch details
-                    if is_shootout:
-                        shootout_data = self._fetch_fotmob_details(mid)
-
-                    # Colors & Logos
-                    h_id = m.get('home', {}).get('id')
-                    a_id = m.get('away', {}).get('id')
-                    h_lg = f"https://images.fotmob.com/image_resources/logo/teamlogo/{h_id}.png"
-                    a_lg = f"https://images.fotmob.com/image_resources/logo/teamlogo/{a_id}.png"
-
-                    # Filtering
-                    is_shown = True
-                    if conf['mode'] == 'live' and gst != 'in': is_shown = False
-                    elif conf['mode'] == 'my_teams':
-                        # Simple name check for now
-                        if internal_id not in conf['my_teams'] and h_ab not in conf['my_teams'] and a_ab not in conf['my_teams']: is_shown = False
-
-                    games_found.append({
-                        'type': 'scoreboard',
-                        'sport': internal_id, 
-                        'id': str(mid), 
-                        'status': disp, 
-                        'state': gst, 
-                        'is_shown': is_shown,
-                        'home_abbr': h_ab, 'home_score': str(h_score), 'home_logo': h_lg,
-                        'away_abbr': a_ab, 'away_score': str(a_score), 'away_logo': a_lg,
-                        'home_color': '#000000', 'home_alt_color': '#444444', 
-                        'away_color': '#000000', 'away_alt_color': '#444444',
-                        'startTimeUTC': m.get('status', {}).get('utcTime'),
-                        'estimated_duration': 115,
-                        'situation': { 
-                            'possession': '', 
-                            'shootout': shootout_data 
-                        }
-                    })
-
-            return games_found
-
+                    last_sections = sections
+                    matches = self._extract_matches(sections, date_utc, internal_id, conf)
+                    if matches: return matches
+                except: continue
+            
+            # Fallback if loop finishes empty
+            if last_sections:
+                 return self._extract_matches(last_sections, date_utc, internal_id, conf)
+            return []
         except Exception as e:
-            print(f"FotMob Fetch Error: {e}")
+            print(f"FotMob League {league_id} error: {e}")
             return []
 
     # Helper function for threaded execution
@@ -1060,6 +1169,9 @@ class SportsFetcher:
             window_end_local = window_start_local + timedelta(days=1, hours=3) # Today + 3 AM tomorrow
             window_start_utc = window_start_local.astimezone(timezone.utc)
             window_end_utc = window_end_local.astimezone(timezone.utc)
+            
+            # Format Date for FotMob (YYYY-MM-DD)
+            fotmob_date_str = now_local.strftime("%Y-%m-%d")
 
             # Submit tasks
             futures = []
@@ -1068,9 +1180,10 @@ class SportsFetcher:
             if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
                 futures.append(self.executor.submit(self._fetch_nhl_native, conf))
             
-            # B. FOTMOB SOCCER (Batched)
-            # Submit one task to fetch ALL active soccer leagues from FotMob
-            futures.append(self.executor.submit(self._fetch_fotmob_day, conf))
+            # B. FOTMOB SOCCER (Batched by League ID)
+            for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
+                if conf['active_sports'].get(internal_id, False):
+                     futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, fotmob_date_str))
 
             # C. All other ESPN leagues
             for league_key, config in self.leagues.items():
