@@ -924,8 +924,7 @@ class SportsFetcher:
                     home_shootout, away_shootout = h, a
                     
             if home_shootout or away_shootout:
-                # Reset to 5 for UI display
-                return {'home': home_shootout[:5], 'away': away_shootout[:5]}
+                return {'home': home_shootout, 'away': away_shootout}
             return None
         except: return None
 
