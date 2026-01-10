@@ -1002,7 +1002,7 @@ class SportsFetcher:
         elif mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
         elif mode in ['sports', 'live', 'my_teams']: return pure_sports
-        else: return utils + pure_sports
+        else: return pure_sports # Removed utils from here
 
     def update_buffer_stocks(self):
         games = []
@@ -1034,7 +1034,7 @@ class SportsFetcher:
         elif mode == 'weather': final_list = [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': final_list = [g for g in utils if g.get('sport') == 'clock']
         elif mode in ['sports', 'live', 'my_teams']: final_list = pure_sports
-        else: final_list = utils + pure_sports
+        else: final_list = pure_sports # Removed utils from here
 
         state['current_games'] = final_list
 
