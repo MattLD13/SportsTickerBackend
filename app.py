@@ -11,7 +11,7 @@ import requests
 import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import yfinance as yf  # <--- OFFICIAL YAHOO LIBRARY
+import yfinance as yf   # <--- OFFICIAL YAHOO LIBRARY
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -82,7 +82,9 @@ default_state = {
     'buffer_stocks': [],
     'all_teams_data': {}, 
     'debug_mode': False,
-    'demo_mode': False,
+    # === CHANGED: Live Delay Config (Replaces Demo Mode) ===
+    'live_delay_mode': False,
+    'live_delay_seconds': 45, # Default 45s (Good for streaming delays)
     'custom_date': None,
     # Weather Config
     'weather_city': "New York",
@@ -111,12 +113,15 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf']
+            deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf', 'demo_mode']
             if 'active_sports' in loaded:
                 for k in deprecated:
                     if k in loaded['active_sports']: 
                         del loaded['active_sports'][k]
             
+            # Clean up deprecated demo key from root if it exists
+            if 'demo_mode' in loaded: del loaded['demo_mode']
+
             for k, v in loaded.items():
                 if k == 'show_debug_options': continue 
                 if k in state:
@@ -195,19 +200,6 @@ SPORT_DURATIONS = {
     'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
     'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
 }
-
-# === DEMO DATA ===
-def generate_demo_data():
-    return [
-        {'type': 'scoreboard', 'sport': 'nhl', 'id': 'demo_so', 'status': 'S/O', 'state': 'in', 'is_shown': True,
-         'home_abbr': 'NYR', 'home_score': '3', 'home_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png', 'home_color': '#0038A8', 'home_alt_color': '#CE1126',
-         'away_abbr': 'NJD', 'away_score': '3', 'away_logo': 'https://a.espncdn.com/i/teamlogos/nhl/500/nj.png', 'away_color': '#CE1126', 'away_alt_color': '#000000',
-         'startTimeUTC': dt.now(timezone.utc).isoformat(), 'estimated_duration': 150,
-         'situation': {'shootout': { 'away': ['goal', 'miss', 'miss'], 'home': ['miss', 'goal', 'pending'] }}},
-        {'type': 'stock_ticker', 'sport': 'stock_tech', 'id': 'demo_tsla', 'status': 'TECH', 'state': 'in', 'is_shown': True,
-         'home_abbr': 'TSLA', 'home_score': '184.86', 'away_score': '-1.38%', 'home_logo': 'https://financialmodelingprep.com/image-stock/TSLA.png',
-         'tourney_name': 'TECH', 'situation': {'change': '-2.54'}}
-    ]
 
 # ================= FETCHING LOGIC =================
 
@@ -418,6 +410,9 @@ class SportsFetcher:
         self.session = requests.Session()
         # Increased workers for parallel fetching
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10) 
+        
+        # === HISTORY BUFFER FOR DELAY MODE ===
+        self.history_buffer = [] # List of tuples: (timestamp, data_snapshot)
         
         self.leagues = {
             'nfl': { 'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard' },
@@ -677,7 +672,7 @@ class SportsFetcher:
                                         else:
                                             p_lbl = "OT" if p_num > 3 else f"P{p_num}"
                                             disp = f"{p_lbl} {time_rem}"
-                                    
+                                       
                                     # Situation (Power Play / Empty Net)
                                     sit_obj = d2.get('situation', {})
                                     if sit_obj:
@@ -870,7 +865,7 @@ class SportsFetcher:
         all_games = []
         with data_lock: 
             conf = state.copy()
-            if conf.get('demo_mode', False): return
+            # Removed demo_mode check
 
         # 1. WEATHER & CLOCK (Simple, fast)
         if conf['active_sports'].get('weather'):
@@ -924,8 +919,32 @@ class SportsFetcher:
         # 'clock'/'weather' have no startTimeUTC, so we default to a very old date or rely on python sort stability
         all_games.sort(key=lambda x: (x.get('type') != 'clock', x.get('type') != 'weather', x.get('startTimeUTC', '9999')))
 
+        # === NEW: "Time Machine" Logic for Live Game Delay ===
+        now_ts = time.time()
+        
+        # 1. Store snapshot in history buffer
+        self.history_buffer.append((now_ts, all_games))
+        
+        # 2. Prune old history (Keep max 120 seconds to be safe)
+        cutoff_time = now_ts - 120
+        self.history_buffer = [x for x in self.history_buffer if x[0] > cutoff_time]
+        
+        # 3. Determine which snapshot to use
+        snapshot_to_use = all_games
+        
+        with data_lock:
+            delay_mode = state.get('live_delay_mode', False)
+            delay_seconds = state.get('live_delay_seconds', 45) # Default 45s
+
+        if delay_mode and len(self.history_buffer) > 1:
+            target_time = now_ts - delay_seconds
+            # Find the snapshot with timestamp closest to target_time
+            # We use min() to find closest value based on absolute difference
+            closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
+            snapshot_to_use = closest[1]
+
         with data_lock: 
-            state['buffer_sports'] = all_games
+            state['buffer_sports'] = snapshot_to_use
             self.merge_buffers()
 
     def update_buffer_stocks(self):
@@ -944,10 +963,7 @@ class SportsFetcher:
             self.merge_buffers()
 
     def merge_buffers(self):
-        if state.get('demo_mode', False):
-            state['current_games'] = generate_demo_data()
-            return
-
+        # REMOVED: Demo Mode Check
         mode = state['mode']
         final_list = []
         
@@ -1024,9 +1040,7 @@ def api_config():
     try:
         new_data = request.json
         with data_lock:
-            was_demo = state.get('demo_mode', False)
-            is_demo = new_data.get('demo_mode', was_demo)
-            
+            # === CHANGED: Removed Demo Mode Logic, Added Delay Mode Logic ===
             new_city = new_data.get('weather_city')
             new_lat = new_data.get('weather_lat')
             new_lon = new_data.get('weather_lon')
@@ -1036,9 +1050,11 @@ def api_config():
 
             state.update(new_data)
             
-            if was_demo and not is_demo: 
-                state['buffer_sports'] = []
-                state['buffer_stocks'] = []
+            # Sanitize input for delay
+            if 'live_delay_seconds' in new_data:
+                try: state['live_delay_seconds'] = int(new_data['live_delay_seconds'])
+                except: state['live_delay_seconds'] = 45 # Fallback
+
         save_config_file()
         return jsonify({"status": "ok"})
     except: return jsonify({"error": "Failed"}), 500
@@ -1056,7 +1072,14 @@ def get_ticker_data():
     
     with data_lock:
         games = [g for g in state['current_games'] if g.get('is_shown', True)]
-        conf = { "active_sports": state['active_sports'], "mode": state['mode'], "weather": state['weather_city'] }
+        # Pass delay state to frontend so it can render the switch correctly
+        conf = { 
+            "active_sports": state['active_sports'], 
+            "mode": state['mode'], 
+            "weather": state['weather_city'],
+            "live_delay_mode": state.get('live_delay_mode', False),
+            "live_delay_seconds": state.get('live_delay_seconds', 45)
+        }
     
     return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": games } })
 
