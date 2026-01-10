@@ -81,7 +81,7 @@ default_state = {
     'weather_lat': 40.7128,
     'weather_lon': -74.0060,
     'utc_offset': -5,
-    'show_debug_options': True 
+    'show_debug_options': False 
 }
 
 # === PER-TICKER SETTINGS ===
