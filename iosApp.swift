@@ -36,6 +36,14 @@ extension Color {
 // ==========================================
 // MARK: - 1. DATA MODELS
 // ==========================================
+
+struct LeagueOption: Decodable, Identifiable, Hashable, Sendable {
+    let id: String
+    let label: String
+    let type: String
+    let enabled: Bool?
+}
+
 struct ShootoutData: Decodable, Hashable, Sendable {
     let away: [String]?
     let home: [String]?
@@ -163,7 +171,6 @@ struct TickerState: Codable, Sendable {
     var scroll_seamless: Bool?
     var my_teams: [String]
     var debug_mode: Bool
-    var demo_mode: Bool?
     var custom_date: String?
     var scroll_speed: Int?
     var show_debug_options: Bool?
@@ -183,6 +190,8 @@ struct DeviceSettings: Codable, Sendable {
     var scroll_speed: Double
     var scroll_seamless: Bool?
     var inverted: Bool?
+    var live_delay_mode: Bool?
+    var live_delay_seconds: Int?
 }
 
 struct TickerDevice: Identifiable, Decodable, Sendable {
@@ -206,10 +215,13 @@ class TickerViewModel: ObservableObject {
     @Published var games: [Game] = []
     @Published var allTeams: [String: [TeamData]] = [:]
     
-    // Default mode is "all", meaning Show All is selected on Home View
+    // Dynamic config from server
+    @Published var leagueOptions: [LeagueOption] = []
+    
     @Published var state: TickerState = TickerState(
         active_sports: ["nfl": true], mode: "all", scroll_seamless: false,
-        my_teams: [], debug_mode: false, demo_mode: false, custom_date: nil,
+        my_teams: [], debug_mode: false,
+        custom_date: nil,
         scroll_speed: 5,
         weather_location: "New York", weather_city: "New York", weather_lat: 40.7128, weather_lon: -74.0060
     )
@@ -237,10 +249,20 @@ class TickerViewModel: ObservableObject {
     init() {
         let savedURL = UserDefaults.standard.string(forKey: "serverURL") ?? "https://ticker.mattdicks.org"
         self.serverURL = savedURL
-        fetchData(); fetchAllTeams(); fetchDevices()
+        
+        // Initial Fetch
+        fetchData()
+        fetchLeagueOptions() // Load dynamic leagues
+        fetchAllTeams()
+        fetchDevices()
+        
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             Task { @MainActor in
-                if !self.isEditing { self.fetchData(); self.fetchDevices() }
+                if !self.isEditing {
+                    self.fetchData()
+                    self.fetchDevices()
+                    if self.leagueOptions.isEmpty { self.fetchLeagueOptions() }
+                }
             }
         }
     }
@@ -289,6 +311,20 @@ class TickerViewModel: ObservableObject {
         }.resume()
     }
     
+    func fetchLeagueOptions() {
+        let base = getBaseURL()
+        guard let url = URL(string: "\(base)/leagues") else { return }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            guard let data = data else { return }
+            do {
+                let decoded = try JSONDecoder().decode([LeagueOption].self, from: data)
+                DispatchQueue.main.async {
+                    self.leagueOptions = decoded
+                }
+            } catch { print("Options Decode Error: \(error)") }
+        }.resume()
+    }
+    
     func fetchAllTeams() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/api/teams") else { return }
@@ -310,10 +346,8 @@ class TickerViewModel: ObservableObject {
                     self.state.weather_lat = loc.coordinate.latitude
                     self.state.weather_lon = loc.coordinate.longitude
                     self.state.weather_location = self.weatherLocInput
-                    print("Geocoded: \(name) at \(loc.coordinate.latitude), \(loc.coordinate.longitude)")
                     self.saveSettings()
                 } else {
-                    print("Geocode failed, saving text only")
                     self.state.weather_location = self.weatherLocInput
                     self.saveSettings()
                 }
@@ -397,7 +431,7 @@ class TickerViewModel: ObservableObject {
         URLSession.shared.dataTask(with: request).resume()
     }
     
-    func updateDeviceSettings(id: String, brightness: Double? = nil, speed: Double? = nil, seamless: Bool? = nil, inverted: Bool? = nil) {
+    func updateDeviceSettings(id: String, brightness: Double? = nil, speed: Double? = nil, seamless: Bool? = nil, inverted: Bool? = nil, delayMode: Bool? = nil, delaySeconds: Int? = nil) {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/ticker/\(id)") else { return }
         var body: [String: Any] = [:]
@@ -405,6 +439,9 @@ class TickerViewModel: ObservableObject {
         if let s = speed { body["scroll_speed"] = s }
         if let sm = seamless { body["scroll_seamless"] = sm }
         if let inv = inverted { body["inverted"] = inv }
+        if let dm = delayMode { body["live_delay_mode"] = dm }
+        if let ds = delaySeconds { body["live_delay_seconds"] = ds }
+        
         guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -417,6 +454,8 @@ class TickerViewModel: ObservableObject {
             if let s = speed { devices[idx].settings.scroll_speed = s }
             if let sm = seamless { devices[idx].settings.scroll_seamless = sm }
             if let inv = inverted { devices[idx].settings.inverted = inv }
+            if let dm = delayMode { devices[idx].settings.live_delay_mode = dm }
+            if let ds = delaySeconds { devices[idx].settings.live_delay_seconds = ds }
         }
     }
     
@@ -516,6 +555,7 @@ struct TeamLogoView: View {
 
 struct GameRow: View {
     let game: Game
+    let leagueLabel: String?
     
     var activeSituation: String {
         guard let s = game.situation else { return "" }
@@ -554,6 +594,7 @@ struct GameRow: View {
     }
     
     var formattedSport: String {
+        if let label = leagueLabel { return label }
         switch game.sport {
         case "ncf_fbs": return "FBS"
         case "ncf_fcs": return "FCS"
@@ -618,7 +659,7 @@ struct GameRow: View {
                     Text(game.status).font(.caption).foregroundColor(.gray)
                 }
                 Spacer()
-                Text(game.sport.uppercased()).font(.system(size: 14, weight: .bold)).foregroundColor(.white).padding(6).background(Color.white.opacity(0.1)).cornerRadius(6)
+                Text(formattedSport).font(.system(size: 14, weight: .bold)).foregroundColor(.white).padding(6).background(Color.white.opacity(0.1)).cornerRadius(6)
             }
             .padding(12).background(Color(white: 0.15))
             .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
@@ -678,7 +719,7 @@ struct GameRow: View {
                             .font(.caption).bold().padding(.horizontal, 8).padding(.vertical, 4)
                             .background(isLive ? Color.red.opacity(0.1) : Color.white.opacity(0.1))
                             .cornerRadius(6).foregroundColor(.white)
-                        Text(formattedSport).font(.caption2).foregroundStyle(.gray)
+                        Text(formattedSport).font(.caption2).foregroundStyle(.gray).multilineTextAlignment(.trailing)
                         if isSituationGlobal { SituationPill(text: activeSituation, color: situationColor) }
                     }.frame(width: 80, alignment: .trailing)
                 }
@@ -752,7 +793,11 @@ struct HomeView: View {
                     if vm.games.isEmpty {
                         Text("No active items found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     } else {
-                        ForEach(vm.games) { game in GameRow(game: game) }
+                        // Pass dynamic label
+                        ForEach(vm.games) { game in
+                            let label = vm.leagueOptions.first(where: { $0.id == game.sport })?.label
+                            GameRow(game: game, leagueLabel: label)
+                        }
                     }
                 }.padding(.horizontal)
                 Spacer(minLength: 120)
@@ -765,33 +810,21 @@ struct ModesView: View {
     @ObservedObject var vm: TickerViewModel
     var currentMode: String { return vm.state.mode }
     
-    let leagues = [
-        ("nfl", "NFL"), ("nba", "NBA"), ("nhl", "NHL"), ("mlb", "MLB"),
-        ("ncf_fbs", "NCAA FBS"), ("ncf_fcs", "NCAA FCS"),
-        ("soccer_epl", "Premier League"),
-        ("soccer_champ", "EFL Championship"), ("soccer_l1", "EFL League One"), ("soccer_l2", "EFL League Two"),
-        ("soccer_wc", "Fifa World Cup"), ("hockey_olympics", "Olympic Hockey"),
-        ("f1", "Formula 1"), ("nascar", "NASCAR"), ("indycar", "IndyCar"),
-        ("imsa", "IMSA"), ("wec", "WEC")
-    ]
+    var sportsOptions: [LeagueOption] {
+        vm.leagueOptions.filter { $0.type == "sport" }
+    }
     
-    let stockCats = [
-        ("stock_tech_ai", "Tech & AI"),
-        ("stock_momentum", "Momentum"),
-        ("stock_energy", "Energy"),
-        ("stock_finance", "Finance"),
-        ("stock_consumer", "Consumer"),
-        ("stock_nyse_50", "NYSE Top 50"),
-        ("stock_automotive", "Auto / Mobility"),
-        ("stock_defense", "Defense")
-    ]
+    var stockOptions: [LeagueOption] {
+        vm.leagueOptions.filter { $0.type == "stock" }
+    }
     
     func setMode(_ mode: String) {
         vm.state.mode = mode
         if mode == "stocks" {
             vm.state.active_sports["weather"] = false; vm.state.active_sports["clock"] = false
-            let hasStock = stockCats.map{ $0.0 }.contains { vm.state.active_sports[$0] == true }
-            if !hasStock { vm.state.active_sports["stock_tech_ai"] = true }
+            let stockKeys = stockOptions.map { $0.id }
+            let hasStock = stockKeys.contains { vm.state.active_sports[$0] == true }
+            if !hasStock, let first = stockKeys.first { vm.state.active_sports[first] = true }
         } else if mode == "sports" {
             vm.state.active_sports["weather"] = false; vm.state.active_sports["clock"] = false
         } else if mode == "weather" { vm.state.active_sports["weather"] = true
@@ -804,9 +837,6 @@ struct ModesView: View {
             VStack(spacing: 24) {
                 HStack { Text("Modes").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80)
                 HStack(spacing: 12) {
-                    
-                    // === UPDATED LOGIC: If mode is NOT specifically stocks/weather/clock, treat it as Sports ===
-                    // This covers "all", "live", "my_teams", and "sports"
                     let nonSportsModes = ["stocks", "weather", "clock"]
                     let effectiveMode = nonSportsModes.contains(currentMode) ? currentMode : "sports"
                     
@@ -815,8 +845,6 @@ struct ModesView: View {
                     FilterBtn(title: "Weather", val: "weather", cur: effectiveMode) { setMode("weather") }
                     FilterBtn(title: "Clock", val: "clock", cur: effectiveMode) { setMode("clock") }
                 }.padding(.horizontal)
-                
-                // === REMOVED "SCROLL STYLE" SECTION HERE ===
                 
                 if currentMode == "weather" {
                     VStack(alignment: .leading, spacing: 10) {
@@ -838,14 +866,17 @@ struct ModesView: View {
                 } else if currentMode == "stocks" {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("MARKET SECTORS").font(.caption).bold().foregroundStyle(.secondary)
+                        if stockOptions.isEmpty {
+                            Text("Loading stock options...").font(.caption).padding().liquidGlass()
+                        }
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
-                            ForEach(stockCats, id: \.0) { key, name in
-                                let isActive = vm.state.active_sports[key] ?? false
+                            ForEach(stockOptions) { opt in
+                                let isActive = vm.state.active_sports[opt.id] ?? false
                                 Button {
-                                    vm.state.active_sports[key] = !isActive
+                                    vm.state.active_sports[opt.id] = !isActive
                                     vm.saveSettings()
                                 } label: {
-                                    Text(name).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
+                                    Text(opt.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
                                         .background(isActive ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
                                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
@@ -857,11 +888,14 @@ struct ModesView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
+                        if sportsOptions.isEmpty {
+                            Text("Loading sports options...").font(.caption).padding().liquidGlass()
+                        }
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
-                            ForEach(leagues, id: \.0) { key, name in
-                                let isActive = vm.state.active_sports[key] ?? false
-                                Button { vm.state.active_sports[key] = !isActive; vm.saveSettings() } label: {
-                                    Text(name).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
+                            ForEach(sportsOptions) { opt in
+                                let isActive = vm.state.active_sports[opt.id] ?? false
+                                Button { vm.state.active_sports[opt.id] = !isActive; vm.saveSettings() } label: {
+                                    Text(opt.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
                                         .background(isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
                                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
@@ -879,18 +913,19 @@ struct ModesView: View {
 
 struct TeamsView: View {
     @ObservedObject var vm: TickerViewModel
-    @State private var selectedLeague = "nfl"
+    @State private var selectedLeague = ""
     
-    let leagues = [
-        ("nfl", "NFL"), ("nba", "NBA"), ("nhl", "NHL"), ("mlb", "MLB"),
-        ("soccer_epl", "Premier League"),
-        ("soccer_champ", "EFL Champ"),
-        ("soccer_l1", "EFL League 1"),
-        ("soccer_l2", "EFL League 2"),
-        ("soccer_wc", "Fifa World Cup"),
-        ("hockey_olympics", "Olympic Hockey"),
-        ("ncf_fbs", "FBS"), ("ncf_fcs", "FCS")
-    ]
+    // Filter out leagues that are disabled OR don't have teams (like F1/NASCAR)
+    var sportsOptions: [LeagueOption] {
+        vm.leagueOptions.filter { opt in
+            guard opt.type == "sport" else { return false }
+            guard vm.state.active_sports[opt.id] == true else { return false }
+            if let teams = vm.allTeams[opt.id], !teams.isEmpty {
+                return true
+            }
+            return false
+        }
+    }
     
     let teamColumns = [GridItem(.adaptive(minimum: 60))]
     
@@ -900,18 +935,27 @@ struct TeamsView: View {
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
-                        ForEach(leagues, id: \.0) { key, name in
-                            Button { selectedLeague = key } label: {
-                                Text(name).bold().font(.caption)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                                    .background(selectedLeague == key ? Color.blue : Color(white: 0.2))
-                                    .foregroundColor(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    if sportsOptions.isEmpty {
+                        if vm.allTeams.isEmpty {
+                            Text("Loading teams...").font(.caption).foregroundStyle(.gray).padding()
+                        } else {
+                            Text("No team sports enabled. Go to Modes to enable NFL, MLB, etc.").font(.caption).foregroundStyle(.gray).padding()
+                        }
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
+                            ForEach(sportsOptions) { opt in
+                                Button { selectedLeague = opt.id } label: {
+                                    Text(opt.label).bold().font(.caption)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 8)
+                                        .background(selectedLeague == opt.id ? Color.blue : Color(white: 0.2))
+                                        .foregroundColor(.white)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                }
                             }
                         }
                     }
+                    
                     Divider().background(Color.white.opacity(0.2))
                     
                     if let teams = vm.allTeams[selectedLeague], !teams.isEmpty {
@@ -933,11 +977,21 @@ struct TeamsView: View {
                                 }
                             }
                         }
-                    } else {
-                        Text("Loading teams or no teams available...").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
+                    } else if !selectedLeague.isEmpty {
+                        Text("No teams found for this league.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     }
                 }.padding(.horizontal)
                 Spacer(minLength: 120)
+            }
+        }
+        .onAppear {
+            if !sportsOptions.isEmpty && (selectedLeague.isEmpty || !sportsOptions.contains(where: { $0.id == selectedLeague })) {
+                selectedLeague = sportsOptions.first?.id ?? ""
+            }
+        }
+        .onChange(of: vm.state.active_sports) { _ in
+            if !sportsOptions.isEmpty && (selectedLeague.isEmpty || !sportsOptions.contains(where: { $0.id == selectedLeague })) {
+                selectedLeague = sportsOptions.first?.id ?? ""
             }
         }
     }
@@ -959,7 +1013,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Server URL").font(.caption).foregroundColor(.gray)
                         TextField("https://...", text: $vm.serverURL).textFieldStyle(.plain).padding(10).background(Color.black.opacity(0.2)).cornerRadius(8).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1))).foregroundColor(.white)
-                            .onSubmit { vm.fetchData(); vm.fetchAllTeams(); vm.fetchDevices() }
+                            .onSubmit { vm.fetchData(); vm.fetchLeagueOptions(); vm.fetchAllTeams(); vm.fetchDevices() }
                     }.padding().liquidGlass()
                 }.padding(.horizontal)
                 
@@ -1042,6 +1096,7 @@ struct DeviceRow: View {
     @ObservedObject var vm: TickerViewModel
     @State private var brightness: Double
     @State private var speedInt: Double
+    @State private var delaySecondsInt: Double
     let haptic = UIImpactFeedbackGenerator(style: .medium)
     
     var lastSeenString: String {
@@ -1062,6 +1117,9 @@ struct DeviceRow: View {
         let raw = device.settings.scroll_speed
         let uiVal = round((0.11 - raw) * 100)
         _speedInt = State(initialValue: max(1, min(10, uiVal)))
+        
+        let ds = device.settings.live_delay_seconds ?? 45
+        _delaySecondsInt = State(initialValue: Double(ds))
     }
     
     var body: some View {
@@ -1079,6 +1137,7 @@ struct DeviceRow: View {
             }
             Divider().background(Color.white.opacity(0.1))
             
+            // Brightness
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Image(systemName: "sun.max").font(.caption)
@@ -1089,6 +1148,8 @@ struct DeviceRow: View {
                     if !editing { vm.updateDeviceSettings(id: device.id, brightness: brightness) }
                 }).tint(.white).onChange(of: brightness) { _ in haptic.impactOccurred() }
             }
+            
+            // Speed
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Image(systemName: "tortoise").font(.caption)
@@ -1105,31 +1166,48 @@ struct DeviceRow: View {
                 }).tint(.blue).onChange(of: speedInt) { _ in haptic.impactOccurred() }
             }
             
+            Divider().background(Color.white.opacity(0.1))
+            
+            // Inverted
             HStack {
                 Toggle("Inverted", isOn: Binding(
                     get: { device.settings.inverted ?? false },
                     set: { vm.updateDeviceSettings(id: device.id, inverted: $0) }
                 )).fixedSize()
                 .labelsHidden()
-                // === MODIFIED: Set tint to .blue ===
                 .toggleStyle(SwitchToggleStyle(tint: .blue))
                 Text("Inverted").font(.caption)
-                
                 Spacer()
-                
-                if vm.state.debug_mode {
-                    Toggle("Demo", isOn: Binding(
-                        get: { vm.state.demo_mode ?? false },
-                        set: { val in
-                            vm.isEditing = true
-                            vm.state.demo_mode = val
-                            vm.saveSettings()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { vm.isEditing = false }
-                        }
-                    )).fixedSize()
+            }
+            
+            // === STREAM DELAY (PER TICKER) ===
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Toggle("Stream Delay", isOn: Binding(
+                        get: { device.settings.live_delay_mode ?? false },
+                        set: { vm.updateDeviceSettings(id: device.id, delayMode: $0) }
+                    ))
                     .labelsHidden()
-                    .toggleStyle(SwitchToggleStyle(tint: .purple))
-                    Text("Demo").font(.caption)
+                    .toggleStyle(SwitchToggleStyle(tint: .orange))
+                    
+                    Text("Live Stream Delay").font(.caption)
+                    Spacer()
+                }
+                
+                if device.settings.live_delay_mode == true {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Buffer: \(Int(delaySecondsInt))s")
+                                .font(.caption).monospacedDigit().bold().foregroundColor(.orange)
+                            Spacer()
+                        }
+                        Slider(value: $delaySecondsInt, in: 15...120, step: 15, onEditingChanged: { editing in
+                            if !editing {
+                                vm.updateDeviceSettings(id: device.id, delaySeconds: Int(delaySecondsInt))
+                            }
+                        })
+                        .tint(.orange)
+                    }.transition(.opacity)
                 }
             }
             
