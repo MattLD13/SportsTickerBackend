@@ -66,7 +66,8 @@ LEAGUE_OPTIONS = [
 
     # --- SOCCER ---
     {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.fa', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    # FA Cup: Using eng.fa, but REMOVED team_params because cups often lack a stable team list endpoint
+    {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
     {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_l1',    'label': 'League One',          'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_l2',    'label': 'League Two',          'type': 'sport', 'default': True,  'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
