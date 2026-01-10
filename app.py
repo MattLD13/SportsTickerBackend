@@ -987,9 +987,9 @@ class SportsFetcher:
 
                 elif finished:
                     gst = 'post'
-                    disp = "FINAL"
-                    if "Pen" in reason or "After" in reason: disp = "FINAL PENS"
-                    elif "AET" in reason: disp = "FINAL AET"
+                    # --- FIX: Display "Final" even for penalty games (requested) ---
+                    disp = "Final" 
+                    if "AET" in reason: disp = "Final AET"
                 elif status.get("cancelled"):
                     gst = 'post'
                     disp = "Postponed"
@@ -1001,8 +1001,8 @@ class SportsFetcher:
                     if gst == 'in': disp = "Pens"
                 
                 shootout_data = None
-                # Only show dots if live
-                if is_shootout and gst == 'in':
+                # --- FIX: Allow dot fetching for finished games too (requested) ---
+                if is_shootout:
                     shootout_data = self._fetch_fotmob_details(mid, match.get("home", {}).get("id"), match.get("away", {}).get("id"))
 
                 # Filtering (Mode)
