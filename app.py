@@ -1306,20 +1306,19 @@ class SportsFetcher:
         # === FIX FOR JUMPING: SORT SPORTS GAMES ===
         # Use ID as tie-breaker so concurrent fetching doesn't random order for same start times
         # LOGIC: 
-        # 1. Clock (Top)
-        # 2. Weather (Second)
-        # 3. "Deprioritized" Statuses (Postponed/Suspended/Cancelled go to bottom)
-        # 4. Time (Interleaves NHL and ESPN games chronologically)
-        # 5. Tie-breakers
+        # 0. Clock
+        # 1. Weather
+        # 2. Active Games (Live/Scheduled)
+        # 3. Final Games
+        # 4. Postponed/Suspended Games
         
-        deprioritized_keywords = ["postponed", "cancelled", "canceled", "suspended", "ppd"]
-
         all_games.sort(key=lambda x: (
-            x.get('type') != 'clock',    # False (0) puts Clock first
-            x.get('type') != 'weather',  # False (0) puts Weather second
-            # Boolean: True (1) if status contains a bad keyword, False (0) if active/scheduled
-            any(k in str(x.get('status', '')).lower() for k in deprioritized_keywords),
-            x.get('startTimeUTC', '9999'), # Sorts NHL and ESPN games together by time
+            0 if x.get('type') == 'clock' else
+            1 if x.get('type') == 'weather' else
+            4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "canceled", "suspended", "ppd"]) else
+            3 if "FINAL" in str(x.get('status', '')).upper() else
+            2, # Active
+            x.get('startTimeUTC', '9999'),
             x.get('sport', ''),
             x.get('id', '0')
         ))
