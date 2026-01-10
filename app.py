@@ -46,7 +46,7 @@ STOCKS_UPDATE_INTERVAL = 10
 
 data_lock = threading.Lock()
 
-# Headers from your working script
+# Headers for FotMob
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json",
@@ -55,7 +55,6 @@ HEADERS = {
 }
 
 # ================= FOTMOB MAPPING =================
-# Maps internal IDs to FotMob League IDs
 FOTMOB_LEAGUE_MAP = {
     'soccer_epl': 47,
     'soccer_fa_cup': 132,
@@ -80,7 +79,7 @@ LEAGUE_OPTIONS = [
     {'id': 'ncf_fbs',      'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs',      'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
 
-    # --- SOCCER (Handled via FotMob) ---
+    # --- SOCCER (Colors fetched via ESPN, scores via FotMob) ---
     {'id': 'soccer_epl',   'label': 'Premier League',      'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_fa_cup','label': 'FA Cup',              'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
     {'id': 'soccer_champ', 'label': 'Championship',        'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
@@ -148,7 +147,6 @@ if os.path.exists(CONFIG_FILE):
     try:
         with open(CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            # Cleanup old keys
             deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf', 'demo_mode', 'live_delay_mode', 'live_delay_seconds']
             if 'active_sports' in loaded:
                 for k in deprecated:
@@ -454,14 +452,26 @@ class SportsFetcher:
     def get_corrected_logo(self, league_key, abbr, default_logo):
         return LOGO_OVERRIDES.get(f"{league_key.upper()}:{abbr}", default_logo)
 
-    def lookup_team_info_from_cache(self, league, abbr):
+    def lookup_team_info_from_cache(self, league, abbr, name=None):
         search_abbr = ABBR_MAPPING.get(abbr, abbr)
         try:
             with data_lock:
                 teams = state['all_teams_data'].get(league, [])
+                # 1. Try Abbreviation Match
                 for t in teams:
                     if t['abbr'] == search_abbr:
                         return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
+                
+                # 2. Try Name Match (Fuzzy) if name provided
+                if name:
+                    name_lower = name.lower()
+                    for t in teams:
+                        t_name = t.get('name', '').lower()
+                        t_short = t.get('shortName', '').lower()
+                        # Check exact string containment
+                        if name_lower == t_name or name_lower == t_short or t_name in name_lower or name_lower in t_name:
+                             return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
+
         except: pass
         return {'color': '000000', 'alt_color': '444444'}
 
@@ -495,8 +505,20 @@ class SportsFetcher:
                             alt = item['team'].get('alternateColor', '444444')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
                             logo = self.get_corrected_logo(league_key, abbr, logo)
+                            
+                            # --- SAVE NAMES FOR FOTMOB MATCHING ---
+                            name = item['team'].get('displayName', '')
+                            short_name = item['team'].get('shortDisplayName', '')
+
                             if not any(x['abbr'] == abbr for x in catalog[league_key]):
-                                catalog[league_key].append({'abbr': abbr, 'logo': logo, 'color': clr, 'alt_color': alt})
+                                catalog[league_key].append({
+                                    'abbr': abbr, 
+                                    'logo': logo, 
+                                    'color': clr, 
+                                    'alt_color': alt,
+                                    'name': name,
+                                    'shortName': short_name
+                                })
         except Exception as e: print(f"Error fetching teams for {league_key}: {e}")
 
     def fetch_all_teams(self):
@@ -942,9 +964,9 @@ class SportsFetcher:
                 h_id = match.get("home", {}).get("id")
                 a_id = match.get("away", {}).get("id")
 
-                # --- FIX: Use ESPN Colors from Cache ---
-                h_info = self.lookup_team_info_from_cache(internal_id, h_ab)
-                a_info = self.lookup_team_info_from_cache(internal_id, a_ab)
+                # --- FIX: Use ESPN Colors from Cache (Name matching included) ---
+                h_info = self.lookup_team_info_from_cache(internal_id, h_ab, h_name)
+                a_info = self.lookup_team_info_from_cache(internal_id, a_ab, a_name)
                 
                 matches.append({
                     'type': 'scoreboard',
