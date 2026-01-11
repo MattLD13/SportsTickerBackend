@@ -81,10 +81,10 @@ LEAGUE_OPTIONS = [
 
     # --- SOCCER (Colors fetched via ESPN, scores via FotMob) ---
     {'id': 'soccer_epl',    'label': 'Premier League',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_fa_cup','label': 'FA Cup',                'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
-    {'id': 'soccer_champ', 'label': 'Championship',         'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l1',     'label': 'League One',           'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l2',     'label': 'League Two',           'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_fa_cup','label': 'FA Cup',                 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
+    {'id': 'soccer_champ', 'label': 'Championship',          'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l1',     'label': 'League One',            'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l2',     'label': 'League Two',            'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_wc',     'label': 'FIFA World Cup',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_europa_league',    'label': 'Europa League',    'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 200}, 'type': 'scoreboard'}},
@@ -1086,19 +1086,17 @@ class SportsFetcher:
                 kickoff = status.get("utcTime") or match.get("time")
                 if not kickoff: continue
                 
-                # --- TIME WINDOW CHECK (Replaces string date check) ---
+                # --- TIME WINDOW CHECK ---
                 try:
                     match_dt = dt.fromisoformat(kickoff.replace('Z', '+00:00'))
                     if not (start_window <= match_dt <= end_window): continue
                 except: continue
-                # ------------------------------------------------------
 
                 mid = match.get("id")
                 h_name = match.get("home", {}).get("name") or "Home"
                 a_name = match.get("away", {}).get("name") or "Away"
                 
                 # --- ABBREVIATION LOGIC ---
-                # Check overrides list first, then fallback to first 3 letters uppercase
                 h_ab = SOCCER_ABBR_OVERRIDES.get(h_name, h_name[:3].upper())
                 a_ab = SOCCER_ABBR_OVERRIDES.get(a_name, a_name[:3].upper())
                 
@@ -1126,7 +1124,7 @@ class SportsFetcher:
                     if home_score is None: home_score = status_score[0]
                     if away_score is None: away_score = status_score[1]
 
-                # 3. String Fallback (scoreStr, statusText)
+                # 3. String Fallback
                 score_str_sources = [
                     status.get("scoreStr"),
                     (match.get("home") or {}).get("scoreStr"),
@@ -1140,7 +1138,6 @@ class SportsFetcher:
                     if home_score is None: home_score = h_val
                     if away_score is None: away_score = a_val
 
-                # Defaults to 0 if still None
                 final_home_score = str(home_score) if home_score is not None else "0"
                 final_away_score = str(away_score) if away_score is not None else "0"
                 # ======================================
@@ -1148,9 +1145,7 @@ class SportsFetcher:
                 # Determine state/status
                 gst = 'pre'
                 
-                # --- FIX: Convert UTC Kickoff to Local 12-hr Time ---
                 try:
-                    # Parse ISO format: 2025-01-11T12:30:00Z
                     k_dt = dt.fromisoformat(kickoff.replace('Z', '+00:00'))
                     local_k = k_dt.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
                     disp = local_k.strftime("%I:%M %p").lstrip('0')
@@ -1166,24 +1161,37 @@ class SportsFetcher:
                     else:
                         disp = "In Progress"
                     
-                    # --- FIX: Check for Halftime ---
+                    # ----------------------------------------------------
+                    # FIX: Handle Extra Time Break (105+ Added) correctly
+                    # ----------------------------------------------------
+                    # 1. Get Current Minute Safely
+                    current_minute = 0
+                    try:
+                        current_minute = int((status.get("liveTime") or {}).get("minute", 0))
+                    except: pass
+
+                    # 2. Check for Halftime / Breaks (including PET which some feeds use for break)
+                    raw_status_text = str(status.get("statusText", ""))
                     is_ht = (
                         reason == "HT" 
-                        or status.get("statusText") == "HT" 
+                        or raw_status_text == "HT" 
+                        or "Halftime" in raw_status_text
                         or status.get("liveTime", {}).get("short") == "HT"
+                        or reason == "PET" 
                     )
+                    
                     if is_ht:
-                        disp = "HALF"
-                        
-                    # --- FIX: Map PET to "ET HT" ---
-                    if reason == "PET": disp = "ET HT"
+                        # If minute is 105 or greater (Extra Time Break), show HT ET
+                        if current_minute >= 105:
+                            disp = "HT ET"
+                        else:
+                            disp = "HALF"
+                    # ----------------------------------------------------
 
                 elif finished:
                     gst = 'post'
-                    # Default
                     disp = "Final" 
                     if "AET" in reason: disp = "Final AET"
-                    # --- FIX: Change "Final" to "FIN" for penalty games (Soccer Only) ---
                     if "Pen" in reason or (status.get("reason") and "Pen" in str(status.get("reason"))):
                         disp = "FIN"
 
@@ -1191,12 +1199,11 @@ class SportsFetcher:
                     gst = 'post'
                     disp = "Postponed"
                 
-                # --- FIX: Ensure "Postponed" in reason triggers Red bar (post state) ---
                 if "Postponed" in reason or "PPD" in reason:
                     gst = 'post'
                     disp = "Postponed"
 
-                # === HIDE FINAL GAMES BEFORE CUTOFF (3AM Logic) ===
+                # === HIDE FINAL GAMES BEFORE CUTOFF ===
                 if match_dt < visible_start_utc or match_dt >= visible_end_utc:
                      if gst != 'in': continue
                 # =======================================
@@ -1208,7 +1215,6 @@ class SportsFetcher:
                     if gst == 'in': disp = "Pens"
                 
                 shootout_data = None
-                # --- FIX: Allow dot fetching for finished games too (requested) ---
                 if is_shootout:
                     shootout_data = self._fetch_fotmob_details(mid, match.get("home", {}).get("id"), match.get("away", {}).get("id"))
 
@@ -1218,7 +1224,6 @@ class SportsFetcher:
                 elif conf['mode'] == 'my_teams':
                     if internal_id not in conf['my_teams'] and h_ab not in conf['my_teams'] and a_ab not in conf['my_teams']: is_shown = False
                 
-                # === NEW FIX: Hide Postponed Games entirely ===
                 if "Postponed" in disp or "PPD" in reason or status.get("cancelled"):
                     is_shown = False
 
@@ -1226,7 +1231,6 @@ class SportsFetcher:
                 h_id = match.get("home", {}).get("id")
                 a_id = match.get("away", {}).get("id")
 
-                # --- FIX: Use ESPN Colors from Cache (Passing full name for fuzzy match) ---
                 h_info = self.lookup_team_info_from_cache(internal_id, h_ab, h_name)
                 a_info = self.lookup_team_info_from_cache(internal_id, a_ab, a_name)
                 
