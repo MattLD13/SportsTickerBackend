@@ -752,6 +752,8 @@ class TickerStreamer:
                 
                 # --- SEAMLESS UPDATE LOGIC ---
                 if self.bg_strip_ready:
+                    update_applied = False
+                    
                     # SCENARIO A: We have actual data
                     if self.bg_strip is not None:
                         # Case 1: Startup (Transition from Idle Clock -> Data)
@@ -759,6 +761,7 @@ class TickerStreamer:
                             self.active_strip = self.bg_strip
                             self.games = self.new_games_list 
                             strip_offset = 0
+                            update_applied = True
                         else:
                             # Case 2: Mid-scroll update
                             current_x = int(strip_offset)
@@ -788,17 +791,23 @@ class TickerStreamer:
                                 self.active_strip = self.bg_strip
                                 self.games = self.new_games_list
                                 strip_offset = float(new_offset)
+                                update_applied = True
                             else:
-                                if int(strip_offset) == 0:
-                                    self.active_strip = self.bg_strip
-                                    self.games = self.new_games_list
-                                    strip_offset = 0
+                                # Fallback: Force update IMMEDIATELY if no seamless match
+                                # (Removes delay if list changes significantly)
+                                self.active_strip = self.bg_strip
+                                self.games = self.new_games_list
+                                strip_offset = 0.0 # Reset to start to show new list
+                                update_applied = True
 
                     # SCENARIO B: We have NO data (Playlist empty)
                     else:
                         self.active_strip = None # This triggers the fallback below
+                        update_applied = True
                     
-                    self.bg_strip_ready = False # Consumed the update
+                    # ONLY consume the update flag if we actually swapped the strip
+                    if update_applied:
+                        self.bg_strip_ready = False 
 
                 if self.active_strip:
                     total_w = self.active_strip.width - PANEL_W
@@ -815,7 +824,6 @@ class TickerStreamer:
                     time.sleep(self.scroll_sleep)
                 else:
                     # === FALLBACK MODE: SHOW BOOT CLOCK ===
-                    # This runs when active_strip is None
                     boot_clock_img = self.draw_boot_clock()
                     self.update_display(boot_clock_img)
                     time.sleep(0.5) 
@@ -845,8 +853,11 @@ class TickerStreamer:
                 # Strict Sort
                 new_games.sort(key=lambda x: (x.get('sport', ''), x.get('id', '')))
                 
-                current_hash = str(new_games) + str(data.get('local_config'))
+                # Robust Hash generation using JSON dumps to ensure order consistency
+                current_hash = hashlib.md5(json.dumps({'g': new_games, 'c': data.get('local_config')}, sort_keys=True).encode()).hexdigest()
+                
                 if current_hash != last_hash:
+                    print(f"New Data Detected at {datetime.now().strftime('%H:%M:%S')}")
                     logos = []
                     for g in new_games:
                         if g.get('home_logo'): 
@@ -866,14 +877,12 @@ class TickerStreamer:
                     
                     self.new_games_list = new_games 
                     
-                    # Logic: If no games, set strip to None. If games, build strip.
                     if not new_games:
                         self.bg_strip = None
                     else:
                         self.bg_strip = self.build_seamless_strip(new_games)
                         
                     self.bg_strip_ready = True
-                    
                     last_hash = current_hash
                     self.game_render_cache.clear()
                     
