@@ -566,7 +566,7 @@ class SportsFetcher:
                                     'id': team_id,
                                     'logo': logo, 
                                     'color': clr, 
-                                    'alt_color': alt,
+                                    'alt_color': alt, 
                                     'name': name,
                                     'shortName': short_name
                                 })
@@ -645,7 +645,7 @@ class SportsFetcher:
         except: pass
         return None
 
-    def _fetch_nhl_native(self, conf, window_start_utc, window_end_utc):
+    def _fetch_nhl_native(self, conf, window_start_utc, window_end_utc, today_start_utc):
         # Returns list of games
         games_found = []
         is_nhl = conf['active_sports'].get('nhl', False)
@@ -688,6 +688,17 @@ class SportsFetcher:
                         if not g_utc: continue
                         g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
                         if not (window_start_utc <= g_dt <= window_end_utc): continue
+                        
+                        # --- FIX: HIDE FINAL GAMES FROM YESTERDAY ---
+                        st = g.get('gameState', 'OFF')
+                        map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
+                        
+                        # Logic: If game started before Today's 12:00 AM (local converted to UTC),
+                        # it MUST be live to show. If it's final or pre, skip.
+                        if g_dt < today_start_utc and map_st != 'in':
+                            continue
+                        # --------------------------------------------
+
                     except: continue
 
                     gid = g['id']
@@ -696,14 +707,11 @@ class SportsFetcher:
 
                     h_ab = g['homeTeam']['abbrev']; a_ab = g['awayTeam']['abbrev']
                     h_sc = str(g['homeTeam'].get('score', 0)); a_sc = str(g['awayTeam'].get('score', 0))
-                    st = g.get('gameState', 'OFF')
                     
                     h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
                     a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
                     h_info = self.lookup_team_info_from_cache('nhl', h_ab)
                     a_info = self.lookup_team_info_from_cache('nhl', a_ab)
-                    
-                    map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
                     
                     mode = conf['mode']; my_teams = conf['my_teams']
                     is_shown = True
@@ -1012,7 +1020,7 @@ class SportsFetcher:
 
         return None
 
-    def _extract_matches(self, sections, internal_id, conf, start_window, end_window):
+    def _extract_matches(self, sections, internal_id, conf, start_window, end_window, today_start_utc):
         matches = []
         for section in sections:
             candidate_matches = section.get("matches") if isinstance(section, dict) else None
@@ -1132,6 +1140,12 @@ class SportsFetcher:
                     gst = 'post'
                     disp = "Postponed"
 
+                # === HIDE FINAL GAMES FROM YESTERDAY ===
+                # If game started before Today's 12:00 AM local, and is not Live, skip it.
+                if match_dt < today_start_utc and gst != 'in':
+                    continue
+                # =======================================
+
                 # Shootout check
                 is_shootout = False
                 if "Pen" in reason or (gst == 'in' and "Pen" in str(status)) or disp == "FIN":
@@ -1180,7 +1194,7 @@ class SportsFetcher:
                 })
         return matches
 
-    def _fetch_fotmob_league(self, league_id, internal_id, conf, start_window, end_window):
+    def _fetch_fotmob_league(self, league_id, internal_id, conf, start_window, end_window, today_start_utc):
         # Implementation of "fetch_league_matches" from working script
         try:
             url = "https://www.fotmob.com/api/leagues"
@@ -1202,20 +1216,20 @@ class SportsFetcher:
                     
                     last_sections = sections
                     # Pass the UTC window here
-                    matches = self._extract_matches(sections, internal_id, conf, start_window, end_window)
+                    matches = self._extract_matches(sections, internal_id, conf, start_window, end_window, today_start_utc)
                     if matches: return matches
                 except: continue
             
             # Fallback if loop finishes empty
             if last_sections:
-                 return self._extract_matches(last_sections, internal_id, conf, start_window, end_window)
+                 return self._extract_matches(last_sections, internal_id, conf, start_window, end_window, today_start_utc)
             return []
         except Exception as e:
             print(f"FotMob League {league_id} error: {e}")
             return []
 
     # Helper function for threaded execution
-    def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset):
+    def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, today_start_utc):
         local_games = []
         if not conf['active_sports'].get(league_key, False): return []
 
@@ -1267,6 +1281,14 @@ class SportsFetcher:
                     # Filter: if not live, must be within window (Now-12h -> 3AM Tomorrow)
                     if gst != 'in' and gst != 'half':
                         if not (window_start_utc <= game_dt <= window_end_utc): continue
+                    
+                    # --- FIX: HIDE FINAL GAMES FROM YESTERDAY ---
+                    # If game started before Today's 12:00 AM (local converted to UTC),
+                    # and is NOT live, skip it.
+                    if game_dt < today_start_utc and gst not in ['in', 'half']:
+                        continue
+                    # --------------------------------------------
+
                 except: continue
 
                 comp = e['competitions'][0]
@@ -1427,19 +1449,23 @@ class SportsFetcher:
             window_start_utc = window_start_local.astimezone(timezone.utc)
             window_end_utc = window_end_local.astimezone(timezone.utc)
             
+            # --- CALCULATE "START OF TODAY" IN UTC (For filtering Final games from yesterday) ---
+            today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_start_utc = today_start_local.astimezone(timezone.utc)
+            
             # Submit tasks
             futures = []
             
             # A. NHL Native Special Case
             if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
-                # Pass window arguments
-                futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc))
+                # Pass window arguments + today_start_utc
+                futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, today_start_utc))
             
             # B. FOTMOB SOCCER (Batched by League ID)
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
-                        # Pass window arguments
-                       futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc))
+                        # Pass window arguments + today_start_utc
+                       futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, today_start_utc))
 
             # C. All other ESPN leagues
             for league_key, config in self.leagues.items():
@@ -1451,7 +1477,7 @@ class SportsFetcher:
 
                 futures.append(self.executor.submit(
                     self.fetch_single_league, 
-                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset
+                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset, today_start_utc
                 ))
             
             # Gather Results
