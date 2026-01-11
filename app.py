@@ -645,7 +645,7 @@ class SportsFetcher:
         except: pass
         return None
 
-    def _fetch_nhl_native(self, conf, window_start_utc, window_end_utc, visible_start_utc):
+    def _fetch_nhl_native(self, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc):
         # Returns list of games
         games_found = []
         is_nhl = conf['active_sports'].get('nhl', False)
@@ -687,15 +687,13 @@ class SportsFetcher:
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
                         g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
-                        if not (window_start_utc <= g_dt <= window_end_utc): continue
                         
-                        # --- FIX: HIDE FINAL GAMES BEFORE CUTOFF (3AM Logic) ---
-                        st = g.get('gameState', 'OFF')
-                        map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
-                        
-                        # Logic: If game started before Visible Start Time, and is not live, skip.
-                        if g_dt < visible_start_utc and map_st != 'in':
-                            continue
+                        # --- FIX: STRICT VISIBILITY WINDOW (Start AND End) ---
+                        if g_dt < visible_start_utc or g_dt >= visible_end_utc:
+                            # Exception: If it's LIVE, show it regardless of window
+                            st = g.get('gameState', 'OFF')
+                            if st not in ['LIVE', 'CRIT']:
+                                continue
                         # --------------------------------------------
 
                     except: continue
@@ -703,6 +701,9 @@ class SportsFetcher:
                     gid = g['id']
                     if gid in processed_ids: continue
                     processed_ids.add(gid)
+
+                    st = g.get('gameState', 'OFF')
+                    map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
 
                     h_ab = g['homeTeam']['abbrev']; a_ab = g['awayTeam']['abbrev']
                     h_sc = str(g['homeTeam'].get('score', 0)); a_sc = str(g['awayTeam'].get('score', 0))
@@ -789,6 +790,11 @@ class SportsFetcher:
                                     elif hs > as_: pp=True; poss=h_ab
                                     en = (ag==0 or hg==0)
                         except: pass 
+
+                    # === FIX: Hide dots if Final (User Request) ===
+                    if "FINAL" in disp:
+                        shootout_data = None
+                    # ===============================================
 
                     games_found.append({
                         'type': 'scoreboard',
@@ -1027,7 +1033,7 @@ class SportsFetcher:
 
         return None
 
-    def _extract_matches(self, sections, internal_id, conf, start_window, end_window, visible_start_utc):
+    def _extract_matches(self, sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc):
         matches = []
         for section in sections:
             candidate_matches = section.get("matches") if isinstance(section, dict) else None
@@ -1148,9 +1154,8 @@ class SportsFetcher:
                     disp = "Postponed"
 
                 # === HIDE FINAL GAMES BEFORE CUTOFF (3AM Logic) ===
-                # If game started before Visible Start Time, and is not Live, skip it.
-                if match_dt < visible_start_utc and gst != 'in':
-                    continue
+                if match_dt < visible_start_utc or match_dt >= visible_end_utc:
+                     if gst != 'in': continue
                 # =======================================
 
                 # Shootout check
@@ -1201,7 +1206,7 @@ class SportsFetcher:
                 })
         return matches
 
-    def _fetch_fotmob_league(self, league_id, internal_id, conf, start_window, end_window, visible_start_utc):
+    def _fetch_fotmob_league(self, league_id, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc):
         # Implementation of "fetch_league_matches" from working script
         try:
             url = "https://www.fotmob.com/api/leagues"
@@ -1223,20 +1228,20 @@ class SportsFetcher:
                     
                     last_sections = sections
                     # Pass the UTC window here
-                    matches = self._extract_matches(sections, internal_id, conf, start_window, end_window, visible_start_utc)
+                    matches = self._extract_matches(sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc)
                     if matches: return matches
                 except: continue
             
             # Fallback if loop finishes empty
             if last_sections:
-                 return self._extract_matches(last_sections, internal_id, conf, start_window, end_window, visible_start_utc)
+                 return self._extract_matches(last_sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc)
             return []
         except Exception as e:
             print(f"FotMob League {league_id} error: {e}")
             return []
 
     # Helper function for threaded execution
-    def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc):
+    def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc):
         local_games = []
         if not conf['active_sports'].get(league_key, False): return []
 
@@ -1288,10 +1293,11 @@ class SportsFetcher:
                     if gst != 'in' and gst != 'half':
                         if not (window_start_utc <= game_dt <= window_end_utc): continue
                     
-                    # --- FIX: HIDE FINAL GAMES BEFORE CUTOFF (3AM Logic) ---
-                    # Logic: If game started before Visible Start Time, and is NOT live, skip it.
-                    if game_dt < visible_start_utc and gst not in ['in', 'half']:
-                        continue
+                    # --- FIX: STRICT VISIBILITY WINDOW (Start AND End) ---
+                    if game_dt < visible_start_utc or game_dt >= visible_end_utc:
+                         # Exception: If it's LIVE, show it regardless of window
+                         if gst not in ['in', 'half']:
+                             continue
                     # --------------------------------------------
 
                 except: continue
@@ -1441,25 +1447,24 @@ class SportsFetcher:
             now_utc = dt.now(timezone.utc)
             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
             
-            # --- DATE LOGIC UPDATE (3:00 AM Switch) ---
-            # If current time is < 3:00 AM, we show yesterday's games starting from 11:00 AM yesterday.
-            # If current time is >= 3:00 AM, we show today's games starting from Midnight.
-            
+            # --- DATE LOGIC UPDATE (3:00 AM Switch with Strict Start/End) ---
             if now_local.hour < 3:
                 # "Yesterday's Games" mode (Late Night Viewing)
-                # Show from Yesterday 11:00 AM
-                visible_start_local = (now_local - timedelta(days=1)).replace(hour=11, minute=0, second=0, microsecond=0)
+                # Show from Yesterday 10:00 AM to Today 10:00 AM
+                visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+                visible_end_local = now_local.replace(hour=10, minute=0, second=0, microsecond=0)
             else:
                 # "Today's Games" mode (Morning/Day Viewing)
-                # Show from Midnight Today
+                # Show from Midnight Today to Tomorrow 3:00 AM
                 visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
             
             visible_start_utc = visible_start_local.astimezone(timezone.utc)
+            visible_end_utc = visible_end_local.astimezone(timezone.utc)
             
-            # Windows for Fetching (Broad window, filtered later by visible_start_utc)
-            # Look back 30 hours to safely catch yesterday
+            # Windows for Fetching (Broad window, filtered strictly later)
             window_start_local = now_local - timedelta(hours=30)
-            window_end_local = now_local + timedelta(hours=36)
+            window_end_local = now_local + timedelta(hours=48)
             
             window_start_utc = window_start_local.astimezone(timezone.utc)
             window_end_utc = window_end_local.astimezone(timezone.utc)
@@ -1469,14 +1474,13 @@ class SportsFetcher:
             
             # A. NHL Native Special Case
             if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
-                # Pass window arguments + visible_start_utc
-                futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc))
+                # Pass window arguments + visibility constraints
+                futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc))
             
             # B. FOTMOB SOCCER (Batched by League ID)
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
-                        # Pass window arguments + visible_start_utc
-                       futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc))
+                       futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc))
 
             # C. All other ESPN leagues
             for league_key, config in self.leagues.items():
@@ -1488,7 +1492,7 @@ class SportsFetcher:
 
                 futures.append(self.executor.submit(
                     self.fetch_single_league, 
-                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc
+                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc
                 ))
             
             # Gather Results
@@ -1679,6 +1683,13 @@ def get_ticker_data():
     # Get games specifically for this delay
     games_for_ticker = fetcher.get_snapshot_for_delay(delay_seconds)
     
+    with data_lock:
+        conf = { 
+            "active_sports": state['active_sports'], 
+            "mode": state['mode'], 
+            "weather": state['weather_city']
+        }
+    
     # Filter is_shown AND remove postponed games for ticker only
     visible_games = []
     for g in games_for_ticker:
@@ -1686,21 +1697,18 @@ def get_ticker_data():
         if not g.get('is_shown', True):
             continue
             
+        # === FIX: FORCE LIVE MODE CHECK "JUST IN TIME" ===
+        if conf['mode'] == 'live':
+             if g.get('state') != 'in' and g.get('state') != 'half':
+                  continue
+        # =================================================
+            
         # Check for postponed/suspended keywords
         status_lower = str(g.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
             continue
             
         visible_games.append(g)
-    
-    with data_lock:
-        # CLEANER: No longer injecting the massive league_options list here.
-        # The app should fetch that from /leagues instead.
-        conf = { 
-            "active_sports": state['active_sports'], 
-            "mode": state['mode'], 
-            "weather": state['weather_city']
-        }
     
     return jsonify({ "status": "ok", "global_config": conf, "local_config": rec['settings'], "content": { "sports": visible_games } })
 
