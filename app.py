@@ -737,8 +737,9 @@ class SportsFetcher:
                     elif st in ['FINAL', 'OFF']:
                           disp = "FINAL"
                           pd = g.get('periodDescriptor', {})
-                          if pd.get('periodType', '') == 'SHOOTOUT': disp = "FINAL S/O"
-                          elif pd.get('periodType', '') == 'OT': disp = "FINAL OT"
+                          # FIX HERE TOO (Main list fallback)
+                          if pd.get('periodType', '') == 'SHOOTOUT' or pd.get('number', 0) >= 5: disp = "FINAL S/O"
+                          elif pd.get('periodType', '') == 'OT' or pd.get('number', 0) == 4: disp = "FINAL OT"
 
                     # CHECK LANDING PAGE for details (Live or Final)
                     if gid in landing_futures:
@@ -752,8 +753,9 @@ class SportsFetcher:
                                 
                                 # FIX: Update Final Status based on landing page detailed period descriptor
                                 if st in ['FINAL', 'OFF']:
-                                    if p_type == 'SHOOTOUT': disp = "FINAL S/O"
-                                    elif p_type == 'OT' or pd.get('number', 3) > 3: disp = "FINAL OT"
+                                    p_num_final = pd.get('number', 3)
+                                    if p_type == 'SHOOTOUT' or p_num_final >= 5: disp = "FINAL S/O"
+                                    elif p_type == 'OT' or p_num_final == 4: disp = "FINAL OT"
                                 
                                 # --- FIX START: Robust Shootout Detection ---
                                 p_num = pd.get('number', 1)
@@ -1450,9 +1452,9 @@ class SportsFetcher:
             # --- DATE LOGIC UPDATE (3:00 AM Switch with Strict Start/End) ---
             if now_local.hour < 3:
                 # "Yesterday's Games" mode (Late Night Viewing)
-                # Show from Yesterday 10:00 AM to Today 10:00 AM
+                # Show from Yesterday 10:00 AM to Today 3:00 AM
                 visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
-                visible_end_local = now_local.replace(hour=10, minute=0, second=0, microsecond=0)
+                visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
             else:
                 # "Today's Games" mode (Morning/Day Viewing)
                 # Show from Midnight Today to Tomorrow 3:00 AM
