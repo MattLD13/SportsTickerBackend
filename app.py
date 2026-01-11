@@ -1229,15 +1229,16 @@ class SportsFetcher:
             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
             today_str = now_local.strftime("%Y%m%d")
             
-            # Fetch TODAY and TOMORROW to capture games spilling past midnight
+            # --- NEW FIX: FETCH 3 DAYS (Yesterday, Today, Tomorrow) to catch games spanning midnight ---
+            yesterday_str = (now_local - timedelta(days=1)).strftime("%Y%m%d")
             tomorrow_str = (now_local + timedelta(days=1)).strftime("%Y%m%d")
             
             # Override dates unless custom_date is set in debug mode
             if conf['debug_mode'] and conf['custom_date']:
                 curr_p['dates'] = conf['custom_date'].replace('-', '')
             else:
-                # Ask ESPN for a Range: YYYYMMDD-YYYYMMDD
-                curr_p['dates'] = f"{today_str}-{tomorrow_str}"
+                # Ask ESPN for a 3-Day Range
+                curr_p['dates'] = f"{yesterday_str}-{tomorrow_str}"
             # ------------------------------------------------------------------
             
             r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
@@ -1260,7 +1261,7 @@ class SportsFetcher:
                 
                 try:
                     game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                    # Filter: if not live, must be within window (Now -> 3AM Tomorrow)
+                    # Filter: if not live, must be within window (Now-12h -> 3AM Tomorrow)
                     if gst != 'in' and gst != 'half':
                         if not (window_start_utc <= game_dt <= window_end_utc): continue
                 except: continue
@@ -1413,8 +1414,13 @@ class SportsFetcher:
             utc_offset = conf.get('utc_offset', -5)
             now_utc = dt.now(timezone.utc)
             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-            window_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-            window_end_local = window_start_local + timedelta(days=1, hours=3) # Today + 3 AM tomorrow
+            
+            # --- WIDENED WINDOW TO CATCH LATE NIGHT GAMES ---
+            # Look back 12 hours (e.g. catch games that started yesterday late night but are still live)
+            # Look forward 36 hours (Today + Tomorrow)
+            window_start_local = now_local - timedelta(hours=12)
+            window_end_local = now_local + timedelta(hours=36)
+            
             window_start_utc = window_start_local.astimezone(timezone.utc)
             window_end_utc = window_end_local.astimezone(timezone.utc)
             
@@ -1423,12 +1429,14 @@ class SportsFetcher:
             
             # A. NHL Native Special Case
             if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
+                # Pass window arguments
                 futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc))
             
             # B. FOTMOB SOCCER (Batched by League ID)
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
-                        futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc))
+                        # Pass window arguments
+                       futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc))
 
             # C. All other ESPN leagues
             for league_key, config in self.leagues.items():
