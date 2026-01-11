@@ -222,20 +222,14 @@ class TickerStreamer:
         
         try: self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 10)
         except: self.font = ImageFont.load_default()
-        
         try: self.medium_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 12)
         except: self.medium_font = ImageFont.load_default()
-        
         try: self.big_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
         except: self.big_font = ImageFont.load_default()
-        
         try: self.huge_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 20)
         except: self.huge_font = ImageFont.load_default()
-        
-        # Clock Font: 32px
         try: self.clock_giant = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
         except: self.clock_giant = ImageFont.load_default()
-
         try: self.tiny = ImageFont.truetype("DejaVuSans.ttf", 9) 
         except: self.tiny = ImageFont.load_default()
         try: self.micro = ImageFont.truetype("DejaVuSans.ttf", 7)
@@ -839,6 +833,12 @@ class TickerStreamer:
                 
                 content = data.get('content', {})
                 new_games = content.get('sports', [])
+
+                # --- FIX: STRICT SORTING ---
+                # Sort games deterministically to prevent order-shuffling jumps.
+                # 1. Sort by Sport (Group sports together)
+                # 2. Sort by ID (Keep specific game order stable within sport)
+                new_games.sort(key=lambda x: (x.get('sport', ''), x.get('id', '')))
                 
                 current_hash = str(new_games) + str(data.get('local_config'))
                 if current_hash != last_hash:
