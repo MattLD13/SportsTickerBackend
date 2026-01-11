@@ -103,9 +103,9 @@ LEAGUE_OPTIONS = [
     # --- STOCKS ---
     {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',     'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
     {'id': 'stock_momentum',   'label': 'Momentum Stocks',       'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
-    {'id': 'stock_energy',      'label': 'Energy Stocks',        'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
-    {'id': 'stock_finance',     'label': 'Financial Stocks',     'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
-    {'id': 'stock_consumer',    'label': 'Consumer Stocks',      'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
+    {'id': 'stock_energy',       'label': 'Energy Stocks',        'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
+    {'id': 'stock_finance',      'label': 'Financial Stocks',     'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
+    {'id': 'stock_consumer',     'label': 'Consumer Stocks',      'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
 ]
 
 # ================= DEFAULT STATE =================
@@ -645,7 +645,7 @@ class SportsFetcher:
         except: pass
         return None
 
-    def _fetch_nhl_native(self, conf, window_start_utc, window_end_utc, today_start_utc):
+    def _fetch_nhl_native(self, conf, window_start_utc, window_end_utc, visible_start_utc):
         # Returns list of games
         games_found = []
         is_nhl = conf['active_sports'].get('nhl', False)
@@ -689,13 +689,12 @@ class SportsFetcher:
                         g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
                         if not (window_start_utc <= g_dt <= window_end_utc): continue
                         
-                        # --- FIX: HIDE FINAL GAMES FROM YESTERDAY ---
+                        # --- FIX: HIDE FINAL GAMES BEFORE CUTOFF (3AM Logic) ---
                         st = g.get('gameState', 'OFF')
                         map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
                         
-                        # Logic: If game started before Today's 12:00 AM (local converted to UTC),
-                        # it MUST be live to show. If it's final or pre, skip.
-                        if g_dt < today_start_utc and map_st != 'in':
+                        # Logic: If game started before Visible Start Time, and is not live, skip.
+                        if g_dt < visible_start_utc and map_st != 'in':
                             continue
                         # --------------------------------------------
 
@@ -755,7 +754,7 @@ class SportsFetcher:
                                     if p_type == 'SHOOTOUT': disp = "FINAL S/O"
                                     elif p_type == 'OT' or pd.get('number', 3) > 3: disp = "FINAL OT"
                                 
-                               # --- FIX START: Robust Shootout Detection ---
+                                # --- FIX START: Robust Shootout Detection ---
                                 p_num = pd.get('number', 1)
 
                                 # Check for SHOOTOUT type OR Period 5+ (NHL OT is P4, S/O is P5)
@@ -780,15 +779,15 @@ class SportsFetcher:
                                             
                                             disp = f"{p_lbl} {time_rem}"
                                 # --- FIX END ---
-                                     
-                                    # Situation (Power Play / Empty Net)
-                                    sit_obj = d2.get('situation', {})
-                                    if sit_obj:
-                                        sit = sit_obj.get('situationCode', '1551')
-                                        ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
-                                        if as_ > hs: pp=True; poss=a_ab
-                                        elif hs > as_: pp=True; poss=h_ab
-                                        en = (ag==0 or hg==0)
+                                    
+                                # Situation (Power Play / Empty Net)
+                                sit_obj = d2.get('situation', {})
+                                if sit_obj:
+                                    sit = sit_obj.get('situationCode', '1551')
+                                    ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
+                                    if as_ > hs: pp=True; poss=a_ab
+                                    elif hs > as_: pp=True; poss=h_ab
+                                    en = (ag==0 or hg==0)
                         except: pass 
 
                     games_found.append({
@@ -1028,7 +1027,7 @@ class SportsFetcher:
 
         return None
 
-    def _extract_matches(self, sections, internal_id, conf, start_window, end_window, today_start_utc):
+    def _extract_matches(self, sections, internal_id, conf, start_window, end_window, visible_start_utc):
         matches = []
         for section in sections:
             candidate_matches = section.get("matches") if isinstance(section, dict) else None
@@ -1148,9 +1147,9 @@ class SportsFetcher:
                     gst = 'post'
                     disp = "Postponed"
 
-                # === HIDE FINAL GAMES FROM YESTERDAY ===
-                # If game started before Today's 12:00 AM local, and is not Live, skip it.
-                if match_dt < today_start_utc and gst != 'in':
+                # === HIDE FINAL GAMES BEFORE CUTOFF (3AM Logic) ===
+                # If game started before Visible Start Time, and is not Live, skip it.
+                if match_dt < visible_start_utc and gst != 'in':
                     continue
                 # =======================================
 
@@ -1202,7 +1201,7 @@ class SportsFetcher:
                 })
         return matches
 
-    def _fetch_fotmob_league(self, league_id, internal_id, conf, start_window, end_window, today_start_utc):
+    def _fetch_fotmob_league(self, league_id, internal_id, conf, start_window, end_window, visible_start_utc):
         # Implementation of "fetch_league_matches" from working script
         try:
             url = "https://www.fotmob.com/api/leagues"
@@ -1224,20 +1223,20 @@ class SportsFetcher:
                     
                     last_sections = sections
                     # Pass the UTC window here
-                    matches = self._extract_matches(sections, internal_id, conf, start_window, end_window, today_start_utc)
+                    matches = self._extract_matches(sections, internal_id, conf, start_window, end_window, visible_start_utc)
                     if matches: return matches
                 except: continue
             
             # Fallback if loop finishes empty
             if last_sections:
-                 return self._extract_matches(last_sections, internal_id, conf, start_window, end_window, today_start_utc)
+                 return self._extract_matches(last_sections, internal_id, conf, start_window, end_window, visible_start_utc)
             return []
         except Exception as e:
             print(f"FotMob League {league_id} error: {e}")
             return []
 
     # Helper function for threaded execution
-    def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, today_start_utc):
+    def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc):
         local_games = []
         if not conf['active_sports'].get(league_key, False): return []
 
@@ -1252,7 +1251,6 @@ class SportsFetcher:
             # --- DATE LOGIC UPDATE ---
             now_utc = dt.now(timezone.utc)
             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-            today_str = now_local.strftime("%Y%m%d")
             
             # --- NEW FIX: FETCH 3 DAYS (Yesterday, Today, Tomorrow) to catch games spanning midnight ---
             yesterday_str = (now_local - timedelta(days=1)).strftime("%Y%m%d")
@@ -1290,10 +1288,9 @@ class SportsFetcher:
                     if gst != 'in' and gst != 'half':
                         if not (window_start_utc <= game_dt <= window_end_utc): continue
                     
-                    # --- FIX: HIDE FINAL GAMES FROM YESTERDAY ---
-                    # If game started before Today's 12:00 AM (local converted to UTC),
-                    # and is NOT live, skip it.
-                    if game_dt < today_start_utc and gst not in ['in', 'half']:
+                    # --- FIX: HIDE FINAL GAMES BEFORE CUTOFF (3AM Logic) ---
+                    # Logic: If game started before Visible Start Time, and is NOT live, skip it.
+                    if game_dt < visible_start_utc and gst not in ['in', 'half']:
                         continue
                     # --------------------------------------------
 
@@ -1378,10 +1375,6 @@ class SportsFetcher:
                 # Generic ESPN Shootout Logic (Fallback)
                 is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or "S/O" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
                 
-                # Note: Soccer fetcher (fetch_shootout_details_soccer) was removed in favor of FotMob, 
-                # but if we ever fallback to ESPN for soccer, we'd need to re-add it. 
-                # Since this function is only used for non-Soccer/non-NHL sports now (or NHL fallback), we leave it blank.
-                
                 poss_raw = sit.get('possession')
                 if poss_raw: self.possession_cache[e['id']] = poss_raw
                 elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
@@ -1448,32 +1441,42 @@ class SportsFetcher:
             now_utc = dt.now(timezone.utc)
             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
             
-            # --- WIDENED WINDOW TO CATCH LATE NIGHT GAMES ---
-            # Look back 12 hours (e.g. catch games that started yesterday late night but are still live)
-            # Look forward 36 hours (Today + Tomorrow)
-            window_start_local = now_local - timedelta(hours=12)
+            # --- DATE LOGIC UPDATE (3:00 AM Switch) ---
+            # If current time is < 3:00 AM, we show yesterday's games starting from 11:00 AM yesterday.
+            # If current time is >= 3:00 AM, we show today's games starting from Midnight.
+            
+            if now_local.hour < 3:
+                # "Yesterday's Games" mode (Late Night Viewing)
+                # Show from Yesterday 11:00 AM
+                visible_start_local = (now_local - timedelta(days=1)).replace(hour=11, minute=0, second=0, microsecond=0)
+            else:
+                # "Today's Games" mode (Morning/Day Viewing)
+                # Show from Midnight Today
+                visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            visible_start_utc = visible_start_local.astimezone(timezone.utc)
+            
+            # Windows for Fetching (Broad window, filtered later by visible_start_utc)
+            # Look back 30 hours to safely catch yesterday
+            window_start_local = now_local - timedelta(hours=30)
             window_end_local = now_local + timedelta(hours=36)
             
             window_start_utc = window_start_local.astimezone(timezone.utc)
             window_end_utc = window_end_local.astimezone(timezone.utc)
-            
-            # --- CALCULATE "START OF TODAY" IN UTC (For filtering Final games from yesterday) ---
-            today_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-            today_start_utc = today_start_local.astimezone(timezone.utc)
             
             # Submit tasks
             futures = []
             
             # A. NHL Native Special Case
             if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
-                # Pass window arguments + today_start_utc
-                futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, today_start_utc))
+                # Pass window arguments + visible_start_utc
+                futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc))
             
             # B. FOTMOB SOCCER (Batched by League ID)
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
-                        # Pass window arguments + today_start_utc
-                       futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, today_start_utc))
+                        # Pass window arguments + visible_start_utc
+                       futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc))
 
             # C. All other ESPN leagues
             for league_key, config in self.leagues.items():
@@ -1485,7 +1488,7 @@ class SportsFetcher:
 
                 futures.append(self.executor.submit(
                     self.fetch_single_league, 
-                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset, today_start_utc
+                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc
                 ))
             
             # Gather Results
