@@ -81,21 +81,20 @@ LEAGUE_OPTIONS = [
 
     # --- SOCCER (Colors fetched via ESPN, scores via FotMob) ---
     {'id': 'soccer_epl',    'label': 'Premier League',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_fa_cup','label': 'FA Cup',               'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
+    {'id': 'soccer_fa_cup','label': 'FA Cup',                'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
     {'id': 'soccer_champ', 'label': 'Championship',         'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_l1',     'label': 'League One',           'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_l2',     'label': 'League Two',           'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_wc',     'label': 'FIFA World Cup',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    # UPDATED: Increased limit to 200 to ensure Braga and other teams are fetched from ESPN metadata
     {'id': 'soccer_europa_league',    'label': 'Europa League',    'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 200}, 'type': 'scoreboard'}},
 
     # --- OTHERS ---
     {'id': 'hockey_olympics', 'label': 'Olympic Hockey',   'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/mens-olympic-hockey', 'type': 'scoreboard'}},
 
     # --- RACING ---
-    {'id': 'f1',            'label': 'Formula 1',            'type': 'sport', 'default': True,  'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
-    {'id': 'nascar',        'label': 'NASCAR',               'type': 'sport', 'default': True,  'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
+    {'id': 'f1',             'label': 'Formula 1',             'type': 'sport', 'default': True,  'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
+    {'id': 'nascar',         'label': 'NASCAR',                'type': 'sport', 'default': True,  'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
 
     # --- UTILITIES ---
     {'id': 'weather',       'label': 'Weather',              'type': 'util',  'default': True},
@@ -103,10 +102,10 @@ LEAGUE_OPTIONS = [
 
     # --- STOCKS ---
     {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',     'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
-    {'id': 'stock_momentum',   'label': 'Momentum Stocks',      'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
-    {'id': 'stock_energy',     'label': 'Energy Stocks',        'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
-    {'id': 'stock_finance',    'label': 'Financial Stocks',     'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
-    {'id': 'stock_consumer',   'label': 'Consumer Stocks',      'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
+    {'id': 'stock_momentum',   'label': 'Momentum Stocks',       'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
+    {'id': 'stock_energy',      'label': 'Energy Stocks',        'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
+    {'id': 'stock_finance',     'label': 'Financial Stocks',     'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
+    {'id': 'stock_consumer',    'label': 'Consumer Stocks',      'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
 ]
 
 # ================= DEFAULT STATE =================
@@ -497,7 +496,7 @@ class SportsFetcher:
             abbr_check = search_abbr.lower()
             for k, v in SOCCER_COLOR_FALLBACK.items():
                 if k in name_check or k == abbr_check:
-                      return {'color': v, 'alt_color': '444444'}
+                       return {'color': v, 'alt_color': '444444'}
 
         try:
             with data_lock:
@@ -643,16 +642,11 @@ class SportsFetcher:
         except: pass
         return None
 
-    def _fetch_nhl_native(self, conf):
+    def _fetch_nhl_native(self, conf, window_start_utc, window_end_utc):
         # Returns list of games
         games_found = []
         is_nhl = conf['active_sports'].get('nhl', False)
-        utc_offset = conf.get('utc_offset', -5)
         if not is_nhl: return []
-        
-        now_utc = dt.now(timezone.utc)
-        now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-        local_today_str = now_local.strftime("%Y-%m-%d")
         
         processed_ids = set()
         try:
@@ -667,8 +661,8 @@ class SportsFetcher:
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
                         g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
-                        g_local = g_dt.astimezone(timezone(timedelta(hours=utc_offset)))
-                        if g_local.strftime("%Y-%m-%d") != local_today_str: continue
+                        # --- FIX: Check Window instead of Date String ---
+                        if not (window_start_utc <= g_dt <= window_end_utc): continue
                     except: continue
 
                     gid = g['id']
@@ -690,8 +684,7 @@ class SportsFetcher:
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
                         g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
-                        g_local = g_dt.astimezone(timezone(timedelta(hours=utc_offset)))
-                        if g_local.strftime("%Y-%m-%d") != local_today_str: continue
+                        if not (window_start_utc <= g_dt <= window_end_utc): continue
                     except: continue
 
                     gid = g['id']
@@ -724,6 +717,8 @@ class SportsFetcher:
 
                     disp = "Scheduled"; pp = False; poss = ""; en = False; shootout_data = None 
                     dur = self.calculate_game_timing('nhl', g_utc, 1, st)
+                    
+                    g_local = g_dt.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
 
                     if st in ['PRE', 'FUT']:
                           try: disp = g_local.strftime("%I:%M %p").lstrip('0')
@@ -766,7 +761,7 @@ class SportsFetcher:
                                         else:
                                             p_lbl = "OT" if p_num > 3 else f"P{p_num}"
                                             disp = f"{p_lbl} {time_rem}"
-                                    
+                                     
                                     # Situation (Power Play / Empty Net)
                                     sit_obj = d2.get('situation', {})
                                     if sit_obj:
@@ -1014,13 +1009,11 @@ class SportsFetcher:
 
         return None
 
-    def _extract_matches(self, sections, date_utc, internal_id, conf):
+    def _extract_matches(self, sections, internal_id, conf, start_window, end_window):
         matches = []
         for section in sections:
             candidate_matches = section.get("matches") if isinstance(section, dict) else None
             if candidate_matches is None: candidate_matches = [section]
-            
-            section_date = section.get("date") if isinstance(section, dict) else None
             
             for match in candidate_matches:
                 if not isinstance(match, dict): continue
@@ -1028,13 +1021,14 @@ class SportsFetcher:
                 status = match.get("status") or {}
                 kickoff = status.get("utcTime") or match.get("time")
                 if not kickoff: continue
-                kickoff_date = kickoff.split("T", 1)[0]
                 
-                # Date filtering
-                if section_date and section_date != date_utc: continue
-                if not section_date and kickoff_date and kickoff_date != date_utc: continue
+                # --- TIME WINDOW CHECK (Replaces string date check) ---
+                try:
+                    match_dt = dt.fromisoformat(kickoff.replace('Z', '+00:00'))
+                    if not (start_window <= match_dt <= end_window): continue
+                except: continue
+                # ------------------------------------------------------
 
-                # Basic parsing
                 mid = match.get("id")
                 h_name = match.get("home", {}).get("name") or "Home"
                 a_name = match.get("away", {}).get("name") or "Away"
@@ -1183,7 +1177,7 @@ class SportsFetcher:
                 })
         return matches
 
-    def _fetch_fotmob_league(self, league_id, internal_id, conf, date_utc):
+    def _fetch_fotmob_league(self, league_id, internal_id, conf, start_window, end_window):
         # Implementation of "fetch_league_matches" from working script
         try:
             url = "https://www.fotmob.com/api/leagues"
@@ -1204,13 +1198,14 @@ class SportsFetcher:
                         sections = payload.get("fixtures", {}).get("allMatches", [])
                     
                     last_sections = sections
-                    matches = self._extract_matches(sections, date_utc, internal_id, conf)
+                    # Pass the UTC window here
+                    matches = self._extract_matches(sections, internal_id, conf, start_window, end_window)
                     if matches: return matches
                 except: continue
             
             # Fallback if loop finishes empty
             if last_sections:
-                 return self._extract_matches(last_sections, date_utc, internal_id, conf)
+                 return self._extract_matches(last_sections, internal_id, conf, start_window, end_window)
             return []
         except Exception as e:
             print(f"FotMob League {league_id} error: {e}")
@@ -1229,17 +1224,20 @@ class SportsFetcher:
         try:
             curr_p = config.get('scoreboard_params', {}).copy()
             
-            # --- FORCE DATE TO TODAY (Fixes FA Cup showing yesterday's games) ---
-            # Calculate "today" in the user's local timezone
+            # --- DATE LOGIC UPDATE ---
             now_utc = dt.now(timezone.utc)
             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
             today_str = now_local.strftime("%Y%m%d")
+            
+            # Fetch TODAY and TOMORROW to capture games spilling past midnight
+            tomorrow_str = (now_local + timedelta(days=1)).strftime("%Y%m%d")
             
             # Override dates unless custom_date is set in debug mode
             if conf['debug_mode'] and conf['custom_date']:
                 curr_p['dates'] = conf['custom_date'].replace('-', '')
             else:
-                curr_p['dates'] = today_str
+                # Ask ESPN for a Range: YYYYMMDD-YYYYMMDD
+                curr_p['dates'] = f"{today_str}-{tomorrow_str}"
             # ------------------------------------------------------------------
             
             r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
@@ -1262,7 +1260,7 @@ class SportsFetcher:
                 
                 try:
                     game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                    # Filter: if not live, must be within window
+                    # Filter: if not live, must be within window (Now -> 3AM Tomorrow)
                     if gst != 'in' and gst != 'half':
                         if not (window_start_utc <= game_dt <= window_end_utc): continue
                 except: continue
@@ -1420,20 +1418,17 @@ class SportsFetcher:
             window_start_utc = window_start_local.astimezone(timezone.utc)
             window_end_utc = window_end_local.astimezone(timezone.utc)
             
-            # Format Date for FotMob (YYYY-MM-DD)
-            fotmob_date_str = now_local.strftime("%Y-%m-%d")
-
             # Submit tasks
             futures = []
             
             # A. NHL Native Special Case
             if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
-                futures.append(self.executor.submit(self._fetch_nhl_native, conf))
+                futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc))
             
             # B. FOTMOB SOCCER (Batched by League ID)
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
-                       futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, fotmob_date_str))
+                        futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc))
 
             # C. All other ESPN leagues
             for league_key, config in self.leagues.items():
