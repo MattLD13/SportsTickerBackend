@@ -525,6 +525,17 @@ class TickerStreamer:
 
         return img
 
+    def draw_boot_clock(self):
+        """Simple standby clock (Not the modern clock app)"""
+        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
+        d = ImageDraw.Draw(img)
+        # Simple HH:MM:SS
+        now = datetime.now().strftime("%I:%M:%S")
+        # Draw using standard font, centered
+        w = d.textlength(now, font=self.huge_font)
+        d.text(((PANEL_W - w)/2, 4), now, font=self.huge_font, fill=(100, 100, 100))
+        return img
+
     def draw_clock_modern(self):
         """Centered HUGE time with full date and bottom progress bar"""
         img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
@@ -741,65 +752,58 @@ class TickerStreamer:
                 
                 # --- SEAMLESS UPDATE LOGIC ---
                 if self.bg_strip_ready:
-                    # Case 1: Startup (no active strip) - Just take it
-                    if self.active_strip is None:
-                        self.active_strip = self.bg_strip
-                        self.games = self.new_games_list # Update reference
-                        self.bg_strip_ready = False
-                        strip_offset = 0
-                    
-                    else:
-                        # Case 2: Mid-scroll update
-                        # Goal: Find the item currently at x=0 (left edge)
-                        # and map it to the new list to find the new offset.
-                        
-                        current_x = int(strip_offset)
-                        accum_w = 0
-                        visible_item_id = None
-                        pixel_delta = 0
-                        
-                        # 2a. Find visible item in CURRENT list
-                        for g in self.games: # Uses old list
-                            w = self.get_item_width(g)
-                            if accum_w + w > current_x:
-                                # Found the item spanning the left edge
-                                visible_item_id = g.get('id')
-                                pixel_delta = current_x - accum_w
-                                break
-                            accum_w += w
-                        
-                        # 2b. Find that item in NEW list
-                        new_offset = -1
-                        new_accum_w = 0
-                        if visible_item_id:
-                            for g in self.new_games_list:
-                                w = self.get_item_width(g)
-                                if g.get('id') == visible_item_id:
-                                    new_offset = new_accum_w + pixel_delta
-                                    break
-                                new_accum_w += w
-                        
-                        # 2c. Execute Swap
-                        if new_offset >= 0:
-                            # Match found! Seamless transition.
+                    # SCENARIO A: We have actual data
+                    if self.bg_strip is not None:
+                        # Case 1: Startup (Transition from Idle Clock -> Data)
+                        if self.active_strip is None:
                             self.active_strip = self.bg_strip
-                            self.games = self.new_games_list
-                            strip_offset = float(new_offset)
-                            self.bg_strip_ready = False
+                            self.games = self.new_games_list 
+                            strip_offset = 0
                         else:
-                            # Item removed or not found.
-                            # Fallback: Wait for reset (standard logic)
-                            if int(strip_offset) == 0:
+                            # Case 2: Mid-scroll update
+                            current_x = int(strip_offset)
+                            accum_w = 0
+                            visible_item_id = None
+                            pixel_delta = 0
+                            
+                            for g in self.games: # Uses old list
+                                w = self.get_item_width(g)
+                                if accum_w + w > current_x:
+                                    visible_item_id = g.get('id')
+                                    pixel_delta = current_x - accum_w
+                                    break
+                                accum_w += w
+                            
+                            new_offset = -1
+                            new_accum_w = 0
+                            if visible_item_id:
+                                for g in self.new_games_list:
+                                    w = self.get_item_width(g)
+                                    if g.get('id') == visible_item_id:
+                                        new_offset = new_accum_w + pixel_delta
+                                        break
+                                    new_accum_w += w
+                            
+                            if new_offset >= 0:
                                 self.active_strip = self.bg_strip
                                 self.games = self.new_games_list
-                                self.bg_strip_ready = False
-                                strip_offset = 0
+                                strip_offset = float(new_offset)
+                            else:
+                                if int(strip_offset) == 0:
+                                    self.active_strip = self.bg_strip
+                                    self.games = self.new_games_list
+                                    strip_offset = 0
+
+                    # SCENARIO B: We have NO data (Playlist empty)
+                    else:
+                        self.active_strip = None # This triggers the fallback below
+                    
+                    self.bg_strip_ready = False # Consumed the update
 
                 if self.active_strip:
                     total_w = self.active_strip.width - PANEL_W
                     if total_w <= 0: total_w = 1
                     
-                    # Wrap around logic for offset
                     if strip_offset >= total_w:
                         strip_offset = 0
                         
@@ -810,7 +814,11 @@ class TickerStreamer:
                     strip_offset += 1
                     time.sleep(self.scroll_sleep)
                 else:
-                    time.sleep(0.1)
+                    # === FALLBACK MODE: SHOW BOOT CLOCK ===
+                    # This runs when active_strip is None
+                    boot_clock_img = self.draw_boot_clock()
+                    self.update_display(boot_clock_img)
+                    time.sleep(0.5) 
                     
             except Exception as e:
                 print(f"Render Loop Crash Prevented: {e}")
@@ -834,10 +842,7 @@ class TickerStreamer:
                 content = data.get('content', {})
                 new_games = content.get('sports', [])
 
-                # --- FIX: STRICT SORTING ---
-                # Sort games deterministically to prevent order-shuffling jumps.
-                # 1. Sort by Sport (Group sports together)
-                # 2. Sort by ID (Keep specific game order stable within sport)
+                # Strict Sort
                 new_games.sort(key=lambda x: (x.get('sport', ''), x.get('id', '')))
                 
                 current_hash = str(new_games) + str(data.get('local_config'))
@@ -859,9 +864,14 @@ class TickerStreamer:
                     self.scroll_sleep = data.get('local_config', {}).get('scroll_speed', 0.05)
                     self.inverted = data.get('local_config', {}).get('inverted', False)
                     
-                    # Prepare new data for the render thread
-                    self.new_games_list = new_games # Store for mapping logic
-                    self.bg_strip = self.build_seamless_strip(new_games)
+                    self.new_games_list = new_games 
+                    
+                    # Logic: If no games, set strip to None. If games, build strip.
+                    if not new_games:
+                        self.bg_strip = None
+                    else:
+                        self.bg_strip = self.build_seamless_strip(new_games)
+                        
                     self.bg_strip_ready = True
                     
                     last_hash = current_hash
