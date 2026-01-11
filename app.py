@@ -549,6 +549,7 @@ class SportsFetcher:
                     for league in sport['leagues']:
                         for item in league.get('teams', []):
                             abbr = item['team'].get('abbreviation', 'unk')
+                            team_id = str(item['team'].get('id', ''))
                             clr = item['team'].get('color', '000000')
                             alt = item['team'].get('alternateColor', '444444')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
@@ -558,9 +559,11 @@ class SportsFetcher:
                             name = item['team'].get('displayName', '')
                             short_name = item['team'].get('shortDisplayName', '')
 
-                            if not any(x['abbr'] == abbr for x in catalog[league_key]):
+                            # FIX: Use team ID to prevent duplicates, not abbreviation
+                            if not any(x.get('id') == team_id for x in catalog[league_key]):
                                 catalog[league_key].append({
                                     'abbr': abbr, 
+                                    'id': team_id,
                                     'logo': logo, 
                                     'color': clr, 
                                     'alt_color': alt,
