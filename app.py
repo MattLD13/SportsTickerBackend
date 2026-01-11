@@ -514,6 +514,9 @@ class SportsFetcher:
         
         # === HISTORY BUFFER FOR PER-TICKER DELAY ===
         self.history_buffer = [] # List of tuples: (timestamp, data_snapshot)
+
+        # Track consecutive failures to allow clearing normally if games truly end
+        self.consecutive_empty_fetches = 0
         
         # Dynamically build leagues dict from LEAGUE_OPTIONS
         self.leagues = { 
@@ -1549,15 +1552,35 @@ class SportsFetcher:
                     if res: all_games.extend(res)
                 except Exception as e: print(f"League fetch error: {e}")
 
+        # === SAFETY FIX: Prevent "Crash into Stocks" ===
+        # Count actual sports games found (excluding weather/clock)
+        sports_count = len([g for g in all_games if g.get('type') == 'scoreboard'])
+        
+        # Check if we have previous data in state
+        with data_lock:
+            prev_buffer = state.get('buffer_sports', [])
+            prev_sports_count = len([g for g in prev_buffer if g.get('type') == 'scoreboard'])
+
+        # If we found 0 sports, but we had them recently, assume API glitch/Timeout
+        # We only clear the screen if we fail 3 times in a row (15 seconds)
+        if sports_count == 0 and prev_sports_count > 0:
+            self.consecutive_empty_fetches += 1
+            if self.consecutive_empty_fetches < 3:
+                print(f"Warning: Fetch returned 0 games. Using cached data (Attempt {self.consecutive_empty_fetches}/3)")
+                # KEEP PREVIOUS DATA, BUT UPDATE CLOCK/WEATHER
+                # (We filter out old weather/clock from prev buffer and add new ones)
+                prev_pure_sports = [g for g in prev_buffer if g.get('type') == 'scoreboard']
+                utils = [g for g in all_games if g.get('type') != 'scoreboard']
+                all_games = prev_pure_sports + utils
+            else:
+                # 3 failures in a row -> Assume games actually finished/empty
+                self.consecutive_empty_fetches = 0
+        else:
+            self.consecutive_empty_fetches = 0
+        # ===============================================
+
         # === FIX FOR JUMPING: SORT SPORTS GAMES ===
         # Use ID as tie-breaker so concurrent fetching doesn't random order for same start times
-        # LOGIC: 
-        # 0. Clock
-        # 1. Weather
-        # 2. Active Games (Live/Scheduled)
-        # 3. Final Games
-        # 4. Postponed/Suspended Games
-        
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
@@ -1691,6 +1714,13 @@ def api_config():
                 fetcher.weather.update_config(city=new_city, lat=new_lat, lon=new_lon)
 
             state.update(new_data)
+            
+            # === FIX: FORCE RE-MERGE IMMEDIATELY ===
+            # This ensures the UI gets the new mode (Live/All) instantly
+            # without waiting for the next 5-second fetch cycle.
+            fetcher.merge_buffers()
+            # =======================================
+
         save_config_file()
         return jsonify({"status": "ok"})
     except: return jsonify({"error": "Failed"}), 500
