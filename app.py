@@ -768,7 +768,7 @@ class SportsFetcher:
                                             if p_num == 1: disp = "End 1st"
                                             elif p_num == 2: disp = "End 2nd"
                                             elif p_num == 3: disp = "End 3rd"
-                                            else: disp = "Intermission"
+                                            else: disp = "End OT"
                                         else:
                                             p_lbl = "OT" if p_num > 3 else f"P{p_num}"
                                             disp = f"{p_lbl} {time_rem}"
