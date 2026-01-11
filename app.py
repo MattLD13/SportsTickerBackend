@@ -755,23 +755,31 @@ class SportsFetcher:
                                     if p_type == 'SHOOTOUT': disp = "FINAL S/O"
                                     elif p_type == 'OT' or pd.get('number', 3) > 3: disp = "FINAL OT"
                                 
-                                # Process Shootout Data if exists (Even if Final)
-                                if p_type == 'SHOOTOUT':
+                               # --- FIX START: Robust Shootout Detection ---
+                                p_num = pd.get('number', 1)
+
+                                # Check for SHOOTOUT type OR Period 5+ (NHL OT is P4, S/O is P5)
+                                if p_type == 'SHOOTOUT' or p_num >= 5:
                                     if map_st == 'in': disp = "S/O"
                                     # Fetch play-by-play for dots
                                     shootout_data = self.fetch_shootout_details(gid, 0, 0)
                                 else:
                                     # Regular Game Clock
                                     if map_st == 'in':
-                                        p_num = pd.get('number', 1)
                                         if clk.get('inIntermission', False) or time_rem == "00:00":
                                             if p_num == 1: disp = "End 1st"
                                             elif p_num == 2: disp = "End 2nd"
                                             elif p_num == 3: disp = "End 3rd"
                                             else: disp = "End OT"
                                         else:
-                                            p_lbl = "OT" if p_num > 3 else f"P{p_num}"
+                                            # FIX: Ensure OT label is strictly for Period 4
+                                            if p_num == 4:
+                                                p_lbl = "OT"
+                                            else:
+                                                p_lbl = f"P{p_num}"
+                                            
                                             disp = f"{p_lbl} {time_rem}"
+                                # --- FIX END ---
                                      
                                     # Situation (Power Play / Empty Net)
                                     sit_obj = d2.get('situation', {})
