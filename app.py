@@ -61,6 +61,7 @@ STOCK_CACHE_FILE = "stock_cache.json"
 # === 5 SECOND UPDATES ===
 SPORTS_UPDATE_INTERVAL = 5      
 STOCKS_UPDATE_INTERVAL = 10      
+STOCK_STALE_SECONDS = 120  
 
 data_lock = threading.Lock()
 
@@ -439,46 +440,97 @@ class StockFetcher:
         self.update_interval = STOCKS_UPDATE_INTERVAL  # Seconds
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
         self.yf_session = build_pooled_session(pool_size=10)
+        self.max_age = STOCK_STALE_SECONDS
         # Dynamically load stock lists from LEAGUE_OPTIONS
         self.lists = { item['id']: item['stock_list'] for item in LEAGUE_OPTIONS if item['type'] == 'stock' and 'stock_list' in item }
         self.ETF_DOMAINS = {"QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"}
         self.load_cache()
 
-    def _fetch_batch_quotes(self, symbols):
-        """Hit Yahoo's quote endpoint directly to avoid stale yfinance caching."""
+    def _normalize_quote(self, item):
+        """Normalize Yahoo quote payload and flag stale timestamps."""
         try:
-            if not symbols:
+            sym = item.get("symbol")
+            if not sym:
                 return None
 
-            url = "https://query1.finance.yahoo.com/v7/finance/quote"
-            resp = self.yf_session.get(url, params={"symbols": ",".join(symbols)}, timeout=5)
-            resp.raise_for_status()
+            # Prefer the freshest price (post-market beats regular when newer)
+            rm_price = item.get("regularMarketPrice")
+            rm_time = item.get("regularMarketTime")
+            pm_price = item.get("postMarketPrice")
+            pm_time = item.get("postMarketTime")
 
-            results = resp.json().get("quoteResponse", {}).get("result", [])
-            quotes = {}
-            for item in results:
-                sym = item.get("symbol")
-                price = item.get("regularMarketPrice") or item.get("postMarketPrice")
-                prev_close = item.get("regularMarketPreviousClose") or item.get("postMarketPrice")
+            price = rm_price
+            ts = rm_time
+            if pm_price is not None and pm_time and (not rm_time or pm_time > rm_time):
+                price = pm_price
+                ts = pm_time
 
-                if sym and price is not None and prev_close is not None:
-                    change_raw = price - prev_close
-                    change_pct = (change_raw / prev_close) * 100 if prev_close else 0.0
-                    quotes[sym] = {
-                        'price': f"{price:.2f}",
-                        'change_amt': f"{'+' if change_raw >= 0 else ''}{change_raw:.2f}",
-                        'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%"
-                    }
-            return quotes if quotes else None
+            prev_close = item.get("regularMarketPreviousClose")
+            if prev_close is None:
+                prev_close = rm_price
+
+            if price is None or prev_close is None:
+                return None
+
+            change_raw = price - prev_close
+            change_pct = (change_raw / prev_close) * 100 if prev_close else 0.0
+
+            ts = int(ts or time.time())
+            stale = (int(time.time()) - ts) > self.max_age
+
+            return {
+                'symbol': sym,
+                'price': f"{price:.2f}",
+                'change_amt': f"{'+' if change_raw >= 0 else ''}{change_raw:.2f}",
+                'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%",
+                'ts': ts,
+                'stale': stale
+            }
         except Exception as e:
-            print(f"Batch quote fetch failed: {e}")
+            print(f"Quote normalize failed: {e}")
             return None
+
+    def _fetch_batch_quotes(self, symbols, retries=3, backoff_base=1.0):
+        """Hit Yahoo's quote endpoint; retry/back off on 429/5xx."""
+        if not symbols:
+            return None
+
+        url = "https://query1.finance.yahoo.com/v7/finance/quote"
+        for attempt in range(retries):
+            try:
+                resp = self.yf_session.get(url, params={"symbols": ",".join(symbols)}, timeout=5)
+                resp.raise_for_status()
+
+                results = resp.json().get("quoteResponse", {}).get("result", [])
+                quotes = {}
+                for item in results:
+                    normalized = self._normalize_quote(item)
+                    if normalized:
+                        quotes[normalized['symbol']] = normalized
+                return quotes if quotes else None
+            except requests.HTTPError as e:
+                status = getattr(e.response, "status_code", None)
+                if status in (429, 500, 502, 503, 504) and attempt < retries - 1:
+                    sleep_for = backoff_base * (2 ** attempt)
+                    time.sleep(sleep_for)
+                    continue
+                print(f"Batch quote fetch failed: {e}")
+                return None
+            except Exception as e:
+                print(f"Batch quote fetch failed: {e}")
+                return None
 
     def load_cache(self):
         if os.path.exists(STOCK_CACHE_FILE):
             try:
                 with open(STOCK_CACHE_FILE, 'r') as f:
-                    self.market_cache = json.load(f)
+                    loaded = json.load(f)
+                now_ts = time.time()
+                # Drop very old cached quotes to avoid booting with stale data
+                for sym, data in loaded.items():
+                    ts = data.get('ts')
+                    if ts and (now_ts - ts) < (self.max_age * 5):
+                        self.market_cache[sym] = data
             except: pass
 
     def save_cache(self):
@@ -509,10 +561,62 @@ class StockFetcher:
                 'symbol': symbol,
                 'price': f"{price:.2f}",
                 'change_amt': f"{'+' if change_raw >= 0 else ''}{change_raw:.2f}",
-                'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%"
+                'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%",
+                'ts': int(time.time()),
+                'stale': False
             }
         except Exception as e:
             return None
+
+    def _fetch_chart_price(self, symbol):
+        """Fallback to Yahoo chart API to force a fresh last trade."""
+        try:
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+            params = {"range": "1d", "interval": "1m", "includePrePost": "true"}
+            resp = self.yf_session.get(url, params=params, timeout=5)
+            resp.raise_for_status()
+
+            payload = resp.json().get("chart", {}).get("result", [])
+            if not payload:
+                return None
+
+            meta = payload[0].get("meta", {})
+            timestamps = payload[0].get("timestamp", []) or []
+            closes = payload[0].get("indicators", {}).get("quote", [{}])[0].get("close", []) or []
+            latest = None
+            for ts, close in reversed(list(zip(timestamps, closes))):
+                if close is not None:
+                    latest = (ts, close)
+                    break
+
+            if not latest:
+                return None
+
+            ts_val, price = latest
+            prev_close = meta.get("previousClose")
+            change_raw = price - prev_close if prev_close else 0.0
+            change_pct = (change_raw / prev_close) * 100 if prev_close else 0.0
+
+            return {
+                'symbol': symbol,
+                'price': f"{price:.2f}",
+                'change_amt': f"{'+' if change_raw >= 0 else ''}{change_raw:.2f}",
+                'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%",
+                'ts': int(ts_val),
+                'stale': False
+            }
+        except Exception as e:
+            print(f"Chart fetch failed for {symbol}: {e}")
+            return None
+
+    def _store_quote(self, symbol, data):
+        ts_val = data.get('ts') or int(time.time())
+        self.market_cache[symbol] = {
+            'price': data['price'],
+            'change_amt': data['change_amt'],
+            'change_pct': data['change_pct'],
+            'ts': ts_val
+        }
 
     def update_market_data(self, active_lists):
         if time.time() - self.last_fetch < self.update_interval: return
@@ -526,23 +630,47 @@ class StockFetcher:
         if not target_symbols: return
         symbols_list = list(target_symbols)
 
-        # 2. Try batch quote endpoint first (fresh data, single call)
+        # 2. Try batch quote endpoint in chunks to avoid 429
         updated_count = 0
-        batch_quotes = self._fetch_batch_quotes(symbols_list)
-        if batch_quotes:
-            for sym, data in batch_quotes.items():
-                self.market_cache[sym] = data
-                updated_count += 1
+        batch_size = 8
+        for i in range(0, len(symbols_list), batch_size):
+            chunk = symbols_list[i:i+batch_size]
+            batch_quotes = self._fetch_batch_quotes(chunk)
+
+            if batch_quotes:
+                for sym in chunk:
+                    data = batch_quotes.get(sym)
+                    if not data:
+                        data = self._fetch_chart_price(sym) or self._fetch_single_stock(sym)
+                        if not data:
+                            continue
+
+                    if data.get('stale'):
+                        newer = self._fetch_chart_price(sym)
+                        if newer:
+                            data = newer
+
+                    self._store_quote(sym, data)
+                    updated_count += 1
+            else:
+                # No batch data; fall back per symbol within this chunk
+                for sym in chunk:
+                    data = self._fetch_chart_price(sym) or self._fetch_single_stock(sym)
+                    if not data:
+                        continue
+                    self._store_quote(sym, data)
+                    updated_count += 1
         else:
             # Fallback to yfinance per-symbol fetch if batch fails
             results = list(self.executor.map(self._fetch_single_stock, symbols_list))
             for res in results:
                 if res:
-                    self.market_cache[res['symbol']] = {
-                        'price': res['price'],
-                        'change_amt': res['change_amt'],
-                        'change_pct': res['change_pct']
-                    }
+                    # If even fast_info is stale, try chart as a last resort
+                    if res.get('stale'):
+                        chart_res = self._fetch_chart_price(res['symbol'])
+                        if chart_res:
+                            res = chart_res
+                    self._store_quote(res['symbol'], res)
                     updated_count += 1
         
         if updated_count > 0:
