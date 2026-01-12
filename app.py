@@ -436,13 +436,43 @@ class StockFetcher:
     def __init__(self):
         self.market_cache = {}
         self.last_fetch = 0
-        self.update_interval = 10  # Seconds
+        self.update_interval = STOCKS_UPDATE_INTERVAL  # Seconds
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
         self.yf_session = build_pooled_session(pool_size=10)
         # Dynamically load stock lists from LEAGUE_OPTIONS
         self.lists = { item['id']: item['stock_list'] for item in LEAGUE_OPTIONS if item['type'] == 'stock' and 'stock_list' in item }
         self.ETF_DOMAINS = {"QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"}
         self.load_cache()
+
+    def _fetch_batch_quotes(self, symbols):
+        """Hit Yahoo's quote endpoint directly to avoid stale yfinance caching."""
+        try:
+            if not symbols:
+                return None
+
+            url = "https://query1.finance.yahoo.com/v7/finance/quote"
+            resp = self.yf_session.get(url, params={"symbols": ",".join(symbols)}, timeout=5)
+            resp.raise_for_status()
+
+            results = resp.json().get("quoteResponse", {}).get("result", [])
+            quotes = {}
+            for item in results:
+                sym = item.get("symbol")
+                price = item.get("regularMarketPrice") or item.get("postMarketPrice")
+                prev_close = item.get("regularMarketPreviousClose") or item.get("postMarketPrice")
+
+                if sym and price is not None and prev_close is not None:
+                    change_raw = price - prev_close
+                    change_pct = (change_raw / prev_close) * 100 if prev_close else 0.0
+                    quotes[sym] = {
+                        'price': f"{price:.2f}",
+                        'change_amt': f"{'+' if change_raw >= 0 else ''}{change_raw:.2f}",
+                        'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%"
+                    }
+            return quotes if quotes else None
+        except Exception as e:
+            print(f"Batch quote fetch failed: {e}")
+            return None
 
     def load_cache(self):
         if os.path.exists(STOCK_CACHE_FILE):
@@ -496,19 +526,24 @@ class StockFetcher:
         if not target_symbols: return
         symbols_list = list(target_symbols)
 
-        # 2. Parallel Fetch using Threads (Fast, persistent pool)
-        results = list(self.executor.map(self._fetch_single_stock, symbols_list))
-
-        # 3. Update Cache
+        # 2. Try batch quote endpoint first (fresh data, single call)
         updated_count = 0
-        for res in results:
-            if res:
-                self.market_cache[res['symbol']] = {
-                    'price': res['price'],
-                    'change_amt': res['change_amt'],
-                    'change_pct': res['change_pct']
-                }
+        batch_quotes = self._fetch_batch_quotes(symbols_list)
+        if batch_quotes:
+            for sym, data in batch_quotes.items():
+                self.market_cache[sym] = data
                 updated_count += 1
+        else:
+            # Fallback to yfinance per-symbol fetch if batch fails
+            results = list(self.executor.map(self._fetch_single_stock, symbols_list))
+            for res in results:
+                if res:
+                    self.market_cache[res['symbol']] = {
+                        'price': res['price'],
+                        'change_amt': res['change_amt'],
+                        'change_pct': res['change_pct']
+                    }
+                    updated_count += 1
         
         if updated_count > 0:
             self.last_fetch = time.time()
