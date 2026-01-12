@@ -1434,18 +1434,51 @@ class SportsFetcher:
                         except: pass
                     elif gst == 'in' or gst == 'half':
                         clk = st.get('displayClock', '0:00').replace("'", "")
-                        if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']): s_disp = "Halftime"
+                        if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']):
+                            s_disp = "Halftime"
                         elif 'hockey' in config['path'] and clk == '0:00':
-                                if p == 1: s_disp = "End 1st"
-                                elif p == 2: s_disp = "End 2nd"
-                                elif p == 3: s_disp = "End 3rd"
-                                else: s_disp = "Intermission"
+                            if p == 1: s_disp = "End 1st"
+                            elif p == 2: s_disp = "End 2nd"
+                            elif p == 3: s_disp = "End 3rd"
+                            else: s_disp = "Intermission"
                         else:
-                            prefix = "P" if 'hockey' in config['path'] else "Q"
-                            s_disp = f"{prefix}{p} {clk}"
                             if 'soccer' in config['path']:
-                                s_disp = f"{clk}'"
-                                if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
+                                in_extra = p >= 3 or 'ET' in tp.get('shortDetail', '')
+                                if in_extra:
+                                    if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT', 'ET HT']:
+                                        s_disp = "ET HT"
+                                    else:
+                                        s_disp = f"ET {clk}'"
+                                else:
+                                    s_disp = f"{clk}'"
+                                    if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']:
+                                        s_disp = "Half"
+                            elif 'basketball' in config['path']:
+                                if p > 4:
+                                    ot_num = p - 4
+                                    ot_label = "OT" if ot_num == 1 else f"OT{ot_num}"
+                                    s_disp = f"{ot_label} {clk}"
+                                else:
+                                    s_disp = f"Q{p} {clk}"
+                            elif 'football' in config['path']:
+                                if p > 4:
+                                    ot_num = p - 4
+                                    ot_label = "OT" if ot_num == 1 else f"OT{ot_num}"
+                                    s_disp = f"{ot_label} {clk}"
+                                else:
+                                    s_disp = f"Q{p} {clk}"
+                            elif 'hockey' in config['path']:
+                                if p > 3:
+                                    ot_num = p - 3
+                                    ot_label = "OT" if ot_num == 1 else f"OT{ot_num}"
+                                    s_disp = f"{ot_label} {clk}"
+                                else:
+                                    s_disp = f"P{p} {clk}"
+                            elif 'baseball' in config['path']:
+                                short_detail = tp.get('shortDetail', s_disp)
+                                s_disp = short_detail.replace(" - ", " ").replace("Inning", "In")
+                            else:
+                                s_disp = f"P{p} {clk}"
 
                 s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
                 
@@ -1454,13 +1487,17 @@ class SportsFetcher:
 
                 # Standardize FINAL logic
                 if "FINAL" in s_disp:
-                    # Check period count for specific sports to append OT if missing from text
                     if league_key == 'nhl':
-                        if "SO" in s_disp or "Shootout" in s_disp or p >= 5: s_disp = "FINAL S/O"
-                        elif p == 4 and "OT" not in s_disp: s_disp = "FINAL OT"
+                        if "SO" in s_disp or "Shootout" in s_disp or p >= 5:
+                            s_disp = "FINAL S/O"
+                        elif p >= 4 and "OT" not in s_disp:
+                            ot_num = p - 3
+                            ot_label = "OT" if ot_num == 1 else f"OT{ot_num}"
+                            s_disp = f"FINAL {ot_label}"
                     elif league_key in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs'] and p > 4 and "OT" not in s_disp:
-                         # NFL/NBA regulation is 4 quarters
-                         s_disp = "FINAL OT"
+                        ot_num = p - 4
+                        ot_label = "OT" if ot_num == 1 else f"OT{ot_num}"
+                        s_disp = f"FINAL {ot_label}"
 
                 sit = comp.get('situation', {})
                 shootout_data = None
