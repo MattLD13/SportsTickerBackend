@@ -250,6 +250,12 @@ class TickerStreamer:
         self.bg_strip = None
         self.bg_strip_ready = False
         self.new_games_list = [] # Needed for mapping calculation
+        self.static_items = []
+        self.static_index = 0
+        self.showing_static = False
+        self.static_until = 0.0
+        self.static_current_image = None
+        self.static_current_game = None
         
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
@@ -713,6 +719,55 @@ class TickerStreamer:
         if t == 'weather': return 384 # 6 panels
         return 64 # Standard scoreboard/leaderboard/clock
 
+    def parse_time_guess(self, val):
+        # Try several common formats; fallback None on failure
+        try:
+            if isinstance(val, (int, float)):
+                return float(val)
+            if not isinstance(val, str):
+                return None
+            s = val.strip()
+            if not s:
+                return None
+            if s.isdigit():
+                return float(s)
+            # ISO-ish
+            try:
+                dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+                return dt.timestamp()
+            except: pass
+            # Common AM/PM without date; assume today
+            for fmt in ["%I:%M %p", "%I:%M:%S %p", "%H:%M", "%H:%M:%S"]:
+                try:
+                    dt = datetime.strptime(s, fmt)
+                    today = datetime.now()
+                    dt = dt.replace(year=today.year, month=today.month, day=today.day)
+                    return dt.timestamp()
+                except: pass
+        except: return None
+        return None
+
+    def get_game_start_key(self, game):
+        # Extract a sortable timestamp; fall back to a stable deterministic ordering
+        ts_fields = ['start_time', 'start', 'time', 'ts', 'timestamp', 'date', 'startTime', 'start_time_utc', 'game_time', 'gameTime', 'kickoff', 'tipoff', 'puck_drop']
+        for f in ts_fields:
+            val = game.get(f)
+            parsed = self.parse_time_guess(val)
+            if parsed is not None:
+                return parsed
+        return float('inf')
+
+    def start_static_display(self):
+        # Show next static card (clock/weather) without scrolling
+        if not self.static_items: return False
+        game = self.static_items[self.static_index % len(self.static_items)]
+        self.static_index += 1
+        self.static_current_game = game
+        self.static_current_image = self.draw_single_game(game)
+        self.static_until = time.time() + PAGE_HOLD_TIME
+        self.showing_static = True
+        return True
+
     def build_seamless_strip(self, playlist):
         if not playlist: return None
         safe_playlist = playlist[:60]
@@ -744,6 +799,20 @@ class TickerStreamer:
         
         while self.running:
             try:
+                if self.showing_static:
+                    # Hold static pages (clock/weather) without movement
+                    if self.static_current_game and str(self.static_current_game.get('sport','')).lower().startswith('clock'):
+                        # Re-render clock every pass so seconds advance
+                        self.static_current_image = self.draw_single_game(self.static_current_game)
+                    if self.static_current_image:
+                        self.update_display(self.static_current_image)
+                    if time.time() >= self.static_until:
+                        self.showing_static = False
+                        self.static_current_image = None
+                        self.static_current_game = None
+                    time.sleep(0.1)
+                    continue
+
                 if self.is_pairing:
                     self.update_display(self.draw_pairing_screen()); time.sleep(0.5); continue
                     
@@ -815,6 +884,8 @@ class TickerStreamer:
                     
                     if strip_offset >= total_w:
                         strip_offset = 0
+                        if self.static_items:
+                            if self.start_static_display(): continue
                         
                     x = int(strip_offset)
                     view = self.active_strip.crop((x, 0, x + PANEL_W, PANEL_H))
@@ -823,7 +894,9 @@ class TickerStreamer:
                     strip_offset += 1
                     time.sleep(self.scroll_sleep)
                 else:
-                    # === FALLBACK MODE: SHOW BOOT CLOCK ===
+                    # === FALLBACK MODE: SHOW STATIC PAGES IF AVAILABLE, ELSE BOOT CLOCK ===
+                    if self.static_items and self.start_static_display():
+                        continue
                     boot_clock_img = self.draw_boot_clock()
                     self.update_display(boot_clock_img)
                     time.sleep(0.5) 
@@ -850,8 +923,23 @@ class TickerStreamer:
                 content = data.get('content', {})
                 new_games = content.get('sports', [])
 
-                # Strict Sort
-                new_games.sort(key=lambda x: (x.get('sport', ''), x.get('id', '')))
+                # Keep original order as a stable tie-breaker
+                for idx, g in enumerate(new_games):
+                    if isinstance(g, dict):
+                        g['_orig_index'] = idx
+
+                # Strict Sort by start time first (then sport/id for stability)
+                new_games.sort(key=lambda x: (self.get_game_start_key(x), x.get('_orig_index', 0), x.get('sport', ''), x.get('id', '')))
+
+                # Separate static pages (weather/clock) from scrolling items
+                static_items = []
+                scrolling_items = []
+                for g in new_games:
+                    sport = str(g.get('sport', '')).lower()
+                    if g.get('type') == 'weather' or sport == 'clock' or sport.startswith('clock'):
+                        static_items.append(g)
+                    else:
+                        scrolling_items.append(g)
                 
                 # Robust Hash generation using JSON dumps to ensure order consistency
                 current_hash = hashlib.md5(json.dumps({'g': new_games, 'c': data.get('local_config')}, sort_keys=True).encode()).hexdigest()
@@ -859,7 +947,7 @@ class TickerStreamer:
                 if current_hash != last_hash:
                     print(f"New Data Detected at {datetime.now().strftime('%H:%M:%S')}")
                     logos = []
-                    for g in new_games:
+                    for g in scrolling_items:
                         if g.get('home_logo'): 
                             logos.append((g.get('home_logo'), (24, 24)))
                             logos.append((g.get('home_logo'), (16, 16)))
@@ -875,12 +963,14 @@ class TickerStreamer:
                     self.scroll_sleep = data.get('local_config', {}).get('scroll_speed', 0.05)
                     self.inverted = data.get('local_config', {}).get('inverted', False)
                     
-                    self.new_games_list = new_games 
+                    self.new_games_list = scrolling_items 
+                    self.static_items = static_items
+                    self.static_index = 0
                     
-                    if not new_games:
+                    if not scrolling_items:
                         self.bg_strip = None
                     else:
-                        self.bg_strip = self.build_seamless_strip(new_games)
+                        self.bg_strip = self.build_seamless_strip(scrolling_items)
                         
                     self.bg_strip_ready = True
                     last_hash = current_hash
