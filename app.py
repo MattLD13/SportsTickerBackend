@@ -208,6 +208,24 @@ def save_config_file():
         save_json_atomically(TICKER_REGISTRY_FILE, tickers_snap)
     except: pass
 
+
+def clean_my_teams(raw_list):
+    """Normalize and dedupe my_teams to avoid accidental wipes."""
+    if not isinstance(raw_list, list):
+        return None
+    cleaned = []
+    seen = set()
+    for entry in raw_list:
+        if not isinstance(entry, str):
+            continue
+        key = entry.strip()
+        if not key:
+            continue
+        if key not in seen:
+            seen.add(key)
+            cleaned.append(key)
+    return cleaned
+
 def generate_pairing_code():
     while True:
         code = ''.join(random.choices(string.digits, k=6))
@@ -1723,21 +1741,40 @@ CORS(app)
 def api_config():
     try:
         new_data = request.json
+        if not isinstance(new_data, dict):
+            return jsonify({"error": "Invalid payload"}), 400
+
         with data_lock:
+            # Weather updates (idempotent)
             new_city = new_data.get('weather_city')
             new_lat = new_data.get('weather_lat')
             new_lon = new_data.get('weather_lon')
-            
-            if new_city or new_lat or new_lon:
+            if new_city is not None or new_lat is not None or new_lon is not None:
                 fetcher.weather.update_config(city=new_city, lat=new_lat, lon=new_lon)
 
-            state.update(new_data)
-            
-            # === FIX: FORCE RE-MERGE IMMEDIATELY ===
-            # This ensures the UI gets the new mode (Live/All) instantly
-            # without waiting for the next 5-second fetch cycle.
+            # Only apply known keys and ignore missing to prevent accidental resets
+            allowed_keys = {
+                'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode',
+                'custom_date', 'weather_city', 'weather_lat', 'weather_lon',
+                'utc_offset', 'show_debug_options'
+            }
+            for k, v in new_data.items():
+                if k not in allowed_keys:
+                    continue
+                if k == 'my_teams':
+                    cleaned = clean_my_teams(v)
+                    if cleaned is not None:
+                        state['my_teams'] = cleaned
+                    continue
+                if k == 'active_sports' and isinstance(v, dict):
+                    state['active_sports'].update(v)
+                    continue
+                # For simple keys, accept non-None values only
+                if v is not None:
+                    state[k] = v
+
+            # Re-merge immediately so clients see the update without waiting
             fetcher.merge_buffers()
-            # =======================================
 
         save_config_file()
         return jsonify({"status": "ok"})
