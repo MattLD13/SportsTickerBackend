@@ -11,7 +11,6 @@ import socket
 import json
 import concurrent.futures
 import hashlib
-import gc  # Added for memory management on Pi Zero
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 from rgbmatrix import RGBMatrix, RGBMatrixOptions
@@ -200,7 +199,7 @@ class WifiPortal:
         d.text((2, 12), f"SSID: {SETUP_SSID}", font=self.font, fill=(255, 255, 255))
         self.matrix.SetImage(img.convert("RGB"))
         subprocess.run(['nmcli', 'dev', 'wifi', 'hotspot', 'ifname', 'wlan0', 'ssid', SETUP_SSID, 'password', SETUP_PASS])
-        try: self.app.run(host='0.0.0.0', port=80, threaded=True) # Threaded for non-blocking
+        try: self.app.run(host='0.0.0.0', port=80)
         except: pass
 
 # --- MAIN CONTROLLER ---
@@ -252,27 +251,18 @@ class TickerStreamer:
         self.bg_strip_ready = False
         self.new_games_list = [] # Needed for mapping calculation
         
-        # PRE-CACHE
-        self._cached_test_pattern = None
-        self._cached_boot_clock = None
-        
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
         threading.Thread(target=self.poll_backend, daemon=True).start()
         threading.Thread(target=self.render_loop, daemon=True).start()
 
-    def update_display(self, pil_image, x_off=0):
-        # Optimization: Pass x offset to C++ lib instead of cropping in Python
-        if self.test_pattern: 
-            if not self._cached_test_pattern: self._cached_test_pattern = self.generate_test_pattern()
-            pil_image = self._cached_test_pattern
-            x_off = 0
-            
+    def update_display(self, pil_image):
+        if self.test_pattern: pil_image = self.generate_test_pattern()
+        img = pil_image.convert("RGB")
+        if self.inverted: img = img.rotate(180)
         target_b = int(max(0, min(100, self.brightness * 100)))
-        if self.matrix.brightness != target_b: self.matrix.brightness = target_b
-        
-        # Note: If passing image larger than panel with offset, Image must be RGB
-        self.matrix.SetImage(pil_image, x_off, 0)
+        self.matrix.brightness = target_b
+        self.matrix.SetImage(img)
 
     def generate_test_pattern(self):
         img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0)); d = ImageDraw.Draw(img)
@@ -294,13 +284,8 @@ class TickerStreamer:
         try:
             filename = f"{hashlib.md5(url.encode()).hexdigest()}_{size[0]}x{size[1]}.png"
             local = os.path.join(ASSETS_DIR, filename)
-            
-            # Optimization: fast load if exists
             if os.path.exists(local):
-                try:
-                    self.logo_cache[cache_key] = Image.open(local).convert("RGBA")
-                    return
-                except: pass
+                self.logo_cache[cache_key] = Image.open(local).convert("RGBA"); return
             
             r = requests.get(url, timeout=5)
             if r.status_code == 200:
@@ -542,8 +527,6 @@ class TickerStreamer:
 
     def draw_boot_clock(self):
         """Simple standby clock (Not the modern clock app)"""
-        # Optimized: Cache this if needed, but it's low freq
-        if self._cached_boot_clock: return self._cached_boot_clock
         img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
         d = ImageDraw.Draw(img)
         # Simple HH:MM:SS
@@ -754,13 +737,7 @@ class TickerStreamer:
             bx += img.width
             i += 1
             
-        # Optimization: Convert to RGB once here, instead of every frame in update_display
-        rgb_strip = strip.convert("RGB")
-        if self.inverted: rgb_strip = rgb_strip.rotate(180)
-        
-        # Free up memory immediately
-        del strip
-        return rgb_strip
+        return strip
 
     def render_loop(self):
         strip_offset = 0.0
@@ -817,6 +794,7 @@ class TickerStreamer:
                                 update_applied = True
                             else:
                                 # Fallback: Force update IMMEDIATELY if no seamless match
+                                # (Removes delay if list changes significantly)
                                 self.active_strip = self.bg_strip
                                 self.games = self.new_games_list
                                 strip_offset = 0.0 # Reset to start to show new list
@@ -830,7 +808,6 @@ class TickerStreamer:
                     # ONLY consume the update flag if we actually swapped the strip
                     if update_applied:
                         self.bg_strip_ready = False 
-                        gc.collect() # Force cleanup on Pi Zero
 
                 if self.active_strip:
                     total_w = self.active_strip.width - PANEL_W
@@ -840,10 +817,8 @@ class TickerStreamer:
                         strip_offset = 0
                         
                     x = int(strip_offset)
-                    # Optimization: Removed self.active_strip.crop()
-                    # We pass the full strip with a negative offset to the C++ library
-                    # This prevents creating a new PIL image every frame
-                    self.update_display(self.active_strip, x_off=-x)
+                    view = self.active_strip.crop((x, 0, x + PANEL_W, PANEL_H))
+                    self.update_display(view)
                     
                     strip_offset += 1
                     time.sleep(self.scroll_sleep)
@@ -910,9 +885,6 @@ class TickerStreamer:
                     self.bg_strip_ready = True
                     last_hash = current_hash
                     self.game_render_cache.clear()
-                    
-                    # Force GC after big update
-                    gc.collect()
                     
             except Exception as e:
                 print(f"Poll Error: {e}")
