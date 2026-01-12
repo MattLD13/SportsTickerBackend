@@ -1,34 +1,45 @@
 name: Deploy to OCI
-
 on:
   push:
     branches: [ "main" ]  # Or "master" if your branch is named that
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Copy file via SCP
+      
+      - name: Copy files via SCP
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          source: "app.py" # REPLACE THIS with your actual python filename in the repo
+          source: "ticker.py,requirements.txt,*.json"  # Copy Python file and configs
           target: "/home/ubuntu/"
-
-      - name: Restart Server Service
+      
+      - name: Deploy and Restart Service
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # If your file is named something else in the repo, rename it to app.py here
-            # mv /home/ubuntu/your_file.py /home/ubuntu/app.py 
+            # Navigate to app directory
+            cd /home/ubuntu
+            
+            # Create/update .env file with API keys from GitHub Secrets
+            cat > .env << EOF
+            FINNHUB_API_KEY=${{ secrets.FINNHUB_API_KEY }}
+            ALPHA_VANTAGE_API_KEY=${{ secrets.ALPHA_VANTAGE_API_KEY }}
+            TWELVE_DATA_API_KEY=${{ secrets.TWELVE_DATA_API_KEY }}
+            EOF
+            
+            # Set proper permissions on .env
+            chmod 600 .env
+            
+            # Install/update dependencies (optional but recommended)
+            pip install -r requirements.txt
             
             # Restart the service to apply changes
             sudo systemctl restart ticker
