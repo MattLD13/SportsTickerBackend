@@ -8,6 +8,7 @@ import random
 import string
 from datetime import datetime as dt, timezone, timedelta
 import requests
+from requests.adapters import HTTPAdapter
 import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -16,18 +17,25 @@ import yfinance as yf
 # ================= LOGGING SETUP =================
 class Tee(object):
     def __init__(self, name, mode):
-        self.file = open(name, mode)
-        self.stdout = sys.stdout
-        self.stdout = self
-        self.stderr = self
+        # Mirror stdout/stderr to a file without recursion
+        self.file = open(name, mode, buffering=1)
+        self.original_stdout = sys.stdout
+        self.original_stderr = sys.stderr
+        self._lock = threading.Lock()
+        sys.stdout = self
+        sys.stderr = self
+
     def write(self, data):
-        self.file.write(data)
-        self.stdout.write(data)
-        self.file.flush()
-        self.stdout.flush()
+        with self._lock:
+            self.file.write(data)
+            self.file.flush()
+            self.original_stdout.write(data)
+            self.original_stdout.flush()
+
     def flush(self):
-        self.file.flush()
-        self.stdout.flush()
+        with self._lock:
+            self.file.flush()
+            self.original_stdout.flush()
 
 try:
     if not os.path.exists("ticker.log"):
@@ -35,6 +43,15 @@ try:
     Tee("ticker.log", "a")
 except Exception as e:
     print(f"Logging setup failed: {e}")
+
+
+def build_pooled_session(pool_size=20, retries=2):
+    """Reuse HTTP connections to reduce latency and allocation overhead."""
+    session = requests.Session()
+    adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size, max_retries=retries, pool_block=True)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 
 # ================= CONFIGURATION =================
 CONFIG_FILE = "ticker_config.json"
@@ -319,7 +336,7 @@ class WeatherFetcher:
         self.city_name = city
         self.last_fetch = 0
         self.cache = None
-        self.session = requests.Session()
+        self.session = build_pooled_session(pool_size=10)
 
     def update_config(self, city=None, lat=None, lon=None):
         if lat is not None: self.lat = lat
@@ -402,6 +419,8 @@ class StockFetcher:
         self.market_cache = {}
         self.last_fetch = 0
         self.update_interval = 10  # Seconds
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+        self.yf_session = build_pooled_session(pool_size=10)
         # Dynamically load stock lists from LEAGUE_OPTIONS
         self.lists = { item['id']: item['stock_list'] for item in LEAGUE_OPTIONS if item['type'] == 'stock' and 'stock_list' in item }
         self.ETF_DOMAINS = {"QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"}
@@ -428,7 +447,7 @@ class StockFetcher:
     def _fetch_single_stock(self, symbol):
         """Helper to fetch a single stock safely using yfinance fast_info"""
         try:
-            ticker = yf.Ticker(symbol)
+            ticker = yf.Ticker(symbol, session=self.yf_session)
             # fast_info uses the live query endpoint
             price = ticker.fast_info.last_price
             prev_close = ticker.fast_info.previous_close
@@ -459,9 +478,8 @@ class StockFetcher:
         if not target_symbols: return
         symbols_list = list(target_symbols)
 
-        # 2. Parallel Fetch using Threads (Fast)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            results = list(executor.map(self._fetch_single_stock, symbols_list))
+        # 2. Parallel Fetch using Threads (Fast, persistent pool)
+        results = list(self.executor.map(self._fetch_single_stock, symbols_list))
 
         # 3. Update Cache
         updated_count = 0
@@ -508,7 +526,7 @@ class SportsFetcher:
         self.stocks = StockFetcher()
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
-        self.session = requests.Session()
+        self.session = build_pooled_session(pool_size=50)
         # Increased workers for parallel fetching
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10) 
         
