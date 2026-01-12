@@ -441,6 +441,7 @@ class StockFetcher:
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
         self.yf_session = build_pooled_session(pool_size=10)
         self.max_age = STOCK_STALE_SECONDS
+        self.cooloff_until = 0
         # Dynamically load stock lists from LEAGUE_OPTIONS
         self.lists = { item['id']: item['stock_list'] for item in LEAGUE_OPTIONS if item['type'] == 'stock' and 'stock_list' in item }
         self.ETF_DOMAINS = {"QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"}
@@ -491,9 +492,12 @@ class StockFetcher:
             return None
 
     def _fetch_batch_quotes(self, symbols, retries=3, backoff_base=1.0):
-        """Hit Yahoo's quote endpoint; retry/back off on 429/5xx."""
+        """Hit Yahoo's quote endpoint; retry/back off on 429/5xx.
+
+        Returns (quotes_dict | None, throttled: bool)
+        """
         if not symbols:
-            return None
+            return None, False
 
         url = "https://query1.finance.yahoo.com/v7/finance/quote"
         for attempt in range(retries):
@@ -507,18 +511,23 @@ class StockFetcher:
                     normalized = self._normalize_quote(item)
                     if normalized:
                         quotes[normalized['symbol']] = normalized
-                return quotes if quotes else None
+                return (quotes if quotes else None), False
             except requests.HTTPError as e:
                 status = getattr(e.response, "status_code", None)
-                if status in (429, 500, 502, 503, 504) and attempt < retries - 1:
+                if status == 429:
+                    # Enter cooloff to avoid hammering
+                    self.cooloff_until = time.time() + 60
+                    print(f"Batch quote fetch failed: {e} (cooling off 60s)")
+                    return None, True
+                if status in (500, 502, 503, 504) and attempt < retries - 1:
                     sleep_for = backoff_base * (2 ** attempt)
                     time.sleep(sleep_for)
                     continue
                 print(f"Batch quote fetch failed: {e}")
-                return None
+                return None, False
             except Exception as e:
                 print(f"Batch quote fetch failed: {e}")
-                return None
+                return None, False
 
     def load_cache(self):
         if os.path.exists(STOCK_CACHE_FILE):
@@ -605,6 +614,12 @@ class StockFetcher:
                 'ts': int(ts_val),
                 'stale': False
             }
+        except requests.HTTPError as e:
+            status = getattr(e.response, "status_code", None)
+            if status == 429:
+                self.cooloff_until = time.time() + 60
+            print(f"Chart fetch failed for {symbol}: {e}")
+            return None
         except Exception as e:
             print(f"Chart fetch failed for {symbol}: {e}")
             return None
@@ -619,7 +634,11 @@ class StockFetcher:
         }
 
     def update_market_data(self, active_lists):
-        if time.time() - self.last_fetch < self.update_interval: return
+        now_ts = time.time()
+        if now_ts < self.cooloff_until:
+            return
+        if now_ts - self.last_fetch < self.update_interval:
+            return
 
         # 1. Gather symbols
         target_symbols = set()
@@ -630,12 +649,15 @@ class StockFetcher:
         if not target_symbols: return
         symbols_list = list(target_symbols)
 
-        # 2. Try batch quote endpoint in chunks to avoid 429
+        # 2. Try batch quote endpoint in small chunks to avoid 429
         updated_count = 0
-        batch_size = 8
+        batch_size = 3
         for i in range(0, len(symbols_list), batch_size):
             chunk = symbols_list[i:i+batch_size]
-            batch_quotes = self._fetch_batch_quotes(chunk)
+            batch_quotes, throttled = self._fetch_batch_quotes(chunk)
+
+            if throttled:
+                break
 
             if batch_quotes:
                 for sym in chunk:
@@ -653,13 +675,18 @@ class StockFetcher:
                     self._store_quote(sym, data)
                     updated_count += 1
             else:
-                # No batch data; fall back per symbol within this chunk
+                # No batch data; fall back per symbol within this chunk (respect cooldown)
                 for sym in chunk:
+                    if time.time() < self.cooloff_until:
+                        break
                     data = self._fetch_chart_price(sym) or self._fetch_single_stock(sym)
                     if not data:
                         continue
                     self._store_quote(sym, data)
                     updated_count += 1
+
+            # Small delay between chunks to spread calls
+            time.sleep(0.5)
         else:
             # Fallback to yfinance per-symbol fetch if batch fails
             results = list(self.executor.map(self._fetch_single_stock, symbols_list))
