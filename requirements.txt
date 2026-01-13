@@ -1,6 +1,4 @@
 flask
+flask-cors
 requests
-Pillow
-python-dateutil
-espn-api
-gunicorn
+python-dotenv
