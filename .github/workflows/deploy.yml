@@ -1,23 +1,27 @@
 name: Deploy to OCI
 on:
   push:
-    branches: [ "main" ]  # Or "master" if your branch is named that
+    branches: [ "main" ]
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      
+
+      # 1. Copy files to server
       - name: Copy files via SCP
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          source: "ticker.py,requirements.txt,*.json"  # Copy Python file and configs
-          target: "/home/ubuntu/"
-      
+          # Copy Python script, requirements, and any JSON config files
+          source: "ticker.py,requirements.txt,*.json"
+          target: "/home/${{ secrets.SSH_USER }}/"
+
+      # 2. Configure .env and Restart Service
       - name: Deploy and Restart Service
         uses: appleboy/ssh-action@master
         with:
@@ -26,20 +30,39 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             # Navigate to app directory
-            cd /home/ubuntu
+            cd /home/${{ secrets.SSH_USER }}/
+
+            # ---------------------------------------------------------
+            # GENERATE .env FILE FROM SECRETS
+            # This overwrites the file every deploy to keep keys fresh
+            # ---------------------------------------------------------
+            echo "Generating .env file..."
             
-            # Create/update .env file with API keys from GitHub Secrets
-            cat > .env << EOF
-            FINNHUB_API_KEY=${{ secrets.FINNHUB_API_KEY }}
-            ALPHA_VANTAGE_API_KEY=${{ secrets.ALPHA_VANTAGE_API_KEY }}
-            TWELVE_DATA_API_KEY=${{ secrets.TWELVE_DATA_API_KEY }}
-            EOF
+            # Using simple echo statements avoids YAML indentation errors common with HEREDOCs
+            echo "FINNHUB_KEY_1=${{ secrets.FINNHUB_KEY_1 }}" > .env
+            echo "FINNHUB_KEY_2=${{ secrets.FINNHUB_KEY_2 }}" >> .env
+            echo "FINNHUB_KEY_3=${{ secrets.FINNHUB_KEY_3 }}" >> .env
+            echo "FINNHUB_KEY_4=${{ secrets.FINNHUB_KEY_4 }}" >> .env
+            echo "FINNHUB_KEY_5=${{ secrets.FINNHUB_KEY_5 }}" >> .env
             
-            # Set proper permissions on .env
+            # Secure the file so only the user can read it
             chmod 600 .env
+
+            # ---------------------------------------------------------
+            # INSTALL & RESTART
+            # ---------------------------------------------------------
             
-            # Install/update dependencies (optional but recommended)
-            pip install -r requirements.txt
-            
-            # Restart the service to apply changes
+            # Update Python dependencies
+            # (Includes check for Ubuntu 24.04+ which requires --break-system-packages outside venv)
+            if pip3 --version; then
+                pip3 install -r requirements.txt --break-system-packages || pip3 install -r requirements.txt
+            else
+                pip install -r requirements.txt
+            fi
+
+            # Restart the systemd service
+            echo "Restarting ticker service..."
             sudo systemctl restart ticker
+
+            # Check status (prints to GitHub Action logs for debugging)
+            sudo systemctl status ticker --no-pager
