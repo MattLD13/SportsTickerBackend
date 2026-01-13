@@ -18,7 +18,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           # Copy Python script, requirements, and any JSON config files
-          source: "ticker.py,requirements.txt,*.json"
+          source: "app.py,requirements.txt,*.json"
           target: "/home/${{ secrets.SSH_USER }}/"
 
       # 2. Configure .env and Restart Service
