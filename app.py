@@ -861,6 +861,7 @@ class SportsFetcher:
             key = self._get_ahl_key()
             
             # Fetch Scorebar for "Today"
+            # We calculate req_date for the initial filter, but rely on GameDateISO8601 for sorting
             req_date = visible_start_utc.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5)))).strftime("%Y-%m-%d")
 
             params = {
@@ -876,29 +877,48 @@ class SportsFetcher:
             scorebar = data.get("SiteKit", {}).get("Scorebar", [])
 
             for g in scorebar:
-                g_date = g.get("Date", "")
-                if g_date != req_date: continue
-
+                # 1. Date Filter (Keep this to ensure we only show relevant games)
+                # Note: We check if the game Date matches our request OR if it falls within our visibility window
+                g_date_str = g.get("Date", "")
+                
                 gid = g.get("ID")
                 h_code = g.get("HomeCode", "").upper()
                 a_code = g.get("VisitorCode", "").upper()
                 h_sc = str(g.get("HomeGoals", "0"))
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
-                # --- TIME PARSING (Fixed) ---
-                raw_time = (g.get("GameTime") or g.get("Time") or g.get("ScheduledTime") or g.get("StartTime") or "").strip()
-                parsed_utc = f"{req_date}T00:00:00Z"
-
-                try:
-                    tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
-                    if tm_match:
-                        time_str, meridiem, tz_str = tm_match.groups()
-                        offset = -5
-                        if tz_str: offset = TZ_OFFSETS.get(tz_str.upper(), -5)
-                        dt_obj = dt.strptime(f"{g_date} {time_str} {meridiem}", "%Y-%m-%d %I:%M %p")
-                        dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
+                # --- TIME PARSING (FIXED using ISO8601) ---
+                parsed_utc = ""
+                iso_date = g.get("GameDateISO8601", "")
+                
+                # 1. Try ISO8601 First (Reference Code Method - Best for Sorting)
+                if iso_date:
+                    try:
+                        # Parse ISO format: "2026-01-13T19:00:00-05:00"
+                        dt_obj = dt.fromisoformat(iso_date)
+                        # Convert to UTC and Format
                         parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                except: pass
+                    except:
+                        pass
+                
+                # 2. Fallback to Regex if ISO missing
+                if not parsed_utc:
+                    raw_time = (g.get("GameTime") or g.get("Time") or g.get("ScheduledTime") or "").strip()
+                    parsed_utc = f"{g_date_str}T00:00:00Z" # Ultimate fallback
+                    try:
+                        tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
+                        if tm_match:
+                            time_str, meridiem, tz_str = tm_match.groups()
+                            offset = -5
+                            if tz_str: offset = TZ_OFFSETS.get(tz_str.upper(), -5)
+                            dt_obj = dt.strptime(f"{g_date_str} {time_str} {meridiem}", "%Y-%m-%d %I:%M %p")
+                            dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
+                            parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    except: pass
+                
+                # If we still rely on the req_date filter, apply it now
+                if g_date_str != req_date:
+                    continue
 
                 # --- STATUS PARSING ---
                 raw_status = g.get("GameStatusString", "")
@@ -913,7 +933,16 @@ class SportsFetcher:
                     else: disp = "FINAL"
                 elif "scheduled" in status_lower or "pre" in status_lower:
                     gst = "pre"
-                    try: disp = raw_time.split(" ")[0] + " " + raw_time.split(" ")[1]
+                    # Try to display local time format
+                    try:
+                        if iso_date:
+                            # Re-parse to get clean 12h time
+                            local_dt = dt.fromisoformat(iso_date).astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
+                            disp = local_dt.strftime("%I:%M %p").lstrip('0')
+                        else:
+                             # Fallback to string manipulation
+                             raw_time_clean = (g.get("GameTime") or g.get("Time") or "").strip()
+                             disp = raw_time_clean.split(" ")[0] + " " + raw_time_clean.split(" ")[1]
                     except: disp = "Scheduled"
                 else:
                     gst = "in"
@@ -939,10 +968,11 @@ class SportsFetcher:
                        h_name_chk not in conf['my_teams'] and a_name_chk not in conf['my_teams']:
                         is_shown = False
 
-                # --- LOGO URL FIX (Removed _90) ---
+                # --- LOGO URL ---
                 h_meta = AHL_TEAMS.get(h_code, {"color": "000000"})
                 a_meta = AHL_TEAMS.get(a_code, {"color": "000000"})
 
+                # Fixed logo URL (no _90)
                 h_logo = f"https://assets.leaguestat.com/ahl/logos/50x50/{h_meta.get('id', '')}.png" if h_meta.get('id') else ""
                 a_logo = f"https://assets.leaguestat.com/ahl/logos/50x50/{a_meta.get('id', '')}.png" if a_meta.get('id') else ""
 
