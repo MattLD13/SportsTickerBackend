@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.6_AHL_Deduped_Teams"
+SERVER_VERSION = "v3.7_AHL_Deep_Shootout_Check"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -110,7 +110,6 @@ TZ_OFFSETS = {
 
 # ================= AHL TEAMS (Official LeagueStat IDs) =================
 # IDs are used to generate logos from: assets.leaguestat.com
-# ORDER MATTERS: Put the "Primary" abbreviation first. Aliases (duplicates IDs) are skipped in the menu.
 AHL_TEAMS = {
     # --- Atlantic Division ---
     "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "id": "317"},
@@ -876,7 +875,7 @@ class SportsFetcher:
         try:
             key = self._get_ahl_key()
             
-            # Fetch Scorebar
+            # Fetch Scorebar for "Today"
             req_date = visible_start_utc.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5)))).strftime("%Y-%m-%d")
 
             params = {
@@ -956,7 +955,24 @@ class SportsFetcher:
                           period_name == "OT"):
                         disp = "FINAL OT"
                     else:
-                        disp = "FINAL"
+                        # Priority 3: Deep Check (The Reference Code Method)
+                        # The scorebar is unreliable for FINAL S/O vs FINAL OT. 
+                        # We must fetch the summary to confirm hasShootout.
+                        disp = "FINAL" # Default
+                        try:
+                            sum_params = {
+                                "feed": "statviewfeed", "view": "gameSummary", "key": key,
+                                "client_code": "ahl", "lang": "en", "fmt": "json", "game_id": gid
+                            }
+                            # Short timeout to avoid blocking main loop too long
+                            r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=2)
+                            if r_sum.status_code == 200:
+                                s_data = r_sum.json()
+                                if s_data.get("hasShootout") or s_data.get("shootoutDetails"):
+                                    disp = "FINAL S/O"
+                                elif s_data.get("hasOvertime") or "OT" in s_data.get("periodNameShort", ""):
+                                    disp = "FINAL OT"
+                        except: pass
                 
                 elif "scheduled" in status_lower or "pre" in status_lower:
                     gst = "pre"
