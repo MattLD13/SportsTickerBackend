@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.3_AHL_Logos_Sorting_Fixed"
+SERVER_VERSION = "v3.4_AHL_Logos_Fixed_LeagueStat"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -108,41 +108,52 @@ TZ_OFFSETS = {
     "AST": -4, "ADT": -3
 }
 
-# Fallback Colors (Will be enriched with IDs dynamically)
+# ================= AHL TEAMS (With LeagueStat IDs) =================
+# Updated to include Numeric IDs for correct Logo Generation
 AHL_TEAMS = {
-    "ABB": {"name": "Abbotsford Canucks", "color": "00744F"},
-    "BAK": {"name": "Bakersfield Condors", "color": "F47A38"},
-    "BEL": {"name": "Belleville Senators", "color": "C52032"},
-    "BRI": {"name": "Bridgeport Islanders", "color": "00539B"},
-    "CAL": {"name": "Calgary Wranglers", "color": "C8102E"},
-    "CHA": {"name": "Charlotte Checkers", "color": "C8102E"},
-    "CHI": {"name": "Chicago Wolves", "color": "7C2529"},
-    "CLE": {"name": "Cleveland Monsters", "color": "041E42"},
-    "CVF": {"name": "Coachella Valley", "color": "D32027"},
-    "COL": {"name": "Colorado Eagles", "color": "003087"},
-    "GR":  {"name": "Grand Rapids Griffins", "color": "BE1E2D"},
-    "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240"},
-    "HSK": {"name": "Henderson Silver Knights", "color": "111111"},
-    "HER": {"name": "Hershey Bears", "color": "4F2C1D"},
-    "IA":  {"name": "Iowa Wild", "color": "154734"},
-    "LAV": {"name": "Laval Rocket", "color": "00205B"},
-    "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000"},
-    "MB":  {"name": "Manitoba Moose", "color": "003E7E"},
-    "MIL": {"name": "Milwaukee Admirals", "color": "041E42"},
-    "ONT": {"name": "Ontario Reign", "color": "111111"},
-    "PRO": {"name": "Providence Bruins", "color": "000000"},
-    "ROC": {"name": "Rochester Americans", "color": "00539B"},
-    "RFD": {"name": "Rockford IceHogs", "color": "CE1126"},
-    "SD":  {"name": "San Diego Gulls", "color": "041E42"},
-    "SJ":  {"name": "San Jose Barracuda", "color": "006D75"},
-    "SPR": {"name": "Springfield Thunderbirds", "color": "003087"},
-    "SYR": {"name": "Syracuse Crunch", "color": "003087"},
-    "TEX": {"name": "Texas Stars", "color": "154734"},
-    "TOR": {"name": "Toronto Marlies", "color": "00205B"},
-    "TUC": {"name": "Tucson Roadrunners", "color": "8C2633"},
-    "UTI": {"name": "Utica Comets", "color": "006341"},
-    "UTC": {"name": "Utica Comets", "color": "006341"},
-    "WBS": {"name": "W-B/Scranton", "color": "000000"},
+    # Atlantic Division
+    "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "id": "317"},
+    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "id": "329"},
+    "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240", "id": "308"}, 
+    "HER": {"name": "Hershey Bears", "color": "4F2C1D", "id": "319"},
+    "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000", "id": "321"},
+    "PRO": {"name": "Providence Bruins", "color": "000000", "id": "309"},
+    "SPR": {"name": "Springfield Thunderbirds", "color": "003087", "id": "322"}, 
+    "WBS": {"name": "W-B/Scranton", "color": "000000", "id": "316"},
+
+    # North Division
+    "BEL": {"name": "Belleville Senators", "color": "C52032", "id": "334"},
+    "CLE": {"name": "Cleveland Monsters", "color": "041E42", "id": "326"},
+    "LAV": {"name": "Laval Rocket", "color": "00205B", "id": "335"},
+    "ROC": {"name": "Rochester Americans", "color": "00539B", "id": "323"},
+    "SYR": {"name": "Syracuse Crunch", "color": "003087", "id": "324"},
+    "TOR": {"name": "Toronto Marlies", "color": "00205B", "id": "325"},
+    "UTC": {"name": "Utica Comets", "color": "006341", "id": "390"},
+    "UTI": {"name": "Utica Comets", "color": "006341", "id": "390"}, # Alias
+
+    # Central Division
+    "CHI": {"name": "Chicago Wolves", "color": "7C2529", "id": "306"},
+    "GR":  {"name": "Grand Rapids Griffins", "color": "BE1E2D", "id": "307"},
+    "IA":  {"name": "Iowa Wild", "color": "154734", "id": "314"},
+    "MB":  {"name": "Manitoba Moose", "color": "003E7E", "id": "315"},
+    "MIL": {"name": "Milwaukee Admirals", "color": "041E42", "id": "305"},
+    "RFD": {"name": "Rockford IceHogs", "color": "CE1126", "id": "310"},
+    "TEX": {"name": "Texas Stars", "color": "154734", "id": "313"},
+
+    # Pacific Division
+    "ABB": {"name": "Abbotsford Canucks", "color": "00744F", "id": "337"},
+    "BAK": {"name": "Bakersfield Condors", "color": "F47A38", "id": "332"},
+    "CGY": {"name": "Calgary Wranglers", "color": "C8102E", "id": "339"},
+    "CAL": {"name": "Calgary Wranglers", "color": "C8102E", "id": "339"}, # Alias
+    "CV":  {"name": "Coachella Valley", "color": "D32027", "id": "340"},
+    "CVF": {"name": "Coachella Valley", "color": "D32027", "id": "340"}, # Alias
+    "COL": {"name": "Colorado Eagles", "color": "003087", "id": "336"},
+    "HSK": {"name": "Henderson Silver Knights", "color": "111111", "id": "338"},
+    "ONT": {"name": "Ontario Reign", "color": "111111", "id": "333"},
+    "SD":  {"name": "San Diego Gulls", "color": "041E42", "id": "331"},
+    "SJ":  {"name": "San Jose Barracuda", "color": "006D75", "id": "330"},
+    "SJS": {"name": "San Jose Barracuda", "color": "006D75", "id": "330"}, # Alias
+    "TUC": {"name": "Tucson Roadrunners", "color": "8C2633", "id": "328"},
 }
 
 # ================= MASTER LEAGUE REGISTRY =================
@@ -185,7 +196,7 @@ LEAGUE_OPTIONS = [
     # --- STOCKS ---
     {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',      'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
     {'id': 'stock_momentum',   'label': 'Momentum Stocks',       'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
-    {'id': 'stock_energy',         'label': 'Energy Stocks',         'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
+    {'id': 'stock_energy',          'label': 'Energy Stocks',         'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
     {'id': 'stock_finance',        'label': 'Financial Stocks',      'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
     {'id': 'stock_consumer',       'label': 'Consumer Stocks',       'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
 ]
@@ -806,53 +817,74 @@ class SportsFetcher:
         return AHL_API_KEYS[0] # Fallback
 
     def _fetch_ahl_teams_reference(self, catalog):
-        """Fetch Official AHL Team IDs for Logo Construction"""
+        """Fetch Official AHL Team IDs and construct LeagueStat Logo URLs"""
         if 'ahl' not in self.leagues: return
+        
         catalog['ahl'] = []
+        found_codes = set()
+        
+        # 1. Try to get data from API to supplement our hardcoded list
         try:
             key = self._get_ahl_key()
-            # Fetch teams list from API
             r = self.session.get("https://lscluster.hockeytech.com/feed/index.php", 
                 params={"feed": "modulekit", "view": "teams", "key": key, "fmt": "json", "client_code": "ahl", "lang": "en", "league_id": 4},
-                timeout=5
+                timeout=3
             )
+            
             if r.status_code == 200:
                 data = r.json()
                 teams_list = data.get("SiteKit", {}).get("Teams", [])
+                
                 for t in teams_list:
-                    # Parse basic data
                     code = t.get("code", "").upper()
-                    t_id = t.get("id")
+                    t_id = str(t.get("id", ""))
                     name = t.get("name", "")
                     
-                    # Construct Logo URL using the pattern provided: 390_90.png (ID_90.png)
-                    # NOTE: The '90' suffix often refers to a specific size or style id in leaguestat systems.
-                    logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}_90.png"
+                    # Update our local cache if API gave us a valid ID
+                    if code in AHL_TEAMS and t_id:
+                        AHL_TEAMS[code]['id'] = t_id
+
+                    # Use Hardcoded Color
+                    fallback_meta = AHL_TEAMS.get(code, {})
+                    color = fallback_meta.get("color", "000000")
                     
-                    # Fallback color if not in our hardcoded list
-                    color = AHL_TEAMS.get(code, {}).get("color", "000000")
-                    
-                    # Update local cache for quick lookup during game fetch
-                    if code not in AHL_TEAMS:
-                        AHL_TEAMS[code] = {"color": color}
-                    AHL_TEAMS[code]["logo"] = logo_url
-                    AHL_TEAMS[code]["name"] = name
+                    # Construct LeagueStat Logo URL: https://assets.leaguestat.com/ahl/logos/50x50/{ID}_90.png
+                    if t_id:
+                        logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}_90.png"
+                    else:
+                         # Fallback if ID is missing (shouldn't happen with API)
+                        logo_url = ""
 
                     catalog['ahl'].append({
                         'abbr': code,
-                        'id': str(t_id),
+                        'id': code, # Use Abbr as ID for My Teams matching consistency
                         'logo': logo_url,
                         'color': color,
                         'alt_color': '444444',
                         'name': name,
                         'shortName': name.split(" ")[-1]
                     })
+                    found_codes.add(code)
         except Exception as e:
-            print(f"AHL Team Reference Fetch Error: {e}")
-            # Fallback to hardcoded list if API fails
-            for code, meta in AHL_TEAMS.items():
+            print(f"AHL Team Reference API Warning: {e}")
+
+        # 2. FORCE FALLBACK: Fill missing teams from Hardcoded Dictionary
+        for code, meta in AHL_TEAMS.items():
+            if code not in found_codes:
+                # If we have a hardcoded ID, we can still generate the correct logo
+                if 'id' in meta:
+                    logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{meta['id']}_90.png"
+                else:
+                    logo_url = "" # No logo available without ID
+
                 catalog['ahl'].append({
-                    'abbr': code, 'id': code, 'logo': meta.get('logo',''), 'color': meta['color'], 'alt_color': '444444', 'name': meta['name'], 'shortName': meta['name']
+                    'abbr': code, 
+                    'id': code, 
+                    'logo': logo_url, 
+                    'color': meta.get('color', '000000'), 
+                    'alt_color': '444444', 
+                    'name': meta.get('name', code), 
+                    'shortName': meta.get('name', code).split(" ")[-1]
                 })
 
     def _fetch_ahl(self, conf, visible_start_utc, visible_end_utc):
@@ -964,8 +996,12 @@ class SportsFetcher:
                         is_shown = False
 
                 # 6. Team Metadata (Using Dynamic Cache)
-                h_meta = AHL_TEAMS.get(h_code, {"color": "000000", "logo": ""})
-                a_meta = AHL_TEAMS.get(a_code, {"color": "000000", "logo": ""})
+                h_meta = AHL_TEAMS.get(h_code, {"color": "000000"})
+                a_meta = AHL_TEAMS.get(a_code, {"color": "000000"})
+
+                # Use ID from AHL_TEAMS to construct logo URL
+                h_logo = f"https://assets.leaguestat.com/ahl/logos/50x50/{h_meta.get('id', '')}_90.png" if h_meta.get('id') else ""
+                a_logo = f"https://assets.leaguestat.com/ahl/logos/50x50/{a_meta.get('id', '')}_90.png" if a_meta.get('id') else ""
 
                 games_found.append({
                     'type': 'scoreboard',
@@ -976,10 +1012,10 @@ class SportsFetcher:
                     'is_shown': is_shown,
                     'home_abbr': h_code,
                     'home_score': h_sc,
-                    'home_logo': h_meta.get('logo', ''),
+                    'home_logo': h_logo,
                     'away_abbr': a_code,
                     'away_score': a_sc,
-                    'away_logo': a_meta.get('logo', ''),
+                    'away_logo': a_logo,
                     'home_color': f"#{h_meta.get('color','000000')}",
                     'away_color': f"#{a_meta.get('color','000000')}",
                     'home_alt_color': '#444444',
