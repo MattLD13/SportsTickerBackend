@@ -837,23 +837,22 @@ class SportsFetcher:
                 # Mark ID as seen
                 if t_id: seen_ids.add(t_id)
     
-                # 2. Construct Official LeagueStat Logo URL
-                # Format: https://assets.leaguestat.com/ahl/logos/50x50/{id}_90.png
+                # 2. Construct Official LeagueStat Logo URL (FIXED: Removed _90 suffix)
                 if t_id:
-                    logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}_90.png"
+                    logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}.png"
                 else:
                     logo_url = ""
     
                 catalog['ahl'].append({
                     'abbr': code, 
-                    'id': code, # We keep the Abbr as the internal ID for matching game feeds
+                    'id': code, 
                     'logo': logo_url, 
                     'color': meta.get('color', '000000'), 
                     'alt_color': '444444', 
                     'name': meta.get('name', code), 
                     'shortName': meta.get('name', code).split(" ")[-1]
                 })
-                
+
     def _fetch_ahl(self, conf, visible_start_utc, visible_end_utc):
         games_found = []
         if not conf['active_sports'].get('ahl', False): return []
@@ -877,77 +876,46 @@ class SportsFetcher:
             scorebar = data.get("SiteKit", {}).get("Scorebar", [])
 
             for g in scorebar:
-                # 1. Date Filter
                 g_date = g.get("Date", "")
                 if g_date != req_date: continue
 
-                # 2. Extract Data
                 gid = g.get("ID")
                 h_code = g.get("HomeCode", "").upper()
                 a_code = g.get("VisitorCode", "").upper()
                 h_sc = str(g.get("HomeGoals", "0"))
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
-                # 3. Time Parsing for Sorting (FIXED)
-                # Use robust field selection from reference code
-                raw_time = (
-                    g.get("GameTime") 
-                    or g.get("Time") 
-                    or g.get("ScheduledTime") 
-                    or g.get("StartTime") 
-                    or ""
-                ).strip()
+                # --- TIME PARSING (Fixed) ---
+                raw_time = (g.get("GameTime") or g.get("Time") or g.get("ScheduledTime") or g.get("StartTime") or "").strip()
+                parsed_utc = f"{req_date}T00:00:00Z"
 
-                parsed_utc = f"{req_date}T00:00:00Z" # Default fallback
-                
                 try:
-                    # UPDATED REGEX: Makes the Timezone suffix optional (?:\s*([A-Z]+))?
                     tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
-                    
                     if tm_match:
                         time_str, meridiem, tz_str = tm_match.groups()
-                        
-                        # Default to EST (-5) if timezone is missing (AHL defaults)
-                        offset = -5 
-                        if tz_str:
-                            offset = TZ_OFFSETS.get(tz_str.upper(), -5)
-                        
-                        # Parse time to 24h
+                        offset = -5
+                        if tz_str: offset = TZ_OFFSETS.get(tz_str.upper(), -5)
                         dt_obj = dt.strptime(f"{g_date} {time_str} {meridiem}", "%Y-%m-%d %I:%M %p")
-                        
-                        # Apply Offset
                         dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
-                        
-                        # Convert to UTC ISO String for sorting
                         parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                except Exception as e: 
-                    # print(f"AHL Parsing Error: {e}")
-                    pass
+                except: pass
 
-                # 4. Status Parsing
+                # --- STATUS PARSING ---
                 raw_status = g.get("GameStatusString", "")
                 status_lower = raw_status.lower()
                 period_str = str(g.get("Period", ""))
-                
-                disp = "Scheduled"
-                gst = "pre"
+                disp = "Scheduled"; gst = "pre"
 
                 if "final" in status_lower:
                     gst = "post"
-                    if period_str == "5" or "so" in status_lower or "shootout" in status_lower: 
-                        disp = "FINAL S/O"
-                    elif period_str == "4" or "ot" in status_lower or "overtime" in status_lower: 
-                        disp = "FINAL OT"
-                    else: 
-                        disp = "FINAL"
+                    if period_str == "5" or "so" in status_lower or "shootout" in status_lower: disp = "FINAL S/O"
+                    elif period_str == "4" or "ot" in status_lower or "overtime" in status_lower: disp = "FINAL OT"
+                    else: disp = "FINAL"
                 elif "scheduled" in status_lower or "pre" in status_lower:
                     gst = "pre"
-                    try:
-                        # Display local time (just the 7:00 PM part)
-                        disp = raw_time.split(" ")[0] + " " + raw_time.split(" ")[1]
+                    try: disp = raw_time.split(" ")[0] + " " + raw_time.split(" ")[1]
                     except: disp = "Scheduled"
                 else:
-                    # LIVE
                     gst = "in"
                     if "intermission" in status_lower:
                         if "1st" in status_lower: disp = "End 1st"
@@ -957,49 +925,35 @@ class SportsFetcher:
                     else:
                         m = re.search(r'(\d+:\d+)\s*(1st|2nd|3rd|ot|overtime)', raw_status, re.IGNORECASE)
                         if m:
-                            clk = m.group(1)
-                            prd = m.group(2).lower()
+                            clk = m.group(1); prd = m.group(2).lower()
                             p_lbl = "OT" if "ot" in prd else f"P{prd[0]}"
                             disp = f"{p_lbl} {clk}"
-                        else:
-                            disp = raw_status
+                        else: disp = raw_status
 
-                # 5. Mode Filtering
+                # --- MODE FILTER ---
                 is_shown = True
                 if conf['mode'] == 'live' and gst != 'in': is_shown = False
                 elif conf['mode'] == 'my_teams':
-                    h_name_chk = AHL_TEAMS.get(h_code, {}).get("name", "")
-                    a_name_chk = AHL_TEAMS.get(a_code, {}).get("name", "")
+                    h_name_chk = AHL_TEAMS.get(h_code, {}).get("name", ""); a_name_chk = AHL_TEAMS.get(a_code, {}).get("name", "")
                     if h_code not in conf['my_teams'] and a_code not in conf['my_teams'] and \
                        h_name_chk not in conf['my_teams'] and a_name_chk not in conf['my_teams']:
                         is_shown = False
 
-                # 6. Team Metadata
+                # --- LOGO URL FIX (Removed _90) ---
                 h_meta = AHL_TEAMS.get(h_code, {"color": "000000"})
                 a_meta = AHL_TEAMS.get(a_code, {"color": "000000"})
 
-                h_logo = f"https://assets.leaguestat.com/ahl/logos/50x50/{h_meta.get('id', '')}_90.png" if h_meta.get('id') else ""
-                a_logo = f"https://assets.leaguestat.com/ahl/logos/50x50/{a_meta.get('id', '')}_90.png" if a_meta.get('id') else ""
+                h_logo = f"https://assets.leaguestat.com/ahl/logos/50x50/{h_meta.get('id', '')}.png" if h_meta.get('id') else ""
+                a_logo = f"https://assets.leaguestat.com/ahl/logos/50x50/{a_meta.get('id', '')}.png" if a_meta.get('id') else ""
 
                 games_found.append({
-                    'type': 'scoreboard',
-                    'sport': 'ahl',
-                    'id': f"ahl_{gid}",
-                    'status': disp,
-                    'state': gst,
-                    'is_shown': is_shown,
-                    'home_abbr': h_code,
-                    'home_score': h_sc,
-                    'home_logo': h_logo,
-                    'away_abbr': a_code,
-                    'away_score': a_sc,
-                    'away_logo': a_logo,
-                    'home_color': f"#{h_meta.get('color','000000')}",
-                    'away_color': f"#{a_meta.get('color','000000')}",
-                    'home_alt_color': '#444444',
-                    'away_alt_color': '#444444',
-                    'startTimeUTC': parsed_utc, 
-                    'situation': {}
+                    'type': 'scoreboard', 'sport': 'ahl', 'id': f"ahl_{gid}",
+                    'status': disp, 'state': gst, 'is_shown': is_shown,
+                    'home_abbr': h_code, 'home_score': h_sc, 'home_logo': h_logo,
+                    'away_abbr': a_code, 'away_score': a_sc, 'away_logo': a_logo,
+                    'home_color': f"#{h_meta.get('color','000000')}", 'away_color': f"#{a_meta.get('color','000000')}",
+                    'home_alt_color': '#444444', 'away_alt_color': '#444444',
+                    'startTimeUTC': parsed_utc, 'situation': {}
                 })
         except Exception as e:
             print(f"AHL Fetch Error: {e}")
