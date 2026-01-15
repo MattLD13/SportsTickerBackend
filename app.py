@@ -917,37 +917,47 @@ class SportsFetcher:
                 
                 if g_date_str != req_date: continue
 
-                # --- STATUS PARSING (Adapted from Reference Code) ---
+                # --- STATUS PARSING (Integrated from Reference Logic) ---
                 raw_status = g.get("GameStatusString", "")
-                status_lower = raw_status.lower()
+                # Clean unofficial markers per reference code
+                raw_status_clean = re.sub(r'\(?unofficial\)?', '', raw_status, flags=re.IGNORECASE).strip()
+                status_lower = raw_status_clean.lower()
                 period_str = str(g.get("Period", ""))
                 
                 disp = "Scheduled"; gst = "pre"
 
-                if "final" in status_lower:
+                # Check if Final
+                is_final_status = status_lower.startswith("final") or "final" in status_lower
+
+                if is_final_status:
                     gst = "post"
                     
-                    # === REFERENCE CODE LOGIC: "Deep Check" for Shootout ===
-                    # The reference code fetches the summary and checks specifically for shootout sections
+                    # === REFERENCE CODE LOGIC IMPLEMENTATION ===
                     has_shootout = False
                     
-                    # 1. Quick Check on Scorebar Data first
-                    if period_str == "5" or "so" in status_lower or "shootout" in status_lower:
+                    # 1. Initial Check: Status String or Period
+                    # Reference: _is_shootout() and Period check
+                    if "so" in status_lower or "shootout" in status_lower or "s/o" in status_lower:
                         has_shootout = True
-                    else:
-                        # 2. Deep Check via Game Summary API
+                    elif period_str == "5": # Period 5 is specifically SO in AHL data
+                        has_shootout = True
+                    
+                    # 2. Deep Check: Game Summary
+                    # Reference: _extract_shootout_data()
+                    # Only fetch if we haven't confirmed SO yet, to save API calls, 
+                    # but if you want 100% accuracy like reference, we fetch summary.
+                    if not has_shootout:
                         try:
                             sum_params = {
                                 "feed": "statviewfeed", "view": "gameSummary", "key": key,
                                 "client_code": "ahl", "lang": "en", "fmt": "json", "game_id": gid
                             }
-                            # Use 5s timeout to ensure we get the data
+                            # 5s timeout as per original
                             r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=5)
                             if r_sum.status_code == 200:
                                 s_data = r_sum.json()
                                 
-                                # EXACT LOGIC FROM REFERENCE CODE (_extract_shootout_data)
-                                # Check for various keys that indicate a shootout exists
+                                # Exact keys from reference code: _extract_shootout_data
                                 if (s_data.get("shootout") or 
                                     s_data.get("Shootout") or 
                                     s_data.get("shootOut") or 
@@ -955,15 +965,20 @@ class SportsFetcher:
                                     s_data.get("hasShootout") or
                                     s_data.get("shootoutDetails")):
                                     has_shootout = True
+                                
+                                # Also check gameStatusString inside summary as backup
+                                sum_status = str(s_data.get("gameStatusString", "")).lower()
+                                if "so" in sum_status or "shootout" in sum_status or "s/o" in sum_status:
+                                    has_shootout = True
                         except: pass
 
-                    # 3. Determine Final Display String
+                    # 3. Final Formatting (Reference: _format_status)
                     if has_shootout:
-                        disp = "FINAL S/O"
+                        disp = "Final S/O"
                     elif period_str == "4" or "ot" in status_lower or "overtime" in status_lower:
-                        disp = "FINAL OT"
+                        disp = "Final OT"
                     else:
-                        disp = "FINAL"
+                        disp = "Final"
 
                 elif "scheduled" in status_lower or "pre" in status_lower:
                     gst = "pre"
@@ -977,18 +992,21 @@ class SportsFetcher:
                     except: disp = "Scheduled"
                 else:
                     gst = "in"
+                    # Live Logic
                     if "intermission" in status_lower:
-                        if "1st" in status_lower: disp = "End 1st"
-                        elif "2nd" in status_lower: disp = "End 2nd"
-                        elif "3rd" in status_lower: disp = "End 3rd"
+                        if "1st" in status_lower: disp = "1st INT"
+                        elif "2nd" in status_lower: disp = "2nd INT"
+                        elif "3rd" in status_lower: disp = "3rd INT"
                         else: disp = "INT"
                     else:
-                        m = re.search(r'(\d+:\d+)\s*(1st|2nd|3rd|ot|overtime)', raw_status, re.IGNORECASE)
+                        m = re.search(r'(\d+:\d+)\s*(1st|2nd|3rd|ot|overtime)', raw_status_clean, re.IGNORECASE)
                         if m:
-                            clk = m.group(1); prd = m.group(2).lower()
-                            p_lbl = "OT" if "ot" in prd else f"P{prd[0]}"
-                            disp = f"{p_lbl} {clk}"
-                        else: disp = raw_status
+                            clk = m.group(1)
+                            prd = m.group(2).upper()
+                            if "OVERTIME" in prd: prd = "OT"
+                            disp = f"{clk} {prd}"
+                        else: 
+                            disp = raw_status_clean
 
                 # --- MODE FILTER ---
                 is_shown = True
