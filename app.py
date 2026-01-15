@@ -862,7 +862,6 @@ class SportsFetcher:
             key = self._get_ahl_key()
             
             # Fetch Scorebar for "Today"
-            # Parse visible_start_utc to YYYY-MM-DD
             req_date = visible_start_utc.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5)))).strftime("%Y-%m-%d")
 
             params = {
@@ -890,19 +889,26 @@ class SportsFetcher:
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
                 # 3. Time Parsing for Sorting (FIXED)
-                # Format usually: "7:00 pm EST" OR just "7:00 pm"
-                raw_time = g.get("Time", "").strip()
+                # Use robust field selection from reference code
+                raw_time = (
+                    g.get("GameTime") 
+                    or g.get("Time") 
+                    or g.get("ScheduledTime") 
+                    or g.get("StartTime") 
+                    or ""
+                ).strip()
+
                 parsed_utc = f"{req_date}T00:00:00Z" # Default fallback
                 
                 try:
-                    # Regex to separate time and timezone (Timezone now optional)
+                    # UPDATED REGEX: Makes the Timezone suffix optional (?:\s*([A-Z]+))?
                     tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
                     
                     if tm_match:
                         time_str, meridiem, tz_str = tm_match.groups()
                         
-                        # Default to EST (-5) if timezone is missing in the string
-                        offset = -5
+                        # Default to EST (-5) if timezone is missing (AHL defaults)
+                        offset = -5 
                         if tz_str:
                             offset = TZ_OFFSETS.get(tz_str.upper(), -5)
                         
@@ -912,13 +918,13 @@ class SportsFetcher:
                         # Apply Offset
                         dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
                         
-                        # Convert to UTC ISO String
+                        # Convert to UTC ISO String for sorting
                         parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 except Exception as e: 
-                    # print(f"AHL Time Parse Error: {e}")
+                    # print(f"AHL Parsing Error: {e}")
                     pass
 
-                # 4. Status Parsing (Fixed Logic for FINAL S/O)
+                # 4. Status Parsing
                 raw_status = g.get("GameStatusString", "")
                 status_lower = raw_status.lower()
                 period_str = str(g.get("Period", ""))
@@ -928,7 +934,6 @@ class SportsFetcher:
 
                 if "final" in status_lower:
                     gst = "post"
-                    # AHL Feed: Period "4" = OT, Period "5" = SO
                     if period_str == "5" or "so" in status_lower or "shootout" in status_lower: 
                         disp = "FINAL S/O"
                     elif period_str == "4" or "ot" in status_lower or "overtime" in status_lower: 
@@ -963,18 +968,16 @@ class SportsFetcher:
                 is_shown = True
                 if conf['mode'] == 'live' and gst != 'in': is_shown = False
                 elif conf['mode'] == 'my_teams':
-                    # Check both Code and Name for safety
                     h_name_chk = AHL_TEAMS.get(h_code, {}).get("name", "")
                     a_name_chk = AHL_TEAMS.get(a_code, {}).get("name", "")
                     if h_code not in conf['my_teams'] and a_code not in conf['my_teams'] and \
                        h_name_chk not in conf['my_teams'] and a_name_chk not in conf['my_teams']:
                         is_shown = False
 
-                # 6. Team Metadata (Using Dynamic Cache)
+                # 6. Team Metadata
                 h_meta = AHL_TEAMS.get(h_code, {"color": "000000"})
                 a_meta = AHL_TEAMS.get(a_code, {"color": "000000"})
 
-                # Use ID from AHL_TEAMS to construct logo URL
                 h_logo = f"https://assets.leaguestat.com/ahl/logos/50x50/{h_meta.get('id', '')}_90.png" if h_meta.get('id') else ""
                 a_logo = f"https://assets.leaguestat.com/ahl/logos/50x50/{a_meta.get('id', '')}_90.png" if a_meta.get('id') else ""
 
