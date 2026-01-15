@@ -69,7 +69,7 @@ TICKER_REGISTRY_FILE = "tickers.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 
 # === TIMING ===
-SPORTS_UPDATE_INTERVAL = 15       
+SPORTS_UPDATE_INTERVAL = 5       
 STOCKS_UPDATE_INTERVAL = 15       
 
 data_lock = threading.Lock()
