@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.0_Hybrid_Sports_Finnhub"
+SERVER_VERSION = "v3.1_AHL_Integrated"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -69,7 +69,7 @@ TICKER_REGISTRY_FILE = "tickers.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 
 # === TIMING ===
-SPORTS_UPDATE_INTERVAL = 5      
+SPORTS_UPDATE_INTERVAL = 15      
 STOCKS_UPDATE_INTERVAL = 15      
 
 data_lock = threading.Lock()
@@ -94,6 +94,49 @@ FOTMOB_LEAGUE_MAP = {
     'soccer_europa_league': 73
 }
 
+# ================= AHL CONFIGURATION =================
+AHL_API_KEYS = [
+    "ccb91f29d6744675", "694cfeed58c932ee", "50c2cd9b5e18e390"
+]
+
+# Standardized AHL Teams (Logos from Wikipedia/Common Sources)
+AHL_TEAMS = {
+    "ABB": {"name": "Abbotsford Canucks", "color": "00744F", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/8/8e/Abbotsford_Canucks_logo.svg/500px-Abbotsford_Canucks_logo.svg.png"},
+    "BAK": {"name": "Bakersfield Condors", "color": "F47A38", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/5/5a/Bakersfield_Condors_logo.svg/500px-Bakersfield_Condors_logo.svg.png"},
+    "BEL": {"name": "Belleville Senators", "color": "C52032", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/d/d4/Belleville_Senators_logo.svg/500px-Belleville_Senators_logo.svg.png"},
+    "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/8/85/Bridgeport_Islanders_Logo.svg/500px-Bridgeport_Islanders_Logo.svg.png"},
+    "CAL": {"name": "Calgary Wranglers", "color": "C8102E", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/5/52/Calgary_Wranglers_logo.svg/500px-Calgary_Wranglers_logo.svg.png"},
+    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Charlotte_Checkers_logo.svg/500px-Charlotte_Checkers_logo.svg.png"},
+    "CHI": {"name": "Chicago Wolves", "color": "7C2529", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e6/Chicago_Wolves_logo.svg/500px-Chicago_Wolves_logo.svg.png"},
+    "CLE": {"name": "Cleveland Monsters", "color": "041E42", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/3/38/Cleveland_Monsters_logo.svg/500px-Cleveland_Monsters_logo.svg.png"},
+    "CVF": {"name": "Coachella Valley", "color": "D32027", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/7/74/Coachella_Valley_Firebirds_Logo.svg/500px-Coachella_Valley_Firebirds_Logo.svg.png"},
+    "COL": {"name": "Colorado Eagles", "color": "003087", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e2/Colorado_Eagles_logo.svg/500px-Colorado_Eagles_logo.svg.png"},
+    "GR":  {"name": "Grand Rapids Griffins", "color": "BE1E2D", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/43/Grand_Rapids_Griffins_logo.svg/500px-Grand_Rapids_Griffins_logo.svg.png"},
+    "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/7/75/Hartford_Wolf_Pack_logo.svg/500px-Hartford_Wolf_Pack_logo.svg.png"},
+    "HSK": {"name": "Henderson Silver Knights", "color": "111111", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/46/Henderson_Silver_Knights_Logo.svg/500px-Henderson_Silver_Knights_Logo.svg.png"},
+    "HER": {"name": "Hershey Bears", "color": "4F2C1D", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/a/a5/Hershey_Bears_Logo.svg/500px-Hershey_Bears_Logo.svg.png"},
+    "IA":  {"name": "Iowa Wild", "color": "154734", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/a/a1/Iowa_Wild_logo.svg/500px-Iowa_Wild_logo.svg.png"},
+    "LAV": {"name": "Laval Rocket", "color": "00205B", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b3/Laval_Rocket_logo.svg/500px-Laval_Rocket_logo.svg.png"},
+    "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4a/Lehigh_Valley_Phantoms_logo.svg/500px-Lehigh_Valley_Phantoms_logo.svg.png"},
+    "MB":  {"name": "Manitoba Moose", "color": "003E7E", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/3/3f/Manitoba_Moose_logo.svg/500px-Manitoba_Moose_logo.svg.png"},
+    "MIL": {"name": "Milwaukee Admirals", "color": "041E42", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/1e/Milwaukee_Admirals_logo.svg/500px-Milwaukee_Admirals_logo.svg.png"},
+    "ONT": {"name": "Ontario Reign", "color": "111111", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/5/53/Ontario_Reign_logo.svg/500px-Ontario_Reign_logo.svg.png"},
+    "PRO": {"name": "Providence Bruins", "color": "000000", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/9/91/Providence_Bruins_logo.svg/500px-Providence_Bruins_logo.svg.png"},
+    "ROC": {"name": "Rochester Americans", "color": "00539B", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/14/Rochester_Americans_logo.svg/500px-Rochester_Americans_logo.svg.png"},
+    "RFD": {"name": "Rockford IceHogs", "color": "CE1126", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4e/Rockford_IceHogs_logo.svg/500px-Rockford_IceHogs_logo.svg.png"},
+    "SD":  {"name": "San Diego Gulls", "color": "041E42", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/a/a2/San_Diego_Gulls_logo.svg/500px-San_Diego_Gulls_logo.svg.png"},
+    "SJ":  {"name": "San Jose Barracuda", "color": "006D75", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/2/2d/San_Jose_Barracuda_logo.svg/500px-San_Jose_Barracuda_logo.svg.png"},
+    "SPR": {"name": "Springfield Thunderbirds", "color": "003087", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/18/Springfield_Thunderbirds_logo.svg/500px-Springfield_Thunderbirds_logo.svg.png"},
+    "SYR": {"name": "Syracuse Crunch", "color": "003087", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/2/22/Syracuse_Crunch_logo.svg/500px-Syracuse_Crunch_logo.svg.png"},
+    "TEX": {"name": "Texas Stars", "color": "154734", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/9/9b/Texas_Stars_logo.svg/500px-Texas_Stars_logo.svg.png"},
+    "TOR": {"name": "Toronto Marlies", "color": "00205B", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4d/Toronto_Marlies_logo.svg/500px-Toronto_Marlies_logo.svg.png"},
+    "TUC": {"name": "Tucson Roadrunners", "color": "8C2633", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/9/90/Tucson_Roadrunners_logo.svg/500px-Tucson_Roadrunners_logo.svg.png"},
+    "UTI": {"name": "Utica Comets", "color": "006341", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/18/Utica_Comets_logo.svg/500px-Utica_Comets_logo.svg.png"},
+    "UTC": {"name": "Utica Comets", "color": "006341", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/18/Utica_Comets_logo.svg/500px-Utica_Comets_logo.svg.png"},
+    "WBS": {"name": "W-B/Scranton", "color": "000000", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Wilkes-Barre_Scranton_Penguins_logo.svg/500px-Wilkes-Barre_Scranton_Penguins_logo.svg.png"},
+}
+
+
 # ================= MASTER LEAGUE REGISTRY =================
 # Using the robust list from the Old Code
 LEAGUE_OPTIONS = [
@@ -101,6 +144,9 @@ LEAGUE_OPTIONS = [
     {'id': 'nfl',           'label': 'NFL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'mlb',           'label': 'MLB',                 'type': 'sport', 'default': True,  'fetch': {'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'nhl',           'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    # === ADDED AHL ===
+    {'id': 'ahl',           'label': 'AHL',                 'type': 'sport', 'default': True,  'fetch': {'type': 'ahl_native'}}, 
+    
     {'id': 'nba',           'label': 'NBA',                 'type': 'sport', 'default': True,  'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     
     # --- COLLEGE SPORTS ---
@@ -110,10 +156,10 @@ LEAGUE_OPTIONS = [
     # --- SOCCER (Colors fetched via ESPN, scores via FotMob) ---
     {'id': 'soccer_epl',    'label': 'Premier League',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_fa_cup','label': 'FA Cup',                 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
-    {'id': 'soccer_champ', 'label': 'Championship',           'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l1',     'label': 'League One',            'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l2',     'label': 'League Two',            'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_wc',     'label': 'FIFA World Cup',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'soccer_champ', 'label': 'Championship',            'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l1',     'label': 'League One',             'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l2',     'label': 'League Two',             'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_wc',     'label': 'FIFA World Cup',        'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_europa_league',    'label': 'Europa League',    'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 200}, 'type': 'scoreboard'}},
 
@@ -129,11 +175,11 @@ LEAGUE_OPTIONS = [
     {'id': 'clock',         'label': 'Clock',                'type': 'util',  'default': True},
 
     # --- STOCKS (From New Code Lists) ---
-    {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',     'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
+    {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',      'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
     {'id': 'stock_momentum',   'label': 'Momentum Stocks',       'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
-    {'id': 'stock_energy',        'label': 'Energy Stocks',        'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
-    {'id': 'stock_finance',       'label': 'Financial Stocks',     'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
-    {'id': 'stock_consumer',      'label': 'Consumer Stocks',      'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
+    {'id': 'stock_energy',         'label': 'Energy Stocks',         'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
+    {'id': 'stock_finance',        'label': 'Financial Stocks',      'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
+    {'id': 'stock_consumer',       'label': 'Consumer Stocks',       'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
 ]
 
 # ================= DEFAULT STATE =================
@@ -591,6 +637,11 @@ class SportsFetcher:
         # === HISTORY BUFFER FOR PER-TICKER DELAY ===
         self.history_buffer = [] # List of tuples: (timestamp, data_snapshot)
         self.consecutive_empty_fetches = 0
+
+        # === ADDED FOR AHL ===
+        self.ahl_cached_key = None
+        self.ahl_key_expiry = 0
+        # =====================
         
         self.leagues = { 
             item['id']: item['fetch'] 
@@ -721,6 +772,136 @@ class SportsFetcher:
 
             with data_lock: state['all_teams_data'] = teams_catalog
         except Exception as e: print(f"Global Team Fetch Error: {e}")
+
+    # ================= NEW AHL METHODS =================
+    def _get_ahl_key(self):
+        if self.ahl_cached_key and time.time() < self.ahl_key_expiry:
+            return self.ahl_cached_key
+
+        # Try to detect key
+        for key in AHL_API_KEYS:
+            try:
+                params = {"feed": "modulekit", "view": "seasons", "key": key, "client_code": "ahl", "lang": "en", "fmt": "json", "league_id": 4}
+                r = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=params, timeout=3)
+                if r.status_code == 200:
+                    data = r.json()
+                    if "SiteKit" in data or "Seasons" in data:
+                        self.ahl_cached_key = key
+                        self.ahl_key_expiry = time.time() + 7200 # Cache for 2 hours
+                        return key
+            except: continue
+        return AHL_API_KEYS[0] # Fallback
+
+    def _fetch_ahl(self, conf, visible_start_utc, visible_end_utc):
+        games_found = []
+        if not conf['active_sports'].get('ahl', False): return []
+
+        try:
+            key = self._get_ahl_key()
+            
+            # Fetch Scorebar for "Today" (AHL API usually handles current context well)
+            # We fetch based on the visible start date (server local time)
+            req_date = visible_start_utc.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5)))).strftime("%Y-%m-%d")
+
+            params = {
+                "feed": "modulekit", "view": "scorebar", "key": key,
+                "client_code": "ahl", "lang": "en", "fmt": "json", 
+                "league_id": 4, "site_id": 0
+            }
+            
+            r = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=params, timeout=5)
+            if r.status_code != 200: return []
+            
+            data = r.json()
+            scorebar = data.get("SiteKit", {}).get("Scorebar", [])
+
+            for g in scorebar:
+                # 1. Date Filter
+                g_date = g.get("Date", "")
+                if g_date != req_date: continue
+
+                # 2. Extract Basic Data
+                gid = g.get("ID")
+                h_code = g.get("HomeCode", "").upper()
+                a_code = g.get("VisitorCode", "").upper()
+                h_sc = str(g.get("HomeGoals", "0"))
+                a_sc = str(g.get("VisitorGoals", "0"))
+                
+                # 3. Status Parsing
+                raw_status = g.get("GameStatusString", "")
+                status_lower = raw_status.lower()
+                
+                disp = "Scheduled"
+                gst = "pre"
+
+                if "final" in status_lower:
+                    gst = "post"
+                    if "so" in status_lower or "shootout" in status_lower: disp = "FINAL S/O"
+                    elif "ot" in status_lower or "overtime" in status_lower: disp = "FINAL OT"
+                    else: disp = "FINAL"
+                elif "scheduled" in status_lower or "pre" in status_lower:
+                    gst = "pre"
+                    # Try to parse time: "7:00 pm EST" -> "7:00 PM"
+                    try:
+                        time_part = g.get("Time", "").split(" ")[0] # Get 7:00
+                        disp = f"{time_part} PM" # AHL usually sends local time, simplified here
+                    except: disp = "Scheduled"
+                else:
+                    # LIVE
+                    gst = "in"
+                    # Format: "12:34 1st" -> "P1 12:34"
+                    # Format: "End 1st" -> "End 1st"
+                    if "intermission" in status_lower:
+                        if "1st" in status_lower: disp = "End 1st"
+                        elif "2nd" in status_lower: disp = "End 2nd"
+                        elif "3rd" in status_lower: disp = "End 3rd"
+                        else: disp = "INT"
+                    else:
+                        # Regex to flip "12:34 1st" to "P1 12:34"
+                        m = re.search(r'(\d+:\d+)\s*(1st|2nd|3rd|ot|overtime)', raw_status, re.IGNORECASE)
+                        if m:
+                            clk = m.group(1)
+                            prd = m.group(2).lower()
+                            p_lbl = "OT" if "ot" in prd else f"P{prd[0]}"
+                            disp = f"{p_lbl} {clk}"
+                        else:
+                            disp = raw_status # Fallback
+
+                # 4. Mode Filtering
+                is_shown = True
+                if conf['mode'] == 'live' and gst != 'in': is_shown = False
+                elif conf['mode'] == 'my_teams':
+                    is_shown = (h_code in conf['my_teams'] or a_code in conf['my_teams'])
+
+                # 5. Team Metadata
+                h_meta = AHL_TEAMS.get(h_code, {"color": "000000", "logo": ""})
+                a_meta = AHL_TEAMS.get(a_code, {"color": "000000", "logo": ""})
+
+                games_found.append({
+                    'type': 'scoreboard',
+                    'sport': 'ahl',
+                    'id': f"ahl_{gid}",
+                    'status': disp,
+                    'state': gst,
+                    'is_shown': is_shown,
+                    'home_abbr': h_code,
+                    'home_score': h_sc,
+                    'home_logo': h_meta['logo'],
+                    'away_abbr': a_code,
+                    'away_score': a_sc,
+                    'away_logo': a_meta['logo'],
+                    'home_color': f"#{h_meta['color']}",
+                    'away_color': f"#{a_meta['color']}",
+                    'home_alt_color': '#444444',
+                    'away_alt_color': '#444444',
+                    'startTimeUTC': f"{req_date}T00:00:00Z", # Placeholder as AHL API doesn't give clean UTC
+                    'situation': {} # No advanced tracking requested
+                })
+        except Exception as e:
+            print(f"AHL Fetch Error: {e}")
+        
+        return games_found
+    # ===============================================
 
     # === NHL NATIVE FETCHER ===
     def fetch_shootout_details(self, game_id, away_id, home_id):
@@ -1581,6 +1762,10 @@ class SportsFetcher:
             
             # Submit tasks
             futures = []
+
+            # === ADDED AHL ===
+            if conf['active_sports'].get('ahl', False):
+                futures.append(self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc))
             
             # A. NHL Native Special Case
             if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
@@ -1599,6 +1784,9 @@ class SportsFetcher:
                 
                 # Skip Soccer here (Handled by FotMob now)
                 if league_key.startswith('soccer_'): continue
+
+                # Skip AHL (Handled natively)
+                if league_key == 'ahl': continue
 
                 futures.append(self.executor.submit(
                     self.fetch_single_league, 
