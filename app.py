@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.2_AHL_Fixed"
+SERVER_VERSION = "v3.3_AHL_Logos_Sorting_Fixed"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -99,51 +99,59 @@ AHL_API_KEYS = [
     "ccb91f29d6744675", "694cfeed58c932ee", "50c2cd9b5e18e390"
 ]
 
-# Standardized AHL Teams (Logos from Wikipedia/Common Sources)
-AHL_TEAMS = {
-    "ABB": {"name": "Abbotsford Canucks", "color": "00744F", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/8/8e/Abbotsford_Canucks_logo.svg/500px-Abbotsford_Canucks_logo.svg.png"},
-    "BAK": {"name": "Bakersfield Condors", "color": "F47A38", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/5/5a/Bakersfield_Condors_logo.svg/500px-Bakersfield_Condors_logo.svg.png"},
-    "BEL": {"name": "Belleville Senators", "color": "C52032", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/d/d4/Belleville_Senators_logo.svg/500px-Belleville_Senators_logo.svg.png"},
-    "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/8/85/Bridgeport_Islanders_Logo.svg/500px-Bridgeport_Islanders_Logo.svg.png"},
-    "CAL": {"name": "Calgary Wranglers", "color": "C8102E", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/5/52/Calgary_Wranglers_logo.svg/500px-Calgary_Wranglers_logo.svg.png"},
-    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Charlotte_Checkers_logo.svg/500px-Charlotte_Checkers_logo.svg.png"},
-    "CHI": {"name": "Chicago Wolves", "color": "7C2529", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e6/Chicago_Wolves_logo.svg/500px-Chicago_Wolves_logo.svg.png"},
-    "CLE": {"name": "Cleveland Monsters", "color": "041E42", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/3/38/Cleveland_Monsters_logo.svg/500px-Cleveland_Monsters_logo.svg.png"},
-    "CVF": {"name": "Coachella Valley", "color": "D32027", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/7/74/Coachella_Valley_Firebirds_Logo.svg/500px-Coachella_Valley_Firebirds_Logo.svg.png"},
-    "COL": {"name": "Colorado Eagles", "color": "003087", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e2/Colorado_Eagles_logo.svg/500px-Colorado_Eagles_logo.svg.png"},
-    "GR":  {"name": "Grand Rapids Griffins", "color": "BE1E2D", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/43/Grand_Rapids_Griffins_logo.svg/500px-Grand_Rapids_Griffins_logo.svg.png"},
-    "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/7/75/Hartford_Wolf_Pack_logo.svg/500px-Hartford_Wolf_Pack_logo.svg.png"},
-    "HSK": {"name": "Henderson Silver Knights", "color": "111111", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/46/Henderson_Silver_Knights_Logo.svg/500px-Henderson_Silver_Knights_Logo.svg.png"},
-    "HER": {"name": "Hershey Bears", "color": "4F2C1D", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/a/a5/Hershey_Bears_Logo.svg/500px-Hershey_Bears_Logo.svg.png"},
-    "IA":  {"name": "Iowa Wild", "color": "154734", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/a/a1/Iowa_Wild_logo.svg/500px-Iowa_Wild_logo.svg.png"},
-    "LAV": {"name": "Laval Rocket", "color": "00205B", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/b/b3/Laval_Rocket_logo.svg/500px-Laval_Rocket_logo.svg.png"},
-    "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4a/Lehigh_Valley_Phantoms_logo.svg/500px-Lehigh_Valley_Phantoms_logo.svg.png"},
-    "MB":  {"name": "Manitoba Moose", "color": "003E7E", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/3/3f/Manitoba_Moose_logo.svg/500px-Manitoba_Moose_logo.svg.png"},
-    "MIL": {"name": "Milwaukee Admirals", "color": "041E42", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/1e/Milwaukee_Admirals_logo.svg/500px-Milwaukee_Admirals_logo.svg.png"},
-    "ONT": {"name": "Ontario Reign", "color": "111111", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/5/53/Ontario_Reign_logo.svg/500px-Ontario_Reign_logo.svg.png"},
-    "PRO": {"name": "Providence Bruins", "color": "000000", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/9/91/Providence_Bruins_logo.svg/500px-Providence_Bruins_logo.svg.png"},
-    "ROC": {"name": "Rochester Americans", "color": "00539B", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/14/Rochester_Americans_logo.svg/500px-Rochester_Americans_logo.svg.png"},
-    "RFD": {"name": "Rockford IceHogs", "color": "CE1126", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4e/Rockford_IceHogs_logo.svg/500px-Rockford_IceHogs_logo.svg.png"},
-    "SD":  {"name": "San Diego Gulls", "color": "041E42", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/a/a2/San_Diego_Gulls_logo.svg/500px-San_Diego_Gulls_logo.svg.png"},
-    "SJ":  {"name": "San Jose Barracuda", "color": "006D75", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/2/2d/San_Jose_Barracuda_logo.svg/500px-San_Jose_Barracuda_logo.svg.png"},
-    "SPR": {"name": "Springfield Thunderbirds", "color": "003087", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/18/Springfield_Thunderbirds_logo.svg/500px-Springfield_Thunderbirds_logo.svg.png"},
-    "SYR": {"name": "Syracuse Crunch", "color": "003087", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/2/22/Syracuse_Crunch_logo.svg/500px-Syracuse_Crunch_logo.svg.png"},
-    "TEX": {"name": "Texas Stars", "color": "154734", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/9/9b/Texas_Stars_logo.svg/500px-Texas_Stars_logo.svg.png"},
-    "TOR": {"name": "Toronto Marlies", "color": "00205B", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4d/Toronto_Marlies_logo.svg/500px-Toronto_Marlies_logo.svg.png"},
-    "TUC": {"name": "Tucson Roadrunners", "color": "8C2633", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/9/90/Tucson_Roadrunners_logo.svg/500px-Tucson_Roadrunners_logo.svg.png"},
-    "UTI": {"name": "Utica Comets", "color": "006341", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/18/Utica_Comets_logo.svg/500px-Utica_Comets_logo.svg.png"},
-    "UTC": {"name": "Utica Comets", "color": "006341", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/1/18/Utica_Comets_logo.svg/500px-Utica_Comets_logo.svg.png"},
-    "WBS": {"name": "W-B/Scranton", "color": "000000", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Wilkes-Barre_Scranton_Penguins_logo.svg/500px-Wilkes-Barre_Scranton_Penguins_logo.svg.png"},
+# Timezone map for AHL parsing
+TZ_OFFSETS = {
+    "EST": -5, "EDT": -4,
+    "CST": -6, "CDT": -5,
+    "MST": -7, "MDT": -6,
+    "PST": -8, "PDT": -7,
+    "AST": -4, "ADT": -3
 }
 
+# Fallback Colors (Will be enriched with IDs dynamically)
+AHL_TEAMS = {
+    "ABB": {"name": "Abbotsford Canucks", "color": "00744F"},
+    "BAK": {"name": "Bakersfield Condors", "color": "F47A38"},
+    "BEL": {"name": "Belleville Senators", "color": "C52032"},
+    "BRI": {"name": "Bridgeport Islanders", "color": "00539B"},
+    "CAL": {"name": "Calgary Wranglers", "color": "C8102E"},
+    "CHA": {"name": "Charlotte Checkers", "color": "C8102E"},
+    "CHI": {"name": "Chicago Wolves", "color": "7C2529"},
+    "CLE": {"name": "Cleveland Monsters", "color": "041E42"},
+    "CVF": {"name": "Coachella Valley", "color": "D32027"},
+    "COL": {"name": "Colorado Eagles", "color": "003087"},
+    "GR":  {"name": "Grand Rapids Griffins", "color": "BE1E2D"},
+    "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240"},
+    "HSK": {"name": "Henderson Silver Knights", "color": "111111"},
+    "HER": {"name": "Hershey Bears", "color": "4F2C1D"},
+    "IA":  {"name": "Iowa Wild", "color": "154734"},
+    "LAV": {"name": "Laval Rocket", "color": "00205B"},
+    "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000"},
+    "MB":  {"name": "Manitoba Moose", "color": "003E7E"},
+    "MIL": {"name": "Milwaukee Admirals", "color": "041E42"},
+    "ONT": {"name": "Ontario Reign", "color": "111111"},
+    "PRO": {"name": "Providence Bruins", "color": "000000"},
+    "ROC": {"name": "Rochester Americans", "color": "00539B"},
+    "RFD": {"name": "Rockford IceHogs", "color": "CE1126"},
+    "SD":  {"name": "San Diego Gulls", "color": "041E42"},
+    "SJ":  {"name": "San Jose Barracuda", "color": "006D75"},
+    "SPR": {"name": "Springfield Thunderbirds", "color": "003087"},
+    "SYR": {"name": "Syracuse Crunch", "color": "003087"},
+    "TEX": {"name": "Texas Stars", "color": "154734"},
+    "TOR": {"name": "Toronto Marlies", "color": "00205B"},
+    "TUC": {"name": "Tucson Roadrunners", "color": "8C2633"},
+    "UTI": {"name": "Utica Comets", "color": "006341"},
+    "UTC": {"name": "Utica Comets", "color": "006341"},
+    "WBS": {"name": "W-B/Scranton", "color": "000000"},
+}
 
 # ================= MASTER LEAGUE REGISTRY =================
-# Using the robust list from the Old Code
 LEAGUE_OPTIONS = [
     # --- PRO SPORTS ---
     {'id': 'nfl',           'label': 'NFL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'mlb',           'label': 'MLB',                 'type': 'sport', 'default': True,  'fetch': {'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'nhl',           'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    
     # === ADDED AHL ===
     {'id': 'ahl',           'label': 'AHL',                 'type': 'sport', 'default': True,  'fetch': {'type': 'ahl_native'}}, 
     
@@ -153,7 +161,7 @@ LEAGUE_OPTIONS = [
     {'id': 'ncf_fbs',       'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs',       'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
 
-    # --- SOCCER (Colors fetched via ESPN, scores via FotMob) ---
+    # --- SOCCER ---
     {'id': 'soccer_epl',    'label': 'Premier League',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_fa_cup','label': 'FA Cup',                 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
     {'id': 'soccer_champ', 'label': 'Championship',            'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
@@ -174,7 +182,7 @@ LEAGUE_OPTIONS = [
     {'id': 'weather',       'label': 'Weather',              'type': 'util',  'default': True},
     {'id': 'clock',         'label': 'Clock',                'type': 'util',  'default': True},
 
-    # --- STOCKS (From New Code Lists) ---
+    # --- STOCKS ---
     {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',      'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
     {'id': 'stock_momentum',   'label': 'Momentum Stocks',       'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
     {'id': 'stock_energy',         'label': 'Energy Stocks',         'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
@@ -737,20 +745,9 @@ class SportsFetcher:
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
             
-            # === ADDED: POPULATE AHL TEAMS FOR UI ===
-            if 'ahl' in self.leagues:
-                teams_catalog['ahl'] = []
-                for code, meta in AHL_TEAMS.items():
-                    teams_catalog['ahl'].append({
-                        'abbr': code,
-                        'id': code, # AHL uses the TLA as ID often
-                        'logo': meta['logo'],
-                        'color': meta['color'],
-                        'alt_color': '444444',
-                        'name': meta['name'],
-                        'shortName': meta['name'].split(' ')[-1] # roughly "Bears", "Wolves"
-                    })
-            # ========================================
+            # === POPULATE AHL TEAMS DYNAMICALLY (Fix for Missing Logos) ===
+            self._fetch_ahl_teams_reference(teams_catalog)
+            # ==============================================================
 
             for t in OLYMPIC_HOCKEY_TEAMS:
                 teams_catalog['hockey_olympics'].append({'abbr': t['abbr'], 'logo': t['logo'], 'color': '000000', 'alt_color': '444444'})
@@ -808,6 +805,56 @@ class SportsFetcher:
             except: continue
         return AHL_API_KEYS[0] # Fallback
 
+    def _fetch_ahl_teams_reference(self, catalog):
+        """Fetch Official AHL Team IDs for Logo Construction"""
+        if 'ahl' not in self.leagues: return
+        catalog['ahl'] = []
+        try:
+            key = self._get_ahl_key()
+            # Fetch teams list from API
+            r = self.session.get("https://lscluster.hockeytech.com/feed/index.php", 
+                params={"feed": "modulekit", "view": "teams", "key": key, "fmt": "json", "client_code": "ahl", "lang": "en", "league_id": 4},
+                timeout=5
+            )
+            if r.status_code == 200:
+                data = r.json()
+                teams_list = data.get("SiteKit", {}).get("Teams", [])
+                for t in teams_list:
+                    # Parse basic data
+                    code = t.get("code", "").upper()
+                    t_id = t.get("id")
+                    name = t.get("name", "")
+                    
+                    # Construct Logo URL using the pattern provided: 390_90.png (ID_90.png)
+                    # NOTE: The '90' suffix often refers to a specific size or style id in leaguestat systems.
+                    logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}_90.png"
+                    
+                    # Fallback color if not in our hardcoded list
+                    color = AHL_TEAMS.get(code, {}).get("color", "000000")
+                    
+                    # Update local cache for quick lookup during game fetch
+                    if code not in AHL_TEAMS:
+                        AHL_TEAMS[code] = {"color": color}
+                    AHL_TEAMS[code]["logo"] = logo_url
+                    AHL_TEAMS[code]["name"] = name
+
+                    catalog['ahl'].append({
+                        'abbr': code,
+                        'id': str(t_id),
+                        'logo': logo_url,
+                        'color': color,
+                        'alt_color': '444444',
+                        'name': name,
+                        'shortName': name.split(" ")[-1]
+                    })
+        except Exception as e:
+            print(f"AHL Team Reference Fetch Error: {e}")
+            # Fallback to hardcoded list if API fails
+            for code, meta in AHL_TEAMS.items():
+                catalog['ahl'].append({
+                    'abbr': code, 'id': code, 'logo': meta.get('logo',''), 'color': meta['color'], 'alt_color': '444444', 'name': meta['name'], 'shortName': meta['name']
+                })
+
     def _fetch_ahl(self, conf, visible_start_utc, visible_end_utc):
         games_found = []
         if not conf['active_sports'].get('ahl', False): return []
@@ -815,8 +862,8 @@ class SportsFetcher:
         try:
             key = self._get_ahl_key()
             
-            # Fetch Scorebar for "Today" (AHL API usually handles current context well)
-            # We fetch based on the visible start date (server local time)
+            # Fetch Scorebar for "Today"
+            # Parse visible_start_utc to YYYY-MM-DD
             req_date = visible_start_utc.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5)))).strftime("%Y-%m-%d")
 
             params = {
@@ -843,7 +890,28 @@ class SportsFetcher:
                 h_sc = str(g.get("HomeGoals", "0"))
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
-                # 3. Status Parsing (Fixed Logic)
+                # 3. Time Parsing for Sorting
+                # Format usually: "7:00 pm EST"
+                raw_time = g.get("Time", "").strip()
+                parsed_utc = f"{req_date}T00:00:00Z" # Default fallback
+                try:
+                    # Regex to separate time and timezone
+                    tm_match = re.match(r"(\d+:\d+)\s*(am|pm)\s*([A-Z]+)", raw_time, re.IGNORECASE)
+                    if tm_match:
+                        time_str, meridiem, tz_str = tm_match.groups()
+                        
+                        # Parse time to 24h
+                        dt_obj = dt.strptime(f"{g_date} {time_str} {meridiem}", "%Y-%m-%d %I:%M %p")
+                        
+                        # Apply Offset
+                        offset = TZ_OFFSETS.get(tz_str.upper(), -5)
+                        dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
+                        
+                        # Convert to UTC ISO String
+                        parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except: pass
+
+                # 4. Status Parsing (Fixed Logic for FINAL S/O)
                 raw_status = g.get("GameStatusString", "")
                 status_lower = raw_status.lower()
                 period_str = str(g.get("Period", ""))
@@ -863,8 +931,8 @@ class SportsFetcher:
                 elif "scheduled" in status_lower or "pre" in status_lower:
                     gst = "pre"
                     try:
-                        time_part = g.get("Time", "").split(" ")[0] 
-                        disp = f"{time_part} PM" 
+                        # Display local time (just the 7:00 PM part)
+                        disp = raw_time.split(" ")[0] + " " + raw_time.split(" ")[1]
                     except: disp = "Scheduled"
                 else:
                     # LIVE
@@ -884,7 +952,7 @@ class SportsFetcher:
                         else:
                             disp = raw_status
 
-                # 4. Mode Filtering
+                # 5. Mode Filtering
                 is_shown = True
                 if conf['mode'] == 'live' and gst != 'in': is_shown = False
                 elif conf['mode'] == 'my_teams':
@@ -895,7 +963,7 @@ class SportsFetcher:
                        h_name_chk not in conf['my_teams'] and a_name_chk not in conf['my_teams']:
                         is_shown = False
 
-                # 5. Team Metadata (Logo Fallback)
+                # 6. Team Metadata (Using Dynamic Cache)
                 h_meta = AHL_TEAMS.get(h_code, {"color": "000000", "logo": ""})
                 a_meta = AHL_TEAMS.get(a_code, {"color": "000000", "logo": ""})
 
@@ -908,15 +976,15 @@ class SportsFetcher:
                     'is_shown': is_shown,
                     'home_abbr': h_code,
                     'home_score': h_sc,
-                    'home_logo': h_meta['logo'],
+                    'home_logo': h_meta.get('logo', ''),
                     'away_abbr': a_code,
                     'away_score': a_sc,
-                    'away_logo': a_meta['logo'],
-                    'home_color': f"#{h_meta['color']}",
-                    'away_color': f"#{a_meta['color']}",
+                    'away_logo': a_meta.get('logo', ''),
+                    'home_color': f"#{h_meta.get('color','000000')}",
+                    'away_color': f"#{a_meta.get('color','000000')}",
                     'home_alt_color': '#444444',
                     'away_alt_color': '#444444',
-                    'startTimeUTC': f"{req_date}T00:00:00Z", 
+                    'startTimeUTC': parsed_utc, 
                     'situation': {}
                 })
         except Exception as e:
