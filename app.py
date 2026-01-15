@@ -110,50 +110,51 @@ TZ_OFFSETS = {
 
 # ================= AHL TEAMS (With LeagueStat IDs) =================
 # Updated to include Numeric IDs for correct Logo Generation
+# ================= AHL TEAMS (Official LeagueStat IDs) =================
 AHL_TEAMS = {
-    # Atlantic Division
+    # --- Atlantic Division ---
     "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "id": "317"},
-    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "id": "329"},
-    "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240", "id": "308"}, 
+    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"},
+    "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240", "id": "307"},
     "HER": {"name": "Hershey Bears", "color": "4F2C1D", "id": "319"},
-    "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000", "id": "321"},
+    "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000", "id": "313"},
     "PRO": {"name": "Providence Bruins", "color": "000000", "id": "309"},
-    "SPR": {"name": "Springfield Thunderbirds", "color": "003087", "id": "322"}, 
+    "SPR": {"name": "Springfield Thunderbirds", "color": "003087", "id": "411"},
     "WBS": {"name": "W-B/Scranton", "color": "000000", "id": "316"},
 
-    # North Division
-    "BEL": {"name": "Belleville Senators", "color": "C52032", "id": "334"},
-    "CLE": {"name": "Cleveland Monsters", "color": "041E42", "id": "326"},
-    "LAV": {"name": "Laval Rocket", "color": "00205B", "id": "335"},
+    # --- North Division ---
+    "BEL": {"name": "Belleville Senators", "color": "C52032", "id": "413"},
+    "CLE": {"name": "Cleveland Monsters", "color": "041E42", "id": "373"},
+    "LAV": {"name": "Laval Rocket", "color": "00205B", "id": "415"},
     "ROC": {"name": "Rochester Americans", "color": "00539B", "id": "323"},
     "SYR": {"name": "Syracuse Crunch", "color": "003087", "id": "324"},
-    "TOR": {"name": "Toronto Marlies", "color": "00205B", "id": "325"},
+    "TOR": {"name": "Toronto Marlies", "color": "00205B", "id": "335"},
     "UTC": {"name": "Utica Comets", "color": "006341", "id": "390"},
     "UTI": {"name": "Utica Comets", "color": "006341", "id": "390"}, # Alias
 
-    # Central Division
-    "CHI": {"name": "Chicago Wolves", "color": "7C2529", "id": "306"},
-    "GR":  {"name": "Grand Rapids Griffins", "color": "BE1E2D", "id": "307"},
-    "IA":  {"name": "Iowa Wild", "color": "154734", "id": "314"},
-    "MB":  {"name": "Manitoba Moose", "color": "003E7E", "id": "315"},
-    "MIL": {"name": "Milwaukee Admirals", "color": "041E42", "id": "305"},
-    "RFD": {"name": "Rockford IceHogs", "color": "CE1126", "id": "310"},
-    "TEX": {"name": "Texas Stars", "color": "154734", "id": "313"},
+    # --- Central Division ---
+    "CHI": {"name": "Chicago Wolves", "color": "7C2529", "id": "330"},
+    "GR":  {"name": "Grand Rapids Griffins", "color": "BE1E2D", "id": "328"},
+    "IA":  {"name": "Iowa Wild", "color": "154734", "id": "389"},
+    "MB":  {"name": "Manitoba Moose", "color": "003E7E", "id": "321"},
+    "MIL": {"name": "Milwaukee Admirals", "color": "041E42", "id": "327"},
+    "RFD": {"name": "Rockford IceHogs", "color": "CE1126", "id": "372"},
+    "TEX": {"name": "Texas Stars", "color": "154734", "id": "380"},
 
-    # Pacific Division
-    "ABB": {"name": "Abbotsford Canucks", "color": "00744F", "id": "337"},
-    "BAK": {"name": "Bakersfield Condors", "color": "F47A38", "id": "332"},
-    "CGY": {"name": "Calgary Wranglers", "color": "C8102E", "id": "339"},
-    "CAL": {"name": "Calgary Wranglers", "color": "C8102E", "id": "339"}, # Alias
-    "CV":  {"name": "Coachella Valley", "color": "D32027", "id": "340"},
-    "CVF": {"name": "Coachella Valley", "color": "D32027", "id": "340"}, # Alias
-    "COL": {"name": "Colorado Eagles", "color": "003087", "id": "336"},
-    "HSK": {"name": "Henderson Silver Knights", "color": "111111", "id": "338"},
-    "ONT": {"name": "Ontario Reign", "color": "111111", "id": "333"},
-    "SD":  {"name": "San Diego Gulls", "color": "041E42", "id": "331"},
-    "SJ":  {"name": "San Jose Barracuda", "color": "006D75", "id": "330"},
-    "SJS": {"name": "San Jose Barracuda", "color": "006D75", "id": "330"}, # Alias
-    "TUC": {"name": "Tucson Roadrunners", "color": "8C2633", "id": "328"},
+    # --- Pacific Division ---
+    "ABB": {"name": "Abbotsford Canucks", "color": "00744F", "id": "440"},
+    "BAK": {"name": "Bakersfield Condors", "color": "F47A38", "id": "402"},
+    "CGY": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"},
+    "CAL": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"}, # Alias
+    "CV":  {"name": "Coachella Valley", "color": "D32027", "id": "445"},
+    "CVF": {"name": "Coachella Valley", "color": "D32027", "id": "445"}, # Alias
+    "COL": {"name": "Colorado Eagles", "color": "003087", "id": "419"},
+    "HSK": {"name": "Henderson Silver Knights", "color": "111111", "id": "437"},
+    "ONT": {"name": "Ontario Reign", "color": "111111", "id": "403"},
+    "SD":  {"name": "San Diego Gulls", "color": "041E42", "id": "404"},
+    "SJ":  {"name": "San Jose Barracuda", "color": "006D75", "id": "405"},
+    "SJS": {"name": "San Jose Barracuda", "color": "006D75", "id": "405"}, # Alias
+    "TUC": {"name": "Tucson Roadrunners", "color": "8C2633", "id": "412"},
 }
 
 # ================= MASTER LEAGUE REGISTRY =================
