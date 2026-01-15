@@ -868,6 +868,52 @@ class SportsFetcher:
                 'shortName': meta.get('name', code).split(" ")[-1]
             })
 
+    def check_shootout(self, game, summary=None):
+        """
+        Check if a game ended in a shootout using multiple detection methods.
+        Adapted from the working reference code.
+        """
+        # Check 1: Game summary fields (most reliable)
+        if summary:
+            if summary.get("hasShootout"): return True
+            if summary.get("shootoutDetails"): return True
+            
+            # Check for shootout section in summary
+            so_section = (
+                summary.get("shootout") or summary.get("Shootout") or 
+                summary.get("shootOut") or summary.get("SO")
+            )
+            if so_section: return True
+            
+            # Check summary status for shootout keywords
+            summary_status = str(
+                summary.get("gameStatusString") or summary.get("gameStatus") or 
+                summary.get("status") or ""
+            ).lower()
+            if "so" in summary_status or "shootout" in summary_status or "s/o" in summary_status:
+                return True
+        
+        # Check 2: Period data from game scorebar object
+        period = str(game.get("Period", "") or game.get("period", ""))
+        period_name = str(game.get("PeriodNameShort", "") or game.get("periodNameShort", "")).upper()
+        
+        # Period 5 = shootout in hockey
+        if period == "5": return True
+        
+        # PeriodNameShort == "SO" indicates shootout
+        if period_name == "SO" or "SHOOTOUT" in period_name: return True
+        
+        # Check 3: Status string keywords in scorebar object
+        status = str(
+            game.get("GameStatusString") or game.get("game_status") or 
+            game.get("GameStatusStringLong") or ""
+        ).lower()
+        
+        if "so" in status or "shootout" in status or "s/o" in status:
+            return True
+            
+        return False
+
     def _fetch_ahl(self, conf, visible_start_utc, visible_end_utc):
         games_found = []
         if not conf['active_sports'].get('ahl', False): return []
@@ -875,7 +921,7 @@ class SportsFetcher:
         try:
             key = self._get_ahl_key()
             
-            # Fetch Scorebar for "Today"
+            # Fetch Scorebar
             req_date = visible_start_utc.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5)))).strftime("%Y-%m-%d")
 
             params = {
@@ -890,7 +936,7 @@ class SportsFetcher:
             data = r.json()
             scorebar = data.get("SiteKit", {}).get("Scorebar", [])
 
-            # Get reference to pre-validated teams list
+            # Get reference to pre-validated teams list for Logos
             ahl_refs = state['all_teams_data'].get('ahl', [])
 
             for g in scorebar:
@@ -903,7 +949,7 @@ class SportsFetcher:
                 h_sc = str(g.get("HomeGoals", "0"))
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
-                # --- TIME PARSING ---
+                # --- TIME PARSING (ISO8601) ---
                 parsed_utc = ""
                 iso_date = g.get("GameDateISO8601", "")
                 if iso_date:
@@ -913,74 +959,59 @@ class SportsFetcher:
                     except: pass
                 
                 if not parsed_utc:
-                    parsed_utc = f"{g_date_str}T00:00:00Z"
+                    raw_time = (g.get("GameTime") or g.get("Time") or "").strip()
+                    parsed_utc = f"{g_date_str}T00:00:00Z" # Fallback
+                    try:
+                        tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
+                        if tm_match:
+                            time_str, meridiem, tz_str = tm_match.groups()
+                            offset = -5
+                            if tz_str: offset = TZ_OFFSETS.get(tz_str.upper(), -5)
+                            dt_obj = dt.strptime(f"{g_date_str} {time_str} {meridiem}", "%Y-%m-%d %I:%M %p")
+                            dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
+                            parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    except: pass
                 
                 if g_date_str != req_date: continue
 
                 # --- STATUS PARSING ---
                 raw_status = g.get("GameStatusString", "")
-                # Clean unofficial markers
-                raw_status_clean = re.sub(r'\(?unofficial\)?', '', raw_status, flags=re.IGNORECASE).strip()
-                status_lower = raw_status_clean.lower()
-                
-                # Grab Period data for Layer 2 check
+                status_lower = raw_status.lower()
                 period_str = str(g.get("Period", ""))
-                period_name_short = str(g.get("PeriodNameShort", "")).upper()
                 
                 disp = "Scheduled"; gst = "pre"
 
-                # Check if Final
-                is_final_status = status_lower.startswith("final") or "final" in status_lower
-
-                if is_final_status:
+                if "final" in status_lower:
                     gst = "post"
                     
-                    # === MULTI-LAYER SHOOTOUT DETECTION ===
-                    has_shootout = False
+                    # === INTEGRATED SHOOTOUT CHECK ===
+                    summary_data = None
                     
-                    # Layer 1: Simple Status String Check
-                    if "so" in status_lower or "shootout" in status_lower or "s/o" in status_lower:
-                        has_shootout = True
-                        
-                    # Layer 2: Period Data Check
-                    # Period "5" is specifically SO in AHL data; PeriodNameShort often "SO"
-                    elif period_str == "5" or period_name_short == "SO":
-                        has_shootout = True
-                    
-                    # Layer 3: Deep Summary Check (Only if not confirmed yet)
-                    if not has_shootout:
-                        try:
-                            sum_params = {
-                                "feed": "statviewfeed", "view": "gameSummary", "key": key,
-                                "client_code": "ahl", "lang": "en", "fmt": "json", "game_id": gid
-                            }
-                            # 5s timeout to ensure responsiveness
-                            r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=5)
-                            if r_sum.status_code == 200:
-                                s_data = r_sum.json()
-                                
-                                # Check 3a: Status string inside summary
-                                sum_status = str(s_data.get("gameStatusString", "") or s_data.get("gameStatus", "")).lower()
-                                if "so" in sum_status or "shootout" in sum_status or "s/o" in sum_status:
-                                    has_shootout = True
-                                
-                                # Check 3b: Specific boolean/object fields
-                                elif (s_data.get("hasShootout") or 
-                                      s_data.get("shootoutDetails") or
-                                      s_data.get("shootout") or 
-                                      s_data.get("Shootout") or 
-                                      s_data.get("shootOut") or 
-                                      s_data.get("SO")):
-                                    has_shootout = True
-                        except: pass
+                    # Always fetch summary for Final games to reliably check S/O vs OT
+                    # (Unless scorebar explicitly says SO, but we want to be safe like the ref code)
+                    try:
+                        sum_params = {
+                            "feed": "statviewfeed", "view": "gameSummary", "key": key,
+                            "client_code": "ahl", "lang": "en", "fmt": "json", "game_id": gid
+                        }
+                        r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=4)
+                        if r_sum.status_code == 200:
+                            summary_data = r_sum.json()
+                    except: pass
 
-                    # === FORMATTING ===
-                    if has_shootout:
-                        disp = "Final S/O"
-                    elif period_str == "4" or period_name_short == "OT" or "ot" in status_lower or "overtime" in status_lower:
-                        disp = "Final OT"
+                    # Use the new helper function
+                    is_shootout = self.check_shootout(g, summary_data)
+                    
+                    if is_shootout:
+                        disp = "FINAL S/O"
+                    elif period_str == "4" or "ot" in status_lower or "overtime" in status_lower:
+                        disp = "FINAL OT"
                     else:
-                        disp = "Final"
+                        # Double check for OT in summary if period_str failed
+                        if summary_data and (summary_data.get("hasOvertime") or "OT" in str(summary_data.get("periodNameShort", "")).upper()):
+                             disp = "FINAL OT"
+                        else:
+                             disp = "FINAL"
 
                 elif "scheduled" in status_lower or "pre" in status_lower:
                     gst = "pre"
@@ -996,19 +1027,17 @@ class SportsFetcher:
                     gst = "in"
                     # Live Logic
                     if "intermission" in status_lower:
-                        if "1st" in status_lower: disp = "1st INT"
-                        elif "2nd" in status_lower: disp = "2nd INT"
-                        elif "3rd" in status_lower: disp = "3rd INT"
+                        if "1st" in status_lower: disp = "End 1st"
+                        elif "2nd" in status_lower: disp = "End 2nd"
+                        elif "3rd" in status_lower: disp = "End 3rd"
                         else: disp = "INT"
                     else:
-                        m = re.search(r'(\d+:\d+)\s*(1st|2nd|3rd|ot|overtime)', raw_status_clean, re.IGNORECASE)
+                        m = re.search(r'(\d+:\d+)\s*(1st|2nd|3rd|ot|overtime)', raw_status, re.IGNORECASE)
                         if m:
-                            clk = m.group(1)
-                            prd = m.group(2).upper()
-                            if "OVERTIME" in prd: prd = "OT"
-                            disp = f"{clk} {prd}"
-                        else: 
-                            disp = raw_status_clean
+                            clk = m.group(1); prd = m.group(2).lower()
+                            p_lbl = "OT" if "ot" in prd else f"P{prd[0]}"
+                            disp = f"{p_lbl} {clk}"
+                        else: disp = raw_status
 
                 # --- MODE FILTER ---
                 is_shown = True
@@ -1022,7 +1051,7 @@ class SportsFetcher:
                             match_found = True; break
                     if not match_found: is_shown = False
 
-                # --- LOOKUP LOGOS ---
+                # --- LOGO LOOKUP ---
                 h_obj = next((t for t in ahl_refs if t['abbr'] == h_code), None)
                 a_obj = next((t for t in ahl_refs if t['abbr'] == a_code), None)
                 
