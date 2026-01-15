@@ -113,10 +113,13 @@ TZ_OFFSETS = {
 # ================= AHL TEAMS (Official LeagueStat IDs) =================
 # ================= AHL TEAMS (Official LeagueStat IDs) =================
 # IDs are used to generate logos from: assets.leaguestat.com
+# ================= AHL TEAMS (Official LeagueStat IDs) =================
+# IDs are used to generate logos from: assets.leaguestat.com
 AHL_TEAMS = {
     # --- Atlantic Division ---
     "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "id": "317"},
-    "CLT": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"},
+    "CLT": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"}, # Standard
+    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"}, # Feed Alias
     "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240", "id": "307"},
     "HER": {"name": "Hershey Bears", "color": "4F2C1D", "id": "319"},
     "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000", "id": "313"},
