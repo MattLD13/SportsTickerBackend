@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.1_Hybrid_Sports_Finnhub_AHL"
+SERVER_VERSION = "v3.2_Hybrid_Sports_Finnhub_AHL_Fix"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -101,8 +101,8 @@ LEAGUE_OPTIONS = [
     {'id': 'nfl',           'label': 'NFL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'mlb',           'label': 'MLB',                 'type': 'sport', 'default': True,  'fetch': {'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'nhl',           'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    # --- ADDED AHL HERE ---
-    {'id': 'ahl',           'label': 'AHL Hockey',          'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/ahl', 'type': 'scoreboard'}},
+    # --- FIXED AHL FETCH PARAMS ---
+    {'id': 'ahl',           'label': 'AHL Hockey',          'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/ahl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'nba',           'label': 'NBA',                 'type': 'sport', 'default': True,  'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     
     # --- COLLEGE SPORTS ---
@@ -413,25 +413,6 @@ class WeatherFetcher:
                 "is_shown": True
             }
             self.last_fetch = time.time()
-            self.cache = {
-                "type": "weather",
-                "sport": "weather",
-                "id": "weather_main",
-                "away_abbr": self.city_name.upper(), 
-                "home_abbr": str(current_temp), 
-                "situation": {
-                    "icon": current_icon,
-                    "stats": {
-                        "aqi": str(aqi),
-                        "uv": str(uv)
-                    },
-                    "forecast": forecast_list
-                },
-                "home_score": str(current_temp),
-                "away_score": "0",
-                "status": "Active",
-                "is_shown": True
-            }
             return self.cache
 
         except Exception as e:
@@ -703,6 +684,42 @@ class SportsFetcher:
                                 })
         except Exception as e: print(f"Error fetching teams for {league_key}: {e}")
 
+    # === FIXED AHL TEAM FETCHER ===
+    # Explicitly fetch ALL AHL teams to ensure they show up in 'My Teams' with correct colors
+    def _fetch_ahl_teams_explicitly(self, catalog):
+        try:
+            # ESPN AHL often lists teams under a specific group structure or might not paginate well default
+            # We force a large limit and check fetching
+            url = f"{self.base_url}hockey/ahl/teams"
+            r = self.session.get(url, params={'limit': 200}, headers=HEADERS, timeout=10)
+            data = r.json()
+            if 'sports' in data:
+                for sport in data['sports']:
+                    for league in sport['leagues']:
+                        for item in league.get('teams', []):
+                            abbr = item['team'].get('abbreviation', 'unk')
+                            team_id = str(item['team'].get('id', ''))
+                            
+                            # Ensure colors exist (Default AHL teams sometimes miss color fields in ESPN API)
+                            clr = item['team'].get('color', '000000') 
+                            alt = item['team'].get('alternateColor', '444444')
+                            
+                            logo = item['team'].get('logos', [{}])[0].get('href', '')
+                            name = item['team'].get('displayName', '')
+                            short_name = item['team'].get('shortDisplayName', '')
+
+                            if not any(x.get('id') == team_id for x in catalog['ahl']):
+                                catalog['ahl'].append({
+                                    'abbr': abbr, 
+                                    'id': team_id,
+                                    'logo': logo, 
+                                    'color': clr, 
+                                    'alt_color': alt, 
+                                    'name': name,
+                                    'shortName': short_name
+                                })
+        except Exception as e: print(f"Error fetching AHL specific teams: {e}")
+
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
@@ -735,6 +752,11 @@ class SportsFetcher:
                 'nfl', 'mlb', 'nhl', 'nba',
                 'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_champions_league', 'soccer_europa_league'
             ]
+            
+            # --- AHL EXPLICIT CALL ---
+            if 'ahl' in self.leagues:
+                futures.append(self.executor.submit(self._fetch_ahl_teams_explicitly, teams_catalog))
+            
             for lk in leagues_to_fetch:
                 if lk in self.leagues:
                     futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog))
