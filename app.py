@@ -996,7 +996,11 @@ class SportsFetcher:
                         }
                         r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=4)
                         if r_sum.status_code == 200:
-                            summary_data = r_sum.json()
+                            # API returns JSONP (wrapped in parentheses), need to strip them
+                            text = r_sum.text.strip()
+                            if text.startswith("(") and text.endswith(")"):
+                                text = text[1:-1]
+                            summary_data = json.loads(text)
                     except: pass
 
                     # Use the new helper function
@@ -1081,7 +1085,6 @@ class SportsFetcher:
             print(f"AHL Fetch Error: {e}")
         
         return games_found
-        
     # ===============================================
 
     # === NHL NATIVE FETCHER ===
