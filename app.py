@@ -876,7 +876,7 @@ class SportsFetcher:
         try:
             key = self._get_ahl_key()
             
-            # Fetch Scorebar for "Today"
+            # Fetch Scorebar
             req_date = visible_start_utc.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5)))).strftime("%Y-%m-%d")
 
             params = {
@@ -895,7 +895,7 @@ class SportsFetcher:
             ahl_refs = state['all_teams_data'].get('ahl', [])
 
             for g in scorebar:
-                # 1. Date Filter (Check if Date matches request)
+                # 1. Date Filter
                 g_date_str = g.get("Date", "")
                 
                 gid = g.get("ID")
@@ -904,24 +904,20 @@ class SportsFetcher:
                 h_sc = str(g.get("HomeGoals", "0"))
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
-                # --- TIME PARSING (FIXED using ISO8601) ---
+                # --- TIME PARSING (ISO8601 Priority) ---
                 parsed_utc = ""
                 iso_date = g.get("GameDateISO8601", "")
                 
-                # 1. Try ISO8601 First (Reference Code Method - Best for Sorting)
                 if iso_date:
                     try:
-                        # Parse ISO format: "2026-01-13T19:00:00-05:00"
                         dt_obj = dt.fromisoformat(iso_date)
-                        # Convert to UTC and Format
                         parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                    except:
-                        pass
+                    except: pass
                 
-                # 2. Fallback to Regex if ISO missing
                 if not parsed_utc:
-                    raw_time = (g.get("GameTime") or g.get("Time") or g.get("ScheduledTime") or "").strip()
-                    parsed_utc = f"{g_date_str}T00:00:00Z" # Ultimate fallback
+                    # Fallback Regex
+                    raw_time = (g.get("GameTime") or g.get("Time") or "").strip()
+                    parsed_utc = f"{g_date_str}T00:00:00Z"
                     try:
                         tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
                         if tm_match:
@@ -933,31 +929,43 @@ class SportsFetcher:
                             parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                     except: pass
                 
-                if g_date_str != req_date:
-                    continue
+                if g_date_str != req_date: continue
 
-                # --- STATUS PARSING ---
+                # --- STATUS PARSING (FIXED FOR SHOOTOUTS) ---
                 raw_status = g.get("GameStatusString", "")
                 status_lower = raw_status.lower()
+                
+                # Check multiple fields for Period info
                 period_str = str(g.get("Period", ""))
+                period_name = str(g.get("PeriodNameShort", "")).upper() # e.g. "SO", "OT"
+                
                 disp = "Scheduled"; gst = "pre"
 
                 if "final" in status_lower:
                     gst = "post"
-                    if period_str == "5" or "so" in status_lower or "shootout" in status_lower: disp = "FINAL S/O"
-                    elif period_str == "4" or "ot" in status_lower or "overtime" in status_lower: disp = "FINAL OT"
-                    else: disp = "FINAL"
+                    # Priority 1: Check Explicit Shootout Indicators
+                    if (period_str == "5" or 
+                        "so" in status_lower or 
+                        "shootout" in status_lower or 
+                        period_name == "SO"):
+                        disp = "FINAL S/O"
+                    # Priority 2: Check Explicit Overtime Indicators
+                    elif (period_str == "4" or 
+                          "ot" in status_lower or 
+                          "overtime" in status_lower or 
+                          period_name == "OT"):
+                        disp = "FINAL OT"
+                    else:
+                        disp = "FINAL"
+                
                 elif "scheduled" in status_lower or "pre" in status_lower:
                     gst = "pre"
-                    # Try to display local time format
                     try:
-                        if iso_date:
-                            # Re-parse to get clean 12h time
+                         if iso_date:
                             local_dt = dt.fromisoformat(iso_date).astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
                             disp = local_dt.strftime("%I:%M %p").lstrip('0')
-                        else:
-                             # Fallback to string manipulation
-                             raw_time_clean = (g.get("GameTime") or g.get("Time") or "").strip()
+                         else:
+                             raw_time_clean = (g.get("GameTime") or "").strip()
                              disp = raw_time_clean.split(" ")[0] + " " + raw_time_clean.split(" ")[1]
                     except: disp = "Scheduled"
                 else:
@@ -979,36 +987,28 @@ class SportsFetcher:
                 is_shown = True
                 if conf['mode'] == 'live' and gst != 'in': is_shown = False
                 elif conf['mode'] == 'my_teams':
-                    # Simplified name check to handle Alias matching
                     h_name_chk = AHL_TEAMS.get(h_code, {}).get("name", "")
                     a_name_chk = AHL_TEAMS.get(a_code, {}).get("name", "")
-                    
-                    # Check Name match (handles CHA vs CLT mismatch)
                     match_found = False
                     for team_ref in conf['my_teams']:
                         if team_ref in [h_code, a_code, h_name_chk, a_name_chk]:
                             match_found = True; break
                     if not match_found: is_shown = False
 
-                # --- LOOKUP LOGOS FROM CACHE (SMARTER LOOKUP) ---
-                # 1. Try finding by Abbreviation first
+                # --- LOOKUP LOGOS FROM CACHE ---
                 h_obj = next((t for t in ahl_refs if t['abbr'] == h_code), None)
                 a_obj = next((t for t in ahl_refs if t['abbr'] == a_code), None)
                 
-                # 2. If Abbreviation not found (e.g. CHA vs CLT), lookup by ID
                 if not h_obj:
                     h_meta_raw = AHL_TEAMS.get(h_code)
-                    if h_meta_raw:
-                        h_obj = next((t for t in ahl_refs if t.get('real_id') == h_meta_raw.get('id')), None)
+                    if h_meta_raw: h_obj = next((t for t in ahl_refs if t.get('real_id') == h_meta_raw.get('id')), None)
                 if not a_obj:
                     a_meta_raw = AHL_TEAMS.get(a_code)
-                    if a_meta_raw:
-                        a_obj = next((t for t in ahl_refs if t.get('real_id') == a_meta_raw.get('id')), None)
+                    if a_meta_raw: a_obj = next((t for t in ahl_refs if t.get('real_id') == a_meta_raw.get('id')), None)
                 
                 h_logo = h_obj['logo'] if h_obj else ""
                 a_logo = a_obj['logo'] if a_obj else ""
                 
-                # Fallback metadata
                 h_meta = AHL_TEAMS.get(h_code, {"color": "000000"})
                 a_meta = AHL_TEAMS.get(a_code, {"color": "000000"})
 
