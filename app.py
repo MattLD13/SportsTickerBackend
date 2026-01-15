@@ -903,7 +903,7 @@ class SportsFetcher:
                 h_sc = str(g.get("HomeGoals", "0"))
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
-                # --- TIME PARSING (ISO8601) ---
+                # --- TIME PARSING (ISO8601 Priority) ---
                 parsed_utc = ""
                 iso_date = g.get("GameDateISO8601", "")
                 if iso_date:
@@ -917,7 +917,7 @@ class SportsFetcher:
                 
                 if g_date_str != req_date: continue
 
-                # --- STATUS PARSING (Fixed with Deep Check) ---
+                # --- STATUS PARSING (Adapted from Reference Code) ---
                 raw_status = g.get("GameStatusString", "")
                 status_lower = raw_status.lower()
                 period_str = str(g.get("Period", ""))
@@ -927,36 +927,37 @@ class SportsFetcher:
                 if "final" in status_lower:
                     gst = "post"
                     
-                    # === DEEP CHECK: FORCE SUMMARY FETCH FOR SHOOTOUTS ===
-                    # The Scorebar is unreliable for S/O detection. We must check the summary.
+                    # === REFERENCE CODE LOGIC: "Deep Check" for Shootout ===
+                    # The reference code fetches the summary and checks specifically for shootout sections
                     has_shootout = False
                     
-                    # 1. Check Scorebar shortcuts first
+                    # 1. Quick Check on Scorebar Data first
                     if period_str == "5" or "so" in status_lower or "shootout" in status_lower:
                         has_shootout = True
-                    
-                    # 2. If not confirmed yet, Fetch Game Summary (API CALL)
-                    if not has_shootout:
+                    else:
+                        # 2. Deep Check via Game Summary API
                         try:
                             sum_params = {
                                 "feed": "statviewfeed", "view": "gameSummary", "key": key,
                                 "client_code": "ahl", "lang": "en", "fmt": "json", "game_id": gid
                             }
-                            # Increased timeout to 5s to ensure reliable fetching
+                            # Use 5s timeout to ensure we get the data
                             r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=5)
                             if r_sum.status_code == 200:
                                 s_data = r_sum.json()
-                                # Check ALL keys used in the reference code
-                                if (s_data.get("hasShootout") or 
-                                    s_data.get("shootoutDetails") or 
-                                    s_data.get("shootout") or 
+                                
+                                # EXACT LOGIC FROM REFERENCE CODE (_extract_shootout_data)
+                                # Check for various keys that indicate a shootout exists
+                                if (s_data.get("shootout") or 
                                     s_data.get("Shootout") or 
                                     s_data.get("shootOut") or 
-                                    s_data.get("SO")):
+                                    s_data.get("SO") or
+                                    s_data.get("hasShootout") or
+                                    s_data.get("shootoutDetails")):
                                     has_shootout = True
                         except: pass
 
-                    # 3. Set Display String
+                    # 3. Determine Final Display String
                     if has_shootout:
                         disp = "FINAL S/O"
                     elif period_str == "4" or "ot" in status_lower or "overtime" in status_lower:
@@ -976,7 +977,6 @@ class SportsFetcher:
                     except: disp = "Scheduled"
                 else:
                     gst = "in"
-                    # LIVE Logic
                     if "intermission" in status_lower:
                         if "1st" in status_lower: disp = "End 1st"
                         elif "2nd" in status_lower: disp = "End 2nd"
