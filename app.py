@@ -111,6 +111,8 @@ TZ_OFFSETS = {
 # ================= AHL TEAMS (With LeagueStat IDs) =================
 # Updated to include Numeric IDs for correct Logo Generation
 # ================= AHL TEAMS (Official LeagueStat IDs) =================
+# ================= AHL TEAMS (Official LeagueStat IDs) =================
+# IDs are used to generate logos from: assets.leaguestat.com
 AHL_TEAMS = {
     # --- Atlantic Division ---
     "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "id": "317"},
@@ -818,76 +820,40 @@ class SportsFetcher:
         return AHL_API_KEYS[0] # Fallback
 
     def _fetch_ahl_teams_reference(self, catalog):
-        """Fetch Official AHL Team IDs and construct LeagueStat Logo URLs"""
-        if 'ahl' not in self.leagues: return
-        
-        catalog['ahl'] = []
-        found_codes = set()
-        
-        # 1. Try to get data from API to supplement our hardcoded list
-        try:
-            key = self._get_ahl_key()
-            r = self.session.get("https://lscluster.hockeytech.com/feed/index.php", 
-                params={"feed": "modulekit", "view": "teams", "key": key, "fmt": "json", "client_code": "ahl", "lang": "en", "league_id": 4},
-                timeout=3
-            )
+            """Fetch Official AHL Teams using LeagueStat IDs (Deduplicated)"""
+            if 'ahl' not in self.leagues: return
             
-            if r.status_code == 200:
-                data = r.json()
-                teams_list = data.get("SiteKit", {}).get("Teams", [])
+            catalog['ahl'] = []
+            seen_ids = set() # Track numeric IDs to prevent duplicates
+            
+            # Iterate through our hardcoded list
+            for code, meta in AHL_TEAMS.items():
+                t_id = meta.get('id')
                 
-                for t in teams_list:
-                    code = t.get("code", "").upper()
-                    t_id = str(t.get("id", ""))
-                    name = t.get("name", "")
-                    
-                    # Update our local cache if API gave us a valid ID
-                    if code in AHL_TEAMS and t_id:
-                        AHL_TEAMS[code]['id'] = t_id
-
-                    # Use Hardcoded Color
-                    fallback_meta = AHL_TEAMS.get(code, {})
-                    color = fallback_meta.get("color", "000000")
-                    
-                    # Construct LeagueStat Logo URL: https://assets.leaguestat.com/ahl/logos/50x50/{ID}_90.png
-                    if t_id:
-                        logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}_90.png"
-                    else:
-                         # Fallback if ID is missing (shouldn't happen with API)
-                        logo_url = ""
-
-                    catalog['ahl'].append({
-                        'abbr': code,
-                        'id': code, # Use Abbr as ID for My Teams matching consistency
-                        'logo': logo_url,
-                        'color': color,
-                        'alt_color': '444444',
-                        'name': name,
-                        'shortName': name.split(" ")[-1]
-                    })
-                    found_codes.add(code)
-        except Exception as e:
-            print(f"AHL Team Reference API Warning: {e}")
-
-        # 2. FORCE FALLBACK: Fill missing teams from Hardcoded Dictionary
-        for code, meta in AHL_TEAMS.items():
-            if code not in found_codes:
-                # If we have a hardcoded ID, we can still generate the correct logo
-                if 'id' in meta:
-                    logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{meta['id']}_90.png"
+                # 1. Deduplication: If we've already processed this numeric ID, skip this Alias
+                if t_id and t_id in seen_ids:
+                    continue
+                
+                # Mark ID as seen
+                if t_id: seen_ids.add(t_id)
+    
+                # 2. Construct Official LeagueStat Logo URL
+                # Format: https://assets.leaguestat.com/ahl/logos/50x50/{id}_90.png
+                if t_id:
+                    logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}_90.png"
                 else:
-                    logo_url = "" # No logo available without ID
-
+                    logo_url = ""
+    
                 catalog['ahl'].append({
                     'abbr': code, 
-                    'id': code, 
+                    'id': code, # We keep the Abbr as the internal ID for matching game feeds
                     'logo': logo_url, 
                     'color': meta.get('color', '000000'), 
                     'alt_color': '444444', 
                     'name': meta.get('name', code), 
                     'shortName': meta.get('name', code).split(" ")[-1]
                 })
-
+                
     def _fetch_ahl(self, conf, visible_start_utc, visible_end_utc):
         games_found = []
         if not conf['active_sports'].get('ahl', False): return []
