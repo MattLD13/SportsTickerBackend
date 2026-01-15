@@ -647,6 +647,19 @@ class StockFetcher:
             if obj: res.append(obj)
         return res
 
+    def validate_logo_url(base_id):
+    """Checks if the _90 logo exists; falls back to standard if not."""
+    url_90 = f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png"
+    try:
+        # Fast check (HEAD request) with short timeout
+        r = requests.head(url_90, timeout=1)
+        if r.status_code == 200:
+            return url_90
+    except: pass
+    
+    # Fallback to standard
+    return f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}.png"
+
 # === ROBUST SPORTS FETCHER (From Old Code) ===
 class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
@@ -823,38 +836,43 @@ class SportsFetcher:
         return AHL_API_KEYS[0] # Fallback
 
     def _fetch_ahl_teams_reference(self, catalog):
-            """Fetch Official AHL Teams using LeagueStat IDs (Deduplicated)"""
-            if 'ahl' not in self.leagues: return
+        """Fetch Official AHL Teams using LeagueStat IDs (Deduplicated with Logo Check)"""
+        if 'ahl' not in self.leagues: return
+        
+        print("🏒 verifying AHL logo assets...") # Debug log
+        catalog['ahl'] = []
+        seen_ids = set() 
+        
+        # Iterate through our hardcoded list
+        for code, meta in AHL_TEAMS.items():
+            t_id = meta.get('id')
             
-            catalog['ahl'] = []
-            seen_ids = set() # Track numeric IDs to prevent duplicates
-            
-            # Iterate through our hardcoded list
-            for code, meta in AHL_TEAMS.items():
-                t_id = meta.get('id')
-                
-                # 1. Deduplication: If we've already processed this numeric ID, skip this Alias
-                if t_id and t_id in seen_ids:
-                    continue
-                
+            # 1. Deduplication
+            if t_id and t_id in seen_ids:
+                # If we have already seen this ID, we need to find the existing entry
+                # to copy the verified logo URL so we don't check twice.
+                existing = next((x for x in catalog['ahl'] if x['id'] == code or x.get('real_id') == t_id), None)
+                logo_url = existing['logo'] if existing else ""
+            else:
                 # Mark ID as seen
                 if t_id: seen_ids.add(t_id)
-    
-                # 2. Construct Official LeagueStat Logo URL (FIXED: Removed _90 suffix)
+
+                # 2. VALIDATE LOGO (Check _90 vs Standard)
                 if t_id:
-                    logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}.png"
+                    logo_url = validate_logo_url(t_id)
                 else:
                     logo_url = ""
-    
-                catalog['ahl'].append({
-                    'abbr': code, 
-                    'id': code, 
-                    'logo': logo_url, 
-                    'color': meta.get('color', '000000'), 
-                    'alt_color': '444444', 
-                    'name': meta.get('name', code), 
-                    'shortName': meta.get('name', code).split(" ")[-1]
-                })
+
+            catalog['ahl'].append({
+                'abbr': code, 
+                'id': code, 
+                'real_id': t_id, # Helper for matching
+                'logo': logo_url, 
+                'color': meta.get('color', '000000'), 
+                'alt_color': '444444', 
+                'name': meta.get('name', code), 
+                'shortName': meta.get('name', code).split(" ")[-1]
+            })
 
     def _fetch_ahl(self, conf, visible_start_utc, visible_end_utc):
         games_found = []
