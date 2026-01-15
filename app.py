@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.6_AHL_Fixed_Logos_Finals"
+SERVER_VERSION = "v3.7_AHL_Fix_Merge_Logic"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -96,40 +96,40 @@ AHL_API_MAP = {
     "UTI": "UTI", "UTC": "UTI", "WBS": "WBS"
 }
 
-# Detailed Team Data (Colors + Valid ESPN Logos)
+# Detailed Team Data (Colors + Logos)
 AHL_TEAM_DB = {
     "ABB": {"city": "Abbotsford", "name": "Canucks", "c": "00744F", "a": "00205B", "l": "https://assets.nhle.com/logos/nhl/svg/VAN_light.svg"}, 
-    "BAK": {"city": "Bakersfield", "name": "Condors", "c": "F47A38", "a": "041E42", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/edm.png"}, # EDM affiliate
-    "BEL": {"city": "Belleville", "name": "Senators", "c": "C52032", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/ott.png"}, # OTT affiliate
-    "BRI": {"city": "Bridgeport", "name": "Islanders", "c": "00539B", "a": "F47B20", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/nyi.png"}, # NYI affiliate
-    "CGY": {"city": "Calgary", "name": "Wranglers", "c": "C8102E", "a": "F1BE48", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/cgy.png"}, 
-    "CLT": {"city": "Charlotte", "name": "Checkers", "c": "C8102E", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/fla.png"}, # FLA affiliate
-    "CHI": {"city": "Chicago", "name": "Wolves", "c": "7C2529", "a": "FFCD00", "l": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e6/Chicago_Wolves_logo.svg/1200px-Chicago_Wolves_logo.svg.png"},
-    "CLE": {"city": "Cleveland", "name": "Monsters", "c": "000000", "a": "00B5E2", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/cbj.png"}, # CBJ affiliate
-    "CVF": {"city": "Coachella Valley", "name": "Firebirds", "c": "D32027", "a": "F28C00", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/sea.png"}, # SEA affiliate
-    "COL": {"city": "Colorado", "name": "Eagles", "c": "003087", "a": "D50032", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/col.png"}, 
-    "GRA": {"city": "Grand Rapids", "name": "Griffins", "c": "BE1E2D", "a": "D1A31E", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/det.png"}, # DET affiliate
-    "HFD": {"city": "Hartford", "name": "Wolf Pack", "c": "0D2240", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png"}, # NYR affiliate
-    "HSK": {"city": "Henderson", "name": "Silver Knights", "c": "111111", "a": "8A8D8F", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png"}, # VGK affiliate
-    "HER": {"city": "Hershey", "name": "Bears", "c": "4F2C1D", "a": "B9975B", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/wsh.png"}, # WSH affiliate
-    "IOW": {"city": "Iowa", "name": "Wild", "c": "154734", "a": "A6192E", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/min.png"}, # MIN affiliate
-    "LAV": {"city": "Laval", "name": "Rocket", "c": "00205B", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/mtl.png"}, # MTL affiliate
-    "LHV": {"city": "Lehigh Valley", "name": "Phantoms", "c": "000000", "a": "F47920", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/phi.png"}, # PHI affiliate
-    "MAN": {"city": "Manitoba", "name": "Moose", "c": "003E7E", "a": "041E42", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/wpg.png"}, # WPG affiliate
-    "MIL": {"city": "Milwaukee", "name": "Admirals", "c": "041E42", "a": "48A9C5", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/nsh.png"}, # NSH affiliate
-    "ONT": {"city": "Ontario", "name": "Reign", "c": "111111", "a": "A2AAAD", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png"}, # LA affiliate
-    "PRO": {"city": "Providence", "name": "Bruins", "c": "000000", "a": "FDB927", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png"}, # BOS affiliate
-    "ROC": {"city": "Rochester", "name": "Americans", "c": "00539B", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/buf.png"}, # BUF affiliate
-    "RFD": {"city": "Rockford", "name": "IceHogs", "c": "CE1126", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/chi.png"}, # CHI affiliate
-    "SDG": {"city": "San Diego", "name": "Gulls", "c": "041E42", "a": "F16725", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/ana.png"}, # ANA affiliate
-    "SJS": {"city": "San Jose", "name": "Barracuda", "c": "006D75", "a": "F58220", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png"}, # SJS affiliate
-    "SPR": {"city": "Springfield", "name": "Thunderbirds", "c": "003087", "a": "E31837", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/stl.png"}, # STL affiliate
-    "SYR": {"city": "Syracuse", "name": "Crunch", "c": "003087", "a": "8A8D8F", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png"}, # TB affiliate
-    "TEX": {"city": "Texas", "name": "Stars", "c": "154734", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/dal.png"}, # DAL affiliate
-    "TOR": {"city": "Toronto", "name": "Marlies", "c": "00205B", "a": "FFFFFF", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/tor.png"}, # TOR affiliate
-    "TUC": {"city": "Tucson", "name": "Roadrunners", "c": "8C2633", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png"}, # UTA affiliate
-    "UTI": {"city": "Utica", "name": "Comets", "c": "006341", "a": "00205B", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png"}, # NJD affiliate
-    "WBS": {"city": "WBS", "name": "Penguins", "c": "000000", "a": "FFB81C", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/pit.png"}  # PIT affiliate
+    "BAK": {"city": "Bakersfield", "name": "Condors", "c": "F47A38", "a": "041E42", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/bak.png"},
+    "BEL": {"city": "Belleville", "name": "Senators", "c": "C52032", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/bel.png"},
+    "BRI": {"city": "Bridgeport", "name": "Islanders", "c": "00539B", "a": "F47B20", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/bri.png"},
+    "CGY": {"city": "Calgary", "name": "Wranglers", "c": "C8102E", "a": "F1BE48", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cgy.png"},
+    "CLT": {"city": "Charlotte", "name": "Checkers", "c": "C8102E", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cha.png"},
+    "CHI": {"city": "Chicago", "name": "Wolves", "c": "7C2529", "a": "FFCD00", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/chi.png"},
+    "CLE": {"city": "Cleveland", "name": "Monsters", "c": "000000", "a": "00B5E2", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cle.png"},
+    "CVF": {"city": "Coachella Valley", "name": "Firebirds", "c": "D32027", "a": "F28C00", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cvf.png"},
+    "COL": {"city": "Colorado", "name": "Eagles", "c": "003087", "a": "D50032", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/col.png"},
+    "GRA": {"city": "Grand Rapids", "name": "Griffins", "c": "BE1E2D", "a": "D1A31E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/gr.png"},
+    "HFD": {"city": "Hartford", "name": "Wolf Pack", "c": "0D2240", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/hfd.png"},
+    "HSK": {"city": "Henderson", "name": "Silver Knights", "c": "111111", "a": "8A8D8F", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/hsk.png"},
+    "HER": {"city": "Hershey", "name": "Bears", "c": "4F2C1D", "a": "B9975B", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/her.png"},
+    "IOW": {"city": "Iowa", "name": "Wild", "c": "154734", "a": "A6192E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/ia.png"},
+    "LAV": {"city": "Laval", "name": "Rocket", "c": "00205B", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/lav.png"},
+    "LHV": {"city": "Lehigh Valley", "name": "Phantoms", "c": "000000", "a": "F47920", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/lv.png"},
+    "MAN": {"city": "Manitoba", "name": "Moose", "c": "003E7E", "a": "041E42", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/mb.png"},
+    "MIL": {"city": "Milwaukee", "name": "Admirals", "c": "041E42", "a": "48A9C5", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/mil.png"},
+    "ONT": {"city": "Ontario", "name": "Reign", "c": "111111", "a": "A2AAAD", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/ont.png"},
+    "PRO": {"city": "Providence", "name": "Bruins", "c": "000000", "a": "FDB927", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/pro.png"},
+    "ROC": {"city": "Rochester", "name": "Americans", "c": "00539B", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/roc.png"},
+    "RFD": {"city": "Rockford", "name": "IceHogs", "c": "CE1126", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/rfd.png"},
+    "SDG": {"city": "San Diego", "name": "Gulls", "c": "041E42", "a": "F16725", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/sd.png"},
+    "SJS": {"city": "San Jose", "name": "Barracuda", "c": "006D75", "a": "F58220", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/sj.png"},
+    "SPR": {"city": "Springfield", "name": "Thunderbirds", "c": "003087", "a": "E31837", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/spr.png"},
+    "SYR": {"city": "Syracuse", "name": "Crunch", "c": "003087", "a": "8A8D8F", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/syr.png"},
+    "TEX": {"city": "Texas", "name": "Stars", "c": "154734", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/tex.png"},
+    "TOR": {"city": "Toronto", "name": "Marlies", "c": "00205B", "a": "FFFFFF", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/tor.png"},
+    "TUC": {"city": "Tucson", "name": "Roadrunners", "c": "8C2633", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/tuc.png"},
+    "UTI": {"city": "Utica", "name": "Comets", "c": "006341", "a": "00205B", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/uti.png"},
+    "WBS": {"city": "WBS", "name": "Penguins", "c": "000000", "a": "FFB81C", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/wbs.png"}
 }
 
 # ================= MASTER LEAGUE REGISTRY =================
@@ -1849,9 +1849,6 @@ class SportsFetcher:
         if sports_count == 0 and prev_sports_count > 0:
             self.consecutive_empty_fetches += 1
             if self.consecutive_empty_fetches < 3:
-                # print(f"Warning: Fetch returned 0 games. Using cached data (Attempt {self.consecutive_empty_fetches}/3)")
-                # KEEP PREVIOUS DATA, BUT UPDATE CLOCK/WEATHER
-                # (We filter out old weather/clock from prev buffer and add new ones)
                 prev_pure_sports = [g for g in prev_buffer if g.get('type') == 'scoreboard']
                 utils = [g for g in all_games if g.get('type') != 'scoreboard']
                 all_games = prev_pure_sports + utils
@@ -1882,9 +1879,6 @@ class SportsFetcher:
         cutoff_time = now_ts - 120
         self.history_buffer = [x for x in self.history_buffer if x[0] > cutoff_time]
         
-        # NOTE: We no longer calculate 'state["current_games"]' based on a global delay.
-        # Instead, we just store the latest fetch as the default current_games (0 delay)
-        # Individual tickers asking for delay will call get_snapshot_for_delay()
         with data_lock: 
             state['buffer_sports'] = all_games
             self.merge_buffers()
@@ -1900,10 +1894,6 @@ class SportsFetcher:
         closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
         # closest is (timestamp, list_of_games)
         
-        # 3. We need to apply the filtering logic (Stocks/Weather merge) to this snapshot too
-        # But 'merge_buffers' relies on global state buffers.
-        # To avoid complexity, we assume the sports snapshot is what changes, 
-        # and we merge it with the *current* stock buffer (stocks don't need second-by-second delay usually)
         sports_snap = closest[1]
         
         with data_lock:
@@ -1918,7 +1908,7 @@ class SportsFetcher:
         elif mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
         elif mode in ['sports', 'live', 'my_teams']: return pure_sports
-        else: return pure_sports # Removed utils from here
+        else: return pure_sports + stocks_snap
 
     def update_buffer_stocks(self):
         games = []
@@ -1950,7 +1940,7 @@ class SportsFetcher:
         elif mode == 'weather': final_list = [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': final_list = [g for g in utils if g.get('sport') == 'clock']
         elif mode in ['sports', 'live', 'my_teams']: final_list = pure_sports
-        else: final_list = pure_sports # Removed utils from here
+        else: final_list = pure_sports + stocks_buffer
 
         state['current_games'] = final_list
 
