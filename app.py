@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.2_Hybrid_Sports_Finnhub_AHL_Fix"
+SERVER_VERSION = "v3.0_Hybrid_Sports_Finnhub"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -101,8 +101,6 @@ LEAGUE_OPTIONS = [
     {'id': 'nfl',           'label': 'NFL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'mlb',           'label': 'MLB',                 'type': 'sport', 'default': True,  'fetch': {'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'nhl',           'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    # --- FIXED AHL FETCH PARAMS ---
-    {'id': 'ahl',           'label': 'AHL Hockey',          'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/ahl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'nba',           'label': 'NBA',                 'type': 'sport', 'default': True,  'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     
     # --- COLLEGE SPORTS ---
@@ -328,7 +326,7 @@ SOCCER_COLOR_FALLBACK = {
 
 SPORT_DURATIONS = {
     'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
-    'nba': 150, 'nhl': 150, 'ahl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
+    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
 }
 
 # ================= FETCHING LOGIC =================
@@ -646,7 +644,7 @@ class SportsFetcher:
                 if '2OT' in status_detail: ot_count = 2
                 elif '3OT' in status_detail: ot_count = 3
                 ot_padding = ot_count * 20
-            elif sport == 'nhl' or sport == 'ahl':
+            elif sport == 'nhl':
                 ot_padding = 20
             elif sport == 'mlb' and period > 9:
                 ot_padding = (period - 9) * 20
@@ -684,42 +682,6 @@ class SportsFetcher:
                                 })
         except Exception as e: print(f"Error fetching teams for {league_key}: {e}")
 
-    # === FIXED AHL TEAM FETCHER ===
-    # Explicitly fetch ALL AHL teams to ensure they show up in 'My Teams' with correct colors
-    def _fetch_ahl_teams_explicitly(self, catalog):
-        try:
-            # ESPN AHL often lists teams under a specific group structure or might not paginate well default
-            # We force a large limit and check fetching
-            url = f"{self.base_url}hockey/ahl/teams"
-            r = self.session.get(url, params={'limit': 200}, headers=HEADERS, timeout=10)
-            data = r.json()
-            if 'sports' in data:
-                for sport in data['sports']:
-                    for league in sport['leagues']:
-                        for item in league.get('teams', []):
-                            abbr = item['team'].get('abbreviation', 'unk')
-                            team_id = str(item['team'].get('id', ''))
-                            
-                            # Ensure colors exist (Default AHL teams sometimes miss color fields in ESPN API)
-                            clr = item['team'].get('color', '000000') 
-                            alt = item['team'].get('alternateColor', '444444')
-                            
-                            logo = item['team'].get('logos', [{}])[0].get('href', '')
-                            name = item['team'].get('displayName', '')
-                            short_name = item['team'].get('shortDisplayName', '')
-
-                            if not any(x.get('id') == team_id for x in catalog['ahl']):
-                                catalog['ahl'].append({
-                                    'abbr': abbr, 
-                                    'id': team_id,
-                                    'logo': logo, 
-                                    'color': clr, 
-                                    'alt_color': alt, 
-                                    'name': name,
-                                    'shortName': short_name
-                                })
-        except Exception as e: print(f"Error fetching AHL specific teams: {e}")
-
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
@@ -752,11 +714,6 @@ class SportsFetcher:
                 'nfl', 'mlb', 'nhl', 'nba',
                 'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_champions_league', 'soccer_europa_league'
             ]
-            
-            # --- AHL EXPLICIT CALL ---
-            if 'ahl' in self.leagues:
-                futures.append(self.executor.submit(self._fetch_ahl_teams_explicitly, teams_catalog))
-            
             for lk in leagues_to_fetch:
                 if lk in self.leagues:
                     futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog))
@@ -1523,7 +1480,7 @@ class SportsFetcher:
                 # Standardize FINAL logic
                 if "FINAL" in s_disp:
                     # Check period count for specific sports to append OT if missing from text
-                    if league_key == 'nhl' or league_key == 'ahl':
+                    if league_key == 'nhl':
                         if "SO" in s_disp or "Shootout" in s_disp or p >= 5: s_disp = "FINAL S/O"
                         elif p >= 4 and "OT" not in s_disp: s_disp = f"FINAL OT{p-3 if p-3>1 else ''}"
                     elif league_key in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs'] and p > 4 and "OT" not in s_disp:
