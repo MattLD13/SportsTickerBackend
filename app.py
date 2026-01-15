@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.5_AHL_ISO8601_Sort_Fix"
+SERVER_VERSION = "v3.6_AHL_Deduped_Teams"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -110,11 +110,12 @@ TZ_OFFSETS = {
 
 # ================= AHL TEAMS (Official LeagueStat IDs) =================
 # IDs are used to generate logos from: assets.leaguestat.com
+# ORDER MATTERS: Put the "Primary" abbreviation first. Aliases (duplicates IDs) are skipped in the menu.
 AHL_TEAMS = {
     # --- Atlantic Division ---
     "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "id": "317"},
-    "CLT": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"}, # Standard
-    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"}, # Feed Alias
+    "CLT": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"}, # Primary
+    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"}, # Alias
     "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240", "id": "307"},
     "HER": {"name": "Hershey Bears", "color": "4F2C1D", "id": "319"},
     "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000", "id": "313"},
@@ -129,7 +130,7 @@ AHL_TEAMS = {
     "ROC": {"name": "Rochester Americans", "color": "00539B", "id": "323"},
     "SYR": {"name": "Syracuse Crunch", "color": "003087", "id": "324"},
     "TOR": {"name": "Toronto Marlies", "color": "00205B", "id": "335"},
-    "UTC": {"name": "Utica Comets", "color": "006341", "id": "390"},
+    "UTC": {"name": "Utica Comets", "color": "006341", "id": "390"}, # Primary
     "UTI": {"name": "Utica Comets", "color": "006341", "id": "390"}, # Alias
 
     # --- Central Division ---
@@ -144,15 +145,15 @@ AHL_TEAMS = {
     # --- Pacific Division ---
     "ABB": {"name": "Abbotsford Canucks", "color": "00744F", "id": "440"},
     "BAK": {"name": "Bakersfield Condors", "color": "F47A38", "id": "402"},
-    "CGY": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"},
+    "CGY": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"}, # Primary
     "CAL": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"}, # Alias
-    "CV":  {"name": "Coachella Valley", "color": "D32027", "id": "445"},
+    "CV":  {"name": "Coachella Valley", "color": "D32027", "id": "445"}, # Primary
     "CVF": {"name": "Coachella Valley", "color": "D32027", "id": "445"}, # Alias
     "COL": {"name": "Colorado Eagles", "color": "003087", "id": "419"},
     "HSK": {"name": "Henderson Silver Knights", "color": "111111", "id": "437"},
     "ONT": {"name": "Ontario Reign", "color": "111111", "id": "403"},
     "SD":  {"name": "San Diego Gulls", "color": "041E42", "id": "404"},
-    "SJ":  {"name": "San Jose Barracuda", "color": "006D75", "id": "405"},
+    "SJ":  {"name": "San Jose Barracuda", "color": "006D75", "id": "405"}, # Primary
     "SJS": {"name": "San Jose Barracuda", "color": "006D75", "id": "405"}, # Alias
     "TUC": {"name": "Tucson Roadrunners", "color": "8C2633", "id": "412"},
 }
@@ -844,19 +845,18 @@ class SportsFetcher:
             
             # 1. Deduplication
             if t_id and t_id in seen_ids:
-                # If we have already seen this ID, we need to find the existing entry
-                # to copy the verified logo URL so we don't check twice.
-                existing = next((x for x in catalog['ahl'] if x['id'] == code or x.get('real_id') == t_id), None)
-                logo_url = existing['logo'] if existing else ""
-            else:
-                # Mark ID as seen
-                if t_id: seen_ids.add(t_id)
+                # If ID is already processed, skip adding it to the catalog list
+                # This prevents "doubles" in the My Teams menu
+                continue
+            
+            # Mark ID as seen
+            if t_id: seen_ids.add(t_id)
 
-                # 2. VALIDATE LOGO (Check _90 vs Standard)
-                if t_id:
-                    logo_url = validate_logo_url(t_id)
-                else:
-                    logo_url = ""
+            # 2. VALIDATE LOGO (Check _90 vs Standard)
+            if t_id:
+                logo_url = validate_logo_url(t_id)
+            else:
+                logo_url = ""
 
             catalog['ahl'].append({
                 'abbr': code, 
@@ -979,15 +979,31 @@ class SportsFetcher:
                 is_shown = True
                 if conf['mode'] == 'live' and gst != 'in': is_shown = False
                 elif conf['mode'] == 'my_teams':
-                    h_name_chk = AHL_TEAMS.get(h_code, {}).get("name", ""); a_name_chk = AHL_TEAMS.get(a_code, {}).get("name", "")
-                    if h_code not in conf['my_teams'] and a_code not in conf['my_teams'] and \
-                       h_name_chk not in conf['my_teams'] and a_name_chk not in conf['my_teams']:
-                        is_shown = False
+                    # Simplified name check to handle Alias matching
+                    h_name_chk = AHL_TEAMS.get(h_code, {}).get("name", "")
+                    a_name_chk = AHL_TEAMS.get(a_code, {}).get("name", "")
+                    
+                    # Check Name match (handles CHA vs CLT mismatch)
+                    match_found = False
+                    for team_ref in conf['my_teams']:
+                        if team_ref in [h_code, a_code, h_name_chk, a_name_chk]:
+                            match_found = True; break
+                    if not match_found: is_shown = False
 
-                # --- LOOKUP LOGOS FROM CACHE ---
-                # Find the pre-validated team object in state['all_teams_data']['ahl']
+                # --- LOOKUP LOGOS FROM CACHE (SMARTER LOOKUP) ---
+                # 1. Try finding by Abbreviation first
                 h_obj = next((t for t in ahl_refs if t['abbr'] == h_code), None)
                 a_obj = next((t for t in ahl_refs if t['abbr'] == a_code), None)
+                
+                # 2. If Abbreviation not found (e.g. CHA vs CLT), lookup by ID
+                if not h_obj:
+                    h_meta_raw = AHL_TEAMS.get(h_code)
+                    if h_meta_raw:
+                        h_obj = next((t for t in ahl_refs if t.get('real_id') == h_meta_raw.get('id')), None)
+                if not a_obj:
+                    a_meta_raw = AHL_TEAMS.get(a_code)
+                    if a_meta_raw:
+                        a_obj = next((t for t in ahl_refs if t.get('real_id') == a_meta_raw.get('id')), None)
                 
                 h_logo = h_obj['logo'] if h_obj else ""
                 a_logo = a_obj['logo'] if a_obj else ""
