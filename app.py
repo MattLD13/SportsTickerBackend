@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.5_AHL_Native_Standardized"
+SERVER_VERSION = "v3.6_AHL_Fixed_Logos_Finals"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -96,40 +96,40 @@ AHL_API_MAP = {
     "UTI": "UTI", "UTC": "UTI", "WBS": "WBS"
 }
 
-# Detailed Team Data (Colors + Logos)
+# Detailed Team Data (Colors + Valid ESPN Logos)
 AHL_TEAM_DB = {
     "ABB": {"city": "Abbotsford", "name": "Canucks", "c": "00744F", "a": "00205B", "l": "https://assets.nhle.com/logos/nhl/svg/VAN_light.svg"}, 
-    "BAK": {"city": "Bakersfield", "name": "Condors", "c": "F47A38", "a": "041E42", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/bak.png"},
-    "BEL": {"city": "Belleville", "name": "Senators", "c": "C52032", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/bel.png"},
-    "BRI": {"city": "Bridgeport", "name": "Islanders", "c": "00539B", "a": "F47B20", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/bri.png"},
-    "CGY": {"city": "Calgary", "name": "Wranglers", "c": "C8102E", "a": "F1BE48", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cgy.png"},
-    "CLT": {"city": "Charlotte", "name": "Checkers", "c": "C8102E", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cha.png"},
-    "CHI": {"city": "Chicago", "name": "Wolves", "c": "7C2529", "a": "FFCD00", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/chi.png"},
-    "CLE": {"city": "Cleveland", "name": "Monsters", "c": "000000", "a": "00B5E2", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cle.png"},
-    "CVF": {"city": "Coachella Valley", "name": "Firebirds", "c": "D32027", "a": "F28C00", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cvf.png"},
-    "COL": {"city": "Colorado", "name": "Eagles", "c": "003087", "a": "D50032", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/col.png"},
-    "GRA": {"city": "Grand Rapids", "name": "Griffins", "c": "BE1E2D", "a": "D1A31E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/gr.png"},
-    "HFD": {"city": "Hartford", "name": "Wolf Pack", "c": "0D2240", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/hfd.png"},
-    "HSK": {"city": "Henderson", "name": "Silver Knights", "c": "111111", "a": "8A8D8F", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/hsk.png"},
-    "HER": {"city": "Hershey", "name": "Bears", "c": "4F2C1D", "a": "B9975B", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/her.png"},
-    "IOW": {"city": "Iowa", "name": "Wild", "c": "154734", "a": "A6192E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/ia.png"},
-    "LAV": {"city": "Laval", "name": "Rocket", "c": "00205B", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/lav.png"},
-    "LHV": {"city": "Lehigh Valley", "name": "Phantoms", "c": "000000", "a": "F47920", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/lv.png"},
-    "MAN": {"city": "Manitoba", "name": "Moose", "c": "003E7E", "a": "041E42", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/mb.png"},
-    "MIL": {"city": "Milwaukee", "name": "Admirals", "c": "041E42", "a": "48A9C5", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/mil.png"},
-    "ONT": {"city": "Ontario", "name": "Reign", "c": "111111", "a": "A2AAAD", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/ont.png"},
-    "PRO": {"city": "Providence", "name": "Bruins", "c": "000000", "a": "FDB927", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/pro.png"},
-    "ROC": {"city": "Rochester", "name": "Americans", "c": "00539B", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/roc.png"},
-    "RFD": {"city": "Rockford", "name": "IceHogs", "c": "CE1126", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/rfd.png"},
-    "SDG": {"city": "San Diego", "name": "Gulls", "c": "041E42", "a": "F16725", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/sd.png"},
-    "SJS": {"city": "San Jose", "name": "Barracuda", "c": "006D75", "a": "F58220", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/sj.png"},
-    "SPR": {"city": "Springfield", "name": "Thunderbirds", "c": "003087", "a": "E31837", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/spr.png"},
-    "SYR": {"city": "Syracuse", "name": "Crunch", "c": "003087", "a": "8A8D8F", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/syr.png"},
-    "TEX": {"city": "Texas", "name": "Stars", "c": "154734", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/tex.png"},
-    "TOR": {"city": "Toronto", "name": "Marlies", "c": "00205B", "a": "FFFFFF", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/tor.png"},
-    "TUC": {"city": "Tucson", "name": "Roadrunners", "c": "8C2633", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/tuc.png"},
-    "UTI": {"city": "Utica", "name": "Comets", "c": "006341", "a": "00205B", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/uti.png"},
-    "WBS": {"city": "WBS", "name": "Penguins", "c": "000000", "a": "FFB81C", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/wbs.png"}
+    "BAK": {"city": "Bakersfield", "name": "Condors", "c": "F47A38", "a": "041E42", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/edm.png"}, # EDM affiliate
+    "BEL": {"city": "Belleville", "name": "Senators", "c": "C52032", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/ott.png"}, # OTT affiliate
+    "BRI": {"city": "Bridgeport", "name": "Islanders", "c": "00539B", "a": "F47B20", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/nyi.png"}, # NYI affiliate
+    "CGY": {"city": "Calgary", "name": "Wranglers", "c": "C8102E", "a": "F1BE48", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/cgy.png"}, 
+    "CLT": {"city": "Charlotte", "name": "Checkers", "c": "C8102E", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/fla.png"}, # FLA affiliate
+    "CHI": {"city": "Chicago", "name": "Wolves", "c": "7C2529", "a": "FFCD00", "l": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e6/Chicago_Wolves_logo.svg/1200px-Chicago_Wolves_logo.svg.png"},
+    "CLE": {"city": "Cleveland", "name": "Monsters", "c": "000000", "a": "00B5E2", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/cbj.png"}, # CBJ affiliate
+    "CVF": {"city": "Coachella Valley", "name": "Firebirds", "c": "D32027", "a": "F28C00", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/sea.png"}, # SEA affiliate
+    "COL": {"city": "Colorado", "name": "Eagles", "c": "003087", "a": "D50032", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/col.png"}, 
+    "GRA": {"city": "Grand Rapids", "name": "Griffins", "c": "BE1E2D", "a": "D1A31E", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/det.png"}, # DET affiliate
+    "HFD": {"city": "Hartford", "name": "Wolf Pack", "c": "0D2240", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/nyr.png"}, # NYR affiliate
+    "HSK": {"city": "Henderson", "name": "Silver Knights", "c": "111111", "a": "8A8D8F", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png"}, # VGK affiliate
+    "HER": {"city": "Hershey", "name": "Bears", "c": "4F2C1D", "a": "B9975B", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/wsh.png"}, # WSH affiliate
+    "IOW": {"city": "Iowa", "name": "Wild", "c": "154734", "a": "A6192E", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/min.png"}, # MIN affiliate
+    "LAV": {"city": "Laval", "name": "Rocket", "c": "00205B", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/mtl.png"}, # MTL affiliate
+    "LHV": {"city": "Lehigh Valley", "name": "Phantoms", "c": "000000", "a": "F47920", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/phi.png"}, # PHI affiliate
+    "MAN": {"city": "Manitoba", "name": "Moose", "c": "003E7E", "a": "041E42", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/wpg.png"}, # WPG affiliate
+    "MIL": {"city": "Milwaukee", "name": "Admirals", "c": "041E42", "a": "48A9C5", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/nsh.png"}, # NSH affiliate
+    "ONT": {"city": "Ontario", "name": "Reign", "c": "111111", "a": "A2AAAD", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png"}, # LA affiliate
+    "PRO": {"city": "Providence", "name": "Bruins", "c": "000000", "a": "FDB927", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png"}, # BOS affiliate
+    "ROC": {"city": "Rochester", "name": "Americans", "c": "00539B", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/buf.png"}, # BUF affiliate
+    "RFD": {"city": "Rockford", "name": "IceHogs", "c": "CE1126", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/chi.png"}, # CHI affiliate
+    "SDG": {"city": "San Diego", "name": "Gulls", "c": "041E42", "a": "F16725", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/ana.png"}, # ANA affiliate
+    "SJS": {"city": "San Jose", "name": "Barracuda", "c": "006D75", "a": "F58220", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png"}, # SJS affiliate
+    "SPR": {"city": "Springfield", "name": "Thunderbirds", "c": "003087", "a": "E31837", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/stl.png"}, # STL affiliate
+    "SYR": {"city": "Syracuse", "name": "Crunch", "c": "003087", "a": "8A8D8F", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png"}, # TB affiliate
+    "TEX": {"city": "Texas", "name": "Stars", "c": "154734", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/dal.png"}, # DAL affiliate
+    "TOR": {"city": "Toronto", "name": "Marlies", "c": "00205B", "a": "FFFFFF", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/tor.png"}, # TOR affiliate
+    "TUC": {"city": "Tucson", "name": "Roadrunners", "c": "8C2633", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png"}, # UTA affiliate
+    "UTI": {"city": "Utica", "name": "Comets", "c": "006341", "a": "00205B", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png"}, # NJD affiliate
+    "WBS": {"city": "WBS", "name": "Penguins", "c": "000000", "a": "FFB81C", "l": "https://a.espncdn.com/i/teamlogos/nhl/500/pit.png"}  # PIT affiliate
 }
 
 # ================= MASTER LEAGUE REGISTRY =================
@@ -858,9 +858,10 @@ class SportsFetcher:
                     else: continue
 
                 # Visibilty Check
-                if not is_live:
+                # FIX: Relaxed filtering for "Scorebar" data which is usually relevant "today" data
+                # We only strictly filter PRE games to avoid showing games 2 days away if API returns them
+                if state_code == 'pre':
                     if not (window_start_utc <= g_utc <= window_end_utc): continue
-                    if g_utc < visible_start_utc or g_utc >= visible_end_utc: continue
 
                 # Teams: Map API Codes to 3-Letter Keys
                 api_h_code = game.get("HomeCode", "HOM")
@@ -889,10 +890,6 @@ class SportsFetcher:
                     # Clean up "End of 1st Period" -> "End 1st"
                     disp_status = disp_status.replace("End of ", "End ").replace(" Period", "").replace("Intermission", "INT")
                     
-                    # Ensure Period Notation is P1, P2, P3 if preferred, or standard
-                    # Common Ticker Style: "12:34 P2" or "12:34 2nd"
-                    # Let's clean up "1st/2nd/3rd" to "P1/P2/P3" if explicit clock is present for brevity?
-                    # Actually standard NHL style is "12:34 2nd". We will stick to the regex cleanup above.
                 elif state_code == 'pre':
                     # Show Time
                     try:
@@ -1852,6 +1849,9 @@ class SportsFetcher:
         if sports_count == 0 and prev_sports_count > 0:
             self.consecutive_empty_fetches += 1
             if self.consecutive_empty_fetches < 3:
+                # print(f"Warning: Fetch returned 0 games. Using cached data (Attempt {self.consecutive_empty_fetches}/3)")
+                # KEEP PREVIOUS DATA, BUT UPDATE CLOCK/WEATHER
+                # (We filter out old weather/clock from prev buffer and add new ones)
                 prev_pure_sports = [g for g in prev_buffer if g.get('type') == 'scoreboard']
                 utils = [g for g in all_games if g.get('type') != 'scoreboard']
                 all_games = prev_pure_sports + utils
@@ -1882,6 +1882,9 @@ class SportsFetcher:
         cutoff_time = now_ts - 120
         self.history_buffer = [x for x in self.history_buffer if x[0] > cutoff_time]
         
+        # NOTE: We no longer calculate 'state["current_games"]' based on a global delay.
+        # Instead, we just store the latest fetch as the default current_games (0 delay)
+        # Individual tickers asking for delay will call get_snapshot_for_delay()
         with data_lock: 
             state['buffer_sports'] = all_games
             self.merge_buffers()
@@ -1897,6 +1900,10 @@ class SportsFetcher:
         closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
         # closest is (timestamp, list_of_games)
         
+        # 3. We need to apply the filtering logic (Stocks/Weather merge) to this snapshot too
+        # But 'merge_buffers' relies on global state buffers.
+        # To avoid complexity, we assume the sports snapshot is what changes, 
+        # and we merge it with the *current* stock buffer (stocks don't need second-by-second delay usually)
         sports_snap = closest[1]
         
         with data_lock:
@@ -1971,6 +1978,7 @@ def stocks_worker():
             fetcher.update_buffer_stocks()
         except Exception as e: 
             print(f"Stock worker error: {e}")
+        # Dynamic sleep is handled inside update_market_data, but we need a small loop delay if no stocks active
         time.sleep(1)
 
 # ================= FLASK API =================
@@ -1987,10 +1995,14 @@ def api_config():
             if new_city is not None or new_lat is not None or new_lon is not None:
                  fetcher.weather.update_config(city=new_city, lat=new_lat, lon=new_lon)
             
+            # Whitelist accepted keys
             allowed_keys = {'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date', 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset', 'show_debug_options'}
             for k, v in new_data.items():
                 if k not in allowed_keys: continue
+                
+                # Special handling for my_teams cleanup
                 if k == 'my_teams':
+                    # Ensure it is a list of strings
                     if isinstance(v, list):
                         cleaned = []
                         seen = set()
@@ -2015,6 +2027,7 @@ def api_config():
 
 @app.route('/leagues', methods=['GET'])
 def get_league_options():
+    # Return just the static list of supported leagues/stocks
     league_meta = []
     for item in LEAGUE_OPTIONS:
          league_meta.append({
@@ -2037,9 +2050,12 @@ def get_ticker_data():
     rec = tickers[ticker_id]
     if not rec.get('clients'): return jsonify({"status": "pairing", "code": rec['pairing_code']})
     
+    # === PER TICKER DELAY LOGIC ===
     t_settings = rec['settings']
     delay_mode = t_settings.get('live_delay_mode', False)
     delay_seconds = t_settings.get('live_delay_seconds', 0) if delay_mode else 0
+    
+    # Get games specifically for this delay
     games_for_ticker = fetcher.get_snapshot_for_delay(delay_seconds)
     
     with data_lock:
@@ -2049,14 +2065,24 @@ def get_ticker_data():
             "weather": state['weather_city']
         }
     
+    # Filter is_shown AND remove postponed games for ticker only
     visible_games = []
     for g in games_for_ticker:
-        if not g.get('is_shown', True): continue
+        # Check standard is_shown flag
+        if not g.get('is_shown', True):
+            continue
+            
+        # === FIX: FORCE LIVE MODE CHECK "JUST IN TIME" ===
         if conf['mode'] == 'live':
-             if g.get('state') != 'in' and g.get('state') != 'half': continue
-        
+             if g.get('state') != 'in' and g.get('state') != 'half':
+                  continue
+        # =================================================
+            
+        # Check for postponed/suspended keywords
         status_lower = str(g.get('status', '')).lower()
-        if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]): continue
+        if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
+            continue
+            
         visible_games.append(g)
     
     return jsonify({ 
@@ -2114,6 +2140,7 @@ def update_settings(tid):
 
 @app.route('/api/state')
 def api_state():
+    # Return latest games for the UI
     with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
 @app.route('/api/teams')
 def api_teams():
@@ -2129,37 +2156,63 @@ def api_debug():
     with data_lock: state.update(request.json)
     return jsonify({"status": "ok"})
 
-# === LOGS ENDPOINT ===
+# === LOGS ENDPOINT (Auto-scrolling HTML) ===
 @app.route('/errors', methods=['GET'])
 def get_logs():
     log_file = "ticker.log"
-    if not os.path.exists(log_file): return "Log file not found", 404
+    if not os.path.exists(log_file):
+        return "Log file not found", 404
+    
     try:
         file_size = os.path.getsize(log_file)
-        read_size = min(file_size, 102400) 
+        read_size = min(file_size, 102400) # Read last 100KB
+        
         log_content = ""
         with open(log_file, 'rb') as f:
-            if file_size > read_size: f.seek(file_size - read_size)
+            if file_size > read_size:
+                f.seek(file_size - read_size)
             data = f.read()
             log_content = data.decode('utf-8', errors='replace')
 
+        # Auto-scrolling HTML wrapper
         html_response = f"""
-        <!DOCTYPE html><html><head><title>Server Logs</title><meta http-equiv="refresh" content="10">
-        <style>body {{ background-color: #1e1e1e; color: #00ff00; font-family: 'Courier New', monospace; margin: 0; padding: 20px; }} pre {{ white-space: pre-wrap; word-wrap: break-word; }}</style>
-        <script>window.onload = function() {{ window.scrollTo(0, document.body.scrollHeight); }};</script>
-        </head><body><h3>Last {read_size / 1024:.0f}KB of Logs (Auto-scrolled)</h3><pre>{log_content}</pre></body></html>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Server Logs</title>
+            <meta http-equiv="refresh" content="10">
+            <style>
+                body {{ background-color: #1e1e1e; color: #00ff00; font-family: 'Courier New', monospace; margin: 0; padding: 20px; }}
+                pre {{ white-space: pre-wrap; word-wrap: break-word; }}
+            </style>
+            <script>
+                window.onload = function() {{
+                    window.scrollTo(0, document.body.scrollHeight);
+                }};
+            </script>
+        </head>
+        <body>
+            <h3>Last {read_size / 1024:.0f}KB of Logs (Auto-scrolled)</h3>
+            <pre>{log_content}</pre>
+        </body>
+        </html>
         """
+        
         response = app.response_class(response=html_response, status=200, mimetype='text/html')
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
         return response
-    except Exception as e: return f"Error reading log: {str(e)}", 500
+
+    except Exception as e:
+        return f"Error reading log: {str(e)}", 500
 
 @app.route('/')
 def root(): return "Ticker Server Running"
 
 if __name__ == "__main__":
+    # Start separate threads
     threading.Thread(target=sports_worker, daemon=True).start()
     threading.Thread(target=stocks_worker, daemon=True).start()
+    
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
