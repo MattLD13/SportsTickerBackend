@@ -14,11 +14,11 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load environment variables for Finnhub Keys
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.7_AHL_Fix_Merge_Logic"
+SERVER_VERSION = "v3.2_Hybrid_Sports_Finnhub_AHL_Fix"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -49,9 +49,11 @@ try:
 except Exception as e:
     print(f"Logging setup failed: {e}")
 
-# ================= CACHE CLEANUP =================
+# ================= CACHE CLEANUP ON STARTUP =================
 if os.path.exists("stock_cache.json"):
-    try: os.remove("stock_cache.json")
+    try:
+        print("🧹 Wiping old stock cache on startup...")
+        os.remove("stock_cache.json")
     except: pass
 
 def build_pooled_session(pool_size=20, retries=2):
@@ -72,7 +74,7 @@ STOCKS_UPDATE_INTERVAL = 15
 
 data_lock = threading.Lock()
 
-# Headers
+# Headers for FotMob/ESPN
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "application/json",
@@ -80,73 +82,34 @@ HEADERS = {
     "Referer": "https://www.fotmob.com/"
 }
 
-# ================= AHL CONFIGURATION =================
-AHL_BASE_URL = "https://lscluster.hockeytech.com/feed/index.php"
-AHL_KEYS = ["ccb91f29d6744675", "694cfeed58c932ee", "50c2cd9b5e18e390"]
-AHL_CLIENT_CODE = "ahl"
-AHL_LEAGUE_ID = 4
-
-# Map API codes (often 2 letters) to Standard 3-Letter Acronyms
-AHL_API_MAP = {
-    "ABB": "ABB", "BAK": "BAK", "BEL": "BEL", "BRI": "BRI", "CAL": "CGY", "CHA": "CLT",
-    "CHI": "CHI", "CLE": "CLE", "CVF": "CVF", "COL": "COL", "GR": "GRA", "HFD": "HFD",
-    "HSK": "HSK", "HER": "HER", "IA": "IOW", "LAV": "LAV", "LV": "LHV", "MB": "MAN",
-    "MIL": "MIL", "ONT": "ONT", "PRO": "PRO", "ROC": "ROC", "RFD": "RFD", "SD": "SDG",
-    "SJ": "SJS", "SPR": "SPR", "SYR": "SYR", "TEX": "TEX", "TOR": "TOR", "TUC": "TUC",
-    "UTI": "UTI", "UTC": "UTI", "WBS": "WBS"
-}
-
-# Detailed Team Data (Colors + Logos)
-AHL_TEAM_DB = {
-    "ABB": {"city": "Abbotsford", "name": "Canucks", "c": "00744F", "a": "00205B", "l": "https://assets.nhle.com/logos/nhl/svg/VAN_light.svg"}, 
-    "BAK": {"city": "Bakersfield", "name": "Condors", "c": "F47A38", "a": "041E42", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/bak.png"},
-    "BEL": {"city": "Belleville", "name": "Senators", "c": "C52032", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/bel.png"},
-    "BRI": {"city": "Bridgeport", "name": "Islanders", "c": "00539B", "a": "F47B20", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/bri.png"},
-    "CGY": {"city": "Calgary", "name": "Wranglers", "c": "C8102E", "a": "F1BE48", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cgy.png"},
-    "CLT": {"city": "Charlotte", "name": "Checkers", "c": "C8102E", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cha.png"},
-    "CHI": {"city": "Chicago", "name": "Wolves", "c": "7C2529", "a": "FFCD00", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/chi.png"},
-    "CLE": {"city": "Cleveland", "name": "Monsters", "c": "000000", "a": "00B5E2", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cle.png"},
-    "CVF": {"city": "Coachella Valley", "name": "Firebirds", "c": "D32027", "a": "F28C00", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/cvf.png"},
-    "COL": {"city": "Colorado", "name": "Eagles", "c": "003087", "a": "D50032", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/col.png"},
-    "GRA": {"city": "Grand Rapids", "name": "Griffins", "c": "BE1E2D", "a": "D1A31E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/gr.png"},
-    "HFD": {"city": "Hartford", "name": "Wolf Pack", "c": "0D2240", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/hfd.png"},
-    "HSK": {"city": "Henderson", "name": "Silver Knights", "c": "111111", "a": "8A8D8F", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/hsk.png"},
-    "HER": {"city": "Hershey", "name": "Bears", "c": "4F2C1D", "a": "B9975B", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/her.png"},
-    "IOW": {"city": "Iowa", "name": "Wild", "c": "154734", "a": "A6192E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/ia.png"},
-    "LAV": {"city": "Laval", "name": "Rocket", "c": "00205B", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/lav.png"},
-    "LHV": {"city": "Lehigh Valley", "name": "Phantoms", "c": "000000", "a": "F47920", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/lv.png"},
-    "MAN": {"city": "Manitoba", "name": "Moose", "c": "003E7E", "a": "041E42", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/mb.png"},
-    "MIL": {"city": "Milwaukee", "name": "Admirals", "c": "041E42", "a": "48A9C5", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/mil.png"},
-    "ONT": {"city": "Ontario", "name": "Reign", "c": "111111", "a": "A2AAAD", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/ont.png"},
-    "PRO": {"city": "Providence", "name": "Bruins", "c": "000000", "a": "FDB927", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/pro.png"},
-    "ROC": {"city": "Rochester", "name": "Americans", "c": "00539B", "a": "C8102E", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/roc.png"},
-    "RFD": {"city": "Rockford", "name": "IceHogs", "c": "CE1126", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/rfd.png"},
-    "SDG": {"city": "San Diego", "name": "Gulls", "c": "041E42", "a": "F16725", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/sd.png"},
-    "SJS": {"city": "San Jose", "name": "Barracuda", "c": "006D75", "a": "F58220", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/sj.png"},
-    "SPR": {"city": "Springfield", "name": "Thunderbirds", "c": "003087", "a": "E31837", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/spr.png"},
-    "SYR": {"city": "Syracuse", "name": "Crunch", "c": "003087", "a": "8A8D8F", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/syr.png"},
-    "TEX": {"city": "Texas", "name": "Stars", "c": "154734", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/tex.png"},
-    "TOR": {"city": "Toronto", "name": "Marlies", "c": "00205B", "a": "FFFFFF", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/tor.png"},
-    "TUC": {"city": "Tucson", "name": "Roadrunners", "c": "8C2633", "a": "000000", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/tuc.png"},
-    "UTI": {"city": "Utica", "name": "Comets", "c": "006341", "a": "00205B", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/uti.png"},
-    "WBS": {"city": "WBS", "name": "Penguins", "c": "000000", "a": "FFB81C", "l": "https://a.espncdn.com/i/teamlogos/ahl/500/wbs.png"}
+# ================= FOTMOB MAPPING =================
+FOTMOB_LEAGUE_MAP = {
+    'soccer_epl': 47,
+    'soccer_fa_cup': 132,
+    'soccer_champ': 48,
+    'soccer_l1': 108,
+    'soccer_l2': 109,
+    'soccer_wc': 77,
+    'soccer_champions_league': 42,
+    'soccer_europa_league': 73
 }
 
 # ================= MASTER LEAGUE REGISTRY =================
+# Using the robust list from the Old Code
 LEAGUE_OPTIONS = [
     # --- PRO SPORTS ---
     {'id': 'nfl',           'label': 'NFL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'mlb',           'label': 'MLB',                 'type': 'sport', 'default': True,  'fetch': {'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'nhl',           'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    # --- AHL NATIVE ---
-    {'id': 'ahl',           'label': 'AHL',                 'type': 'sport', 'default': True,  'fetch': {'type': 'native_ahl'}},
+    # --- FIXED AHL FETCH PARAMS ---
+    {'id': 'ahl',           'label': 'AHL Hockey',          'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/ahl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'nba',           'label': 'NBA',                 'type': 'sport', 'default': True,  'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     
     # --- COLLEGE SPORTS ---
     {'id': 'ncf_fbs',       'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs',       'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
 
-    # --- SOCCER ---
+    # --- SOCCER (Colors fetched via ESPN, scores via FotMob) ---
     {'id': 'soccer_epl',    'label': 'Premier League',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_fa_cup','label': 'FA Cup',                 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
     {'id': 'soccer_champ', 'label': 'Championship',           'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
@@ -167,7 +130,7 @@ LEAGUE_OPTIONS = [
     {'id': 'weather',       'label': 'Weather',              'type': 'util',  'default': True},
     {'id': 'clock',         'label': 'Clock',                'type': 'util',  'default': True},
 
-    # --- STOCKS ---
+    # --- STOCKS (From New Code Lists) ---
     {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',     'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
     {'id': 'stock_momentum',   'label': 'Momentum Stocks',       'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
     {'id': 'stock_energy',        'label': 'Energy Stocks',        'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
@@ -336,6 +299,7 @@ ABBR_MAPPING = {
     'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS'
 }
 
+# --- EXTENDED SOCCER COLORS FALLBACK ---
 SOCCER_COLOR_FALLBACK = {
     "arsenal": "EF0107", "aston villa": "95BFE5", "bournemouth": "DA291C", "brentford": "E30613", "brighton": "0057B8",
     "chelsea": "034694", "crystal palace": "1B458F", "everton": "003399", "fulham": "FFFFFF", "ipswich": "3A64A3",
@@ -376,6 +340,7 @@ class WeatherFetcher:
         self.city_name = city
         self.last_fetch = 0
         self.cache = None
+        # Use pooled session for Weather too
         self.session = build_pooled_session(pool_size=10)
 
     def update_config(self, city=None, lat=None, lon=None):
@@ -634,9 +599,6 @@ class SportsFetcher:
             for item in LEAGUE_OPTIONS 
             if item['type'] == 'sport' and 'fetch' in item 
         }
-        
-        # AHL API Key State
-        self.ahl_current_key_idx = 0
 
     def get_corrected_logo(self, league_key, abbr, default_logo):
         return LOGO_OVERRIDES.get(f"{league_key.upper()}:{abbr}", default_logo)
@@ -692,8 +654,6 @@ class SportsFetcher:
 
     def _fetch_simple_league(self, league_key, catalog):
         config = self.leagues[league_key]
-        # Skip native AHL fetch here
-        if config.get('type') == 'native_ahl': return 
         if 'team_params' not in config: return
         try:
             r = self.session.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=10)
@@ -724,21 +684,41 @@ class SportsFetcher:
                                 })
         except Exception as e: print(f"Error fetching teams for {league_key}: {e}")
 
-    # === FIXED AHL TEAM POPULATION (Using Hardcoded Data) ===
-    def _populate_ahl_teams(self, catalog):
-        # We populate the AHL catalog from the hardcoded dictionary to ensure names/colors exist
-        for code, details in AHL_TEAM_DB.items():
-            entry = {
-                'abbr': code,
-                'id': code, 
-                'logo': details.get('l', ''), 
-                'color': details.get('c', '000000'),
-                'alt_color': details.get('a', '444444'),
-                'name': f"{details.get('city')} {details.get('name')}",
-                'shortName': details.get('name')
-            }
-            if not any(x['abbr'] == code for x in catalog['ahl']):
-                catalog['ahl'].append(entry)
+    # === FIXED AHL TEAM FETCHER ===
+    # Explicitly fetch ALL AHL teams to ensure they show up in 'My Teams' with correct colors
+    def _fetch_ahl_teams_explicitly(self, catalog):
+        try:
+            # ESPN AHL often lists teams under a specific group structure or might not paginate well default
+            # We force a large limit and check fetching
+            url = f"{self.base_url}hockey/ahl/teams"
+            r = self.session.get(url, params={'limit': 200}, headers=HEADERS, timeout=10)
+            data = r.json()
+            if 'sports' in data:
+                for sport in data['sports']:
+                    for league in sport['leagues']:
+                        for item in league.get('teams', []):
+                            abbr = item['team'].get('abbreviation', 'unk')
+                            team_id = str(item['team'].get('id', ''))
+                            
+                            # Ensure colors exist (Default AHL teams sometimes miss color fields in ESPN API)
+                            clr = item['team'].get('color', '000000') 
+                            alt = item['team'].get('alternateColor', '444444')
+                            
+                            logo = item['team'].get('logos', [{}])[0].get('href', '')
+                            name = item['team'].get('displayName', '')
+                            short_name = item['team'].get('shortDisplayName', '')
+
+                            if not any(x.get('id') == team_id for x in catalog['ahl']):
+                                catalog['ahl'].append({
+                                    'abbr': abbr, 
+                                    'id': team_id,
+                                    'logo': logo, 
+                                    'color': clr, 
+                                    'alt_color': alt, 
+                                    'name': name,
+                                    'shortName': short_name
+                                })
+        except Exception as e: print(f"Error fetching AHL specific teams: {e}")
 
     def fetch_all_teams(self):
         try:
@@ -773,9 +753,9 @@ class SportsFetcher:
                 'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_champions_league', 'soccer_europa_league'
             ]
             
-            # --- AHL POPULATION ---
+            # --- AHL EXPLICIT CALL ---
             if 'ahl' in self.leagues:
-                self._populate_ahl_teams(teams_catalog)
+                futures.append(self.executor.submit(self._fetch_ahl_teams_explicitly, teams_catalog))
             
             for lk in leagues_to_fetch:
                 if lk in self.leagues:
@@ -784,159 +764,6 @@ class SportsFetcher:
 
             with data_lock: state['all_teams_data'] = teams_catalog
         except Exception as e: print(f"Global Team Fetch Error: {e}")
-
-    # === NATIVE AHL FETCHER LOGIC (Ported from Provided Script) ===
-    def _get_ahl_key(self):
-        return AHL_KEYS[self.ahl_current_key_idx]
-
-    def _fetch_ahl_summary(self, game_id):
-        # Helper to get active PP/EN/SO data
-        try:
-            params = {
-                "feed": "statviewfeed",
-                "view": "gameSummary",
-                "game_id": game_id,
-                "key": self._get_ahl_key(),
-                "client_code": AHL_CLIENT_CODE,
-                "lang": "en", "league_id": AHL_LEAGUE_ID, "fmt": "json"
-            }
-            r = self.session.get(AHL_BASE_URL, params=params, timeout=5)
-            return r.json()
-        except: return {}
-
-    def _fetch_ahl_native(self, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc):
-        games_found = []
-        is_active = conf['active_sports'].get('ahl', False)
-        if not is_active: return []
-
-        # 1. Fetch Scorebar
-        params = {
-            "feed": "modulekit",
-            "view": "scorebar",
-            "key": self._get_ahl_key(),
-            "client_code": AHL_CLIENT_CODE,
-            "lang": "en", "league_id": AHL_LEAGUE_ID, "fmt": "json"
-        }
-        
-        try:
-            r = self.session.get(AHL_BASE_URL, params=params, timeout=8)
-            # Simple Key Rotation on failure
-            if r.status_code != 200:
-                self.ahl_current_key_idx = (self.ahl_current_key_idx + 1) % len(AHL_KEYS)
-                return []
-            
-            data = r.json()
-            scorebar = data.get("SiteKit", {}).get("Scorebar", [])
-            if not scorebar: return []
-
-            for game in scorebar:
-                g_id = game.get("ID")
-                
-                # Status parsing
-                raw_status = game.get("GameStatusString", "")
-                status_lower = raw_status.lower()
-                
-                # Determine State
-                is_final = "final" in status_lower
-                is_live = any(x in status_lower for x in ["live", "1st", "2nd", "3rd", "ot", "period", "intermission"]) and not is_final
-                
-                state_code = 'in' if is_live else ('post' if is_final else 'pre')
-                
-                # Parse Time
-                start_str = game.get("DateEnd") # Usually contains time
-                try:
-                    if start_str:
-                        # Simple naive parse, assuming ET for sorting
-                        dt_obj = dt.strptime(start_str, "%Y-%m-%d %H:%M:%S")
-                        g_utc = dt_obj.replace(tzinfo=timezone(timedelta(hours=-5))).astimezone(timezone.utc)
-                    else:
-                        ds = game.get("Date")
-                        dt_obj = dt.strptime(ds, "%Y-%m-%d")
-                        g_utc = dt_obj.replace(tzinfo=timezone(timedelta(hours=-5))).astimezone(timezone.utc)
-                except:
-                    if is_live: g_utc = dt.now(timezone.utc)
-                    else: continue
-
-                # Visibilty Check
-                # FIX: Relaxed filtering for "Scorebar" data which is usually relevant "today" data
-                # We only strictly filter PRE games to avoid showing games 2 days away if API returns them
-                if state_code == 'pre':
-                    if not (window_start_utc <= g_utc <= window_end_utc): continue
-
-                # Teams: Map API Codes to 3-Letter Keys
-                api_h_code = game.get("HomeCode", "HOM")
-                api_a_code = game.get("VisitorCode", "VIS")
-                
-                h_abbr = AHL_API_MAP.get(api_h_code, api_h_code)
-                a_abbr = AHL_API_MAP.get(api_a_code, api_a_code)
-                
-                h_score = game.get("HomeGoals", "0")
-                a_score = game.get("VisitorGoals", "0")
-
-                # Colors (From local cache)
-                h_info = AHL_TEAM_DB.get(h_abbr, {})
-                a_info = AHL_TEAM_DB.get(a_abbr, {})
-
-                # Format Status (Standardized Style)
-                disp_status = raw_status
-                if is_final:
-                    disp_status = "FINAL"
-                    # Check period for OT/SO
-                    per = str(game.get("Period", ""))
-                    if per == "5" or "SO" in raw_status.upper(): disp_status = "FINAL S/O"
-                    elif per == "4" or "OT" in raw_status.upper(): disp_status = "FINAL OT"
-                elif is_live:
-                    # Clean up "14:00 2nd Period" -> "14:00 2nd"
-                    # Clean up "End of 1st Period" -> "End 1st"
-                    disp_status = disp_status.replace("End of ", "End ").replace(" Period", "").replace("Intermission", "INT")
-                    
-                elif state_code == 'pre':
-                    # Show Time
-                    try:
-                        disp_status = g_utc.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5)))).strftime("%I:%M %p").lstrip('0')
-                    except: pass
-                
-                # Check specifics via summary if live/final
-                pp = False; en = False; so_data = None
-                
-                if is_live or "SO" in disp_status:
-                    try:
-                        summary = self._fetch_ahl_summary(g_id)
-                        # 2. Shootout
-                        if "SO" in disp_status:
-                            so = summary.get("shootout", [])
-                            if so: so_data = {'active': True} 
-
-                        # 3. Empty Net (Live only)
-                        if is_live:
-                            goals = summary.get("goals", {}).get("goal", [])
-                            if isinstance(goals, dict): goals = [goals]
-                            if goals:
-                                last_goal = goals[-1]
-                                if last_goal.get("empty_net") == "1": en = True
-                    except: pass
-
-                # Ticker Object
-                games_found.append({
-                    'type': 'scoreboard',
-                    'sport': 'ahl', 'id': str(g_id), 
-                    'status': disp_status, 
-                    'state': state_code, 
-                    'is_shown': True, 
-                    'home_abbr': h_abbr, 'home_score': h_score, 'home_logo': h_info.get('l', ''), 
-                    'away_abbr': a_abbr, 'away_score': a_score, 'away_logo': a_info.get('l', ''),
-                    'home_color': f"#{h_info.get('c', '000000')}", 'home_alt_color': f"#{h_info.get('a', '444444')}",
-                    'away_color': f"#{a_info.get('c', '000000')}", 'away_alt_color': f"#{a_info.get('a', '444444')}",
-                    'startTimeUTC': g_utc.isoformat(),
-                    'estimated_duration': 150,
-                    'situation': { 'powerPlay': pp, 'emptyNet': en, 'shootout': so_data }
-                })
-
-        except Exception as e: 
-            print(f"AHL Fetch Error: {e}")
-            return []
-        
-        return games_found
 
     # === NHL NATIVE FETCHER ===
     def fetch_shootout_details(self, game_id, away_id, home_id):
@@ -1803,23 +1630,16 @@ class SportsFetcher:
                 # Pass window arguments + visibility constraints
                 futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc))
             
-            # B. AHL Native Fetcher (NEW)
-            if conf['active_sports'].get('ahl', False):
-                futures.append(self.executor.submit(self._fetch_ahl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc))
-
-            # C. FOTMOB SOCCER (Batched by League ID)
+            # B. FOTMOB SOCCER (Batched by League ID)
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
                         futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc))
 
-            # D. All other ESPN leagues
+            # C. All other ESPN leagues
             for league_key, config in self.leagues.items():
                 # Skip NHL here if we are using native mode
                 if league_key == 'nhl' and not conf['debug_mode']: continue 
                 
-                # Skip AHL here (Native mode)
-                if league_key == 'ahl': continue
-
                 # Skip Soccer here (Handled by FotMob now)
                 if league_key.startswith('soccer_'): continue
 
@@ -1849,6 +1669,9 @@ class SportsFetcher:
         if sports_count == 0 and prev_sports_count > 0:
             self.consecutive_empty_fetches += 1
             if self.consecutive_empty_fetches < 3:
+                # print(f"Warning: Fetch returned 0 games. Using cached data (Attempt {self.consecutive_empty_fetches}/3)")
+                # KEEP PREVIOUS DATA, BUT UPDATE CLOCK/WEATHER
+                # (We filter out old weather/clock from prev buffer and add new ones)
                 prev_pure_sports = [g for g in prev_buffer if g.get('type') == 'scoreboard']
                 utils = [g for g in all_games if g.get('type') != 'scoreboard']
                 all_games = prev_pure_sports + utils
@@ -1879,6 +1702,9 @@ class SportsFetcher:
         cutoff_time = now_ts - 120
         self.history_buffer = [x for x in self.history_buffer if x[0] > cutoff_time]
         
+        # NOTE: We no longer calculate 'state["current_games"]' based on a global delay.
+        # Instead, we just store the latest fetch as the default current_games (0 delay)
+        # Individual tickers asking for delay will call get_snapshot_for_delay()
         with data_lock: 
             state['buffer_sports'] = all_games
             self.merge_buffers()
@@ -1894,6 +1720,10 @@ class SportsFetcher:
         closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
         # closest is (timestamp, list_of_games)
         
+        # 3. We need to apply the filtering logic (Stocks/Weather merge) to this snapshot too
+        # But 'merge_buffers' relies on global state buffers.
+        # To avoid complexity, we assume the sports snapshot is what changes, 
+        # and we merge it with the *current* stock buffer (stocks don't need second-by-second delay usually)
         sports_snap = closest[1]
         
         with data_lock:
@@ -1908,7 +1738,7 @@ class SportsFetcher:
         elif mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
         elif mode in ['sports', 'live', 'my_teams']: return pure_sports
-        else: return pure_sports + stocks_snap
+        else: return pure_sports # Removed utils from here
 
     def update_buffer_stocks(self):
         games = []
@@ -1940,7 +1770,7 @@ class SportsFetcher:
         elif mode == 'weather': final_list = [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': final_list = [g for g in utils if g.get('sport') == 'clock']
         elif mode in ['sports', 'live', 'my_teams']: final_list = pure_sports
-        else: final_list = pure_sports + stocks_buffer
+        else: final_list = pure_sports # Removed utils from here
 
         state['current_games'] = final_list
 
