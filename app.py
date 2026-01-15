@@ -1053,6 +1053,7 @@ class SportsFetcher:
             print(f"AHL Fetch Error: {e}")
         
         return games_found
+        
     # ===============================================
 
     # === NHL NATIVE FETCHER ===
