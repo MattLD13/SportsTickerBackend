@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.1_AHL_Integrated"
+SERVER_VERSION = "v3.2_AHL_Fixed"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -736,6 +736,22 @@ class SportsFetcher:
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
+            
+            # === ADDED: POPULATE AHL TEAMS FOR UI ===
+            if 'ahl' in self.leagues:
+                teams_catalog['ahl'] = []
+                for code, meta in AHL_TEAMS.items():
+                    teams_catalog['ahl'].append({
+                        'abbr': code,
+                        'id': code, # AHL uses the TLA as ID often
+                        'logo': meta['logo'],
+                        'color': meta['color'],
+                        'alt_color': '444444',
+                        'name': meta['name'],
+                        'shortName': meta['name'].split(' ')[-1] # roughly "Bears", "Wolves"
+                    })
+            # ========================================
+
             for t in OLYMPIC_HOCKEY_TEAMS:
                 teams_catalog['hockey_olympics'].append({'abbr': t['abbr'], 'logo': t['logo'], 'color': '000000', 'alt_color': '444444'})
 
@@ -820,44 +836,45 @@ class SportsFetcher:
                 g_date = g.get("Date", "")
                 if g_date != req_date: continue
 
-                # 2. Extract Basic Data
+                # 2. Extract Data
                 gid = g.get("ID")
                 h_code = g.get("HomeCode", "").upper()
                 a_code = g.get("VisitorCode", "").upper()
                 h_sc = str(g.get("HomeGoals", "0"))
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
-                # 3. Status Parsing
+                # 3. Status Parsing (Fixed Logic)
                 raw_status = g.get("GameStatusString", "")
                 status_lower = raw_status.lower()
+                period_str = str(g.get("Period", ""))
                 
                 disp = "Scheduled"
                 gst = "pre"
 
                 if "final" in status_lower:
                     gst = "post"
-                    if "so" in status_lower or "shootout" in status_lower: disp = "FINAL S/O"
-                    elif "ot" in status_lower or "overtime" in status_lower: disp = "FINAL OT"
-                    else: disp = "FINAL"
+                    # AHL Feed: Period "4" = OT, Period "5" = SO
+                    if period_str == "5" or "so" in status_lower or "shootout" in status_lower: 
+                        disp = "FINAL S/O"
+                    elif period_str == "4" or "ot" in status_lower or "overtime" in status_lower: 
+                        disp = "FINAL OT"
+                    else: 
+                        disp = "FINAL"
                 elif "scheduled" in status_lower or "pre" in status_lower:
                     gst = "pre"
-                    # Try to parse time: "7:00 pm EST" -> "7:00 PM"
                     try:
-                        time_part = g.get("Time", "").split(" ")[0] # Get 7:00
-                        disp = f"{time_part} PM" # AHL usually sends local time, simplified here
+                        time_part = g.get("Time", "").split(" ")[0] 
+                        disp = f"{time_part} PM" 
                     except: disp = "Scheduled"
                 else:
                     # LIVE
                     gst = "in"
-                    # Format: "12:34 1st" -> "P1 12:34"
-                    # Format: "End 1st" -> "End 1st"
                     if "intermission" in status_lower:
                         if "1st" in status_lower: disp = "End 1st"
                         elif "2nd" in status_lower: disp = "End 2nd"
                         elif "3rd" in status_lower: disp = "End 3rd"
                         else: disp = "INT"
                     else:
-                        # Regex to flip "12:34 1st" to "P1 12:34"
                         m = re.search(r'(\d+:\d+)\s*(1st|2nd|3rd|ot|overtime)', raw_status, re.IGNORECASE)
                         if m:
                             clk = m.group(1)
@@ -865,15 +882,20 @@ class SportsFetcher:
                             p_lbl = "OT" if "ot" in prd else f"P{prd[0]}"
                             disp = f"{p_lbl} {clk}"
                         else:
-                            disp = raw_status # Fallback
+                            disp = raw_status
 
                 # 4. Mode Filtering
                 is_shown = True
                 if conf['mode'] == 'live' and gst != 'in': is_shown = False
                 elif conf['mode'] == 'my_teams':
-                    is_shown = (h_code in conf['my_teams'] or a_code in conf['my_teams'])
+                    # Check both Code and Name for safety
+                    h_name_chk = AHL_TEAMS.get(h_code, {}).get("name", "")
+                    a_name_chk = AHL_TEAMS.get(a_code, {}).get("name", "")
+                    if h_code not in conf['my_teams'] and a_code not in conf['my_teams'] and \
+                       h_name_chk not in conf['my_teams'] and a_name_chk not in conf['my_teams']:
+                        is_shown = False
 
-                # 5. Team Metadata
+                # 5. Team Metadata (Logo Fallback)
                 h_meta = AHL_TEAMS.get(h_code, {"color": "000000", "logo": ""})
                 a_meta = AHL_TEAMS.get(a_code, {"color": "000000", "logo": ""})
 
@@ -894,8 +916,8 @@ class SportsFetcher:
                     'away_color': f"#{a_meta['color']}",
                     'home_alt_color': '#444444',
                     'away_alt_color': '#444444',
-                    'startTimeUTC': f"{req_date}T00:00:00Z", # Placeholder as AHL API doesn't give clean UTC
-                    'situation': {} # No advanced tracking requested
+                    'startTimeUTC': f"{req_date}T00:00:00Z", 
+                    'situation': {}
                 })
         except Exception as e:
             print(f"AHL Fetch Error: {e}")
