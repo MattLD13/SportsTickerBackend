@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.4_AHL_Logos_Fixed_LeagueStat"
+SERVER_VERSION = "v3.5_AHL_ISO8601_Sort_Fix"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -27,8 +27,8 @@ class Tee(object):
         self.original_stdout = sys.stdout
         self.original_stderr = sys.stderr
         self._lock = threading.Lock()
-        sys.stdout = self
-        sys.stderr = self
+        self.stdout = self
+        self.stderr = self
 
     def write(self, data):
         with self._lock:
@@ -69,8 +69,8 @@ TICKER_REGISTRY_FILE = "tickers.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 
 # === TIMING ===
-SPORTS_UPDATE_INTERVAL = 15      
-STOCKS_UPDATE_INTERVAL = 15      
+SPORTS_UPDATE_INTERVAL = 15       
+STOCKS_UPDATE_INTERVAL = 15       
 
 data_lock = threading.Lock()
 
@@ -108,11 +108,6 @@ TZ_OFFSETS = {
     "AST": -4, "ADT": -3
 }
 
-# ================= AHL TEAMS (With LeagueStat IDs) =================
-# Updated to include Numeric IDs for correct Logo Generation
-# ================= AHL TEAMS (Official LeagueStat IDs) =================
-# ================= AHL TEAMS (Official LeagueStat IDs) =================
-# IDs are used to generate logos from: assets.leaguestat.com
 # ================= AHL TEAMS (Official LeagueStat IDs) =================
 # IDs are used to generate logos from: assets.leaguestat.com
 AHL_TEAMS = {
@@ -181,10 +176,10 @@ LEAGUE_OPTIONS = [
     # --- SOCCER ---
     {'id': 'soccer_epl',    'label': 'Premier League',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_fa_cup','label': 'FA Cup',                 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
-    {'id': 'soccer_champ', 'label': 'Championship',            'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l1',     'label': 'League One',             'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l2',     'label': 'League Two',             'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_wc',     'label': 'FIFA World Cup',        'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'soccer_champ', 'label': 'Championship',             'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l1',     'label': 'League One',              'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l2',     'label': 'League Two',              'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_wc',     'label': 'FIFA World Cup',         'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_europa_league',    'label': 'Europa League',    'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 200}, 'type': 'scoreboard'}},
 
@@ -193,18 +188,18 @@ LEAGUE_OPTIONS = [
 
     # --- RACING ---
     {'id': 'f1',             'label': 'Formula 1',             'type': 'sport', 'default': True,  'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
-    {'id': 'nascar',         'label': 'NASCAR',                'type': 'sport', 'default': True,  'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
+    {'id': 'nascar',         'label': 'NASCAR',                 'type': 'sport', 'default': True,  'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
 
     # --- UTILITIES ---
-    {'id': 'weather',       'label': 'Weather',              'type': 'util',  'default': True},
-    {'id': 'clock',         'label': 'Clock',                'type': 'util',  'default': True},
+    {'id': 'weather',       'label': 'Weather',               'type': 'util',  'default': True},
+    {'id': 'clock',         'label': 'Clock',                 'type': 'util',  'default': True},
 
     # --- STOCKS ---
-    {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',      'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
-    {'id': 'stock_momentum',   'label': 'Momentum Stocks',       'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
+    {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',       'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
+    {'id': 'stock_momentum',   'label': 'Momentum Stocks',        'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
     {'id': 'stock_energy',          'label': 'Energy Stocks',         'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
-    {'id': 'stock_finance',        'label': 'Financial Stocks',      'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
-    {'id': 'stock_consumer',       'label': 'Consumer Stocks',       'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
+    {'id': 'stock_finance',         'label': 'Financial Stocks',       'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
+    {'id': 'stock_consumer',        'label': 'Consumer Stocks',       'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
 ]
 
 # ================= DEFAULT STATE =================
@@ -401,6 +396,19 @@ SPORT_DURATIONS = {
 }
 
 # ================= FETCHING LOGIC =================
+
+def validate_logo_url(base_id):
+    """Checks if the _90 logo exists; falls back to standard if not."""
+    url_90 = f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png"
+    try:
+        # Fast check (HEAD request) with short timeout
+        r = requests.head(url_90, timeout=1)
+        if r.status_code == 200:
+            return url_90
+    except: pass
+    
+    # Fallback to standard
+    return f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}.png"
 
 class WeatherFetcher:
     def __init__(self, initial_lat=40.7128, initial_lon=-74.0060, city="New York"):
@@ -647,19 +655,6 @@ class StockFetcher:
             if obj: res.append(obj)
         return res
 
-    def validate_logo_url(base_id):
-    """Checks if the _90 logo exists; falls back to standard if not."""
-    url_90 = f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png"
-    try:
-        # Fast check (HEAD request) with short timeout
-        r = requests.head(url_90, timeout=1)
-        if r.status_code == 200:
-            return url_90
-    except: pass
-    
-    # Fallback to standard
-    return f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}.png"
-
 # === ROBUST SPORTS FETCHER (From Old Code) ===
 class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
@@ -881,7 +876,7 @@ class SportsFetcher:
         try:
             key = self._get_ahl_key()
             
-            # Fetch Scorebar
+            # Fetch Scorebar for "Today"
             req_date = visible_start_utc.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5)))).strftime("%Y-%m-%d")
 
             params = {
@@ -900,27 +895,46 @@ class SportsFetcher:
             ahl_refs = state['all_teams_data'].get('ahl', [])
 
             for g in scorebar:
+                # 1. Date Filter (Check if Date matches request)
                 g_date_str = g.get("Date", "")
+                
                 gid = g.get("ID")
                 h_code = g.get("HomeCode", "").upper()
                 a_code = g.get("VisitorCode", "").upper()
                 h_sc = str(g.get("HomeGoals", "0"))
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
-                # --- TIME PARSING ---
-                iso_date = g.get("GameDateISO8601", "")
+                # --- TIME PARSING (FIXED using ISO8601) ---
                 parsed_utc = ""
+                iso_date = g.get("GameDateISO8601", "")
+                
+                # 1. Try ISO8601 First (Reference Code Method - Best for Sorting)
                 if iso_date:
                     try:
+                        # Parse ISO format: "2026-01-13T19:00:00-05:00"
                         dt_obj = dt.fromisoformat(iso_date)
+                        # Convert to UTC and Format
                         parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    except:
+                        pass
+                
+                # 2. Fallback to Regex if ISO missing
+                if not parsed_utc:
+                    raw_time = (g.get("GameTime") or g.get("Time") or g.get("ScheduledTime") or "").strip()
+                    parsed_utc = f"{g_date_str}T00:00:00Z" # Ultimate fallback
+                    try:
+                        tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
+                        if tm_match:
+                            time_str, meridiem, tz_str = tm_match.groups()
+                            offset = -5
+                            if tz_str: offset = TZ_OFFSETS.get(tz_str.upper(), -5)
+                            dt_obj = dt.strptime(f"{g_date_str} {time_str} {meridiem}", "%Y-%m-%d %I:%M %p")
+                            dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
+                            parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                     except: pass
                 
-                if not parsed_utc:
-                     # Fallback logic...
-                     parsed_utc = f"{g_date_str}T00:00:00Z"
-                
-                if g_date_str != req_date: continue
+                if g_date_str != req_date:
+                    continue
 
                 # --- STATUS PARSING ---
                 raw_status = g.get("GameStatusString", "")
@@ -930,35 +944,45 @@ class SportsFetcher:
 
                 if "final" in status_lower:
                     gst = "post"
-                    if period_str == "5" or "so" in status_lower: disp = "FINAL S/O"
-                    elif period_str == "4" or "ot" in status_lower: disp = "FINAL OT"
+                    if period_str == "5" or "so" in status_lower or "shootout" in status_lower: disp = "FINAL S/O"
+                    elif period_str == "4" or "ot" in status_lower or "overtime" in status_lower: disp = "FINAL OT"
                     else: disp = "FINAL"
                 elif "scheduled" in status_lower or "pre" in status_lower:
                     gst = "pre"
+                    # Try to display local time format
                     try:
-                         if iso_date:
+                        if iso_date:
+                            # Re-parse to get clean 12h time
                             local_dt = dt.fromisoformat(iso_date).astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
                             disp = local_dt.strftime("%I:%M %p").lstrip('0')
-                         else:
-                             raw_time_clean = (g.get("GameTime") or "").strip()
+                        else:
+                             # Fallback to string manipulation
+                             raw_time_clean = (g.get("GameTime") or g.get("Time") or "").strip()
                              disp = raw_time_clean.split(" ")[0] + " " + raw_time_clean.split(" ")[1]
                     except: disp = "Scheduled"
                 else:
                     gst = "in"
                     if "intermission" in status_lower:
-                         # ... Intermission logic
-                         disp = "INT"
+                        if "1st" in status_lower: disp = "End 1st"
+                        elif "2nd" in status_lower: disp = "End 2nd"
+                        elif "3rd" in status_lower: disp = "End 3rd"
+                        else: disp = "INT"
                     else:
                         m = re.search(r'(\d+:\d+)\s*(1st|2nd|3rd|ot|overtime)', raw_status, re.IGNORECASE)
-                        if m: disp = f"{'OT' if 'ot' in m.group(2).lower() else 'P'+m.group(2)[0]} {m.group(1)}"
+                        if m:
+                            clk = m.group(1); prd = m.group(2).lower()
+                            p_lbl = "OT" if "ot" in prd else f"P{prd[0]}"
+                            disp = f"{p_lbl} {clk}"
                         else: disp = raw_status
 
                 # --- MODE FILTER ---
                 is_shown = True
                 if conf['mode'] == 'live' and gst != 'in': is_shown = False
                 elif conf['mode'] == 'my_teams':
-                     # ... My Teams logic
-                     pass
+                    h_name_chk = AHL_TEAMS.get(h_code, {}).get("name", ""); a_name_chk = AHL_TEAMS.get(a_code, {}).get("name", "")
+                    if h_code not in conf['my_teams'] and a_code not in conf['my_teams'] and \
+                       h_name_chk not in conf['my_teams'] and a_name_chk not in conf['my_teams']:
+                        is_shown = False
 
                 # --- LOOKUP LOGOS FROM CACHE ---
                 # Find the pre-validated team object in state['all_teams_data']['ahl']
@@ -2124,7 +2148,7 @@ def get_ticker_data():
         # === FIX: FORCE LIVE MODE CHECK "JUST IN TIME" ===
         if conf['mode'] == 'live':
              if g.get('state') != 'in' and g.get('state') != 'half':
-                  continue
+                 continue
         # =================================================
             
         # Check for postponed/suspended keywords
