@@ -889,26 +889,34 @@ class SportsFetcher:
                 h_sc = str(g.get("HomeGoals", "0"))
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
-                # 3. Time Parsing for Sorting
-                # Format usually: "7:00 pm EST"
+                # 3. Time Parsing for Sorting (FIXED)
+                # Format usually: "7:00 pm EST" OR just "7:00 pm"
                 raw_time = g.get("Time", "").strip()
                 parsed_utc = f"{req_date}T00:00:00Z" # Default fallback
+                
                 try:
-                    # Regex to separate time and timezone
-                    tm_match = re.match(r"(\d+:\d+)\s*(am|pm)\s*([A-Z]+)", raw_time, re.IGNORECASE)
+                    # Regex to separate time and timezone (Timezone now optional)
+                    tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
+                    
                     if tm_match:
                         time_str, meridiem, tz_str = tm_match.groups()
+                        
+                        # Default to EST (-5) if timezone is missing in the string
+                        offset = -5
+                        if tz_str:
+                            offset = TZ_OFFSETS.get(tz_str.upper(), -5)
                         
                         # Parse time to 24h
                         dt_obj = dt.strptime(f"{g_date} {time_str} {meridiem}", "%Y-%m-%d %I:%M %p")
                         
                         # Apply Offset
-                        offset = TZ_OFFSETS.get(tz_str.upper(), -5)
                         dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
                         
                         # Convert to UTC ISO String
                         parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                except: pass
+                except Exception as e: 
+                    # print(f"AHL Time Parse Error: {e}")
+                    pass
 
                 # 4. Status Parsing (Fixed Logic for FINAL S/O)
                 raw_status = g.get("GameStatusString", "")
