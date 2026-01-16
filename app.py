@@ -986,9 +986,6 @@ class SportsFetcher:
                     
                     # === INTEGRATED SHOOTOUT CHECK ===
                     summary_data = None
-                    
-                    # Always fetch summary for Final games to reliably check S/O vs OT
-                    # (Unless scorebar explicitly says SO, but we want to be safe like the ref code)
                     try:
                         sum_params = {
                             "feed": "statviewfeed", "view": "gameSummary", "key": key,
@@ -996,14 +993,12 @@ class SportsFetcher:
                         }
                         r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=4)
                         if r_sum.status_code == 200:
-                            # API returns JSONP (wrapped in parentheses), need to strip them
                             text = r_sum.text.strip()
                             if text.startswith("(") and text.endswith(")"):
                                 text = text[1:-1]
                             summary_data = json.loads(text)
                     except: pass
 
-                    # Use the new helper function
                     is_shootout = self.check_shootout(g, summary_data)
                     
                     if is_shootout:
@@ -1011,13 +1006,15 @@ class SportsFetcher:
                     elif period_str == "4" or "ot" in status_lower or "overtime" in status_lower:
                         disp = "FINAL OT"
                     else:
-                        # Double check for OT in summary if period_str failed
                         if summary_data and (summary_data.get("hasOvertime") or "OT" in str(summary_data.get("periodNameShort", "")).upper()):
                              disp = "FINAL OT"
                         else:
                              disp = "FINAL"
 
-                elif "scheduled" in status_lower or "pre" in status_lower:
+                # === FIX: DETECT TIME-ONLY STRINGS AS PRE-GAME ===
+                # We check for "scheduled", "pre", OR if the string looks like "7:00 pm"
+                # We also exclude strings that contain period info (1st, 2nd, 3rd, OT) to avoid catching live clocks
+                elif "scheduled" in status_lower or "pre" in status_lower or (re.search(r'\d+:\d+', status_lower) and "1st" not in status_lower and "2nd" not in status_lower and "3rd" not in status_lower and "ot" not in status_lower):
                     gst = "pre"
                     try:
                          if iso_date:
@@ -1025,6 +1022,7 @@ class SportsFetcher:
                             disp = local_dt.strftime("%I:%M %p").lstrip('0')
                          else:
                              raw_time_clean = (g.get("GameTime") or "").strip()
+                             # Simple cleanup to ensure it looks like "7:00 PM"
                              disp = raw_time_clean.split(" ")[0] + " " + raw_time_clean.split(" ")[1]
                     except: disp = "Scheduled"
                 else:
