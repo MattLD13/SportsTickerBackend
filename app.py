@@ -2150,6 +2150,21 @@ def api_config():
         if not target_id and len(tickers) == 1: target_id = list(tickers.keys())[0]
 
         with data_lock:
+            # === 1. BUILD LOOKUP TABLE (The "Cheat Sheet") ===
+            # This maps "NYG" -> "nfl:NYG", "NYY" -> "mlb:NYY"
+            abbr_to_scoped = {}
+            if 'all_teams_data' in state:
+                for league, teams in state['all_teams_data'].items():
+                    for t in teams:
+                        # Map the simple abbr to the complex ID
+                        if 'abbr' in t and 'id' in t:
+                            abbr_to_scoped[t['abbr']] = t['id']
+            
+            # Manual Overrides for tricky ones
+            abbr_to_scoped["LV"] = "ahl:LV"
+            abbr_to_scoped["NY"] = "nba:NY" # Default NY to Knicks if ambiguous
+            # =================================================
+
             if new_data.get('weather_city'): 
                 fetcher.weather.update_config(city=new_data['weather_city'], lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
             
@@ -2158,7 +2173,7 @@ def api_config():
             for k, v in new_data.items():
                 if k not in allowed_keys: continue
                 
-                # === TEAM SAVING ===
+                # === TEAM SAVING WITH SMART LOOKUP ===
                 if k == 'my_teams' and isinstance(v, list):
                     cleaned = []
                     seen = set()
@@ -2166,21 +2181,27 @@ def api_config():
                         if e:
                             k_str = str(e).strip()
                             
-                            # 1. AUTO-FIX: ONLY convert LV (Phantoms). 
-                            # REMOVED the bad "NY" conversion line.
-                            if k_str == "LV": k_str = "ahl:LV"
-                            
-                            # 2. STRICT FILTER: Only accept scoped IDs (e.g. nfl:NYG)
-                            if ":" not in k_str: continue 
+                            # A. If it's already correct (has colon), keep it.
+                            if ":" in k_str:
+                                if k_str not in seen:
+                                    seen.add(k_str)
+                                    cleaned.append(k_str)
+                                continue
 
-                            if k_str not in seen:
-                                seen.add(k_str)
-                                cleaned.append(k_str)
+                            # B. If it's OLD (no colon), try to LOOK IT UP.
+                            if k_str in abbr_to_scoped:
+                                fixed_id = abbr_to_scoped[k_str]
+                                if fixed_id not in seen:
+                                    seen.add(fixed_id)
+                                    cleaned.append(fixed_id)
+                                    print(f"🔧 Auto-Fixed: {k_str} -> {fixed_id}")
+                            else:
+                                print(f"⚠️ Could not identify team: {k_str} (Dropped)")
                     
                     if target_id:
                         if 'my_teams' not in tickers[target_id]: tickers[target_id]['my_teams'] = []
                         tickers[target_id]['my_teams'] = cleaned
-                        print(f"✅ CLEAN SAVE for {target_id}: {cleaned}")
+                        print(f"✅ SAVED for {target_id}: {cleaned}")
                     else:
                         state['my_teams'] = cleaned
                     continue
