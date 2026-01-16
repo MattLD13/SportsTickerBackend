@@ -227,6 +227,13 @@ class TickerViewModel: ObservableObject {
         scroll_speed: 5,
         weather_location: "New York", weather_city: "New York", weather_lat: 40.7128, weather_lon: -74.0060
     )
+    
+    // === NEW BATCH MODE VARIABLES ===
+    // This holds your edits so they don't get overwritten
+    @Published var hasUnsavedChanges: Bool = false
+    @Published var localTeamSelection: [String] = []
+    // ================================
+
     @Published var devices: [TickerDevice] = []
     @Published var pairCode: String = ""
     @Published var pairName: String = ""
@@ -241,8 +248,6 @@ class TickerViewModel: ObservableObject {
     
     private var isServerReachable = false
     private var timer: Timer?
-    // Add this new timer for the auto-save delay
-    private var saveTimer: Timer?
     private var clientID: String {
         if let saved = UserDefaults.standard.string(forKey: "clientID") { return saved }
         let newID = UUID().uuidString
@@ -260,9 +265,12 @@ class TickerViewModel: ObservableObject {
         fetchAllTeams()
         fetchDevices()
         
+        // Polling Timer
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             Task { @MainActor in
-                if !self.isEditing {
+                // CRITICAL: Do NOT fetch updates if we are editing, 
+                // otherwise the server will overwrite your local changes.
+                if !self.isEditing && !self.hasUnsavedChanges {
                     self.fetchData()
                     self.fetchDevices()
                     if self.leagueOptions.isEmpty { self.fetchLeagueOptions() }
@@ -275,17 +283,6 @@ class TickerViewModel: ObservableObject {
         return serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
     }
 
-    func forceSaveNow() {
-        print("⚡️ Force Saving...")
-        saveTimer?.invalidate() // Stop any pending timers
-        saveSettings()          // Send to server
-        
-        // Allow polling to resume after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            self.isEditing = false
-        }
-    }
-    
     func updateOverallStatus() {
         if !isServerReachable { self.connectionStatus = "Server Offline"; self.statusColor = .red; return }
         let now = Date().timeIntervalSince1970
@@ -312,14 +309,22 @@ class TickerViewModel: ObservableObject {
                         if g1.state == "in" && g2.state != "in" { return true }
                         return false
                     }
-                    if !self.isEditing {
+                    
+                    // === BATCH MODE SYNC ===
+                    // Only update the settings from server if we DON'T have unsaved changes.
+                    // This prevents the server from erasing your work while you tap.
+                    if !self.hasUnsavedChanges {
                         self.state = decoded.settings
+                        self.localTeamSelection = decoded.settings.my_teams // Sync local list
+                        
                         if let city = decoded.settings.weather_city {
                             self.weatherLocInput = city
                         } else if let loc = decoded.settings.weather_location {
                             self.weatherLocInput = loc
                         }
                     }
+                    // =======================
+                    
                     self.updateOverallStatus()
                 }
             } catch { DispatchQueue.main.async { self.isServerReachable = true; self.connectionStatus = "Data Error"; self.statusColor = .red } }
@@ -370,6 +375,33 @@ class TickerViewModel: ObservableObject {
         }
     }
     
+    // === NEW: LOCAL TOGGLE (Does not talk to server) ===
+    func toggleTeam(_ teamID: String) {
+        hasUnsavedChanges = true // Mark as dirty
+        if let index = localTeamSelection.firstIndex(of: teamID) {
+            localTeamSelection.remove(at: index)
+        } else {
+            localTeamSelection.append(teamID)
+        }
+        // No timer here! We wait for the user to click "Save".
+    }
+    
+    // === NEW: SAVE ALL AT ONCE ===
+    func saveTeamsNow() {
+        // 1. Commit local selection to state
+        state.my_teams = localTeamSelection
+        print("📤 Batch Saving \(state.my_teams.count) Teams...")
+        
+        // 2. Send to server
+        saveSettings()
+        
+        // 3. Unlock after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            self.hasUnsavedChanges = false
+            self.fetchData() // Re-sync with server
+        }
+    }
+
     func saveSettings() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/api/config") else { return }
@@ -377,27 +409,18 @@ class TickerViewModel: ObservableObject {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // Ensure backend identifies this client
-        request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID") 
+        request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
         
         do {
-            // 1. Convert State to Dictionary
             let data = try JSONEncoder().encode(state)
             var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
 
-            // THIS IS THE KEY MISSING PIECE IN YOUR APP
+            // INJECT TICKER ID
             if let activeDeviceID = self.devices.first?.id {
                 jsonDict["ticker_id"] = activeDeviceID 
-            }
-            
-            // 2. INJECT TICKER ID (Crucial Fix)
-            // We take the ID of the first paired device found in the app.
-            if let activeDeviceID = self.devices.first?.id {
-                jsonDict["ticker_id"] = activeDeviceID
                 print("Saving for Ticker ID: \(activeDeviceID)")
             }
             
-            // 3. Send the modified dictionary
             let finalData = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
             request.httpBody = finalData
             
@@ -521,38 +544,6 @@ class TickerViewModel: ObservableObject {
         let body: [String: Any] = ["debug_mode": state.debug_mode, "custom_date": state.custom_date ?? NSNull()]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: request).resume()
-    }
-    
-    func toggleTeam(_ teamAbbr: String) {
-        // 1. Optimistic Update
-        if let index = state.my_teams.firstIndex(of: teamAbbr) {
-            state.my_teams.remove(at: index)
-        } else {
-            state.my_teams.append(teamAbbr)
-        }
-        
-        // 2. Set Editing Flag
-        self.isEditing = true
-        
-        // 3. Debounce Timer (Save after 2 seconds of inactivity)
-        saveTimer?.invalidate()
-        saveTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-            self?.forceSaveNow()
-        }
-    }
-    
-    // Add this helper to your class
-    func restartTimer() {
-        self.timer?.invalidate()
-        self.timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            Task { @MainActor in
-                if !self.isEditing {
-                    self.fetchData()
-                    self.fetchDevices()
-                }
-            }
-        }
     }
 }
 
@@ -984,14 +975,11 @@ struct TeamsView: View {
     @ObservedObject var vm: TickerViewModel
     @State private var selectedLeague = ""
     
-    // Filter out leagues that are disabled OR don't have teams (like F1/NASCAR)
     var sportsOptions: [LeagueOption] {
         vm.leagueOptions.filter { opt in
             guard opt.type == "sport" else { return false }
             guard vm.state.active_sports[opt.id] == true else { return false }
-            if let teams = vm.allTeams[opt.id], !teams.isEmpty {
-                return true
-            }
+            if let teams = vm.allTeams[opt.id], !teams.isEmpty { return true }
             return false
         }
     }
@@ -1000,9 +988,25 @@ struct TeamsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            
+            // === HEADER WITH SAVE BUTTON ===
             HStack { 
                 Text("My Teams").font(.system(size: 34, weight: .bold)).foregroundColor(.white)
-                Spacer() 
+                Spacer()
+                
+                // Show Save Button ONLY if changes exist
+                if vm.hasUnsavedChanges {
+                    Button(action: { vm.saveTeamsNow() }) {
+                        Text("Save")
+                            .bold()
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 8)
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .clipShape(Capsule())
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                }
             }
             .padding(.horizontal)
             .padding(.top, 80)
@@ -1010,23 +1014,16 @@ struct TeamsView: View {
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    if sportsOptions.isEmpty {
-                        if vm.allTeams.isEmpty {
-                            Text("Loading teams...").font(.caption).foregroundStyle(.gray).padding()
-                        } else {
-                            Text("No team sports enabled. Go to Modes to enable NFL, MLB, etc.").font(.caption).foregroundStyle(.gray).padding()
-                        }
-                    } else {
-                        // League Selector
+                    
+                    // LEAGUE TABS
+                    if !sportsOptions.isEmpty {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
                             ForEach(sportsOptions) { opt in
                                 Button { selectedLeague = opt.id } label: {
                                     Text(opt.label).bold().font(.caption)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 8)
+                                        .frame(maxWidth: .infinity).padding(.vertical, 8)
                                         .background(selectedLeague == opt.id ? Color.blue : Color(white: 0.2))
-                                        .foregroundColor(.white)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        .foregroundColor(.white).clipShape(RoundedRectangle(cornerRadius: 8))
                                 }
                             }
                         }
@@ -1034,50 +1031,45 @@ struct TeamsView: View {
                     
                     Divider().background(Color.white.opacity(0.2))
                     
-                    // Teams Grid
+                    // TEAMS GRID
                     if let teams = vm.allTeams[selectedLeague], !teams.isEmpty {
                         let filteredTeams = teams
-                            .filter { $0.abbr.trimmingCharacters(in: .whitespaces).count > 0 && $0.abbr != "TBD" && $0.abbr != "null" }
+                            .filter { $0.abbr.trimmingCharacters(in: .whitespaces).count > 0 }
                             .sorted { $0.abbr < $1.abbr }
                         
                         LazyVGrid(columns: teamColumns, spacing: 15) {
                             ForEach(filteredTeams, id: \.self) { team in
-                                // FIX 1: Check against the specific ID (e.g. "nfl:NYG")
-                                let isSelected = vm.state.my_teams.contains(team.id)
+                                // CHECK LOCAL SELECTION (The "File")
+                                let isSelected = vm.localTeamSelection.contains(team.id)
                                 
                                 Button { 
-                                    // FIX 2: Toggle specific ID. ViewModel handles the timer logic now.
-                                    vm.toggleTeam(team.id) 
+                                    vm.toggleTeam(team.id) // Update local file only
                                 } label: {
                                     VStack {
                                         TeamLogoView(url: team.logo, abbr: team.abbr, size: 40)
-                                        Text(team.abbr).font(.caption2).bold().foregroundColor(isSelected ? .white : .gray)
+                                        Text(team.abbr).font(.caption2).bold()
+                                            .foregroundColor(isSelected ? .white : .gray)
                                     }
-                                    .padding(8).background(isSelected ? Color.blue.opacity(0.3) : Color.clear)
+                                    .padding(8)
+                                    .background(isSelected ? Color.blue.opacity(0.3) : Color.clear)
                                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2))
+                                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2))
                                 }
                             }
                         }
                     } else if !selectedLeague.isEmpty {
-                        Text("No teams found for this league.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
+                        Text("No teams found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     }
                 }.padding(.horizontal)
                 Spacer(minLength: 120)
             }
         }
-        // FIX 3: Force Save when leaving the screen (Switching Tabs)
-        .onDisappear {
-            if vm.isEditing {
-                vm.forceSaveNow()
-            }
-        }
         .onAppear {
-            if !sportsOptions.isEmpty && (selectedLeague.isEmpty || !sportsOptions.contains(where: { $0.id == selectedLeague })) {
-                selectedLeague = sportsOptions.first?.id ?? ""
+            // Init local selection from server state when view opens
+            if !vm.hasUnsavedChanges {
+                vm.localTeamSelection = vm.state.my_teams
             }
-        }
-        .onChange(of: vm.state.active_sports) { _ in
             if !sportsOptions.isEmpty && (selectedLeague.isEmpty || !sportsOptions.contains(where: { $0.id == selectedLeague })) {
                 selectedLeague = sportsOptions.first?.id ?? ""
             }
