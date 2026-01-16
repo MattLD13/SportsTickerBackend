@@ -513,20 +513,26 @@ class TickerViewModel: ObservableObject {
     }
     
     func toggleTeam(_ teamAbbr: String) {
-        // 1. Update UI Immediately (Optimistic Update)
+        // 1. Optimistic UI Update
         if let index = state.my_teams.firstIndex(of: teamAbbr) {
             state.my_teams.remove(at: index)
         } else {
             state.my_teams.append(teamAbbr)
         }
         
-        // 2. Debounce Logic (Wait 1.5s before sending to network)
-        print("⏳ Change detected... waiting to save...")
-        saveTimer?.invalidate() // Cancel any pending save
+        // 2. Lock updates so the server doesn't overwrite us while tapping
+        self.isEditing = true
         
+        // 3. Debounce: Wait 1.5s after the LAST tap
+        saveTimer?.invalidate()
         saveTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-            print("📤 Triggering Auto-Save now.")
+            print("🚀 Saving changes...")
             self?.saveSettings()
+            
+            // 4. Unlock updates ONLY after enough time has passed for the save to likely finish
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+                self?.isEditing = false
+            }
         }
     }
 }
