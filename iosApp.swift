@@ -274,6 +274,17 @@ class TickerViewModel: ObservableObject {
     func getBaseURL() -> String {
         return serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
     }
+
+    func forceSaveNow() {
+        print("⚡️ Force Saving...")
+        saveTimer?.invalidate() // Stop any pending timers
+        saveSettings()          // Send to server
+        
+        // Allow polling to resume after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.isEditing = false
+        }
+    }
     
     func updateOverallStatus() {
         if !isServerReachable { self.connectionStatus = "Server Offline"; self.statusColor = .red; return }
@@ -513,31 +524,20 @@ class TickerViewModel: ObservableObject {
     }
     
     func toggleTeam(_ teamAbbr: String) {
-        // 1. Optimistic Update (Update UI instantly)
+        // 1. Optimistic Update
         if let index = state.my_teams.firstIndex(of: teamAbbr) {
             state.my_teams.remove(at: index)
         } else {
             state.my_teams.append(teamAbbr)
         }
         
-        // 2. HARD LOCK polling
+        // 2. Set Editing Flag
         self.isEditing = true
-        self.timer?.invalidate() // Stop the fetch timer entirely
         
-        // 3. Debounce Save (Wait 1.5s for user to finish tapping)
-        print("⏳ Waiting to save...")
+        // 3. Debounce Timer (Save after 2 seconds of inactivity)
         saveTimer?.invalidate()
-        saveTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-            print("🚀 Saving now...")
-            self?.saveSettings()
-            
-            // 4. Restart Polling after a safety buffer (3.5s)
-            // This gives the server time to write the file so we don't fetch stale data
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
-                self?.isEditing = false
-                self?.restartTimer() // You need to add this helper func below
-                print("🔄 Polling restarted")
-            }
+        saveTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            self?.forceSaveNow()
         }
     }
     
@@ -1000,7 +1000,13 @@ struct TeamsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            HStack { Text("My Teams").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80).padding(.bottom, 10)
+            HStack { 
+                Text("My Teams").font(.system(size: 34, weight: .bold)).foregroundColor(.white)
+                Spacer() 
+            }
+            .padding(.horizontal)
+            .padding(.top, 80)
+            .padding(.bottom, 10)
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
@@ -1011,6 +1017,7 @@ struct TeamsView: View {
                             Text("No team sports enabled. Go to Modes to enable NFL, MLB, etc.").font(.caption).foregroundStyle(.gray).padding()
                         }
                     } else {
+                        // League Selector
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
                             ForEach(sportsOptions) { opt in
                                 Button { selectedLeague = opt.id } label: {
@@ -1027,6 +1034,7 @@ struct TeamsView: View {
                     
                     Divider().background(Color.white.opacity(0.2))
                     
+                    // Teams Grid
                     if let teams = vm.allTeams[selectedLeague], !teams.isEmpty {
                         let filteredTeams = teams
                             .filter { $0.abbr.trimmingCharacters(in: .whitespaces).count > 0 && $0.abbr != "TBD" && $0.abbr != "null" }
@@ -1034,15 +1042,12 @@ struct TeamsView: View {
                         
                         LazyVGrid(columns: teamColumns, spacing: 15) {
                             ForEach(filteredTeams, id: \.self) { team in
-                                // FIX: Check if the SMART ID (ahl:LV) is in the list
+                                // FIX 1: Check against the specific ID (e.g. "nfl:NYG")
                                 let isSelected = vm.state.my_teams.contains(team.id)
                                 
                                 Button { 
-                                    vm.isEditing = true; 
-                                    // FIX: Toggle the SMART ID
-                                    vm.toggleTeam(team.id); 
-                                    
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { vm.isEditing = false } 
+                                    // FIX 2: Toggle specific ID. ViewModel handles the timer logic now.
+                                    vm.toggleTeam(team.id) 
                                 } label: {
                                     VStack {
                                         TeamLogoView(url: team.logo, abbr: team.abbr, size: 40)
@@ -1059,6 +1064,12 @@ struct TeamsView: View {
                     }
                 }.padding(.horizontal)
                 Spacer(minLength: 120)
+            }
+        }
+        // FIX 3: Force Save when leaving the screen (Switching Tabs)
+        .onDisappear {
+            if vm.isEditing {
+                vm.forceSaveNow()
             }
         }
         .onAppear {
