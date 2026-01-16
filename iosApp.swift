@@ -160,7 +160,7 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
 }
 
 struct TeamData: Decodable, Identifiable, Hashable, Sendable {
-    var id: String { abbr }
+    let id: String // <--- FIX: Use the smart ID from server (e.g. "nfl:NYG")
     let abbr: String
     let logo: String?
 }
@@ -1007,8 +1007,16 @@ struct TeamsView: View {
                         
                         LazyVGrid(columns: teamColumns, spacing: 15) {
                             ForEach(filteredTeams, id: \.self) { team in
-                                let isSelected = vm.state.my_teams.contains(team.abbr)
-                                Button { vm.isEditing = true; vm.toggleTeam(team.abbr); DispatchQueue.main.asyncAfter(deadline: .now() + 2) { vm.isEditing = false } } label: {
+                                // FIX: Check using the smart ID (team.id) instead of just the abbreviation
+                                let isSelected = vm.state.my_teams.contains(team.id)
+                                
+                                Button { 
+                                    vm.isEditing = true; 
+                                    // FIX: Toggle the smart ID
+                                    vm.toggleTeam(team.id); 
+                                    
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { vm.isEditing = false } 
+                                } label: {
                                     VStack {
                                         TeamLogoView(url: team.logo, abbr: team.abbr, size: 40)
                                         Text(team.abbr).font(.caption2).bold().foregroundColor(isSelected ? .white : .gray)
