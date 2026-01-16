@@ -6,6 +6,7 @@ import sys
 import re
 import random
 import string
+import glob  # <--- NEW: Required for folder scanning
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from requests.adapters import HTTPAdapter
@@ -18,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v3.7_AHL_Deep_Shootout_Check"
+SERVER_VERSION = "v3.8_Folder_Storage_Update"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -63,14 +64,18 @@ def build_pooled_session(pool_size=20, retries=2):
     session.mount("https://", adapter)
     return session
 
-# ================= CONFIGURATION =================
-CONFIG_FILE = "ticker_config.json"
-TICKER_REGISTRY_FILE = "tickers.json" 
+# ================= CONFIGURATION & STORAGE =================
+# NEW: Folder for individual ticker files
+TICKER_DATA_DIR = "ticker_data"
+if not os.path.exists(TICKER_DATA_DIR):
+    os.makedirs(TICKER_DATA_DIR)
+
+GLOBAL_CONFIG_FILE = "global_config.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 
 # === TIMING ===
-SPORTS_UPDATE_INTERVAL = 5       
-STOCKS_UPDATE_INTERVAL = 15       
+SPORTS_UPDATE_INTERVAL = 5        
+STOCKS_UPDATE_INTERVAL = 15        
 
 data_lock = threading.Lock()
 
@@ -99,40 +104,30 @@ AHL_API_KEYS = [
     "ccb91f29d6744675", "694cfeed58c932ee", "50c2cd9b5e18e390"
 ]
 
-# Timezone map for AHL parsing
 TZ_OFFSETS = {
-    "EST": -5, "EDT": -4,
-    "CST": -6, "CDT": -5,
-    "MST": -7, "MDT": -6,
-    "PST": -8, "PDT": -7,
-    "AST": -4, "ADT": -3
+    "EST": -5, "EDT": -4, "CST": -6, "CDT": -5,
+    "MST": -7, "MDT": -6, "PST": -8, "PDT": -7, "AST": -4, "ADT": -3
 }
 
 # ================= AHL TEAMS (Official LeagueStat IDs) =================
-# IDs are used to generate logos from: assets.leaguestat.com
 AHL_TEAMS = {
-    # --- Atlantic Division ---
     "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "id": "317"},
-    "CLT": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"}, # Primary
-    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"}, # Alias
+    "CLT": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"},
+    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"},
     "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240", "id": "307"},
     "HER": {"name": "Hershey Bears", "color": "4F2C1D", "id": "319"},
     "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000", "id": "313"},
     "PRO": {"name": "Providence Bruins", "color": "000000", "id": "309"},
     "SPR": {"name": "Springfield Thunderbirds", "color": "003087", "id": "411"},
     "WBS": {"name": "W-B/Scranton", "color": "000000", "id": "316"},
-
-    # --- North Division ---
     "BEL": {"name": "Belleville Senators", "color": "C52032", "id": "413"},
     "CLE": {"name": "Cleveland Monsters", "color": "041E42", "id": "373"},
     "LAV": {"name": "Laval Rocket", "color": "00205B", "id": "415"},
     "ROC": {"name": "Rochester Americans", "color": "00539B", "id": "323"},
     "SYR": {"name": "Syracuse Crunch", "color": "003087", "id": "324"},
     "TOR": {"name": "Toronto Marlies", "color": "00205B", "id": "335"},
-    "UTC": {"name": "Utica Comets", "color": "006341", "id": "390"}, # Primary
-    "UTI": {"name": "Utica Comets", "color": "006341", "id": "390"}, # Alias
-
-    # --- Central Division ---
+    "UTC": {"name": "Utica Comets", "color": "006341", "id": "390"},
+    "UTI": {"name": "Utica Comets", "color": "006341", "id": "390"},
     "CHI": {"name": "Chicago Wolves", "color": "7C2529", "id": "330"},
     "GR":  {"name": "Grand Rapids Griffins", "color": "BE1E2D", "id": "328"},
     "IA":  {"name": "Iowa Wild", "color": "154734", "id": "389"},
@@ -140,20 +135,18 @@ AHL_TEAMS = {
     "MIL": {"name": "Milwaukee Admirals", "color": "041E42", "id": "327"},
     "RFD": {"name": "Rockford IceHogs", "color": "CE1126", "id": "372"},
     "TEX": {"name": "Texas Stars", "color": "154734", "id": "380"},
-
-    # --- Pacific Division ---
     "ABB": {"name": "Abbotsford Canucks", "color": "00744F", "id": "440"},
     "BAK": {"name": "Bakersfield Condors", "color": "F47A38", "id": "402"},
-    "CGY": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"}, # Primary
-    "CAL": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"}, # Alias
-    "CV":  {"name": "Coachella Valley", "color": "D32027", "id": "445"}, # Primary
-    "CVF": {"name": "Coachella Valley", "color": "D32027", "id": "445"}, # Alias
+    "CGY": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"},
+    "CAL": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"},
+    "CV":  {"name": "Coachella Valley", "color": "D32027", "id": "445"},
+    "CVF": {"name": "Coachella Valley", "color": "D32027", "id": "445"},
     "COL": {"name": "Colorado Eagles", "color": "003087", "id": "419"},
     "HSK": {"name": "Henderson Silver Knights", "color": "111111", "id": "437"},
     "ONT": {"name": "Ontario Reign", "color": "111111", "id": "403"},
     "SD":  {"name": "San Diego Gulls", "color": "041E42", "id": "404"},
-    "SJ":  {"name": "San Jose Barracuda", "color": "006D75", "id": "405"}, # Primary
-    "SJS": {"name": "San Jose Barracuda", "color": "006D75", "id": "405"}, # Alias
+    "SJ":  {"name": "San Jose Barracuda", "color": "006D75", "id": "405"},
+    "SJS": {"name": "San Jose Barracuda", "color": "006D75", "id": "405"},
     "TUC": {"name": "Tucson Roadrunners", "color": "8C2633", "id": "412"},
 }
 
@@ -163,16 +156,11 @@ LEAGUE_OPTIONS = [
     {'id': 'nfl',           'label': 'NFL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'mlb',           'label': 'MLB',                 'type': 'sport', 'default': True,  'fetch': {'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'nhl',           'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    
-    # === ADDED AHL ===
     {'id': 'ahl',           'label': 'AHL',                 'type': 'sport', 'default': True,  'fetch': {'type': 'ahl_native'}}, 
-    
     {'id': 'nba',           'label': 'NBA',                 'type': 'sport', 'default': True,  'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    
     # --- COLLEGE SPORTS ---
     {'id': 'ncf_fbs',       'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs',       'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
-
     # --- SOCCER ---
     {'id': 'soccer_epl',    'label': 'Premier League',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_fa_cup','label': 'FA Cup',                 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
@@ -182,21 +170,17 @@ LEAGUE_OPTIONS = [
     {'id': 'soccer_wc',     'label': 'FIFA World Cup',         'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_europa_league',    'label': 'Europa League',    'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 200}, 'type': 'scoreboard'}},
-
     # --- OTHERS ---
     {'id': 'hockey_olympics', 'label': 'Olympic Hockey',   'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/mens-olympic-hockey', 'type': 'scoreboard'}},
-
     # --- RACING ---
     {'id': 'f1',             'label': 'Formula 1',             'type': 'sport', 'default': True,  'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
     {'id': 'nascar',         'label': 'NASCAR',                 'type': 'sport', 'default': True,  'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
-
     # --- UTILITIES ---
-    {'id': 'weather',       'label': 'Weather',               'type': 'util',  'default': True},
+    {'id': 'weather',       'label': 'Weather',                'type': 'util',  'default': True},
     {'id': 'clock',         'label': 'Clock',                 'type': 'util',  'default': True},
-
     # --- STOCKS ---
-    {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',       'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
-    {'id': 'stock_momentum',   'label': 'Momentum Stocks',        'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
+    {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',        'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
+    {'id': 'stock_momentum',   'label': 'Momentum Stocks',         'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
     {'id': 'stock_energy',          'label': 'Energy Stocks',         'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
     {'id': 'stock_finance',         'label': 'Financial Stocks',       'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
     {'id': 'stock_consumer',        'label': 'Consumer Stocks',       'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
@@ -221,7 +205,6 @@ default_state = {
     'show_debug_options': False 
 }
 
-# === PER-TICKER SETTINGS ===
 DEFAULT_TICKER_SETTINGS = {
     "brightness": 100,
     "scroll_speed": 0.03,
@@ -232,58 +215,109 @@ DEFAULT_TICKER_SETTINGS = {
     "live_delay_seconds": 45
 }
 
+# ================= NEW LOAD LOGIC =================
 state = default_state.copy()
 tickers = {} 
 
-# --- LOAD CONFIG ---
-if os.path.exists(CONFIG_FILE):
+# 1. Load Global Config (Defaults)
+if os.path.exists(GLOBAL_CONFIG_FILE):
     try:
-        with open(CONFIG_FILE, 'r') as f:
+        with open(GLOBAL_CONFIG_FILE, 'r') as f:
             loaded = json.load(f)
-            deprecated = ['stock_forex', 'stock_movers', 'stock_indices', 'stock_etf', 'demo_mode', 'live_delay_mode', 'live_delay_seconds']
-            if 'active_sports' in loaded:
-                for k in deprecated:
-                    if k in loaded['active_sports']: del loaded['active_sports'][k]
-            for k in deprecated:
-                if k in loaded: del loaded[k]
-
+            # Update state but preserve defaults
             for k, v in loaded.items():
-                if k == 'show_debug_options': continue 
                 if k in state:
-                    if isinstance(state[k], dict) and isinstance(v, dict): state[k].update(v)
-                    else: state[k] = v
+                    if isinstance(state[k], dict) and isinstance(v, dict):
+                        state[k].update(v)
+                    else:
+                        state[k] = v
     except Exception as e:
-        print(f"Error loading config: {e}")
+        print(f"⚠️ Error loading global config: {e}")
 
-# --- LOAD TICKERS ---
-if os.path.exists(TICKER_REGISTRY_FILE):
+# 2. Load Individual Ticker Files (Robust)
+ticker_files = glob.glob(os.path.join(TICKER_DATA_DIR, "*.json"))
+print(f"📂 Found {len(ticker_files)} saved tickers in '{TICKER_DATA_DIR}'")
+
+for t_file in ticker_files:
     try:
-        with open(TICKER_REGISTRY_FILE, 'r') as f:
-            tickers = json.load(f)
-            for t in tickers.values():
-                for k, v in DEFAULT_TICKER_SETTINGS.items():
-                    if k not in t['settings']:
-                        t['settings'][k] = v
-    except: pass
+        with open(t_file, 'r') as f:
+            t_data = json.load(f)
+            tid = os.path.splitext(os.path.basename(t_file))[0]
+            
+            # Repair missing keys on load
+            if 'settings' not in t_data: t_data['settings'] = DEFAULT_TICKER_SETTINGS.copy()
+            if 'my_teams' not in t_data: t_data['my_teams'] = []
+            if 'clients' not in t_data: t_data['clients'] = []
+            
+            tickers[tid] = t_data
+    except Exception as e:
+        print(f"❌ Failed to load ticker file {t_file}: {e}")
 
+
+# ================= NEW SAVE FUNCTIONS =================
 def save_json_atomically(filepath, data):
+    """Safe atomic write helper"""
     temp = f"{filepath}.tmp"
     try:
         with open(temp, 'w') as f:
             json.dump(data, f, indent=4)
         os.replace(temp, filepath)
-    except: pass
+    except Exception as e:
+        print(f"Write error for {filepath}: {e}")
 
-def save_config_file():
+def save_global_config():
+    """Saves only the global server settings (weather, sports mode, etc)"""
     try:
         with data_lock:
-            export_data = state.copy()
-            for k in ['current_games', 'buffer_sports', 'buffer_stocks', 'all_teams_data']:
-                if k in export_data: del export_data[k]
-            tickers_snap = tickers.copy()
-        save_json_atomically(CONFIG_FILE, export_data)
-        save_json_atomically(TICKER_REGISTRY_FILE, tickers_snap)
-    except: pass
+            # Create a clean copy of state to save
+            export_data = {
+                'active_sports': state['active_sports'],
+                'mode': state['mode'],
+                'my_teams': state['my_teams'], # Global default teams
+                'weather_city': state['weather_city'],
+                'weather_lat': state['weather_lat'],
+                'weather_lon': state['weather_lon'],
+                'utc_offset': state['utc_offset']
+            }
+        
+        # Atomic Write
+        temp = f"{GLOBAL_CONFIG_FILE}.tmp"
+        with open(temp, 'w') as f:
+            json.dump(export_data, f, indent=4)
+        os.replace(temp, GLOBAL_CONFIG_FILE)
+    except Exception as e:
+        print(f"Error saving global config: {e}")
+
+def save_specific_ticker(tid):
+    """Saves ONLY the specified ticker to its own file"""
+    if tid not in tickers: return
+    
+    try:
+        data = tickers[tid]
+        filepath = os.path.join(TICKER_DATA_DIR, f"{tid}.json")
+        temp = f"{filepath}.tmp"
+        
+        with open(temp, 'w') as f:
+            json.dump(data, f, indent=4)
+        os.replace(temp, filepath)
+        print(f"💾 Saved Ticker: {tid}")
+    except Exception as e:
+        print(f"Error saving ticker {tid}: {e}")
+
+def save_specific_ticker(tid):
+    """Saves ONLY the specified ticker to its own file"""
+    if tid not in tickers: return
+    try:
+        data = tickers[tid]
+        filepath = os.path.join(TICKER_DATA_DIR, f"{tid}.json")
+        save_json_atomically(filepath, data)
+        print(f"💾 Saved Ticker: {tid}")
+    except Exception as e:
+        print(f"Error saving ticker {tid}: {e}")
+
+def save_config_file():
+    """Legacy wrapper: saves global config"""
+    save_global_config()
 
 def generate_pairing_code():
     while True:
@@ -363,7 +397,6 @@ ABBR_MAPPING = {
     'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS'
 }
 
-# --- EXTENDED SOCCER COLORS FALLBACK ---
 SOCCER_COLOR_FALLBACK = {
     "arsenal": "EF0107", "aston villa": "95BFE5", "bournemouth": "DA291C", "brentford": "E30613", "brighton": "0057B8",
     "chelsea": "034694", "crystal palace": "1B458F", "everton": "003399", "fulham": "FFFFFF", "ipswich": "3A64A3",
@@ -401,13 +434,10 @@ def validate_logo_url(base_id):
     """Checks if the _90 logo exists; falls back to standard if not."""
     url_90 = f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png"
     try:
-        # Fast check (HEAD request) with short timeout
         r = requests.head(url_90, timeout=1)
         if r.status_code == 200:
             return url_90
     except: pass
-    
-    # Fallback to standard
     return f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}.png"
 
 class WeatherFetcher:
@@ -2110,7 +2140,7 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
         
-        # Identify the Ticker
+        # Identify Ticker
         target_id = new_data.get('ticker_id') or request.args.get('id')
         if not target_id:
             cid = request.headers.get('X-Client-ID')
@@ -2119,48 +2149,37 @@ def api_config():
                     if cid in t_data.get('clients', []):
                         target_id = tid
                         break
-        
+
         with data_lock:
-            # 1. Update basic settings
+            # 1. Update Global Settings
             new_city = new_data.get('weather_city')
-            new_lat = new_data.get('weather_lat')
-            new_lon = new_data.get('weather_lon')
+            if new_city: 
+                fetcher.weather.update_config(city=new_city, lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
             
-            if new_city or new_lat or new_lon:
-                 fetcher.weather.update_config(city=new_city, lat=new_lat, lon=new_lon)
-            
-            allowed_keys = {'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date', 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset', 'show_debug_options'}
+            allowed_keys = {'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date', 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset'}
             
             for k, v in new_data.items():
                 if k not in allowed_keys: continue
                 
-                # === PER-TICKER TEAM SAVING ===
-                if k == 'my_teams':
-                    if isinstance(v, list):
-                        cleaned = []
-                        seen = set()
-                        for e in v:
-                            if e is not None:
-                                k_str = str(e).strip()
-                                
-                                # === FIX: ONLY Convert LV (Phantoms), Leave NY Alone ===
-                                if k_str == "LV": k_str = "ahl:LV"
-                                # REMOVED: if k_str == "NY": k_str = "ahl:NY" (This was the bug)
-                                
-                                if k_str and k_str not in seen:
-                                    seen.add(k_str)
-                                    cleaned.append(k_str)
-                        
-                        if target_id:
-                            if 'my_teams' not in tickers[target_id]:
-                                tickers[target_id]['my_teams'] = []
-                            tickers[target_id]['my_teams'] = cleaned
-                            print(f"✅ Saved {len(cleaned)} teams for Ticker {target_id}")
-                        else:
-                            state['my_teams'] = cleaned
-                            print(f"⚠️ No Ticker ID found. Saved to Global Default.")
+                # === TEAM SAVING ===
+                if k == 'my_teams' and isinstance(v, list):
+                    cleaned = []
+                    seen = set()
+                    for e in v:
+                        if e:
+                            k_str = str(e).strip()
+                            if k_str == "LV": k_str = "ahl:LV" # Fix collision
+                            if k_str not in seen:
+                                seen.add(k_str)
+                                cleaned.append(k_str)
+                    
+                    if target_id:
+                        if 'my_teams' not in tickers[target_id]: tickers[target_id]['my_teams'] = []
+                        tickers[target_id]['my_teams'] = cleaned
+                    else:
+                        state['my_teams'] = cleaned
                     continue
-                # ==============================
+                # ===================
 
                 if k == 'active_sports' and isinstance(v, dict): 
                     state['active_sports'].update(v)
@@ -2170,10 +2189,15 @@ def api_config():
             
             fetcher.merge_buffers()
         
-        save_config_file()
+        # === SAVE INTELLIGENTLY ===
+        if target_id:
+            save_specific_ticker(target_id) # Save just this ticker file
+        else:
+            save_global_config() # Save global defaults
         
+        # Return saved teams
         current_teams = tickers[target_id].get('my_teams', []) if target_id else state['my_teams']
-        return jsonify({"status": "ok", "saved_teams": current_teams, "ticker_id_used": target_id})
+        return jsonify({"status": "ok", "saved_teams": current_teams, "ticker_id": target_id})
         
     except Exception as e:
         print(f"Config Error: {e}") 
