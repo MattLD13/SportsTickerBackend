@@ -2379,6 +2379,46 @@ def get_logs():
 
     except Exception as e:
         return f"Error reading log: {str(e)}", 500
+@app.route('/api/my_teams', methods=['GET'])
+def check_my_teams():
+    """
+    Usage: 
+      Global check: GET /api/my_teams
+      Ticker check: GET /api/my_teams?id=YOUR_TICKER_ID
+    """
+    ticker_id = request.args.get('id')
+    
+    with data_lock:
+        # 1. Global Fallback Check
+        global_teams = state.get('my_teams', [])
+
+        if not ticker_id:
+            return jsonify({
+                "status": "ok",
+                "scope": "Global (Default)",
+                "count": len(global_teams),
+                "teams": global_teams
+            })
+
+        # 2. Ticker Specific Check
+        if ticker_id in tickers:
+            rec = tickers[ticker_id]
+            specific_teams = rec.get('my_teams', [])
+            
+            # Logic: If specific_teams is empty, the ticker uses global_teams
+            using_fallback = len(specific_teams) == 0
+            effective = global_teams if using_fallback else specific_teams
+
+            return jsonify({
+                "status": "ok",
+                "ticker_id": ticker_id,
+                "scope": "Ticker Specific",
+                "using_global_fallback": using_fallback,
+                "saved_specifically_for_ticker": specific_teams,
+                "what_the_ticker_actually_sees": effective
+            })
+        
+        return jsonify({"error": "Ticker ID not found"}), 404
 
 @app.route('/')
 def root(): return "Ticker Server Running"
