@@ -831,10 +831,9 @@ class SportsFetcher:
         return AHL_API_KEYS[0] # Fallback
 
     def _fetch_ahl_teams_reference(self, catalog):
-        """Fetch Official AHL Teams using LeagueStat IDs (Deduplicated with Logo Check)"""
+        """Fetch Official AHL Teams using LeagueStat IDs (Deduplicated)"""
         if 'ahl' not in self.leagues: return
         
-        print("🏒 verifying AHL logo assets...") # Debug log
         catalog['ahl'] = []
         seen_ids = set() 
         
@@ -842,25 +841,25 @@ class SportsFetcher:
         for code, meta in AHL_TEAMS.items():
             t_id = meta.get('id')
             
-            # 1. Deduplication
+            # Deduplication: If we've already added a team with this ID (e.g. Aliases), skip
+            # This ensures the catalog doesn't have duplicates, which confuses dropdown menus
             if t_id and t_id in seen_ids:
-                # If ID is already processed, skip adding it to the catalog list
-                # This prevents "doubles" in the My Teams menu
                 continue
             
-            # Mark ID as seen
             if t_id: seen_ids.add(t_id)
 
-            # 2. VALIDATE LOGO (Check _90 vs Standard)
+            # --- FIX: USE STANDARD URL (Remove blocking network check) ---
+            # Checking every URL individually causes massive startup delays
             if t_id:
-                logo_url = validate_logo_url(t_id)
+                logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}.png"
             else:
                 logo_url = ""
+            # -------------------------------------------------------------
 
             catalog['ahl'].append({
                 'abbr': code, 
                 'id': code, 
-                'real_id': t_id, # Helper for matching
+                'real_id': t_id,
                 'logo': logo_url, 
                 'color': meta.get('color', '000000'), 
                 'alt_color': '444444', 
@@ -2126,39 +2125,55 @@ def api_config():
     try:
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
+        
         with data_lock:
-            new_city = new_data.get('weather_city'); new_lat = new_data.get('weather_lat'); new_lon = new_data.get('weather_lon')
+            # 1. Update basic settings (Weather, Lat/Lon)
+            new_city = new_data.get('weather_city')
+            new_lat = new_data.get('weather_lat')
+            new_lon = new_data.get('weather_lon')
+            
             if new_city is not None or new_lat is not None or new_lon is not None:
                  fetcher.weather.update_config(city=new_city, lat=new_lat, lon=new_lon)
             
             # Whitelist accepted keys
             allowed_keys = {'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date', 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset', 'show_debug_options'}
+            
             for k, v in new_data.items():
                 if k not in allowed_keys: continue
                 
-                # Special handling for my_teams cleanup
+                # --- FIX: ROBUST MY_TEAMS HANDLING ---
                 if k == 'my_teams':
-                    # Ensure it is a list of strings
                     if isinstance(v, list):
                         cleaned = []
                         seen = set()
                         for e in v:
-                            if isinstance(e, str) and e.strip():
-                                k_str = e.strip()
-                                if k_str not in seen:
+                            # Convert to string to handle numeric IDs safely
+                            if e is not None:
+                                k_str = str(e).strip()
+                                if k_str and k_str not in seen:
                                     seen.add(k_str)
                                     cleaned.append(k_str)
                         state['my_teams'] = cleaned
                     continue
+                # -------------------------------------
 
-                if k == 'active_sports' and isinstance(v, dict): state['active_sports'].update(v); continue
-                if v is not None: state[k] = v
+                if k == 'active_sports' and isinstance(v, dict): 
+                    state['active_sports'].update(v)
+                    continue
+                
+                if v is not None: 
+                    state[k] = v
             
             fetcher.merge_buffers()
+        
+        # Save immediately
         save_config_file()
-        return jsonify({"status": "ok"})
+        
+        # Return the updated state so the frontend stays in sync
+        return jsonify({"status": "ok", "saved_teams": state['my_teams']})
+        
     except Exception as e:
-        print(e) 
+        print(f"Config Error: {e}") 
         return jsonify({"error": "Failed"}), 500
 
 @app.route('/leagues', methods=['GET'])
