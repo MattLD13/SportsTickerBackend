@@ -162,7 +162,7 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
 }
 
 struct TeamData: Decodable, Identifiable, Hashable, Sendable {
-    let id: String // <--- FIX: Use the smart ID from server (e.g. "nfl:NYG")
+    let id: String // Proper Smart ID (e.g. nfl:NYG)
     let abbr: String
     let logo: String?
 }
@@ -228,11 +228,11 @@ class TickerViewModel: ObservableObject {
         weather_location: "New York", weather_city: "New York", weather_lat: 40.7128, weather_lon: -74.0060
     )
     
-    // === NEW BATCH MODE VARIABLES ===
-    // This holds your edits so they don't get overwritten
+    // === BATCH MODE VARIABLES ===
+    // This holds the "Draft" of your teams so they don't disappear while clicking
     @Published var hasUnsavedChanges: Bool = false
     @Published var localTeamSelection: [String] = []
-    // ================================
+    // ============================
 
     @Published var devices: [TickerDevice] = []
     @Published var pairCode: String = ""
@@ -265,12 +265,10 @@ class TickerViewModel: ObservableObject {
         fetchAllTeams()
         fetchDevices()
         
-        // Polling Timer
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             Task { @MainActor in
-                // CRITICAL: Do NOT fetch updates if we are editing, 
-                // otherwise the server will overwrite your local changes.
-                if !self.isEditing && !self.hasUnsavedChanges {
+                // Only poll if we are NOT editing, to prevent overwriting your draft
+                if !self.hasUnsavedChanges {
                     self.fetchData()
                     self.fetchDevices()
                     if self.leagueOptions.isEmpty { self.fetchLeagueOptions() }
@@ -282,7 +280,7 @@ class TickerViewModel: ObservableObject {
     func getBaseURL() -> String {
         return serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
     }
-
+    
     func updateOverallStatus() {
         if !isServerReachable { self.connectionStatus = "Server Offline"; self.statusColor = .red; return }
         let now = Date().timeIntervalSince1970
@@ -297,13 +295,13 @@ class TickerViewModel: ObservableObject {
         let base = getBaseURL()
         if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
         
-        // === FIX: APPEND TICKER ID TO URL ===
-        // This ensures we get OUR file (ticker_data/722c...), not the global default.
+        // === FIX: REQUEST SPECIFIC TICKER DATA ===
+        // This ensures the server sends YOUR file, not the empty global file.
         var urlString = "\(base)/api/state"
         if let myID = self.devices.first?.id {
             urlString += "?id=\(myID)"
         }
-        // ====================================
+        // =========================================
 
         guard let url = URL(string: urlString) else { self.connectionStatus = "Bad URL"; self.statusColor = .red; return }
         
@@ -312,7 +310,6 @@ class TickerViewModel: ObservableObject {
             guard let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
-                
                 DispatchQueue.main.async {
                     self.isServerReachable = true
                     self.games = decoded.games.sorted { g1, g2 in
@@ -321,13 +318,10 @@ class TickerViewModel: ObservableObject {
                         return false
                     }
                     
-                    // Only overwrite local settings if we aren't currently editing
+                    // Only update settings from server if user is NOT editing
                     if !self.hasUnsavedChanges {
                         self.state = decoded.settings
                         self.localTeamSelection = decoded.settings.my_teams
-                        
-                        // Debug print to confirm we got the right teams
-                        print("📥 Loaded \(self.localTeamSelection.count) teams from server")
                         
                         if let city = decoded.settings.weather_city {
                             self.weatherLocInput = city
@@ -342,6 +336,7 @@ class TickerViewModel: ObservableObject {
         }.resume()
     }
     
+    // ... (Keep existing fetch helpers)
     func fetchLeagueOptions() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/leagues") else { return }
@@ -349,9 +344,7 @@ class TickerViewModel: ObservableObject {
             guard let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode([LeagueOption].self, from: data)
-                DispatchQueue.main.async {
-                    self.leagueOptions = decoded
-                }
+                DispatchQueue.main.async { self.leagueOptions = decoded }
             } catch { print("Options Decode Error: \(error)") }
         }.resume()
     }
@@ -366,6 +359,62 @@ class TickerViewModel: ObservableObject {
                 DispatchQueue.main.async { self.allTeams = decoded }
             } catch { print("Teams Decode Error") }
         }.resume()
+    }
+    
+    // === NEW: LOCAL TOGGLE (Instant, No Network) ===
+    func toggleTeam(_ teamID: String) {
+        hasUnsavedChanges = true // Mark as "Dirty"
+        if let index = localTeamSelection.firstIndex(of: teamID) {
+            localTeamSelection.remove(at: index)
+        } else {
+            localTeamSelection.append(teamID)
+        }
+    }
+    
+    // === NEW: SAVE BATCH (Called by Save Button) ===
+    func saveTeamsNow() {
+        // Commit changes
+        state.my_teams = localTeamSelection
+        print("📤 Saving Batch of \(state.my_teams.count) teams...")
+        
+        saveSettings()
+        
+        // Unlock after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            self.hasUnsavedChanges = false
+            self.fetchData() // Refresh to confirm
+        }
+    }
+    
+    func saveSettings() {
+        let base = getBaseURL()
+        guard let url = URL(string: "\(base)/api/config") else { return }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
+        
+        do {
+            let data = try JSONEncoder().encode(state)
+            var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
+            
+            // INJECT TICKER ID (Fixes saving to wrong file)
+            if let activeDeviceID = self.devices.first?.id {
+                jsonDict["ticker_id"] = activeDeviceID
+            }
+            
+            let finalData = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
+            request.httpBody = finalData
+            
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                if let error = error { print("Save Error: \(error)"); return }
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                    print("✅ Settings Saved Successfully")
+                }
+            }.resume()
+            
+        } catch { print("Save Encoding Error: \(error)") }
     }
     
     func updateWeatherAndSave() {
@@ -384,65 +433,6 @@ class TickerViewModel: ObservableObject {
                 }
             }
         }
-    }
-    
-    // === NEW: LOCAL TOGGLE (Does not talk to server) ===
-    func toggleTeam(_ teamID: String) {
-        hasUnsavedChanges = true // Mark as dirty
-        if let index = localTeamSelection.firstIndex(of: teamID) {
-            localTeamSelection.remove(at: index)
-        } else {
-            localTeamSelection.append(teamID)
-        }
-        // No timer here! We wait for the user to click "Save".
-    }
-    
-    // === NEW: SAVE ALL AT ONCE ===
-    func saveTeamsNow() {
-        // 1. Commit local selection to state
-        state.my_teams = localTeamSelection
-        print("📤 Batch Saving \(state.my_teams.count) Teams...")
-        
-        // 2. Send to server
-        saveSettings()
-        
-        // 3. Unlock after a delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            self.hasUnsavedChanges = false
-            self.fetchData() // Re-sync with server
-        }
-    }
-
-    func saveSettings() {
-        let base = getBaseURL()
-        guard let url = URL(string: "\(base)/api/config") else { return }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        
-        do {
-            let data = try JSONEncoder().encode(state)
-            var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
-
-            // INJECT TICKER ID
-            if let activeDeviceID = self.devices.first?.id {
-                jsonDict["ticker_id"] = activeDeviceID 
-                print("Saving for Ticker ID: \(activeDeviceID)")
-            }
-            
-            let finalData = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
-            request.httpBody = finalData
-            
-            URLSession.shared.dataTask(with: request) { data, response, error in
-                if let error = error { print("Save Error: \(error)"); return }
-                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
-                    print("✅ Settings Saved Successfully")
-                }
-            }.resume()
-            
-        } catch { print("Save Encoding Error: \(error)") }
     }
     
     func fetchDevices() {
@@ -690,7 +680,6 @@ struct GameRow: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
         
-        // --- STOCK TICKER UI ---
         if game.type == "stock_ticker" {
             HStack(spacing: 12) {
                 Capsule().fill(Color.blue).frame(width: 4, height: 55)
@@ -721,7 +710,6 @@ struct GameRow: View {
             .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
             .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
             
-        // --- LEADERBOARD UI ---
         } else if game.type == "leaderboard" {
             HStack(spacing: 12) {
                 Capsule().fill(game.is_shown ? Color.green : Color.red).frame(width: 4, height: 55)
@@ -736,7 +724,6 @@ struct GameRow: View {
             .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
             .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
             
-        // --- STANDARD SPORTS UI ---
         } else {
             let homeColor = prioritizeVibrantColor(primary: game.home_color, alternate: game.home_alt_color)
             let awayColor = prioritizeVibrantColor(primary: game.away_color, alternate: game.away_alt_color)
@@ -864,7 +851,6 @@ struct HomeView: View {
                     if vm.games.isEmpty {
                         Text("No active items found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     } else {
-                        // Pass dynamic label
                         ForEach(vm.games) { game in
                             let label = vm.leagueOptions.first(where: { $0.id == game.sport })?.label
                             GameRow(game: game, leagueLabel: label)
@@ -982,6 +968,7 @@ struct ModesView: View {
     }
 }
 
+// === UPDATED TEAMS VIEW (BATCH MODE) ===
 struct TeamsView: View {
     @ObservedObject var vm: TickerViewModel
     @State private var selectedLeague = ""
@@ -1001,22 +988,24 @@ struct TeamsView: View {
         VStack(spacing: 0) {
             
             // === HEADER WITH SAVE BUTTON ===
-            HStack { 
+            HStack {
                 Text("My Teams").font(.system(size: 34, weight: .bold)).foregroundColor(.white)
                 Spacer()
                 
                 // Show Save Button ONLY if changes exist
                 if vm.hasUnsavedChanges {
                     Button(action: { vm.saveTeamsNow() }) {
-                        Text("Save")
+                        Text("SAVE CHANGES")
                             .bold()
-                            .padding(.horizontal, 20)
+                            .font(.caption)
+                            .padding(.horizontal, 16)
                             .padding(.vertical, 8)
                             .background(Color.green)
                             .foregroundColor(.white)
                             .clipShape(Capsule())
                     }
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(.opacity.combined(with: .scale))
+                    .animation(.spring(), value: vm.hasUnsavedChanges)
                 }
             }
             .padding(.horizontal)
@@ -1045,15 +1034,15 @@ struct TeamsView: View {
                     // TEAMS GRID
                     if let teams = vm.allTeams[selectedLeague], !teams.isEmpty {
                         let filteredTeams = teams
-                            .filter { $0.abbr.trimmingCharacters(in: .whitespaces).count > 0 }
+                            .filter { $0.abbr.trimmingCharacters(in: .whitespaces).count > 0 && $0.abbr != "TBD" && $0.abbr != "null" }
                             .sorted { $0.abbr < $1.abbr }
                         
                         LazyVGrid(columns: teamColumns, spacing: 15) {
                             ForEach(filteredTeams, id: \.self) { team in
-                                // CHECK LOCAL SELECTION (The "File")
+                                // CHECK LOCAL SELECTION (The "Draft")
                                 let isSelected = vm.localTeamSelection.contains(team.id)
                                 
-                                Button { 
+                                Button {
                                     vm.toggleTeam(team.id) // Update local file only
                                 } label: {
                                     VStack {
@@ -1070,17 +1059,23 @@ struct TeamsView: View {
                             }
                         }
                     } else if !selectedLeague.isEmpty {
-                        Text("No teams found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
+                        Text("No teams found for this league.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     }
                 }.padding(.horizontal)
                 Spacer(minLength: 120)
             }
         }
         .onAppear {
-            // Init local selection from server state when view opens
+            // Init local selection from server state when view opens (if not already editing)
             if !vm.hasUnsavedChanges {
                 vm.localTeamSelection = vm.state.my_teams
             }
+            // Auto-select first league tab
+            if !sportsOptions.isEmpty && (selectedLeague.isEmpty || !sportsOptions.contains(where: { $0.id == selectedLeague })) {
+                selectedLeague = sportsOptions.first?.id ?? ""
+            }
+        }
+        .onChange(of: vm.state.active_sports) { _ in
             if !sportsOptions.isEmpty && (selectedLeague.isEmpty || !sportsOptions.contains(where: { $0.id == selectedLeague })) {
                 selectedLeague = sportsOptions.first?.id ?? ""
             }
