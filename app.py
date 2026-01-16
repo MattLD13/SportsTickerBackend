@@ -2110,11 +2110,8 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
         
-        # === FIX 1: BETTER TICKER IDENTIFICATION ===
-        # Try to find the ticker ID in the Body, then URL, then Headers
+        # Identify the Ticker
         target_id = new_data.get('ticker_id') or request.args.get('id')
-        
-        # If not found, try identifying via Client ID
         if not target_id:
             cid = request.headers.get('X-Client-ID')
             if cid:
@@ -2123,14 +2120,8 @@ def api_config():
                         target_id = tid
                         break
         
-        # Validation: Does this ticker exist?
-        if target_id and target_id not in tickers:
-            print(f"⚠️ Warning: Request received for non-existent ticker {target_id}")
-            target_id = None
-        # ===========================================
-
         with data_lock:
-            # 1. Update basic settings (Weather, Lat/Lon)
+            # 1. Update basic settings
             new_city = new_data.get('weather_city')
             new_lat = new_data.get('weather_lat')
             new_lon = new_data.get('weather_lon')
@@ -2151,11 +2142,11 @@ def api_config():
                         for e in v:
                             if e is not None:
                                 k_str = str(e).strip()
-                                # === FIX 2: AUTO-CONVERT COLLISION TOKENS ===
-                                # If user saves "LV", assume they mean AHL since NFL is "nfl:LV"
-                                if k_str == "LV": k_str = "ahl:LV" 
-                                if k_str == "NY": k_str = "ahl:NY" # Rangers/Islanders usually safer with scope
-                                # ============================================
+                                
+                                # === FIX: ONLY Convert LV (Phantoms), Leave NY Alone ===
+                                if k_str == "LV": k_str = "ahl:LV"
+                                # REMOVED: if k_str == "NY": k_str = "ahl:NY" (This was the bug)
+                                
                                 if k_str and k_str not in seen:
                                     seen.add(k_str)
                                     cleaned.append(k_str)
@@ -2181,7 +2172,6 @@ def api_config():
         
         save_config_file()
         
-        # Return the teams for the specific ticker to keep UI in sync
         current_teams = tickers[target_id].get('my_teams', []) if target_id else state['my_teams']
         return jsonify({"status": "ok", "saved_teams": current_teams, "ticker_id_used": target_id})
         
@@ -2232,16 +2222,14 @@ def get_ticker_data():
     
     visible_games = []
     
-    # === COLLISION TOKENS ===
-    # These abbreviations exist in multiple leagues.
-    # We strictly enforce that they MUST match the scoped ID (e.g. "nfl:LV")
-    # Raw "LV" will generally be ignored for these sports to prevent crossover.
-    COLLISION_ABBRS = {'LV', 'NY', 'SA', 'LA', 'STL'} 
+    # === COLLISION LIST ===
+    # ONLY 'LV' is strictly enforced now. 
+    # 'NY' is removed so Knicks/Giants work normally again.
+    COLLISION_ABBRS = {'LV'} 
 
     for g in games_for_ticker:
         should_show = True
         
-        # Global Filters (Trust the fetcher for these)
         if not g.get('is_shown', True): pass 
 
         if global_mode == 'live':
@@ -2258,11 +2246,10 @@ def get_ticker_data():
             
             # --- HOME CHECK ---
             if h_abbr in COLLISION_ABBRS:
-                # STRICT MATCH ONLY: User MUST have "nfl:LV" to see Raiders
-                # User having raw "LV" will NOT match here.
+                # STRICT MATCH: Only 'ahl:LV' matches here. 'nfl:LV' will fail.
                 in_home = h_scoped in my_teams_list
             else:
-                # STANDARD MATCH: Scoped OR Raw is fine
+                # STANDARD MATCH: 'NY' matches 'nba:NY' OR 'NY'
                 in_home = (h_scoped in my_teams_list or h_abbr in my_teams_list)
 
             # --- AWAY CHECK ---
@@ -2273,7 +2260,6 @@ def get_ticker_data():
             
             if not (in_home or in_away): should_show = False
 
-        # Hide Postponed/Suspended regardless of mode
         status_lower = str(g.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
             should_show = False
