@@ -398,19 +398,22 @@ class TickerViewModel: ObservableObject {
         }
     }
     
-    // === NEW: SAVE BATCH (Called by Save Button) ===
+    // === NEW: SAVE ALL AT ONCE ===
     func saveTeamsNow() {
-        // 1. Commit local selection to state
+        // 1. Commit local selection to state (Optimistic Save)
+        // We assume the save will succeed, so we update the "Official" state immediately.
         state.my_teams = localTeamSelection
         print("📤 Batch Saving \(state.my_teams.count) Teams...")
         
         // 2. Send to server
         saveSettings()
         
-        // 3. Unlock polling after a short delay
+        // 3. Unlock "Editing Mode" after a delay
+        // FIX: We do NOT call fetchData() here anymore. 
+        // We trust our local state until the next natural background poll.
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             self.hasUnsavedChanges = false
-            self.fetchData() // Force re-sync to verify save
+            print("✅ Save sequence complete. Resuming background polling.")
         }
     }
     
