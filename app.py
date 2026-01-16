@@ -2221,9 +2221,19 @@ def get_ticker_data():
     ticker_id = request.args.get('id')
     if not ticker_id: return jsonify({"error": "No ID"}), 400
     
+    # Create ticker if new (OR if it exists in client but not on disk yet)
     if ticker_id not in tickers:
-        tickers[ticker_id] = { "paired": False, "clients": [], "settings": DEFAULT_TICKER_SETTINGS.copy(), "pairing_code": generate_pairing_code(), "last_seen": time.time(), "name": "New Ticker", "my_teams": [] }
-        save_config_file()
+        tickers[ticker_id] = { 
+            "paired": False, 
+            "clients": [], 
+            "settings": DEFAULT_TICKER_SETTINGS.copy(), 
+            "pairing_code": generate_pairing_code(), 
+            "last_seen": time.time(), 
+            "name": "New Ticker", 
+            "my_teams": [] 
+        }
+        # === FIX: Save the specific file immediately ===
+        save_specific_ticker(ticker_id) 
     else: 
         tickers[ticker_id]['last_seen'] = time.time()
     
@@ -2247,13 +2257,10 @@ def get_ticker_data():
     visible_games = []
     
     # === COLLISION LIST ===
-    # ONLY 'LV' is strictly enforced now. 
-    # 'NY' is removed so Knicks/Giants work normally again.
     COLLISION_ABBRS = {'LV'} 
 
     for g in games_for_ticker:
         should_show = True
-        
         if not g.get('is_shown', True): pass 
 
         if global_mode == 'live':
@@ -2263,20 +2270,16 @@ def get_ticker_data():
             sport = g.get('sport')
             h_abbr = str(g.get('home_abbr', '')).upper()
             a_abbr = str(g.get('away_abbr', '')).upper()
-            
-            # Create Scoped IDs
             h_scoped = f"{sport}:{h_abbr}"
             a_scoped = f"{sport}:{a_abbr}"
             
-            # --- HOME CHECK ---
+            # Home Check
             if h_abbr in COLLISION_ABBRS:
-                # STRICT MATCH: Only 'ahl:LV' matches here. 'nfl:LV' will fail.
                 in_home = h_scoped in my_teams_list
             else:
-                # STANDARD MATCH: 'NY' matches 'nba:NY' OR 'NY'
                 in_home = (h_scoped in my_teams_list or h_abbr in my_teams_list)
 
-            # --- AWAY CHECK ---
+            # Away Check
             if a_abbr in COLLISION_ABBRS:
                 in_away = a_scoped in my_teams_list
             else:
@@ -2301,23 +2304,43 @@ def get_ticker_data():
     
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
-    cid = request.headers.get('X-Client-ID'); code = request.json.get('code'); friendly_name = request.json.get('name', 'My Ticker')
+    cid = request.headers.get('X-Client-ID')
+    code = request.json.get('code')
+    friendly_name = request.json.get('name', 'My Ticker')
+    
     if not cid or not code: return jsonify({"success": False}), 400
+    
     for uid, rec in tickers.items():
         if rec.get('pairing_code') == code:
             if cid not in rec['clients']: rec['clients'].append(cid)
-            rec['paired'] = True; rec['name'] = friendly_name; save_config_file()
+            rec['paired'] = True
+            rec['name'] = friendly_name
+            
+            # === FIX: Save to specific file ===
+            save_specific_ticker(uid)
+            
             return jsonify({"success": True, "ticker_id": uid})
+            
     return jsonify({"success": False}), 404
 
 @app.route('/pair/id', methods=['POST'])
 def pair_ticker_by_id():
-    cid = request.headers.get('X-Client-ID'); tid = request.json.get('id'); friendly_name = request.json.get('name', 'My Ticker')
+    cid = request.headers.get('X-Client-ID')
+    tid = request.json.get('id')
+    friendly_name = request.json.get('name', 'My Ticker')
+    
     if not cid or not tid: return jsonify({"success": False}), 400
+    
     if tid in tickers:
         if cid not in tickers[tid]['clients']: tickers[tid]['clients'].append(cid)
-        tickers[tid]['paired'] = True; tickers[tid]['name'] = friendly_name; save_config_file()
+        tickers[tid]['paired'] = True
+        tickers[tid]['name'] = friendly_name
+        
+        # === FIX: Save to specific file ===
+        save_specific_ticker(tid)
+        
         return jsonify({"success": True, "ticker_id": tid})
+        
     return jsonify({"success": False}), 404
 
 @app.route('/ticker/<tid>/unpair', methods=['POST'])
@@ -2341,7 +2364,13 @@ def list_tickers():
 @app.route('/ticker/<tid>', methods=['POST'])
 def update_settings(tid):
     if tid not in tickers: return jsonify({"error":"404"}), 404
-    tickers[tid]['settings'].update(request.json); save_config_file()
+    
+    # Update memory
+    tickers[tid]['settings'].update(request.json)
+    
+    # === FIX: Save to specific file ===
+    save_specific_ticker(tid)
+    
     return jsonify({"success": True})
 
 @app.route('/api/state')
