@@ -1992,23 +1992,27 @@ class SportsFetcher:
         else:
             self.consecutive_empty_fetches = 0
 
-        # === HELPER: Parse ISO string to Timestamp for sorting ===
-        def get_sort_ts(iso_str):
-            if not iso_str or str(iso_str) == '9999': return 9999999999.0
-            try:
-                # Replace Z with +00:00 to ensure python parses it as UTC aware
-                return dt.fromisoformat(str(iso_str).replace('Z', '+00:00')).timestamp()
-            except:
-                return 9999999999.0
+        # ==========================================================
+        # === TIME NORMALIZATION (Fixes AHL Sorting Issue) ===
+        # ==========================================================
+        for g in all_games:
+            ts = g.get('startTimeUTC')
+            if ts and isinstance(ts, str):
+                try:
+                    # 1. Parse whatever format the API gave us (handles 'Z' or no 'Z', seconds or no seconds)
+                    d = dt.fromisoformat(ts.replace('Z', '+00:00'))
+                    # 2. Overwrite with STRICT uniform format including seconds
+                    g['startTimeUTC'] = d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except: pass
 
-        # === FIX FOR JUMPING: SORT SPORTS GAMES (NUMERICALLY) ===
+        # === FIX FOR JUMPING: SORT SPORTS GAMES ===
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
             4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "canceled", "suspended", "ppd"]) else
             3 if "FINAL" in str(x.get('status', '')).upper() or "FIN" == str(x.get('status', '')) else
             2, # Active
-            get_sort_ts(x.get('startTimeUTC')), # <--- CHANGED FROM STRING TO TIMESTAMP
+            x.get('startTimeUTC', '9999'), # Now normalized, safe to sort as string
             x.get('sport', ''),
             x.get('id', '0')
         ))
