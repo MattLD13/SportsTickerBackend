@@ -2139,6 +2139,7 @@ def api_config():
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
         
         target_id = new_data.get('ticker_id') or request.args.get('id')
+        
         if not target_id:
             cid = request.headers.get('X-Client-ID')
             if cid:
@@ -2159,14 +2160,24 @@ def api_config():
             for k, v in new_data.items():
                 if k not in allowed_keys: continue
                 
-                # === TEAM SAVING ===
+                # === STRICT TEAM FILTER ===
                 if k == 'my_teams' and isinstance(v, list):
                     cleaned = []
                     seen = set()
                     for e in v:
                         if e:
                             k_str = str(e).strip()
-                            # REMOVED: Auto-fix logic. We now trust the App to send "league:TEAM".
+                            
+                            # 1. AUTO-FIX KNOWN COLLISIONS
+                            if k_str == "LV": k_str = "ahl:LV"
+                            if k_str == "NY": k_str = "ahl:NY" # Assume AHL if raw NY is sent, NBA/MLB will send scoped
+                            
+                            # 2. STRICT FILTER: REJECT UNSCOPED IDS
+                            # If it doesn't have a colon (e.g. "NYG"), ignore it.
+                            # Only accept "nfl:NYG", "ahl:LV", etc.
+                            if ":" not in k_str:
+                                continue 
+
                             if k_str not in seen:
                                 seen.add(k_str)
                                 cleaned.append(k_str)
@@ -2174,10 +2185,11 @@ def api_config():
                     if target_id:
                         if 'my_teams' not in tickers[target_id]: tickers[target_id]['my_teams'] = []
                         tickers[target_id]['my_teams'] = cleaned
+                        print(f"✅ CLEAN SAVE for {target_id}: {cleaned}")
                     else:
                         state['my_teams'] = cleaned
                     continue
-                # ===================
+                # ==========================
 
                 if k == 'active_sports' and isinstance(v, dict): 
                     state['active_sports'].update(v)
