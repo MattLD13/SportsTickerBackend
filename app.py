@@ -1710,33 +1710,25 @@ class SportsFetcher:
         try:
             curr_p = config.get('scoreboard_params', {}).copy()
             
-            # --- DATE LOGIC UPDATE ---
             now_utc = dt.now(timezone.utc)
             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
             
-            # --- NEW FIX: FETCH 3 DAYS (Yesterday, Today, Tomorrow) to catch games spanning midnight ---
             yesterday_str = (now_local - timedelta(days=1)).strftime("%Y%m%d")
             tomorrow_str = (now_local + timedelta(days=1)).strftime("%Y%m%d")
             
-            # Override dates unless custom_date is set in debug mode
             if conf['debug_mode'] and conf['custom_date']:
                 curr_p['dates'] = conf['custom_date'].replace('-', '')
             else:
-                # Ask ESPN for a 3-Day Range
                 curr_p['dates'] = f"{yesterday_str}-{tomorrow_str}"
-            # ------------------------------------------------------------------
             
             r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
             data = r.json()
             
-            # --- FIX: Handle different JSON structures (Root events vs Nested in leagues) ---
             events = data.get('events', [])
             if not events:
-                # Check if events are nested inside 'leagues' (Common in Cups/Tournaments)
                 leagues = data.get('leagues', [])
                 if leagues and len(leagues) > 0:
                     events = leagues[0].get('events', [])
-            # -------------------------------------------------------------------------------
             
             for e in events:
                 utc_str = e['date'].replace('Z', '')
@@ -1746,17 +1738,12 @@ class SportsFetcher:
                 
                 try:
                     game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                    # Filter: if not live, must be within window (Now-12h -> 3AM Tomorrow)
                     if gst != 'in' and gst != 'half':
                         if not (window_start_utc <= game_dt <= window_end_utc): continue
                     
-                    # --- FIX: STRICT VISIBILITY WINDOW (Start AND End) ---
                     if game_dt < visible_start_utc or game_dt >= visible_end_utc:
-                          # Exception: If it's LIVE, show it regardless of window
                           if gst not in ['in', 'half']:
                               continue
-                    # --------------------------------------------
-
                 except: continue
 
                 comp = e['competitions'][0]
@@ -1768,12 +1755,9 @@ class SportsFetcher:
                 if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
                 if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
 
-                is_shown = True
-                if conf['mode'] == 'live' and gst not in ['in', 'half']: is_shown = False
-                elif conf['mode'] == 'my_teams':
-                    in_my = (f"{league_key}:{h_ab}" in conf['my_teams'] or h_ab in conf['my_teams'] or f"{league_key}:{a_ab}" in conf['my_teams'] or a_ab in conf['my_teams'])
-                    if not in_my: is_shown = False
-
+                # === CHANGED: Default is_shown to True. Filtering happens in get_ticker_data ===
+                is_shown = True 
+                
                 h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
                 a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
                 h_score = h.get('score','0')
@@ -1786,8 +1770,6 @@ class SportsFetcher:
                 p = st.get('period', 1)
                 duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
 
-                # === SUSPENDED / POSTPONED CHECK ===
-                # Check for keywords in the short status detail
                 is_suspended = False
                 susp_keywords = ["Suspended", "Postponed", "Canceled", "Delayed", "PPD"]
                 for kw in susp_keywords:
@@ -1795,7 +1777,6 @@ class SportsFetcher:
                         is_suspended = True
                         break
                 
-                # === NEW FIX: Hide Postponed Games ===
                 if is_suspended:
                     is_shown = False
 
@@ -1835,30 +1816,23 @@ class SportsFetcher:
                             else: s_disp = f"P{p} {clk}"
 
                 s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
-                
-                # === NEW FIX: Clean up "End of..." messages for all sports ===
                 s_disp = s_disp.replace("End of ", "End ").replace(" Quarter", "").replace(" Inning", "").replace(" Period", "")
 
-                # Standardize FINAL logic
                 if "FINAL" in s_disp:
-                    # Check period count for specific sports to append OT if missing from text
                     if league_key == 'nhl':
                         if "SO" in s_disp or "Shootout" in s_disp or p >= 5: s_disp = "FINAL S/O"
                         elif p >= 4 and "OT" not in s_disp: s_disp = f"FINAL OT{p-3 if p-3>1 else ''}"
                     elif league_key in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs'] and p > 4 and "OT" not in s_disp:
-                         # NFL/NBA regulation is 4 quarters
                          s_disp = f"FINAL OT{p-4 if p-4>1 else ''}"
 
                 sit = comp.get('situation', {})
                 shootout_data = None
-                # Generic ESPN Shootout Logic (Fallback)
                 is_shootout = "Shootout" in s_disp or "Penalties" in s_disp or "S/O" in s_disp or (gst == 'in' and st.get('period', 1) > 4 and 'hockey' in league_key)
                 
                 poss_raw = sit.get('possession')
                 if poss_raw: self.possession_cache[e['id']] = poss_raw
                 elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
                 
-                # Clear possession if game is not live/active
                 if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime' or is_suspended:
                     poss_raw = None
                     self.possession_cache.pop(e['id'], None)
@@ -1867,7 +1841,6 @@ class SportsFetcher:
                 if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
                 elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
                 
-                # Ensure downDist is populated if available (it might be in 'downDistanceText' or 'shortDownDistanceText')
                 down_text = sit.get('downDistanceText') or sit.get('shortDownDistanceText') or ''
                 if s_disp == "Halftime": down_text = ''
 
@@ -2126,51 +2099,68 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
         
+        # Identify the Ticker being controlled
+        cid = request.headers.get('X-Client-ID')
+        target_ticker_id = None
+        
         with data_lock:
-            # 1. Update basic settings (Weather, Lat/Lon)
+            # Find which ticker belongs to this client
+            if cid:
+                for tid, t_data in tickers.items():
+                    if cid in t_data.get('clients', []):
+                        target_ticker_id = tid
+                        break
+
+            # 1. Update basic settings (Global)
             new_city = new_data.get('weather_city')
             new_lat = new_data.get('weather_lat')
             new_lon = new_data.get('weather_lon')
             
-            if new_city is not None or new_lat is not None or new_lon is not None:
+            if new_city or new_lat or new_lon:
                  fetcher.weather.update_config(city=new_city, lat=new_lat, lon=new_lon)
             
-            # Whitelist accepted keys
             allowed_keys = {'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date', 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset', 'show_debug_options'}
             
             for k, v in new_data.items():
                 if k not in allowed_keys: continue
                 
-                # --- FIX: ROBUST MY_TEAMS HANDLING ---
+                # === PER-TICKER TEAM SAVING ===
                 if k == 'my_teams':
                     if isinstance(v, list):
                         cleaned = []
                         seen = set()
                         for e in v:
-                            # Convert to string to handle numeric IDs safely
                             if e is not None:
                                 k_str = str(e).strip()
                                 if k_str and k_str not in seen:
                                     seen.add(k_str)
                                     cleaned.append(k_str)
-                        state['my_teams'] = cleaned
+                        
+                        if target_ticker_id:
+                            # Save to SPECIFIC ticker
+                            if 'my_teams' not in tickers[target_ticker_id]:
+                                tickers[target_ticker_id]['my_teams'] = []
+                            tickers[target_ticker_id]['my_teams'] = cleaned
+                            print(f"✅ Saved teams for Ticker {target_ticker_id}")
+                        else:
+                            # Fallback to Global if no ticker paired
+                            state['my_teams'] = cleaned
                     continue
-                # -------------------------------------
+                # ==============================
 
                 if k == 'active_sports' and isinstance(v, dict): 
                     state['active_sports'].update(v)
                     continue
                 
-                if v is not None: 
-                    state[k] = v
+                if v is not None: state[k] = v
             
             fetcher.merge_buffers()
         
-        # Save immediately
         save_config_file()
         
-        # Return the updated state so the frontend stays in sync
-        return jsonify({"status": "ok", "saved_teams": state['my_teams']})
+        # Return the teams for the specific ticker to keep UI in sync
+        current_teams = tickers[target_ticker_id].get('my_teams', []) if target_ticker_id else state['my_teams']
+        return jsonify({"status": "ok", "saved_teams": current_teams})
         
     except Exception as e:
         print(f"Config Error: {e}") 
@@ -2193,48 +2183,80 @@ def get_league_options():
 def get_ticker_data():
     ticker_id = request.args.get('id')
     if not ticker_id: return jsonify({"error": "No ID"}), 400
+    
+    # Create ticker if new
     if ticker_id not in tickers:
-        tickers[ticker_id] = { "paired": False, "clients": [], "settings": DEFAULT_TICKER_SETTINGS.copy(), "pairing_code": generate_pairing_code(), "last_seen": time.time(), "name": "New Ticker" }
+        tickers[ticker_id] = { "paired": False, "clients": [], "settings": DEFAULT_TICKER_SETTINGS.copy(), "pairing_code": generate_pairing_code(), "last_seen": time.time(), "name": "New Ticker", "my_teams": [] }
         save_config_file()
-    else: tickers[ticker_id]['last_seen'] = time.time()
+    else: 
+        tickers[ticker_id]['last_seen'] = time.time()
     
     rec = tickers[ticker_id]
     if not rec.get('clients'): return jsonify({"status": "pairing", "code": rec['pairing_code']})
     
-    # === PER TICKER DELAY LOGIC ===
+    # 1. Get Games
     t_settings = rec['settings']
-    delay_mode = t_settings.get('live_delay_mode', False)
-    delay_seconds = t_settings.get('live_delay_seconds', 0) if delay_mode else 0
-    
-    # Get games specifically for this delay
+    delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     games_for_ticker = fetcher.get_snapshot_for_delay(delay_seconds)
     
+    # 2. Get Ticker-Specific Config
     with data_lock:
+        global_mode = state['mode']
+        # Load THIS ticker's teams, fall back to global if empty
+        my_teams_list = rec.get('my_teams', state['my_teams'])
+        
         conf = { 
             "active_sports": state['active_sports'], 
-            "mode": state['mode'], 
+            "mode": global_mode, 
             "weather": state['weather_city']
         }
     
-    # Filter is_shown AND remove postponed games for ticker only
     visible_games = []
+    
+    # 3. Filter Games specifically for this ticker
     for g in games_for_ticker:
-        # Check standard is_shown flag
+        should_show = True
+        
+        # Check standard global visibility (e.g. postponed, hidden leagues)
         if not g.get('is_shown', True):
-            continue
+            # We trust the fetcher for 'postponed' or 'suspended' flags
+            pass
+
+        # --- MODE FILTERING ---
+        if global_mode == 'live':
+             if g.get('state') not in ['in', 'half']: should_show = False
+             
+        elif global_mode == 'my_teams':
+            # === STRICT PER-TICKER TEAM CHECK ===
+            sport = g.get('sport')
+            h_abbr = g.get('home_abbr')
+            a_abbr = g.get('away_abbr')
             
-        # === FIX: FORCE LIVE MODE CHECK "JUST IN TIME" ===
-        if conf['mode'] == 'live':
-             if g.get('state') != 'in' and g.get('state') != 'half':
-                 continue
-        # =================================================
+            # Scoped IDs (e.g. "nfl:LV")
+            h_scoped = f"{sport}:{h_abbr}"
+            a_scoped = f"{sport}:{a_abbr}"
             
-        # Check for postponed/suspended keywords
+            # NFL Collision Logic (Require scoped ID for 'LV', 'NY', etc)
+            if sport == 'nfl' and h_abbr in ['LV', 'NY', 'SA']:
+                in_home = h_scoped in my_teams_list
+            else:
+                in_home = (h_scoped in my_teams_list or h_abbr in my_teams_list)
+
+            if sport == 'nfl' and a_abbr in ['LV', 'NY', 'SA']:
+                in_away = a_scoped in my_teams_list
+            else:
+                in_away = (a_scoped in my_teams_list or a_abbr in my_teams_list)
+            
+            if not (in_home or in_away): should_show = False
+            # ====================================
+
+        # Hide Postponed/Suspended regardless of mode
         status_lower = str(g.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
-            continue
-            
-        visible_games.append(g)
+            should_show = False
+
+        if should_show:
+            visible_games.append(g)
     
     return jsonify({ 
         "status": "ok", 
@@ -2243,7 +2265,7 @@ def get_ticker_data():
         "local_config": rec['settings'], 
         "content": { "sports": visible_games } 
     })
-
+    
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
     cid = request.headers.get('X-Client-ID'); code = request.json.get('code'); friendly_name = request.json.get('name', 'My Ticker')
