@@ -2140,8 +2140,10 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
         
-        # Identify Ticker
+        # 1. Identify Ticker
         target_id = new_data.get('ticker_id') or request.args.get('id')
+        
+        # Fallback: Identify by Client ID
         if not target_id:
             cid = request.headers.get('X-Client-ID')
             if cid:
@@ -2149,9 +2151,20 @@ def api_config():
                     if cid in t_data.get('clients', []):
                         target_id = tid
                         break
+        
+        # Fallback: Single Ticker Mode
+        if not target_id and len(tickers) == 1:
+            target_id = list(tickers.keys())[0]
+
+        # DEBUG LOGGING
+        print(f"📥 CONFIG REQUEST RECEIVED. Target Ticker: {target_id}")
+        if 'my_teams' in new_data:
+            print(f"📦 Incoming Teams Payload: {new_data['my_teams']}")
+        else:
+            print("📦 Payload does NOT contain 'my_teams'")
 
         with data_lock:
-            # 1. Update Global Settings
+            # Weather Updates
             new_city = new_data.get('weather_city')
             if new_city: 
                 fetcher.weather.update_config(city=new_city, lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
@@ -2162,22 +2175,27 @@ def api_config():
                 if k not in allowed_keys: continue
                 
                 # === TEAM SAVING ===
-                if k == 'my_teams' and isinstance(v, list):
-                    cleaned = []
-                    seen = set()
-                    for e in v:
-                        if e:
-                            k_str = str(e).strip()
-                            if k_str == "LV": k_str = "ahl:LV" # Fix collision
-                            if k_str not in seen:
-                                seen.add(k_str)
-                                cleaned.append(k_str)
-                    
-                    if target_id:
-                        if 'my_teams' not in tickers[target_id]: tickers[target_id]['my_teams'] = []
-                        tickers[target_id]['my_teams'] = cleaned
+                if k == 'my_teams':
+                    if isinstance(v, list):
+                        cleaned = []
+                        seen = set()
+                        for e in v:
+                            if e:
+                                k_str = str(e).strip()
+                                if k_str == "LV": k_str = "ahl:LV" # Auto-Fix Collision
+                                if k_str not in seen:
+                                    seen.add(k_str)
+                                    cleaned.append(k_str)
+                        
+                        if target_id:
+                            if 'my_teams' not in tickers[target_id]: tickers[target_id]['my_teams'] = []
+                            tickers[target_id]['my_teams'] = cleaned
+                            print(f"✅ SAVED to Ticker {target_id}: {cleaned}")
+                        else:
+                            state['my_teams'] = cleaned
+                            print(f"⚠️ SAVED to GLOBAL (No ID): {cleaned}")
                     else:
-                        state['my_teams'] = cleaned
+                        print(f"❌ Error: 'my_teams' is not a list! It is {type(v)}")
                     continue
                 # ===================
 
@@ -2189,13 +2207,12 @@ def api_config():
             
             fetcher.merge_buffers()
         
-        # === SAVE INTELLIGENTLY ===
+        # === SAVE ===
         if target_id:
-            save_specific_ticker(target_id) # Save just this ticker file
+            save_specific_ticker(target_id)
         else:
-            save_global_config() # Save global defaults
+            save_global_config()
         
-        # Return saved teams
         current_teams = tickers[target_id].get('my_teams', []) if target_id else state['my_teams']
         return jsonify({"status": "ok", "saved_teams": current_teams, "ticker_id": target_id})
         
