@@ -877,34 +877,34 @@ class SportsFetcher:
         return AHL_API_KEYS[0] # Fallback
 
     def _fetch_ahl_teams_reference(self, catalog):
-        """Fetch Official AHL Teams with Scoped IDs (ahl:LV)"""
-        if 'ahl' not in self.leagues: return
+        # catalog is the main teams dictionary passed from fetch_all_teams
+        ahl_list = []
         
-        catalog['ahl'] = []
-        seen_ids = set() 
-        
-        for code, meta in AHL_TEAMS.items():
-            t_id = meta.get('id')
-            if t_id and t_id in seen_ids: continue
-            if t_id: seen_ids.add(t_id)
-
-            # Standard Logo URL
-            logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}.png" if t_id else ""
-
-            # === FIX: SCOPED ID ===
-            # We now prepend 'ahl:' to the ID so it never clashes with NFL
-            scoped_id = f"ahl:{code}"
+        # Use the hardcoded AHL_TEAMS dictionary you provided
+        for abbr, data in AHL_TEAMS.items():
             
-            catalog['ahl'].append({
-                'abbr': code, 
-                'id': scoped_id,  # <--- CHANGED THIS
-                'real_id': t_id,
-                'logo': logo_url, 
-                'color': meta.get('color', '000000'), 
-                'alt_color': '444444', 
-                'name': meta.get('name', code), 
-                'shortName': meta.get('name', code).split(" ")[-1]
-            })
+            # === CRITICAL FIX: FORCE THE "ahl:" PREFIX ===
+            # This ensures the ID is "ahl:HFD", not just "HFD"
+            # It handles duplicates (like CLT/CHA) by using the abbr as the unique suffix
+            scoped_id = f"ahl:{abbr}" 
+            
+            # Helper to check if we already added this ID (deduplication)
+            if any(x['id'] == scoped_id for x in ahl_list):
+                continue
+
+            entry = {
+                'abbr': abbr,
+                'id': scoped_id,  # <--- THIS IS THE KEY FIX
+                'logo': f"https://assets.lehigh.edu/ticker/logos/ahl/{abbr}.png", # Or your logo source
+                'name': data['name'],
+                'color': data['color'],
+                'alt_color': '111111'
+            }
+            ahl_list.append(entry)
+            
+        # Add to the master catalog
+        catalog['ahl'] = ahl_list
+        print(f"✅ Loaded {len(ahl_list)} AHL teams with Smart IDs")
 
     def check_shootout(self, game, summary=None):
         """
