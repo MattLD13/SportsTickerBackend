@@ -2150,20 +2150,21 @@ def api_config():
         if not target_id and len(tickers) == 1: target_id = list(tickers.keys())[0]
 
         with data_lock:
-            # === 1. BUILD LOOKUP TABLE (The "Cheat Sheet") ===
-            # This maps "NYG" -> "nfl:NYG", "NYY" -> "mlb:NYY"
+            # === 1. BUILD LOOKUP TABLE ===
             abbr_to_scoped = {}
             if 'all_teams_data' in state:
                 for league, teams in state['all_teams_data'].items():
                     for t in teams:
-                        # Map the simple abbr to the complex ID
                         if 'abbr' in t and 'id' in t:
                             abbr_to_scoped[t['abbr']] = t['id']
             
-            # Manual Overrides for tricky ones
+            # Manual Overrides
             abbr_to_scoped["LV"] = "ahl:LV"
-            abbr_to_scoped["NY"] = "nba:NY" # Default NY to Knicks if ambiguous
-            # =================================================
+            abbr_to_scoped["NY"] = "nba:NY"
+            
+            # SAFETY CHECK: Is the server fully loaded?
+            server_is_ready = len(abbr_to_scoped) > 100 
+            # =============================
 
             if new_data.get('weather_city'): 
                 fetcher.weather.update_config(city=new_data['weather_city'], lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
@@ -2173,7 +2174,7 @@ def api_config():
             for k, v in new_data.items():
                 if k not in allowed_keys: continue
                 
-                # === TEAM SAVING WITH SMART LOOKUP ===
+                # === TEAM SAVING ===
                 if k == 'my_teams' and isinstance(v, list):
                     cleaned = []
                     seen = set()
@@ -2181,22 +2182,30 @@ def api_config():
                         if e:
                             k_str = str(e).strip()
                             
-                            # A. If it's already correct (has colon), keep it.
+                            # A. If it has a colon, it's a Smart ID. Keep it.
                             if ":" in k_str:
                                 if k_str not in seen:
                                     seen.add(k_str)
                                     cleaned.append(k_str)
                                 continue
 
-                            # B. If it's OLD (no colon), try to LOOK IT UP.
+                            # B. If it's an Old ID (No colon), try to fix it.
                             if k_str in abbr_to_scoped:
                                 fixed_id = abbr_to_scoped[k_str]
                                 if fixed_id not in seen:
                                     seen.add(fixed_id)
                                     cleaned.append(fixed_id)
                                     print(f"🔧 Auto-Fixed: {k_str} -> {fixed_id}")
+                            
+                            # C. FAIL SAFE: If server isn't ready, KEEP THE DATA.
+                            elif not server_is_ready:
+                                print(f"⚠️ Server loading, keeping legacy ID: {k_str}")
+                                if k_str not in seen:
+                                    seen.add(k_str)
+                                    cleaned.append(k_str)
+                            
                             else:
-                                print(f"⚠️ Could not identify team: {k_str} (Dropped)")
+                                print(f"❌ Unknown team dropped: {k_str}")
                     
                     if target_id:
                         if 'my_teams' not in tickers[target_id]: tickers[target_id]['my_teams'] = []
