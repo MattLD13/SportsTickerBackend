@@ -117,6 +117,8 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     var safeAwayAbbr: String { away_abbr ?? "" }
     var safeHomeLogo: String { home_logo ?? "" }
     var safeAwayLogo: String { away_logo ?? "" }
+    var safeHomeID: String { home_id ?? safeHomeAbbr }
+    var safeAwayID: String { away_id ?? safeAwayAbbr }
     
     enum CodingKeys: String, CodingKey {
         case id, sport, status, state, home_abbr, home_id, home_score, home_logo, home_color, home_alt_color, away_abbr, away_id, away_score, away_logo, away_color, away_alt_color, is_shown, situation, type, tourney_name
@@ -1007,12 +1009,12 @@ struct TeamsView: View {
                         
                         LazyVGrid(columns: teamColumns, spacing: 15) {
                             ForEach(filteredTeams, id: \.self) { team in
-                                // FIX: Check using the smart ID (team.id) instead of just the abbreviation
+                                // FIX: Check if the SMART ID (ahl:LV) is in the list
                                 let isSelected = vm.state.my_teams.contains(team.id)
                                 
                                 Button { 
                                     vm.isEditing = true; 
-                                    // FIX: Toggle the smart ID
+                                    // FIX: Toggle the SMART ID
                                     vm.toggleTeam(team.id); 
                                     
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { vm.isEditing = false } 
