@@ -296,12 +296,23 @@ class TickerViewModel: ObservableObject {
     func fetchData() {
         let base = getBaseURL()
         if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
-        guard let url = URL(string: "\(base)/api/state") else { self.connectionStatus = "Bad URL"; self.statusColor = .red; return }
+        
+        // === FIX: APPEND TICKER ID TO URL ===
+        // This ensures we get OUR file (ticker_data/722c...), not the global default.
+        var urlString = "\(base)/api/state"
+        if let myID = self.devices.first?.id {
+            urlString += "?id=\(myID)"
+        }
+        // ====================================
+
+        guard let url = URL(string: urlString) else { self.connectionStatus = "Bad URL"; self.statusColor = .red; return }
+        
         URLSession.shared.dataTask(with: url) { data, _, error in
             if let _ = error { DispatchQueue.main.async { self.isServerReachable = false; self.updateOverallStatus() }; return }
             guard let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
+                
                 DispatchQueue.main.async {
                     self.isServerReachable = true
                     self.games = decoded.games.sorted { g1, g2 in
@@ -310,12 +321,13 @@ class TickerViewModel: ObservableObject {
                         return false
                     }
                     
-                    // === BATCH MODE SYNC ===
-                    // Only update the settings from server if we DON'T have unsaved changes.
-                    // This prevents the server from erasing your work while you tap.
+                    // Only overwrite local settings if we aren't currently editing
                     if !self.hasUnsavedChanges {
                         self.state = decoded.settings
-                        self.localTeamSelection = decoded.settings.my_teams // Sync local list
+                        self.localTeamSelection = decoded.settings.my_teams
+                        
+                        // Debug print to confirm we got the right teams
+                        print("📥 Loaded \(self.localTeamSelection.count) teams from server")
                         
                         if let city = decoded.settings.weather_city {
                             self.weatherLocInput = city
@@ -323,7 +335,6 @@ class TickerViewModel: ObservableObject {
                             self.weatherLocInput = loc
                         }
                     }
-                    // =======================
                     
                     self.updateOverallStatus()
                 }
