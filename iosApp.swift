@@ -371,6 +371,11 @@ class TickerViewModel: ObservableObject {
             // 1. Convert State to Dictionary
             let data = try JSONEncoder().encode(state)
             var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
+
+            // THIS IS THE KEY MISSING PIECE IN YOUR APP
+            if let activeDeviceID = self.devices.first?.id {
+                jsonDict["ticker_id"] = activeDeviceID 
+            }
             
             // 2. INJECT TICKER ID (Crucial Fix)
             // We take the ID of the first paired device found in the app.
