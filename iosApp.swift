@@ -229,7 +229,8 @@ class TickerViewModel: ObservableObject {
     )
     
     // === BATCH MODE VARIABLES ===
-    // This holds the "Draft" of your teams so they don't disappear while clicking
+    // This holds your edits locally so they don't disappear while clicking.
+    // When false, we mirror the server. When true, we ignore the server until you click Save.
     @Published var hasUnsavedChanges: Bool = false
     @Published var localTeamSelection: [String] = []
     // ============================
@@ -244,7 +245,7 @@ class TickerViewModel: ObservableObject {
     @Published var weatherLocInput: String = "New York"
     @Published var connectionStatus: String = "Connecting..."
     @Published var statusColor: Color = .gray
-    @Published var isEditing: Bool = false
+    @Published var isEditing: Bool = false // Tracks general UI editing state
     
     private var isServerReachable = false
     private var timer: Timer?
@@ -261,13 +262,15 @@ class TickerViewModel: ObservableObject {
         
         // Initial Fetch
         fetchData()
-        fetchLeagueOptions() // Load dynamic leagues
+        fetchLeagueOptions() 
         fetchAllTeams()
         fetchDevices()
         
+        // Polling Timer (Runs every 5 seconds)
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             Task { @MainActor in
-                // Only poll if we are NOT editing, to prevent overwriting your draft
+                // CRITICAL: Do NOT fetch updates if we are editing teams.
+                // This prevents the server from overwriting your draft work.
                 if !self.hasUnsavedChanges {
                     self.fetchData()
                     self.fetchDevices()
@@ -280,7 +283,7 @@ class TickerViewModel: ObservableObject {
     func getBaseURL() -> String {
         return serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
     }
-    
+
     func updateOverallStatus() {
         if !isServerReachable { self.connectionStatus = "Server Offline"; self.statusColor = .red; return }
         let now = Date().timeIntervalSince1970
@@ -295,13 +298,14 @@ class TickerViewModel: ObservableObject {
         let base = getBaseURL()
         if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
         
-        // === FIX: REQUEST SPECIFIC TICKER DATA ===
-        // This ensures the server sends YOUR file, not the empty global file.
+        // === FIX: APPEND TICKER ID TO URL ===
+        // This ensures the server sends YOUR specific file (ticker_data/722c...),
+        // not the empty global default.
         var urlString = "\(base)/api/state"
         if let myID = self.devices.first?.id {
             urlString += "?id=\(myID)"
         }
-        // =========================================
+        // ====================================
 
         guard let url = URL(string: urlString) else { self.connectionStatus = "Bad URL"; self.statusColor = .red; return }
         
@@ -310,6 +314,7 @@ class TickerViewModel: ObservableObject {
             guard let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
+                
                 DispatchQueue.main.async {
                     self.isServerReachable = true
                     self.games = decoded.games.sorted { g1, g2 in
@@ -318,9 +323,13 @@ class TickerViewModel: ObservableObject {
                         return false
                     }
                     
-                    // Only update settings from server if user is NOT editing
+                    // === SYNC LOGIC ===
+                    // If we are NOT currently editing, we must mirror the server.
+                    // This ensures that if you change teams on your iPad, your iPhone updates instantly.
                     if !self.hasUnsavedChanges {
                         self.state = decoded.settings
+                        
+                        // Sync visual list with server truth
                         self.localTeamSelection = decoded.settings.my_teams
                         
                         if let city = decoded.settings.weather_city {
@@ -329,6 +338,7 @@ class TickerViewModel: ObservableObject {
                             self.weatherLocInput = loc
                         }
                     }
+                    // ==================
                     
                     self.updateOverallStatus()
                 }
@@ -336,7 +346,6 @@ class TickerViewModel: ObservableObject {
         }.resume()
     }
     
-    // ... (Keep existing fetch helpers)
     func fetchLeagueOptions() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/leagues") else { return }
@@ -361,62 +370,6 @@ class TickerViewModel: ObservableObject {
         }.resume()
     }
     
-    // === NEW: LOCAL TOGGLE (Instant, No Network) ===
-    func toggleTeam(_ teamID: String) {
-        hasUnsavedChanges = true // Mark as "Dirty"
-        if let index = localTeamSelection.firstIndex(of: teamID) {
-            localTeamSelection.remove(at: index)
-        } else {
-            localTeamSelection.append(teamID)
-        }
-    }
-    
-    // === NEW: SAVE BATCH (Called by Save Button) ===
-    func saveTeamsNow() {
-        // Commit changes
-        state.my_teams = localTeamSelection
-        print("📤 Saving Batch of \(state.my_teams.count) teams...")
-        
-        saveSettings()
-        
-        // Unlock after delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            self.hasUnsavedChanges = false
-            self.fetchData() // Refresh to confirm
-        }
-    }
-    
-    func saveSettings() {
-        let base = getBaseURL()
-        guard let url = URL(string: "\(base)/api/config") else { return }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        
-        do {
-            let data = try JSONEncoder().encode(state)
-            var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
-            
-            // INJECT TICKER ID (Fixes saving to wrong file)
-            if let activeDeviceID = self.devices.first?.id {
-                jsonDict["ticker_id"] = activeDeviceID
-            }
-            
-            let finalData = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
-            request.httpBody = finalData
-            
-            URLSession.shared.dataTask(with: request) { data, response, error in
-                if let error = error { print("Save Error: \(error)"); return }
-                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
-                    print("✅ Settings Saved Successfully")
-                }
-            }.resume()
-            
-        } catch { print("Save Encoding Error: \(error)") }
-    }
-    
     func updateWeatherAndSave() {
         let geocoder = CLGeocoder()
         geocoder.geocodeAddressString(weatherLocInput) { placemarks, error in
@@ -433,6 +386,64 @@ class TickerViewModel: ObservableObject {
                 }
             }
         }
+    }
+    
+    // === NEW: LOCAL TOGGLE (Instant, No Network) ===
+    func toggleTeam(_ teamID: String) {
+        hasUnsavedChanges = true // Mark as "Dirty" to stop server overwrites
+        if let index = localTeamSelection.firstIndex(of: teamID) {
+            localTeamSelection.remove(at: index)
+        } else {
+            localTeamSelection.append(teamID)
+        }
+    }
+    
+    // === NEW: SAVE BATCH (Called by Save Button) ===
+    func saveTeamsNow() {
+        // 1. Commit local selection to state
+        state.my_teams = localTeamSelection
+        print("📤 Batch Saving \(state.my_teams.count) Teams...")
+        
+        // 2. Send to server
+        saveSettings()
+        
+        // 3. Unlock polling after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            self.hasUnsavedChanges = false
+            self.fetchData() // Force re-sync to verify save
+        }
+    }
+    
+    func saveSettings() {
+        let base = getBaseURL()
+        guard let url = URL(string: "\(base)/api/config") else { return }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID") // Auth Header
+        
+        do {
+            let data = try JSONEncoder().encode(state)
+            var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
+
+            // INJECT TICKER ID
+            // This ensures the server knows exactly which file to update.
+            if let activeDeviceID = self.devices.first?.id {
+                jsonDict["ticker_id"] = activeDeviceID 
+            }
+            
+            let finalData = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
+            request.httpBody = finalData
+            
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                if let error = error { print("Save Error: \(error)"); return }
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                    print("✅ Settings Saved Successfully")
+                }
+            }.resume()
+            
+        } catch { print("Save Encoding Error: \(error)") }
     }
     
     func fetchDevices() {
