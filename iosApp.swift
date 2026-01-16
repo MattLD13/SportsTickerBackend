@@ -239,6 +239,8 @@ class TickerViewModel: ObservableObject {
     
     private var isServerReachable = false
     private var timer: Timer?
+    // Add this new timer for the auto-save delay
+    private var saveTimer: Timer?
     private var clientID: String {
         if let saved = UserDefaults.standard.string(forKey: "clientID") { return saved }
         let newID = UUID().uuidString
@@ -358,14 +360,37 @@ class TickerViewModel: ObservableObject {
     func saveSettings() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/api/config") else { return }
+        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Ensure backend identifies this client
+        request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID") 
+        
         do {
-            let body = try JSONEncoder().encode(state)
-            request.httpBody = body
-            URLSession.shared.dataTask(with: request).resume()
-        } catch { print("Save Error") }
+            // 1. Convert State to Dictionary
+            let data = try JSONEncoder().encode(state)
+            var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
+            
+            // 2. INJECT TICKER ID (Crucial Fix)
+            // We take the ID of the first paired device found in the app.
+            if let activeDeviceID = self.devices.first?.id {
+                jsonDict["ticker_id"] = activeDeviceID
+                print("Saving for Ticker ID: \(activeDeviceID)")
+            }
+            
+            // 3. Send the modified dictionary
+            let finalData = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
+            request.httpBody = finalData
+            
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                if let error = error { print("Save Error: \(error)"); return }
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                    print("✅ Settings Saved Successfully")
+                }
+            }.resume()
+            
+        } catch { print("Save Encoding Error: \(error)") }
     }
     
     func fetchDevices() {
@@ -481,9 +506,21 @@ class TickerViewModel: ObservableObject {
     }
     
     func toggleTeam(_ teamAbbr: String) {
-        if let index = state.my_teams.firstIndex(of: teamAbbr) { state.my_teams.remove(at: index) }
-        else { state.my_teams.append(teamAbbr) }
-        saveSettings()
+        // 1. Update UI Immediately (Optimistic Update)
+        if let index = state.my_teams.firstIndex(of: teamAbbr) {
+            state.my_teams.remove(at: index)
+        } else {
+            state.my_teams.append(teamAbbr)
+        }
+        
+        // 2. Debounce Logic (Wait 1.5s before sending to network)
+        print("⏳ Change detected... waiting to save...")
+        saveTimer?.invalidate() // Cancel any pending save
+        
+        saveTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+            print("📤 Triggering Auto-Save now.")
+            self?.saveSettings()
+        }
     }
 }
 
