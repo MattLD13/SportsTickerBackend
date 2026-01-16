@@ -775,10 +775,9 @@ class SportsFetcher:
                     for league in sport['leagues']:
                         for item in league.get('teams', []):
                             abbr = item['team'].get('abbreviation', 'unk')
-                            # team_id = str(item['team'].get('id', '')) <-- OLD
                             
-                            # === FIX: SCOPED ID ===
-                            # Force ID to be "league:abbr" (e.g. "nfl:NYG")
+                            # === FORCE SCOPED ID (Standardization) ===
+                            # This ensures the App receives "nfl:NYG", not just "NYG"
                             scoped_id = f"{league_key}:{abbr}"
                             
                             clr = item['team'].get('color', '000000')
@@ -789,11 +788,10 @@ class SportsFetcher:
                             name = item['team'].get('displayName', '')
                             short_name = item['team'].get('shortDisplayName', '')
 
-                            # Check for duplicates using the new SCOPED ID
                             if not any(x.get('id') == scoped_id for x in catalog[league_key]):
                                 catalog[league_key].append({
                                     'abbr': abbr, 
-                                    'id': scoped_id, # <--- CHANGED THIS
+                                    'id': scoped_id,  # <--- CRITICAL CHANGE
                                     'logo': logo, 
                                     'color': clr, 
                                     'alt_color': alt, 
@@ -806,14 +804,14 @@ class SportsFetcher:
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
             
-            # 1. Fetch AHL (Now Scoped)
+            # 1. AHL (Already Scoped in previous step, but ensuring call)
             self._fetch_ahl_teams_reference(teams_catalog)
 
-            # 2. Olympic Hockey (Manual)
+            # 2. Olympic Hockey
             for t in OLYMPIC_HOCKEY_TEAMS:
                 teams_catalog['hockey_olympics'].append({
                     'abbr': t['abbr'], 
-                    'id': f"hockey_olympics:{t['abbr']}", # Scoped
+                    'id': f"hockey_olympics:{t['abbr']}", # Force Scope
                     'logo': t['logo'], 
                     'color': '000000', 
                     'alt_color': '444444'
@@ -845,7 +843,7 @@ class SportsFetcher:
                                 if not any(x['id'] == scoped_id for x in teams_catalog['ncf_fcs']):
                                     teams_catalog['ncf_fcs'].append({'abbr': t_abbr, 'id': scoped_id, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
 
-            # 4. Fetch Standard Leagues (NFL, MLB, etc)
+            # 4. Standard Leagues
             futures = []
             leagues_to_fetch = [
                 'nfl', 'mlb', 'nhl', 'nba',
@@ -858,7 +856,7 @@ class SportsFetcher:
 
             with data_lock: state['all_teams_data'] = teams_catalog
         except Exception as e: print(f"Global Team Fetch Error: {e}")
-
+            
     # ================= NEW AHL METHODS =================
     def _get_ahl_key(self):
         if self.ahl_cached_key and time.time() < self.ahl_key_expiry:
@@ -2140,10 +2138,7 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
         
-        # 1. Identify Ticker
         target_id = new_data.get('ticker_id') or request.args.get('id')
-        
-        # Fallback: Identify by Client ID
         if not target_id:
             cid = request.headers.get('X-Client-ID')
             if cid:
@@ -2152,22 +2147,12 @@ def api_config():
                         target_id = tid
                         break
         
-        # Fallback: Single Ticker Mode
         if not target_id and len(tickers) == 1:
             target_id = list(tickers.keys())[0]
 
-        # DEBUG LOGGING
-        print(f"📥 CONFIG REQUEST RECEIVED. Target Ticker: {target_id}")
-        if 'my_teams' in new_data:
-            print(f"📦 Incoming Teams Payload: {new_data['my_teams']}")
-        else:
-            print("📦 Payload does NOT contain 'my_teams'")
-
         with data_lock:
-            # Weather Updates
-            new_city = new_data.get('weather_city')
-            if new_city: 
-                fetcher.weather.update_config(city=new_city, lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
+            if new_data.get('weather_city'): 
+                fetcher.weather.update_config(city=new_data['weather_city'], lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
             
             allowed_keys = {'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date', 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset'}
             
@@ -2175,27 +2160,22 @@ def api_config():
                 if k not in allowed_keys: continue
                 
                 # === TEAM SAVING ===
-                if k == 'my_teams':
-                    if isinstance(v, list):
-                        cleaned = []
-                        seen = set()
-                        for e in v:
-                            if e:
-                                k_str = str(e).strip()
-                                if k_str == "LV": k_str = "ahl:LV" # Auto-Fix Collision
-                                if k_str not in seen:
-                                    seen.add(k_str)
-                                    cleaned.append(k_str)
-                        
-                        if target_id:
-                            if 'my_teams' not in tickers[target_id]: tickers[target_id]['my_teams'] = []
-                            tickers[target_id]['my_teams'] = cleaned
-                            print(f"✅ SAVED to Ticker {target_id}: {cleaned}")
-                        else:
-                            state['my_teams'] = cleaned
-                            print(f"⚠️ SAVED to GLOBAL (No ID): {cleaned}")
+                if k == 'my_teams' and isinstance(v, list):
+                    cleaned = []
+                    seen = set()
+                    for e in v:
+                        if e:
+                            k_str = str(e).strip()
+                            # REMOVED: Auto-fix logic. We now trust the App to send "league:TEAM".
+                            if k_str not in seen:
+                                seen.add(k_str)
+                                cleaned.append(k_str)
+                    
+                    if target_id:
+                        if 'my_teams' not in tickers[target_id]: tickers[target_id]['my_teams'] = []
+                        tickers[target_id]['my_teams'] = cleaned
                     else:
-                        print(f"❌ Error: 'my_teams' is not a list! It is {type(v)}")
+                        state['my_teams'] = cleaned
                     continue
                 # ===================
 
@@ -2207,11 +2187,8 @@ def api_config():
             
             fetcher.merge_buffers()
         
-        # === SAVE ===
-        if target_id:
-            save_specific_ticker(target_id)
-        else:
-            save_global_config()
+        if target_id: save_specific_ticker(target_id)
+        else: save_global_config()
         
         current_teams = tickers[target_id].get('my_teams', []) if target_id else state['my_teams']
         return jsonify({"status": "ok", "saved_teams": current_teams, "ticker_id": target_id})
@@ -2238,19 +2215,9 @@ def get_ticker_data():
     ticker_id = request.args.get('id')
     if not ticker_id: return jsonify({"error": "No ID"}), 400
     
-    # Create ticker if new (OR if it exists in client but not on disk yet)
     if ticker_id not in tickers:
-        tickers[ticker_id] = { 
-            "paired": False, 
-            "clients": [], 
-            "settings": DEFAULT_TICKER_SETTINGS.copy(), 
-            "pairing_code": generate_pairing_code(), 
-            "last_seen": time.time(), 
-            "name": "New Ticker", 
-            "my_teams": [] 
-        }
-        # === FIX: Save the specific file immediately ===
-        save_specific_ticker(ticker_id) 
+        tickers[ticker_id] = { "paired": False, "clients": [], "settings": DEFAULT_TICKER_SETTINGS.copy(), "pairing_code": generate_pairing_code(), "last_seen": time.time(), "name": "New Ticker", "my_teams": [] }
+        save_specific_ticker(ticker_id)
     else: 
         tickers[ticker_id]['last_seen'] = time.time()
     
@@ -2273,9 +2240,6 @@ def get_ticker_data():
     
     visible_games = []
     
-    # === COLLISION LIST ===
-    COLLISION_ABBRS = {'LV'} 
-
     for g in games_for_ticker:
         should_show = True
         if not g.get('is_shown', True): pass 
@@ -2287,22 +2251,17 @@ def get_ticker_data():
             sport = g.get('sport')
             h_abbr = str(g.get('home_abbr', '')).upper()
             a_abbr = str(g.get('away_abbr', '')).upper()
+            
+            # === STANDARDIZED SCOPED ID CHECK ===
+            # Since all teams are now saved as "nfl:NYG", we just construct that ID and check.
             h_scoped = f"{sport}:{h_abbr}"
             a_scoped = f"{sport}:{a_abbr}"
             
-            # Home Check
-            if h_abbr in COLLISION_ABBRS:
-                in_home = h_scoped in my_teams_list
-            else:
-                in_home = (h_scoped in my_teams_list or h_abbr in my_teams_list)
-
-            # Away Check
-            if a_abbr in COLLISION_ABBRS:
-                in_away = a_scoped in my_teams_list
-            else:
-                in_away = (a_scoped in my_teams_list or a_abbr in my_teams_list)
+            in_home = h_scoped in my_teams_list
+            in_away = a_scoped in my_teams_list
             
             if not (in_home or in_away): should_show = False
+            # ====================================
 
         status_lower = str(g.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
