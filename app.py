@@ -1925,26 +1925,23 @@ class SportsFetcher:
             # --- DATE LOGIC UPDATE (3:00 AM Switch with Strict Start/End) ---
             if now_local.hour < 3:
                 # "Yesterday's Games" mode (Late Night Viewing)
-                # Show from Yesterday 10:00 AM to Today 3:00 AM
                 visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
                 visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
             else:
                 # "Today's Games" mode (Morning/Day Viewing)
-                # Show from Midnight Today to Tomorrow 3:00 AM
                 visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
                 visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
             
             visible_start_utc = visible_start_local.astimezone(timezone.utc)
             visible_end_utc = visible_end_local.astimezone(timezone.utc)
             
-            # Windows for Fetching (Broad window, filtered strictly later)
+            # Windows for Fetching
             window_start_local = now_local - timedelta(hours=30)
             window_end_local = now_local + timedelta(hours=48)
             
             window_start_utc = window_start_local.astimezone(timezone.utc)
             window_end_utc = window_end_local.astimezone(timezone.utc)
             
-            # Submit tasks
             futures = []
 
             # === ADDED AHL ===
@@ -1953,7 +1950,6 @@ class SportsFetcher:
             
             # A. NHL Native Special Case
             if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
-                # Pass window arguments + visibility constraints
                 futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc))
             
             # B. FOTMOB SOCCER (Batched by League ID)
@@ -1963,13 +1959,8 @@ class SportsFetcher:
 
             # C. All other ESPN leagues
             for league_key, config in self.leagues.items():
-                # Skip NHL here if we are using native mode
                 if league_key == 'nhl' and not conf['debug_mode']: continue 
-                
-                # Skip Soccer here (Handled by FotMob now)
                 if league_key.startswith('soccer_'): continue
-
-                # Skip AHL (Handled natively)
                 if league_key == 'ahl': continue
 
                 futures.append(self.executor.submit(
@@ -1977,7 +1968,6 @@ class SportsFetcher:
                     league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc
                 ))
             
-            # Gather Results
             for f in concurrent.futures.as_completed(futures):
                 try:
                     res = f.result()
@@ -1985,41 +1975,40 @@ class SportsFetcher:
                 except Exception as e: print(f"League fetch error: {e}")
 
         # === SAFETY FIX: Prevent "Crash into Stocks" ===
-        # Count actual sports games found (excluding weather/clock)
         sports_count = len([g for g in all_games if g.get('type') == 'scoreboard'])
         
-        # Check if we have previous data in state
         with data_lock:
             prev_buffer = state.get('buffer_sports', [])
             prev_sports_count = len([g for g in prev_buffer if g.get('type') == 'scoreboard'])
 
-        # If we found 0 sports, but we had them recently, assume API glitch/Timeout
-        # We only clear the screen if we fail 3 times in a row (15 seconds)
         if sports_count == 0 and prev_sports_count > 0:
             self.consecutive_empty_fetches += 1
             if self.consecutive_empty_fetches < 3:
-                # print(f"Warning: Fetch returned 0 games. Using cached data (Attempt {self.consecutive_empty_fetches}/3)")
-                # KEEP PREVIOUS DATA, BUT UPDATE CLOCK/WEATHER
-                # (We filter out old weather/clock from prev buffer and add new ones)
                 prev_pure_sports = [g for g in prev_buffer if g.get('type') == 'scoreboard']
                 utils = [g for g in all_games if g.get('type') != 'scoreboard']
                 all_games = prev_pure_sports + utils
             else:
-                # 3 failures in a row -> Assume games actually finished/empty
                 self.consecutive_empty_fetches = 0
         else:
             self.consecutive_empty_fetches = 0
-        # ===============================================
 
-        # === FIX FOR JUMPING: SORT SPORTS GAMES ===
-        # Use ID as tie-breaker so concurrent fetching doesn't random order for same start times
+        # === HELPER: Parse ISO string to Timestamp for sorting ===
+        def get_sort_ts(iso_str):
+            if not iso_str or str(iso_str) == '9999': return 9999999999.0
+            try:
+                # Replace Z with +00:00 to ensure python parses it as UTC aware
+                return dt.fromisoformat(str(iso_str).replace('Z', '+00:00')).timestamp()
+            except:
+                return 9999999999.0
+
+        # === FIX FOR JUMPING: SORT SPORTS GAMES (NUMERICALLY) ===
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
             4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "canceled", "suspended", "ppd"]) else
             3 if "FINAL" in str(x.get('status', '')).upper() or "FIN" == str(x.get('status', '')) else
             2, # Active
-            x.get('startTimeUTC', '9999'),
+            get_sort_ts(x.get('startTimeUTC')), # <--- CHANGED FROM STRING TO TIMESTAMP
             x.get('sport', ''),
             x.get('id', '0')
         ))
@@ -2027,13 +2016,9 @@ class SportsFetcher:
         # === HISTORY BUFFER UPDATE ===
         now_ts = time.time()
         self.history_buffer.append((now_ts, all_games))
-        # Keep 120s of history
         cutoff_time = now_ts - 120
         self.history_buffer = [x for x in self.history_buffer if x[0] > cutoff_time]
         
-        # NOTE: We no longer calculate 'state["current_games"]' based on a global delay.
-        # Instead, we just store the latest fetch as the default current_games (0 delay)
-        # Individual tickers asking for delay will call get_snapshot_for_delay()
         with data_lock: 
             state['buffer_sports'] = all_games
             self.merge_buffers()
