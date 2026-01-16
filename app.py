@@ -745,7 +745,12 @@ class SportsFetcher:
                     for league in sport['leagues']:
                         for item in league.get('teams', []):
                             abbr = item['team'].get('abbreviation', 'unk')
-                            team_id = str(item['team'].get('id', ''))
+                            # team_id = str(item['team'].get('id', '')) <-- OLD
+                            
+                            # === FIX: SCOPED ID ===
+                            # Force ID to be "league:abbr" (e.g. "nfl:NYG")
+                            scoped_id = f"{league_key}:{abbr}"
+                            
                             clr = item['team'].get('color', '000000')
                             alt = item['team'].get('alternateColor', '444444')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
@@ -754,10 +759,11 @@ class SportsFetcher:
                             name = item['team'].get('displayName', '')
                             short_name = item['team'].get('shortDisplayName', '')
 
-                            if not any(x.get('id') == team_id for x in catalog[league_key]):
+                            # Check for duplicates using the new SCOPED ID
+                            if not any(x.get('id') == scoped_id for x in catalog[league_key]):
                                 catalog[league_key].append({
                                     'abbr': abbr, 
-                                    'id': team_id,
+                                    'id': scoped_id, # <--- CHANGED THIS
                                     'logo': logo, 
                                     'color': clr, 
                                     'alt_color': alt, 
@@ -770,13 +776,20 @@ class SportsFetcher:
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
             
-            # === POPULATE AHL TEAMS DYNAMICALLY (Fix for Missing Logos) ===
+            # 1. Fetch AHL (Now Scoped)
             self._fetch_ahl_teams_reference(teams_catalog)
-            # ==============================================================
 
+            # 2. Olympic Hockey (Manual)
             for t in OLYMPIC_HOCKEY_TEAMS:
-                teams_catalog['hockey_olympics'].append({'abbr': t['abbr'], 'logo': t['logo'], 'color': '000000', 'alt_color': '444444'})
+                teams_catalog['hockey_olympics'].append({
+                    'abbr': t['abbr'], 
+                    'id': f"hockey_olympics:{t['abbr']}", # Scoped
+                    'logo': t['logo'], 
+                    'color': '000000', 
+                    'alt_color': '444444'
+                })
 
+            # 3. College Football (FBS/FCS)
             url = f"{self.base_url}football/college-football/teams"
             r = self.session.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
             data = r.json()
@@ -789,15 +802,20 @@ class SportsFetcher:
                             t_alt = item['team'].get('alternateColor', '444444')
                             logos = item['team'].get('logos', [])
                             t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
+                            
                             if t_abbr in FBS_TEAMS:
                                 t_logo = self.get_corrected_logo('ncf_fbs', t_abbr, t_logo)
-                                if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fbs']):
-                                    teams_catalog['ncf_fbs'].append({'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
+                                scoped_id = f"ncf_fbs:{t_abbr}"
+                                if not any(x['id'] == scoped_id for x in teams_catalog['ncf_fbs']):
+                                    teams_catalog['ncf_fbs'].append({'abbr': t_abbr, 'id': scoped_id, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
+                            
                             elif t_abbr in FCS_TEAMS:
                                 t_logo = self.get_corrected_logo('ncf_fcs', t_abbr, t_logo)
-                                if not any(x['abbr'] == t_abbr for x in teams_catalog['ncf_fcs']):
-                                    teams_catalog['ncf_fcs'].append({'abbr': t_abbr, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
+                                scoped_id = f"ncf_fcs:{t_abbr}"
+                                if not any(x['id'] == scoped_id for x in teams_catalog['ncf_fcs']):
+                                    teams_catalog['ncf_fcs'].append({'abbr': t_abbr, 'id': scoped_id, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
 
+            # 4. Fetch Standard Leagues (NFL, MLB, etc)
             futures = []
             leagues_to_fetch = [
                 'nfl', 'mlb', 'nhl', 'nba',
@@ -831,34 +849,27 @@ class SportsFetcher:
         return AHL_API_KEYS[0] # Fallback
 
     def _fetch_ahl_teams_reference(self, catalog):
-        """Fetch Official AHL Teams using LeagueStat IDs (Deduplicated)"""
+        """Fetch Official AHL Teams with Scoped IDs (ahl:LV)"""
         if 'ahl' not in self.leagues: return
         
         catalog['ahl'] = []
         seen_ids = set() 
         
-        # Iterate through our hardcoded list
         for code, meta in AHL_TEAMS.items():
             t_id = meta.get('id')
-            
-            # Deduplication: If we've already added a team with this ID (e.g. Aliases), skip
-            # This ensures the catalog doesn't have duplicates, which confuses dropdown menus
-            if t_id and t_id in seen_ids:
-                continue
-            
+            if t_id and t_id in seen_ids: continue
             if t_id: seen_ids.add(t_id)
 
-            # --- FIX: USE STANDARD URL (Remove blocking network check) ---
-            # Checking every URL individually causes massive startup delays
-            if t_id:
-                logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}.png"
-            else:
-                logo_url = ""
-            # -------------------------------------------------------------
+            # Standard Logo URL
+            logo_url = f"https://assets.leaguestat.com/ahl/logos/50x50/{t_id}.png" if t_id else ""
 
+            # === FIX: SCOPED ID ===
+            # We now prepend 'ahl:' to the ID so it never clashes with NFL
+            scoped_id = f"ahl:{code}"
+            
             catalog['ahl'].append({
                 'abbr': code, 
-                'id': code, 
+                'id': scoped_id,  # <--- CHANGED THIS
                 'real_id': t_id,
                 'logo': logo_url, 
                 'color': meta.get('color', '000000'), 
@@ -2184,7 +2195,6 @@ def get_ticker_data():
     ticker_id = request.args.get('id')
     if not ticker_id: return jsonify({"error": "No ID"}), 400
     
-    # Create ticker if new
     if ticker_id not in tickers:
         tickers[ticker_id] = { "paired": False, "clients": [], "settings": DEFAULT_TICKER_SETTINGS.copy(), "pairing_code": generate_pairing_code(), "last_seen": time.time(), "name": "New Ticker", "my_teams": [] }
         save_config_file()
@@ -2194,12 +2204,10 @@ def get_ticker_data():
     rec = tickers[ticker_id]
     if not rec.get('clients'): return jsonify({"status": "pairing", "code": rec['pairing_code']})
     
-    # 1. Get Games
     t_settings = rec['settings']
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     games_for_ticker = fetcher.get_snapshot_for_delay(delay_seconds)
     
-    # 2. Get Ticker-Specific Config
     with data_lock:
         global_mode = state['mode']
         # Load THIS ticker's teams, fall back to global if empty
@@ -2213,44 +2221,41 @@ def get_ticker_data():
     
     visible_games = []
     
-    # 3. Filter Games specifically for this ticker
     for g in games_for_ticker:
         should_show = True
         
-        # Check standard global visibility (e.g. postponed, hidden leagues)
         if not g.get('is_shown', True):
-            # We trust the fetcher for 'postponed' or 'suspended' flags
+            # Trust fetcher for suspended/postponed/hidden-league flags
             pass
 
-        # --- MODE FILTERING ---
         if global_mode == 'live':
              if g.get('state') not in ['in', 'half']: should_show = False
              
         elif global_mode == 'my_teams':
-            # === STRICT PER-TICKER TEAM CHECK ===
             sport = g.get('sport')
             h_abbr = g.get('home_abbr')
             a_abbr = g.get('away_abbr')
             
-            # Scoped IDs (e.g. "nfl:LV")
+            # Construct the Scoped IDs for the game being processed
             h_scoped = f"{sport}:{h_abbr}"
             a_scoped = f"{sport}:{a_abbr}"
             
-            # NFL Collision Logic (Require scoped ID for 'LV', 'NY', etc)
-            if sport == 'nfl' and h_abbr in ['LV', 'NY', 'SA']:
-                in_home = h_scoped in my_teams_list
-            else:
-                in_home = (h_scoped in my_teams_list or h_abbr in my_teams_list)
-
-            if sport == 'nfl' and a_abbr in ['LV', 'NY', 'SA']:
-                in_away = a_scoped in my_teams_list
-            else:
-                in_away = (a_scoped in my_teams_list or a_abbr in my_teams_list)
+            # === ROBUST MATCHING LOGIC ===
+            # 1. Exact Match: User has "nfl:NYG" and game is "nfl:NYG" -> Match!
+            in_home = h_scoped in my_teams_list
+            in_away = a_scoped in my_teams_list
+            
+            # 2. Legacy Match: User has "NYG" (old style) -> Match!
+            # BUT: We DISABLE legacy match for collision teams (LV, NY, SA)
+            if not in_home and h_abbr not in ['LV', 'NY', 'SA']:
+                if h_abbr in my_teams_list: in_home = True
+                
+            if not in_away and a_abbr not in ['LV', 'NY', 'SA']:
+                if a_abbr in my_teams_list: in_away = True
             
             if not (in_home or in_away): should_show = False
-            # ====================================
+            # ==============================
 
-        # Hide Postponed/Suspended regardless of mode
         status_lower = str(g.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
             should_show = False
