@@ -513,25 +513,44 @@ class TickerViewModel: ObservableObject {
     }
     
     func toggleTeam(_ teamAbbr: String) {
-        // 1. Optimistic UI Update
+        // 1. Optimistic Update (Update UI instantly)
         if let index = state.my_teams.firstIndex(of: teamAbbr) {
             state.my_teams.remove(at: index)
         } else {
             state.my_teams.append(teamAbbr)
         }
         
-        // 2. Lock updates so the server doesn't overwrite us while tapping
+        // 2. HARD LOCK polling
         self.isEditing = true
+        self.timer?.invalidate() // Stop the fetch timer entirely
         
-        // 3. Debounce: Wait 1.5s after the LAST tap
+        // 3. Debounce Save (Wait 1.5s for user to finish tapping)
+        print("⏳ Waiting to save...")
         saveTimer?.invalidate()
         saveTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-            print("🚀 Saving changes...")
+            print("🚀 Saving now...")
             self?.saveSettings()
             
-            // 4. Unlock updates ONLY after enough time has passed for the save to likely finish
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) {
+            // 4. Restart Polling after a safety buffer (3.5s)
+            // This gives the server time to write the file so we don't fetch stale data
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
                 self?.isEditing = false
+                self?.restartTimer() // You need to add this helper func below
+                print("🔄 Polling restarted")
+            }
+        }
+    }
+    
+    // Add this helper to your class
+    func restartTimer() {
+        self.timer?.invalidate()
+        self.timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor in
+                if !self.isEditing {
+                    self.fetchData()
+                    self.fetchDevices()
+                }
             }
         }
     }
