@@ -877,33 +877,42 @@ class SportsFetcher:
         return AHL_API_KEYS[0] # Fallback
 
     def _fetch_ahl_teams_reference(self, catalog):
-        ahl_list = []
+        """Fetch Official AHL Teams using LeagueStat IDs (Deduplicated with Logo Check)"""
+        if 'ahl' not in self.leagues: return
         
-        for abbr, data in AHL_TEAMS.items():
+        print("🏒 verifying AHL logo assets...") # Debug log
+        catalog['ahl'] = []
+        seen_ids = set() 
+        
+        # Iterate through our hardcoded list
+        for code, meta in AHL_TEAMS.items():
+            t_id = meta.get('id')
             
-            # 1. The System ID (Must be "ahl:HFD")
-            scoped_id = f"ahl:{abbr}" 
-            
-            # 2. The Numeric ID for Logos (e.g. "307")
-            numeric_id = data.get('id', '')
-
-            # Deduplication
-            if any(x['id'] == scoped_id for x in ahl_list):
+            # 1. Deduplication
+            if t_id and t_id in seen_ids:
+                # If ID is already processed, skip adding it
                 continue
-
-            entry = {
-                'abbr': abbr,
-                'id': scoped_id,
-                # FIX: Use numeric ID for the logo URL
-                'logo': f"https://assets.lehigh.edu/ticker/logos/ahl/{numeric_id}.png", 
-                'name': data['name'],
-                'color': data['color'],
-                'alt_color': '111111'
-            }
-            ahl_list.append(entry)
             
-        catalog['ahl'] = ahl_list
-        print(f"✅ Loaded {len(ahl_list)} AHL teams (Logos using numeric IDs)")
+            # Mark ID as seen
+            if t_id: seen_ids.add(t_id)
+
+            # 2. VALIDATE LOGO (Restored your original logic)
+            if t_id:
+                # Ensure validate_logo_url is defined in your script scope
+                logo_url = validate_logo_url(t_id)
+            else:
+                logo_url = ""
+
+            catalog['ahl'].append({
+                'abbr': code, 
+                'id': f"ahl:{code}", # <--- THE ONLY CHANGE: Added "ahl:" prefix
+                'real_id': t_id, 
+                'logo': logo_url, 
+                'color': meta.get('color', '000000'), 
+                'alt_color': '444444', 
+                'name': meta.get('name', code), 
+                'shortName': meta.get('name', code).split(" ")[-1]
+            })
 
     def check_shootout(self, game, summary=None):
         """
