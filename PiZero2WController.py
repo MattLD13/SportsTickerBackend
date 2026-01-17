@@ -939,6 +939,19 @@ class TickerStreamer:
                 r = requests.get(url, timeout=5)
                 data = r.json()
                 
+                # ==========================================
+                # FIX: CHECK FOR REBOOT COMMAND
+                # ==========================================
+                global_conf = data.get('global_config', {})
+                if global_conf.get('reboot') is True:
+                    print("⚠️ REBOOT COMMAND RECEIVED FROM SERVER")
+                    # Clear screen to indicate action
+                    self.matrix.Clear()
+                    # Execute Linux reboot command
+                    subprocess.run(['reboot'])
+                    sys.exit(0)
+                # ==========================================
+
                 if data.get('status') == 'pairing':
                     self.is_pairing = True
                     self.pairing_code = data.get('code')
