@@ -981,9 +981,10 @@ class SportsFetcher:
                 else:
                     gst = "in"
                     if "intermission" in status_lower:
-                        if "1st" in status_lower: disp = "End 1st"
-                        elif "2nd" in status_lower: disp = "End 2nd"
-                        elif "3rd" in status_lower: disp = "End 3rd"
+                        # Check text first, then fallback to the period number
+                        if "1st" in status_lower or period_str == "1": disp = "End 1st"
+                        elif "2nd" in status_lower or period_str == "2": disp = "End 2nd"
+                        elif "3rd" in status_lower or period_str == "3": disp = "End 3rd"
                         else: disp = "INT"
                     else:
                         m = re.search(r'(\d+:\d+)\s*(1st|2nd|3rd|ot|overtime)', raw_status, re.IGNORECASE)
