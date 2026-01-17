@@ -2174,35 +2174,42 @@ def api_state():
     if not ticker_id and len(tickers) == 1:
         ticker_id = list(tickers.keys())[0]
 
-    # 1. Merge Settings
     response_settings = state.copy()
+    
     if ticker_id and ticker_id in tickers:
         local_settings = tickers[ticker_id]['settings']
         response_settings.update(local_settings)
         response_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
         response_settings['ticker_id'] = ticker_id 
     
-    # 2. Get Raw Games
+    # 1. Get ALL raw games
     raw_games = fetcher.get_snapshot_for_delay(0)
     
-    # 3. Apply Filtering Logic (Same as /data)
-    visible_games = []
+    # 2. Create a copy to modify 'is_shown' without affecting the global cache
+    # We use a shallow copy of the list, but we need deep copies of dicts if we modify them.
+    # However, since we are building a response, we can just rebuild the list of dicts.
+    processed_games = []
+
     current_mode = response_settings.get('mode', 'all')
     saved_teams = response_settings.get('my_teams', [])
     COLLISION_ABBRS = {'LV'}
 
     for g in raw_games:
+        # Create a copy so we don't modify the global cache for other users
+        game_copy = g.copy()
+        
+        # Start by assuming it is shown, unless logic says otherwise
         should_show = True
         
-        # Filter: Live Mode
-        if current_mode == 'live' and g.get('state') not in ['in', 'half']: 
+        # Logic 1: Live Mode
+        if current_mode == 'live' and game_copy.get('state') not in ['in', 'half']: 
             should_show = False
             
-        # Filter: My Teams Mode
+        # Logic 2: My Teams Mode
         elif current_mode == 'my_teams':
-            sport = g.get('sport')
-            h_abbr = str(g.get('home_abbr', '')).upper()
-            a_abbr = str(g.get('away_abbr', '')).upper()
+            sport = game_copy.get('sport')
+            h_abbr = str(game_copy.get('home_abbr', '')).upper()
+            a_abbr = str(game_copy.get('away_abbr', '')).upper()
             
             h_scoped = f"{sport}:{h_abbr}"
             a_scoped = f"{sport}:{a_abbr}"
@@ -2216,18 +2223,19 @@ def api_state():
             if not (in_home or in_away): 
                 should_show = False
 
-        # Filter: Postponed/Suspended (Global)
-        status_lower = str(g.get('status', '')).lower()
+        # Logic 3: Global Postponed/Suspended (Overrides everything)
+        status_lower = str(game_copy.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
             should_show = False
 
-        if should_show:
-            visible_games.append(g)
+        # Apply the calculated visibility to the object
+        game_copy['is_shown'] = should_show
+        processed_games.append(game_copy)
 
     return jsonify({
         "status": "ok",
         "settings": response_settings,
-        "games": visible_games  # Return the filtered list
+        "games": processed_games  # Returns ALL games, but with correct is_shown flags
     })
 
 @app.route('/api/teams')
