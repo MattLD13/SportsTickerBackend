@@ -933,29 +933,29 @@ class TickerStreamer:
 
     def poll_backend(self):
         last_hash = ""
+        # Fix for "Offline" status caused by SSL certs on devices with wrong dates
+        requests.packages.urllib3.disable_warnings() 
+        
         while self.running:
             try:
                 url = f"{BACKEND_URL}/data?id={self.device_id}"
-                # Request data from server
-                r = requests.get(url, timeout=5)
+                
+                # FIX 1: verify=False ensures connection even if certificates fail
+                r = requests.get(url, timeout=10, verify=False)
                 data = r.json()
                 
                 # ==========================================
-                # FIX: CHECK FOR REBOOT COMMAND
+                # FIX 2: REBOOT LISTENER
                 # ==========================================
-                # The server sends this flag in global_config when the button is pressed
                 global_conf = data.get('global_config', {})
                 if global_conf.get('reboot') is True:
-                    print("⚠️ REBOOT COMMAND RECEIVED FROM SERVER")
-                    # 1. Clear the screen so it doesn't freeze on an image
+                    print("⚠️ REBOOT COMMAND RECEIVED")
                     self.matrix.Clear()
-                    # 2. Execute Linux reboot command
+                    # Execute Linux reboot
                     subprocess.run(['reboot'])
-                    # 3. Kill script to prevent further processing
                     sys.exit(0)
                 # ==========================================
 
-                # Check for Pairing Mode
                 if data.get('status') == 'pairing':
                     self.is_pairing = True
                     self.pairing_code = data.get('code')
@@ -963,19 +963,14 @@ class TickerStreamer:
                     time.sleep(2); continue
                 else: self.is_pairing = False
                 
-                # Process Content
                 content = data.get('content', {})
                 new_games = content.get('sports', [])
 
-                # Keep original order as a stable tie-breaker
                 for idx, g in enumerate(new_games):
-                    if isinstance(g, dict):
-                        g['_orig_index'] = idx
+                    if isinstance(g, dict): g['_orig_index'] = idx
 
-                # Strict Sort by start time first (then sport/id for stability)
                 new_games.sort(key=lambda x: (self.get_game_start_key(x), x.get('_orig_index', 0), x.get('sport', ''), x.get('id', '')))
 
-                # Separate static pages (weather/clock) from scrolling items
                 static_items = []
                 scrolling_items = []
                 for g in new_games:
@@ -985,13 +980,11 @@ class TickerStreamer:
                     else:
                         scrolling_items.append(g)
                 
-                # Robust Hash generation to detect changes
+                # Create hash based on Content + Settings to detect changes
                 current_hash = hashlib.md5(json.dumps({'g': new_games, 'c': data.get('local_config')}, sort_keys=True).encode()).hexdigest()
                 
                 if current_hash != last_hash:
-                    print(f"New Data Detected at {datetime.now().strftime('%H:%M:%S')}")
-                    
-                    # Download Logos
+                    print(f"Data Update: {len(scrolling_items)} sports")
                     logos = []
                     for g in scrolling_items:
                         if g.get('home_logo'): 
@@ -1005,12 +998,10 @@ class TickerStreamer:
                     fs = [self.executor.submit(self.download_and_process_logo, u, s) for u, s in unique_logos]
                     concurrent.futures.wait(fs)
                     
-                    # Update Settings
                     self.brightness = float(data.get('local_config', {}).get('brightness', 100)) / 100.0
                     self.scroll_sleep = data.get('local_config', {}).get('scroll_speed', 0.05)
                     self.inverted = data.get('local_config', {}).get('inverted', False)
                     
-                    # Update Lists
                     self.new_games_list = scrolling_items 
                     self.static_items = static_items
                     self.static_index = 0
@@ -1027,7 +1018,6 @@ class TickerStreamer:
             except Exception as e:
                 print(f"Poll Error: {e}")
             
-            # Wait before next poll
             time.sleep(REFRESH_RATE)
 
 if __name__ == "__main__":
