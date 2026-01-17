@@ -2089,7 +2089,7 @@ def get_ticker_data():
     if not ticker_id and len(tickers) == 1: 
         ticker_id = list(tickers.keys())[0]
     
-    # 2. Safety check
+    # 2. Safety check: If ID is invalid, return generic config to prevent crash
     if not ticker_id or ticker_id not in tickers:
         return jsonify({
             "status": "ok",
@@ -2119,12 +2119,10 @@ def get_ticker_data():
     visible_games = []
     COLLISION_ABBRS = {'LV'} 
 
-    # (Keep your existing game filtering logic here...)
     for g in raw_games:
         should_show = True
         if current_mode == 'live' and g.get('state') not in ['in', 'half']: should_show = False
         elif current_mode == 'my_teams':
-            # ... (Keep existing my_teams logic) ...
             sport = g.get('sport')
             h_abbr = str(g.get('home_abbr', '')).upper()
             a_abbr = str(g.get('away_abbr', '')).upper()
@@ -2146,22 +2144,22 @@ def get_ticker_data():
         if should_show:
             visible_games.append(g)
     
-    # ================= FIX START =================
-    # Construct global config that INCLUDES the reboot flag
+    # ================= FIX: INJECT REBOOT FLAG SAFELY =================
+    # Construct the response config
     g_config = { "mode": current_mode }
     
-    # Check the global state for reboot request
-    if state.get('reboot_requested', False):
+    # Only add reboot if specifically requested for THIS ticker
+    if rec.get('reboot_requested', False):
         g_config['reboot'] = True
         
     response = jsonify({ 
         "status": "ok", 
         "version": SERVER_VERSION,
-        "global_config": g_config, # <--- Sends reboot flag
+        "global_config": g_config, 
         "local_config": t_settings, 
         "content": { "sports": visible_games } 
     })
-    # ================= FIX END ==================
+    # ==================================================================
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
@@ -2354,10 +2352,36 @@ def api_teams():
 
 @app.route('/api/hardware', methods=['POST'])
 def api_hardware():
-    if request.json.get('action') == 'reboot':
-        with data_lock: state['reboot_requested'] = True
-        threading.Timer(10, lambda: state.update({'reboot_requested': False})).start()
-    return jsonify({"status": "ok"})
+    try:
+        data = request.json or {}
+        action = data.get('action')
+        ticker_id = data.get('ticker_id')
+        
+        if action == 'reboot':
+            # Target the specific ticker if ID is provided
+            if ticker_id and ticker_id in tickers:
+                with data_lock:
+                    tickers[ticker_id]['reboot_requested'] = True
+                
+                # Auto-clear flag after 15s to prevent boot loops
+                def clear_flag(tid):
+                    with data_lock:
+                        if tid in tickers: tickers[tid]['reboot_requested'] = False
+                threading.Timer(15, clear_flag, args=[ticker_id]).start()
+                return jsonify({"status": "ok", "message": f"Rebooting {ticker_id}"})
+                
+            # Fallback: Reboot the first ticker if no ID found (Legacy support)
+            elif len(tickers) > 0:
+                target = list(tickers.keys())[0]
+                with data_lock:
+                    tickers[target]['reboot_requested'] = True
+                threading.Timer(15, lambda: tickers[target].update({'reboot_requested': False})).start()
+                return jsonify({"status": "ok"})
+                
+        return jsonify({"status": "ignored"})
+    except Exception as e:
+        print(f"Hardware API Error: {e}")
+        return jsonify({"status": "error"}), 500
 
 @app.route('/api/debug', methods=['POST'])
 def api_debug():
