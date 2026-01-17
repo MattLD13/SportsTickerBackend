@@ -2119,10 +2119,12 @@ def get_ticker_data():
     visible_games = []
     COLLISION_ABBRS = {'LV'} 
 
+    # (Keep your existing game filtering logic here...)
     for g in raw_games:
         should_show = True
         if current_mode == 'live' and g.get('state') not in ['in', 'half']: should_show = False
         elif current_mode == 'my_teams':
+            # ... (Keep existing my_teams logic) ...
             sport = g.get('sport')
             h_abbr = str(g.get('home_abbr', '')).upper()
             a_abbr = str(g.get('away_abbr', '')).upper()
@@ -2144,58 +2146,28 @@ def get_ticker_data():
         if should_show:
             visible_games.append(g)
     
-    # ================= FIX START: Ticker-Specific Reboot =================
+    # ================= FIX START =================
+    # Construct global config that INCLUDES the reboot flag
     g_config = { "mode": current_mode }
     
-    # Check ONLY this ticker's specific reboot flag
-    if rec.get('reboot_requested', False):
+    # Check the global state for reboot request
+    if state.get('reboot_requested', False):
         g_config['reboot'] = True
         
     response = jsonify({ 
         "status": "ok", 
         "version": SERVER_VERSION,
-        "global_config": g_config, 
+        "global_config": g_config, # <--- Sends reboot flag
         "local_config": t_settings, 
         "content": { "sports": visible_games } 
     })
-    # ================= FIX END ===========================================
+    # ================= FIX END ==================
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     
     return response
-
-@app.route('/api/hardware', methods=['POST'])
-def api_hardware():
-    data = request.json
-    action = data.get('action')
-    ticker_id = data.get('ticker_id')
-    
-    if action == 'reboot':
-        # If ID provided, reboot ONLY that ticker
-        if ticker_id and ticker_id in tickers:
-            with data_lock:
-                tickers[ticker_id]['reboot_requested'] = True
-            
-            # Clear flag after 15s to prevent boot loops
-            def clear_flag(tid):
-                with data_lock:
-                    if tid in tickers: tickers[tid]['reboot_requested'] = False
-            threading.Timer(15, clear_flag, args=[ticker_id]).start()
-            
-            print(f"🔄 Reboot scheduled for ticker: {ticker_id}")
-            return jsonify({"status": "ok", "message": f"Rebooting {ticker_id}"})
-            
-        # Fallback: If no ID (legacy), reboot ALL (or just first)
-        elif len(tickers) > 0:
-            target = list(tickers.keys())[0]
-            with data_lock:
-                tickers[target]['reboot_requested'] = True
-            threading.Timer(15, lambda: tickers[target].update({'reboot_requested': False})).start()
-            return jsonify({"status": "ok", "message": "Rebooting primary ticker"})
-            
-    return jsonify({"status": "error", "message": "Invalid parameters"}), 400
 
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
