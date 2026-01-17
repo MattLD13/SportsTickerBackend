@@ -2255,71 +2255,61 @@ def get_league_options():
     return jsonify(league_meta)
 
 @app.route('/data', methods=['GET'])
-def get_ticker_data():
+def get_hardware_data():
     ticker_id = request.args.get('id')
-    if not ticker_id: return jsonify({"error": "No ID"}), 400
     
-    if ticker_id not in tickers:
-        tickers[ticker_id] = { "paired": False, "clients": [], "settings": DEFAULT_TICKER_SETTINGS.copy(), "pairing_code": generate_pairing_code(), "last_seen": time.time(), "name": "New Ticker", "my_teams": [] }
-        save_specific_ticker(ticker_id)
-    else: 
-        tickers[ticker_id]['last_seen'] = time.time()
+    # 1. Identify Ticker (Same logic)
+    if not ticker_id and len(tickers) == 1: ticker_id = list(tickers.keys())[0]
     
+    if not ticker_id or ticker_id not in tickers:
+        # Default behavior if unknown
+        return jsonify({"settings": state, "games": fetcher.get_snapshot_for_delay(0)})
+
+    # 2. Update Last Seen
     rec = tickers[ticker_id]
-    if not rec.get('clients'): return jsonify({"status": "pairing", "code": rec['pairing_code']})
+    rec['last_seen'] = time.time()
     
-    t_settings = rec['settings']
-    delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
-    games_for_ticker = fetcher.get_snapshot_for_delay(delay_seconds)
+    # 3. Prepare Settings
+    t_settings = rec['settings'].copy()
+    saved_teams = rec.get('my_teams', [])
+    t_settings['my_teams'] = saved_teams # Inject saved teams for hardware reference
     
-    with data_lock:
-        global_mode = state['mode']
-        my_teams_list = rec.get('my_teams', state['my_teams'])
-        
-        conf = { 
-            "active_sports": state['active_sports'], 
-            "mode": global_mode, 
-            "weather": state['weather_city']
-        }
+    # 4. Filter Games (Hardware Logic)
+    delay = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
+    raw_games = fetcher.get_snapshot_for_delay(delay)
     
     visible_games = []
+    global_mode = state.get('mode', 'all') # Use global mode override if present
     
-    for g in games_for_ticker:
+    for g in raw_games:
         should_show = True
-        if not g.get('is_shown', True): pass 
-
-        if global_mode == 'live':
-             if g.get('state') not in ['in', 'half']: should_show = False
-             
-        elif global_mode == 'my_teams':
-            sport = g.get('sport')
-            h_abbr = str(g.get('home_abbr', '')).upper()
-            a_abbr = str(g.get('away_abbr', '')).upper()
-            
-            # === STANDARDIZED SCOPED ID CHECK ===
-            # Since all teams are now saved as "nfl:NYG", we just construct that ID and check.
-            h_scoped = f"{sport}:{h_abbr}"
-            a_scoped = f"{sport}:{a_abbr}"
-            
-            in_home = h_scoped in my_teams_list
-            in_away = a_scoped in my_teams_list
-            
-            if not (in_home or in_away): should_show = False
-            # ====================================
-
-        status_lower = str(g.get('status', '')).lower()
-        if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
+        
+        # Mode Logic: Live Only
+        if global_mode == 'live' and g.get('state') not in ['in', 'half']: 
             should_show = False
+            
+        # Mode Logic: My Teams
+        elif global_mode == 'my_teams':
+            h_id = g.get('home_id') or g.get('home_abbr')
+            a_id = g.get('away_id') or g.get('away_abbr')
+            sport = g.get('sport')
+            
+            # Smart Check (Matches app logic)
+            h_smart = f"{sport}:{g.get('home_abbr')}"
+            a_smart = f"{sport}:{g.get('away_abbr')}"
+            
+            match_home = (h_id in saved_teams) or (h_smart in saved_teams) or (g.get('home_abbr') in saved_teams)
+            match_away = (a_id in saved_teams) or (a_smart in saved_teams) or (g.get('away_abbr') in saved_teams)
+            
+            if not (match_home or match_away):
+                should_show = False
 
         if should_show:
             visible_games.append(g)
-    
-    return jsonify({ 
-        "status": "ok", 
-        "version": SERVER_VERSION,
-        "global_config": conf, 
-        "local_config": rec['settings'], 
-        "content": { "sports": visible_games } 
+
+    return jsonify({
+        "settings": t_settings,
+        "games": visible_games
     })
     
 @app.route('/pair', methods=['POST'])
@@ -2392,11 +2382,38 @@ def update_settings(tid):
     save_specific_ticker(tid)
     
     return jsonify({"success": True})
+@app.route('/api/state', methods=['GET'])
+def get_app_state():
+    # 1. Identify the Ticker ID (from URL or Client Header)
+    ticker_id = request.args.get('id')
+    if not ticker_id:
+        cid = request.headers.get('X-Client-ID')
+        if cid:
+            for tid, t_data in tickers.items():
+                if cid in t_data.get('clients', []):
+                    ticker_id = tid
+                    break
+    
+    # 2. Get the Base Settings
+    if ticker_id and ticker_id in tickers:
+        # Load specific ticker settings
+        current_settings = tickers[ticker_id]['settings'].copy()
+        current_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
+        current_settings['ticker_id'] = ticker_id # Confirm ID back to app
+    else:
+        # Fallback to global defaults
+        current_settings = state.copy()
 
-@app.route('/api/state')
-def api_state():
-    # Return latest games for the UI
-    with data_lock: return jsonify({'settings': state, 'games': state['current_games']})
+    # 3. Get ALL Games (Unfiltered)
+    # The App needs to see everything so you can browse/select games
+    all_games = fetcher.get_snapshot_for_delay(0)
+    
+    return jsonify({
+        "status": "ok",
+        "settings": current_settings,
+        "games": all_games
+    })
+    
 @app.route('/api/teams')
 def api_teams():
     with data_lock: return jsonify(state['all_teams_data'])
