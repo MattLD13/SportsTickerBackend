@@ -168,18 +168,70 @@ struct TeamData: Decodable, Identifiable, Hashable, Sendable {
 }
 
 struct TickerState: Codable, Sendable {
+    // === RESTORED TO NON-OPTIONAL (Fixes Build Errors) ===
     var active_sports: [String: Bool]
     var mode: String
-    var scroll_seamless: Bool?
+    var scroll_seamless: Bool
     var my_teams: [String]
     var debug_mode: Bool
-    var custom_date: String?
-    var scroll_speed: Int?
-    var show_debug_options: Bool?
-    var weather_location: String?
-    var weather_city: String?
-    var weather_lat: Double?
-    var weather_lon: Double?
+    var custom_date: String? // Keep this one optional
+    var scroll_speed: Double // Changed to Double, but Non-Optional
+    var show_debug_options: Bool
+    var weather_location: String
+    var weather_city: String
+    var weather_lat: Double
+    var weather_lon: Double
+    var ticker_id: String?   // Keep optional
+    
+    enum CodingKeys: String, CodingKey {
+        case active_sports, mode, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id
+    }
+    
+    // === ROBUST DECODER (Fixes Crashes) ===
+    // If server sends bad data (like 0.03 for an Int), we catch it here and use a default.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        active_sports = (try? container.decode([String: Bool].self, forKey: .active_sports)) ?? ["nfl": true]
+        mode = (try? container.decode(String.self, forKey: .mode)) ?? "all"
+        scroll_seamless = (try? container.decode(Bool.self, forKey: .scroll_seamless)) ?? false
+        my_teams = (try? container.decode([String].self, forKey: .my_teams)) ?? []
+        debug_mode = (try? container.decode(Bool.self, forKey: .debug_mode)) ?? false
+        custom_date = try? container.decodeIfPresent(String.self, forKey: .custom_date)
+        
+        // Handle Speed Safety (Double or Int)
+        if let speedDouble = try? container.decode(Double.self, forKey: .scroll_speed) {
+            scroll_speed = speedDouble
+        } else if let speedInt = try? container.decode(Int.self, forKey: .scroll_speed) {
+            scroll_speed = Double(speedInt)
+        } else {
+            scroll_speed = 5.0
+        }
+        
+        show_debug_options = (try? container.decode(Bool.self, forKey: .show_debug_options)) ?? false
+        weather_location = (try? container.decode(String.self, forKey: .weather_location)) ?? "New York"
+        weather_city = (try? container.decode(String.self, forKey: .weather_city)) ?? "New York"
+        weather_lat = (try? container.decode(Double.self, forKey: .weather_lat)) ?? 40.7128
+        weather_lon = (try? container.decode(Double.self, forKey: .weather_lon)) ?? -74.0060
+        ticker_id = try? container.decodeIfPresent(String.self, forKey: .ticker_id)
+    }
+    
+    // === DEFAULT INIT (For ViewModel) ===
+    init(active_sports: [String: Bool] = ["nfl": true], mode: String = "all", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil) {
+        self.active_sports = active_sports
+        self.mode = mode
+        self.scroll_seamless = scroll_seamless
+        self.my_teams = my_teams
+        self.debug_mode = debug_mode
+        self.custom_date = custom_date
+        self.scroll_speed = scroll_speed
+        self.show_debug_options = show_debug_options
+        self.weather_location = weather_location
+        self.weather_city = weather_city
+        self.weather_lat = weather_lat
+        self.weather_lon = weather_lon
+        self.ticker_id = ticker_id
+    }
 }
 
 struct APIResponse: Decodable, Sendable {
@@ -212,6 +264,12 @@ struct PairResponse: Decodable, Sendable {
 // ==========================================
 // MARK: - 2. VIEW MODEL
 // ==========================================
+import SwiftUI
+import Foundation
+import Combine
+import UIKit
+import CoreLocation
+
 @MainActor
 class TickerViewModel: ObservableObject {
     @Published var games: [Game] = []
@@ -220,12 +278,18 @@ class TickerViewModel: ObservableObject {
     
     // THE SOURCE OF TRUTH
     @Published var state: TickerState = TickerState(
-        active_sports: ["nfl": true], mode: "all", scroll_seamless: false,
-        my_teams: [], debug_mode: false,
-        custom_date: nil,
-        scroll_speed: 5,
-        weather_location: "New York", weather_city: "New York", weather_lat: 40.7128, weather_lon: -74.0060
-    )
+            active_sports: ["nfl": true],
+            mode: "all",
+            scroll_seamless: false,
+            my_teams: [],
+            debug_mode: false,
+            custom_date: nil,
+            scroll_speed: 0.03, // Now a Double
+            weather_location: "New York",
+            weather_city: "New York",
+            weather_lat: 40.7128,
+            weather_lon: -74.0060
+        )
     
     @Published var devices: [TickerDevice] = []
     @Published var pairCode: String = ""
@@ -238,7 +302,7 @@ class TickerViewModel: ObservableObject {
     @Published var connectionStatus: String = "Connecting..."
     @Published var statusColor: Color = .gray
     
-    // LOCKING MECHANISM
+    // LOCKING MECHANISM (Stops updates while you tap)
     @Published var isEditing: Bool = false
     
     private var isServerReachable = false
@@ -252,11 +316,18 @@ class TickerViewModel: ObservableObject {
         return newID
     }
     
+    // PERSISTENT ID TRACKING
+    // Remembers your ticker ID so the app doesn't accidentally load empty globals
+    private var savedTickerID: String? {
+        get { UserDefaults.standard.string(forKey: "latchedTickerID") }
+        set { UserDefaults.standard.set(newValue, forKey: "latchedTickerID") }
+    }
+    
     init() {
         let savedURL = UserDefaults.standard.string(forKey: "serverURL") ?? "https://ticker.mattdicks.org"
         self.serverURL = savedURL
         
-        // Initial Fetch
+        // Initial Data Load
         fetchData()
         fetchLeagueOptions()
         fetchAllTeams()
@@ -265,8 +336,7 @@ class TickerViewModel: ObservableObject {
         // Background Polling (Every 5s)
         timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             Task { @MainActor in
-                // CRITICAL: Only fetch if user is NOT editing.
-                // This prevents the server from overwriting your work while you tap.
+                // Only fetch if user is NOT editing to prevent overwrites
                 if !self.isEditing {
                     self.fetchData()
                     self.fetchDevices()
@@ -280,44 +350,86 @@ class TickerViewModel: ObservableObject {
         return serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
     }
     
-    // === 1. FETCH DATA (THE READ) ===
-    func fetchData() {
-        let base = getBaseURL()
-        if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
-        
-        // Always ask for YOUR specific ticker ID
-        var urlString = "\(base)/api/state"
-        if let myID = self.devices.first?.id { urlString += "?id=\(myID)" }
+    // === 1. FETCH DATA (Read) ===
+    // === 1. FETCH DATA (Read) ===
+        func fetchData() {
+            let base = getBaseURL()
+            if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
+            
+            // PRIORITY: 1. Discovered ID -> 2. Saved/Latched ID
+            // This ensures that even if discovery fails (Simulator), we use the ID we learned from Pairing.
+            var urlString = "\(base)/api/state"
+            if let targetID = self.devices.first?.id ?? self.savedTickerID {
+                urlString += "?id=\(targetID)"
+            }
 
-        guard let url = URL(string: urlString) else { return }
-        
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            if let _ = error { DispatchQueue.main.async { self.isServerReachable = false; self.updateOverallStatus() }; return }
-            guard let data = data else { return }
-            do {
-                let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
-                
-                DispatchQueue.main.async {
-                    self.isServerReachable = true
-                    self.games = decoded.games.sorted { g1, g2 in
-                        if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
-                        if g1.state == "in" && g2.state != "in" { return true }
-                        return false
+            guard let url = URL(string: urlString) else { return }
+            
+            URLSession.shared.dataTask(with: url) { data, _, error in
+                // 1. Network Error Handling
+                if let error = error {
+                    DispatchQueue.main.async {
+                        print("❌ Network Error: \(error.localizedDescription)")
+                        self.isServerReachable = false
+                        self.updateOverallStatus()
                     }
-                    
-                    // ONLY overwrite local state if we are NOT editing
-                    if !self.isEditing {
-                        self.state = decoded.settings
-                        if let city = decoded.settings.weather_city { self.weatherLocInput = city }
-                    }
-                    
-                    self.updateOverallStatus()
+                    return
                 }
-            } catch { DispatchQueue.main.async { self.isServerReachable = true } }
-        }.resume()
-    }
+                
+                guard let data = data else { return }
+                
+                do {
+                    // 2. Attempt to Decode
+                    let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
+                    
+                    DispatchQueue.main.async {
+                        self.isServerReachable = true
+                        
+                        // 3. Sort Games (Stocks top, then Active games)
+                        self.games = decoded.games.sorted { g1, g2 in
+                            if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
+                            if g1.state == "in" && g2.state != "in" { return true }
+                            return false
+                        }
+                        
+                        // 4. Update State (ONLY if user is not currently tapping buttons)
+                        if !self.isEditing {
+                            self.state = decoded.settings
+                            
+                            // DEBUG: Confirm we actually loaded teams
+                            if !self.state.my_teams.isEmpty {
+                                print("📥 Synced State: \(self.state.my_teams.count) teams loaded.")
+                            }
+                            
+                            // 5. LATCH ID: If server confirms an ID, save it permanently
+                            // This fixes the "Stranger" bug where the app forgets who it belongs to
+                            if let confirmedID = decoded.settings.ticker_id {
+                                if self.savedTickerID != confirmedID {
+                                    print("🔗 Latching onto Ticker ID: \(confirmedID)")
+                                    self.savedTickerID = confirmedID
+                                }
+                            }
+                            
+                            // Update weather input if valid
+                            if !decoded.settings.weather_city.isEmpty {
+                                self.weatherLocInput = decoded.settings.weather_city
+                            }
+                        }
+                        
+                        self.updateOverallStatus()
+                    }
+                } catch {
+                    // === CRITICAL DEBUGGING ===
+                    // This will tell us if "scroll_speed" or another field is crashing the app
+                    print("❌ DECODING ERROR: \(error)")
+                    
+                    // Keep status green if network is fine, even if data payload is bad
+                    DispatchQueue.main.async { self.isServerReachable = true }
+                }
+            }.resume()
+        }
     
-    // === 2. TOGGLE TEAM (THE EDIT) ===
+    // === 2. TOGGLE TEAM (Edit) ===
     func toggleTeam(_ teamID: String) {
         // A. LOCK POLLING
         self.isEditing = true
@@ -336,43 +448,51 @@ class TickerViewModel: ObservableObject {
         }
     }
     
-    // === 3. SAVE SETTINGS (THE WRITE) ===
-    func saveSettings() {
-        print("💾 Saving \(state.my_teams.count) teams...")
-        let base = getBaseURL()
-        guard let url = URL(string: "\(base)/api/config") else { return }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        
-        do {
-            let data = try JSONEncoder().encode(state)
-            var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
+    // === 3. SAVE SETTINGS (Write) ===
+        func saveSettings() {
+            // 1. Identify Target
+            let targetID = self.devices.first?.id ?? self.savedTickerID
             
-            // Inject Ticker ID so server saves to correct file
-            if let activeDeviceID = self.devices.first?.id {
-                jsonDict["ticker_id"] = activeDeviceID
+            // 2. SAFETY GUARD: STOP THE OVERWRITE
+            // If the app doesn't know EXACTLY which ticker ID to update,
+            // it means we are disconnected or unpaired. ABORT SAVE.
+            guard let validID = targetID else {
+                print("🛑 SAFETY: No Ticker Identified. Save aborted to prevent data overwrite.")
+                // Ideally, show an alert to the user here in the UI
+                return
             }
             
-            request.httpBody = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
+            print("💾 Saving \(state.my_teams.count) teams to \(validID)...")
+            let base = getBaseURL()
+            guard let url = URL(string: "\(base)/api/config") else { return }
             
-            URLSession.shared.dataTask(with: request) { _, _, _ in
-                // D. UNLOCK POLLING (But wait 2s for server file IO to finish)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                    self.isEditing = false
-                    print("✅ Save complete. Resuming sync.")
-                    self.fetchData() // Force one clean sync
-                }
-            }.resume()
-        } catch { print("Save Error") }
-    }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
+            
+            do {
+                let data = try JSONEncoder().encode(state)
+                var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
+                
+                // 3. Force the ID into the payload so the server knows exactly where to write
+                jsonDict["ticker_id"] = validID
+                
+                request.httpBody = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
+                
+                URLSession.shared.dataTask(with: request) { _, _, _ in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                        if self.saveDebounceTimer?.isValid == true { return }
+                        self.isEditing = false
+                        print("✅ Save complete. Resuming sync.")
+                        self.fetchData()
+                    }
+                }.resume()
+            } catch { print("Save Error") }
+        }
     
-    // ... (Keep fetchLeagueOptions, fetchAllTeams, fetchDevices, Pair/Unpair helpers as they were) ...
-    // Note: Paste the rest of the helper functions from the previous code block here.
+    // --- STANDARD HELPERS ---
     
-    // HELPER: Full code for helpers to ensure copy-paste works
     func fetchLeagueOptions() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/leagues") else { return }
@@ -408,7 +528,8 @@ class TickerViewModel: ObservableObject {
 
     func updateOverallStatus() {
         if !isServerReachable { self.connectionStatus = "Server Offline"; self.statusColor = .red; return }
-        if devices.isEmpty { self.connectionStatus = "Server Online (No Ticker)"; self.statusColor = .orange; return }
+        // If we have devices OR a latched ID, we are effectively connected
+        if devices.isEmpty && savedTickerID == nil { self.connectionStatus = "Server Online (No Ticker)"; self.statusColor = .orange; return }
         self.connectionStatus = "Connected • \(self.games.count) Items"; self.statusColor = .green
     }
     
@@ -426,31 +547,57 @@ class TickerViewModel: ObservableObject {
     }
     
     func pairTicker(code: String, name: String) {
-        let base = getBaseURL(); guard let url = URL(string: "\(base)/pair") else { return }
-        let body: [String: Any] = ["code": code, "name": name]
-        var req = URLRequest(url: url); req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        URLSession.shared.dataTask(with: req) { data, _, _ in
-             if let d = data, let res = try? JSONDecoder().decode(PairResponse.self, from: d) {
-                 DispatchQueue.main.async { if res.success { self.showPairSuccess = true; self.fetchDevices() } else { self.pairError = res.message } }
-             }
-        }.resume()
-    }
+            let base = getBaseURL(); guard let url = URL(string: "\(base)/pair") else { return }
+            let body: [String: Any] = ["code": code, "name": name]
+            var req = URLRequest(url: url); req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            URLSession.shared.dataTask(with: req) { data, _, _ in
+                 if let d = data, let res = try? JSONDecoder().decode(PairResponse.self, from: d) {
+                     DispatchQueue.main.async {
+                         if res.success {
+                             self.showPairSuccess = true
+                             self.savedTickerID = res.ticker_id // 1. Save ID
+                             self.fetchDevices()                // 2. Update Status
+                             
+                             // === FIX: FORCE DATA RELOAD ===
+                             print("🔗 Pair successful. Fetching teams for \(res.ticker_id ?? "unknown")...")
+                             self.fetchData()                   // 3. GET TEAMS NOW
+                             // ==============================
+                             
+                         } else { self.pairError = res.message }
+                     }
+                 }
+            }.resume()
+        }
     
     func pairTickerByID(id: String, name: String) {
-        let base = getBaseURL(); guard let url = URL(string: "\(base)/pair/id") else { return }
-        let body: [String: Any] = ["id": id, "name": name]
-        var req = URLRequest(url: url); req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        URLSession.shared.dataTask(with: req) { data, _, _ in
-             if let d = data, let res = try? JSONDecoder().decode(PairResponse.self, from: d) {
-                 DispatchQueue.main.async { if res.success { self.showPairSuccess = true; self.fetchDevices() } else { self.pairError = res.message } }
-             }
-        }.resume()
-    }
+            let base = getBaseURL(); guard let url = URL(string: "\(base)/pair/id") else { return }
+            let body: [String: Any] = ["id": id, "name": name]
+            var req = URLRequest(url: url); req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            URLSession.shared.dataTask(with: req) { data, _, _ in
+                 if let d = data, let res = try? JSONDecoder().decode(PairResponse.self, from: d) {
+                     DispatchQueue.main.async {
+                         if res.success {
+                             self.showPairSuccess = true
+                             self.savedTickerID = res.ticker_id // 1. Save ID
+                             self.fetchDevices()                // 2. Update Status
+                             
+                             // === FIX: FORCE DATA RELOAD ===
+                             print("🔗 Pair successful. Fetching teams for \(res.ticker_id ?? "unknown")...")
+                             self.fetchData()                   // 3. GET TEAMS NOW
+                             // ==============================
+                             
+                         } else { self.pairError = res.message }
+                     }
+                 }
+            }.resume()
+        }
     
     func unpairTicker(id: String) {
-        devices.removeAll { $0.id == id }; updateOverallStatus()
+        devices.removeAll { $0.id == id }
+        if savedTickerID == id { savedTickerID = nil } // Clear latch
+        updateOverallStatus()
         let base = getBaseURL(); guard let url = URL(string: "\(base)/ticker/\(id)/unpair") else { return }
         var req = URLRequest(url: url); req.httpMethod = "POST"; req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
         URLSession.shared.dataTask(with: req).resume()
