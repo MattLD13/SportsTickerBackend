@@ -2354,9 +2354,11 @@ def update_settings(tid):
     
     return jsonify({"success": True})
 @app.route('/api/state', methods=['GET'])
-def get_app_state():
-    # 1. Identify the Ticker ID (from URL or Client Header)
+def api_state():
+    # 1. Identify Ticker (ID param or Client Header)
     ticker_id = request.args.get('id')
+    
+    # Try to find ID via Client Header if not provided in URL
     if not ticker_id:
         cid = request.headers.get('X-Client-ID')
         if cid:
@@ -2365,24 +2367,32 @@ def get_app_state():
                     ticker_id = tid
                     break
     
-    # 2. Get the Base Settings
-    if ticker_id and ticker_id in tickers:
-        # Load specific ticker settings
-        current_settings = tickers[ticker_id]['settings'].copy()
-        current_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
-        current_settings['ticker_id'] = ticker_id # Confirm ID back to app
-    else:
-        # Fallback to global defaults
-        current_settings = state.copy()
+    # Fallback: Auto-select if only 1 ticker exists
+    if not ticker_id and len(tickers) == 1:
+        ticker_id = list(tickers.keys())[0]
 
-    # 3. Get ALL Games (Unfiltered)
-    # The App needs to see everything so you can browse/select games
-    all_games = fetcher.get_snapshot_for_delay(0)
+    # 2. Prepare Settings
+    # Start with Global Defaults to ensure all keys exist
+    response_settings = state.copy()
+    
+    if ticker_id and ticker_id in tickers:
+        # === THE FIX ===
+        # Overwrite global defaults with Ticker-Specific settings
+        local_settings = tickers[ticker_id]['settings']
+        response_settings.update(local_settings)
+        
+        # Inject the saved teams so the App sees them as "Selected"
+        response_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
+        response_settings['ticker_id'] = ticker_id # Confirm identity back to App
+    
+    # 3. Get Games
+    # App always wants "Live" data (0 delay) for the preview list
+    games = fetcher.get_snapshot_for_delay(0)
     
     return jsonify({
         "status": "ok",
-        "settings": current_settings,
-        "games": all_games
+        "settings": response_settings,
+        "games": games
     })
     
 @app.route('/api/teams')
