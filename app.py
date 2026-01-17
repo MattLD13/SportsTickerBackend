@@ -2039,9 +2039,11 @@ def get_league_options():
 def get_ticker_data():
     ticker_id = request.args.get('id')
     
+    # Default to the first ticker if none specified (single device mode)
     if not ticker_id and len(tickers) == 1: 
         ticker_id = list(tickers.keys())[0]
     
+    # If truly no ID found, return generic empty response
     if not ticker_id or ticker_id not in tickers:
         return jsonify({
             "status": "ok",
@@ -2057,6 +2059,26 @@ def get_ticker_data():
     saved_teams = rec.get('my_teams', []) 
     current_mode = t_settings.get('mode', 'all') 
     
+    # --- PAIRING LOGIC FIX ---
+    # If the server thinks we are NOT paired, we must send the code.
+    # We also check if 'clients' is empty just to be safe.
+    is_paired = rec.get('paired', False)
+    if not rec.get('clients'): 
+        is_paired = False
+        
+    pairing_data = {}
+    if not is_paired:
+        # Ensure a code exists
+        if not rec.get('pairing_code'):
+            rec['pairing_code'] = generate_pairing_code()
+            save_specific_ticker(ticker_id)
+            
+        pairing_data = {
+            "is_pairing_mode": True,
+            "code": rec.get('pairing_code')
+        }
+    # -------------------------
+
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
     
@@ -2093,11 +2115,13 @@ def get_ticker_data():
         if should_show:
             visible_games.append(g)
     
+    # Return the response with the new 'pairing' object
     return jsonify({ 
         "status": "ok", 
         "version": SERVER_VERSION,
         "global_config": { "mode": current_mode }, 
         "local_config": t_settings, 
+        "pairing": pairing_data,  # <--- NEW FIELD
         "content": { "sports": visible_games } 
     })
 
