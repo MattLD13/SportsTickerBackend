@@ -366,83 +366,64 @@ class TickerViewModel: ObservableObject {
     }
     
     // === 1. FETCH DATA (Read) ===
-    // === 1. FETCH DATA (Read) ===
-        func fetchData() {
-            let base = getBaseURL()
-            if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
-            
-            // PRIORITY: 1. Discovered ID -> 2. Saved/Latched ID
-            // This ensures that even if discovery fails (Simulator), we use the ID we learned from Pairing.
-            var urlString = "\(base)/api/state"
-            if let targetID = self.devices.first?.id ?? self.savedTickerID {
-                urlString += "?id=\(targetID)"
-            }
-
-            guard let url = URL(string: urlString) else { return }
-            
-            URLSession.shared.dataTask(with: url) { data, _, error in
-                // 1. Network Error Handling
-                if let error = error {
-                    DispatchQueue.main.async {
-                        print("❌ Network Error: \(error.localizedDescription)")
-                        self.isServerReachable = false
-                        self.updateOverallStatus()
-                    }
-                    return
-                }
-                
-                guard let data = data else { return }
-                
-                do {
-                    // 2. Attempt to Decode
-                    let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
-                    
-                    DispatchQueue.main.async {
-                        self.isServerReachable = true
-                        
-                        // 3. Sort Games (Stocks top, then Active games)
-                        self.games = decoded.games.sorted { g1, g2 in
-                            if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
-                            if g1.state == "in" && g2.state != "in" { return true }
-                            return false
-                        }
-                        
-                        // 4. Update State (ONLY if user is not currently tapping buttons)
-                        if !self.isEditing {
-                            self.state = decoded.settings
-                            
-                            // DEBUG: Confirm we actually loaded teams
-                            if !self.state.my_teams.isEmpty {
-                                print("📥 Synced State: \(self.state.my_teams.count) teams loaded.")
-                            }
-                            
-                            // 5. LATCH ID: If server confirms an ID, save it permanently
-                            // This fixes the "Stranger" bug where the app forgets who it belongs to
-                            if let confirmedID = decoded.settings.ticker_id {
-                                if self.savedTickerID != confirmedID {
-                                    print("🔗 Latching onto Ticker ID: \(confirmedID)")
-                                    self.savedTickerID = confirmedID
-                                }
-                            }
-                            
-                            // Update weather input if valid
-                            if !decoded.settings.weather_city.isEmpty {
-                                self.weatherLocInput = decoded.settings.weather_city
-                            }
-                        }
-                        
-                        self.updateOverallStatus()
-                    }
-                } catch {
-                    // === CRITICAL DEBUGGING ===
-                    // This will tell us if "scroll_speed" or another field is crashing the app
-                    print("❌ DECODING ERROR: \(error)")
-                    
-                    // Keep status green if network is fine, even if data payload is bad
-                    DispatchQueue.main.async { self.isServerReachable = true }
-                }
-            }.resume()
+    func fetchData() {
+        let base = getBaseURL()
+        if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
+        
+        var urlString = "\(base)/api/state"
+        if let targetID = self.devices.first?.id ?? self.savedTickerID {
+            urlString += "?id=\(targetID)"
         }
+
+        guard let url = URL(string: urlString) else { return }
+        
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            if let error = error {
+                DispatchQueue.main.async {
+                    self.isServerReachable = false
+                    self.updateOverallStatus()
+                }
+                return
+            }
+            
+            guard let data = data else { return }
+            
+            do {
+                let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
+                
+                DispatchQueue.main.async {
+                    self.isServerReachable = true
+                    
+                    self.games = decoded.games.sorted { g1, g2 in
+                        if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
+                        if g1.state == "in" && g2.state != "in" { return true }
+                        return false
+                    }
+                    
+                    if !self.isEditing {
+                        self.state = decoded.settings
+                        if !self.state.my_teams.isEmpty {
+                            print("📥 Synced State: \(self.state.my_teams.count) teams loaded.")
+                        }
+                        
+                        // === FIX START: REMOVED LATCH LOGIC ===
+                        // We deleted the lines that auto-saved savedTickerID here.
+                        // This prevents the app from re-attaching to a ticker it doesn't own.
+                        // ======================================
+                        
+                        if !decoded.settings.weather_city.isEmpty {
+                            self.weatherLocInput = decoded.settings.weather_city
+                        }
+                    }
+                    
+                    self.updateOverallStatus()
+                }
+            } catch {
+                print("❌ DECODING ERROR: \(error)")
+                DispatchQueue.main.async { self.isServerReachable = true }
+            }
+        }.resume()
+    }
     
     // === 2. TOGGLE TEAM (Edit) ===
     func toggleTeam(_ teamID: String) {
@@ -464,47 +445,50 @@ class TickerViewModel: ObservableObject {
     }
     
     // === 3. SAVE SETTINGS (Write) ===
-        func saveSettings() {
-            // 1. Identify Target
-            let targetID = self.devices.first?.id ?? self.savedTickerID
+    func saveSettings() {
+        let targetID = self.devices.first?.id ?? self.savedTickerID
+        
+        guard let validID = targetID else { return }
+        
+        let base = getBaseURL()
+        guard let url = URL(string: "\(base)/api/config") else { return }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID") // This matches the Python check
+        
+        do {
+            let data = try JSONEncoder().encode(state)
+            var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
+            jsonDict["ticker_id"] = validID
+            request.httpBody = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
             
-            // 2. SAFETY GUARD: STOP THE OVERWRITE
-            // If the app doesn't know EXACTLY which ticker ID to update,
-            // it means we are disconnected or unpaired. ABORT SAVE.
-            guard let validID = targetID else {
-                print("🛑 SAFETY: No Ticker Identified. Save aborted to prevent data overwrite.")
-                // Ideally, show an alert to the user here in the UI
-                return
-            }
-            
-            print("💾 Saving \(state.my_teams.count) teams to \(validID)...")
-            let base = getBaseURL()
-            guard let url = URL(string: "\(base)/api/config") else { return }
-            
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-            
-            do {
-                let data = try JSONEncoder().encode(state)
-                var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
+            URLSession.shared.dataTask(with: request) { data, response, error in
                 
-                // 3. Force the ID into the payload so the server knows exactly where to write
-                jsonDict["ticker_id"] = validID
-                
-                request.httpBody = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
-                
-                URLSession.shared.dataTask(with: request) { _, _, _ in
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                        if self.saveDebounceTimer?.isValid == true { return }
-                        self.isEditing = false
-                        print("✅ Save complete. Resuming sync.")
-                        self.fetchData()
+                // === NEW SECURITY HANDLING ===
+                if let httpResponse = response as? HTTPURLResponse {
+                    if httpResponse.statusCode == 403 {
+                        DispatchQueue.main.async {
+                            print("⛔ Access Denied. Unpairing local app.")
+                            // Server rejected us, so we shouldn't be controlling this ticker.
+                            self.savedTickerID = nil
+                            self.devices.removeAll()
+                            self.updateOverallStatus()
+                        }
+                        return
                     }
-                }.resume()
-            } catch { print("Save Error") }
-        }
+                }
+                // =============================
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    if self.saveDebounceTimer?.isValid == true { return }
+                    self.isEditing = false
+                    self.fetchData()
+                }
+            }.resume()
+        } catch { print("Save Error") }
+    }
     
     // --- STANDARD HELPERS ---
     
@@ -531,12 +515,29 @@ class TickerViewModel: ObservableObject {
     func fetchDevices() {
         let base = getBaseURL()
         guard let url = URL(string: "\(base)/tickers") else { return }
+        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
+        
         URLSession.shared.dataTask(with: request) { data, _, _ in
             if let d = data, let decoded = try? JSONDecoder().decode([TickerDevice].self, from: d) {
-                DispatchQueue.main.async { self.devices = decoded; self.updateOverallStatus() }
+                
+                DispatchQueue.main.async {
+                    self.devices = decoded
+                    
+                    // === FIX: AUTO-LOGOUT LOGIC ===
+                    // If the server says we have NO paired devices, we must forget the saved ID.
+                    if self.devices.isEmpty {
+                        if self.savedTickerID != nil {
+                            print("🚫 Server reports no paired devices. Clearing latched ID.")
+                            self.savedTickerID = nil
+                        }
+                    }
+                    // ==============================
+                    
+                    self.updateOverallStatus()
+                }
             }
         }.resume()
     }
@@ -562,26 +563,68 @@ class TickerViewModel: ObservableObject {
     }
     
     func pairTicker(code: String, name: String) {
-            let base = getBaseURL(); guard let url = URL(string: "\(base)/pair") else { return }
+            let base = getBaseURL()
+            guard let url = URL(string: "\(base)/pair") else {
+                self.pairError = "Invalid Server URL"
+                return
+            }
+            
             let body: [String: Any] = ["code": code, "name": name]
-            var req = URLRequest(url: url); req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-            URLSession.shared.dataTask(with: req) { data, _, _ in
-                 if let d = data, let res = try? JSONDecoder().decode(PairResponse.self, from: d) {
-                     DispatchQueue.main.async {
-                         if res.success {
-                             self.showPairSuccess = true
-                             self.savedTickerID = res.ticker_id // 1. Save ID
-                             self.fetchDevices()                // 2. Update Status
-                             
-                             // === FIX: FORCE DATA RELOAD ===
-                             print("🔗 Pair successful. Fetching teams for \(res.ticker_id ?? "unknown")...")
-                             self.fetchData()                   // 3. GET TEAMS NOW
-                             // ==============================
-                             
-                         } else { self.pairError = res.message }
-                     }
-                 }
+            
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            // CRITICAL: Ensure Client ID is sent. This is the key the server uses to "whitelist" the app.
+            req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
+            
+            do {
+                req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            } catch {
+                self.pairError = "Failed to encode pairing data"
+                return
+            }
+            
+            URLSession.shared.dataTask(with: req) { data, response, error in
+                if let error = error {
+                    DispatchQueue.main.async { self.pairError = "Network Error: \(error.localizedDescription)" }
+                    return
+                }
+                
+                // Check HTTP Status Code
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                     DispatchQueue.main.async { self.pairError = "Server Error (Status: \(httpResponse.statusCode))" }
+                     return
+                }
+                
+                guard let d = data else {
+                    DispatchQueue.main.async { self.pairError = "No data received from server" }
+                    return
+                }
+                
+                // Decode Response
+                if let res = try? JSONDecoder().decode(PairResponse.self, from: d) {
+                    DispatchQueue.main.async {
+                        if res.success {
+                            self.showPairSuccess = true
+                            
+                            // 1. Latch onto the new Ticker ID immediately
+                            if let newID = res.ticker_id {
+                                self.savedTickerID = newID
+                                print("✅ Pair Successful. Latching ID: \(newID)")
+                            }
+                            
+                            // 2. Refresh everything
+                            self.fetchDevices()
+                            self.fetchData()
+                            
+                        } else {
+                            // Show the specific error message from the server if available
+                            self.pairError = res.message ?? "Invalid Pairing Code"
+                        }
+                    }
+                } else {
+                    DispatchQueue.main.async { self.pairError = "Failed to process server response" }
+                }
             }.resume()
         }
     
