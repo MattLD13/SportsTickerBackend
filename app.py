@@ -2130,6 +2130,7 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
         
+        # 1. Identify Ticker
         target_id = new_data.get('ticker_id') or request.args.get('id')
         if not target_id:
             cid = request.headers.get('X-Client-ID')
@@ -2139,86 +2140,65 @@ def api_config():
                         target_id = tid
                         break
         
+        # Auto-select if only 1 ticker exists
         if not target_id and len(tickers) == 1: target_id = list(tickers.keys())[0]
 
         with data_lock:
-            # === 1. BUILD LOOKUP TABLE ===
-            abbr_to_scoped = {}
-            if 'all_teams_data' in state:
-                for league, teams in state['all_teams_data'].items():
-                    for t in teams:
-                        if 'abbr' in t and 'id' in t:
-                            abbr_to_scoped[t['abbr']] = t['id']
-            
-            # Manual Overrides
-            abbr_to_scoped["LV"] = "ahl:LV"
-            abbr_to_scoped["NY"] = "nba:NY"
-            
-            # SAFETY CHECK: Is the server fully loaded?
-            server_is_ready = len(abbr_to_scoped) > 100 
-            # =============================
-
-            if new_data.get('weather_city'): 
-                fetcher.weather.update_config(city=new_data['weather_city'], lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
+            # 2. Update Weather (Global)
+            new_city = new_data.get('weather_city')
+            if new_city: 
+                fetcher.weather.update_config(city=new_city, lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
             
             allowed_keys = {'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date', 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset'}
             
             for k, v in new_data.items():
                 if k not in allowed_keys: continue
                 
-                # === TEAM SAVING ===
+                # === A. HANDLE TEAMS (Save to Ticker Root) ===
                 if k == 'my_teams' and isinstance(v, list):
                     cleaned = []
                     seen = set()
                     for e in v:
                         if e:
                             k_str = str(e).strip()
-                            
-                            # A. If it has a colon, it's a Smart ID. Keep it.
-                            if ":" in k_str:
-                                if k_str not in seen:
-                                    seen.add(k_str)
-                                    cleaned.append(k_str)
-                                continue
-
-                            # B. If it's an Old ID (No colon), try to fix it.
-                            if k_str in abbr_to_scoped:
-                                fixed_id = abbr_to_scoped[k_str]
-                                if fixed_id not in seen:
-                                    seen.add(fixed_id)
-                                    cleaned.append(fixed_id)
-                                    print(f"🔧 Auto-Fixed: {k_str} -> {fixed_id}")
-                            
-                            # C. FAIL SAFE: If server isn't ready, KEEP THE DATA.
-                            elif not server_is_ready:
-                                print(f"⚠️ Server loading, keeping legacy ID: {k_str}")
-                                if k_str not in seen:
-                                    seen.add(k_str)
-                                    cleaned.append(k_str)
-                            
-                            else:
-                                print(f"❌ Unknown team dropped: {k_str}")
+                            if k_str == "LV": k_str = "ahl:LV"
+                            if k_str not in seen:
+                                seen.add(k_str)
+                                cleaned.append(k_str)
                     
                     if target_id:
-                        if 'my_teams' not in tickers[target_id]: tickers[target_id]['my_teams'] = []
                         tickers[target_id]['my_teams'] = cleaned
-                        print(f"✅ SAVED for {target_id}: {cleaned}")
                     else:
                         state['my_teams'] = cleaned
                     continue
 
+                # === B. HANDLE ACTIVE SPORTS (Merge Global) ===
                 if k == 'active_sports' and isinstance(v, dict): 
                     state['active_sports'].update(v)
                     continue
                 
+                # === C. HANDLE MODES & SETTINGS (The Fix!) ===
+                # Always update Global State
                 if v is not None: state[k] = v
+                
+                # IF we have a target ticker, update its local settings too!
+                if target_id and target_id in tickers:
+                    # Only update keys that exist in ticker settings (mode, speed, etc)
+                    # or keys that should be there.
+                    if k in tickers[target_id]['settings'] or k == 'mode':
+                        tickers[target_id]['settings'][k] = v
             
             fetcher.merge_buffers()
         
-        if target_id: save_specific_ticker(target_id)
-        else: save_global_config()
+        # 3. Save to Disk
+        if target_id:
+            save_specific_ticker(target_id)
+        else:
+            save_global_config()
         
-        current_teams = tickers[target_id].get('my_teams', []) if target_id else state['my_teams']
+        # 4. Return correct teams for the response
+        current_teams = tickers[target_id].get('my_teams', []) if (target_id and target_id in tickers) else state['my_teams']
+        
         return jsonify({"status": "ok", "saved_teams": current_teams, "ticker_id": target_id})
         
     except Exception as e:
