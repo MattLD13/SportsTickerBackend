@@ -2242,11 +2242,10 @@ def get_league_options():
 def get_hardware_data():
     ticker_id = request.args.get('id')
     
-    # 1. Identify Ticker (Same logic)
+    # 1. Identify Ticker
     if not ticker_id and len(tickers) == 1: ticker_id = list(tickers.keys())[0]
     
     if not ticker_id or ticker_id not in tickers:
-        # Default behavior if unknown
         return jsonify({"settings": state, "games": fetcher.get_snapshot_for_delay(0)})
 
     # 2. Update Last Seen
@@ -2256,29 +2255,29 @@ def get_hardware_data():
     # 3. Prepare Settings
     t_settings = rec['settings'].copy()
     saved_teams = rec.get('my_teams', [])
-    t_settings['my_teams'] = saved_teams # Inject saved teams for hardware reference
+    t_settings['my_teams'] = saved_teams 
     
-    # 4. Filter Games (Hardware Logic)
+    # 4. Filter Games
     delay = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     raw_games = fetcher.get_snapshot_for_delay(delay)
     
     visible_games = []
-    global_mode = state.get('mode', 'all') # Use global mode override if present
+    
+    # === FIX: USE TICKER SETTINGS, NOT GLOBAL STATE ===
+    current_mode = t_settings.get('mode', 'all') 
+    # ==================================================
     
     for g in raw_games:
         should_show = True
         
-        # Mode Logic: Live Only
-        if global_mode == 'live' and g.get('state') not in ['in', 'half']: 
+        if current_mode == 'live' and g.get('state') not in ['in', 'half']: 
             should_show = False
             
-        # Mode Logic: My Teams
-        elif global_mode == 'my_teams':
+        elif current_mode == 'my_teams':
             h_id = g.get('home_id') or g.get('home_abbr')
             a_id = g.get('away_id') or g.get('away_abbr')
             sport = g.get('sport')
             
-            # Smart Check (Matches app logic)
             h_smart = f"{sport}:{g.get('home_abbr')}"
             a_smart = f"{sport}:{g.get('away_abbr')}"
             
