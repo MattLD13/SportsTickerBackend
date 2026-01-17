@@ -1955,16 +1955,31 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
         
+        # 1. Determine which ticker is being targeted
         target_id = new_data.get('ticker_id') or request.args.get('id')
-        if not target_id:
-            cid = request.headers.get('X-Client-ID')
-            if cid:
-                for tid, t_data in tickers.items():
-                    if cid in t_data.get('clients', []):
-                        target_id = tid
-                        break
         
-        if not target_id and len(tickers) == 1: target_id = list(tickers.keys())[0]
+        cid = request.headers.get('X-Client-ID')
+        
+        # If we have a CID, try to find the associated ticker
+        if not target_id and cid:
+            for tid, t_data in tickers.items():
+                if cid in t_data.get('clients', []):
+                    target_id = tid
+                    break
+        
+        # Fallback for single-ticker setups
+        if not target_id and len(tickers) == 1: 
+            target_id = list(tickers.keys())[0]
+
+        # ================= SECURITY CHECK START =================
+        # If we found a target ticker, verify the client is actually paired to it.
+        if target_id and target_id in tickers:
+            rec = tickers[target_id]
+            # If the ticker has clients paired, but THIS client isn't one of them -> BLOCK
+            if rec.get('paired') and cid not in rec.get('clients', []):
+                print(f"⛔ Blocked unauthorized config change from {cid}")
+                return jsonify({"error": "Unauthorized: Device not paired"}), 403
+        # ================== SECURITY CHECK END ==================
 
         with data_lock:
             # Update Weather (Global)
@@ -1989,7 +2004,7 @@ def api_config():
                                 seen.add(k_str)
                                 cleaned.append(k_str)
                     
-                    if target_id:
+                    if target_id and target_id in tickers:
                         tickers[target_id]['my_teams'] = cleaned
                     else:
                         state['my_teams'] = cleaned
@@ -2183,7 +2198,18 @@ def list_tickers():
 @app.route('/ticker/<tid>', methods=['POST'])
 def update_settings(tid):
     if tid not in tickers: return jsonify({"error":"404"}), 404
-    tickers[tid]['settings'].update(request.json)
+
+    # ================= SECURITY CHECK START =================
+    cid = request.headers.get('X-Client-ID')
+    rec = tickers[tid]
+    
+    # Only allow modification if the ticker is paired AND the client is in the list
+    if rec.get('paired') and (not cid or cid not in rec.get('clients', [])):
+        print(f"⛔ Blocked unauthorized settings change from {cid}")
+        return jsonify({"error": "Unauthorized: Device not paired"}), 403
+    # ================== SECURITY CHECK END ==================
+
+    rec['settings'].update(request.json)
     save_specific_ticker(tid)
     return jsonify({"success": True})
 
