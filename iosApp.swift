@@ -661,8 +661,13 @@ class TickerViewModel: ObservableObject {
         URLSession.shared.dataTask(with: req).resume()
     }
     
+    // ==========================================
+    // MARK: - FIX 1: UPDATE SETTINGS (Brightness/Speed)
+    // ==========================================
     func updateDeviceSettings(id: String, brightness: Double? = nil, speed: Double? = nil, seamless: Bool? = nil, inverted: Bool? = nil, delayMode: Bool? = nil, delaySeconds: Int? = nil) {
-        let base = getBaseURL(); guard let url = URL(string: "\(base)/ticker/\(id)") else { return }
+        let base = getBaseURL()
+        guard let url = URL(string: "\(base)/ticker/\(id)") else { return }
+        
         var body: [String: Any] = [:]
         if let b = brightness { body["brightness"] = Int(b * 100) }
         if let s = speed { body["scroll_speed"] = s }
@@ -670,15 +675,43 @@ class TickerViewModel: ObservableObject {
         if let inv = inverted { body["inverted"] = inv }
         if let dm = delayMode { body["live_delay_mode"] = dm }
         if let ds = delaySeconds { body["live_delay_seconds"] = ds }
-        var req = URLRequest(url: url); req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // CRITICAL FIX: Add Client ID Header
+        // Without this, the server ignores the brightness/speed changes
+        req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
+        
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: req).resume()
     }
     
+    // ==========================================
+    // MARK: - FIX 2: REBOOT
+    // ==========================================
     func reboot() {
-        let base = getBaseURL(); guard let url = URL(string: "\(base)/api/hardware") else { return }
-        var req = URLRequest(url: url); req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["action": "reboot"])
+        let base = getBaseURL()
+        guard let url = URL(string: "\(base)/api/hardware") else { return }
+        
+        // CRITICAL FIX: Identify which ticker to reboot
+        let targetID = self.devices.first?.id ?? self.savedTickerID
+        
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // CRITICAL FIX: Add Client ID Header
+        req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
+        
+        // CRITICAL FIX: Send the ID in the body
+        let body: [String: Any] = [
+            "action": "reboot",
+            "ticker_id": targetID ?? ""
+        ]
+        
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         URLSession.shared.dataTask(with: req).resume()
     }
     
