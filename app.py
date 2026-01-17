@@ -2060,7 +2060,6 @@ def get_ticker_data():
     if not ticker_id and len(tickers) == 1: 
         ticker_id = list(tickers.keys())[0]
     
-    # 2. Safety check
     if not ticker_id or ticker_id not in tickers:
         return jsonify({
             "status": "ok",
@@ -2074,29 +2073,27 @@ def get_ticker_data():
     
     t_settings = rec['settings']
     saved_teams = rec.get('my_teams', []) 
-    current_mode = t_settings.get('mode', 'all') 
     
-    # ================= PAIRING LOGIC START =================
-    # Check the file state you posted. 
-    # If "paired" is false OR "clients" is empty, trigger pairing mode.
+    # 2. PAIRING LOGIC
+    # Check if we need to enter pairing mode
     is_paired = rec.get('paired', False)
-    if not rec.get('clients'): 
-        is_paired = False
-        
+    if not rec.get('clients'): is_paired = False
+    
     pairing_data = {}
     
     if not is_paired:
-        # If code is missing for some reason, generate one
         if not rec.get('pairing_code'):
             rec['pairing_code'] = generate_pairing_code()
             save_specific_ticker(ticker_id)
             
-        # THIS is the signal the hardware needs to see
         pairing_data = {
             "is_pairing_mode": True,
             "code": rec.get('pairing_code')
         }
-    # ================= PAIRING LOGIC END ===================
+        # CRITICAL FIX: Force mode to 'all' so the pairing screen isn't filtered out
+        current_mode = 'all' 
+    else:
+        current_mode = t_settings.get('mode', 'all')
 
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
@@ -2133,34 +2130,33 @@ def get_ticker_data():
 
         if should_show:
             visible_games.append(g)
+            
+    # 3. FAILSAFE: INJECT PAIRING "GAME"
+    # If pairing is required, we add a fake game object. 
+    # This guarantees the hardware shows the code even if it ignores the 'pairing' key.
+    if not is_paired:
+        code = rec.get('pairing_code', '000000')
+        visible_games.insert(0, {
+            "type": "scoreboard",
+            "sport": "sys",
+            "id": "pairing_msg",
+            "status": "PAIRING",
+            "state": "in", # Marks it as live so it shows immediately
+            "home_abbr": "PAIR",
+            "home_score": code, # Display Code as Score
+            "away_abbr": "CODE",
+            "away_score": "",
+            "is_shown": True
+        })
     
-    # 3. Send the pairing data to the device
     return jsonify({ 
         "status": "ok", 
         "version": SERVER_VERSION,
         "global_config": { "mode": current_mode }, 
         "local_config": t_settings, 
-        "pairing": pairing_data,    # <--- The device looks for this!
+        "pairing": pairing_data, 
         "content": { "sports": visible_games } 
     })
-
-@app.route('/pair', methods=['POST'])
-def pair_ticker():
-    cid = request.headers.get('X-Client-ID')
-    code = request.json.get('code')
-    friendly_name = request.json.get('name', 'My Ticker')
-    
-    if not cid or not code: return jsonify({"success": False}), 400
-    
-    for uid, rec in tickers.items():
-        if rec.get('pairing_code') == code:
-            if cid not in rec['clients']: rec['clients'].append(cid)
-            rec['paired'] = True
-            rec['name'] = friendly_name
-            save_specific_ticker(uid)
-            return jsonify({"success": True, "ticker_id": uid})
-            
-    return jsonify({"success": False}), 404
 
 @app.route('/pair/id', methods=['POST'])
 def pair_ticker_by_id():
