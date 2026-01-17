@@ -2039,11 +2039,11 @@ def get_league_options():
 def get_ticker_data():
     ticker_id = request.args.get('id')
     
-    # Default to the first ticker if none specified (single device mode)
+    # 1. Default to the first ticker if none specified
     if not ticker_id and len(tickers) == 1: 
         ticker_id = list(tickers.keys())[0]
     
-    # If truly no ID found, return generic empty response
+    # 2. Safety check
     if not ticker_id or ticker_id not in tickers:
         return jsonify({
             "status": "ok",
@@ -2059,25 +2059,27 @@ def get_ticker_data():
     saved_teams = rec.get('my_teams', []) 
     current_mode = t_settings.get('mode', 'all') 
     
-    # --- PAIRING LOGIC FIX ---
-    # If the server thinks we are NOT paired, we must send the code.
-    # We also check if 'clients' is empty just to be safe.
+    # ================= PAIRING LOGIC START =================
+    # Check the file state you posted. 
+    # If "paired" is false OR "clients" is empty, trigger pairing mode.
     is_paired = rec.get('paired', False)
     if not rec.get('clients'): 
         is_paired = False
         
     pairing_data = {}
+    
     if not is_paired:
-        # Ensure a code exists
+        # If code is missing for some reason, generate one
         if not rec.get('pairing_code'):
             rec['pairing_code'] = generate_pairing_code()
             save_specific_ticker(ticker_id)
             
+        # THIS is the signal the hardware needs to see
         pairing_data = {
             "is_pairing_mode": True,
             "code": rec.get('pairing_code')
         }
-    # -------------------------
+    # ================= PAIRING LOGIC END ===================
 
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
@@ -2115,13 +2117,13 @@ def get_ticker_data():
         if should_show:
             visible_games.append(g)
     
-    # Return the response with the new 'pairing' object
+    # 3. Send the pairing data to the device
     return jsonify({ 
         "status": "ok", 
         "version": SERVER_VERSION,
         "global_config": { "mode": current_mode }, 
         "local_config": t_settings, 
-        "pairing": pairing_data,  # <--- NEW FIELD
+        "pairing": pairing_data,    # <--- The device looks for this!
         "content": { "sports": visible_games } 
     })
 
