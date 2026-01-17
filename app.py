@@ -2174,20 +2174,60 @@ def api_state():
     if not ticker_id and len(tickers) == 1:
         ticker_id = list(tickers.keys())[0]
 
+    # 1. Merge Settings
     response_settings = state.copy()
-    
     if ticker_id and ticker_id in tickers:
         local_settings = tickers[ticker_id]['settings']
         response_settings.update(local_settings)
         response_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
         response_settings['ticker_id'] = ticker_id 
     
-    games = fetcher.get_snapshot_for_delay(0)
+    # 2. Get Raw Games
+    raw_games = fetcher.get_snapshot_for_delay(0)
     
+    # 3. Apply Filtering Logic (Same as /data)
+    visible_games = []
+    current_mode = response_settings.get('mode', 'all')
+    saved_teams = response_settings.get('my_teams', [])
+    COLLISION_ABBRS = {'LV'}
+
+    for g in raw_games:
+        should_show = True
+        
+        # Filter: Live Mode
+        if current_mode == 'live' and g.get('state') not in ['in', 'half']: 
+            should_show = False
+            
+        # Filter: My Teams Mode
+        elif current_mode == 'my_teams':
+            sport = g.get('sport')
+            h_abbr = str(g.get('home_abbr', '')).upper()
+            a_abbr = str(g.get('away_abbr', '')).upper()
+            
+            h_scoped = f"{sport}:{h_abbr}"
+            a_scoped = f"{sport}:{a_abbr}"
+            
+            if h_abbr in COLLISION_ABBRS: in_home = h_scoped in saved_teams
+            else: in_home = (h_scoped in saved_teams or h_abbr in saved_teams)
+
+            if a_abbr in COLLISION_ABBRS: in_away = a_scoped in saved_teams
+            else: in_away = (a_scoped in saved_teams or a_abbr in saved_teams)
+            
+            if not (in_home or in_away): 
+                should_show = False
+
+        # Filter: Postponed/Suspended (Global)
+        status_lower = str(g.get('status', '')).lower()
+        if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
+            should_show = False
+
+        if should_show:
+            visible_games.append(g)
+
     return jsonify({
         "status": "ok",
         "settings": response_settings,
-        "games": games
+        "games": visible_games  # Return the filtered list
     })
 
 @app.route('/api/teams')
