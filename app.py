@@ -2141,6 +2141,54 @@ def get_ticker_data():
         "content": { "sports": visible_games } 
     })
 
+@app.route('/pair', methods=['POST'])
+def pair_ticker():
+    try:
+        cid = request.headers.get('X-Client-ID')
+        # Handle cases where request.json might be None
+        json_body = request.json or {}
+        code = json_body.get('code')
+        friendly_name = json_body.get('name', 'My Ticker')
+        
+        print(f"🔗 Pairing Attempt from Client: {cid} | Code: {code}")
+
+        if not cid or not code:
+            print("❌ Missing CID or Code")
+            return jsonify({"success": False, "message": "Missing Data"}), 400
+        
+        # Normalize code to string and strip whitespace to prevent mismatches
+        input_code = str(code).strip()
+
+        for uid, rec in tickers.items():
+            # Check if this ticker has a pairing code
+            known_code = str(rec.get('pairing_code', '')).strip()
+            
+            if known_code == input_code:
+                # --- MATCH FOUND! ---
+                if cid not in rec.get('clients', []):
+                    rec['clients'].append(cid)
+                
+                rec['paired'] = True
+                rec['name'] = friendly_name
+                
+                # Save the specific ticker file so the change persists
+                save_specific_ticker(uid)
+                
+                print(f"✅ Paired Successfully to Ticker: {uid}")
+                return jsonify({"success": True, "ticker_id": uid})
+        
+        # If loop finishes with no match
+        print(f"❌ Invalid Code. Input: {input_code}")
+        
+        # Return 200 OK with success:False. 
+        # If we return 404, the App assumes the server is offline. 
+        # We want the App to know the server is online but the code was wrong.
+        return jsonify({"success": False, "message": "Invalid Pairing Code"}), 200
+
+    except Exception as e:
+        print(f"🔥 Pairing Server Error: {e}")
+        return jsonify({"success": False, "message": "Server Logic Error"}), 500
+
 @app.route('/pair/id', methods=['POST'])
 def pair_ticker_by_id():
     cid = request.headers.get('X-Client-ID')
