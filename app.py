@@ -1972,11 +1972,13 @@ def api_config():
             target_id = list(tickers.keys())[0]
 
         # ================= SECURITY CHECK START =================
-        # If we found a target ticker, verify the client is actually paired to it.
         if target_id and target_id in tickers:
             rec = tickers[target_id]
-            # If the ticker has clients paired, but THIS client isn't one of them -> BLOCK
-            if rec.get('paired') and cid not in rec.get('clients', []):
+            
+            # STRICT FIX: remove "if rec.get('paired')"
+            # If the client ID is not in the list, block them. 
+            # The ONLY way to get in the list is via the /pair endpoint.
+            if cid not in rec.get('clients', []):
                 print(f"⛔ Blocked unauthorized config change from {cid}")
                 return jsonify({"error": "Unauthorized: Device not paired"}), 403
         # ================== SECURITY CHECK END ==================
@@ -2203,8 +2205,8 @@ def update_settings(tid):
     cid = request.headers.get('X-Client-ID')
     rec = tickers[tid]
     
-    # Only allow modification if the ticker is paired AND the client is in the list
-    if rec.get('paired') and (not cid or cid not in rec.get('clients', [])):
+    # STRICT FIX: Block if client not found, regardless of pairing state
+    if not cid or cid not in rec.get('clients', []):
         print(f"⛔ Blocked unauthorized settings change from {cid}")
         return jsonify({"error": "Unauthorized: Device not paired"}), 403
     # ================== SECURITY CHECK END ==================
