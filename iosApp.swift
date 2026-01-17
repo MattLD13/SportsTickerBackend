@@ -168,31 +168,31 @@ struct TeamData: Decodable, Identifiable, Hashable, Sendable {
 }
 
 struct TickerState: Codable, Sendable {
-    // === RESTORED TO NON-OPTIONAL (Fixes Build Errors) ===
     var active_sports: [String: Bool]
     var mode: String
     var scroll_seamless: Bool
     var my_teams: [String]
     var debug_mode: Bool
-    var custom_date: String? // Keep this one optional
-    var scroll_speed: Double // Changed to Double, but Non-Optional
+    var custom_date: String?
+    var scroll_speed: Double // Double fixed
     var show_debug_options: Bool
     var weather_location: String
     var weather_city: String
     var weather_lat: Double
     var weather_lon: Double
-    var ticker_id: String?   // Keep optional
+    var ticker_id: String?
     
     enum CodingKeys: String, CodingKey {
         case active_sports, mode, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id
     }
     
-    // === ROBUST DECODER (Fixes Crashes) ===
-    // If server sends bad data (like 0.03 for an Int), we catch it here and use a default.
+    // === 1. ROBUST DECODER ===
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        active_sports = (try? container.decode([String: Bool].self, forKey: .active_sports)) ?? ["nfl": true]
+        // If server fails to send sports, default to ALL enabled (Safety Net)
+        active_sports = (try? container.decode([String: Bool].self, forKey: .active_sports)) ?? TickerState.defaultActiveSports
+        
         mode = (try? container.decode(String.self, forKey: .mode)) ?? "all"
         scroll_seamless = (try? container.decode(Bool.self, forKey: .scroll_seamless)) ?? false
         my_teams = (try? container.decode([String].self, forKey: .my_teams)) ?? []
@@ -216,9 +216,12 @@ struct TickerState: Codable, Sendable {
         ticker_id = try? container.decodeIfPresent(String.self, forKey: .ticker_id)
     }
     
-    // === DEFAULT INIT (For ViewModel) ===
-    init(active_sports: [String: Bool] = ["nfl": true], mode: String = "all", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil) {
-        self.active_sports = active_sports
+    // === 2. BETTER DEFAULTS (Fixes "NFL Only" bug) ===
+    init(active_sports: [String: Bool]? = nil, mode: String = "all", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil) {
+        
+        // Default to ALL sports if none provided
+        self.active_sports = active_sports ?? TickerState.defaultActiveSports
+        
         self.mode = mode
         self.scroll_seamless = scroll_seamless
         self.my_teams = my_teams
@@ -231,6 +234,18 @@ struct TickerState: Codable, Sendable {
         self.weather_lat = weather_lat
         self.weather_lon = weather_lon
         self.ticker_id = ticker_id
+    }
+    
+    // Helper: The "Safety Net" List
+    static var defaultActiveSports: [String: Bool] {
+        return [
+            "nfl": true, "nhl": true, "mlb": true, "nba": true,
+            "ncf_fbs": true, "ncf_fcs": true, "ahl": true,
+            "soccer_epl": true, "soccer_champ": true, "soccer_champions_league": true,
+            "soccer_europa_league": true, "soccer_fa_cup": true, "soccer_l1": true, "soccer_l2": true, "soccer_wc": true,
+            "f1": true, "nascar": true, "hockey_olympics": true,
+            "weather": true, "clock": true
+        ]
     }
 }
 
@@ -278,13 +293,13 @@ class TickerViewModel: ObservableObject {
     
     // THE SOURCE OF TRUTH
     @Published var state: TickerState = TickerState(
-            active_sports: ["nfl": true],
+            active_sports: nil, // This will now trigger the "All Sports" default
             mode: "all",
             scroll_seamless: false,
             my_teams: [],
             debug_mode: false,
             custom_date: nil,
-            scroll_speed: 0.03, // Now a Double
+            scroll_speed: 0.03,
             weather_location: "New York",
             weather_city: "New York",
             weather_lat: 40.7128,
