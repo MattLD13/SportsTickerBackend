@@ -611,6 +611,7 @@ class TickerStreamer:
             is_hockey = 'hockey' in sport or 'nhl' in sport
             is_baseball = 'baseball' in sport or 'mlb' in sport
             is_soccer = 'soccer' in sport
+            is_march_madness = 'march_madness' in sport
             is_active = (game.get('state') == 'in')
             sit = game.get('situation', {}) or {} 
             poss = sit.get('possession')
@@ -619,8 +620,13 @@ class TickerStreamer:
             a_score = str(game.get('away_score', ''))
             h_score = str(game.get('home_score', ''))
             has_indicator = is_active and (poss or sit.get('powerPlay') or sit.get('emptyNet'))
+            
             # Force small logos if football active or long score or indicators present
             is_wide = ((is_football and is_active) or len(a_score) >= 2 or len(h_score) >= 2 or has_indicator)
+            
+            # [MARCH MADNESS OVERRIDE]: Always use full size logos
+            if is_march_madness:
+                is_wide = False
             
             logo_size = (16, 16) if is_wide else (24, 24)
             logo_y = 5 if is_wide else 0
@@ -643,8 +649,28 @@ class TickerStreamer:
             st_x = (64 - len(status.replace('~', ''))*5) // 2
             draw_hybrid_text(d, st_x, 25, status, (180, 180, 180))
 
+            # === MARCH MADNESS SEED INDICATORS ===
+            if is_march_madness:
+                h_seed = str(game.get('home_seed', ''))
+                a_seed = str(game.get('away_seed', ''))
+                
+                # Draw Away Seed (Left - Centered under 24px logo)
+                if a_seed:
+                    # Center of 24px logo (starting at 0) is 12
+                    # Font is 4px wide + 1px gap per char
+                    w = (len(a_seed) * 4) + (max(0, len(a_seed) - 1))
+                    sx = 12 - (w // 2)
+                    draw_tiny_text(d, sx, 26, a_seed, (200, 200, 200))
+
+                # Draw Home Seed (Right - Centered under 24px logo)
+                if h_seed:
+                    # Center of 24px logo (starting at 40) is 52
+                    w = (len(h_seed) * 4) + (max(0, len(h_seed) - 1))
+                    sx = 52 - (w // 2)
+                    draw_tiny_text(d, sx, 26, h_seed, (200, 200, 200))
+
             # === SHOOTOUT INDICATORS ===
-            if shootout:
+            elif shootout:
                 away_so = shootout.get('away', []) if isinstance(shootout, dict) else []
                 home_so = shootout.get('home', []) if isinstance(shootout, dict) else []
                 if is_soccer:
@@ -655,7 +681,7 @@ class TickerStreamer:
                     self.draw_shootout_indicators(d, home_so, 46, 26)
 
             # === STANDARD INDICATORS ===
-            elif is_active:
+            elif is_active and not is_march_madness:
                 icon_y = logo_y + logo_size[1] + 3; tx = -1; side = None
                 if (is_football or is_baseball or is_soccer) and poss: side = poss
                 elif is_hockey and (sit.get('powerPlay') or sit.get('emptyNet')) and poss: side = poss
