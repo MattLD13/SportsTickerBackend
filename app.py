@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v4.1_Production_Stable"
+SERVER_VERSION = "v4.2_Production_MarchMadness"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -160,6 +160,10 @@ LEAGUE_OPTIONS = [
     # --- COLLEGE SPORTS ---
     {'id': 'ncf_fbs',       'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs',       'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
+    
+    # [NEW] March Madness (Group 100 isolates the Tournament)
+    {'id': 'march_madness', 'label': 'March Madness', 'type': 'sport', 'default': True, 'fetch': {'path': 'basketball/mens-college-basketball', 'scoreboard_params': {'groups': '100', 'limit': '100'}, 'team_params': {'groups': '100', 'limit': '100'}, 'type': 'scoreboard'}},
+
     # --- SOCCER ---
     {'id': 'soccer_epl',    'label': 'Premier League',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_fa_cup','label': 'FA Cup',                 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
@@ -799,7 +803,7 @@ class SportsFetcher:
 
             futures = []
             leagues_to_fetch = [
-                'nfl', 'mlb', 'nhl', 'nba',
+                'nfl', 'mlb', 'nhl', 'nba', 'march_madness',
                 'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_champions_league', 'soccer_europa_league'
             ]
             for lk in leagues_to_fetch:
@@ -1125,8 +1129,8 @@ class SportsFetcher:
                     g_local = g_dt.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
 
                     if st in ['PRE', 'FUT']:
-                          try: disp = g_local.strftime("%I:%M %p").lstrip('0')
-                          except: pass
+                           try: disp = g_local.strftime("%I:%M %p").lstrip('0')
+                           except: pass
                     elif st in ['FINAL', 'OFF']:
                           disp = "FINAL"
                           pd = g.get('periodDescriptor', {})
@@ -1166,7 +1170,7 @@ class SportsFetcher:
                                                 p_lbl = f"P{p_num}"
                                             
                                             disp = f"{p_lbl} {time_rem}"
-                                    
+                                     
                                 sit_obj = d2.get('situation', {})
                                 if sit_obj:
                                     sit = sit_obj.get('situationCode', '1551')
@@ -1647,6 +1651,12 @@ class SportsFetcher:
                 if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
                 if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
 
+                # Seed Extraction Logic for March Madness
+                h_seed = h.get('curatedRank', {}).get('current', '')
+                a_seed = a.get('curatedRank', {}).get('current', '')
+                if h_seed == 99: h_seed = ""
+                if a_seed == 99: a_seed = ""
+
                 h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
                 a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
                 h_score = h.get('score','0')
@@ -1737,6 +1747,11 @@ class SportsFetcher:
                     'away_color': f"#{a['team'].get('color','000000')}", 'away_alt_color': f"#{a['team'].get('alternateColor','ffffff')}",
                     'startTimeUTC': e['date'],
                     'estimated_duration': duration_est,
+                    
+                    # MARCH MADNESS SPECIFIC FIELDS
+                    'home_seed': str(h_seed),
+                    'away_seed': str(a_seed),
+                    
                     'situation': { 
                         'possession': poss_abbr, 
                         'isRedZone': sit.get('isRedZone', False), 
