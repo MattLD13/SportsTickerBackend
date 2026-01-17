@@ -1042,26 +1042,25 @@ class SportsFetcher:
                              disp = "FINAL"
 
                 # === FIX: DETECT TIME-ONLY STRINGS AS PRE-GAME ===
-                # We check for "scheduled", "pre", OR if the string looks like "7:00 pm"
-                # We also exclude strings that contain period info (1st, 2nd, 3rd, OT) to avoid catching live clocks
                 elif "scheduled" in status_lower or "pre" in status_lower or (re.search(r'\d+:\d+', status_lower) and "1st" not in status_lower and "2nd" not in status_lower and "3rd" not in status_lower and "ot" not in status_lower):
                     gst = "pre"
                     try:
-                         if iso_date:
+                          if iso_date:
                             local_dt = dt.fromisoformat(iso_date).astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
                             disp = local_dt.strftime("%I:%M %p").lstrip('0')
-                         else:
-                             raw_time_clean = (g.get("GameTime") or "").strip()
-                             # Simple cleanup to ensure it looks like "7:00 PM"
-                             disp = raw_time_clean.split(" ")[0] + " " + raw_time_clean.split(" ")[1]
+                          else:
+                              raw_time_clean = (g.get("GameTime") or "").strip()
+                              disp = raw_time_clean.split(" ")[0] + " " + raw_time_clean.split(" ")[1]
                     except: disp = "Scheduled"
                 else:
                     gst = "in"
                     # Live Logic
                     if "intermission" in status_lower:
-                        if "1st" in status_lower: disp = "End 1st"
-                        elif "2nd" in status_lower: disp = "End 2nd"
-                        elif "3rd" in status_lower: disp = "End 3rd"
+                        # === UPDATED INTERMISSION LOGIC ===
+                        # Relies on period_str ("1", "2") instead of finding "1st" in the string
+                        if period_str == "1": disp = "End 1st"
+                        elif period_str == "2": disp = "End 2nd"
+                        elif period_str == "3": disp = "End 3rd"
                         else: disp = "INT"
                     else:
                         m = re.search(r'(\d+:\d+)\s*(1st|2nd|3rd|ot|overtime)', raw_status, re.IGNORECASE)
@@ -1113,6 +1112,7 @@ class SportsFetcher:
             print(f"AHL Fetch Error: {e}")
         
         return games_found
+        
     # ===============================================
 
     # === NHL NATIVE FETCHER ===
