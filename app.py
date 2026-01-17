@@ -291,26 +291,10 @@ def save_global_config():
 def save_specific_ticker(tid):
     """Saves ONLY the specified ticker to its own file"""
     if tid not in tickers: return
-    
     try:
         data = tickers[tid]
         filepath = os.path.join(TICKER_DATA_DIR, f"{tid}.json")
-        temp = f"{filepath}.tmp"
-        
-        with open(temp, 'w') as f:
-            json.dump(data, f, indent=4)
-        os.replace(temp, filepath)
-        print(f"💾 Saved Ticker: {tid}")
-    except Exception as e:
-        print(f"Error saving ticker {tid}: {e}")
-
-def save_specific_ticker(tid):
-    """Saves ONLY the specified ticker to its own file"""
-    if tid not in tickers: return
-    try:
-        data = tickers[tid]
-        filepath = os.path.join(TICKER_DATA_DIR, f"{tid}.json")
-        save_json_atomically(filepath, data)
+        save_json_atomically(filepath, data) # Uses your helper function
         print(f"💾 Saved Ticker: {tid}")
     except Exception as e:
         print(f"Error saving ticker {tid}: {e}")
