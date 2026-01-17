@@ -936,22 +936,26 @@ class TickerStreamer:
         while self.running:
             try:
                 url = f"{BACKEND_URL}/data?id={self.device_id}"
+                # Request data from server
                 r = requests.get(url, timeout=5)
                 data = r.json()
                 
                 # ==========================================
                 # FIX: CHECK FOR REBOOT COMMAND
                 # ==========================================
+                # The server sends this flag in global_config when the button is pressed
                 global_conf = data.get('global_config', {})
                 if global_conf.get('reboot') is True:
                     print("⚠️ REBOOT COMMAND RECEIVED FROM SERVER")
-                    # Clear screen to indicate action
+                    # 1. Clear the screen so it doesn't freeze on an image
                     self.matrix.Clear()
-                    # Execute Linux reboot command
+                    # 2. Execute Linux reboot command
                     subprocess.run(['reboot'])
+                    # 3. Kill script to prevent further processing
                     sys.exit(0)
                 # ==========================================
 
+                # Check for Pairing Mode
                 if data.get('status') == 'pairing':
                     self.is_pairing = True
                     self.pairing_code = data.get('code')
@@ -959,6 +963,7 @@ class TickerStreamer:
                     time.sleep(2); continue
                 else: self.is_pairing = False
                 
+                # Process Content
                 content = data.get('content', {})
                 new_games = content.get('sports', [])
 
@@ -980,11 +985,13 @@ class TickerStreamer:
                     else:
                         scrolling_items.append(g)
                 
-                # Robust Hash generation using JSON dumps to ensure order consistency
+                # Robust Hash generation to detect changes
                 current_hash = hashlib.md5(json.dumps({'g': new_games, 'c': data.get('local_config')}, sort_keys=True).encode()).hexdigest()
                 
                 if current_hash != last_hash:
                     print(f"New Data Detected at {datetime.now().strftime('%H:%M:%S')}")
+                    
+                    # Download Logos
                     logos = []
                     for g in scrolling_items:
                         if g.get('home_logo'): 
@@ -998,10 +1005,12 @@ class TickerStreamer:
                     fs = [self.executor.submit(self.download_and_process_logo, u, s) for u, s in unique_logos]
                     concurrent.futures.wait(fs)
                     
+                    # Update Settings
                     self.brightness = float(data.get('local_config', {}).get('brightness', 100)) / 100.0
                     self.scroll_sleep = data.get('local_config', {}).get('scroll_speed', 0.05)
                     self.inverted = data.get('local_config', {}).get('inverted', False)
                     
+                    # Update Lists
                     self.new_games_list = scrolling_items 
                     self.static_items = static_items
                     self.static_index = 0
@@ -1017,6 +1026,8 @@ class TickerStreamer:
                     
             except Exception as e:
                 print(f"Poll Error: {e}")
+            
+            # Wait before next poll
             time.sleep(REFRESH_RATE)
 
 if __name__ == "__main__":
