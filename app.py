@@ -877,34 +877,33 @@ class SportsFetcher:
         return AHL_API_KEYS[0] # Fallback
 
     def _fetch_ahl_teams_reference(self, catalog):
-        # catalog is the main teams dictionary passed from fetch_all_teams
         ahl_list = []
         
-        # Use the hardcoded AHL_TEAMS dictionary you provided
         for abbr, data in AHL_TEAMS.items():
             
-            # === CRITICAL FIX: FORCE THE "ahl:" PREFIX ===
-            # This ensures the ID is "ahl:HFD", not just "HFD"
-            # It handles duplicates (like CLT/CHA) by using the abbr as the unique suffix
+            # 1. The System ID (Must be "ahl:HFD")
             scoped_id = f"ahl:{abbr}" 
             
-            # Helper to check if we already added this ID (deduplication)
+            # 2. The Numeric ID for Logos (e.g. "307")
+            numeric_id = data.get('id', '')
+
+            # Deduplication
             if any(x['id'] == scoped_id for x in ahl_list):
                 continue
 
             entry = {
                 'abbr': abbr,
-                'id': scoped_id,  # <--- THIS IS THE KEY FIX
-                'logo': f"https://assets.lehigh.edu/ticker/logos/ahl/{abbr}.png", # Or your logo source
+                'id': scoped_id,
+                # FIX: Use numeric ID for the logo URL
+                'logo': f"https://assets.lehigh.edu/ticker/logos/ahl/{numeric_id}.png", 
                 'name': data['name'],
                 'color': data['color'],
                 'alt_color': '111111'
             }
             ahl_list.append(entry)
             
-        # Add to the master catalog
         catalog['ahl'] = ahl_list
-        print(f"✅ Loaded {len(ahl_list)} AHL teams with Smart IDs")
+        print(f"✅ Loaded {len(ahl_list)} AHL teams (Logos using numeric IDs)")
 
     def check_shootout(self, game, summary=None):
         """
