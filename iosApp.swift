@@ -1374,7 +1374,6 @@ struct DeviceRow: View {
     let device: TickerDevice
     @ObservedObject var vm: TickerViewModel
     
-    // Local state for smooth sliding
     @State private var brightness: Double
     @State private var speedInt: Double
     @State private var delaySecondsInt: Double
@@ -1395,23 +1394,19 @@ struct DeviceRow: View {
         self.device = device
         self.vm = vm
         
-        // Initialize Brightness (0-100 -> 0.0-1.0)
+        // Initialize State from Device Settings
         _brightness = State(initialValue: Double(device.settings.brightness) / 100.0)
         
-        // Initialize Speed (0.10-0.01 -> 1-10)
         let raw = device.settings.scroll_speed
         let uiVal = round((0.11 - raw) * 100)
         _speedInt = State(initialValue: max(1, min(10, uiVal)))
         
-        // Initialize Delay
         let ds = device.settings.live_delay_seconds ?? 45
         _delaySecondsInt = State(initialValue: Double(ds))
     }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            
-            // --- HEADER ---
             HStack {
                 VStack(alignment: .leading) {
                     Text(device.name).font(.headline).foregroundColor(.white)
@@ -1425,7 +1420,7 @@ struct DeviceRow: View {
             }
             Divider().background(Color.white.opacity(0.1))
             
-            // --- BRIGHTNESS ---
+            // Brightness
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Image(systemName: "sun.max").font(.caption)
@@ -1433,15 +1428,11 @@ struct DeviceRow: View {
                     Text("\(Int(brightness * 100))%").font(.caption).monospacedDigit().bold()
                 }
                 Slider(value: $brightness, in: 0...1, step: 0.05, onEditingChanged: { editing in
-                    if !editing {
-                        vm.updateDeviceSettings(id: device.id, brightness: brightness)
-                    }
-                })
-                .tint(.white)
-                .onChange(of: brightness) { _ in haptic.impactOccurred() }
+                    if !editing { vm.updateDeviceSettings(id: device.id, brightness: brightness) }
+                }).tint(.white).onChange(of: brightness) { _ in haptic.impactOccurred() }
             }
             
-            // --- SPEED ---
+            // Speed
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Image(systemName: "tortoise").font(.caption)
@@ -1452,18 +1443,14 @@ struct DeviceRow: View {
                 }
                 Slider(value: $speedInt, in: 1...10, step: 1, onEditingChanged: { editing in
                     if !editing {
-                        // Calculate hardware float: 1 (Slow) -> 0.10, 10 (Fast) -> 0.01
                         let newFloat = 0.11 - (speedInt * 0.01)
                         vm.updateDeviceSettings(id: device.id, speed: newFloat)
                     }
-                })
-                .tint(.blue)
-                .onChange(of: speedInt) { _ in haptic.impactOccurred() }
+                }).tint(.blue).onChange(of: speedInt) { _ in haptic.impactOccurred() }
             }
             
             Divider().background(Color.white.opacity(0.1))
             
-            // --- INVERTED ---
             HStack {
                 Toggle("Inverted", isOn: Binding(
                     get: { device.settings.inverted ?? false },
@@ -1471,12 +1458,10 @@ struct DeviceRow: View {
                 )).fixedSize()
                 .labelsHidden()
                 .toggleStyle(SwitchToggleStyle(tint: .blue))
-                
                 Text("Inverted").font(.caption)
                 Spacer()
             }
             
-            // --- LIVE STREAM DELAY ---
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Toggle("Stream Delay", isOn: Binding(
@@ -1509,17 +1494,11 @@ struct DeviceRow: View {
             
             Divider().background(Color.white.opacity(0.1))
             
-            // --- UNPAIR / COPY ID (Restored) ---
             HStack {
-                Button(action: { UIPasteboard.general.string = device.id }) {
-                    Label("Copy ID", systemImage: "doc.on.doc").font(.caption).bold()
-                }
+                Button(action: { UIPasteboard.general.string = device.id }) { Label("Copy ID", systemImage: "doc.on.doc").font(.caption).bold() }
                 Spacer()
-                Button(action: { vm.unpairTicker(id: device.id) }) {
-                    Label("Unpair", systemImage: "trash").font(.caption).bold().foregroundColor(.red)
-                }
+                Button(action: { vm.unpairTicker(id: device.id) }) { Label("Unpair", systemImage: "trash").font(.caption).bold().foregroundColor(.red) }
             }
-            
         }.padding().liquidGlass()
     }
 }
