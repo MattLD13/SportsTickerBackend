@@ -929,7 +929,7 @@ struct TeamsView: View {
                 Text("My Teams").font(.system(size: 34, weight: .bold)).foregroundColor(.white)
                 Spacer()
                 
-                // Debug Counter (Just to show you it's working)
+                // Debug Counter
                 if vm.isEditing {
                     Text("Saving...").font(.caption).foregroundColor(.orange)
                 } else {
@@ -967,12 +967,20 @@ struct TeamsView: View {
                         
                         LazyVGrid(columns: teamColumns, spacing: 15) {
                             ForEach(filteredTeams, id: \.self) { team in
-                                // === DIRECT CHECK ===
-                                // Does the server list contain this ID?
-                                let isSelected = vm.state.my_teams.contains(team.id)
+                                
+                                // === THE SILVER BULLET FIX ===
+                                // We check if the saved list contains EITHER:
+                                // 1. The ID provided by the catalog (e.g. "NYG")
+                                // 2. The Smart ID constructed manually (e.g. "nfl:NYG")
+                                // 3. The ID provided by the server (e.g. "nfl:NYG")
+                                let smartID = "\(selectedLeague):\(team.abbr)"
+                                let isSelected = vm.state.my_teams.contains(team.id) || 
+                                                 vm.state.my_teams.contains(smartID) ||
+                                                 vm.state.my_teams.contains(team.abbr)
                                 
                                 Button {
-                                    vm.toggleTeam(team.id)
+                                    // Always toggle the SMART ID format to keep things clean
+                                    vm.toggleTeam(smartID)
                                 } label: {
                                     VStack {
                                         TeamLogoView(url: team.logo, abbr: team.abbr, size: 40)
