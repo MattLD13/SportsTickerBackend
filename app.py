@@ -2101,25 +2101,14 @@ def get_ticker_data():
     rec = tickers[ticker_id]
     rec['last_seen'] = time.time()
     
-    # ==========================================================
-    # PAIRING LOGIC
-    # ==========================================================
-    # If no clients are connected, IMMEDIATELY stop and send the pairing signal.
-    # This matches exactly what your hardware expects.
+    # Pairing Check
     if not rec.get('clients') or not rec.get('paired'):
-        # Ensure a code exists
         if not rec.get('pairing_code'):
             rec['pairing_code'] = generate_pairing_code()
             save_specific_ticker(ticker_id)
-            
-        # ⚠️ SHORT-CIRCUIT RETURN
-        return jsonify({
-            "status": "pairing", 
-            "code": rec['pairing_code']
-        })
-    # ==========================================================
+        return jsonify({ "status": "pairing", "code": rec['pairing_code'] })
 
-    # 3. Standard Data Fetching (Only runs if paired)
+    # 3. Standard Data Fetching
     t_settings = rec['settings']
     saved_teams = rec.get('my_teams', []) 
     current_mode = t_settings.get('mode', 'all') 
@@ -2130,17 +2119,15 @@ def get_ticker_data():
     visible_games = []
     COLLISION_ABBRS = {'LV'} 
 
+    # (Keep your existing game filtering logic here...)
     for g in raw_games:
         should_show = True
-        
-        if current_mode == 'live' and g.get('state') not in ['in', 'half']: 
-            should_show = False
-            
+        if current_mode == 'live' and g.get('state') not in ['in', 'half']: should_show = False
         elif current_mode == 'my_teams':
+            # ... (Keep existing my_teams logic) ...
             sport = g.get('sport')
             h_abbr = str(g.get('home_abbr', '')).upper()
             a_abbr = str(g.get('away_abbr', '')).upper()
-            
             h_scoped = f"{sport}:{h_abbr}"
             a_scoped = f"{sport}:{a_abbr}"
             
@@ -2150,8 +2137,7 @@ def get_ticker_data():
             if a_abbr in COLLISION_ABBRS: in_away = a_scoped in saved_teams
             else: in_away = (a_scoped in saved_teams or a_abbr in saved_teams)
             
-            if not (in_home or in_away): 
-                should_show = False
+            if not (in_home or in_away): should_show = False
 
         status_lower = str(g.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
@@ -2160,16 +2146,22 @@ def get_ticker_data():
         if should_show:
             visible_games.append(g)
     
-    # ========================================================
-    # FIX #3: NO CACHE HEADERS
-    # ========================================================
+    # ================= FIX START =================
+    # Construct global config that INCLUDES the reboot flag
+    g_config = { "mode": current_mode }
+    
+    # Check the global state for reboot request
+    if state.get('reboot_requested', False):
+        g_config['reboot'] = True
+        
     response = jsonify({ 
         "status": "ok", 
         "version": SERVER_VERSION,
-        "global_config": { "mode": current_mode }, 
+        "global_config": g_config, # <--- Sends reboot flag
         "local_config": t_settings, 
         "content": { "sports": visible_games } 
     })
+    # ================= FIX END ==================
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
@@ -2264,18 +2256,20 @@ def list_tickers():
 def update_settings(tid):
     if tid not in tickers: return jsonify({"error":"404"}), 404
 
-    # ================= SECURITY CHECK START =================
+    # ================= SECURITY CHECK =================
     cid = request.headers.get('X-Client-ID')
     rec = tickers[tid]
     
-    # STRICT FIX: Block if client not found, regardless of pairing state
+    # If this check fails, the App is not paired correctly.
     if not cid or cid not in rec.get('clients', []):
         print(f"⛔ Blocked unauthorized settings change from {cid}")
         return jsonify({"error": "Unauthorized: Device not paired"}), 403
-    # ================== SECURITY CHECK END ==================
+    # ==================================================
 
     rec['settings'].update(request.json)
     save_specific_ticker(tid)
+    
+    print(f"✅ Updated Settings for {tid}: {request.json}") # Added log for debugging
     return jsonify({"success": True})
 
 @app.route('/api/state', methods=['GET'])
