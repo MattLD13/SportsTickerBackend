@@ -239,7 +239,7 @@ class TickerViewModel: ObservableObject {
     @Published var statusColor: Color = .gray
     
     // LOCKING MECHANISM
-    @Published var isEditing: Bool = false 
+    @Published var isEditing: Bool = false
     
     private var isServerReachable = false
     private var timer: Timer?
@@ -258,7 +258,7 @@ class TickerViewModel: ObservableObject {
         
         // Initial Fetch
         fetchData()
-        fetchLeagueOptions() 
+        fetchLeagueOptions()
         fetchAllTeams()
         fetchDevices()
         
@@ -929,11 +929,11 @@ struct TeamsView: View {
                 Text("My Teams").font(.system(size: 34, weight: .bold)).foregroundColor(.white)
                 Spacer()
                 
-                // Debug Counter
+                // Status Indicator
                 if vm.isEditing {
-                    Text("Saving...").font(.caption).foregroundColor(.orange)
+                    Text("Saving...").font(.caption).bold().foregroundColor(.orange)
                 } else {
-                    Text("\(vm.state.my_teams.count) Selected").font(.caption).foregroundColor(.gray)
+                    Text("\(vm.state.my_teams.count) Selected").font(.caption).bold().foregroundColor(.gray)
                 }
             }
             .padding(.horizontal)
@@ -968,18 +968,21 @@ struct TeamsView: View {
                         LazyVGrid(columns: teamColumns, spacing: 15) {
                             ForEach(filteredTeams, id: \.self) { team in
                                 
-                                // === THE SILVER BULLET FIX ===
-                                // We check if the saved list contains EITHER:
-                                // 1. The ID provided by the catalog (e.g. "NYG")
-                                // 2. The Smart ID constructed manually (e.g. "nfl:NYG")
-                                // 3. The ID provided by the server (e.g. "nfl:NYG")
-                                let smartID = "\(selectedLeague):\(team.abbr)"
-                                let isSelected = vm.state.my_teams.contains(team.id) || 
+                                // === SMART MATCHING LOGIC ===
+                                // 1. Clean inputs
+                                let cleanAbbr = team.abbr.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let cleanLeague = selectedLeague.trimmingCharacters(in: .whitespacesAndNewlines)
+                                
+                                // 2. Construct the "Smart ID" (e.g. nfl:NYG)
+                                let smartID = "\(cleanLeague):\(cleanAbbr)"
+                                
+                                // 3. Check against saved list (handle exact match OR smart match)
+                                let isSelected = vm.state.my_teams.contains(team.id) ||
                                                  vm.state.my_teams.contains(smartID) ||
-                                                 vm.state.my_teams.contains(team.abbr)
+                                                 vm.state.my_teams.contains(cleanAbbr)
                                 
                                 Button {
-                                    // Always toggle the SMART ID format to keep things clean
+                                    print("🔵 Toggling Team: \(smartID)") // DEBUG PRINT
                                     vm.toggleTeam(smartID)
                                 } label: {
                                     VStack {
