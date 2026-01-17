@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v4.0_Production_Stable"
+SERVER_VERSION = "v4.1_Production_Stable"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -658,7 +658,10 @@ class SportsFetcher:
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.session = build_pooled_session(pool_size=50)
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10) 
+        # ========================================================
+        # FIX #1: INCREASED THREAD POOL TO PREVENT QUEUEING DELAYS
+        # ========================================================
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=25) 
         
         self.history_buffer = [] 
         self.consecutive_empty_fetches = 0
@@ -972,8 +975,8 @@ class SportsFetcher:
                     gst = "pre"
                     try:
                          if iso_date:
-                            local_dt = dt.fromisoformat(iso_date).astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
-                            disp = local_dt.strftime("%I:%M %p").lstrip('0')
+                           local_dt = dt.fromisoformat(iso_date).astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
+                           disp = local_dt.strftime("%I:%M %p").lstrip('0')
                          else:
                              raw_time_clean = (g.get("GameTime") or "").strip()
                              disp = raw_time_clean.split(" ")[0] + " " + raw_time_clean.split(" ")[1]
@@ -1926,13 +1929,24 @@ fetcher = SportsFetcher(
     initial_lon=state['weather_lon']
 )
 
+# ========================================================
+# FIX #2: DRIFT CORRECTION LOOP
+# ========================================================
 def sports_worker():
     try: fetcher.fetch_all_teams()
     except: pass
-    while True: 
-        try: fetcher.update_buffer_sports()
-        except: pass
-        time.sleep(SPORTS_UPDATE_INTERVAL)
+    
+    while True:
+        start_time = time.time()
+        
+        try: 
+            fetcher.update_buffer_sports()
+        except Exception as e: 
+            print(f"Sports Worker Error: {e}")
+            
+        execution_time = time.time() - start_time
+        sleep_dur = max(0, SPORTS_UPDATE_INTERVAL - execution_time)
+        time.sleep(sleep_dur)
 
 def stocks_worker():
     while True:
@@ -2073,7 +2087,7 @@ def get_ticker_data():
     rec['last_seen'] = time.time()
     
     # ==========================================================
-    # PAIRING LOGIC (RESTORED FROM OLD CODE)
+    # PAIRING LOGIC
     # ==========================================================
     # If no clients are connected, IMMEDIATELY stop and send the pairing signal.
     # This matches exactly what your hardware expects.
@@ -2084,8 +2098,6 @@ def get_ticker_data():
             save_specific_ticker(ticker_id)
             
         # ⚠️ SHORT-CIRCUIT RETURN
-        # We return ONLY this simple JSON. The hardware sees "status": "pairing"
-        # and switches modes instantly.
         return jsonify({
             "status": "pairing", 
             "code": rec['pairing_code']
@@ -2133,13 +2145,22 @@ def get_ticker_data():
         if should_show:
             visible_games.append(g)
     
-    return jsonify({ 
+    # ========================================================
+    # FIX #3: NO CACHE HEADERS
+    # ========================================================
+    response = jsonify({ 
         "status": "ok", 
         "version": SERVER_VERSION,
         "global_config": { "mode": current_mode }, 
         "local_config": t_settings, 
         "content": { "sports": visible_games } 
     })
+    
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
+    return response
 
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
@@ -2268,8 +2289,6 @@ def api_state():
     raw_games = fetcher.get_snapshot_for_delay(0)
     
     # 2. Create a copy to modify 'is_shown' without affecting the global cache
-    # We use a shallow copy of the list, but we need deep copies of dicts if we modify them.
-    # However, since we are building a response, we can just rebuild the list of dicts.
     processed_games = []
 
     current_mode = response_settings.get('mode', 'all')
@@ -2317,7 +2336,7 @@ def api_state():
     return jsonify({
         "status": "ok",
         "settings": response_settings,
-        "games": processed_games  # Returns ALL games, but with correct is_shown flags
+        "games": processed_games 
     })
 
 @app.route('/api/teams')
