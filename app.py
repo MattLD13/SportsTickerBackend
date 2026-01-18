@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v4"
+SERVER_VERSION = "v5"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -72,9 +72,11 @@ if not os.path.exists(TICKER_DATA_DIR):
 GLOBAL_CONFIG_FILE = "global_config.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 
-# === TIMING ===
-SPORTS_UPDATE_INTERVAL = 5        
-STOCKS_UPDATE_INTERVAL = 15        
+# === MICRO INSTANCE TUNING (SMART-5) ===
+SPORTS_UPDATE_INTERVAL = 5.0   # Keep this fast
+STOCKS_UPDATE_INTERVAL = 30    # Slow down stocks to save CPU
+WORKER_THREAD_COUNT = 10       # LIMIT THIS to 10 to save RAM (Critical)
+API_TIMEOUT = 3.0              # New constant for hard timeouts        
 
 data_lock = threading.Lock()
 
@@ -661,15 +663,20 @@ class SportsFetcher:
         self.stocks = StockFetcher()
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
-        self.session = build_pooled_session(pool_size=50)
-        # ========================================================
-        # FIX #1: INCREASED THREAD POOL TO PREVENT QUEUEING DELAYS
-        # ========================================================
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=25) 
         
+        # CHANGE 1: Reduce Pool Size to 15 (Save RAM)
+        self.session = build_pooled_session(pool_size=15)
+        
+        # CHANGE 2: Use Configured Thread Count (10)
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=WORKER_THREAD_COUNT)
+        
+        # CHANGE 3: Add New Caches for Smart Sleep
         self.history_buffer = [] 
+        self.final_game_cache = {}      # Stores finished games so we don't re-fetch
+        self.league_next_update = {}    # Stores "Wake Up" time for sleeping leagues
+        self.league_last_data = {}      # Stores last data for sleeping leagues
+        
         self.consecutive_empty_fetches = 0
-
         self.ahl_cached_key = None
         self.ahl_key_expiry = 0
         
@@ -678,6 +685,32 @@ class SportsFetcher:
             for item in LEAGUE_OPTIONS 
             if item['type'] == 'sport' and 'fetch' in item 
         }
+
+    def _calculate_next_update(self, games):
+        """Returns TIMESTAMP when we should next fetch this league"""
+        if not games: return 0 
+        now = time.time()
+        earliest_start = None
+        
+        for g in games:
+            # If ACTIVE (In/Half/Crit) -> Fetch Immediately (0)
+            if g['state'] in ['in', 'half', 'crit']: return 0
+            
+            # If SCHEDULED -> Track earliest start time
+            if g['state'] == 'pre':
+                try:
+                    ts = dt.fromisoformat(g['startTimeUTC'].replace('Z', '+00:00')).timestamp()
+                    if earliest_start is None or ts < earliest_start: earliest_start = ts
+                except: pass
+        
+        # If games are in future, sleep until 60s before start
+        if earliest_start:
+            wake_time = earliest_start - 60 
+            if wake_time > now: return wake_time
+            return 0
+            
+        # If all FINAL -> Sleep 60s
+        return now + 60
 
     def get_corrected_logo(self, league_key, abbr, default_logo):
         return LOGO_OVERRIDES.get(f"{league_key.upper()}:{abbr}", default_logo)
@@ -1606,18 +1639,16 @@ class SportsFetcher:
         try:
             curr_p = config.get('scoreboard_params', {}).copy()
             
-            now_utc = dt.now(timezone.utc)
-            now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-            
-            yesterday_str = (now_local - timedelta(days=1)).strftime("%Y%m%d")
-            tomorrow_str = (now_local + timedelta(days=1)).strftime("%Y%m%d")
+            # CHANGE B: DATE OPTIMIZATION (Only fetch TODAY)
+            now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
             
             if conf['debug_mode'] and conf['custom_date']:
                 curr_p['dates'] = conf['custom_date'].replace('-', '')
             else:
-                curr_p['dates'] = f"{yesterday_str}-{tomorrow_str}"
+                curr_p['dates'] = now_local.strftime("%Y%m%d") # Only fetch today
             
-            r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
+            # CHANGE: Use API_TIMEOUT
+            r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=API_TIMEOUT)
             data = r.json()
             
             events = data.get('events', [])
@@ -1627,6 +1658,13 @@ class SportsFetcher:
                     events = leagues[0].get('events', [])
             
             for e in events:
+                gid = str(e['id'])
+
+                # CHANGE A: CACHE CHECK
+                if gid in self.final_game_cache:
+                    local_games.append(self.final_game_cache[gid])
+                    continue # Skip processing
+                
                 utc_str = e['date'].replace('Z', '')
                 st = e.get('status', {})
                 tp = st.get('type', {})
@@ -1740,7 +1778,7 @@ class SportsFetcher:
                 if s_disp == "Halftime": down_text = ''
 
                 game_obj = {
-                    'type': 'scoreboard', 'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': True,
+                    'type': 'scoreboard', 'sport': league_key, 'id': gid, 'status': s_disp, 'state': gst, 'is_shown': True,
                     'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg,
                     'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg,
                     'home_color': f"#{h['team'].get('color','000000')}", 'home_alt_color': f"#{h['team'].get('alternateColor','ffffff')}",
@@ -1768,6 +1806,11 @@ class SportsFetcher:
                 if is_suspended: game_obj['is_shown'] = False
                 
                 local_games.append(game_obj)
+                
+                # CHANGE C: SAVE FINAL GAMES TO CACHE
+                if gst == 'post' and "FINAL" in s_disp:
+                    self.final_game_cache[gid] = game_obj
+
         except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games
 
@@ -1788,7 +1831,7 @@ class SportsFetcher:
         if conf['active_sports'].get('clock'):
             all_games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
 
-        # 2. SPORTS (Parallelized)
+        # 2. SPORTS (Parallelized & Smart)
         if conf['mode'] in ['sports', 'live', 'my_teams', 'all']:
             utc_offset = conf.get('utc_offset', -5)
             now_utc = dt.now(timezone.utc)
@@ -1810,33 +1853,59 @@ class SportsFetcher:
             window_start_utc = window_start_local.astimezone(timezone.utc)
             window_end_utc = window_end_local.astimezone(timezone.utc)
             
-            futures = []
+            futures = {}
 
+            # --- SMART LOOP IMPLEMENTATION ---
+            
+            # Special fetchers (Always submit for now, but with timeout)
             if conf['active_sports'].get('ahl', False):
-                futures.append(self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc))
+                f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
+                futures[f] = 'ahl'
             
             if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
-                futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc))
+                f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                futures[f] = 'nhl_native'
             
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
-                        futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc))
+                    f = self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                    futures[f] = internal_id
 
+            # Standard ESPN fetchers (Apply Smart Sleep)
             for league_key, config in self.leagues.items():
                 if league_key == 'nhl' and not conf['debug_mode']: continue 
                 if league_key.startswith('soccer_'): continue
                 if league_key == 'ahl': continue
-
-                futures.append(self.executor.submit(
+                
+                # Check Sleep Status
+                if time.time() < self.league_next_update.get(league_key, 0):
+                    # SLEEPING: Use cached data (Instant)
+                    if league_key in self.league_last_data:
+                        all_games.extend(self.league_last_data[league_key])
+                    continue
+                
+                # AWAKE: Submit task
+                f = self.executor.submit(
                     self.fetch_single_league, 
                     league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc
-                ))
+                )
+                futures[f] = league_key
             
-            for f in concurrent.futures.as_completed(futures):
-                try:
+            # HARD TIMEOUT: Wait max 3.0s for threads
+            done, _ = concurrent.futures.wait(futures.keys(), timeout=API_TIMEOUT)
+            
+            for f in done:
+                lk = futures[f]
+                try: 
                     res = f.result()
-                    if res: all_games.extend(res)
-                except Exception as e: print(f"League fetch error: {e}")
+                    if res: 
+                        all_games.extend(res)
+                        # Save data for next sleep cycle
+                        if lk not in ['ahl', 'nhl_native'] and not lk.startswith('soccer_'):
+                            self.league_last_data[lk] = res
+                            self.league_next_update[lk] = self._calculate_next_update(res)
+                except Exception as e: 
+                    print(f"Fetch error {lk}: {e}")
 
         sports_count = len([g for g in all_games if g.get('type') == 'scoreboard'])
         
@@ -2144,13 +2213,16 @@ def get_ticker_data():
         if should_show:
             visible_games.append(g)
     
-    # ================= FIX: INJECT REBOOT FLAG SAFELY =================
     # Construct the response config
     g_config = { "mode": current_mode }
     
-    # Only add reboot if specifically requested for THIS ticker
+    # Handle Reboot Flag
     if rec.get('reboot_requested', False):
         g_config['reboot'] = True
+
+    # Handle Update Flag (NEW)
+    if rec.get('update_requested', False):
+        g_config['update'] = True
         
     response = jsonify({ 
         "status": "ok", 
@@ -2159,7 +2231,6 @@ def get_ticker_data():
         "local_config": t_settings, 
         "content": { "sports": visible_games } 
     })
-    # ==================================================================
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
@@ -2357,6 +2428,14 @@ def api_hardware():
         action = data.get('action')
         ticker_id = data.get('ticker_id')
         
+        # NEW: Handle Update Action
+        if action == 'update':
+            with data_lock:
+                for t in tickers.values(): t['update_requested'] = True
+            # Clear flag after 60s
+            threading.Timer(60, lambda: [t.update({'update_requested':False}) for t in tickers.values()]).start()
+            return jsonify({"status": "ok", "message": "Updating Fleet"})
+
         if action == 'reboot':
             # Target the specific ticker if ID is provided
             if ticker_id and ticker_id in tickers:
