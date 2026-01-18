@@ -1,9 +1,13 @@
-name: Deploy to OCI
+name: Deploy System
+
 on:
   push:
     branches: [ "main" ]
 
 jobs:
+  # ---------------------------------------------------
+  # JOB 1: Deploy Server Code (app.py) & Restart
+  # ---------------------------------------------------
   deploy:
     runs-on: ubuntu-latest
     steps:
@@ -17,8 +21,8 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          # Copy Python script, requirements, and any JSON config files
-          source: "app.py,requirements.txt,*.json"
+          # Added ticker_controller.py to the list so the server has a copy (optional but good for backup)
+          source: "app.py,requirements.txt,*.json,ticker_controller.py"
           target: "/home/${{ secrets.SSH_USER }}/"
 
       # 2. Configure .env and Restart Service
@@ -34,35 +38,59 @@ jobs:
 
             # ---------------------------------------------------------
             # GENERATE .env FILE FROM SECRETS
-            # This overwrites the file every deploy to keep keys fresh
             # ---------------------------------------------------------
             echo "Generating .env file..."
-            
-            # Using simple echo statements avoids YAML indentation errors common with HEREDOCs
             echo "FINNHUB_KEY_1=${{ secrets.FINNHUB_KEY_1 }}" > .env
             echo "FINNHUB_KEY_2=${{ secrets.FINNHUB_KEY_2 }}" >> .env
             echo "FINNHUB_KEY_3=${{ secrets.FINNHUB_KEY_3 }}" >> .env
             echo "FINNHUB_KEY_4=${{ secrets.FINNHUB_KEY_4 }}" >> .env
             echo "FINNHUB_KEY_5=${{ secrets.FINNHUB_KEY_5 }}" >> .env
             
-            # Secure the file so only the user can read it
             chmod 600 .env
 
             # ---------------------------------------------------------
             # INSTALL & RESTART
             # ---------------------------------------------------------
-            
-            # Update Python dependencies
-            # (Includes check for Ubuntu 24.04+ which requires --break-system-packages outside venv)
             if pip3 --version; then
                 pip3 install -r requirements.txt --break-system-packages || pip3 install -r requirements.txt
             else
                 pip install -r requirements.txt
             fi
 
-            # Restart the systemd service
             echo "Restarting ticker service..."
             sudo systemctl restart ticker
-
-            # Check status (prints to GitHub Action logs for debugging)
             sudo systemctl status ticker --no-pager
+
+  # ---------------------------------------------------
+  # JOB 2: Trigger Ticker Update (If Controller Changed)
+  # ---------------------------------------------------
+  signal-fleet:
+    runs-on: ubuntu-latest
+    needs: deploy # Wait for server to be up before signaling
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2 # Important: Required to see file changes
+
+      - name: Check if Controller Code Changed
+        id: check_changes
+        run: |
+          # Check git diff for the specific controller file
+          if git diff --name-only HEAD^ HEAD | grep -q "ticker_controller.py"; then
+            echo "updated=true" >> $GITHUB_OUTPUT
+            echo "Controller code changed. Triggering fleet update."
+          else
+            echo "updated=false" >> $GITHUB_OUTPUT
+            echo "No controller changes. Skipping fleet signal."
+          fi
+
+      - name: Send Update Signal to Server
+        if: steps.check_changes.outputs.updated == 'true'
+        run: |
+          # Uses your real domain. Assumes you have HTTPS set up.
+          # If you don't have HTTPS yet, use http://ticker.mattdicks.org
+          
+          curl -X POST https://ticker.mattdicks.org/api/hardware \
+          -H "Content-Type: application/json" \
+          -d '{"action": "update", "ticker_id": "all"}'
