@@ -24,7 +24,7 @@ PANEL_H = 32
 SETUP_SSID = "SportsTicker_Setup"
 SETUP_PASS = "setup1234"
 PAGE_HOLD_TIME = 8.0 
-REFRESH_RATE = 3
+REFRESH_RATE = 0 # ZERO delay for maximum speed
 ID_FILE_PATH = "/boot/ticker_id.txt"
 ID_FILE_FALLBACK = "ticker_id.txt"
 ASSETS_DIR = os.path.expanduser("~/ticker/assets")
@@ -820,6 +820,38 @@ class TickerStreamer:
             
         return strip
 
+    def perform_update(self):
+        print("⬇️ STARTING SOFTWARE UPDATE...")
+        # Show visual indicator
+        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0))
+        d = ImageDraw.Draw(img)
+        d.text((2, 10), "UPDATING SYSTEM...", font=self.medium_font, fill=(0, 255, 0))
+        self.update_display(img)
+        
+        try:
+            # Run git pull. Ensure we are in the script's directory.
+            repo_dir = os.path.dirname(os.path.abspath(__file__))
+            result = subprocess.run(['git', 'pull'], cwd=repo_dir, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                d.rectangle((0,0, PANEL_W, PANEL_H), fill=(0,0,0))
+                d.text((2, 10), "UPDATE SUCCESS!", font=self.medium_font, fill=(0, 255, 0))
+                d.text((2, 22), "REBOOTING...", font=self.tiny, fill=(100, 100, 100))
+                self.update_display(img)
+                time.sleep(3)
+                subprocess.run(['reboot'])
+            else:
+                print(f"Update Failed: {result.stderr}")
+                d.rectangle((0,0, PANEL_W, PANEL_H), fill=(0,0,0))
+                d.text((2, 2), "UPDATE FAILED", font=self.medium_font, fill=(255, 0, 0))
+                self.update_display(img)
+                time.sleep(5)
+                # Resume normal operation
+                return
+                
+        except Exception as e:
+            print(f"Update Exception: {e}")
+
     def render_loop(self):
         strip_offset = 0.0
         
@@ -934,26 +966,31 @@ class TickerStreamer:
     def poll_backend(self):
         last_hash = ""
         # Fix for "Offline" status caused by SSL certs on devices with wrong dates
-        requests.packages.urllib3.disable_warnings() 
+        requests.packages.urllib3.disable_warnings()
         
+        # Use a Session to reuse TCP connections (Keep-Alive)
+        session = requests.Session()
+
         while self.running:
             try:
                 url = f"{BACKEND_URL}/data?id={self.device_id}"
                 
-                # FIX 1: verify=False ensures connection even if certificates fail
-                r = requests.get(url, timeout=10, verify=False)
+                # Use session.get to reuse the connection
+                r = session.get(url, timeout=10, verify=False)
                 data = r.json()
                 
                 # ==========================================
-                # FIX 2: REBOOT LISTENER
+                # COMMAND LISTENER
                 # ==========================================
                 global_conf = data.get('global_config', {})
                 if global_conf.get('reboot') is True:
                     print("⚠️ REBOOT COMMAND RECEIVED")
                     self.matrix.Clear()
-                    # Execute Linux reboot
                     subprocess.run(['reboot'])
                     sys.exit(0)
+                
+                if global_conf.get('update') is True:
+                    self.perform_update()
                 # ==========================================
 
                 if data.get('status') == 'pairing':
@@ -1014,11 +1051,12 @@ class TickerStreamer:
                     self.bg_strip_ready = True
                     last_hash = current_hash
                     self.game_render_cache.clear()
-                    
+            
             except Exception as e:
                 print(f"Poll Error: {e}")
+                time.sleep(1)
             
-            time.sleep(REFRESH_RATE)
+            # Sleep removed to allow immediate polling
 
 if __name__ == "__main__":
     app = TickerStreamer()
