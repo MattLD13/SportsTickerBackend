@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v4.2_Production_MarchMadness"
+SERVER_VERSION = "v5.1_Turbo_AutoDeploy"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -57,9 +57,10 @@ if os.path.exists("stock_cache.json"):
         os.remove("stock_cache.json")
     except: pass
 
-def build_pooled_session(pool_size=20, retries=2):
+def build_pooled_session(pool_size=40, retries=1):
     session = requests.Session()
-    adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size, max_retries=retries, pool_block=True)
+    # Reduced retries to 1 for aggressive fail-over
+    adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size, max_retries=retries, pool_block=False)
     session.mount("http://", adapter)
     session.mount("https://", adapter)
     return session
@@ -72,18 +73,23 @@ if not os.path.exists(TICKER_DATA_DIR):
 GLOBAL_CONFIG_FILE = "global_config.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 
-# === TIMING ===
-SPORTS_UPDATE_INTERVAL = 5        
+# === TIMING OPTIMIZATION ===
+# Reduced from 5.0s to 2.0s for near-real-time updates
+SPORTS_UPDATE_INTERVAL = 2.0        
 STOCKS_UPDATE_INTERVAL = 15        
 
 data_lock = threading.Lock()
 
-# Headers for FotMob/ESPN
+# === ANTI-CACHE HEADERS ===
 HEADERS = {
-    "User-Agent": "Mozilla/5.0",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     "Accept": "application/json",
     "Accept-Language": "en",
-    "Referer": "https://www.fotmob.com/"
+    "Referer": "https://www.espn.com/",
+    # Force fresh data from CDNs
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0"
 }
 
 # ================= FOTMOB MAPPING =================
@@ -168,25 +174,25 @@ LEAGUE_OPTIONS = [
     {'id': 'soccer_epl',    'label': 'Premier League',       'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_fa_cup','label': 'FA Cup',                 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
     {'id': 'soccer_champ', 'label': 'Championship',             'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l1',     'label': 'League One',              'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l2',     'label': 'League Two',              'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_wc',     'label': 'FIFA World Cup',         'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l1',     'label': 'League One',               'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l2',     'label': 'League Two',               'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_wc',     'label': 'FIFA World Cup',          'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_europa_league',    'label': 'Europa League',    'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 200}, 'type': 'scoreboard'}},
     # --- OTHERS ---
     {'id': 'hockey_olympics', 'label': 'Olympic Hockey',   'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/mens-olympic-hockey', 'type': 'scoreboard'}},
     # --- RACING ---
     {'id': 'f1',             'label': 'Formula 1',             'type': 'sport', 'default': True,  'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
-    {'id': 'nascar',         'label': 'NASCAR',                'type': 'sport', 'default': True,  'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
+    {'id': 'nascar',         'label': 'NASCAR',                 'type': 'sport', 'default': True,  'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
     # --- UTILITIES ---
-    {'id': 'weather',       'label': 'Weather',                'type': 'util',  'default': True},
-    {'id': 'clock',         'label': 'Clock',                 'type': 'util',  'default': True},
+    {'id': 'weather',       'label': 'Weather',                 'type': 'util',  'default': True},
+    {'id': 'clock',         'label': 'Clock',                  'type': 'util',  'default': True},
     # --- STOCKS ---
-    {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',        'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
-    {'id': 'stock_momentum',   'label': 'Momentum Stocks',         'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
-    {'id': 'stock_energy',          'label': 'Energy Stocks',         'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
-    {'id': 'stock_finance',         'label': 'Financial Stocks',       'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
-    {'id': 'stock_consumer',        'label': 'Consumer Stocks',       'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
+    {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',         'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
+    {'id': 'stock_momentum',   'label': 'Momentum Stocks',          'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
+    {'id': 'stock_energy',           'label': 'Energy Stocks',          'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
+    {'id': 'stock_finance',          'label': 'Financial Stocks',       'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
+    {'id': 'stock_consumer',         'label': 'Consumer Stocks',        'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
 ]
 
 # ================= DEFAULT STATE =================
@@ -457,10 +463,10 @@ class WeatherFetcher:
         
         try:
             w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto"
-            w_res = self.session.get(w_url, timeout=5).json()
+            w_res = self.session.get(w_url, timeout=3).json()
 
             a_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={self.lat}&longitude={self.lon}&current=us_aqi"
-            a_res = self.session.get(a_url, timeout=5).json()
+            a_res = self.session.get(a_url, timeout=3).json()
 
             current_temp = int(round(w_res['current']['temperature_2m']))
             current_code = w_res['current']['weather_code']
@@ -563,7 +569,7 @@ class StockFetcher:
         if not api_key: return None
         
         try:
-            r = self.session.get("https://finnhub.io/api/v1/quote", params={'symbol': symbol, 'token': api_key}, timeout=5)
+            r = self.session.get("https://finnhub.io/api/v1/quote", params={'symbol': symbol, 'token': api_key}, timeout=3)
             if r.status_code == 429: time.sleep(2); return None
             r.raise_for_status()
             data = r.json()
@@ -587,7 +593,7 @@ class StockFetcher:
                 c_url = "https://finnhub.io/api/v1/stock/candle"
                 c_params = {'symbol': symbol, 'resolution': '1', 'from': from_time, 'to': to_time, 'token': api_key}
                 
-                c_r = self.session.get(c_url, params=c_params, timeout=5)
+                c_r = self.session.get(c_url, params=c_params, timeout=3)
                 c_data = c_r.json()
                 
                 if c_data.get('s') == 'ok' and c_data.get('c'):
@@ -662,10 +668,9 @@ class SportsFetcher:
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         self.session = build_pooled_session(pool_size=50)
-        # ========================================================
-        # FIX #1: INCREASED THREAD POOL TO PREVENT QUEUEING DELAYS
-        # ========================================================
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=25) 
+        
+        # === THREAD POOL OPTIMIZATION (40 WORKERS) ===
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=40) 
         
         self.history_buffer = [] 
         self.consecutive_empty_fetches = 0
@@ -732,7 +737,7 @@ class SportsFetcher:
         config = self.leagues[league_key]
         if 'team_params' not in config: return
         try:
-            r = self.session.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=10)
+            r = self.session.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=3)
             data = r.json()
             if 'sports' in data:
                 for sport in data['sports']:
@@ -777,7 +782,7 @@ class SportsFetcher:
                 })
 
             url = f"{self.base_url}football/college-football/teams"
-            r = self.session.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
+            r = self.session.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=3) 
             data = r.json()
             if 'sports' in data:
                 for sport in data['sports']:
@@ -904,7 +909,7 @@ class SportsFetcher:
                 "league_id": 4, "site_id": 0
             }
             
-            r = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=params, timeout=5)
+            r = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=params, timeout=3)
             if r.status_code != 200: return []
             
             data = r.json()
@@ -957,7 +962,7 @@ class SportsFetcher:
                             "feed": "statviewfeed", "view": "gameSummary", "key": key,
                             "client_code": "ahl", "lang": "en", "fmt": "json", "game_id": gid
                         }
-                        r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=4)
+                        r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=3)
                         if r_sum.status_code == 200:
                             text = r_sum.text.strip()
                             if text.startswith("(") and text.endswith(")"):
@@ -1069,7 +1074,7 @@ class SportsFetcher:
         
         processed_ids = set()
         try:
-            r = self.session.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
+            r = self.session.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=3)
             if r.status_code != 200: return []
             
             landing_futures = {} 
@@ -1170,7 +1175,7 @@ class SportsFetcher:
                                                 p_lbl = f"P{p_num}"
                                             
                                             disp = f"{p_lbl} {time_rem}"
-                                     
+                                    
                                 sit_obj = d2.get('situation', {})
                                 if sit_obj:
                                     sit = sit_obj.get('situationCode', '1551')
@@ -1303,7 +1308,7 @@ class SportsFetcher:
     def _fetch_fotmob_details(self, match_id, home_id=None, away_id=None):
         try:
             url = f"https://www.fotmob.com/api/matchDetails?matchId={match_id}"
-            resp = self.session.get(url, headers=HEADERS, timeout=10)
+            resp = self.session.get(url, headers=HEADERS, timeout=3)
             resp.raise_for_status()
             payload = resp.json()
             
@@ -1576,7 +1581,7 @@ class SportsFetcher:
                 params = {"id": league_id, "tab": "matches", "timeZone": "UTC", "type": l_type, "_": int(time.time())}
                 
                 try:
-                    resp = self.session.get(url, params=params, headers=HEADERS, timeout=10)
+                    resp = self.session.get(url, params=params, headers=HEADERS, timeout=3)
                     resp.raise_for_status()
                     payload = resp.json()
                     
@@ -1606,18 +1611,17 @@ class SportsFetcher:
         try:
             curr_p = config.get('scoreboard_params', {}).copy()
             
+            # --- DATE OPTIMIZATION: ONLY FETCH TODAY ---
             now_utc = dt.now(timezone.utc)
             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-            
-            yesterday_str = (now_local - timedelta(days=1)).strftime("%Y%m%d")
-            tomorrow_str = (now_local + timedelta(days=1)).strftime("%Y%m%d")
+            today_str = now_local.strftime("%Y%m%d")
             
             if conf['debug_mode'] and conf['custom_date']:
                 curr_p['dates'] = conf['custom_date'].replace('-', '')
             else:
-                curr_p['dates'] = f"{yesterday_str}-{tomorrow_str}"
+                curr_p['dates'] = today_str # REDUCED PAYLOAD
             
-            r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=5)
+            r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=3)
             data = r.json()
             
             events = data.get('events', [])
@@ -1945,23 +1949,22 @@ fetcher = SportsFetcher(
 )
 
 # ========================================================
-# FIX #2: DRIFT CORRECTION LOOP
+# FIX #2: HIGH-SPEED LOOP (NO DRIFT CORRECTION)
 # ========================================================
 def sports_worker():
     try: fetcher.fetch_all_teams()
     except: pass
     
+    print(f"🚀 High-Speed Sports Worker Started (Interval: {SPORTS_UPDATE_INTERVAL}s)")
+    
     while True:
-        start_time = time.time()
-        
         try: 
             fetcher.update_buffer_sports()
         except Exception as e: 
             print(f"Sports Worker Error: {e}")
+            time.sleep(1) # Panic sleep only on error
             
-        execution_time = time.time() - start_time
-        sleep_dur = max(0, SPORTS_UPDATE_INTERVAL - execution_time)
-        time.sleep(sleep_dur)
+        time.sleep(SPORTS_UPDATE_INTERVAL)
 
 def stocks_worker():
     while True:
@@ -1984,36 +1987,25 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
         
-        # 1. Determine which ticker is being targeted
         target_id = new_data.get('ticker_id') or request.args.get('id')
-        
         cid = request.headers.get('X-Client-ID')
         
-        # If we have a CID, try to find the associated ticker
         if not target_id and cid:
             for tid, t_data in tickers.items():
                 if cid in t_data.get('clients', []):
                     target_id = tid
                     break
         
-        # Fallback for single-ticker setups
         if not target_id and len(tickers) == 1: 
             target_id = list(tickers.keys())[0]
 
-        # ================= SECURITY CHECK START =================
         if target_id and target_id in tickers:
             rec = tickers[target_id]
-            
-            # STRICT FIX: remove "if rec.get('paired')"
-            # If the client ID is not in the list, block them. 
-            # The ONLY way to get in the list is via the /pair endpoint.
             if cid not in rec.get('clients', []):
                 print(f"⛔ Blocked unauthorized config change from {cid}")
                 return jsonify({"error": "Unauthorized: Device not paired"}), 403
-        # ================== SECURITY CHECK END ==================
 
         with data_lock:
-            # Update Weather (Global)
             new_city = new_data.get('weather_city')
             if new_city: 
                 fetcher.weather.update_config(city=new_city, lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
@@ -2023,7 +2015,6 @@ def api_config():
             for k, v in new_data.items():
                 if k not in allowed_keys: continue
                 
-                # HANDLE TEAMS
                 if k == 'my_teams' and isinstance(v, list):
                     cleaned = []
                     seen = set()
@@ -2041,15 +2032,12 @@ def api_config():
                         state['my_teams'] = cleaned
                     continue
 
-                # HANDLE ACTIVE SPORTS
                 if k == 'active_sports' and isinstance(v, dict): 
                     state['active_sports'].update(v)
                     continue
                 
-                # HANDLE MODES & SETTINGS
                 if v is not None: state[k] = v
                 
-                # SYNC TO TICKER SETTINGS
                 if target_id and target_id in tickers:
                     if k in tickers[target_id]['settings'] or k == 'mode':
                         tickers[target_id]['settings'][k] = v
@@ -2085,11 +2073,9 @@ def get_league_options():
 def get_ticker_data():
     ticker_id = request.args.get('id')
     
-    # 1. Default to the first ticker if none specified
     if not ticker_id and len(tickers) == 1: 
         ticker_id = list(tickers.keys())[0]
     
-    # 2. Safety check: If ID is invalid, return generic config to prevent crash
     if not ticker_id or ticker_id not in tickers:
         return jsonify({
             "status": "ok",
@@ -2101,14 +2087,12 @@ def get_ticker_data():
     rec = tickers[ticker_id]
     rec['last_seen'] = time.time()
     
-    # Pairing Check
     if not rec.get('clients') or not rec.get('paired'):
         if not rec.get('pairing_code'):
             rec['pairing_code'] = generate_pairing_code()
             save_specific_ticker(ticker_id)
         return jsonify({ "status": "pairing", "code": rec['pairing_code'] })
 
-    # 3. Standard Data Fetching
     t_settings = rec['settings']
     saved_teams = rec.get('my_teams', []) 
     current_mode = t_settings.get('mode', 'all') 
@@ -2144,13 +2128,13 @@ def get_ticker_data():
         if should_show:
             visible_games.append(g)
     
-    # ================= FIX: INJECT REBOOT FLAG SAFELY =================
-    # Construct the response config
     g_config = { "mode": current_mode }
     
-    # Only add reboot if specifically requested for THIS ticker
     if rec.get('reboot_requested', False):
         g_config['reboot'] = True
+    
+    if rec.get('update_requested', False):
+        g_config['update'] = True
         
     response = jsonify({ 
         "status": "ok", 
@@ -2159,7 +2143,6 @@ def get_ticker_data():
         "local_config": t_settings, 
         "content": { "sports": visible_games } 
     })
-    # ==================================================================
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
@@ -2171,7 +2154,6 @@ def get_ticker_data():
 def pair_ticker():
     try:
         cid = request.headers.get('X-Client-ID')
-        # Handle cases where request.json might be None
         json_body = request.json or {}
         code = json_body.get('code')
         friendly_name = json_body.get('name', 'My Ticker')
@@ -2182,33 +2164,24 @@ def pair_ticker():
             print("❌ Missing CID or Code")
             return jsonify({"success": False, "message": "Missing Data"}), 400
         
-        # Normalize code to string and strip whitespace to prevent mismatches
         input_code = str(code).strip()
 
         for uid, rec in tickers.items():
-            # Check if this ticker has a pairing code
             known_code = str(rec.get('pairing_code', '')).strip()
             
             if known_code == input_code:
-                # --- MATCH FOUND! ---
                 if cid not in rec.get('clients', []):
                     rec['clients'].append(cid)
                 
                 rec['paired'] = True
                 rec['name'] = friendly_name
                 
-                # Save the specific ticker file so the change persists
                 save_specific_ticker(uid)
                 
                 print(f"✅ Paired Successfully to Ticker: {uid}")
                 return jsonify({"success": True, "ticker_id": uid})
         
-        # If loop finishes with no match
         print(f"❌ Invalid Code. Input: {input_code}")
-        
-        # Return 200 OK with success:False. 
-        # If we return 404, the App assumes the server is offline. 
-        # We want the App to know the server is online but the code was wrong.
         return jsonify({"success": False, "message": "Invalid Pairing Code"}), 200
 
     except Exception as e:
@@ -2254,20 +2227,17 @@ def list_tickers():
 def update_settings(tid):
     if tid not in tickers: return jsonify({"error":"404"}), 404
 
-    # ================= SECURITY CHECK =================
     cid = request.headers.get('X-Client-ID')
     rec = tickers[tid]
     
-    # If this check fails, the App is not paired correctly.
     if not cid or cid not in rec.get('clients', []):
         print(f"⛔ Blocked unauthorized settings change from {cid}")
         return jsonify({"error": "Unauthorized: Device not paired"}), 403
-    # ==================================================
 
     rec['settings'].update(request.json)
     save_specific_ticker(tid)
     
-    print(f"✅ Updated Settings for {tid}: {request.json}") # Added log for debugging
+    print(f"✅ Updated Settings for {tid}: {request.json}")
     return jsonify({"success": True})
 
 @app.route('/api/state', methods=['GET'])
@@ -2292,10 +2262,7 @@ def api_state():
         response_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
         response_settings['ticker_id'] = ticker_id 
     
-    # 1. Get ALL raw games
     raw_games = fetcher.get_snapshot_for_delay(0)
-    
-    # 2. Create a copy to modify 'is_shown' without affecting the global cache
     processed_games = []
 
     current_mode = response_settings.get('mode', 'all')
@@ -2303,17 +2270,12 @@ def api_state():
     COLLISION_ABBRS = {'LV'}
 
     for g in raw_games:
-        # Create a copy so we don't modify the global cache for other users
         game_copy = g.copy()
-        
-        # Start by assuming it is shown, unless logic says otherwise
         should_show = True
         
-        # Logic 1: Live Mode
         if current_mode == 'live' and game_copy.get('state') not in ['in', 'half']: 
             should_show = False
             
-        # Logic 2: My Teams Mode
         elif current_mode == 'my_teams':
             sport = game_copy.get('sport')
             h_abbr = str(game_copy.get('home_abbr', '')).upper()
@@ -2331,12 +2293,10 @@ def api_state():
             if not (in_home or in_away): 
                 should_show = False
 
-        # Logic 3: Global Postponed/Suspended (Overrides everything)
         status_lower = str(game_copy.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
             should_show = False
 
-        # Apply the calculated visibility to the object
         game_copy['is_shown'] = should_show
         processed_games.append(game_copy)
 
@@ -2358,26 +2318,47 @@ def api_hardware():
         ticker_id = data.get('ticker_id')
         
         if action == 'reboot':
-            # Target the specific ticker if ID is provided
             if ticker_id and ticker_id in tickers:
                 with data_lock:
                     tickers[ticker_id]['reboot_requested'] = True
                 
-                # Auto-clear flag after 15s to prevent boot loops
-                def clear_flag(tid):
+                def clear_reboot(tid):
                     with data_lock:
                         if tid in tickers: tickers[tid]['reboot_requested'] = False
-                threading.Timer(15, clear_flag, args=[ticker_id]).start()
+                threading.Timer(15, clear_reboot, args=[ticker_id]).start()
                 return jsonify({"status": "ok", "message": f"Rebooting {ticker_id}"})
-                
-            # Fallback: Reboot the first ticker if no ID found (Legacy support)
-            elif len(tickers) > 0:
-                target = list(tickers.keys())[0]
+            
+            elif ticker_id == 'all':
                 with data_lock:
-                    tickers[target]['reboot_requested'] = True
-                threading.Timer(15, lambda: tickers[target].update({'reboot_requested': False})).start()
-                return jsonify({"status": "ok"})
+                    for t in tickers.values(): t['reboot_requested'] = True
                 
+                def clear_all_reboot():
+                    with data_lock:
+                        for t in tickers.values(): t['reboot_requested'] = False
+                threading.Timer(15, clear_all_reboot).start()
+                return jsonify({"status": "ok", "message": "Rebooting ALL tickers"})
+
+        elif action == 'update':
+            if ticker_id and ticker_id in tickers:
+                with data_lock:
+                    tickers[ticker_id]['update_requested'] = True
+                
+                def clear_update(tid):
+                    with data_lock:
+                        if tid in tickers: tickers[tid]['update_requested'] = False
+                threading.Timer(60, clear_update, args=[ticker_id]).start()
+                return jsonify({"status": "ok", "message": f"Updating {ticker_id}"})
+
+            elif ticker_id == 'all':
+                with data_lock:
+                    for t in tickers.values(): t['update_requested'] = True
+                
+                def clear_all_update():
+                    with data_lock:
+                        for t in tickers.values(): t['update_requested'] = False
+                threading.Timer(60, clear_all_update).start()
+                return jsonify({"status": "ok", "message": "Updating ALL tickers"})
+
         return jsonify({"status": "ignored"})
     except Exception as e:
         print(f"Hardware API Error: {e}")
@@ -2467,7 +2448,7 @@ def check_my_teams():
         return jsonify({"error": "Ticker ID not found"}), 404
 
 @app.route('/')
-def root(): return "Ticker Server Running"
+def root(): return "Ticker Server Running (v5.1 Turbo & Update)"
 
 if __name__ == "__main__":
     threading.Thread(target=sports_worker, daemon=True).start()
