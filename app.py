@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v5.1_Turbo_AutoDeploy"
+SERVER_VERSION = "v6.0_Turbo_SmartSleep_AutoDeploy"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -57,7 +57,7 @@ if os.path.exists("stock_cache.json"):
         os.remove("stock_cache.json")
     except: pass
 
-def build_pooled_session(pool_size=40, retries=1):
+def build_pooled_session(pool_size=60, retries=1):
     session = requests.Session()
     # Reduced retries to 1 for aggressive fail-over
     adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size, max_retries=retries, pool_block=False)
@@ -643,7 +643,25 @@ class StockFetcher:
 
     def get_stock_obj(self, symbol, label):
         data = self.market_cache.get(symbol)
-        if not data: return Noneclass SportsFetcher:
+        if not data: return None
+        return {
+            'type': 'stock_ticker', 'sport': 'stock', 'id': f"stk_{symbol}", 'status': label, 'tourney_name': label,
+            'state': 'in', 'is_shown': True, 'home_abbr': symbol, 
+            'home_score': data['price'], 'away_score': data['change_pct'],
+            'home_logo': self.get_logo_url(symbol), 'situation': {'change': data['change_amt']}, 
+            'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
+        }
+
+    def get_list(self, list_key):
+        res = []
+        label_item = next((item for item in LEAGUE_OPTIONS if item['id'] == list_key), None)
+        label = label_item['label'] if label_item else "MARKET"
+        for sym in self.lists.get(list_key, []):
+            obj = self.get_stock_obj(sym, label)
+            if obj: res.append(obj)
+        return res
+
+class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
         self.weather = WeatherFetcher(initial_lat=initial_lat, initial_lon=initial_lon, city=initial_city)
         self.stocks = StockFetcher()
@@ -662,6 +680,10 @@ class StockFetcher:
         # Stores fully parsed game objects for games that are 'post' (Final)
         # Prevents re-fetching data for games that will never change.
         self.final_game_cache = {}
+        
+        # === SMART SLEEP CACHE ===
+        self.league_last_data = {}      # Last known state of a league (for display while sleeping)
+        self.league_next_update = {}    # Timestamp when we should next fetch this league
 
         self.ahl_cached_key = None
         self.ahl_key_expiry = 0
@@ -720,6 +742,40 @@ class StockFetcher:
             elif sport == 'mlb' and period > 9:
                 ot_padding = (period - 9) * 20
         return duration + ot_padding
+
+    # === NEW: CALCULATE NEXT POLL TIME ===
+    def _calculate_next_update(self, games):
+        """Determines how long to sleep based on game states"""
+        if not games: return 0 
+        
+        now = time.time()
+        earliest_future = None
+        
+        for g in games:
+            state = g.get('state')
+            # If ANY game is Live/Halftime, we must poll ASAP
+            if state in ['in', 'half', 'crit']:
+                return 0
+            
+            # If Scheduled, find the earliest start time
+            if state == 'pre':
+                try:
+                    iso = g.get('startTimeUTC', '').replace('Z', '+00:00')
+                    start_ts = dt.fromisoformat(iso).timestamp()
+                    if earliest_future is None or start_ts < earliest_future:
+                        earliest_future = start_ts
+                except: pass
+        
+        if earliest_future:
+            # Wake up 60 seconds BEFORE the game starts
+            wake_up_time = earliest_future - 60
+            if wake_up_time > now:
+                return wake_up_time
+            else:
+                return 0 
+                
+        # If we are here, it means NO live games and NO future games (All Final/Postponed)
+        return now + 60 
 
     def _fetch_simple_league(self, league_key, catalog):
         config = self.leagues[league_key]
@@ -912,6 +968,11 @@ class StockFetcher:
                 h_sc = str(g.get("HomeGoals", "0"))
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
+                # CACHE CHECK
+                if f"ahl_{gid}" in self.final_game_cache:
+                    games_found.append(self.final_game_cache[f"ahl_{gid}"])
+                    continue
+
                 parsed_utc = ""
                 iso_date = g.get("GameDateISO8601", "")
                 if iso_date:
@@ -921,18 +982,7 @@ class StockFetcher:
                     except: pass
                 
                 if not parsed_utc:
-                    raw_time = (g.get("GameTime") or g.get("Time") or "").strip()
-                    parsed_utc = f"{g_date_str}T00:00:00Z" # Fallback
-                    try:
-                        tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
-                        if tm_match:
-                            time_str, meridiem, tz_str = tm_match.groups()
-                            offset = -5
-                            if tz_str: offset = TZ_OFFSETS.get(tz_str.upper(), -5)
-                            dt_obj = dt.strptime(f"{g_date_str} {time_str} {meridiem}", "%Y-%m-%d %I:%M %p")
-                            dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
-                            parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                    except: pass
+                    parsed_utc = f"{g_date_str}T00:00:00Z" 
                 
                 if g_date_str != req_date: continue
 
@@ -981,7 +1031,6 @@ class StockFetcher:
                 else:
                     gst = "in"
                     if "intermission" in status_lower:
-                        # Check text first, then fallback to the period number
                         if "1st" in status_lower or period_str == "1": disp = "End 1st"
                         elif "2nd" in status_lower or period_str == "2": disp = "End 2nd"
                         elif "3rd" in status_lower or period_str == "3": disp = "End 3rd"
@@ -995,7 +1044,6 @@ class StockFetcher:
                         else: disp = raw_status
 
                 is_shown = True
-                # NO LOCAL FILTERING HERE - LET /DATA DO IT
 
                 h_obj = next((t for t in ahl_refs if t['abbr'] == h_code), None)
                 a_obj = next((t for t in ahl_refs if t['abbr'] == a_code), None)
@@ -1013,7 +1061,7 @@ class StockFetcher:
                 h_meta = AHL_TEAMS.get(h_code, {"color": "000000"})
                 a_meta = AHL_TEAMS.get(a_code, {"color": "000000"})
 
-                games_found.append({
+                game_obj = {
                     'type': 'scoreboard', 'sport': 'ahl', 'id': f"ahl_{gid}",
                     'status': disp, 'state': gst, 'is_shown': is_shown,
                     'home_abbr': h_code, 'home_score': h_sc, 'home_logo': h_logo,
@@ -1021,7 +1069,12 @@ class StockFetcher:
                     'home_color': f"#{h_meta.get('color','000000')}", 'away_color': f"#{a_meta.get('color','000000')}",
                     'home_alt_color': '#444444', 'away_alt_color': '#444444',
                     'startTimeUTC': parsed_utc, 'situation': {}
-                })
+                }
+                games_found.append(game_obj)
+                
+                if gst == 'post':
+                    self.final_game_cache[f"ahl_{gid}"] = game_obj
+
         except Exception as e:
             print(f"AHL Fetch Error: {e}")
         
@@ -1057,8 +1110,7 @@ class StockFetcher:
 
     def _fetch_nhl_native(self, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc):
         games_found = []
-        is_nhl = conf['active_sports'].get('nhl', False)
-        if not is_nhl: return []
+        if not conf['active_sports'].get('nhl', False): return []
         
         processed_ids = set()
         try:
@@ -1069,13 +1121,14 @@ class StockFetcher:
 
             for d in r.json().get('gameWeek', []):
                 for g in d.get('games', []):
-                    # === FINAL GAME CACHE CHECK ===
                     gid = str(g['id'])
+                    
+                    # FINAL CACHE CHECK
                     if gid in self.final_game_cache:
                         games_found.append(self.final_game_cache[gid])
                         processed_ids.add(gid)
                         continue
-                    
+
                     try:
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
@@ -1090,13 +1143,13 @@ class StockFetcher:
                     if st in ['LIVE', 'CRIT', 'FINAL', 'OFF']:
                         landing_futures[gid] = self.executor.submit(self._fetch_nhl_landing, gid)
             
-            # Note: We don't clear processed_ids here anymore, because we added cached games to it above.
-            
+            processed_ids.clear() 
             for d in r.json().get('gameWeek', []):
                 for g in d.get('games', []):
                     gid = str(g['id'])
-                    if gid in processed_ids: continue # Skip if processed or cached
                     
+                    if gid in self.final_game_cache: continue 
+
                     try:
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
@@ -1108,6 +1161,7 @@ class StockFetcher:
                                 continue
                     except: continue
 
+                    if gid in processed_ids: continue
                     processed_ids.add(gid)
 
                     st = g.get('gameState', 'OFF')
@@ -1195,11 +1249,11 @@ class StockFetcher:
                         'estimated_duration': dur,
                         'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en, 'shootout': shootout_data }
                     }
+                    
                     games_found.append(game_obj)
                     
-                    # === STORE IN CACHE IF FINAL ===
                     if map_st == 'post' and "FINAL" in disp:
-                        self.final_game_cache[str(gid)] = game_obj
+                        self.final_game_cache[gid] = game_obj
 
             return games_found
         except: return []
@@ -1801,10 +1855,46 @@ class StockFetcher:
         except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games
 
+    # === NEW: CALCULATE NEXT POLL TIME ===
+    def _calculate_next_update(self, games):
+        """Determines how long to sleep based on game states"""
+        if not games: return 0 
+        
+        now = time.time()
+        earliest_future = None
+        
+        for g in games:
+            state = g.get('state')
+            # If ANY game is Live/Halftime, we must poll ASAP
+            if state in ['in', 'half', 'crit']:
+                return 0
+            
+            # If Scheduled, find the earliest start time
+            if state == 'pre':
+                try:
+                    iso = g.get('startTimeUTC', '').replace('Z', '+00:00')
+                    start_ts = dt.fromisoformat(iso).timestamp()
+                    if earliest_future is None or start_ts < earliest_future:
+                        earliest_future = start_ts
+                except: pass
+        
+        if earliest_future:
+            # Wake up 60 seconds BEFORE the game starts
+            wake_up_time = earliest_future - 60
+            if wake_up_time > now:
+                return wake_up_time
+            else:
+                return 0 
+                
+        # If we are here, it means NO live games and NO future games (All Final/Postponed)
+        return now + 60 
+
     def update_buffer_sports(self):
         all_games = []
         with data_lock: 
             conf = state.copy()
+        
+        now = time.time()
 
         # 1. WEATHER & CLOCK (Simple, fast)
         if conf['active_sports'].get('weather'):
@@ -1840,41 +1930,56 @@ class StockFetcher:
             window_start_utc = window_start_local.astimezone(timezone.utc)
             window_end_utc = window_end_local.astimezone(timezone.utc)
             
-            futures = []
+            futures = {} # KEY = Future, VALUE = League ID
 
-            if conf['active_sports'].get('ahl', False):
-                futures.append(self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc))
+            # Build Leagues List
+            leagues_to_check = []
             
-            if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
-                futures.append(self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc))
-            
+            if conf['active_sports'].get('ahl'): leagues_to_check.append(('ahl', 'ahl', None))
+            if conf['active_sports'].get('nhl') and not conf['debug_mode']: leagues_to_check.append(('nhl', 'nhl_native', None))
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
-                if conf['active_sports'].get(internal_id, False):
-                        futures.append(self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc))
+                if conf['active_sports'].get(internal_id): leagues_to_check.append((internal_id, 'fotmob', fid))
+            for lk, cfg in self.leagues.items():
+                if lk == 'nhl' and not conf['debug_mode']: continue 
+                if lk.startswith('soccer_') or lk == 'ahl': continue
+                if conf['active_sports'].get(lk): leagues_to_check.append((lk, 'espn', cfg))
 
-            for league_key, config in self.leagues.items():
-                if league_key == 'nhl' and not conf['debug_mode']: continue 
-                if league_key.startswith('soccer_'): continue
-                if league_key == 'ahl': continue
+            # Submit ONLY awake leagues
+            for lk, ltype, lcfg in leagues_to_check:
+                # Check Sleep Timer
+                next_up = self.league_next_update.get(lk, 0)
+                if now < next_up:
+                    # SLEEPING: Use cached data so user still sees "Scheduled" games
+                    if lk in self.league_last_data:
+                        all_games.extend(self.league_last_data[lk])
+                    continue
+                
+                # AWAKE: Submit task
+                if ltype == 'espn':
+                    f = self.executor.submit(self.fetch_single_league, lk, lcfg, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
+                elif ltype == 'ahl':
+                    f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
+                elif ltype == 'nhl_native':
+                    f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                elif ltype == 'fotmob':
+                    f = self.executor.submit(self._fetch_fotmob_league, lcfg, lk, conf, start_window=window_start_utc, end_window=window_end_utc, visible_start_utc=visible_start_utc, visible_end_utc=visible_end_utc)
+                
+                futures[f] = lk
 
-                futures.append(self.executor.submit(
-                    self.fetch_single_league, 
-                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc
-                ))
-            
             # === CRITICAL OPTIMIZATION: HARD TIMEOUT ===
-            # Wait a maximum of 2.5 seconds. If a request is stuck, move on without it.
-            done, not_done = concurrent.futures.wait(futures, timeout=2.5)
+            done, not_done = concurrent.futures.wait(futures.keys(), timeout=2.5)
             
             for f in done:
+                lk = futures[f]
                 try:
                     res = f.result()
-                    if res: all_games.extend(res)
-                except Exception as e: print(f"League fetch error: {e}")
-            
-            # Log skipped requests (optional, for debugging)
-            if not_done:
-                pass # print(f"Skipping {len(not_done)} slow requests")
+                    if res: 
+                        all_games.extend(res)
+                        # Save result for display while sleeping
+                        self.league_last_data[lk] = res
+                        # Calculate when to wake up next
+                        self.league_next_update[lk] = self._calculate_next_update(res)
+                except Exception as e: print(f"League fetch error {lk}: {e}")
 
         sports_count = len([g for g in all_games if g.get('type') == 'scoreboard'])
         
@@ -1975,6 +2080,8 @@ class StockFetcher:
 
         state['current_games'] = final_list
 
+# ================= WORKER FUNCTIONS =================
+
 # Initialize Global Fetcher
 fetcher = SportsFetcher(
     initial_city=state['weather_city'], 
@@ -1982,9 +2089,6 @@ fetcher = SportsFetcher(
     initial_lon=state['weather_lon']
 )
 
-# ========================================================
-# FIX #2: HIGH-SPEED LOOP (NO DRIFT CORRECTION)
-# ========================================================
 def sports_worker():
     try: fetcher.fetch_all_teams()
     except: pass
@@ -2482,7 +2586,7 @@ def check_my_teams():
         return jsonify({"error": "Ticker ID not found"}), 404
 
 @app.route('/')
-def root(): return "Ticker Server Running (v5.1 Turbo & Update)"
+def root(): return "Ticker Server Running (v6.0 Turbo & AutoDeploy)"
 
 if __name__ == "__main__":
     threading.Thread(target=sports_worker, daemon=True).start()
