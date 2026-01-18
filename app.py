@@ -97,7 +97,8 @@ FOTMOB_LEAGUE_MAP = {
     'soccer_l2': 109,
     'soccer_wc': 77,
     'soccer_champions_league': 42,
-    'soccer_europa_league': 73
+    'soccer_europa_league': 73,
+    'soccer_mls': 130
 }
 
 # ================= AHL CONFIGURATION =================
@@ -175,6 +176,7 @@ LEAGUE_OPTIONS = [
     {'id': 'soccer_wc',     'label': 'FIFA World Cup',         'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_europa_league',    'label': 'Europa League',    'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 200}, 'type': 'scoreboard'}},
+    {'id': 'soccer_mls',            'label': 'MLS',                 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/usa.1', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     # --- OTHERS ---
     {'id': 'hockey_olympics', 'label': 'Olympic Hockey',   'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/mens-olympic-hockey', 'type': 'scoreboard'}},
     # --- RACING ---
@@ -837,7 +839,7 @@ class SportsFetcher:
             futures = []
             leagues_to_fetch = [
                 'nfl', 'mlb', 'nhl', 'nba', 'march_madness',
-                'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_champions_league', 'soccer_europa_league'
+                'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_champions_league', 'soccer_europa_league','soccer_mls'
             ]
             for lk in leagues_to_fetch:
                 if lk in self.leagues:
