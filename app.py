@@ -643,25 +643,7 @@ class StockFetcher:
 
     def get_stock_obj(self, symbol, label):
         data = self.market_cache.get(symbol)
-        if not data: return None
-        return {
-            'type': 'stock_ticker', 'sport': 'stock', 'id': f"stk_{symbol}", 'status': label, 'tourney_name': label,
-            'state': 'in', 'is_shown': True, 'home_abbr': symbol, 
-            'home_score': data['price'], 'away_score': data['change_pct'],
-            'home_logo': self.get_logo_url(symbol), 'situation': {'change': data['change_amt']}, 
-            'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
-        }
-
-    def get_list(self, list_key):
-        res = []
-        label_item = next((item for item in LEAGUE_OPTIONS if item['id'] == list_key), None)
-        label = label_item['label'] if label_item else "MARKET"
-        for sym in self.lists.get(list_key, []):
-            obj = self.get_stock_obj(sym, label)
-            if obj: res.append(obj)
-        return res
-
-class SportsFetcher:
+        if not data: return Noneclass SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
         self.weather = WeatherFetcher(initial_lat=initial_lat, initial_lon=initial_lon, city=initial_city)
         self.stocks = StockFetcher()
@@ -675,6 +657,11 @@ class SportsFetcher:
         
         self.history_buffer = [] 
         self.consecutive_empty_fetches = 0
+
+        # === CACHE FOR FINAL GAMES ===
+        # Stores fully parsed game objects for games that are 'post' (Final)
+        # Prevents re-fetching data for games that will never change.
+        self.final_game_cache = {}
 
         self.ahl_cached_key = None
         self.ahl_key_expiry = 0
@@ -1082,6 +1069,13 @@ class SportsFetcher:
 
             for d in r.json().get('gameWeek', []):
                 for g in d.get('games', []):
+                    # === FINAL GAME CACHE CHECK ===
+                    gid = str(g['id'])
+                    if gid in self.final_game_cache:
+                        games_found.append(self.final_game_cache[gid])
+                        processed_ids.add(gid)
+                        continue
+                    
                     try:
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
@@ -1089,7 +1083,6 @@ class SportsFetcher:
                         if not (window_start_utc <= g_dt <= window_end_utc): continue
                     except: continue
 
-                    gid = g['id']
                     if gid in processed_ids: continue
                     processed_ids.add(gid)
                     
@@ -1097,9 +1090,13 @@ class SportsFetcher:
                     if st in ['LIVE', 'CRIT', 'FINAL', 'OFF']:
                         landing_futures[gid] = self.executor.submit(self._fetch_nhl_landing, gid)
             
-            processed_ids.clear() 
+            # Note: We don't clear processed_ids here anymore, because we added cached games to it above.
+            
             for d in r.json().get('gameWeek', []):
                 for g in d.get('games', []):
+                    gid = str(g['id'])
+                    if gid in processed_ids: continue # Skip if processed or cached
+                    
                     try:
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
@@ -1111,8 +1108,6 @@ class SportsFetcher:
                                 continue
                     except: continue
 
-                    gid = g['id']
-                    if gid in processed_ids: continue
                     processed_ids.add(gid)
 
                     st = g.get('gameState', 'OFF')
@@ -1189,7 +1184,7 @@ class SportsFetcher:
                     if "FINAL" in disp:
                         shootout_data = None
 
-                    games_found.append({
+                    game_obj = {
                         'type': 'scoreboard',
                         'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': True,
                         'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
@@ -1199,7 +1194,13 @@ class SportsFetcher:
                         'startTimeUTC': g_utc,
                         'estimated_duration': dur,
                         'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en, 'shootout': shootout_data }
-                    })
+                    }
+                    games_found.append(game_obj)
+                    
+                    # === STORE IN CACHE IF FINAL ===
+                    if map_st == 'post' and "FINAL" in disp:
+                        self.final_game_cache[str(gid)] = game_obj
+
             return games_found
         except: return []
 
@@ -1426,7 +1427,13 @@ class SportsFetcher:
             
             for match in candidate_matches:
                 if not isinstance(match, dict): continue
+                mid = str(match.get("id"))
                 
+                # === FINAL GAME CACHE CHECK ===
+                if mid in self.final_game_cache:
+                    matches.append(self.final_game_cache[mid])
+                    continue
+
                 status = match.get("status") or {}
                 kickoff = status.get("utcTime") or match.get("time")
                 if not kickoff: continue
@@ -1436,7 +1443,6 @@ class SportsFetcher:
                     if not (start_window <= match_dt <= end_window): continue
                 except: continue
 
-                mid = match.get("id")
                 h_name = match.get("home", {}).get("name") or "Home"
                 a_name = match.get("away", {}).get("name") or "Away"
                 
@@ -1554,7 +1560,7 @@ class SportsFetcher:
                 h_info = self.lookup_team_info_from_cache(internal_id, h_ab, h_name)
                 a_info = self.lookup_team_info_from_cache(internal_id, a_ab, a_name)
                 
-                matches.append({
+                game_obj = {
                     'type': 'scoreboard',
                     'sport': internal_id, 
                     'id': str(mid), 
@@ -1570,7 +1576,14 @@ class SportsFetcher:
                     'startTimeUTC': kickoff,
                     'estimated_duration': 115,
                     'situation': { 'possession': '', 'shootout': shootout_data }
-                })
+                }
+                
+                matches.append(game_obj)
+                
+                # === STORE IN CACHE IF FINAL ===
+                if gst == 'post' and ("Final" in disp or "Postponed" in disp):
+                    self.final_game_cache[mid] = game_obj
+                    
         return matches
 
     def _fetch_fotmob_league(self, league_id, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc):
@@ -1632,6 +1645,13 @@ class SportsFetcher:
                     events = leagues[0].get('events', [])
             
             for e in events:
+                gid = str(e['id'])
+                
+                # === FINAL GAME CACHE CHECK ===
+                if gid in self.final_game_cache:
+                    local_games.append(self.final_game_cache[gid])
+                    continue
+
                 utc_str = e['date'].replace('Z', '')
                 st = e.get('status', {})
                 tp = st.get('type', {})
@@ -1745,8 +1765,8 @@ class SportsFetcher:
                 if s_disp == "Halftime": down_text = ''
 
                 game_obj = {
-                    'type': 'scoreboard', 'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': True,
-                    'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg,
+                    'type': 'scoreboard', 'sport': league_key, 'id': str(gid), 'status': s_disp, 'state': gst, 'is_shown': True,
+                    'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg,
                     'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg,
                     'home_color': f"#{h['team'].get('color','000000')}", 'home_alt_color': f"#{h['team'].get('alternateColor','ffffff')}",
                     'away_color': f"#{a['team'].get('color','000000')}", 'away_alt_color': f"#{a['team'].get('alternateColor','ffffff')}",
@@ -1773,6 +1793,11 @@ class SportsFetcher:
                 if is_suspended: game_obj['is_shown'] = False
                 
                 local_games.append(game_obj)
+                
+                # === STORE IN CACHE IF FINAL ===
+                if gst == 'post' and "FINAL" in s_disp:
+                    self.final_game_cache[gid] = game_obj
+
         except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games
 
