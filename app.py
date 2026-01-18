@@ -667,10 +667,11 @@ class SportsFetcher:
         self.stocks = StockFetcher()
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
-        self.session = build_pooled_session(pool_size=50)
+        self.session = build_pooled_session(pool_size=60)
         
-        # === THREAD POOL OPTIMIZATION (40 WORKERS) ===
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=40) 
+        # === THREAD POOL OPTIMIZATION (50 WORKERS) ===
+        # Increased to ensure threads are always available even if some hang
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=50) 
         
         self.history_buffer = [] 
         self.consecutive_empty_fetches = 0
@@ -814,7 +815,7 @@ class SportsFetcher:
             for lk in leagues_to_fetch:
                 if lk in self.leagues:
                     futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog))
-            concurrent.futures.wait(futures)
+            concurrent.futures.wait(futures, timeout=10) # 10s max for initial setup
 
             with data_lock: state['all_teams_data'] = teams_catalog
         except Exception as e: print(f"Global Team Fetch Error: {e}")
@@ -1745,7 +1746,7 @@ class SportsFetcher:
 
                 game_obj = {
                     'type': 'scoreboard', 'sport': league_key, 'id': e['id'], 'status': s_disp, 'state': gst, 'is_shown': True,
-                    'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg,
+                    'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg,
                     'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg,
                     'home_color': f"#{h['team'].get('color','000000')}", 'home_alt_color': f"#{h['team'].get('alternateColor','ffffff')}",
                     'away_color': f"#{a['team'].get('color','000000')}", 'away_alt_color': f"#{a['team'].get('alternateColor','ffffff')}",
@@ -1836,11 +1837,19 @@ class SportsFetcher:
                     league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc
                 ))
             
-            for f in concurrent.futures.as_completed(futures):
+            # === CRITICAL OPTIMIZATION: HARD TIMEOUT ===
+            # Wait a maximum of 2.5 seconds. If a request is stuck, move on without it.
+            done, not_done = concurrent.futures.wait(futures, timeout=2.5)
+            
+            for f in done:
                 try:
                     res = f.result()
                     if res: all_games.extend(res)
                 except Exception as e: print(f"League fetch error: {e}")
+            
+            # Log skipped requests (optional, for debugging)
+            if not_done:
+                pass # print(f"Skipping {len(not_done)} slow requests")
 
         sports_count = len([g for g in all_games if g.get('type') == 'scoreboard'])
         
