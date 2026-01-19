@@ -187,11 +187,15 @@ LEAGUE_OPTIONS = [
     {'id': 'weather',       'label': 'Weather',                'type': 'util',  'default': True},
     {'id': 'clock',         'label': 'Clock',                 'type': 'util',  'default': True},
     # --- STOCKS ---
+    {'id': 'stock_nasdaq_top50', 'label': 'NASDAQ Top 50', 'type': 'stock', 'default': False, 'stock_list': ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "GOOG", "TSLA", "AVGO", "COST", "ADBE", "PEP", "CSCO", "AMD", "INTC", "TXN", "QCOM", "AMGN", "HON", "INTU"]},
+    {'id': 'stock_momentum',   'label': 'Momentum Stocks',         'type': 'stock', 'default': False, 'stock_list': ["TSLA", "COIN", "PLTR", "RBLX", "GME", "AMC", "SPCE", "LCID", "RIVN", "SNAP", "UAL", "UBER", "DASH", "SHOP", "KRUS", "GPRO", "CVNA", "AFRM", "UPST", "CVNA"]},
     {'id': 'stock_tech_ai',    'label': 'Tech / AI Stocks',        'type': 'stock', 'default': True,  'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
-    {'id': 'stock_momentum',   'label': 'Momentum Stocks',         'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
     {'id': 'stock_energy',          'label': 'Energy Stocks',         'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
     {'id': 'stock_finance',         'label': 'Financial Stocks',       'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
     {'id': 'stock_consumer',        'label': 'Consumer Stocks',       'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
+    {'id': 'stock_automotive', 'label': 'Automotive Stocks', 'type': 'stock', 'default': False, 'stock_list': ["TSLA", "GM", "F", "TM", "HMC", "STLA", "VWAGY", "BMWYY", "RIVN", "LCID", "NIO", "XPEV", "LI", "PSNY", "FCAU", "HYMTF", "TTM", "NSANY", "RNLSY", "PAG"]},
+    {'id': 'stock_industrial', 'label': 'Industrial Stocks', 'type': 'stock', 'default': False, 'stock_list': ["CAT", "DE", "GE", "HON", "RTX", "LMT", "BA", "NOC", "GD", "MMM", "EMR", "ETN", "ITW", "PH", "CMI", "ROK", "IR", "PCAR", "CSX", "UNP"]}
+
 ]
 
 # ================= DEFAULT STATE =================
