@@ -2554,7 +2554,7 @@ def check_my_teams():
         return jsonify({"error": "Ticker ID not found"}), 404
 
 @app.route('/')
-def root(): return "Ticker Server Running"
+def root(): return "Ticker Server Running on Version: " + SERVER_VERSION
 
 if __name__ == "__main__":
     threading.Thread(target=sports_worker, daemon=True).start()
