@@ -21,8 +21,8 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          # Added ticker_controller.py to the list so the server has a copy (optional but good for backup)
-          source: "app.py,requirements.txt,*.json,ticker_controller.py"
+          # Added modules directory
+          source: "app.py,requirements.txt,*.json,ticker_controller.py,modules"
           target: "/home/${{ secrets.SSH_USER }}/"
 
       # 2. Configure .env and Restart Service
