@@ -946,24 +946,28 @@ class SportsFetcher:
             })
 
     def _fetch_cba_teams_reference(self, catalog):
-        """Populate CBA teams from hardcoded CBA_TEAMS data"""
+        """Populate CBA teams from hardcoded CBA_TEAMS data (Updated for new color keys)"""
         catalog['cba'] = []
         seen_abbrs = set()
         
+        # Ensure we don't crash if the dict keys don't match
         for team_name, meta in CBA_TEAMS.items():
             abbr = meta.get('abbr', 'UNK')
-            # Skip duplicate abbreviations (short name fallbacks)
-            if abbr in seen_abbrs:
-                continue
+            if abbr in seen_abbrs: continue
             seen_abbrs.add(abbr)
+            
+            # MAP NEW KEYS (primary/secondary) TO OLD KEYS (color/alt_color)
+            # Remove '#' if present to ensure clean hex codes
+            p_color = meta.get('primary', '333333').replace('#', '')
+            s_color = meta.get('secondary', '666666').replace('#', '')
             
             catalog['cba'].append({
                 'abbr': abbr,
                 'id': f"cba:{abbr}",
-                'real_id': abbr,
-                'logo': '',  # Logos come from SofaScore API dynamically
-                'color': meta.get('color', '333333'),
-                'alt_color': meta.get('alt_color', '666666'),
+                'real_id': abbr, 
+                'logo': '',  # Logos will be provided by the live fetch
+                'color': p_color,
+                'alt_color': s_color,
                 'name': team_name,
                 'shortName': team_name.split(" ")[-1] if " " in team_name else team_name
             })
@@ -1162,33 +1166,35 @@ class SportsFetcher:
         return {"abbr": team_name[:3].upper(), "primary": "333333", "secondary": "666666"}
 
     def _fetch_cba(self, conf, visible_start_utc, visible_end_utc):
-        """Fetch CBA games using working logic from cbatest.py"""
+        """Fetch CBA (Chinese Basketball Association) games from SofaScore API"""
         games_found = []
-        if not conf['active_sports'].get('cba', False): return []
+        
+        # 1. Check if enabled
+        if not conf['active_sports'].get('cba', False): 
+            return []
         
         try:
-            # Use strict headers from working code
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json',
-                'Accept-Language': 'en-US,en;q=0.9',
-            }
-
+            # 2. Setup Timezones (Mimic cbatest.py logic)
             utc_offset = conf.get('utc_offset', -5)
-            # Use server's timezone awareness to mimic cbatest.py logic
             now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
             
-            # 3AM Cutoff Logic
+            # 3AM Cutoff Logic from cbatest.py
             if now_local.hour < 3:
                 base_date = now_local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
             else:
                 base_date = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
             
-            # Fetch Today AND Tomorrow
             dates_to_fetch = [
                 base_date.strftime("%Y-%m-%d"), 
                 (base_date + timedelta(days=1)).strftime("%Y-%m-%d")
             ]
+            
+            # 3. STRICT HEADERS (Exactly from cbatest.py)
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json',
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
             
             seen_event_ids = set()
             
@@ -1196,13 +1202,18 @@ class SportsFetcher:
                 url = f"https://api.sofascore.com/api/v1/sport/basketball/scheduled-events/{fetch_date}"
                 
                 try:
-                    r = self.session.get(url, headers=headers, timeout=5)
-                    if r.status_code != 200: continue
+                    # CRITICAL FIX: Use clean requests.get, NOT self.session.get
+                    # self.session has 'FotMob' referrers which block SofaScore
+                    r = requests.get(url, headers=headers, timeout=5)
+                    
+                    if r.status_code != 200: 
+                        print(f"CBA Fetch Status {r.status_code} for {fetch_date}")
+                        continue
                     
                     data = r.json()
                     events = data.get('events', [])
                     
-                    # Filter for CBA (ID 1566)
+                    # Filter for CBA (Tournament ID 1566)
                     cba_events = [e for e in events if e.get('tournament', {}).get('uniqueTournament', {}).get('id') == 1566]
                     
                     for event in cba_events:
@@ -1212,28 +1223,37 @@ class SportsFetcher:
                         
                         gid = f"cba_{event_id}"
                         
-                        # --- Check Final Cache ---
+                        # Check Cache
                         if gid in self.final_game_cache:
                             games_found.append(self.final_game_cache[gid])
                             continue
-
-                        # --- Parse Teams ---
+                        
+                        # Extract Teams
                         home_team = event.get('homeTeam', {})
                         away_team = event.get('awayTeam', {})
                         h_name = home_team.get('name', 'Home')
                         a_name = away_team.get('name', 'Away')
+                        h_id = home_team.get('id')
+                        a_id = away_team.get('id')
                         
-                        # Get Metadata (Colors/Abbr)
+                        # Metadata
                         h_meta = self._get_cba_team_meta(h_name)
                         a_meta = self._get_cba_team_meta(a_name)
+                        
                         h_abbr = h_meta.get('abbr', h_name[:3].upper())
                         a_abbr = a_meta.get('abbr', a_name[:3].upper())
-
-                        # --- Parse Score ---
-                        h_sc = event.get('homeScore', {}).get('display', '0')
-                        a_sc = event.get('awayScore', {}).get('display', '0')
                         
-                        # --- Parse Time ---
+                        # Logos (Direct SofaScore URLs)
+                        h_logo = f"https://api.sofascore.com/api/v1/team/{h_id}/image" if h_id else ""
+                        a_logo = f"https://api.sofascore.com/api/v1/team/{a_id}/image" if a_id else ""
+
+                        # Scores
+                        h_sc = str(event.get('homeScore', {}).get('display', '0'))
+                        a_sc = str(event.get('awayScore', {}).get('display', '0'))
+                        if h_sc == "None": h_sc = "0"
+                        if a_sc == "None": a_sc = "0"
+                        
+                        # Timestamps
                         start_ts = event.get('startTimestamp', 0)
                         if start_ts:
                             parsed_utc = dt.utcfromtimestamp(start_ts).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1243,52 +1263,40 @@ class SportsFetcher:
                             parsed_utc = f"{fetch_date}T00:00:00Z"
                             time_disp = "Scheduled"
 
-                        # --- Parse Status (Using cbatest.py logic) ---
+                        # Status Logic
                         status_code = event.get('status', {}).get('code', 0)
                         status_desc = event.get('status', {}).get('description', '')
                         
-                        gst = 'pre'
-                        disp = time_disp
+                        gst = 'pre'; disp = time_disp
                         
-                        if status_code == 0:
-                            gst = 'pre'
-                            disp = time_disp
-                        elif status_code == 100:
-                            gst = 'post'
-                            disp = "FINAL"
+                        if status_code == 100:
+                            gst = 'post'; disp = "FINAL"
                         elif status_code in [110, 120] or status_desc == 'AET':
-                            gst = 'post'
-                            disp = "FINAL OT"
+                            gst = 'post'; disp = "FINAL OT"
                         elif status_code == 31:
-                            gst = 'half'
-                            disp = "HALF"
+                            gst = 'half'; disp = "HALF"
                         elif 6 <= status_code < 100:
                             gst = 'in'
-                            # Map quarters
                             if status_code == 6: disp = "Q1"
                             elif status_code == 7: disp = "Q2"
                             elif status_code == 8: disp = "Q3"
                             elif status_code == 9: disp = "Q4"
                             elif status_code >= 10: disp = "OT"
                             else: disp = "Live"
-                        else:
-                            disp = status_desc if status_desc else "Scheduled"
+                        
+                        # Colors (Handle clean hex)
+                        h_col = h_meta.get('primary', '333333').replace('#', '')
+                        h_alt = h_meta.get('secondary', '666666').replace('#', '')
+                        a_col = a_meta.get('primary', '333333').replace('#', '')
+                        a_alt = a_meta.get('secondary', '666666').replace('#', '')
 
-                        # --- Build Object ---
                         game_obj = {
                             'type': 'scoreboard', 'sport': 'cba', 'id': gid,
                             'status': disp, 'state': gst, 'is_shown': True,
-                            'home_abbr': h_abbr, 'home_score': str(h_sc), 
-                            'home_logo': f"https://api.sofascore.com/api/v1/team/{home_team.get('id')}/image",
-                            'away_abbr': a_abbr, 'away_score': str(a_sc), 
-                            'away_logo': f"https://api.sofascore.com/api/v1/team/{away_team.get('id')}/image",
-                            
-                            # Apply new color keys
-                            'home_color': f"#{h_meta.get('primary', '333333').replace('#','')}",
-                            'home_alt_color': f"#{h_meta.get('secondary', '666666').replace('#','')}",
-                            'away_color': f"#{a_meta.get('primary', '333333').replace('#','')}",
-                            'away_alt_color': f"#{a_meta.get('secondary', '666666').replace('#','')}",
-                            
+                            'home_abbr': h_abbr, 'home_score': h_sc, 'home_logo': h_logo,
+                            'away_abbr': a_abbr, 'away_score': a_sc, 'away_logo': a_logo,
+                            'home_color': f"#{h_col}", 'home_alt_color': f"#{h_alt}",
+                            'away_color': f"#{a_col}", 'away_alt_color': f"#{a_alt}",
                             'startTimeUTC': parsed_utc,
                             'estimated_duration': 135,
                             'situation': {}
@@ -1296,17 +1304,17 @@ class SportsFetcher:
                         
                         games_found.append(game_obj)
                         
-                        # Cache Final
                         if gst == 'post' and "FINAL" in disp:
                             self.final_game_cache[gid] = game_obj
-
+                            
                 except Exception as e:
-                    print(f"CBA Fetch Error ({fetch_date}): {e}")
+                    print(f"CBA Fetch Inner Error ({fetch_date}): {e}")
                     continue
-
+                    
         except Exception as e:
-            print(f"CBA Critical Error: {e}")
-        
+            print(f"CBA Fetch Outer Error: {e}")
+
+        # Sort by start time
         games_found.sort(key=lambda x: x.get('startTimeUTC', ''))
         return games_found
 
