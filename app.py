@@ -111,6 +111,30 @@ TZ_OFFSETS = {
     "MST": -7, "MDT": -6, "PST": -8, "PDT": -7, "AST": -4, "ADT": -3
 }
 
+# ================= CBA TEAMS (TheSportsDB IDs) =================
+CBA_TEAMS = {
+    "135435": {"name": "Beijing Ducks", "abbr": "BJD", "color": "006BB6", "alt_color": "FFFFFF", "logo": "https://upload.wikimedia.org/wikipedia/en/3/30/Beijing_Ducks.png"},
+    "137339": {"name": "Beijing Royal Fighters", "abbr": "BRF", "color": "002855", "alt_color": "C8102E", "logo": "https://upload.wikimedia.org/wikipedia/en/0/00/Beikong_Fly_Dragons.png"},
+    "135439": {"name": "Fujian Sturgeons", "abbr": "FUJ", "color": "00529B", "alt_color": "FFC72C", "logo": "https://upload.wikimedia.org/wikipedia/en/0/07/FujianSBSXunxingLogo.PNG"},
+    "135440": {"name": "Guangdong Southern Tigers", "abbr": "GDT", "color": "C8102E", "alt_color": "FDB927", "logo": "https://upload.wikimedia.org/wikipedia/en/1/15/Guangdong_Southern_Tigers.png"},
+    "135438": {"name": "Guangzhou Loong Lions", "abbr": "GZL", "color": "CE1141", "alt_color": "000000", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/2/22/Guangzhou_Loong_Lions.svg/500px-Guangzhou_Loong_Lions.svg.png"},
+    "135441": {"name": "Jiangsu Dragons", "abbr": "JSD", "color": "00471B", "alt_color": "EEE1C6", "logo": "https://upload.wikimedia.org/wikipedia/en/a/a6/Jiangsu_Dragons.png"},
+    "135443": {"name": "Jilin Northeast Tigers", "abbr": "JNT", "color": "FF6B00", "alt_color": "000000", "logo": "https://upload.wikimedia.org/wikipedia/en/8/8e/Jilin_Northeast_Tigers.PNG"},
+    "135444": {"name": "Liaoning Flying Leopards", "abbr": "LFL", "color": "00538C", "alt_color": "C8102E", "logo": "https://upload.wikimedia.org/wikipedia/en/1/11/Liaoning_Flying_Leopards.png"},
+    "137340": {"name": "Nanjing Monkey Kings", "abbr": "NMK", "color": "5A2D81", "alt_color": "FDB927", "logo": "https://upload.wikimedia.org/wikipedia/en/d/de/Nanjing_Monkey_Kings.png"},
+    "144935": {"name": "Ningbo Rockets", "abbr": "NBR", "color": "CE1141", "alt_color": "000000", "logo": "https://upload.wikimedia.org/wikipedia/en/0/09/Ningbo_Rockets.jpg"},
+    "135445": {"name": "Qingdao Eagles", "abbr": "QDE", "color": "007AC1", "alt_color": "EF3B24", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/9/94/Qingdao_Eagles.svg/330px-Qingdao_Eagles.svg.png"},
+    "135447": {"name": "Shanghai Sharks", "abbr": "SHS", "color": "006BB6", "alt_color": "ED174C", "logo": "https://upload.wikimedia.org/wikipedia/en/3/38/Shanghai_Sharks_logo.png"},
+    "135446": {"name": "Shanxi Loongs", "abbr": "SXL", "color": "002B5C", "alt_color": "FDBB30", "logo": "https://upload.wikimedia.org/wikipedia/en/5/55/Shanxi_Brave_Dragons_logo.jpg"},
+    "135448": {"name": "Shenzhen Leopards", "abbr": "SZL", "color": "00471B", "alt_color": "000000", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4a/Shenzhen_Leopards.svg/330px-Shenzhen_Leopards.svg.png"},
+    "135449": {"name": "Sichuan Blue Whales", "abbr": "SCW", "color": "00788C", "alt_color": "FFC72C", "logo": "https://upload.wikimedia.org/wikipedia/en/b/be/Sichuan_Blue_Whales.png"},
+    "135450": {"name": "Tianjin Pioneers", "abbr": "TJP", "color": "00275D", "alt_color": "C8102E", "logo": "https://upload.wikimedia.org/wikipedia/en/a/aa/Tianjin_ronggang_golden_lions.jpg"},
+    "135451": {"name": "Xinjiang Flying Tigers", "abbr": "XFT", "color": "007AC1", "alt_color": "EF3B24", "logo": "https://upload.wikimedia.org/wikipedia/en/4/44/Xinjiang_Flying_Tigers.png"},
+    "135452": {"name": "Zhejiang Lions", "abbr": "ZJL", "color": "860038", "alt_color": "FDBB30", "logo": "https://upload.wikimedia.org/wikipedia/en/1/10/Zhejiang_Lions.png"},
+    "135453": {"name": "Shandong Hi-Speed Kirin", "abbr": "SDK", "color": "00538C", "alt_color": "FDB927", "logo": "https://upload.wikimedia.org/wikipedia/en/thumb/3/38/Shandong_Golden_Stars.png/300px-Shandong_Golden_Stars.png"},
+    "135442": {"name": "Shanxi Loong Lions", "abbr": "SLL", "color": "FFD700", "alt_color": "000000", "logo": "https://upload.wikimedia.org/wikipedia/en/0/07/GoldenBulls.jpg"}
+}
+
 # ================= AHL TEAMS (Official LeagueStat IDs) =================
 AHL_TEAMS = {
     "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "id": "317"},
@@ -160,6 +184,7 @@ LEAGUE_OPTIONS = [
     {'id': 'nhl',           'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'ahl',           'label': 'AHL',                 'type': 'sport', 'default': True,  'fetch': {'type': 'ahl_native'}}, 
     {'id': 'nba',           'label': 'NBA',                 'type': 'sport', 'default': True,  'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
+    {'id': 'cba',           'label': 'CBA (China)',         'type': 'sport', 'default': False, 'fetch': {'type': 'cba_native'}},
     # --- COLLEGE SPORTS ---
     {'id': 'ncf_fbs',       'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs',       'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
@@ -418,7 +443,8 @@ SOCCER_COLOR_FALLBACK = {
 
 SPORT_DURATIONS = {
     'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
-    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
+    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115,
+    'cba': 120, 'ahl': 150
 }
 
 # ================= FETCHING LOGIC =================
@@ -807,6 +833,7 @@ class SportsFetcher:
             teams_catalog = {k: [] for k in self.leagues.keys()}
             
             self._fetch_ahl_teams_reference(teams_catalog)
+            self._fetch_cba_teams_reference(teams_catalog)
 
             for t in OLYMPIC_HOCKEY_TEAMS:
                 teams_catalog['hockey_olympics'].append({
@@ -895,6 +922,22 @@ class SportsFetcher:
                 'alt_color': '444444', 
                 'name': meta.get('name', code), 
                 'shortName': meta.get('name', code).split(" ")[-1]
+            })
+
+    def _fetch_cba_teams_reference(self, catalog):
+        """Populate CBA teams from hardcoded CBA_TEAMS data"""
+        catalog['cba'] = []
+        
+        for team_id, meta in CBA_TEAMS.items():
+            catalog['cba'].append({
+                'abbr': meta.get('abbr', 'UNK'),
+                'id': f"cba:{team_id}",
+                'real_id': team_id,
+                'logo': meta.get('logo', ''),
+                'color': meta.get('color', '000000'),
+                'alt_color': meta.get('alt_color', '444444'),
+                'name': meta.get('name', ''),
+                'shortName': meta.get('name', '').split(" ")[-1]
             })
 
     def check_shootout(self, game, summary=None):
@@ -1072,6 +1115,152 @@ class SportsFetcher:
                 })
         except Exception as e:
             print(f"AHL Fetch Error: {e}")
+        
+        return games_found
+
+    def _fetch_cba(self, conf, visible_start_utc, visible_end_utc):
+        """Fetch CBA (Chinese Basketball Association) games from TheSportsDB"""
+        games_found = []
+        if not conf['active_sports'].get('cba', False): return []
+        
+        try:
+            utc_offset = conf.get('utc_offset', -5)
+            now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
+            
+            # Before 3 AM local, fetch yesterday's games
+            if now_local.hour < 3:
+                fetch_date = now_local - timedelta(days=1)
+            else:
+                fetch_date = now_local
+            
+            if conf['debug_mode'] and conf['custom_date']:
+                req_date = conf['custom_date']
+            else:
+                req_date = fetch_date.strftime("%Y-%m-%d")
+            
+            # TheSportsDB API (free tier)
+            api_key = "123"
+            url = f"https://www.thesportsdb.com/api/v1/json/{api_key}/eventsday.php"
+            params = {"d": req_date, "s": "Basketball", "l": "Chinese CBA"}
+            
+            r = self.session.get(url, params=params, timeout=API_TIMEOUT)
+            if r.status_code != 200: return []
+            
+            data = r.json()
+            events = data.get('events') or []
+            cba_refs = state['all_teams_data'].get('cba', [])
+            
+            for event in events:
+                event_id = event.get('idEvent')
+                gid = f"cba_{event_id}"
+                
+                # Check cache for final games
+                if gid in self.final_game_cache:
+                    games_found.append(self.final_game_cache[gid])
+                    continue
+                
+                h_id = event.get('idHomeTeam')
+                a_id = event.get('idAwayTeam')
+                h_name = event.get('strHomeTeam', 'Home')
+                a_name = event.get('strAwayTeam', 'Away')
+                h_sc = event.get('intHomeScore') or '0'
+                a_sc = event.get('intAwayScore') or '0'
+                
+                # Get team metadata
+                h_meta = CBA_TEAMS.get(h_id, {"abbr": h_name[:3].upper(), "color": "000000", "alt_color": "444444", "logo": ""})
+                a_meta = CBA_TEAMS.get(a_id, {"abbr": a_name[:3].upper(), "color": "000000", "alt_color": "444444", "logo": ""})
+                
+                h_abbr = h_meta.get('abbr', h_name[:3].upper())
+                a_abbr = a_meta.get('abbr', a_name[:3].upper())
+                h_logo = h_meta.get('logo', '')
+                a_logo = a_meta.get('logo', '')
+                
+                # Parse time
+                iso_timestamp = event.get('strTimestamp')
+                game_time = event.get('strTime', '00:00:00')
+                game_date = event.get('dateEvent', req_date)
+                
+                parsed_utc = ""
+                if iso_timestamp:
+                    try:
+                        dt_obj = dt.fromisoformat(iso_timestamp.replace('Z', '+00:00'))
+                        parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    except: pass
+                
+                if not parsed_utc:
+                    try:
+                        dt_obj = dt.strptime(f"{game_date} {game_time}", "%Y-%m-%d %H:%M:%S")
+                        # CBA times are in China Standard Time (UTC+8)
+                        dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=8)))
+                        parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    except:
+                        parsed_utc = f"{game_date}T{game_time}Z"
+                
+                # Determine game state
+                status_str = (event.get('strStatus') or '').lower()
+                progress = event.get('strProgress') or ''
+                
+                gst = "pre"; disp = "Scheduled"
+                
+                if 'match finished' in status_str or status_str == 'ft' or 'final' in status_str:
+                    gst = "post"
+                    # Check for overtime
+                    if progress and ('ot' in progress.lower() or 'overtime' in progress.lower()):
+                        disp = "FINAL OT"
+                    else:
+                        disp = "FINAL"
+                elif 'not started' in status_str or status_str == 'ns' or status_str == '':
+                    gst = "pre"
+                    try:
+                        dt_obj = dt.fromisoformat(parsed_utc.replace('Z', '+00:00'))
+                        local_dt = dt_obj.astimezone(timezone(timedelta(hours=utc_offset)))
+                        disp = local_dt.strftime("%I:%M %p").lstrip('0')
+                    except: disp = "Scheduled"
+                else:
+                    # Live game
+                    gst = "in"
+                    if progress:
+                        # Parse quarter/time from progress (e.g., "Q2 5:30", "Halftime", "Q3")
+                        prog_lower = progress.lower()
+                        if 'half' in prog_lower or 'ht' == prog_lower:
+                            disp = "Halftime"
+                        elif 'ot' in prog_lower:
+                            disp = f"OT {progress.split()[-1]}" if len(progress.split()) > 1 else "OT"
+                        elif progress:
+                            # Try to parse Q1/Q2/Q3/Q4 format
+                            q_match = re.search(r'(\d)(st|nd|rd|th)?\s*[Qq]?(uarter)?\.?\s*(\d+:\d+)?', progress)
+                            if q_match:
+                                q_num = q_match.group(1)
+                                time_str = q_match.group(4) or ''
+                                disp = f"Q{q_num} {time_str}".strip()
+                            else:
+                                disp = progress
+                    else:
+                        disp = "LIVE"
+                
+                game_obj = {
+                    'type': 'scoreboard', 'sport': 'cba', 'id': gid,
+                    'status': disp, 'state': gst, 'is_shown': True,
+                    'home_abbr': h_abbr, 'home_score': str(h_sc), 'home_logo': h_logo,
+                    'away_abbr': a_abbr, 'away_score': str(a_sc), 'away_logo': a_logo,
+                    'home_color': f"#{h_meta.get('color', '000000')}", 
+                    'away_color': f"#{a_meta.get('color', '000000')}",
+                    'home_alt_color': f"#{h_meta.get('alt_color', '444444')}", 
+                    'away_alt_color': f"#{a_meta.get('alt_color', '444444')}",
+                    'startTimeUTC': parsed_utc, 
+                    'estimated_duration': SPORT_DURATIONS.get('cba', 120),
+                    'situation': {},
+                    'home_seed': '', 'away_seed': ''
+                }
+                
+                games_found.append(game_obj)
+                
+                # Cache final games
+                if gst == 'post' and 'FINAL' in disp:
+                    self.final_game_cache[gid] = game_obj
+                    
+        except Exception as e:
+            print(f"CBA Fetch Error: {e}")
         
         return games_found
 
@@ -1875,6 +2064,10 @@ class SportsFetcher:
                 f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
                 futures[f] = 'ahl'
             
+            if conf['active_sports'].get('cba', False):
+                f = self.executor.submit(self._fetch_cba, conf, visible_start_utc, visible_end_utc)
+                futures[f] = 'cba'
+            
             if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
                 f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
                 futures[f] = 'nhl_native'
@@ -1889,6 +2082,7 @@ class SportsFetcher:
                 if league_key == 'nhl' and not conf['debug_mode']: continue 
                 if league_key.startswith('soccer_'): continue
                 if league_key == 'ahl': continue
+                if league_key == 'cba': continue
                 
                 # Check Sleep Status
                 if time.time() < self.league_next_update.get(league_key, 0):
