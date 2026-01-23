@@ -112,48 +112,48 @@ TZ_OFFSETS = {
 }
 
 # ================= CBA TEAMS (SofaScore Names) =================
-# Keyed by team name (with fuzzy match support) for SofaScore API
+# Keyed by team name (with fuzzy match support)
 CBA_TEAMS = {
-    "Beijing Ducks": {"abbr": "BJD", "color": "006BB6", "alt_color": "FFFFFF"},
-    "Beijing Royal Fighters": {"abbr": "BRF", "color": "002855", "alt_color": "C8102E"},
-    "Fujian Sturgeons": {"abbr": "FUJ", "color": "00529B", "alt_color": "FFC72C"},
-    "Guangdong Southern Tigers": {"abbr": "GDT", "color": "C8102E", "alt_color": "FDB927"},
-    "Guangzhou Loong Lions": {"abbr": "GZL", "color": "CE1141", "alt_color": "000000"},
-    "Jiangsu Dragons": {"abbr": "JSD", "color": "00471B", "alt_color": "EEE1C6"},
-    "Jilin Northeast Tigers": {"abbr": "JNT", "color": "FF6B00", "alt_color": "000000"},
-    "Liaoning Flying Leopards": {"abbr": "LFL", "color": "00538C", "alt_color": "C8102E"},
-    "Nanjing Monkey Kings": {"abbr": "NMK", "color": "5A2D81", "alt_color": "FDB927"},
-    "Nanjing Tongxi Monkey King": {"abbr": "NMK", "color": "5A2D81", "alt_color": "FDB927"},
-    "Ningbo Rockets": {"abbr": "NBR", "color": "CE1141", "alt_color": "000000"},
-    "Qingdao Eagles": {"abbr": "QDE", "color": "007AC1", "alt_color": "EF3B24"},
-    "Shanghai Sharks": {"abbr": "SHS", "color": "006BB6", "alt_color": "ED174C"},
-    "Shanxi Loongs": {"abbr": "SXL", "color": "002B5C", "alt_color": "FDBB30"},
-    "Shanxi Zhongyu": {"abbr": "SXL", "color": "002B5C", "alt_color": "FDBB30"},
-    "Shenzhen Leopards": {"abbr": "SZL", "color": "00471B", "alt_color": "000000"},
-    "Sichuan Blue Whales": {"abbr": "SCW", "color": "00788C", "alt_color": "FFC72C"},
-    "Tianjin Pioneers": {"abbr": "TJP", "color": "00275D", "alt_color": "C8102E"},
-    "Xinjiang Flying Tigers": {"abbr": "XFT", "color": "007AC1", "alt_color": "EF3B24"},
-    "Zhejiang Lions": {"abbr": "ZJL", "color": "860038", "alt_color": "FDBB30"},
-    "Zhejiang Guangsha Lions": {"abbr": "ZJL", "color": "860038", "alt_color": "FDBB30"},
-    "Zhejiang Chouzhou": {"abbr": "ZCZ", "color": "4A90D9", "alt_color": "FFFFFF"},
-    "Zhejiang Golden Bulls": {"abbr": "ZGB", "color": "FFD700", "alt_color": "000000"},
-    "Shandong Heroes": {"abbr": "SDH", "color": "00538C", "alt_color": "FDB927"},
-    "Shandong Hi-Speed Kirin": {"abbr": "SDK", "color": "00538C", "alt_color": "FDB927"},
-    "Shanxi Loong Lions": {"abbr": "SLL", "color": "FFD700", "alt_color": "000000"},
-    # Short name fallbacks for SofaScore
-    "Beijing": {"abbr": "BEI", "color": "006BB6", "alt_color": "FFFFFF"},
-    "Fujian": {"abbr": "FUJ", "color": "00529B", "alt_color": "FFC72C"},
-    "Guangdong": {"abbr": "GDT", "color": "C8102E", "alt_color": "FDB927"},
-    "Guangzhou": {"abbr": "GZL", "color": "CE1141", "alt_color": "000000"},
-    "Jilin": {"abbr": "JNT", "color": "FF6B00", "alt_color": "000000"},
-    "Liaoning": {"abbr": "LFL", "color": "00538C", "alt_color": "C8102E"},
-    "Qingdao": {"abbr": "QDE", "color": "007AC1", "alt_color": "EF3B24"},
-    "Shanghai": {"abbr": "SHS", "color": "006BB6", "alt_color": "ED174C"},
-    "Shenzhen": {"abbr": "SZL", "color": "00471B", "alt_color": "000000"},
-    "Sichuan": {"abbr": "SCW", "color": "00788C", "alt_color": "FFC72C"},
-    "Tianjin": {"abbr": "TJP", "color": "00275D", "alt_color": "C8102E"},
-    "Xinjiang": {"abbr": "XFT", "color": "007AC1", "alt_color": "EF3B24"},
-    "Shandong": {"abbr": "SDH", "color": "00538C", "alt_color": "FDB927"},
+    "Beijing Ducks": {"abbr": "BJD", "primary": "006BB6", "secondary": "FFFFFF", "tertiary": "000000"},
+    "Beijing Royal Fighters": {"abbr": "BRF", "primary": "002855", "secondary": "C8102E", "tertiary": "FFFFFF"},
+    "Fujian Sturgeons": {"abbr": "FUJ", "primary": "00529B", "secondary": "FFFFFF", "tertiary": "FFC72C"},
+    "Guangdong Southern Tigers": {"abbr": "GDT", "primary": "C8102E", "secondary": "FDB927", "tertiary": "000000"},
+    "Guangzhou Loong Lions": {"abbr": "GZL", "primary": "CE1141", "secondary": "000000", "tertiary": "C4CED4"},
+    "Jiangsu Dragons": {"abbr": "JSD", "primary": "00471B", "secondary": "EEE1C6", "tertiary": "FFFFFF"},
+    "Jilin Northeast Tigers": {"abbr": "JNT", "primary": "FF6B00", "secondary": "000000", "tertiary": "FFFFFF"},
+    "Liaoning Flying Leopards": {"abbr": "LFL", "primary": "00538C", "secondary": "C8102E", "tertiary": "FFFFFF"},
+    "Nanjing Monkey Kings": {"abbr": "NMK", "primary": "5A2D81", "secondary": "FDB927", "tertiary": "000000"},
+    "Nanjing Tongxi Monkey King": {"abbr": "NMK", "primary": "5A2D81", "secondary": "FDB927", "tertiary": "000000"},
+    "Ningbo Rockets": {"abbr": "NBR", "primary": "CE1141", "secondary": "000000", "tertiary": "C4CED4"},
+    "Qingdao Eagles": {"abbr": "QDE", "primary": "007AC1", "secondary": "EF3B24", "tertiary": "002D62"},
+    "Shanghai Sharks": {"abbr": "SHS", "primary": "006BB6", "secondary": "ED174C", "tertiary": "FFFFFF"},
+    "Shanxi Loongs": {"abbr": "SXL", "primary": "002B5C", "secondary": "FDBB30", "tertiary": "E03A3E"},
+    "Shanxi Zhongyu": {"abbr": "SXL", "primary": "002B5C", "secondary": "FDBB30", "tertiary": "E03A3E"},
+    "Shenzhen Leopards": {"abbr": "SZL", "primary": "00471B", "secondary": "000000", "tertiary": "FFFFFF"},
+    "Sichuan Blue Whales": {"abbr": "SCW", "primary": "00788C", "secondary": "FFC72C", "tertiary": "000000"},
+    "Tianjin Pioneers": {"abbr": "TJP", "primary": "00275D", "secondary": "C8102E", "tertiary": "FFFFFF"},
+    "Xinjiang Flying Tigers": {"abbr": "XFT", "primary": "007AC1", "secondary": "EF3B24", "tertiary": "002D62"},
+    "Zhejiang Lions": {"abbr": "ZJL", "primary": "860038", "secondary": "FDBB30", "tertiary": "000000"},
+    "Zhejiang Guangsha Lions": {"abbr": "ZJL", "primary": "860038", "secondary": "FDBB30", "tertiary": "000000"},
+    "Zhejiang Golden Bulls": {"abbr": "ZGB", "primary": "FFD700", "secondary": "000000", "tertiary": "FFFFFF"},
+    "Zhejiang Chouzhou": {"abbr": "ZCZ", "primary": "4A90D9", "secondary": "FFFFFF", "tertiary": "000000"},
+    "Shandong Heroes": {"abbr": "SDH", "primary": "00538C", "secondary": "FDB927", "tertiary": "FFFFFF"},
+    "Shandong Hi-Speed Kirin": {"abbr": "SDK", "primary": "00538C", "secondary": "FDB927", "tertiary": "FFFFFF"},
+    
+    # Short name fallbacks
+    "Beijing": {"abbr": "BEI", "primary": "006BB6", "secondary": "FFFFFF", "tertiary": "000000"},
+    "Fujian": {"abbr": "FUJ", "primary": "00529B", "secondary": "FFFFFF", "tertiary": "FFC72C"},
+    "Guangdong": {"abbr": "GDT", "primary": "C8102E", "secondary": "FDB927", "tertiary": "000000"},
+    "Guangzhou": {"abbr": "GZL", "primary": "CE1141", "secondary": "000000", "tertiary": "C4CED4"},
+    "Jilin": {"abbr": "JNT", "primary": "FF6B00", "secondary": "000000", "tertiary": "FFFFFF"},
+    "Liaoning": {"abbr": "LFL", "primary": "00538C", "secondary": "C8102E", "tertiary": "FFFFFF"},
+    "Qingdao": {"abbr": "QDE", "primary": "007AC1", "secondary": "EF3B24", "tertiary": "002D62"},
+    "Shanghai": {"abbr": "SHS", "primary": "006BB6", "secondary": "ED174C", "tertiary": "FFFFFF"},
+    "Shenzhen": {"abbr": "SZL", "primary": "00471B", "secondary": "000000", "tertiary": "FFFFFF"},
+    "Sichuan": {"abbr": "SCW", "primary": "00788C", "secondary": "FFC72C", "tertiary": "000000"},
+    "Tianjin": {"abbr": "TJP", "primary": "00275D", "secondary": "C8102E", "tertiary": "FFFFFF"},
+    "Xinjiang": {"abbr": "XFT", "primary": "007AC1", "secondary": "EF3B24", "tertiary": "002D62"},
+    "Shandong": {"abbr": "SDH", "primary": "00538C", "secondary": "FDB927", "tertiary": "FFFFFF"},
 }
 
 # ================= AHL TEAMS (Official LeagueStat IDs) =================
@@ -1152,43 +1152,43 @@ class SportsFetcher:
         if team_name in CBA_TEAMS:
             return CBA_TEAMS[team_name]
         
-        # Partial match (team name contains or is contained by key)
+        # Partial match
         team_lower = team_name.lower()
         for name, meta in CBA_TEAMS.items():
             if name.lower() in team_lower or team_lower in name.lower():
                 return meta
         
-        # Default fallback - generate abbreviation from name
-        return {"abbr": team_name[:3].upper(), "color": "333333", "alt_color": "666666"}
+        # Default fallback
+        return {"abbr": team_name[:3].upper(), "primary": "333333", "secondary": "666666"}
 
     def _fetch_cba(self, conf, visible_start_utc, visible_end_utc):
-        """Fetch CBA (Chinese Basketball Association) games from SofaScore API"""
+        """Fetch CBA games using working logic from cbatest.py"""
         games_found = []
         if not conf['active_sports'].get('cba', False): return []
         
         try:
-            utc_offset = conf.get('utc_offset', -5)
-            now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
-            
-            # Before 3 AM local, fetch yesterday's games too
-            if now_local.hour < 3:
-                base_date = (now_local - timedelta(days=1)).strftime("%Y-%m-%d")
-            else:
-                base_date = now_local.strftime("%Y-%m-%d")
-            
-            if conf['debug_mode'] and conf['custom_date']:
-                dates_to_fetch = [conf['custom_date']]
-            else:
-                # Fetch today and tomorrow to cover 3am cutoff
-                tomorrow = (dt.strptime(base_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-                dates_to_fetch = [base_date, tomorrow]
-            
-            # SofaScore requires full browser User-Agent and longer timeout
-            sofascore_headers = {
+            # Use strict headers from working code
+            headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'application/json',
                 'Accept-Language': 'en-US,en;q=0.9',
             }
+
+            utc_offset = conf.get('utc_offset', -5)
+            # Use server's timezone awareness to mimic cbatest.py logic
+            now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
+            
+            # 3AM Cutoff Logic
+            if now_local.hour < 3:
+                base_date = now_local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+            else:
+                base_date = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            # Fetch Today AND Tomorrow
+            dates_to_fetch = [
+                base_date.strftime("%Y-%m-%d"), 
+                (base_date + timedelta(days=1)).strftime("%Y-%m-%d")
+            ]
             
             seen_event_ids = set()
             
@@ -1196,150 +1196,118 @@ class SportsFetcher:
                 url = f"https://api.sofascore.com/api/v1/sport/basketball/scheduled-events/{fetch_date}"
                 
                 try:
-                    # Use 4s timeout per request (fits within 5s futures timeout with some buffer)
-                    r = self.session.get(url, headers=sofascore_headers, timeout=4)
-                    if r.status_code != 200:
-                        print(f"CBA: SofaScore returned status {r.status_code} for {fetch_date}")
-                        continue
+                    r = self.session.get(url, headers=headers, timeout=5)
+                    if r.status_code != 200: continue
                     
                     data = r.json()
                     events = data.get('events', [])
                     
-                    # Filter for CBA games (tournament ID 1566)
+                    # Filter for CBA (ID 1566)
                     cba_events = [e for e in events if e.get('tournament', {}).get('uniqueTournament', {}).get('id') == 1566]
-                    print(f"CBA: Found {len(cba_events)} games for {fetch_date}")
                     
                     for event in cba_events:
                         event_id = event.get('id')
-                        if event_id in seen_event_ids:
-                            continue
+                        if event_id in seen_event_ids: continue
                         seen_event_ids.add(event_id)
                         
                         gid = f"cba_{event_id}"
                         
-                        # Check cache for final games
+                        # --- Check Final Cache ---
                         if gid in self.final_game_cache:
                             games_found.append(self.final_game_cache[gid])
                             continue
-                        
+
+                        # --- Parse Teams ---
                         home_team = event.get('homeTeam', {})
                         away_team = event.get('awayTeam', {})
-                        home_score_data = event.get('homeScore', {})
-                        away_score_data = event.get('awayScore', {})
-                        
                         h_name = home_team.get('name', 'Home')
                         a_name = away_team.get('name', 'Away')
-                        h_id = home_team.get('id', 0)
-                        a_id = away_team.get('id', 0)
                         
-                        # Get team metadata with fuzzy matching
+                        # Get Metadata (Colors/Abbr)
                         h_meta = self._get_cba_team_meta(h_name)
                         a_meta = self._get_cba_team_meta(a_name)
-                        
                         h_abbr = h_meta.get('abbr', h_name[:3].upper())
                         a_abbr = a_meta.get('abbr', a_name[:3].upper())
+
+                        # --- Parse Score ---
+                        h_sc = event.get('homeScore', {}).get('display', '0')
+                        a_sc = event.get('awayScore', {}).get('display', '0')
                         
-                        # Use SofaScore team logos
-                        h_logo = f"https://api.sofascore.com/api/v1/team/{h_id}/image" if h_id else ''
-                        a_logo = f"https://api.sofascore.com/api/v1/team/{a_id}/image" if a_id else ''
-                        
-                        # Get scores
-                        h_sc = home_score_data.get('current') or home_score_data.get('display') or '0'
-                        a_sc = away_score_data.get('current') or away_score_data.get('display') or '0'
-                        
-                        # Get timestamp and convert to UTC
-                        start_timestamp = event.get('startTimestamp', 0)
-                        if start_timestamp:
-                            parsed_utc = dt.utcfromtimestamp(start_timestamp).strftime("%Y-%m-%dT%H:%M:%SZ")
+                        # --- Parse Time ---
+                        start_ts = event.get('startTimestamp', 0)
+                        if start_ts:
+                            parsed_utc = dt.utcfromtimestamp(start_ts).strftime("%Y-%m-%dT%H:%M:%SZ")
+                            local_dt = dt.utcfromtimestamp(start_ts).replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
+                            time_disp = local_dt.strftime("%I:%M %p").lstrip('0')
                         else:
                             parsed_utc = f"{fetch_date}T00:00:00Z"
-                        
-                        # Determine game state from status code
-                        # Status codes: 0=Not started, 6-13=Live quarters, 31=Halftime, 100=Finished
+                            time_disp = "Scheduled"
+
+                        # --- Parse Status (Using cbatest.py logic) ---
                         status_code = event.get('status', {}).get('code', 0)
                         status_desc = event.get('status', {}).get('description', '')
                         
-                        gst = "pre"
-                        disp = "Scheduled"
-                        current_period = 0
+                        gst = 'pre'
+                        disp = time_disp
                         
-                        if status_code == 0:  # Not started
-                            gst = "pre"
-                            try:
-                                game_dt = dt.utcfromtimestamp(start_timestamp)
-                                local_dt = game_dt.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
-                                disp = local_dt.strftime("%I:%M %p").lstrip('0')
-                            except:
-                                disp = "Scheduled"
-                        
-                        elif status_code == 100:  # Finished
-                            gst = "post"
-                            # Check if overtime was played (more than 4 periods with scores)
-                            has_ot = False
-                            for i in range(5, 9):
-                                if home_score_data.get(f'period{i}') is not None:
-                                    has_ot = True
-                                    break
-                            disp = "FINAL OT" if has_ot else "FINAL"
-                        
-                        elif status_code == 31:  # Halftime
-                            gst = "half"
-                            disp = "Halftime"
-                        
-                        elif status_code >= 6 and status_code < 100:  # Live
-                            gst = "in"
-                            # Map status codes to quarters (6=Q1, 7=Q2, 8=Q3, 9=Q4, 10+=OT)
-                            if status_code >= 6 and status_code <= 9:
-                                current_period = status_code - 5
-                                disp = f"Q{current_period}"
-                            elif status_code >= 10 and status_code <= 13:
-                                ot_num = status_code - 9
-                                disp = f"OT{ot_num}" if ot_num > 1 else "OT"
-                            elif status_code in [40, 41]:  # Break between periods
-                                if status_code == 40:
-                                    disp = "Break"
-                                else:
-                                    disp = "Break"
-                            else:
-                                disp = status_desc if status_desc else "LIVE"
+                        if status_code == 0:
+                            gst = 'pre'
+                            disp = time_disp
+                        elif status_code == 100:
+                            gst = 'post'
+                            disp = "FINAL"
+                        elif status_code in [110, 120] or status_desc == 'AET':
+                            gst = 'post'
+                            disp = "FINAL OT"
+                        elif status_code == 31:
+                            gst = 'half'
+                            disp = "HALF"
+                        elif 6 <= status_code < 100:
+                            gst = 'in'
+                            # Map quarters
+                            if status_code == 6: disp = "Q1"
+                            elif status_code == 7: disp = "Q2"
+                            elif status_code == 8: disp = "Q3"
+                            elif status_code == 9: disp = "Q4"
+                            elif status_code >= 10: disp = "OT"
+                            else: disp = "Live"
                         else:
-                            # Unknown status, treat as scheduled
-                            gst = "pre"
                             disp = status_desc if status_desc else "Scheduled"
-                        
+
+                        # --- Build Object ---
                         game_obj = {
                             'type': 'scoreboard', 'sport': 'cba', 'id': gid,
                             'status': disp, 'state': gst, 'is_shown': True,
-                            'home_abbr': h_abbr, 'home_score': str(h_sc) if h_sc else '0', 'home_logo': h_logo,
-                            'away_abbr': a_abbr, 'away_score': str(a_sc) if a_sc else '0', 'away_logo': a_logo,
-                            'home_color': f"#{h_meta.get('color', '333333')}",
-                            'away_color': f"#{a_meta.get('color', '333333')}",
-                            'home_alt_color': f"#{h_meta.get('alt_color', '666666')}",
-                            'away_alt_color': f"#{a_meta.get('alt_color', '666666')}",
+                            'home_abbr': h_abbr, 'home_score': str(h_sc), 
+                            'home_logo': f"https://api.sofascore.com/api/v1/team/{home_team.get('id')}/image",
+                            'away_abbr': a_abbr, 'away_score': str(a_sc), 
+                            'away_logo': f"https://api.sofascore.com/api/v1/team/{away_team.get('id')}/image",
+                            
+                            # Apply new color keys
+                            'home_color': f"#{h_meta.get('primary', '333333').replace('#','')}",
+                            'home_alt_color': f"#{h_meta.get('secondary', '666666').replace('#','')}",
+                            'away_color': f"#{a_meta.get('primary', '333333').replace('#','')}",
+                            'away_alt_color': f"#{a_meta.get('secondary', '666666').replace('#','')}",
+                            
                             'startTimeUTC': parsed_utc,
-                            'estimated_duration': SPORT_DURATIONS.get('cba', 120),
-                            'situation': {},
-                            'home_seed': '', 'away_seed': ''
+                            'estimated_duration': 135,
+                            'situation': {}
                         }
                         
                         games_found.append(game_obj)
                         
-                        # Cache final games
-                        if gst == 'post' and 'FINAL' in disp:
+                        # Cache Final
+                        if gst == 'post' and "FINAL" in disp:
                             self.final_game_cache[gid] = game_obj
-                            
-                except Exception as inner_e:
-                    print(f"CBA Fetch Error for {fetch_date}: {inner_e}")
+
+                except Exception as e:
+                    print(f"CBA Fetch Error ({fetch_date}): {e}")
                     continue
-                    
+
         except Exception as e:
-            print(f"CBA Fetch Error: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"CBA Critical Error: {e}")
         
-        # Sort by start time
         games_found.sort(key=lambda x: x.get('startTimeUTC', ''))
-        print(f"CBA: Returning {len(games_found)} total games")
         return games_found
 
     def fetch_shootout_details(self, game_id, away_id, home_id):
