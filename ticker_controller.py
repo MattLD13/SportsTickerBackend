@@ -18,6 +18,7 @@ from flask import Flask, request, render_template_string
 
 # ================= CONFIGURATION =================
 BACKEND_URL = "https://ticker.mattdicks.org" 
+
 # 6 Panels wide (64 * 6 = 384)
 PANEL_W = 384 
 PANEL_H = 32
