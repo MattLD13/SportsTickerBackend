@@ -205,7 +205,7 @@ LEAGUE_OPTIONS = [
     {'id': 'nhl',           'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'ahl',           'label': 'AHL',                 'type': 'sport', 'default': True,  'fetch': {'type': 'ahl_native'}}, 
     {'id': 'nba',           'label': 'NBA',                 'type': 'sport', 'default': True,  'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'cba',           'label': 'CBA (China)',         'type': 'sport', 'default': False, 'fetch': {'type': 'cba_native'}},
+    {'id': 'cba',           'label': 'CBA (China)',         'type': 'sport', 'default': True, 'fetch': {'type': 'cba_native'}},
     # --- COLLEGE SPORTS ---
     {'id': 'ncf_fbs',       'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs',       'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
@@ -1183,8 +1183,9 @@ class SportsFetcher:
                 tomorrow = (dt.strptime(base_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
                 dates_to_fetch = [base_date, tomorrow]
             
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            # SofaScore requires full browser User-Agent and longer timeout
+            sofascore_headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'application/json',
                 'Accept-Language': 'en-US,en;q=0.9',
             }
@@ -1195,14 +1196,18 @@ class SportsFetcher:
                 url = f"https://api.sofascore.com/api/v1/sport/basketball/scheduled-events/{fetch_date}"
                 
                 try:
-                    r = self.session.get(url, headers=headers, timeout=API_TIMEOUT)
-                    if r.status_code != 200: continue
+                    # Use 4s timeout per request (fits within 5s futures timeout with some buffer)
+                    r = self.session.get(url, headers=sofascore_headers, timeout=4)
+                    if r.status_code != 200:
+                        print(f"CBA: SofaScore returned status {r.status_code} for {fetch_date}")
+                        continue
                     
                     data = r.json()
                     events = data.get('events', [])
                     
                     # Filter for CBA games (tournament ID 1566)
                     cba_events = [e for e in events if e.get('tournament', {}).get('uniqueTournament', {}).get('id') == 1566]
+                    print(f"CBA: Found {len(cba_events)} games for {fetch_date}")
                     
                     for event in cba_events:
                         event_id = event.get('id')
@@ -1329,9 +1334,12 @@ class SportsFetcher:
                     
         except Exception as e:
             print(f"CBA Fetch Error: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Sort by start time
         games_found.sort(key=lambda x: x.get('startTimeUTC', ''))
+        print(f"CBA: Returning {len(games_found)} total games")
         return games_found
 
     def fetch_shootout_details(self, game_id, away_id, home_id):
@@ -2168,8 +2176,13 @@ class SportsFetcher:
                 )
                 futures[f] = league_key
             
-            # HARD TIMEOUT: Wait max 3.0s for threads
-            done, _ = concurrent.futures.wait(futures.keys(), timeout=API_TIMEOUT)
+            # HARD TIMEOUT: Wait max 5.0s for threads (increased from 3.0s for SofaScore/CBA)
+            done, not_done = concurrent.futures.wait(futures.keys(), timeout=5.0)
+            
+            # Log any timed-out futures for debugging
+            for f in not_done:
+                lk = futures.get(f, 'unknown')
+                print(f"Warning: {lk} fetch timed out")
             
             for f in done:
                 lk = futures[f]
