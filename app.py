@@ -2208,7 +2208,7 @@ class SportsFetcher:
         with data_lock: 
             conf = state.copy()
 
-        # 1. WEATHER
+        # 1. WEATHER & UTILS
         if conf['active_sports'].get('weather'):
             if (conf['weather_lat'] != self.weather.lat or 
                 conf['weather_lon'] != self.weather.lon or 
@@ -2217,21 +2217,17 @@ class SportsFetcher:
             w = self.weather.get_weather()
             if w: all_games.append(w)
 
-        # 2. MUSIC 
         music_obj = self.get_music_object()
-        if music_obj:
-            all_games.append(music_obj)
+        if music_obj: all_games.append(music_obj)
 
-        # 3. CLOCK
         if conf['active_sports'].get('clock'):
             all_games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
 
-        # 4. SPORTS - ALWAYS fetch so the buffer stays populated
+        # 2. DATE & WINDOW LOGIC
         utc_offset = conf.get('utc_offset', -5)
         now_utc = dt.now(timezone.utc)
         now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
         
-        # Date boundaries
         if now_local.hour < 3:
             visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
             visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
@@ -2245,24 +2241,46 @@ class SportsFetcher:
         window_end_utc = (now_local + timedelta(hours=48)).astimezone(timezone.utc)
         
         futures = {}
-        # ... [Keep your existing fetcher.submit calls for AHL, CBA, NHL, FotMob, etc.] ...
-        # Ensure you submit the standard ESPN leagues too:
+
+        # 3. SPECIALIZED NATIVE FETCHERS (NHL, AHL, CBA)
+        if conf['active_sports'].get('nhl'):
+            f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+            futures[f] = 'nhl'
+        
+        if conf['active_sports'].get('ahl'):
+            f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
+            futures[f] = 'ahl'
+            
+        if conf['active_sports'].get('cba'):
+            f = self.executor.submit(self._fetch_cba, conf, visible_start_utc, visible_end_utc)
+            futures[f] = 'cba'
+
+        # 4. SOCCER FETCHERS (FotMob)
+        for league_key in FOTMOB_LEAGUE_MAP:
+            if conf['active_sports'].get(league_key):
+                f = self.executor.submit(self._fetch_fotmob_league, FOTMOB_LEAGUE_MAP[league_key], league_key, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                futures[f] = league_key
+
+        # 5. STANDARD ESPN FETCHERS (NBA, NFL, MLB, NCABB)
         for league_key, config in self.leagues.items():
             if not conf['active_sports'].get(league_key, False): continue
+            # Don't double-fetch things we handled natively above
             if league_key in ['nhl', 'ahl', 'cba'] or league_key.startswith('soccer_'): continue
             
             f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
             futures[f] = league_key
 
-        # Standard thread wait
-        done, _ = concurrent.futures.wait(futures.keys(), timeout=5.0)
+        # 6. WAIT AND MERGE
+        # Increased timeout to 8.0s to account for slower Soccer/AHL API responses
+        done, _ = concurrent.futures.wait(futures.keys(), timeout=8.0)
         for f in done:
             try:
                 res = f.result()
                 if res: all_games.extend(res)
-            except: pass
+            except Exception as e:
+                print(f"Fetcher error for {futures.get(f, 'unknown')}: {e}")
 
-        # Sorting and merging
+        # Sorting: Clock -> Weather -> Active Games -> Final Games -> PPD
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
