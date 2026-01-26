@@ -1131,6 +1131,13 @@ struct ModesView: View {
     @ObservedObject var vm: TickerViewModel
     var currentMode: String { return vm.state.mode }
     
+    // Define the 3-column grid layout
+    let modeColumns = [
+        GridItem(.flexible()),
+        GridItem(.flexible()),
+        GridItem(.flexible())
+    ]
+    
     var sportsOptions: [LeagueOption] {
         vm.leagueOptions.filter { $0.type == "sport" }
     }
@@ -1146,7 +1153,7 @@ struct ModesView: View {
         if ["stocks", "sports"].contains(mode) {
             vm.state.active_sports["weather"] = false
             vm.state.active_sports["clock"] = false
-            vm.state.active_sports["music"] = false // Turn off music
+            vm.state.active_sports["music"] = false 
         }
         
         // 2. Logic for entering specific modes
@@ -1159,7 +1166,6 @@ struct ModesView: View {
         } else if mode == "clock" {
             vm.state.active_sports["clock"] = true
         } else if mode == "music" {
-            // [NEW] Enable Music specifically
             vm.state.active_sports["music"] = true
         }
         
@@ -1169,21 +1175,22 @@ struct ModesView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                HStack { Text("Modes").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }.padding(.horizontal).padding(.top, 80)
+                HStack { Text("Modes").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }
+                    .padding(.horizontal)
+                    .padding(.top, 80)
                 
-                // MARK: - MODE SELECTOR ROW
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        let nonSportsModes = ["stocks", "weather", "clock", "music"]
-                        let effectiveMode = nonSportsModes.contains(currentMode) ? currentMode : "sports"
-                        
-                        FilterBtn(title: "Sports", val: "sports", cur: effectiveMode) { setMode("sports") }
-                        FilterBtn(title: "Stocks", val: "stocks", cur: effectiveMode) { setMode("stocks") }
-                        FilterBtn(title: "Music", val: "music", cur: effectiveMode) { setMode("music") }
-                        FilterBtn(title: "Weather", val: "weather", cur: effectiveMode) { setMode("weather") }
-                        FilterBtn(title: "Clock", val: "clock", cur: effectiveMode) { setMode("clock") }
-                    }.padding(.horizontal)
+                // MARK: - MODE SELECTOR GRID (3xY)
+                LazyVGrid(columns: modeColumns, spacing: 12) {
+                    let nonSportsModes = ["stocks", "weather", "clock", "music"]
+                    let effectiveMode = nonSportsModes.contains(currentMode) ? currentMode : "sports"
+                    
+                    FilterBtn(title: "Sports", val: "sports", cur: effectiveMode) { setMode("sports") }
+                    FilterBtn(title: "Stocks", val: "stocks", cur: effectiveMode) { setMode("stocks") }
+                    FilterBtn(title: "Music", val: "music", cur: effectiveMode) { setMode("music") }
+                    FilterBtn(title: "Weather", val: "weather", cur: effectiveMode) { setMode("weather") }
+                    FilterBtn(title: "Clock", val: "clock", cur: effectiveMode) { setMode("clock") }
                 }
+                .padding(.horizontal)
                 
                 // MARK: - MODE SPECIFIC CONTENT
                 if currentMode == "weather" {
@@ -1206,7 +1213,6 @@ struct ModesView: View {
                     }.padding(.horizontal)
                     
                 } else if currentMode == "music" {
-                    // [NEW] Music Description
                     VStack(alignment: .leading, spacing: 10) {
                         Text("NOW PLAYING").font(.caption).bold().foregroundStyle(.secondary)
                         HStack {
