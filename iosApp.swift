@@ -551,13 +551,30 @@ class TickerViewModel: ObservableObject {
     
     func updateWeatherAndSave() {
         let geocoder = CLGeocoder()
+        
+        // 1. IMMEDIATELY LOCK: Stops 0.5s updates from overwriting VM state
+        self.isEditing = true
+        
         geocoder.geocodeAddressString(weatherLocInput) { placemarks, error in
             DispatchQueue.main.async {
                 if let pm = placemarks?.first, let loc = pm.location, let name = pm.locality ?? pm.name {
-                    self.state.weather_city = name; self.state.weather_lat = loc.coordinate.latitude; self.state.weather_lon = loc.coordinate.longitude
+                    // Update internal values
+                    self.state.weather_city = name
+                    self.state.weather_lat = loc.coordinate.latitude
+                    self.state.weather_lon = loc.coordinate.longitude
                 }
+                
                 self.state.weather_location = self.weatherLocInput
+                
+                // 2. SEND TO SERVER
                 self.saveSettings()
+                
+                // 3. EXTENDED LOCK: Give the server 2 seconds to finish writing
+                // the new file to disk before we resume polling.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    self.isEditing = false
+                    self.fetchData() // Force one clean fetch
+                }
             }
         }
     }
@@ -1170,6 +1187,11 @@ struct ModeTile: View {
 struct ModesView: View {
     @ObservedObject var vm: TickerViewModel
     
+    // 1. LOCAL BUFFER: This is the secret.
+    // The background timer cannot touch this variable.
+    @State private var localWeatherInput: String = ""
+    @FocusState private var isWeatherFieldFocused: Bool
+    
     let modeColumns = [
         GridItem(.flexible(), spacing: 15),
         GridItem(.flexible(), spacing: 15),
@@ -1184,25 +1206,17 @@ struct ModesView: View {
         vm.leagueOptions.filter { $0.type == "stock" }
     }
     
-    /// Logic to handle category switching and mode defaults
     func setCategory(_ target: String) {
         let utilities = ["stocks", "weather", "clock", "music"]
-        
-        // 1. Set the primary mode
-        // For utilities, the mode IS the category. For sports, we default to "all" (Show All).
         if utilities.contains(target) {
             vm.state.mode = target
         } else {
             vm.state.mode = "all"
         }
-        
-        // 2. Clean up Utility Toggles in active_sports
-        // This ensures the hardware doesn't try to run Clock and Weather simultaneously
         vm.state.active_sports["weather"] = (target == "weather")
         vm.state.active_sports["clock"] = (target == "clock")
         vm.state.active_sports["music"] = (target == "music")
         
-        // 3. Special handling for Stocks
         if target == "stocks" {
             let stockKeys = stockOptions.map { $0.id }
             let hasStock = stockKeys.contains { vm.state.active_sports[$0] == true }
@@ -1210,7 +1224,6 @@ struct ModesView: View {
                 vm.state.active_sports[first] = true
             }
         }
-        
         vm.saveSettings()
     }
     
@@ -1218,15 +1231,11 @@ struct ModesView: View {
         ScrollView {
             VStack(spacing: 24) {
                 HStack {
-                    Text("Modes")
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundColor(.white)
+                    Text("Modes").font(.system(size: 34, weight: .bold)).foregroundColor(.white)
                     Spacer()
                 }
-                .padding(.horizontal)
-                .padding(.top, 80)
+                .padding(.horizontal).padding(.top, 80)
                 
-                // MARK: - CATEGORY SELECTOR GRID
                 LazyVGrid(columns: modeColumns, spacing: 15) {
                     let utilities = ["stocks", "weather", "clock", "music"]
                     let activeCategory = utilities.contains(vm.state.mode) ? vm.state.mode : "sports"
@@ -1239,7 +1248,6 @@ struct ModesView: View {
                 }
                 .padding(.horizontal)
                 
-                // MARK: - MODE SPECIFIC CONFIGURATION
                 VStack(alignment: .leading, spacing: 20) {
                     if vm.state.mode == "weather" {
                         VStack(alignment: .leading, spacing: 10) {
@@ -1247,24 +1255,25 @@ struct ModesView: View {
                             HStack {
                                 Text("Location:")
                                 Spacer()
-                                TextField("City or Zip", text: $vm.weatherLocInput)
+                                // 2. BIND TO LOCAL INPUT: Not the ViewModel
+                                TextField("City or Zip", text: $localWeatherInput)
                                     .multilineTextAlignment(.trailing)
                                     .foregroundColor(.white)
-                                    .onSubmit { vm.updateWeatherAndSave() }
+                                    .focused($isWeatherFieldFocused)
+                                    .onSubmit {
+                                        // 3. PUSH LOCAL TO GLOBAL: Only happens on Enter
+                                        vm.weatherLocInput = localWeatherInput
+                                        vm.updateWeatherAndSave()
+                                        isWeatherFieldFocused = false
+                                    }
                             }
                             .padding().liquidGlass()
                         }
-                        
                     } else if vm.state.mode == "clock" {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("CLOCK MODE").font(.caption).bold().foregroundStyle(.secondary)
-                            Text("Displaying large time and date.")
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .liquidGlass()
-                                .foregroundStyle(.secondary)
+                            Text("Displaying large time and date.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                         }
-                        
                     } else if vm.state.mode == "music" {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("NOW PLAYING").font(.caption).bold().foregroundStyle(.secondary)
@@ -1272,14 +1281,11 @@ struct ModesView: View {
                                 Image(systemName: "hifispeaker.fill").font(.title2).foregroundStyle(.green)
                                 VStack(alignment: .leading) {
                                     Text("Spotify Integration").bold().foregroundStyle(.white)
-                                    Text("Ticker will display currently playing track.")
-                                        .font(.caption).foregroundStyle(.gray)
+                                    Text("Ticker will display currently playing track.").font(.caption).foregroundStyle(.gray)
                                 }
                                 Spacer()
-                            }
-                            .padding().liquidGlass()
+                            }.padding().liquidGlass()
                         }
-                        
                     } else if vm.state.mode == "stocks" {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("MARKET SECTORS").font(.caption).bold().foregroundStyle(.secondary)
@@ -1299,14 +1305,9 @@ struct ModesView: View {
                                 }
                             }
                         }
-                        
                     } else {
-                        // DEFAULT: SPORTS LEAGUE LIST
                         VStack(alignment: .leading, spacing: 10) {
                             Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
-                            if sportsOptions.isEmpty {
-                                Text("Loading sports options...").font(.caption).padding().liquidGlass()
-                            }
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
                                 ForEach(sportsOptions) { opt in
                                     let isActive = vm.state.active_sports[opt.id] ?? false
@@ -1326,8 +1327,14 @@ struct ModesView: View {
                     }
                 }
                 .padding(.horizontal)
-                
                 Spacer(minLength: 120)
+            }
+        }
+        // 4. SYNC LOGIC: Updates the text field only when NOT typing
+        .onAppear { localWeatherInput = vm.state.weather_city }
+        .onChange(of: vm.state.weather_city) { newValue in
+            if !isWeatherFieldFocused {
+                localWeatherInput = newValue
             }
         }
     }
