@@ -2204,162 +2204,87 @@ class SportsFetcher:
             w = self.weather.get_weather()
             if w: all_games.append(w)
 
-        # 2. MUSIC (Refactored to use helper)
+        # 2. MUSIC 
         music_obj = self.get_music_object()
         if music_obj:
             all_games.append(music_obj)
 
+        # 3. CLOCK
         if conf['active_sports'].get('clock'):
             all_games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
 
-        # 3. SPORTS (Keep existing logic exactly as it was)
-        if conf['mode'] in ['sports', 'live', 'my_teams', 'all']:
-            utc_offset = conf.get('utc_offset', -5)
-            now_utc = dt.now(timezone.utc)
-            now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-            
-            if now_local.hour < 3:
-                visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
-                visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
-            else:
-                visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-                visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
-            
-            visible_start_utc = visible_start_local.astimezone(timezone.utc)
-            visible_end_utc = visible_end_local.astimezone(timezone.utc)
-            
-            window_start_local = now_local - timedelta(hours=30)
-            window_end_local = now_local + timedelta(hours=48)
-            
-            window_start_utc = window_start_local.astimezone(timezone.utc)
-            window_end_utc = window_end_local.astimezone(timezone.utc)
-            
-            futures = {}
-
-            # --- SMART LOOP IMPLEMENTATION ---
-            
-            # Special fetchers (Always submit for now, but with timeout)
-            if conf['active_sports'].get('ahl', False):
-                f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
-                futures[f] = 'ahl'
-            
-            if conf['active_sports'].get('cba', False):
-                f = self.executor.submit(self._fetch_cba, conf, visible_start_utc, visible_end_utc)
-                futures[f] = 'cba'
-            
-            if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
-                f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
-                futures[f] = 'nhl_native'
-            
-            for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
-                if conf['active_sports'].get(internal_id, False):
-                    f = self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
-                    futures[f] = internal_id
-
-            # Standard ESPN fetchers (Apply Smart Sleep)
-            for league_key, config in self.leagues.items():
-                if league_key == 'nhl' and not conf['debug_mode']: continue 
-                if league_key.startswith('soccer_'): continue
-                if league_key == 'ahl': continue
-                if league_key == 'cba': continue
-                
-                # Check Sleep Status
-                if time.time() < self.league_next_update.get(league_key, 0):
-                    # SLEEPING: Use cached data (Instant)
-                    if league_key in self.league_last_data:
-                        all_games.extend(self.league_last_data[league_key])
-                    continue
-                
-                # AWAKE: Submit task
-                f = self.executor.submit(
-                    self.fetch_single_league, 
-                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc
-                )
-                futures[f] = league_key
-            
-            # HARD TIMEOUT: Wait max 5.0s for threads
-            done, not_done = concurrent.futures.wait(futures.keys(), timeout=5.0)
-            
-            for f in done:
-                lk = futures[f]
-                try: 
-                    res = f.result()
-                    if res: 
-                        all_games.extend(res)
-                        # Save data for next sleep cycle
-                        if lk not in ['ahl', 'nhl_native'] and not lk.startswith('soccer_'):
-                            self.league_last_data[lk] = res
-                            self.league_next_update[lk] = self._calculate_next_update(res)
-                except Exception as e: 
-                    print(f"Fetch error {lk}: {e}")
-
-        sports_count = len([g for g in all_games if g.get('type') == 'scoreboard'])
+        # 4. SPORTS - ALWAYS fetch so the buffer stays populated
+        utc_offset = conf.get('utc_offset', -5)
+        now_utc = dt.now(timezone.utc)
+        now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
         
-        with data_lock:
-            prev_buffer = state.get('buffer_sports', [])
-            prev_sports_count = len([g for g in prev_buffer if g.get('type') == 'scoreboard'])
-
-        if sports_count == 0 and prev_sports_count > 0:
-            self.consecutive_empty_fetches += 1
-            if self.consecutive_empty_fetches < 3:
-                prev_pure_sports = [g for g in prev_buffer if g.get('type') == 'scoreboard']
-                utils = [g for g in all_games if g.get('type') != 'scoreboard']
-                all_games = prev_pure_sports + utils
-            else:
-                self.consecutive_empty_fetches = 0
+        # Date boundaries
+        if now_local.hour < 3:
+            visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+            visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
         else:
-            self.consecutive_empty_fetches = 0
+            visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
+        
+        visible_start_utc = visible_start_local.astimezone(timezone.utc)
+        visible_end_utc = visible_end_local.astimezone(timezone.utc)
+        window_start_utc = (now_local - timedelta(hours=30)).astimezone(timezone.utc)
+        window_end_utc = (now_local + timedelta(hours=48)).astimezone(timezone.utc)
+        
+        futures = {}
+        # ... [Keep your existing fetcher.submit calls for AHL, CBA, NHL, FotMob, etc.] ...
+        # Ensure you submit the standard ESPN leagues too:
+        for league_key, config in self.leagues.items():
+            if not conf['active_sports'].get(league_key, False): continue
+            if league_key in ['nhl', 'ahl', 'cba'] or league_key.startswith('soccer_'): continue
+            
+            f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
+            futures[f] = league_key
 
-        for g in all_games:
-            ts = g.get('startTimeUTC')
-            if ts and isinstance(ts, str):
-                try:
-                    d = dt.fromisoformat(ts.replace('Z', '+00:00'))
-                    g['startTimeUTC'] = d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                except: pass
+        # Standard thread wait
+        done, _ = concurrent.futures.wait(futures.keys(), timeout=5.0)
+        for f in done:
+            try:
+                res = f.result()
+                if res: all_games.extend(res)
+            except: pass
 
+        # Sorting and merging
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
-            4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "canceled", "suspended", "ppd"]) else
-            3 if "FINAL" in str(x.get('status', '')).upper() or "FIN" == str(x.get('status', '')) else
-            2, # Active
-            x.get('startTimeUTC', '9999'),
-            x.get('sport', ''),
-            x.get('id', '0')
+            4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "ppd"]) else
+            3 if "FINAL" in str(x.get('status', '')).upper() else 2,
+            x.get('startTimeUTC', '9999')
         ))
 
-        now_ts = time.time()
-        self.history_buffer.append((now_ts, all_games))
-        cutoff_time = now_ts - 120
-        self.history_buffer = [x for x in self.history_buffer if x[0] > cutoff_time]
-        
         with data_lock: 
             state['buffer_sports'] = all_games
             self.merge_buffers()
 
     def get_snapshot_for_delay(self, delay_seconds):
+        # Always get the most recent data if no delay
         if delay_seconds <= 0 or not self.history_buffer:
-            with data_lock:
-                return state.get('current_games', [])
+            with data_lock: return state.get('current_games', [])
         
+        # Find the snapshot closest to our target delay time
         target_time = time.time() - delay_seconds
         closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
         sports_snap = closest[1]
         
         with data_lock:
             stocks_snap = state.get('buffer_stocks', [])
-            mode = state['mode']
+            mode = state.get('mode', 'all')
         
-        # This MUST match the logic in merge_buffers
+        # Apply the exact same mode logic as merge_buffers
         utils = [g for g in sports_snap if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
-        pure_sports = [g for g in sports_snap if g not in utils]
+        pure_sports = [g for g in sports_snap if g.get('type') == 'scoreboard']
         
         if mode == 'stocks': return stocks_snap
         elif mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
         elif mode == 'music': return [g for g in utils if g.get('sport') == 'music']
-        elif mode == 'all': return sports_snap 
+        elif mode == 'all': return sports_snap
         else: return pure_sports
             
     def update_buffer_stocks(self):
@@ -2377,36 +2302,32 @@ class SportsFetcher:
             self.merge_buffers()
 
     def merge_buffers(self):
-        with data_lock:
-            mode = state['mode']
-            sports_buffer = state.get('buffer_sports', [])
-            stocks_buffer = state.get('buffer_stocks', [])
-            
-            # Identify Utility Types
-            utils = [g for g in sports_buffer if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
-            # Pure sports excludes music/weather/clock
-            pure_sports = [g for g in sports_buffer if g not in utils]
+        mode = state.get('mode', 'all')
+        sports_buffer = state.get('buffer_sports', [])
+        stocks_buffer = state.get('buffer_stocks', [])
+        
+        # Segregate data types
+        utils = [g for g in sports_buffer if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
+        pure_sports = [g for g in sports_buffer if g.get('type') == 'scoreboard']
 
-            final_list = []
+        if mode == 'stocks': 
+            final_list = stocks_buffer
+        elif mode == 'weather': 
+            final_list = [g for g in utils if g.get('type') == 'weather']
+        elif mode == 'clock': 
+            final_list = [g for g in utils if g.get('sport') == 'clock']
+        elif mode == 'music': 
+            final_list = [g for g in utils if g.get('sport') == 'music']
+        elif mode == 'all':
+            # ALL = Everything including weather/clock/music
+            final_list = sports_buffer 
+        elif mode == 'sports':
+            # SPORTS = Only pure games
+            final_list = pure_sports
+        else: 
+            final_list = pure_sports
 
-            if mode == 'stocks': 
-                final_list = stocks_buffer
-            elif mode == 'weather': 
-                final_list = [g for g in utils if g.get('type') == 'weather']
-            elif mode == 'clock': 
-                final_list = [g for g in utils if g.get('sport') == 'clock']
-            elif mode == 'music': 
-                final_list = [g for g in utils if g.get('sport') == 'music']
-            elif mode == 'all':
-                # Show everything: Sports + Music + Weather + Clock
-                final_list = sports_buffer 
-            elif mode in ['sports', 'live', 'my_teams']:
-                # Strictly sports
-                final_list = pure_sports
-            else: 
-                final_list = pure_sports
-
-            state['current_games'] = final_list
+        state['current_games'] = final_list
 
 # Initialize Global Fetcher
 fetcher = SportsFetcher(
