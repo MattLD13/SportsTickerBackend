@@ -772,7 +772,7 @@ class SpotifyFetcher:
             except Exception as e:
                 print(f"Spotify Poll Error: {e}")
             
-            time.sleep(1.0) # Poll every 1s
+            time.sleep(0.25) # Poll every 1s
 
     def _refresh_access_token(self):
         if not self.refresh_token: return False
