@@ -750,52 +750,48 @@ class SpotifyFetcher:
         return False
 
     def get_audio_analysis(self, track_id):
-        # 1. Check Cache
-        if track_id in self.waveform_cache:
+        # 1. Check Cache (and ensure it's not empty)
+        if track_id in self.waveform_cache and self.waveform_cache[track_id]:
             return self.waveform_cache[track_id]
             
-        # 2. Fetch from Spotify
         try:
-            print(f"🎵 Fetching Audio Analysis for: {track_id}")
+            # Use OFFICIAL Spotify API URL
+            url = f"https://api.spotify.com/v1/audio-analysis/{track_id}"
+            
             r = self.session.get(
-                f"https://accounts.spotify.com/authorize4{track_id}",
+                url,
                 headers={"Authorization": f"Bearer {self.access_token}"},
                 timeout=5
             )
+            
             if r.status_code != 200:
-                print(f"⚠️ Analysis Failed: {r.status_code} - {r.text}")
+                print(f"⚠️ Analysis HTTP Error: {r.status_code}")
                 return []
 
             data = r.json()
             segments = data.get('segments', [])
-            if not segments: return []
             
-            # 3. Process into a fixed-resolution waveform
-            # Target around 500 sample points for the whole song for a good density
-            target_points = 500
-            total_segments = len(segments)
-            step = max(1, total_segments // target_points)
+            if not segments:
+                print("⚠️ Analysis returned 0 segments.")
+                return []
             
+            # Process waveform (Target 100 bars for the whole song)
             processed_wave = []
+            step = max(1, len(segments) // 100)
             
-            for i in range(0, total_segments, step):
+            for i in range(0, len(segments), step):
                 s = segments[i]
-                # Normalize loudness: typically -60dB (quiet) to 0dB (loud)
-                # Map -60 to 0, and 0 to 100.
+                # Map -60dB...0dB to 0...100
                 loudness = s.get('loudness_max', -60)
                 val = max(0, min(100, int((loudness + 60) * (100/60))))
                 processed_wave.append(val)
 
+            print(f"✅ Generated Waveform: {len(processed_wave)} points for {track_id}")
             self.waveform_cache[track_id] = processed_wave
-            
-            # Cleanup cache items if too big
-            if len(self.waveform_cache) > 10:
-                 self.waveform_cache.pop(next(iter(self.waveform_cache)))
-                 
             return processed_wave
             
         except Exception as e:
-            print(f"⚠️ Waveform Processing Error: {e}")
+            print(f"⚠️ Waveform Exception: {e}")
             return []
 
     def get_now_playing(self):
