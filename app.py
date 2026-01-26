@@ -2351,7 +2351,7 @@ class SportsFetcher:
             stocks_snap = state.get('buffer_stocks', [])
             mode = state['mode']
         
-        # Filter logic must match merge_buffers
+        # This MUST match the logic in merge_buffers
         utils = [g for g in sports_snap if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
         pure_sports = [g for g in sports_snap if g not in utils]
         
@@ -2359,9 +2359,9 @@ class SportsFetcher:
         elif mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
         elif mode == 'music': return [g for g in utils if g.get('sport') == 'music']
-        elif mode == 'all': return sports_snap # Includes music
+        elif mode == 'all': return sports_snap 
         else: return pure_sports
-
+            
     def update_buffer_stocks(self):
         games = []
         with data_lock: conf = state.copy()
@@ -2377,37 +2377,36 @@ class SportsFetcher:
             self.merge_buffers()
 
     def merge_buffers(self):
-        mode = state['mode']
-        final_list = []
-        
-        sports_buffer = state.get('buffer_sports', [])
-        stocks_buffer = state.get('buffer_stocks', [])
-        
-        # Identify Utility Types
-        utils = [g for g in sports_buffer if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
-        
-        # Pure sports excludes music/weather/clock
-        pure_sports = [g for g in sports_buffer if g not in utils]
-    
-        if mode == 'stocks': 
-            final_list = stocks_buffer
-        elif mode == 'weather': 
-            final_list = [g for g in utils if g.get('type') == 'weather']
-        elif mode == 'clock': 
-            final_list = [g for g in utils if g.get('sport') == 'clock']
-        elif mode == 'music': 
-            final_list = [g for g in utils if g.get('sport') == 'music']
-        
-        # FIX: Allow music/utils in 'all' mode, but keep 'sports' mode pure if desired
-        elif mode == 'all':
-            # Combined view: Sports + Music + Weather + Clock
-            final_list = sports_buffer 
-        elif mode in ['sports', 'live', 'my_teams']: 
-            final_list = pure_sports
-        else: 
-            final_list = pure_sports
-    
-        state['current_games'] = final_list
+        with data_lock:
+            mode = state['mode']
+            sports_buffer = state.get('buffer_sports', [])
+            stocks_buffer = state.get('buffer_stocks', [])
+            
+            # Identify Utility Types
+            utils = [g for g in sports_buffer if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
+            # Pure sports excludes music/weather/clock
+            pure_sports = [g for g in sports_buffer if g not in utils]
+
+            final_list = []
+
+            if mode == 'stocks': 
+                final_list = stocks_buffer
+            elif mode == 'weather': 
+                final_list = [g for g in utils if g.get('type') == 'weather']
+            elif mode == 'clock': 
+                final_list = [g for g in utils if g.get('sport') == 'clock']
+            elif mode == 'music': 
+                final_list = [g for g in utils if g.get('sport') == 'music']
+            elif mode == 'all':
+                # Show everything: Sports + Music + Weather + Clock
+                final_list = sports_buffer 
+            elif mode in ['sports', 'live', 'my_teams']:
+                # Strictly sports
+                final_list = pure_sports
+            else: 
+                final_list = pure_sports
+
+            state['current_games'] = final_list
 
 # Initialize Global Fetcher
 fetcher = SportsFetcher(
@@ -2452,46 +2451,30 @@ def stocks_worker():
 # NEW WORKER: HIGH SPEED MUSIC UPDATES (1s)
 # ========================================================
 def music_worker():
-    """Updates only the music object in the global buffer every 1 second"""
     while True:
         try:
-            # 1. Fetch fresh music object
             m_obj = fetcher.get_music_object()
-            
             with data_lock:
-                # 2. Update buffer_sports in place
-                # We do this to avoid rebuilding the whole list which is CPU intensive
-                buffer = state.get('buffer_sports', [])
-                
-                # Check if music is supposed to be active
-                is_active = state['active_sports'].get('music', False)
-                
-                # Try to find existing music entry and update it
-                found = False
-                for i, item in enumerate(buffer):
-                    if item.get('id') == 'spotify_now':
-                        if m_obj and is_active:
-                            buffer[i] = m_obj
-                        else:
-                            # Remove if not playing or disabled
-                            buffer.pop(i) 
-                        found = True
-                        break
-                
-                # If not found but should be there, append it
-                if not found and m_obj and is_active:
-                    buffer.append(m_obj)
-                
-                state['buffer_sports'] = buffer
-                
-                # 3. Propagate to current_games
-                fetcher.merge_buffers()
-                
-        except Exception as e:
-            # Silent fail to keep thread alive
-            pass
-            
-        time.sleep(0.5) # Fast update rate
+                current_mode = state.get('mode')
+                # If we are in music mode, force the current_games to JUST be the music object
+                if current_mode == 'music':
+                    state['current_games'] = [m_obj] if m_obj else []
+                # If in 'all' mode, ensure the music object is updated in the list
+                elif current_mode == 'all':
+                    buffer = state.get('buffer_sports', [])
+                    found = False
+                    for i, item in enumerate(buffer):
+                        if item.get('id') == 'spotify_now':
+                            if m_obj: buffer[i] = m_obj
+                            else: buffer.pop(i)
+                            found = True
+                            break
+                    if not found and m_obj:
+                        buffer.append(m_obj)
+                    state['buffer_sports'] = buffer
+                    fetcher.merge_buffers()
+        except: pass
+        time.sleep(1)
 
 # ================= FLASK API =================
 app = Flask(__name__)
