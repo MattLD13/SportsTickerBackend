@@ -13,9 +13,9 @@ import concurrent.futures
 import hashlib
 import math
 import random
-import colorsys  # [NEW] For album art color extraction
+import colorsys
 from datetime import datetime
-from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat # [NEW] ImageStat for color extraction
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
 from rgbmatrix import RGBMatrix, RGBMatrixOptions
 from flask import Flask, request, render_template_string
 
@@ -262,7 +262,7 @@ class TickerStreamer:
         self.static_current_game = None
         
         # [NEW] MUSIC UI STATE
-        self.VINYL_SIZE = 50
+        self.VINYL_SIZE = 51 # CHANGED FROM 50 to 51 (ODD NUMBER) TO FIX WOBBLE
         self.COVER_SIZE = 42
         self.vinyl_mask = Image.new("L", (self.COVER_SIZE, self.COVER_SIZE), 0)
         ImageDraw.Draw(self.vinyl_mask).ellipse((0, 0, self.COVER_SIZE, self.COVER_SIZE), fill=255)
@@ -356,7 +356,7 @@ class TickerStreamer:
         nr, ng, nb = colorsys.hsv_to_rgb(h, s, v)
         self.dominant_color = (int(nr*255), int(ng*255), int(nb*255))
 
-    def render_visualizer(self, draw, x, y, width, height):
+    def render_visualizer(self, draw, x, y, width, height, is_playing=True):
         bar_count = 16
         bar_w = 2
         gap = 3
@@ -373,13 +373,16 @@ class TickerStreamer:
             grad_colors.append((nr, ng, nb))
 
         for i in range(bar_count):
-            base = math.sin(t * 4 + self.viz_phase[i])
-            noise = math.sin(t * 12 + (i * 0.5)) * random.uniform(0.5, 1.2)
-            if i < 5: amp = 8.0 + (math.sin(t * 2) * 2) 
-            elif i < 11: amp = 6.0 
-            else: amp = 4.0 + (noise * 2)
+            if is_playing:
+                base = math.sin(t * 4 + self.viz_phase[i])
+                noise = math.sin(t * 12 + (i * 0.5)) * random.uniform(0.5, 1.2)
+                if i < 5: amp = 8.0 + (math.sin(t * 2) * 2) 
+                elif i < 11: amp = 6.0 
+                else: amp = 4.0 + (noise * 2)
+                target_h = max(2, min(height, abs(base + noise) * amp))
+            else:
+                target_h = 2.0 # Flatline when paused
 
-            target_h = max(2, min(height, abs(base + noise) * amp))
             self.viz_heights[i] += (target_h - self.viz_heights[i]) * 0.25
             
             h_int = int(self.viz_heights[i])
@@ -398,12 +401,16 @@ class TickerStreamer:
         img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
         
-        # Parse data from the 'game' object (mapped from backend)
         # Backend sends: home_abbr=Artist, away_abbr=Song, home_logo=Cover
         artist = str(game.get('home_abbr', 'Unknown'))
         song = str(game.get('away_abbr', 'Unknown'))
         cover_url = game.get('home_logo')
         
+        # Check explicit pause state from backend, or assume playing
+        is_playing = game.get('is_playing', True)
+        # If the status string says "Paused", treat it as paused
+        if "paused" in str(game.get('status', '')).lower(): is_playing = False
+
         # Parse status "2:30 / 3:45"
         status_str = str(game.get('status', '0:00 / 0:00'))
         parts = status_str.split(' / ')
@@ -420,13 +427,15 @@ class TickerStreamer:
         total_dur = time_to_sec(dur_str)
         curr_dur = time_to_sec(curr_str)
         
-        # [NEW] Physics Update using dt
+        # Physics Update using dt
         now = time.time()
         dt = now - self.last_frame_time
         self.last_frame_time = now
         
-        self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt)) % 360
-        self.text_scroll_pos += (15.0 * dt)
+        # ONLY UPDATE ROTATION AND SCROLL IF PLAYING
+        if is_playing:
+            self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt)) % 360
+            self.text_scroll_pos += (15.0 * dt)
         
         # 1. Update Cover & Vinyl Cache
         if cover_url != self.last_cover_url:
@@ -451,17 +460,21 @@ class TickerStreamer:
             composite.paste(self.vinyl_cache, (offset, offset), self.vinyl_cache)
         
         # Draw Border & Hole
+        # On 51x51 canvas, center is pixel 25.
+        # Box (22, 22, 28, 28) -> Center is 25. PERFECT.
         draw_comp = ImageDraw.Draw(composite)
         draw_comp.ellipse((22, 22, 28, 28), fill="#222")
         draw_comp.ellipse((23, 23, 27, 27), fill=self.spindle_color)
 
+        # Rotate around the true center
         rotated = composite.rotate(self.vinyl_rotation, resample=Image.Resampling.BICUBIC)
         img.paste(rotated, (4, -9), rotated)
 
-        # 3. Text (Song Name)
-        TEXT_AREA_W = 185 
-        TEXT_AREA_H = 15
+        # 3. Song Name (Scrolling)
         TEXT_START_X = 60
+        # Increased width to fill space up to visualizer (248 - 60 = 188)
+        TEXT_AREA_W = 188 
+        TEXT_AREA_H = 32
         
         name_w = d.textlength(song, font=self.medium_font)
         
@@ -476,20 +489,43 @@ class TickerStreamer:
             d_txt.text((-current_offset, 0), song, font=self.medium_font, fill="white")
             if (-current_offset + name_w) < TEXT_AREA_W:
                 d_txt.text((-current_offset + total_loop, 0), song, font=self.medium_font, fill="white")
-                
-            img.paste(txt_img, (TEXT_START_X, 2), txt_img)
+            
+            img.paste(txt_img, (TEXT_START_X, 0), txt_img)
         else:
-            d.text((TEXT_START_X, 2), song, font=self.medium_font, fill="white")
+            d.text((TEXT_START_X, 0), song, font=self.medium_font, fill="white")
 
-        # 4. Artist & Logo
+        # 4. Artist Name (Scrolling) - [FIXED]
         self.draw_spotify_logo(d, TEXT_START_X, 15)
-        d.text((TEXT_START_X + 16, 15), artist[:40], font=self.tiny, fill=(180, 180, 180))
+        
+        ARTIST_X = TEXT_START_X + 16
+        ARTIST_W = 172 # Width available before visualizer
+        
+        art_w = d.textlength(artist, font=self.tiny)
+        
+        if art_w > ARTIST_W:
+            GAP = 40
+            total_loop_art = art_w + GAP
+            # Use same scroll position but different loop length
+            current_offset_art = self.text_scroll_pos % total_loop_art
+            
+            art_img = Image.new("RGBA", (ARTIST_W, 16), (0,0,0,0))
+            d_art = ImageDraw.Draw(art_img)
+            
+            # Draw scrolling artist
+            d_art.text((-current_offset_art, 1), artist, font=self.tiny, fill=(180, 180, 180))
+            if (-current_offset_art + art_w) < ARTIST_W:
+                d_art.text((-current_offset_art + total_loop_art, 1), artist, font=self.tiny, fill=(180, 180, 180))
+            
+            # Paste (adjust Y slightly for container)
+            img.paste(art_img, (ARTIST_X, 16), art_img)
+        else:
+            # Static draw if it fits
+            d.text((ARTIST_X, 17), artist, font=self.tiny, fill=(180, 180, 180))
 
         # 5. Viz
-        self.render_visualizer(d, 248, 6, 80, 20)
+        self.render_visualizer(d, 248, 6, 80, 20, is_playing=is_playing)
 
         # 6. Time & Bar
-        # Remaining Time text
         remaining_seconds = max(0, total_dur - curr_dur)
         rem_str = f"- {remaining_seconds//60}:{remaining_seconds%60:02}"
         
@@ -1067,6 +1103,17 @@ class TickerStreamer:
                         # [NEW] ANIMATED STATIC ITEMS (Clock & Music)
                         # Need high refresh rate for these
                         if sport.startswith('clock') or game_type == 'music' or sport == 'music':
+                            
+                            # [NEW] For Music, explicitly refresh the object from the global list
+                            # This ensures we get the latest progress/time from the poll_backend thread
+                            if game_type == 'music' or sport == 'music':
+                                for item in self.static_items:
+                                    if item.get('id') == 'spotify_now':
+                                        self.static_current_game = item
+                                        break
+                                # [NEW] Force keep-alive for music (don't respect PAGE_HOLD_TIME)
+                                self.static_until = time.time() + 1.0
+
                             self.static_current_image = self.draw_single_game(self.static_current_game)
                             # Render faster for animation smoothness
                             if self.static_current_image:
