@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v0.8"
+SERVER_VERSION = "v0.82"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
