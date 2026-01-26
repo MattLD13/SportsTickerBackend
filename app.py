@@ -713,7 +713,7 @@ class StockFetcher:
             if obj: res.append(obj)
         return res
 
-# ================= NEW: SPOTIFY FETCHER =================
+# ================= FIXED: SPOTIFY FETCHER =================
 class SpotifyFetcher:
     def __init__(self):
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
@@ -725,7 +725,6 @@ class SpotifyFetcher:
         
         # Cache for expensive waveform data
         self.waveform_cache = {} 
-        self.current_track_id = None
         
         if not self.refresh_token:
             print("⚠️ Spotify: No Refresh Token found. Running in MOCK mode.")
@@ -737,7 +736,7 @@ class SpotifyFetcher:
         b64_auth = base64.b64encode(auth_str.encode()).decode()
         
         try:
-            # Official Spotify Token Endpoint
+            # ACTUAL SPOTIFY TOKEN URL
             r = self.session.post(
                 "https://accounts.spotify.com/api/token",
                 data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
@@ -747,13 +746,12 @@ class SpotifyFetcher:
             if r.status_code == 200:
                 data = r.json()
                 self.access_token = data['access_token']
-                # Token usually lasts 3600s, refresh 60s early
                 self.token_expiry = time.time() + data.get('expires_in', 3600) - 60
                 return True
             else:
-                print(f"Spotify Token Error: {r.text}")
+                print(f"❌ Spotify Token Error: {r.status_code} {r.text}")
         except Exception as e:
-            print(f"Spotify Auth Exception: {e}")
+            print(f"❌ Spotify Auth Exception: {e}")
         return False
 
     def get_audio_analysis(self, track_id, track_duration_sec):
@@ -764,7 +762,7 @@ class SpotifyFetcher:
         try:
             if not self.access_token: return []
 
-            # 2. Fetch Audio Analysis from Spotify API
+            # 2. ACTUAL AUDIO ANALYSIS URL
             url = f"https://api.spotify.com/v1/audio-analysis/{track_id}"
             
             r = self.session.get(
@@ -773,14 +771,16 @@ class SpotifyFetcher:
                 timeout=5
             )
             
+            # If 404, the track has no analysis (common for new/obscure songs)
             if r.status_code != 200:
-                print(f"⚠️ Analysis HTTP Error {r.status_code}")
-                return []
+                print(f"⚠️ Analysis Failed ({r.status_code}) for {track_id}")
+                return self._generate_fallback_waveform()
 
             data = r.json()
             segments = data.get('segments', [])
             
-            if not segments: return []
+            if not segments: 
+                return self._generate_fallback_waveform()
             
             # 3. Process Waveform (Time-based Sampling)
             processed_wave = []
@@ -789,17 +789,14 @@ class SpotifyFetcher:
             if track_duration_sec <= 0:
                 track_duration_sec = data.get('track', {}).get('duration', 180)
 
-            # Calculate time step per bar
             step_duration = track_duration_sec / TARGET_BARS
-            
             current_seg_idx = 0
             total_segments = len(segments)
 
             for i in range(TARGET_BARS):
-                # Calculate the timestamp for this bar
                 target_time = i * step_duration
                 
-                # Advance segment index until we find the segment covering target_time
+                # Find segment covering this time
                 while current_seg_idx < total_segments - 1:
                     seg = segments[current_seg_idx]
                     seg_end = seg['start'] + seg['duration']
@@ -807,26 +804,16 @@ class SpotifyFetcher:
                         break
                     current_seg_idx += 1
                 
-                # Get the segment at this time
                 active_seg = segments[current_seg_idx]
-                
-                # Extract loudness (typically -60dB to 0dB)
                 loudness = active_seg.get('loudness_max', -60)
                 
-                # Normalize: Map -60...0 to 0...100
-                # Formula: (loudness + 60) * (100 / 60)
-                # Any loudness below -60 becomes 0, above 0 clips to 100
+                # Normalize -60dB...0dB to 0...100
                 normalized = (loudness + 60) * 1.666
                 val = max(0, min(100, int(normalized)))
-                
                 processed_wave.append(val)
 
-            print(f"✅ Generated Waveform: {len(processed_wave)} bars for {track_id}")
-            
-            # Cache it
+            # Cache success
             self.waveform_cache[track_id] = processed_wave
-            
-            # Keep cache clean (limit to 20 tracks)
             if len(self.waveform_cache) > 20:
                 self.waveform_cache.pop(next(iter(self.waveform_cache)))
                 
@@ -834,24 +821,21 @@ class SpotifyFetcher:
             
         except Exception as e:
             print(f"⚠️ Waveform Exception: {e}")
-            return []
+            return self._generate_fallback_waveform()
+
+    def _generate_fallback_waveform(self):
+        """Generates a random looking waveform so the UI isn't empty"""
+        return [random.randint(20, 80) for _ in range(100)]
 
     def get_now_playing(self):
-        # MOCK MODE check
-        if not self.refresh_token:
-            return {
-                "is_playing": True, "name": "Money", "artist": "Pink Floyd",
-                "cover": "https://i.scdn.co/image/ab67616d0000b273ea7caaff71dea1051d49b2fe",
-                "duration": 382.0, "progress": (time.time() % 382), 
-                "waveform": [random.randint(10,90) for _ in range(100)]
-            }
-
-        # Token Refresh Check
+        # Token Check
         if time.time() > self.token_expiry:
-            if not self._refresh_access_token(): return None
+            if not self._refresh_access_token(): 
+                print("❌ Spotify: Failed to refresh token")
+                return None
 
         try:
-            # Official Currently Playing Endpoint
+            # ACTUAL CURRENTLY PLAYING URL
             r = self.session.get(
                 "https://api.spotify.com/v1/me/player/currently-playing",
                 headers={"Authorization": f"Bearer {self.access_token}"},
@@ -859,18 +843,19 @@ class SpotifyFetcher:
             )
             
             if r.status_code == 204: return {"is_playing": False} 
-            if r.status_code != 200: return None
+            if r.status_code != 200: 
+                print(f"❌ Spotify API Error: {r.status_code}")
+                return None
             
             data = r.json()
             item = data.get('item')
             if not item: return {"is_playing": False} 
 
-            # Identify Track
             tid = item.get('id')
             duration_sec = item.get('duration_ms', 0) / 1000.0
-            waveform = []
             
-            # Fetch Waveform if we have an ID
+            # Fetch Waveform
+            waveform = []
             if tid:
                 waveform = self.get_audio_analysis(tid, duration_sec)
 
@@ -884,7 +869,7 @@ class SpotifyFetcher:
                 "waveform": waveform
             }
         except Exception as e:
-            print(f"Spotify Fetch Error: {e}")
+            print(f"❌ Spotify Fetch Error: {e}")
             return None
 
 class SportsFetcher:
