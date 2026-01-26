@@ -2157,17 +2157,22 @@ class SportsFetcher:
             return None
     
         try:
-            # 1. Call the same logic used in the API route
+            # 1. Get the latest cached state from the spotify_fetcher
             s_data = spotify_fetcher.get_cached_state()
             
             if s_data and s_data.get('is_playing'):
-                # 2. Local calculation for the ticker display
+                # 2. Local calculation for the ticker display progress
                 time_since_fetch = time.time() - s_data.get('last_fetch_ts', time.time())
                 current_progress = s_data['progress'] + time_since_fetch
                 
-                # Formatting (e.g., 2:30 / 3:45)
+                # Ensure we don't display past the end of the song
+                duration = s_data.get('duration', 0)
+                if current_progress > duration:
+                    current_progress = duration
+
+                # Formatting the status string (e.g., 2:30 / 3:45)
                 cur_m, cur_s = divmod(int(current_progress), 60)
-                tot_m, tot_s = divmod(int(s_data.get('duration', 0)), 60)
+                tot_m, tot_s = divmod(int(duration), 60)
                 status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
     
                 return {
@@ -2177,13 +2182,21 @@ class SportsFetcher:
                     'status': status_str,
                     'state': 'in',
                     'is_shown': True,
-                    'home_abbr': s_data.get('artist', 'Unknown')[:12],
+                    # REMOVED [:12] truncation to allow full text
+                    'home_abbr': s_data.get('artist', 'Unknown'), 
+                    'away_abbr': s_data.get('name', 'Unknown'),
                     'home_logo': s_data.get('cover', ''),
-                    'away_abbr': s_data.get('name', 'Unknown')[:12],
                     'away_logo': 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
                     'home_color': '#1DB954',
                     'away_color': '#FFFFFF',
-                    'situation': {}
+                    # Injecting all raw data like /api/spotify/now does
+                    'situation': {
+                        'raw_artist': s_data.get('artist'),
+                        'raw_title': s_data.get('name'),
+                        'progress': current_progress,
+                        'duration': duration,
+                        'is_playing': True
+                    }
                 }
         except Exception as e:
             print(f"Music Gen Error: {e}")
