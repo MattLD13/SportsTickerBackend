@@ -1138,23 +1138,23 @@ struct ModeTile: View {
     
     var body: some View {
         Button(action: act) {
-            VStack(spacing: 8) {
+            HStack(spacing: 8) { // Changed to HStack for inline layout
                 Image(systemName: icon)
-                    .font(.system(size: 24))
+                    .font(.system(size: 16)) // Smaller icon
                 Text(title)
-                    .font(.caption)
+                    .font(.subheadline)
                     .bold()
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 85) // Fixed height makes them look like tiles
+            .frame(height: 55) // Reduced height from 85 to 55
             .background(isSelected ? Color.blue : Color.white.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(isSelected ? Color.blue.opacity(0.8) : Color.white.opacity(0.1), lineWidth: 1)
             )
             .foregroundColor(isSelected ? .white : .gray)
-            .shadow(color: isSelected ? Color.blue.opacity(0.3) : Color.clear, radius: 8, x: 0, y: 4)
+            .shadow(color: isSelected ? Color.blue.opacity(0.3) : Color.clear, radius: 4, x: 0, y: 2)
         }
     }
 }
