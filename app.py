@@ -713,12 +713,7 @@ class StockFetcher:
             if obj: res.append(obj)
         return res
 
-import os
-import time
-import base64
-import random
-import requests
-
+# ================= HIGH-PERFORMANCE SPOTIFY FETCHER =================
 class SpotifyFetcher:
     def __init__(self):
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
@@ -728,170 +723,139 @@ class SpotifyFetcher:
         self.token_expiry = 0
         self.session = requests.Session()
         
-        # Cache for expensive waveform data
+        # --- CACHING & THREADING ---
         self.waveform_cache = {} 
+        self._latest_state = {"is_playing": False} # The "Instant" Read Variable
+        self._lock = threading.Lock()
+        self._running = True
         
         if not self.refresh_token:
-            print("⚠️ Spotify: No Refresh Token found. Running in MOCK mode.")
+            print("⚠️ Spotify: No Refresh Token. Mock Mode.")
+        else:
+            # Start the background worker immediately
+            threading.Thread(target=self._background_worker, daemon=True).start()
+
+    def get_cached_state(self):
+        """Returns the latest state INSTANTLY (0ms latency)"""
+        with self._lock:
+            return self._latest_state.copy()
+
+    def _background_worker(self):
+        """Polls Spotify independently of client requests"""
+        print("🚀 Spotify Background Worker Started")
+        while self._running:
+            start_t = time.time()
+            try:
+                # 1. Fetch Fresh Data
+                new_data = self._fetch_live_data()
+                
+                # 2. Update the "Instant" Variable
+                if new_data:
+                    with self._lock:
+                        self._latest_state = new_data
+            except Exception as e:
+                print(f"Spotify Worker Error: {e}")
+            
+            # 3. Smart Sleep (Target 1.5s intervals)
+            # If fetch took 0.5s, sleep 1.0s. If fetch took 2s, don't sleep.
+            elapsed = time.time() - start_t
+            sleep_time = max(0.1, 1.5 - elapsed) 
+            time.sleep(sleep_time)
 
     def _refresh_access_token(self):
-        if not all([self.client_id, self.client_secret, self.refresh_token]): 
-            return False
-        
-        auth_str = f"{self.client_id}:{self.client_secret}"
-        b64_auth = base64.b64encode(auth_str.encode()).decode()
-        
+        if not all([self.client_id, self.client_secret, self.refresh_token]): return False
         try:
+            auth_str = f"{self.client_id}:{self.client_secret}"
+            b64_auth = base64.b64encode(auth_str.encode()).decode()
             r = self.session.post(
                 "https://accounts.spotify.com/api/token",
                 data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
-                headers={"Authorization": f"Basic {b64_auth}"},
-                timeout=5
+                headers={"Authorization": f"Basic {b64_auth}"}, timeout=5
             )
             if r.status_code == 200:
-                data = r.json()
-                self.access_token = data['access_token']
-                self.token_expiry = time.time() + data.get('expires_in', 3600) - 60
+                d = r.json()
+                self.access_token = d['access_token']
+                self.token_expiry = time.time() + d.get('expires_in', 3600) - 60
                 return True
-            else:
-                print(f"❌ Spotify Token Error: {r.status_code} {r.text}")
-        except Exception as e:
-            print(f"❌ Spotify Auth Exception: {e}")
+        except: pass
         return False
 
-    def get_audio_analysis(self, track_id, track_duration_sec):
-        # Return cached if available
-        if track_id in self.waveform_cache:
-            print(f"✓ Using cached waveform for {track_id}")
-            return self.waveform_cache[track_id]
-            
+    def get_audio_analysis(self, track_id, duration_sec):
+        if track_id in self.waveform_cache: return self.waveform_cache[track_id]
+        
         try:
-            if not self.access_token: 
-                print("❌ No access token available")
-                return self._generate_fallback_waveform()
-
-            url = f"https://api.spotify.com/v1/audio-analysis/{track_id}"
-            
             r = self.session.get(
-                url,
-                headers={"Authorization": f"Bearer {self.access_token}"},
-                timeout=5
+                f"https://api.spotify.com/v1/audio-analysis/{track_id}",
+                headers={"Authorization": f"Bearer {self.access_token}"}, timeout=5
             )
+            if r.status_code != 200: return self._fallback_wave()
             
-            if r.status_code != 200:
-                print(f"⚠️ Analysis Failed ({r.status_code}) for {track_id}")
-                if r.status_code == 401:
-                    print("Token may have expired, try refreshing")
-                return self._generate_fallback_waveform()
-
             data = r.json()
             segments = data.get('segments', [])
+            if not segments: return self._fallback_wave()
             
-            if not segments:
-                print(f"⚠️ No segments found in analysis for {track_id}")
-                return self._generate_fallback_waveform()
+            # Optimized Waveform Gen
+            processed = []
+            tgt_bars = 100
+            if duration_sec <= 0: duration_sec = data.get('track', {}).get('duration', 180)
+            step = duration_sec / tgt_bars
             
-            print(f"✓ Processing {len(segments)} segments for waveform")
+            cur_idx = 0
+            n_segs = len(segments)
             
-            # Process Waveform using loudness_start (the correct field)
-            processed_wave = []
-            TARGET_BARS = 100
-            
-            if track_duration_sec <= 0:
-                track_duration_sec = data.get('track', {}).get('duration', 180)
-
-            step_duration = track_duration_sec / TARGET_BARS
-            
-            for i in range(TARGET_BARS):
-                target_time = i * step_duration
+            for i in range(tgt_bars):
+                t = i * step
+                while cur_idx < n_segs - 1:
+                    if t < (segments[cur_idx]['start'] + segments[cur_idx]['duration']): break
+                    cur_idx += 1
                 
-                # Find the segment that contains this time point
-                loudness = -60  # Default silence
+                db = segments[cur_idx].get('loudness_max', -60)
+                val = max(0, min(100, int((db + 60) * 1.666)))
+                processed.append(val)
                 
-                for seg in segments:
-                    seg_start = seg.get('start', 0)
-                    seg_duration = seg.get('duration', 0)
-                    seg_end = seg_start + seg_duration
-                    
-                    if seg_start <= target_time < seg_end:
-                        # Use loudness_start (primary field) with fallback to loudness_max
-                        loudness = seg.get('loudness_start', seg.get('loudness_max', -60))
-                        break
-                
-                # Normalize -60dB to 0dB range to 0-100 scale
-                # Spotify loudness typically ranges from -60 (silence) to 0 (peak)
-                normalized = ((loudness + 60) / 60) * 100
-                val = max(0, min(100, int(normalized)))
-                processed_wave.append(val)
+            self.waveform_cache[track_id] = processed
+            if len(self.waveform_cache) > 20: self.waveform_cache.pop(next(iter(self.waveform_cache)))
+            return processed
+        except: return self._fallback_wave()
 
-            # Cache the result
-            self.waveform_cache[track_id] = processed_wave
-            
-            # Keep cache size manageable
-            if len(self.waveform_cache) > 20:
-                self.waveform_cache.pop(next(iter(self.waveform_cache)))
-            
-            print(f"✓ Generated waveform: min={min(processed_wave)}, max={max(processed_wave)}, avg={sum(processed_wave)/len(processed_wave):.1f}")
-            return processed_wave
-            
-        except Exception as e:
-            print(f"⚠️ Waveform Exception: {e}")
-            import traceback
-            traceback.print_exc()
-            return self._generate_fallback_waveform()
+    def _fallback_wave(self):
+        return [random.randint(20,80) for _ in range(100)]
 
-    def _generate_fallback_waveform(self):
-        """Generates a random looking waveform so the UI isn't empty"""
-        print("⚠️ Using fallback waveform")
-        return [random.randint(20, 80) for _ in range(100)]
-
-    def get_now_playing(self):
-        # Token Check
+    def _fetch_live_data(self):
+        """Internal function to talk to Spotify API"""
         if time.time() > self.token_expiry:
-            if not self._refresh_access_token(): 
-                print("❌ Spotify: Failed to refresh token")
-                return None
+            if not self._refresh_access_token(): return None
 
         try:
             r = self.session.get(
                 "https://api.spotify.com/v1/me/player/currently-playing",
-                headers={"Authorization": f"Bearer {self.access_token}"},
-                timeout=3
+                headers={"Authorization": f"Bearer {self.access_token}"}, timeout=3
             )
+            if r.status_code == 204: return {"is_playing": False}
+            if r.status_code != 200: return None
             
-            if r.status_code == 204: 
-                return {"is_playing": False} 
-            if r.status_code != 200: 
-                print(f"❌ Spotify API Error: {r.status_code}")
-                return None
+            d = r.json()
+            item = d.get('item')
+            if not item: return {"is_playing": False}
             
-            data = r.json()
-            item = data.get('item')
-            if not item: 
-                return {"is_playing": False} 
-
             tid = item.get('id')
-            duration_sec = item.get('duration_ms', 0) / 1000.0
+            dur = item.get('duration_ms', 0) / 1000.0
             
-            # Fetch Waveform
-            waveform = []
-            if tid:
-                print(f"Fetching waveform for track: {item.get('name')}")
-                waveform = self.get_audio_analysis(tid, duration_sec)
-
+            # Waveform logic
+            wave = []
+            if tid: wave = self.get_audio_analysis(tid, dur)
+            
             return {
-                "is_playing": data.get('is_playing', False),
+                "is_playing": d.get('is_playing', False),
                 "name": item.get('name'),
                 "artist": ", ".join(a['name'] for a in item.get('artists', [])),
-                "cover": item['album']['images'][0]['url'] if item.get('album', {}).get('images') else "",
-                "duration": duration_sec,
-                "progress": data.get('progress_ms', 0) / 1000.0,
-                "waveform": waveform
+                "cover": item['album']['images'][0]['url'] if item.get('album',{}).get('images') else "",
+                "duration": dur,
+                "progress": d.get('progress_ms', 0) / 1000.0,
+                "waveform": wave
             }
         except Exception as e:
-            print(f"❌ Spotify Fetch Error: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Fetch Error: {e}")
             return None
 
 class SportsFetcher:
@@ -2602,13 +2566,15 @@ def get_league_options():
 
 @app.route('/api/spotify/now', methods=['GET'])
 def api_spotify():
-    """Endpoint for the ticker client to get current song info"""
-    data = spotify_fetcher.get_now_playing()
+    # OLD WAY (SLOW): data = spotify_fetcher.get_now_playing()
     
-    # If something went wrong or nothing is playing, return a safe default
-    if not data: 
-        return jsonify({"is_playing": False})
-        
+    # NEW WAY (INSTANT):
+    data = spotify_fetcher.get_cached_state()
+    
+    # Calculate simulated live progress
+    # (Since the cache might be 0.5s old, we can extrapolate slightly if needed, 
+    # but for safety, just returning the raw cache is usually fine)
+    
     return jsonify(data)
 
 @app.route('/data', methods=['GET'])
