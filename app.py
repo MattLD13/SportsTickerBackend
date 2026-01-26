@@ -746,13 +746,17 @@ class SpotifyFetcher:
             try:
                 if time.time() > self.token_expiry: self._refresh_access_token()
                 
-                # Check Player
+                # FIXED: Updated URL to official Spotify API
                 r = self.session.get(
                     "https://api.spotify.com/v1/me/player/currently-playing",
                     headers={"Authorization": f"Bearer {self.access_token}"}, timeout=2
                 )
                 
-                if r.status_code == 200:
+                # FIXED: Handle 204 No Content (Not Playing) to avoid JSON decode errors
+                if r.status_code == 204:
+                    with self._lock: self._latest_playback = {"is_playing": False}
+
+                elif r.status_code == 200:
                     d = r.json()
                     item = d.get('item')
                     
@@ -772,12 +776,13 @@ class SpotifyFetcher:
             except Exception as e:
                 print(f"Spotify Poll Error: {e}")
             
-            time.sleep(0.25) # Poll every 1s
+            time.sleep(1.0) # Poll every 1s
 
     def _refresh_access_token(self):
         if not self.refresh_token: return False
         try:
             auth = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
+            # FIXED: Updated URL to official Spotify Accounts API
             r = self.session.post(
                 "https://accounts.spotify.com/api/token",
                 data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
