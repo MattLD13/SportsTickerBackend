@@ -819,6 +819,9 @@ struct GameRow: View {
     let game: Game
     let leagueLabel: String?
     
+    // Drives the continuous animation for the music waveform
+    @State private var waveformActive = false
+
     var activeSituation: String {
         guard let s = game.situation else { return "" }
         if let en = s.emptyNet, en { return "EMPTY NET" }
@@ -928,12 +931,12 @@ struct GameRow: View {
             .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
             
         } else if game.type == "music" {
-            // MARK: - MUSIC CARD (New)
+            // MARK: - MUSIC CARD
+            let isPaused = game.status.lowercased().contains("paused") || game.status.isEmpty
+            
             HStack(spacing: 12) {
-                // Spotify Green Indicator
                 Capsule().fill(Color(hex: "#1DB954")).frame(width: 4, height: 60)
                 
-                // Album Art
                 AsyncImage(url: URL(string: game.safeHomeLogo)) { phase in
                     if let image = phase.image {
                         image.resizable().aspectRatio(contentMode: .fill)
@@ -948,15 +951,14 @@ struct GameRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 1))
                 
-                // Track Info
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(game.safeAwayAbbr) // Song Name
+                    Text(game.safeAwayAbbr)
                         .font(.headline).bold().foregroundColor(.white)
                         .lineLimit(1)
                     
                     HStack(spacing: 6) {
                         Image(systemName: "mic.fill").font(.caption2).foregroundColor(.gray)
-                        Text(game.safeHomeAbbr) // Artist
+                        Text(game.safeHomeAbbr)
                             .font(.subheadline).foregroundColor(.gray)
                             .lineLimit(1)
                     }
@@ -964,21 +966,27 @@ struct GameRow: View {
                 
                 Spacer()
                 
-                // Time & Status
-                VStack(alignment: .trailing, spacing: 6) {
-                    // Animated-looking static waveform
-                    HStack(spacing: 2) {
-                        ForEach(0..<4) { _ in
-                            Capsule().fill(Color(hex: "#1DB954"))
-                                .frame(width: 2, height: CGFloat.random(in: 8...16))
+                VStack(alignment: .trailing, spacing: 8) {
+                    HStack(alignment: .center, spacing: 3) {
+                        ForEach(0..<5) { i in
+                            Capsule()
+                                .fill(Color(hex: "#1DB954"))
+                                .frame(width: 3, height: (!isPaused && waveformActive) ? CGFloat.random(in: 12...24) : 4)
+                                .animation(
+                                    !isPaused
+                                    ? .easeInOut(duration: CGFloat.random(in: 0.4...0.7)).repeatForever(autoreverses: true).delay(Double(i) * 0.05)
+                                    : .default,
+                                    value: waveformActive
+                                )
                         }
                     }
+                    .frame(height: 24)
+                    .onAppear { waveformActive = true }
                     
-                    Text(game.status) // "2:30 / 3:45"
+                    Text(game.status)
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundColor(.white.opacity(0.9))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6).padding(.vertical, 4)
                         .background(Color(hex: "#1DB954").opacity(0.2))
                         .cornerRadius(6)
                 }
@@ -1161,9 +1169,7 @@ struct ModeTile: View {
 
 struct ModesView: View {
     @ObservedObject var vm: TickerViewModel
-    var currentMode: String { return vm.state.mode }
     
-    // 3 Columns with 15pt spacing for a cleaner look
     let modeColumns = [
         GridItem(.flexible(), spacing: 15),
         GridItem(.flexible(), spacing: 15),
@@ -1178,27 +1184,31 @@ struct ModesView: View {
         vm.leagueOptions.filter { $0.type == "stock" }
     }
     
-    func setMode(_ mode: String) {
-        vm.state.mode = mode
+    /// Logic to handle category switching and mode defaults
+    func setCategory(_ target: String) {
+        let utilities = ["stocks", "weather", "clock", "music"]
         
-        // 1. Reset specific utility toggles
-        if ["stocks", "sports"].contains(mode) {
-            vm.state.active_sports["weather"] = false
-            vm.state.active_sports["clock"] = false
-            vm.state.active_sports["music"] = false
+        // 1. Set the primary mode
+        // For utilities, the mode IS the category. For sports, we default to "all" (Show All).
+        if utilities.contains(target) {
+            vm.state.mode = target
+        } else {
+            vm.state.mode = "all"
         }
         
-        // 2. Logic for entering specific modes
-        if mode == "stocks" {
+        // 2. Clean up Utility Toggles in active_sports
+        // This ensures the hardware doesn't try to run Clock and Weather simultaneously
+        vm.state.active_sports["weather"] = (target == "weather")
+        vm.state.active_sports["clock"] = (target == "clock")
+        vm.state.active_sports["music"] = (target == "music")
+        
+        // 3. Special handling for Stocks
+        if target == "stocks" {
             let stockKeys = stockOptions.map { $0.id }
             let hasStock = stockKeys.contains { vm.state.active_sports[$0] == true }
-            if !hasStock, let first = stockKeys.first { vm.state.active_sports[first] = true }
-        } else if mode == "weather" {
-            vm.state.active_sports["weather"] = true
-        } else if mode == "clock" {
-            vm.state.active_sports["clock"] = true
-        } else if mode == "music" {
-            vm.state.active_sports["music"] = true
+            if !hasStock, let first = stockKeys.first {
+                vm.state.active_sports[first] = true
+            }
         }
         
         vm.saveSettings()
@@ -1207,100 +1217,116 @@ struct ModesView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                HStack { Text("Modes").font(.system(size: 34, weight: .bold)).foregroundColor(.white); Spacer() }
-                    .padding(.horizontal)
-                    .padding(.top, 80)
+                HStack {
+                    Text("Modes")
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundColor(.white)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 80)
                 
-                // MARK: - MODE SELECTOR GRID (3xY)
+                // MARK: - CATEGORY SELECTOR GRID
                 LazyVGrid(columns: modeColumns, spacing: 15) {
-                    let nonSportsModes = ["stocks", "weather", "clock", "music"]
-                    let effectiveMode = nonSportsModes.contains(currentMode) ? currentMode : "sports"
+                    let utilities = ["stocks", "weather", "clock", "music"]
+                    let activeCategory = utilities.contains(vm.state.mode) ? vm.state.mode : "sports"
                     
-                    ModeTile(title: "Sports", icon: "sportscourt.fill", val: "sports", cur: effectiveMode) { setMode("sports") }
-                    ModeTile(title: "Stocks", icon: "chart.line.uptrend.xyaxis", val: "stocks", cur: effectiveMode) { setMode("stocks") }
-                    ModeTile(title: "Music", icon: "music.note", val: "music", cur: effectiveMode) { setMode("music") }
-                    ModeTile(title: "Weather", icon: "cloud.sun.fill", val: "weather", cur: effectiveMode) { setMode("weather") }
-                    ModeTile(title: "Clock", icon: "clock.fill", val: "clock", cur: effectiveMode) { setMode("clock") }
+                    ModeTile(title: "Sports", icon: "sportscourt.fill", val: "sports", cur: activeCategory) { setCategory("sports") }
+                    ModeTile(title: "Stocks", icon: "chart.line.uptrend.xyaxis", val: "stocks", cur: activeCategory) { setCategory("stocks") }
+                    ModeTile(title: "Music", icon: "music.note", val: "music", cur: activeCategory) { setCategory("music") }
+                    ModeTile(title: "Weather", icon: "cloud.sun.fill", val: "weather", cur: activeCategory) { setCategory("weather") }
+                    ModeTile(title: "Clock", icon: "clock.fill", val: "clock", cur: activeCategory) { setCategory("clock") }
                 }
                 .padding(.horizontal)
                 
-                // MARK: - MODE SPECIFIC CONTENT
-                if currentMode == "weather" {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("WEATHER CONFIGURATION").font(.caption).bold().foregroundStyle(.secondary)
-                        HStack {
-                            Text("Location:")
-                            Spacer()
-                            TextField("City or Zip", text: $vm.weatherLocInput)
-                                .multilineTextAlignment(.trailing)
-                                .foregroundColor(.white)
-                                .onSubmit { vm.updateWeatherAndSave() }
-                        }.padding().liquidGlass()
-                    }.padding(.horizontal)
-                    
-                } else if currentMode == "clock" {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("CLOCK MODE").font(.caption).bold().foregroundStyle(.secondary)
-                        Text("Displaying large time and date.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
-                    }.padding(.horizontal)
-                    
-                } else if currentMode == "music" {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("NOW PLAYING").font(.caption).bold().foregroundStyle(.secondary)
-                        HStack {
-                            Image(systemName: "hifispeaker.fill").font(.title2).foregroundStyle(.green)
-                            VStack(alignment: .leading) {
-                                Text("Spotify Integration").bold().foregroundStyle(.white)
-                                Text("Ticker will display currently playing track.").font(.caption).foregroundStyle(.gray)
+                // MARK: - MODE SPECIFIC CONFIGURATION
+                VStack(alignment: .leading, spacing: 20) {
+                    if vm.state.mode == "weather" {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("WEATHER CONFIGURATION").font(.caption).bold().foregroundStyle(.secondary)
+                            HStack {
+                                Text("Location:")
+                                Spacer()
+                                TextField("City or Zip", text: $vm.weatherLocInput)
+                                    .multilineTextAlignment(.trailing)
+                                    .foregroundColor(.white)
+                                    .onSubmit { vm.updateWeatherAndSave() }
                             }
-                            Spacer()
-                        }.padding().liquidGlass()
-                    }.padding(.horizontal)
-                    
-                } else if currentMode == "stocks" {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("MARKET SECTORS").font(.caption).bold().foregroundStyle(.secondary)
-                        if stockOptions.isEmpty {
-                            Text("Loading stock options...").font(.caption).padding().liquidGlass()
+                            .padding().liquidGlass()
                         }
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
-                            ForEach(stockOptions) { opt in
-                                let isActive = vm.state.active_sports[opt.id] ?? false
-                                Button {
-                                    vm.state.active_sports[opt.id] = !isActive
-                                    vm.saveSettings()
-                                } label: {
-                                    Text(opt.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
-                                        .background(isActive ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
-                                        .foregroundColor(.white)
+                        
+                    } else if vm.state.mode == "clock" {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("CLOCK MODE").font(.caption).bold().foregroundStyle(.secondary)
+                            Text("Displaying large time and date.")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .liquidGlass()
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                    } else if vm.state.mode == "music" {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("NOW PLAYING").font(.caption).bold().foregroundStyle(.secondary)
+                            HStack {
+                                Image(systemName: "hifispeaker.fill").font(.title2).foregroundStyle(.green)
+                                VStack(alignment: .leading) {
+                                    Text("Spotify Integration").bold().foregroundStyle(.white)
+                                    Text("Ticker will display currently playing track.")
+                                        .font(.caption).foregroundStyle(.gray)
+                                }
+                                Spacer()
+                            }
+                            .padding().liquidGlass()
+                        }
+                        
+                    } else if vm.state.mode == "stocks" {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("MARKET SECTORS").font(.caption).bold().foregroundStyle(.secondary)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
+                                ForEach(stockOptions) { opt in
+                                    let isActive = vm.state.active_sports[opt.id] ?? false
+                                    Button {
+                                        vm.state.active_sports[opt.id] = !isActive
+                                        vm.saveSettings()
+                                    } label: {
+                                        Text(opt.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
+                                            .background(isActive ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
+                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
+                                            .foregroundColor(.white)
+                                    }
                                 }
                             }
                         }
-                    }.padding(.horizontal)
-                    
-                } else {
-                    // SPORTS LIST
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
-                        if sportsOptions.isEmpty {
-                            Text("Loading sports options...").font(.caption).padding().liquidGlass()
-                        }
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
-                            ForEach(sportsOptions) { opt in
-                                let isActive = vm.state.active_sports[opt.id] ?? false
-                                Button { vm.state.active_sports[opt.id] = !isActive; vm.saveSettings() } label: {
-                                    Text(opt.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
-                                        .background(isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
-                                        .foregroundColor(.white)
+                        
+                    } else {
+                        // DEFAULT: SPORTS LEAGUE LIST
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
+                            if sportsOptions.isEmpty {
+                                Text("Loading sports options...").font(.caption).padding().liquidGlass()
+                            }
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
+                                ForEach(sportsOptions) { opt in
+                                    let isActive = vm.state.active_sports[opt.id] ?? false
+                                    Button {
+                                        vm.state.active_sports[opt.id] = !isActive
+                                        vm.saveSettings()
+                                    } label: {
+                                        Text(opt.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
+                                            .background(isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
+                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
+                                            .foregroundColor(.white)
+                                    }
                                 }
                             }
                         }
-                    }.padding(.horizontal)
+                    }
                 }
+                .padding(.horizontal)
+                
                 Spacer(minLength: 120)
             }
         }
