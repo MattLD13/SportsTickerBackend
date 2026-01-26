@@ -743,17 +743,30 @@ class SpotifyFetcher:
     def _background_worker(self):
         print("🚀 Spotify Poller Started")
         while self._running:
+            sleep_time = 3.0 # Default poll rate (3 seconds)
+
             try:
-                if time.time() > self.token_expiry: self._refresh_access_token()
+                if time.time() > self.token_expiry: 
+                    if not self._refresh_access_token():
+                        time.sleep(10) # Wait if token refresh fails
+                        continue
                 
-                # --- CHANGE 1: CORRECT API ENDPOINT ---
+                # USE OFFICIAL SPOTIFY URL
                 r = self.session.get(
                     "https://api.spotify.com/v1/me/player/currently-playing",
-                    headers={"Authorization": f"Bearer {self.access_token}"}, timeout=2
+                    headers={"Authorization": f"Bearer {self.access_token}"}, 
+                    timeout=2
                 )
                 
-                # Spotify returns 204 if nothing is active/playing
-                if r.status_code == 204:
+                if r.status_code == 429:
+                    # RATE LIMIT HIT: Slow down significantly
+                    retry_after = int(r.headers.get('Retry-After', 10))
+                    print(f"⚠️ Spotify Rate Limit (429). Sleeping {retry_after}s...")
+                    time.sleep(retry_after)
+                    continue
+
+                elif r.status_code == 204:
+                    # Nothing playing
                     with self._lock: self._latest_playback = {"is_playing": False}
 
                 elif r.status_code == 200:
@@ -774,17 +787,16 @@ class SpotifyFetcher:
                         with self._lock: self._latest_playback = {"is_playing": False}
                         
             except Exception as e:
-                # print(f"Spotify Poll Error: {e}") # Optional: silence errors to keep logs clean
-                pass
+                print(f"Spotify Poll Error: {e}")
             
-            time.sleep(1.0) # Poll every 1s
+            time.sleep(sleep_time)
 
     def _refresh_access_token(self):
         if not self.refresh_token: return False
         try:
             auth = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
             
-            # --- CHANGE 2: CORRECT TOKEN ENDPOINT ---
+            # USE OFFICIAL TOKEN URL
             r = self.session.post(
                 "https://accounts.spotify.com/api/token",
                 data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
