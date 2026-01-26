@@ -713,64 +713,83 @@ class StockFetcher:
             if obj: res.append(obj)
         return res
 
-# ================= HIGH-PERFORMANCE SPOTIFY FETCHER =================
+# ================= ULTIMATE SPOTIFY FETCHER =================
+# Strategy: Pre-fetch entire song analysis on track change. 
+# Serve cached result instantly. Approximate bands using Timbre vectors.
+
 class SpotifyFetcher:
     def __init__(self):
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
         self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
         self.refresh_token = os.getenv('SPOTIFY_REFRESH_TOKEN')
-        self.access_token = None
-        self.token_expiry = 0
         self.session = requests.Session()
         
-        # --- CACHING & THREADING ---
-        self.waveform_cache = {} 
-        self._latest_state = {"is_playing": False} # The "Instant" Read Variable
+        # --- THREADING STATE ---
         self._lock = threading.Lock()
         self._running = True
         
-        if not self.refresh_token:
-            print("⚠️ Spotify: No Refresh Token. Mock Mode.")
-        else:
-            # Start the background worker immediately
+        # --- CACHE ---
+        self.access_token = None
+        self.token_expiry = 0
+        
+        # The Holy Grail: Caching the ENTIRE song's waveform
+        self._current_track_id = None
+        self._cached_analysis = [] # Format: [[bass, mid, high], ...] for whole song
+        self._latest_playback = {"is_playing": False} # Lightweight metadata
+        
+        if self.refresh_token:
             threading.Thread(target=self._background_worker, daemon=True).start()
+        else:
+            print("⚠️ Spotify: No Refresh Token. Mock Mode.")
 
     def get_cached_state(self):
-        """Returns the latest state INSTANTLY (0ms latency)"""
+        """Zero-latency read for the API endpoint"""
         with self._lock:
-            return self._latest_state.copy()
+            # Return metadata + the pre-computed waveform
+            # The client should check if 'track_id' changed before re-parsing waveform
+            payload = self._latest_playback.copy()
+            payload['waveform'] = self._cached_analysis
+            return payload
 
     def _background_worker(self):
-        """Polls Spotify independently of client requests"""
-        print("🚀 Spotify Background Worker Started")
+        """Separate thread that manages polling and heavy analysis"""
+        print("🚀 Spotify Background Processor Started")
         while self._running:
-            start_t = time.time()
             try:
-                # 1. Fetch Fresh Data
-                new_data = self._fetch_live_data()
+                # 1. Get Playback State (Lightweight)
+                playback = self._fetch_playback_state()
                 
-                # 2. Update the "Instant" Variable
-                if new_data:
-                    with self._lock:
-                        self._latest_state = new_data
+                if playback:
+                    tid = playback.get('id')
+                    
+                    # 2. If Track Changed, Fetch & Process ENTIRE Analysis (Heavy)
+                    if tid and tid != self._current_track_id:
+                        print(f"🎵 New Track Detected: {playback.get('name')} - Processing Waveform...")
+                        analysis = self._fetch_and_process_analysis(tid, playback['duration'])
+                        
+                        with self._lock:
+                            self._current_track_id = tid
+                            self._cached_analysis = analysis
+                            self._latest_playback = playback
+                    else:
+                        # Just update progress/status
+                        with self._lock:
+                            self._latest_playback = playback
+                            
             except Exception as e:
                 print(f"Spotify Worker Error: {e}")
             
-            # 3. Smart Sleep (Target 1.5s intervals)
-            # If fetch took 0.5s, sleep 1.0s. If fetch took 2s, don't sleep.
-            elapsed = time.time() - start_t
-            sleep_time = max(0.1, 1.5 - elapsed) 
-            time.sleep(sleep_time)
+            # Poll interval (1.2s is sweet spot for rate limits vs responsiveness)
+            time.sleep(1.2)
 
     def _refresh_access_token(self):
-        if not all([self.client_id, self.client_secret, self.refresh_token]): return False
+        if not self.refresh_token: return False
         try:
-            auth_str = f"{self.client_id}:{self.client_secret}"
-            b64_auth = base64.b64encode(auth_str.encode()).decode()
+            auth = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
             r = self.session.post(
                 "https://accounts.spotify.com/api/token",
                 data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
-                headers={"Authorization": f"Basic {b64_auth}"}, timeout=5
+                headers={"Authorization": f"Basic {auth}"}, timeout=5
             )
             if r.status_code == 200:
                 d = r.json()
@@ -780,52 +799,8 @@ class SpotifyFetcher:
         except: pass
         return False
 
-    def get_audio_analysis(self, track_id, duration_sec):
-        if track_id in self.waveform_cache: return self.waveform_cache[track_id]
-        
-        try:
-            r = self.session.get(
-                f"https://api.spotify.com/v1/audio-analysis/{track_id}",
-                headers={"Authorization": f"Bearer {self.access_token}"}, timeout=5
-            )
-            if r.status_code != 200: return self._fallback_wave()
-            
-            data = r.json()
-            segments = data.get('segments', [])
-            if not segments: return self._fallback_wave()
-            
-            # Optimized Waveform Gen
-            processed = []
-            tgt_bars = 100
-            if duration_sec <= 0: duration_sec = data.get('track', {}).get('duration', 180)
-            step = duration_sec / tgt_bars
-            
-            cur_idx = 0
-            n_segs = len(segments)
-            
-            for i in range(tgt_bars):
-                t = i * step
-                while cur_idx < n_segs - 1:
-                    if t < (segments[cur_idx]['start'] + segments[cur_idx]['duration']): break
-                    cur_idx += 1
-                
-                db = segments[cur_idx].get('loudness_max', -60)
-                val = max(0, min(100, int((db + 60) * 1.666)))
-                processed.append(val)
-                
-            self.waveform_cache[track_id] = processed
-            if len(self.waveform_cache) > 20: self.waveform_cache.pop(next(iter(self.waveform_cache)))
-            return processed
-        except: return self._fallback_wave()
-
-    def _fallback_wave(self):
-        return [random.randint(20,80) for _ in range(100)]
-
-    def _fetch_live_data(self):
-        """Internal function to talk to Spotify API"""
-        if time.time() > self.token_expiry:
-            if not self._refresh_access_token(): return None
-
+    def _fetch_playback_state(self):
+        if time.time() > self.token_expiry: self._refresh_access_token()
         try:
             r = self.session.get(
                 "https://api.spotify.com/v1/me/player/currently-playing",
@@ -838,25 +813,86 @@ class SpotifyFetcher:
             item = d.get('item')
             if not item: return {"is_playing": False}
             
-            tid = item.get('id')
-            dur = item.get('duration_ms', 0) / 1000.0
-            
-            # Waveform logic
-            wave = []
-            if tid: wave = self.get_audio_analysis(tid, dur)
-            
             return {
                 "is_playing": d.get('is_playing', False),
+                "id": item.get('id'),
                 "name": item.get('name'),
                 "artist": ", ".join(a['name'] for a in item.get('artists', [])),
                 "cover": item['album']['images'][0]['url'] if item.get('album',{}).get('images') else "",
-                "duration": dur,
+                "duration": item.get('duration_ms', 0) / 1000.0,
                 "progress": d.get('progress_ms', 0) / 1000.0,
-                "waveform": wave
             }
+        except: return None
+
+    def _fetch_and_process_analysis(self, track_id, duration_sec):
+        """The Heavy Lifter: Fetches full analysis and approximates bands"""
+        try:
+            r = self.session.get(
+                f"https://api.spotify.com/v1/audio-analysis/{track_id}",
+                headers={"Authorization": f"Bearer {self.access_token}"}, timeout=5
+            )
+            if r.status_code != 200: return []
+            
+            data = r.json()
+            segments = data.get('segments', [])
+            if not segments: return []
+
+            # Optimization: Downsample to fixed resolution (e.g. 100 bars for the song)
+            # This ensures JSON payload size is small (~1KB)
+            TARGET_RES = 100 
+            processed = []
+            
+            if duration_sec <= 0: duration_sec = 180
+            step_size = duration_sec / TARGET_RES
+            
+            cur_idx = 0
+            n_segs = len(segments)
+            
+            for i in range(TARGET_RES):
+                time_point = i * step_size
+                
+                # Fast-forward to correct segment
+                while cur_idx < n_segs - 1:
+                    if time_point < (segments[cur_idx]['start'] + segments[cur_idx]['duration']): break
+                    cur_idx += 1
+                
+                seg = segments[cur_idx]
+                
+                # --- SPECTRAL APPROXIMATION LOGIC ---
+                loudness = seg.get('loudness_max', -60)
+                # Timbre[0] = Brightness/Darkness
+                # Timbre[1] = Flatness/Attack
+                timbre = seg.get('timbre', [0,0,0]) 
+                brightness = timbre[0] if len(timbre) > 0 else 0
+                flatness = timbre[1] if len(timbre) > 1 else 0
+                
+                # Base energy (0-100)
+                energy = max(0, min(100, int((loudness + 60) * 1.666)))
+                
+                # 1. BASS: High energy but LOW brightness implies Bass
+                # We boost bass if brightness is low (< 30)
+                bass_boost = max(0, (40 - brightness)) 
+                bass_val = min(100, energy + (bass_boost * 0.5))
+                
+                # 2. MIDS: Correlates strongly with raw energy + flatness
+                mid_val = energy
+                
+                # 3. HIGHS: Correlates with energy AND brightness
+                high_boost = max(0, brightness - 20)
+                high_val = min(100, (energy * 0.6) + high_boost)
+                
+                # Ensure separation for visual flair
+                if bass_val > high_val: high_val *= 0.7
+                if high_val > bass_val: bass_val *= 0.8
+
+                # Output integer structure [Bass, Mid, High]
+                processed.append([int(bass_val), int(mid_val), int(high_val)])
+                
+            return processed
+            
         except Exception as e:
-            print(f"Fetch Error: {e}")
-            return None
+            print(f"Analysis Processing Error: {e}")
+            return []
 
 class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
