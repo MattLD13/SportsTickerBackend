@@ -2161,27 +2161,35 @@ class SportsFetcher:
             # 1. Get the latest cached state from the spotify_fetcher
             s_data = spotify_fetcher.get_cached_state()
             
-            if s_data and s_data.get('is_playing'):
+            # Return music object regardless of playing state (playing or paused)
+            if s_data:
+                is_playing = s_data.get('is_playing', False)
+                
                 # 2. Local calculation for the ticker display progress
                 time_since_fetch = time.time() - s_data.get('last_fetch_ts', time.time())
-                current_progress = s_data['progress'] + time_since_fetch
+                current_progress = s_data['progress'] + (time_since_fetch if is_playing else 0)
                 
                 # Ensure we don't display past the end of the song
                 duration = s_data.get('duration', 0)
                 if current_progress > duration:
                     current_progress = duration
 
-                # Formatting the status string (e.g., 2:30 / 3:45)
-                cur_m, cur_s = divmod(int(current_progress), 60)
-                tot_m, tot_s = divmod(int(duration), 60)
-                status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
+                # Formatting the status string (e.g., 2:30 / 3:45 or "PAUSED")
+                if is_playing:
+                    cur_m, cur_s = divmod(int(current_progress), 60)
+                    tot_m, tot_s = divmod(int(duration), 60)
+                    status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
+                else:
+                    cur_m, cur_s = divmod(int(current_progress), 60)
+                    tot_m, tot_s = divmod(int(duration), 60)
+                    status_str = f"PAUSED {cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
     
                 return {
                     'type': 'music',
                     'sport': 'music',
                     'id': 'spotify_now',
                     'status': status_str,
-                    'state': 'in',
+                    'state': 'paused' if not is_playing else 'in',
                     'is_shown': True,
                     # REMOVED [:12] truncation to allow full text
                     'home_abbr': s_data.get('artist', 'Unknown'), 
@@ -2196,7 +2204,7 @@ class SportsFetcher:
                         'raw_title': s_data.get('name'),
                         'progress': current_progress,
                         'duration': duration,
-                        'is_playing': True
+                        'is_playing': is_playing
                     }
                 }
         except Exception as e:
