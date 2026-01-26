@@ -1127,15 +1127,47 @@ struct HomeView: View {
     }
 }
 
+struct ModeTile: View {
+    let title: String
+    let icon: String
+    let val: String
+    let cur: String
+    let act: () -> Void
+    
+    var isSelected: Bool { cur == val }
+    
+    var body: some View {
+        Button(action: act) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 24))
+                Text(title)
+                    .font(.caption)
+                    .bold()
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 85) // Fixed height makes them look like tiles
+            .background(isSelected ? Color.blue : Color.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(isSelected ? Color.blue.opacity(0.8) : Color.white.opacity(0.1), lineWidth: 1)
+            )
+            .foregroundColor(isSelected ? .white : .gray)
+            .shadow(color: isSelected ? Color.blue.opacity(0.3) : Color.clear, radius: 8, x: 0, y: 4)
+        }
+    }
+}
+
 struct ModesView: View {
     @ObservedObject var vm: TickerViewModel
     var currentMode: String { return vm.state.mode }
     
-    // Define the 3-column grid layout
+    // 3 Columns with 15pt spacing for a cleaner look
     let modeColumns = [
-        GridItem(.flexible()),
-        GridItem(.flexible()),
-        GridItem(.flexible())
+        GridItem(.flexible(), spacing: 15),
+        GridItem(.flexible(), spacing: 15),
+        GridItem(.flexible(), spacing: 15)
     ]
     
     var sportsOptions: [LeagueOption] {
@@ -1149,7 +1181,7 @@ struct ModesView: View {
     func setMode(_ mode: String) {
         vm.state.mode = mode
         
-        // 1. Reset specific utility toggles if we are leaving their dedicated modes
+        // 1. Reset specific utility toggles
         if ["stocks", "sports"].contains(mode) {
             vm.state.active_sports["weather"] = false
             vm.state.active_sports["clock"] = false
@@ -1180,15 +1212,15 @@ struct ModesView: View {
                     .padding(.top, 80)
                 
                 // MARK: - MODE SELECTOR GRID (3xY)
-                LazyVGrid(columns: modeColumns, spacing: 12) {
+                LazyVGrid(columns: modeColumns, spacing: 15) {
                     let nonSportsModes = ["stocks", "weather", "clock", "music"]
                     let effectiveMode = nonSportsModes.contains(currentMode) ? currentMode : "sports"
                     
-                    FilterBtn(title: "Sports", val: "sports", cur: effectiveMode) { setMode("sports") }
-                    FilterBtn(title: "Stocks", val: "stocks", cur: effectiveMode) { setMode("stocks") }
-                    FilterBtn(title: "Music", val: "music", cur: effectiveMode) { setMode("music") }
-                    FilterBtn(title: "Weather", val: "weather", cur: effectiveMode) { setMode("weather") }
-                    FilterBtn(title: "Clock", val: "clock", cur: effectiveMode) { setMode("clock") }
+                    ModeTile(title: "Sports", icon: "sportscourt.fill", val: "sports", cur: effectiveMode) { setMode("sports") }
+                    ModeTile(title: "Stocks", icon: "chart.line.uptrend.xyaxis", val: "stocks", cur: effectiveMode) { setMode("stocks") }
+                    ModeTile(title: "Music", icon: "music.note", val: "music", cur: effectiveMode) { setMode("music") }
+                    ModeTile(title: "Weather", icon: "cloud.sun.fill", val: "weather", cur: effectiveMode) { setMode("weather") }
+                    ModeTile(title: "Clock", icon: "clock.fill", val: "clock", cur: effectiveMode) { setMode("clock") }
                 }
                 .padding(.horizontal)
                 
