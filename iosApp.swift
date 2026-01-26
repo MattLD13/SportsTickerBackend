@@ -349,7 +349,7 @@ class TickerViewModel: ObservableObject {
         fetchDevices()
         
         // Background Polling (Every 5s)
-        timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             Task { @MainActor in
                 // Only fetch if user is NOT editing to prevent overwrites
                 if !self.isEditing {
@@ -815,6 +815,25 @@ struct TeamLogoView: View {
     var body: some View { AsyncImage(url: URL(string: url ?? "")) { phase in if let image = phase.image { image.resizable().scaledToFit() } else { Text(abbr).font(.system(size: size * 0.4, weight: .bold)).foregroundColor(.white.opacity(0.8)) } }.frame(width: size, height: size) }
 }
 
+struct AnimatedWaveform: View {
+    @State private var phase: CGFloat = 0
+    
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<4) { i in
+                Capsule()
+                    .fill(Color(hex: "#1DB954"))
+                    .frame(width: 3, height: 10 + (sin(phase + Double(i)) * 6)) // Smooth Sine Wave
+            }
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) {
+                phase = .pi * 2
+            }
+        }
+    }
+}
+
 struct GameRow: View {
     let game: Game
     let leagueLabel: String?
@@ -928,53 +947,36 @@ struct GameRow: View {
             .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
             
         } else if game.type == "music" {
-            // MARK: - MUSIC CARD (New)
+            // MARK: - MUSIC CARD
             HStack(spacing: 12) {
-                // Spotify Green Indicator
                 Capsule().fill(Color(hex: "#1DB954")).frame(width: 4, height: 60)
                 
-                // Album Art
                 AsyncImage(url: URL(string: game.safeHomeLogo)) { phase in
                     if let image = phase.image {
                         image.resizable().aspectRatio(contentMode: .fill)
                     } else {
-                        ZStack {
-                            Color(white: 0.2)
-                            Image(systemName: "music.note").foregroundStyle(.gray)
-                        }
+                        ZStack { Color(white: 0.2); Image(systemName: "music.note").foregroundStyle(.gray) }
                     }
                 }
                 .frame(width: 50, height: 50)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1), lineWidth: 1))
                 
-                // Track Info
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(game.safeAwayAbbr) // Song Name
-                        .font(.headline).bold().foregroundColor(.white)
-                        .lineLimit(1)
-                    
+                    Text(game.safeAwayAbbr).font(.headline).bold().foregroundColor(.white).lineLimit(1)
                     HStack(spacing: 6) {
                         Image(systemName: "mic.fill").font(.caption2).foregroundColor(.gray)
-                        Text(game.safeHomeAbbr) // Artist
-                            .font(.subheadline).foregroundColor(.gray)
-                            .lineLimit(1)
+                        Text(game.safeHomeAbbr).font(.subheadline).foregroundColor(.gray).lineLimit(1)
                     }
                 }
                 
                 Spacer()
                 
-                // Time & Status
                 VStack(alignment: .trailing, spacing: 6) {
-                    // Animated-looking static waveform
-                    HStack(spacing: 2) {
-                        ForEach(0..<4) { _ in
-                            Capsule().fill(Color(hex: "#1DB954"))
-                                .frame(width: 2, height: CGFloat.random(in: 8...16))
-                        }
-                    }
+                    // [NEW] Use the animated component here
+                    AnimatedWaveform()
                     
-                    Text(game.status) // "2:30 / 3:45"
+                    Text(game.status)
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundColor(.white.opacity(0.9))
                         .padding(.horizontal, 6)
