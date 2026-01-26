@@ -713,7 +713,7 @@ class StockFetcher:
             if obj: res.append(obj)
         return res
 
-# ================= FIXED SERVER-SIDE SPOTIFY FETCHER =================
+# ================= LIGHTWEIGHT SERVER FETCHER =================
 class SpotifyFetcher:
     def __init__(self):
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
@@ -723,12 +723,10 @@ class SpotifyFetcher:
         
         self._lock = threading.Lock()
         self._running = True
-        
-        # State
         self.access_token = None
         self.token_expiry = 0
-        self._current_track_id = None
-        self._cached_analysis = [] 
+        
+        # Simple State (No Analysis)
         self._latest_playback = {"is_playing": False}
         
         if self.refresh_token:
@@ -737,49 +735,43 @@ class SpotifyFetcher:
             print("⚠️ Spotify: No Refresh Token. Mock Mode.")
 
     def get_cached_state(self):
-        """Zero-latency read for the API endpoint"""
+        """Instant read of playback status"""
         with self._lock:
-            payload = self._latest_playback.copy()
-            # If we have a track ID but no waveform yet, generate a fallback immediately
-            if not self._cached_analysis and payload.get('id'):
-                self._cached_analysis = self._generate_fallback(payload['id'])
-            
-            payload['waveform'] = self._cached_analysis
-            return payload
+            return self._latest_playback.copy()
 
     def _background_worker(self):
-        print("🚀 Spotify Background Processor Started")
+        print("🚀 Spotify Poller Started")
         while self._running:
             try:
-                # 1. Get Playback State (Lightweight)
-                playback = self._fetch_playback_state()
+                if time.time() > self.token_expiry: self._refresh_access_token()
                 
-                if playback:
-                    tid = playback.get('id')
+                # Check Player
+                r = self.session.get(
+                    "https://api.spotify.com/v1/me/player/currently-playing",
+                    headers={"Authorization": f"Bearer {self.access_token}"}, timeout=2
+                )
+                
+                if r.status_code == 200:
+                    d = r.json()
+                    item = d.get('item')
                     
-                    # 2. If Track Changed, Fetch & Process ENTIRE Analysis (Heavy)
-                    if tid and tid != self._current_track_id:
-                        print(f"🎵 New Track: {playback.get('name')}")
-                        analysis = self._fetch_and_process_analysis(tid, playback['duration'])
-                        
-                        if not analysis:
-                             # Generate fallback if API fails so the visualizer never breaks
-                             analysis = self._generate_fallback(tid)
-
-                        with self._lock:
-                            self._current_track_id = tid
-                            self._cached_analysis = analysis
-                            self._latest_playback = playback
+                    if item:
+                        payload = {
+                            "is_playing": d.get('is_playing', False),
+                            "name": item.get('name'),
+                            "artist": ", ".join(a['name'] for a in item.get('artists', [])),
+                            "cover": item['album']['images'][0]['url'] if item.get('album',{}).get('images') else "",
+                            "duration": item.get('duration_ms', 0) / 1000.0,
+                            "progress": d.get('progress_ms', 0) / 1000.0,
+                        }
+                        with self._lock: self._latest_playback = payload
                     else:
-                        # Just update progress/status
-                        with self._lock:
-                            self._latest_playback = playback
-                            
+                        with self._lock: self._latest_playback = {"is_playing": False}
+                        
             except Exception as e:
-                print(f"Spotify Worker Error: {e}")
+                print(f"Spotify Poll Error: {e}")
             
-            # Poll interval (1.2s is optimal for rate limits)
-            time.sleep(1.2)
+            time.sleep(1.0) # Poll every 1s
 
     def _refresh_access_token(self):
         if not self.refresh_token: return False
@@ -797,100 +789,6 @@ class SpotifyFetcher:
                 return True
         except: pass
         return False
-
-    def _fetch_playback_state(self):
-        if time.time() > self.token_expiry: self._refresh_access_token()
-        try:
-            r = self.session.get(
-                "https://api.spotify.com/v1/me/player/currently-playing",
-                headers={"Authorization": f"Bearer {self.access_token}"}, timeout=3
-            )
-            if r.status_code == 204: return {"is_playing": False}
-            if r.status_code != 200: return None
-            
-            d = r.json()
-            item = d.get('item')
-            if not item: return {"is_playing": False}
-            
-            return {
-                "is_playing": d.get('is_playing', False),
-                "id": item.get('id'),
-                "name": item.get('name'),
-                "artist": ", ".join(a['name'] for a in item.get('artists', [])),
-                "cover": item['album']['images'][0]['url'] if item.get('album',{}).get('images') else "",
-                "duration": item.get('duration_ms', 0) / 1000.0,
-                "progress": d.get('progress_ms', 0) / 1000.0,
-            }
-        except: return None
-
-    def _fetch_and_process_analysis(self, track_id, duration_sec):
-        """Fetches full analysis and approximates 3-band EQ"""
-        try:
-            r = self.session.get(
-                f"https://api.spotify.com/v1/audio-analysis/{track_id}",
-                headers={"Authorization": f"Bearer {self.access_token}"}, timeout=5
-            )
-            if r.status_code != 200: return []
-            
-            data = r.json()
-            segments = data.get('segments', [])
-            if not segments: return []
-
-            # Downsample to fixed resolution (100 bars)
-            TARGET_RES = 100 
-            processed = []
-            
-            if duration_sec <= 0: duration_sec = 180
-            step_size = duration_sec / TARGET_RES
-            
-            cur_idx = 0
-            n_segs = len(segments)
-            
-            for i in range(TARGET_RES):
-                time_point = i * step_size
-                
-                # Fast-forward to correct segment
-                while cur_idx < n_segs - 1:
-                    if time_point < (segments[cur_idx]['start'] + segments[cur_idx]['duration']): break
-                    cur_idx += 1
-                
-                seg = segments[cur_idx]
-                loudness = seg.get('loudness_max', -60)
-                timbre = seg.get('timbre', [0,0,0]) 
-                brightness = timbre[0] if len(timbre) > 0 else 0
-                
-                # Base energy (0-100)
-                energy = max(0, min(100, int((loudness + 60) * 1.666)))
-                
-                # 1. BASS: High energy + Low brightness
-                bass_boost = max(0, (40 - brightness)) 
-                bass_val = min(100, energy + (bass_boost * 0.5))
-                
-                # 2. MIDS: Raw energy
-                mid_val = energy
-                
-                # 3. HIGHS: Correlates with brightness
-                high_boost = max(0, brightness - 20)
-                high_val = min(100, (energy * 0.6) + high_boost)
-                
-                # Separation logic
-                if bass_val > high_val: high_val *= 0.7
-                if high_val > bass_val: bass_val *= 0.8
-
-                processed.append([int(bass_val), int(mid_val), int(high_val)])
-                
-            return processed
-        except: return []
-
-    def _generate_fallback(self, track_id):
-        """Generates consistent fake waveform if API fails"""
-        seed = sum(ord(c) for c in track_id) if track_id else 0
-        random.seed(seed)
-        fallback = []
-        for _ in range(100):
-            fallback.append([random.randint(20, 90), random.randint(20, 90), random.randint(10, 70)])
-        random.seed()
-        return fallback
 
 class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
