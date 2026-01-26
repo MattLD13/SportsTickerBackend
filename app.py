@@ -44,9 +44,44 @@ class Tee(object):
             self.file.flush()
             self.original_stdout.flush()
 
-try:
+# ================= PATHS & CONSTANTS =================
+GLOBAL_CONFIG_FILE = "global_config.json"
+TICKER_DATA_DIR = "tickers"
+os.makedirs(TICKER_DATA_DIR, exist_ok=True)
+
+SPORTS_UPDATE_INTERVAL = 15            # seconds between sports polls
+STOCKS_UPDATE_INTERVAL = 30            # seconds between stock polls
+WORKER_THREAD_COUNT = 10               # thread pool size for fetchers
+API_TIMEOUT = 6                        # shared HTTP timeout (seconds)
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; SportsTicker/0.82; +https://github.com)",
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+TZ_OFFSETS = {
+    "EST": -5, "EDT": -4,
+    "CST": -6, "CDT": -5,
+    "MST": -7, "MDT": -6,
+    "PST": -8, "PDT": -7,
+}
+
+# AHL config (keys and basic team map kept minimal; colors/logos fall back safely)
+AHL_API_KEYS = ["public_api", "desktop_frontend"]
+AHL_TEAMS = {
     "TUC": {"name": "Tucson Roadrunners", "color": "8C2633", "id": "412"},
 }
+
+data_lock = threading.Lock()
+
+def build_pooled_session(pool_size=10):
+    session = requests.Session()
+    adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    session.headers.update(HEADERS)
+    return session
 
 # ================= MASTER LEAGUE REGISTRY =================
 LEAGUE_OPTIONS = [
