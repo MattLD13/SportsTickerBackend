@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v6"
+SERVER_VERSION = "v7-waveform"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -714,6 +714,7 @@ class StockFetcher:
         return res
 
 # ================= NEW: SPOTIFY FETCHER =================
+# ================= NEW: SPOTIFY FETCHER =================
 class SpotifyFetcher:
     def __init__(self):
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
@@ -723,7 +724,7 @@ class SpotifyFetcher:
         self.token_expiry = 0
         self.session = requests.Session()
         
-        # Cache to prevent re-fetching/re-calculating heavy waveform data
+        # Cache for expensive waveform data
         self.waveform_cache = {} 
         self.current_track_id = None
         
@@ -732,8 +733,10 @@ class SpotifyFetcher:
 
     def _refresh_access_token(self):
         if not all([self.client_id, self.client_secret, self.refresh_token]): return False
+        
         auth_str = f"{self.client_id}:{self.client_secret}"
         b64_auth = base64.b64encode(auth_str.encode()).decode()
+        
         try:
             r = self.session.post(
                 "https://accounts.spotify.com/api/token",
@@ -746,16 +749,20 @@ class SpotifyFetcher:
                 self.access_token = data['access_token']
                 self.token_expiry = time.time() + data.get('expires_in', 3600) - 60
                 return True
-        except: pass
+            else:
+                print(f"Spotify Token Error: {r.text}")
+        except Exception as e:
+            print(f"Spotify Auth Exception: {e}")
         return False
 
     def get_audio_analysis(self, track_id):
-        # 1. Check Cache (and ensure it's not empty)
-        if track_id in self.waveform_cache and self.waveform_cache[track_id]:
+        # 1. Return cached if available
+        if track_id in self.waveform_cache:
             return self.waveform_cache[track_id]
             
         try:
-            # Use OFFICIAL Spotify API URL
+            # 2. Fetch Audio Analysis from Spotify
+            # We use the direct API here for maximum compatibility
             url = f"https://api.spotify.com/v1/audio-analysis/{track_id}"
             
             r = self.session.get(
@@ -765,29 +772,46 @@ class SpotifyFetcher:
             )
             
             if r.status_code != 200:
-                print(f"⚠️ Analysis HTTP Error: {r.status_code}")
+                print(f"⚠️ Analysis HTTP Error {r.status_code}: {r.text[:50]}")
                 return []
 
             data = r.json()
             segments = data.get('segments', [])
             
-            if not segments:
-                print("⚠️ Analysis returned 0 segments.")
-                return []
+            if not segments: return []
             
-            # Process waveform (Target 100 bars for the whole song)
+            # 3. Process Waveform 
+            # We want to normalize the loudness (dB) into a 0-100 scale.
+            # Typical loudness is -60dB (silence) to 0dB (loud).
+            
             processed_wave = []
-            step = max(1, len(segments) // 100)
+            
+            # Resample to a fixed size (e.g. 100 bars)
+            target_samples = 100
+            step = max(1, len(segments) // target_samples)
             
             for i in range(0, len(segments), step):
                 s = segments[i]
-                # Map -60dB...0dB to 0...100
                 loudness = s.get('loudness_max', -60)
-                val = max(0, min(100, int((loudness + 60) * (100/60))))
+                
+                # Normalize: Map -60...0 to 0...1
+                normalized = (loudness + 60) / 60
+                # Clamp between 0 and 1
+                normalized = max(0.0, min(1.0, normalized))
+                
+                # Scale to integer 0-100
+                val = int(normalized * 100)
                 processed_wave.append(val)
 
             print(f"✅ Generated Waveform: {len(processed_wave)} points for {track_id}")
+            
+            # Cache it
             self.waveform_cache[track_id] = processed_wave
+            
+            # Keep cache clean (max 10 songs)
+            if len(self.waveform_cache) > 10:
+                self.waveform_cache.pop(next(iter(self.waveform_cache)))
+                
             return processed_wave
             
         except Exception as e:
@@ -795,16 +819,16 @@ class SpotifyFetcher:
             return []
 
     def get_now_playing(self):
-        # MOCK
+        # MOCK MODE
         if not self.refresh_token:
             return {
                 "is_playing": True, "name": "Money", "artist": "Pink Floyd",
                 "cover": "https://i.scdn.co/image/ab67616d0000b273ea7caaff71dea1051d49b2fe",
-                "duration": 382.0, "progress": (time.time() % 382),
-                "waveform": [random.randint(20,80) for _ in range(100)] # Fake wave
+                "duration": 382.0, "progress": (time.time() % 382), 
+                "waveform": [random.randint(10,90) for _ in range(50)]
             }
 
-        # REAL
+        # REAL MODE
         if time.time() > self.token_expiry:
             if not self._refresh_access_token(): return None
 
@@ -822,17 +846,13 @@ class SpotifyFetcher:
             item = data.get('item')
             if not item: return {"is_playing": False} 
 
-            # Only fetch waveform if track changed
+            # Identify Track
             tid = item.get('id')
             waveform = []
             
-            # Note: Fetching analysis takes time, so only do it if we have a stable connection
-            # or optimize by doing it in a background thread. For now, we do it inline but cache heavily.
-            if tid != self.current_track_id:
+            # Fetch Waveform if Track ID is valid
+            if tid:
                 waveform = self.get_audio_analysis(tid)
-                self.current_track_id = tid
-            else:
-                waveform = self.waveform_cache.get(tid, [])
 
             return {
                 "is_playing": data.get('is_playing', False),
