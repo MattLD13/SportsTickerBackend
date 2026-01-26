@@ -49,6 +49,8 @@ GLOBAL_CONFIG_FILE = "global_config.json"
 TICKER_DATA_DIR = "tickers"
 os.makedirs(TICKER_DATA_DIR, exist_ok=True)
 
+STOCK_CACHE_FILE = "stock_cache.json"
+
 SPORTS_UPDATE_INTERVAL = 15            # seconds between sports polls
 STOCKS_UPDATE_INTERVAL = 30            # seconds between stock polls
 WORKER_THREAD_COUNT = 10               # thread pool size for fetchers
