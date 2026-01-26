@@ -2377,37 +2377,37 @@ class SportsFetcher:
             self.merge_buffers()
 
     def merge_buffers(self):
-    mode = state['mode']
-    final_list = []
+        mode = state['mode']
+        final_list = []
+        
+        sports_buffer = state.get('buffer_sports', [])
+        stocks_buffer = state.get('buffer_stocks', [])
+        
+        # Identify Utility Types
+        utils = [g for g in sports_buffer if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
+        
+        # Pure sports excludes music/weather/clock
+        pure_sports = [g for g in sports_buffer if g not in utils]
     
-    sports_buffer = state.get('buffer_sports', [])
-    stocks_buffer = state.get('buffer_stocks', [])
+        if mode == 'stocks': 
+            final_list = stocks_buffer
+        elif mode == 'weather': 
+            final_list = [g for g in utils if g.get('type') == 'weather']
+        elif mode == 'clock': 
+            final_list = [g for g in utils if g.get('sport') == 'clock']
+        elif mode == 'music': 
+            final_list = [g for g in utils if g.get('sport') == 'music']
+        
+        # FIX: Allow music/utils in 'all' mode, but keep 'sports' mode pure if desired
+        elif mode == 'all':
+            # Combined view: Sports + Music + Weather + Clock
+            final_list = sports_buffer 
+        elif mode in ['sports', 'live', 'my_teams']: 
+            final_list = pure_sports
+        else: 
+            final_list = pure_sports
     
-    # Identify Utility Types
-    utils = [g for g in sports_buffer if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
-    
-    # Pure sports excludes music/weather/clock
-    pure_sports = [g for g in sports_buffer if g not in utils]
-
-    if mode == 'stocks': 
-        final_list = stocks_buffer
-    elif mode == 'weather': 
-        final_list = [g for g in utils if g.get('type') == 'weather']
-    elif mode == 'clock': 
-        final_list = [g for g in utils if g.get('sport') == 'clock']
-    elif mode == 'music': 
-        final_list = [g for g in utils if g.get('sport') == 'music']
-    
-    # FIX: Allow music/utils in 'all' mode, but keep 'sports' mode pure if desired
-    elif mode == 'all':
-        # Combined view: Sports + Music + Weather + Clock
-        final_list = sports_buffer 
-    elif mode in ['sports', 'live', 'my_teams']: 
-        final_list = pure_sports
-    else: 
-        final_list = pure_sports
-
-    state['current_games'] = final_list
+        state['current_games'] = final_list
 
 # Initialize Global Fetcher
 fetcher = SportsFetcher(
