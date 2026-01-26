@@ -1293,7 +1293,16 @@ struct ModesView: View {
                                 ForEach(stockOptions) { opt in
                                     let isActive = vm.state.active_sports[opt.id] ?? false
                                     Button {
-                                        vm.state.active_sports[opt.id] = !isActive
+                                        // 1. CLEAR ALL OTHER STOCKS FIRST
+                                        // This forces a "Single Select" behavior
+                                        for stockKey in stockOptions.map({ $0.id }) {
+                                            vm.state.active_sports[stockKey] = false
+                                        }
+                                        
+                                        // 2. SET THE NEW ONE
+                                        vm.state.active_sports[opt.id] = true
+                                        
+                                        // 3. SAVE
                                         vm.saveSettings()
                                     } label: {
                                         Text(opt.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
