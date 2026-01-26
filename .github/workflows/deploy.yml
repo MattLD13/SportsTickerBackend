@@ -6,7 +6,7 @@ on:
 
 jobs:
   # ---------------------------------------------------
-  # JOB 1: Deploy Server Code (app.py) & Restart
+  # JOB 1: Deploy Server Code (server.py) & Restart
   # ---------------------------------------------------
   deploy:
     runs-on: ubuntu-latest
@@ -21,8 +21,8 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          # Added ticker_controller.py to the list so the server has a copy (optional but good for backup)
-          source: "app.py,requirements.txt,*.json,ticker_controller.py"
+          # Ensure server.py is included (assuming you renamed app.py to server.py or are using server.py now)
+          source: "server.py,app.py,requirements.txt,*.json,ticker_controller.py"
           target: "/home/${{ secrets.SSH_USER }}/"
 
       # 2. Configure .env and Restart Service
@@ -40,11 +40,18 @@ jobs:
             # GENERATE .env FILE FROM SECRETS
             # ---------------------------------------------------------
             echo "Generating .env file..."
+            
+            # Finnhub Keys
             echo "FINNHUB_KEY_1=${{ secrets.FINNHUB_KEY_1 }}" > .env
             echo "FINNHUB_KEY_2=${{ secrets.FINNHUB_KEY_2 }}" >> .env
             echo "FINNHUB_KEY_3=${{ secrets.FINNHUB_KEY_3 }}" >> .env
             echo "FINNHUB_KEY_4=${{ secrets.FINNHUB_KEY_4 }}" >> .env
             echo "FINNHUB_KEY_5=${{ secrets.FINNHUB_KEY_5 }}" >> .env
+            
+            # Spotify Keys (NEW)
+            echo "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}" >> .env
+            echo "SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}" >> .env
+            echo "SPOTIFY_REFRESH_TOKEN=${{ secrets.SPOTIFY_REFRESH_TOKEN }}" >> .env
             
             chmod 600 .env
 
@@ -88,9 +95,7 @@ jobs:
       - name: Send Update Signal to Server
         if: steps.check_changes.outputs.updated == 'true'
         run: |
-          # Uses your real domain. Assumes you have HTTPS set up.
-          # If you don't have HTTPS yet, use http://ticker.mattdicks.org
-          
+          # Uses your real domain.
           curl -X POST https://ticker.mattdicks.org/api/hardware \
           -H "Content-Type: application/json" \
           -d '{"action": "update", "ticker_id": "all"}'
