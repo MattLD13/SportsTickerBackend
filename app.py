@@ -2290,12 +2290,15 @@ class SportsFetcher:
                 print(f"Fetcher error for {futures.get(f, 'unknown')}: {e}")
 
         # Sorting: Clock -> Weather -> Active Games -> Final Games -> PPD
+        # Tie-breakers added (sport, id) to keep ordering stable when multiple games share the same start time
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
             4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "ppd"]) else
             3 if "FINAL" in str(x.get('status', '')).upper() else 2,
-            x.get('startTimeUTC', '9999')
+            x.get('startTimeUTC', '9999'),
+            str(x.get('sport', '')),  # stabilizes ordering for same-time games (e.g., multiple soccer matches)
+            str(x.get('id', ''))
         ))
 
         with data_lock: 
