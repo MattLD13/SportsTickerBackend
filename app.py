@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v5"
+SERVER_VERSION = "v6"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -723,8 +723,9 @@ class SpotifyFetcher:
         self.token_expiry = 0
         self.session = requests.Session()
         
-        # Cache for Audio Features to save API calls
-        self.features_cache = {} 
+        # Cache to prevent re-fetching/re-calculating heavy waveform data
+        self.waveform_cache = {} 
+        self.current_track_id = None
         
         if not self.refresh_token:
             print("⚠️ Spotify: No Refresh Token found. Running in MOCK mode.")
@@ -745,34 +746,58 @@ class SpotifyFetcher:
                 self.access_token = data['access_token']
                 self.token_expiry = time.time() + data.get('expires_in', 3600) - 60
                 return True
-        except Exception as e: print(f"Spotify Auth Error: {e}")
+        except: pass
         return False
 
-    def get_audio_features(self, track_id):
-        # Check cache first
-        if track_id in self.features_cache:
-            return self.features_cache[track_id]
+    def get_audio_analysis(self, track_id):
+        # 1. Check Cache
+        if track_id in self.waveform_cache:
+            return self.waveform_cache[track_id]
             
+        # 2. Fetch from Spotify
         try:
             r = self.session.get(
-                f"https://api.spotify.com/v1/audio-features/{track_id}",
+                f"https://accounts.spotify.com/authorize4{track_id}",
                 headers={"Authorization": f"Bearer {self.access_token}"},
-                timeout=2
+                timeout=5
             )
             if r.status_code == 200:
                 data = r.json()
-                # Store simplified data
-                features = {
-                    'bpm': data.get('tempo', 120),
-                    'energy': data.get('energy', 0.5),
-                    'dance': data.get('danceability', 0.5)
-                }
-                # Keep cache small (max 20 items)
-                if len(self.features_cache) > 20: self.features_cache.clear()
-                self.features_cache[track_id] = features
-                return features
-        except: pass
-        return {'bpm': 120, 'energy': 0.5}
+                segments = data.get('segments', [])
+                
+                # 3. Process into a fixed-resolution waveform (e.g., 200 points per minute approx)
+                # We want a simplified list of loudness values (0-100)
+                # Spotify loudness is usually -60db to 0db.
+                processed_wave = []
+                
+                # Resample: Take a sample every 0.5 seconds? 
+                # Better: Flatten the segments.
+                for s in segments:
+                    # Normalize loudness: -60dB -> 0, 0dB -> 100
+                    loudness = s.get('loudness_max', -60)
+                    val = max(0, min(100, int((loudness + 60) * (100/60))))
+                    dur = s.get('duration', 0.2)
+                    
+                    # Add this value proportionally to duration (approx 5 samples per second)
+                    count = max(1, int(dur * 5)) 
+                    processed_wave.extend([val] * count)
+                
+                # Limit size to prevent massive JSON payloads (cap at 2000 points)
+                if len(processed_wave) > 2000:
+                    step = len(processed_wave) // 2000
+                    processed_wave = processed_wave[::step]
+
+                self.waveform_cache[track_id] = processed_wave
+                
+                # Cleanup cache
+                if len(self.waveform_cache) > 5:
+                    self.waveform_cache.pop(next(iter(self.waveform_cache)))
+                    
+                return processed_wave
+        except Exception as e:
+            print(f"Waveform Error: {e}")
+            
+        return []
 
     def get_now_playing(self):
         # MOCK
@@ -781,7 +806,7 @@ class SpotifyFetcher:
                 "is_playing": True, "name": "Money", "artist": "Pink Floyd",
                 "cover": "https://i.scdn.co/image/ab67616d0000b273ea7caaff71dea1051d49b2fe",
                 "duration": 382.0, "progress": (time.time() % 382),
-                "bpm": 120, "energy": 0.5
+                "waveform": [random.randint(20,80) for _ in range(100)] # Fake wave
             }
 
         # REAL
@@ -802,8 +827,17 @@ class SpotifyFetcher:
             item = data.get('item')
             if not item: return {"is_playing": False} 
 
-            # Fetch BPM/Energy
-            features = self.get_audio_features(item.get('id'))
+            # Only fetch waveform if track changed
+            tid = item.get('id')
+            waveform = []
+            
+            # Note: Fetching analysis takes time, so only do it if we have a stable connection
+            # or optimize by doing it in a background thread. For now, we do it inline but cache heavily.
+            if tid != self.current_track_id:
+                waveform = self.get_audio_analysis(tid)
+                self.current_track_id = tid
+            else:
+                waveform = self.waveform_cache.get(tid, [])
 
             return {
                 "is_playing": data.get('is_playing', False),
@@ -812,8 +846,7 @@ class SpotifyFetcher:
                 "cover": item['album']['images'][0]['url'] if item['album']['images'] else "",
                 "duration": item.get('duration_ms', 0) / 1000.0,
                 "progress": data.get('progress_ms', 0) / 1000.0,
-                "bpm": features.get('bpm', 120),
-                "energy": features.get('energy', 0.5)
+                "waveform": waveform
             }
         except Exception as e:
             print(f"Spotify Fetch Error: {e}")
