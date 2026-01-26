@@ -2149,12 +2149,53 @@ class SportsFetcher:
         except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games
 
+    def get_music_object(self):
+        # check global state directly to avoid passing args
+        if not state['active_sports'].get('music', False):
+            return None
+
+        try:
+            # Access the global spotify_fetcher instance
+            s_data = spotify_fetcher.get_cached_state()
+            
+            if s_data and s_data.get('is_playing'):
+                # Calculate timestamps (e.g., 2:30 / 3:45)
+                cur_m, cur_s = divmod(int(s_data.get('progress', 0)), 60)
+                tot_m, tot_s = divmod(int(s_data.get('duration', 0)), 60)
+                status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
+
+                return {
+                    'type': 'music',         # Special type
+                    'sport': 'music',        # Category for filtering
+                    'id': 'spotify_now',     # Constant ID
+                    'status': status_str,
+                    'state': 'in',           # 'in' = Active
+                    'is_shown': True,
+                    
+                    # Use Home/Away fields for Artist/Song
+                    'home_abbr': s_data.get('artist', 'Unknown')[:12], 
+                    'home_score': '',        
+                    'home_logo': s_data.get('cover', ''),
+                    
+                    'away_abbr': s_data.get('name', '')[:12],
+                    'away_score': '',
+                    'away_logo': 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
+                    
+                    'home_color': '#1DB954', # Spotify Green
+                    'away_color': '#FFFFFF',
+                    'situation': {}
+                }
+        except Exception as e:
+            print(f"Music Gen Error: {e}")
+        
+        return None
+
     def update_buffer_sports(self):
         all_games = []
         with data_lock: 
             conf = state.copy()
 
-        # 1. WEATHER & CLOCK (Simple, fast)
+        # 1. WEATHER
         if conf['active_sports'].get('weather'):
             if (conf['weather_lat'] != self.weather.lat or 
                 conf['weather_lon'] != self.weather.lon or 
@@ -2163,44 +2204,15 @@ class SportsFetcher:
             w = self.weather.get_weather()
             if w: all_games.append(w)
 
-        if conf['active_sports'].get('music', False):
-            try:
-                s_data = spotify_fetcher.get_cached_state()
-                if s_data and s_data.get('is_playing'):
-                    # Calculate timestamps (e.g., 2:30 / 3:45)
-                    cur_m, cur_s = divmod(int(s_data.get('progress', 0)), 60)
-                    tot_m, tot_s = divmod(int(s_data.get('duration', 0)), 60)
-                    status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
-
-                    music_obj = {
-                        'type': 'music',         # Special type
-                        'sport': 'music',        # Category for filtering
-                        'id': 'spotify_now',     # Constant ID
-                        'status': status_str,
-                        'state': 'in',           # 'in' = Active
-                        'is_shown': True,
-                        
-                        # Use Home/Away fields for Artist/Song
-                        'home_abbr': s_data.get('artist', 'Unknown')[:12], 
-                        'home_score': '',        
-                        'home_logo': s_data.get('cover', ''),
-                        
-                        'away_abbr': s_data.get('name', '')[:12],
-                        'away_score': '',
-                        'away_logo': 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
-                        
-                        'home_color': '#1DB954', # Spotify Green
-                        'away_color': '#FFFFFF',
-                        'situation': {}
-                    }
-                    all_games.append(music_obj)
-            except Exception as e:
-                print(f"Music Pack Error: {e}")
+        # 2. MUSIC (Refactored to use helper)
+        music_obj = self.get_music_object()
+        if music_obj:
+            all_games.append(music_obj)
 
         if conf['active_sports'].get('clock'):
             all_games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
 
-        # 2. SPORTS (Parallelized & Smart)
+        # 3. SPORTS (Keep existing logic exactly as it was)
         if conf['mode'] in ['sports', 'live', 'my_teams', 'all']:
             utc_offset = conf.get('utc_offset', -5)
             now_utc = dt.now(timezone.utc)
@@ -2265,13 +2277,8 @@ class SportsFetcher:
                 )
                 futures[f] = league_key
             
-            # HARD TIMEOUT: Wait max 5.0s for threads (increased from 3.0s for SofaScore/CBA)
+            # HARD TIMEOUT: Wait max 5.0s for threads
             done, not_done = concurrent.futures.wait(futures.keys(), timeout=5.0)
-            
-            # Log any timed-out futures for debugging
-            for f in not_done:
-                lk = futures.get(f, 'unknown')
-                print(f"Warning: {lk} fetch timed out")
             
             for f in done:
                 lk = futures[f]
@@ -2443,6 +2450,51 @@ def stocks_worker():
         except Exception as e: 
             print(f"Stock worker error: {e}")
         time.sleep(1)
+
+# ========================================================
+# NEW WORKER: HIGH SPEED MUSIC UPDATES (1s)
+# ========================================================
+def music_worker():
+    """Updates only the music object in the global buffer every 1 second"""
+    while True:
+        try:
+            # 1. Fetch fresh music object
+            m_obj = fetcher.get_music_object()
+            
+            with data_lock:
+                # 2. Update buffer_sports in place
+                # We do this to avoid rebuilding the whole list which is CPU intensive
+                buffer = state.get('buffer_sports', [])
+                
+                # Check if music is supposed to be active
+                is_active = state['active_sports'].get('music', False)
+                
+                # Try to find existing music entry and update it
+                found = False
+                for i, item in enumerate(buffer):
+                    if item.get('id') == 'spotify_now':
+                        if m_obj and is_active:
+                            buffer[i] = m_obj
+                        else:
+                            # Remove if not playing or disabled
+                            buffer.pop(i) 
+                        found = True
+                        break
+                
+                # If not found but should be there, append it
+                if not found and m_obj and is_active:
+                    buffer.append(m_obj)
+                
+                state['buffer_sports'] = buffer
+                
+                # 3. Propagate to current_games
+                fetcher.merge_buffers()
+                
+        except Exception as e:
+            # Silent fail to keep thread alive
+            pass
+            
+        time.sleep(1.0) # Fast update rate
 
 # ================= FLASK API =================
 app = Flask(__name__)
@@ -2958,4 +3010,5 @@ def root(): return "Ticker Server Running on Version: " + SERVER_VERSION
 if __name__ == "__main__":
     threading.Thread(target=sports_worker, daemon=True).start()
     threading.Thread(target=stocks_worker, daemon=True).start()
+    threading.Thread(target=music_worker, daemon=True).start() # <--- NEW LINE
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
