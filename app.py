@@ -723,96 +723,97 @@ class SpotifyFetcher:
         self.token_expiry = 0
         self.session = requests.Session()
         
+        # Cache for Audio Features to save API calls
+        self.features_cache = {} 
+        
         if not self.refresh_token:
             print("⚠️ Spotify: No Refresh Token found. Running in MOCK mode.")
 
     def _refresh_access_token(self):
-        """Exchanges the refresh token for a new short-lived access token."""
-        if not all([self.client_id, self.client_secret, self.refresh_token]): 
-            return False
-        
-        # Spotify requires Basic Auth with Client ID:Secret encoded
+        if not all([self.client_id, self.client_secret, self.refresh_token]): return False
         auth_str = f"{self.client_id}:{self.client_secret}"
         b64_auth = base64.b64encode(auth_str.encode()).decode()
-        
         try:
-            # Official Spotify Token Endpoint
             r = self.session.post(
                 "https://accounts.spotify.com/api/token",
                 data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
                 headers={"Authorization": f"Basic {b64_auth}"},
                 timeout=5
             )
-            
             if r.status_code == 200:
                 data = r.json()
                 self.access_token = data['access_token']
-                # Token usually expires in 3600s (1 hour). Refresh 60s early to be safe.
                 self.token_expiry = time.time() + data.get('expires_in', 3600) - 60
                 return True
-            else:
-                print(f"Spotify Refresh Failed: {r.status_code} - {r.text}")
-        except Exception as e:
-            print(f"Spotify Auth Connection Error: {e}")
+        except Exception as e: print(f"Spotify Auth Error: {e}")
         return False
 
+    def get_audio_features(self, track_id):
+        # Check cache first
+        if track_id in self.features_cache:
+            return self.features_cache[track_id]
+            
+        try:
+            r = self.session.get(
+                f"https://api.spotify.com/v1/audio-features/{track_id}",
+                headers={"Authorization": f"Bearer {self.access_token}"},
+                timeout=2
+            )
+            if r.status_code == 200:
+                data = r.json()
+                # Store simplified data
+                features = {
+                    'bpm': data.get('tempo', 120),
+                    'energy': data.get('energy', 0.5),
+                    'dance': data.get('danceability', 0.5)
+                }
+                # Keep cache small (max 20 items)
+                if len(self.features_cache) > 20: self.features_cache.clear()
+                self.features_cache[track_id] = features
+                return features
+        except: pass
+        return {'bpm': 120, 'energy': 0.5}
+
     def get_now_playing(self):
-        """Fetches the currently playing song from Spotify."""
-        
-        # --- MOCK MODE (For testing without keys) ---
+        # MOCK
         if not self.refresh_token:
-            # Returns a fake song (Pink Floyd - Money) to test the UI
-            duration = 382.0 
             return {
-                "is_playing": True, 
-                "name": "Money", 
-                "artist": "Pink Floyd",
+                "is_playing": True, "name": "Money", "artist": "Pink Floyd",
                 "cover": "https://i.scdn.co/image/ab67616d0000b273ea7caaff71dea1051d49b2fe",
-                "duration": duration,
-                "progress": (time.time() % duration)
+                "duration": 382.0, "progress": (time.time() % 382),
+                "bpm": 120, "energy": 0.5
             }
 
-        # --- REAL PRODUCTION MODE ---
-        # 1. Check if token is expired (or missing) and refresh if needed
-        if not self.access_token or time.time() > self.token_expiry:
-            if not self._refresh_access_token(): 
-                return None
+        # REAL
+        if time.time() > self.token_expiry:
+            if not self._refresh_access_token(): return None
 
         try:
-            # 2. Call Spotify API
             r = self.session.get(
                 "https://api.spotify.com/v1/me/player/currently-playing",
                 headers={"Authorization": f"Bearer {self.access_token}"},
                 timeout=3
             )
             
-            # 204 means content was successful but returned no content (User is paused/stopped)
-            if r.status_code == 204: 
-                return {"is_playing": False} 
-            
-            if r.status_code != 200: 
-                # Token might have been revoked or some other error
-                print(f"Spotify API Error: {r.status_code}")
-                return None
+            if r.status_code == 204: return {"is_playing": False} 
+            if r.status_code != 200: return None
             
             data = r.json()
             item = data.get('item')
-            
-            # Handle cases like Podcasts where 'item' structure is different or missing
-            if not item or data.get('currently_playing_type') != 'track': 
-                return {"is_playing": False} 
+            if not item: return {"is_playing": False} 
 
-            # 3. Format data for the Ticker
+            # Fetch BPM/Energy
+            features = self.get_audio_features(item.get('id'))
+
             return {
                 "is_playing": data.get('is_playing', False),
                 "name": item.get('name'),
-                # Join multiple artists with commas
                 "artist": ", ".join(a['name'] for a in item.get('artists', [])),
-                # Get the first (largest) album cover
                 "cover": item['album']['images'][0]['url'] if item['album']['images'] else "",
-                # Convert milliseconds to seconds
                 "duration": item.get('duration_ms', 0) / 1000.0,
-                "progress": data.get('progress_ms', 0) / 1000.0
+                "progress": data.get('progress_ms', 0) / 1000.0,
+                "bpm": features.get('bpm', 120),
+                "energy": features.get('energy', 0.5)
             }
         except Exception as e:
             print(f"Spotify Fetch Error: {e}")
