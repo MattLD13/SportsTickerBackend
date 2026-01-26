@@ -11,8 +11,11 @@ import socket
 import json
 import concurrent.futures
 import hashlib
+import math
+import random
+import colorsys  # [NEW] For album art color extraction
 from datetime import datetime
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat # [NEW] ImageStat for color extraction
 from rgbmatrix import RGBMatrix, RGBMatrixOptions
 from flask import Flask, request, render_template_string
 
@@ -258,10 +261,35 @@ class TickerStreamer:
         self.static_current_image = None
         self.static_current_game = None
         
+        # [NEW] MUSIC UI STATE
+        self.VINYL_SIZE = 50
+        self.COVER_SIZE = 42
+        self.vinyl_mask = Image.new("L", (self.COVER_SIZE, self.COVER_SIZE), 0)
+        ImageDraw.Draw(self.vinyl_mask).ellipse((0, 0, self.COVER_SIZE, self.COVER_SIZE), fill=255)
+        
+        self.scratch_layer = Image.new("RGBA", (self.VINYL_SIZE, self.VINYL_SIZE), (0,0,0,0))
+        self._init_vinyl_scratch()
+        
+        self.vinyl_rotation = 0.0
+        self.text_scroll_pos = 0.0
+        self.last_frame_time = time.time()
+        self.local_music_progress = 0.0
+        self.dominant_color = (29, 185, 84) # Default Green
+        self.spindle_color = "black"
+        self.last_cover_url = ""
+        self.vinyl_cache = None
+        self.viz_heights = [2.0] * 16 
+        self.viz_phase = [random.random() * 10 for _ in range(16)]
+        
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
         threading.Thread(target=self.poll_backend, daemon=True).start()
         threading.Thread(target=self.render_loop, daemon=True).start()
+
+    def _init_vinyl_scratch(self):
+        ds = ImageDraw.Draw(self.scratch_layer)
+        # Record body
+        ds.ellipse((0, 0, self.VINYL_SIZE-1, self.VINYL_SIZE-1), fill=(20, 20, 20), outline=(50,50,50))
 
     def update_display(self, pil_image):
         if self.test_pattern: pil_image = self.generate_test_pattern()
@@ -310,6 +338,168 @@ class TickerStreamer:
     def draw_arrow(self, d, x, y, is_up, color):
         if is_up: d.polygon([(x+2, y), (x, y+4), (x+4, y+4)], fill=color)
         else: d.polygon([(x, y), (x+4, y), (x+2, y+4)], fill=color)
+
+    # --- MUSIC HELPERS ---
+    def extract_colors_and_spindle(self, pil_img):
+        stat = ImageStat.Stat(pil_img)
+        r, g, b = stat.mean[:3]
+        lum = (0.299*r + 0.587*g + 0.114*b)
+        
+        self.spindle_color = "white" if lum < 140 else "black"
+        
+        h, s, v = colorsys.rgb_to_hsv(r/255.0, g/255.0, b/255.0)
+        if s < 0.2: s = 0.0
+        elif s < 0.5: s = min(1.0, s * 1.5)
+        if v < 0.3: v = 0.5 
+        elif v < 0.8: v = min(1.0, v * 1.3)
+        
+        nr, ng, nb = colorsys.hsv_to_rgb(h, s, v)
+        self.dominant_color = (int(nr*255), int(ng*255), int(nb*255))
+
+    def render_visualizer(self, draw, x, y, width, height):
+        bar_count = 16
+        bar_w = 2
+        gap = 3
+        center_y = y + (height // 2)
+        t = time.time()
+        
+        base_r, base_g, base_b = self.dominant_color
+        grad_colors = []
+        for i in range(bar_count):
+            factor = i / (bar_count - 1) * 0.6 
+            nr = int(base_r + (255 - base_r) * factor)
+            ng = int(base_g + (255 - base_g) * factor)
+            nb = int(base_b + (255 - base_b) * factor)
+            grad_colors.append((nr, ng, nb))
+
+        for i in range(bar_count):
+            base = math.sin(t * 4 + self.viz_phase[i])
+            noise = math.sin(t * 12 + (i * 0.5)) * random.uniform(0.5, 1.2)
+            if i < 5: amp = 8.0 + (math.sin(t * 2) * 2) 
+            elif i < 11: amp = 6.0 
+            else: amp = 4.0 + (noise * 2)
+
+            target_h = max(2, min(height, abs(base + noise) * amp))
+            self.viz_heights[i] += (target_h - self.viz_heights[i]) * 0.25
+            
+            h_int = int(self.viz_heights[i])
+            start_y = center_y - (h_int // 2)
+            bx = x + (i * (bar_w + gap))
+            draw.rectangle((bx, start_y, bx+bar_w-1, start_y + h_int), fill=grad_colors[i])
+
+    def draw_spotify_logo(self, d, x, y):
+        d.ellipse((x, y, x+12, y+12), fill=self.dominant_color)
+        d.arc((x+3, y+3, x+9, y+9), 190, 350, fill="black", width=1)
+        d.arc((x+3, y+5, x+9, y+11), 190, 350, fill="black", width=1)
+        d.arc((x+4, y+7, x+8, y+12), 190, 350, fill="black", width=1)
+
+    def draw_music_card(self, game):
+        # 384px wide fixed canvas
+        img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        
+        # Parse data from the 'game' object (mapped from backend)
+        # Backend sends: home_abbr=Artist, away_abbr=Song, home_logo=Cover
+        artist = str(game.get('home_abbr', 'Unknown'))
+        song = str(game.get('away_abbr', 'Unknown'))
+        cover_url = game.get('home_logo')
+        
+        # Parse status "2:30 / 3:45"
+        status_str = str(game.get('status', '0:00 / 0:00'))
+        parts = status_str.split(' / ')
+        curr_str = parts[0] if len(parts) > 0 else "0:00"
+        dur_str = parts[1] if len(parts) > 1 else "0:00"
+        
+        # Convert duration to seconds for progress bar
+        def time_to_sec(s):
+            try:
+                m, sec = s.split(':')
+                return int(m) * 60 + int(sec)
+            except: return 1
+        
+        total_dur = time_to_sec(dur_str)
+        curr_dur = time_to_sec(curr_str)
+        
+        # [NEW] Physics Update using dt
+        now = time.time()
+        dt = now - self.last_frame_time
+        self.last_frame_time = now
+        
+        self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt)) % 360
+        self.text_scroll_pos += (15.0 * dt)
+        
+        # 1. Update Cover & Vinyl Cache
+        if cover_url != self.last_cover_url:
+            self.last_cover_url = cover_url
+            self.vinyl_cache = None
+            if cover_url:
+                try:
+                    # Sync fetch here (in render thread) because this is a specific music mode
+                    r = requests.get(cover_url, timeout=1)
+                    raw = Image.open(io.BytesIO(r.content)).convert("RGBA")
+                    self.extract_colors_and_spindle(raw)
+                    raw = raw.resize((self.COVER_SIZE, self.COVER_SIZE))
+                    output = ImageOps.fit(raw, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
+                    output.putalpha(self.vinyl_mask)
+                    self.vinyl_cache = output
+                except: pass
+
+        # 2. Draw Vinyl
+        composite = self.scratch_layer.copy()
+        if self.vinyl_cache: 
+            offset = (self.VINYL_SIZE - self.COVER_SIZE) // 2
+            composite.paste(self.vinyl_cache, (offset, offset), self.vinyl_cache)
+        
+        # Draw Border & Hole
+        draw_comp = ImageDraw.Draw(composite)
+        draw_comp.ellipse((22, 22, 28, 28), fill="#222")
+        draw_comp.ellipse((23, 23, 27, 27), fill=self.spindle_color)
+
+        rotated = composite.rotate(self.vinyl_rotation, resample=Image.Resampling.BICUBIC)
+        img.paste(rotated, (4, -9), rotated)
+
+        # 3. Text (Song Name)
+        TEXT_AREA_W = 185 
+        TEXT_AREA_H = 15
+        TEXT_START_X = 60
+        
+        name_w = d.textlength(song, font=self.medium_font)
+        
+        if name_w > TEXT_AREA_W:
+            GAP = 50
+            total_loop = name_w + GAP
+            current_offset = self.text_scroll_pos % total_loop
+            
+            txt_img = Image.new("RGBA", (TEXT_AREA_W, TEXT_AREA_H), (0,0,0,0))
+            d_txt = ImageDraw.Draw(txt_img)
+            
+            d_txt.text((-current_offset, 0), song, font=self.medium_font, fill="white")
+            if (-current_offset + name_w) < TEXT_AREA_W:
+                d_txt.text((-current_offset + total_loop, 0), song, font=self.medium_font, fill="white")
+                
+            img.paste(txt_img, (TEXT_START_X, 2), txt_img)
+        else:
+            d.text((TEXT_START_X, 2), song, font=self.medium_font, fill="white")
+
+        # 4. Artist & Logo
+        self.draw_spotify_logo(d, TEXT_START_X, 15)
+        d.text((TEXT_START_X + 16, 15), artist[:40], font=self.tiny, fill=(180, 180, 180))
+
+        # 5. Viz
+        self.render_visualizer(d, 248, 6, 80, 20)
+
+        # 6. Time & Bar
+        # Remaining Time text
+        remaining_seconds = max(0, total_dur - curr_dur)
+        rem_str = f"- {remaining_seconds//60}:{remaining_seconds%60:02}"
+        
+        w_time = d.textlength(rem_str, font=self.micro)
+        d.text((PANEL_W - w_time - 5, 10), rem_str, font=self.micro, fill="white")
+        
+        pct = min(1.0, curr_dur / max(1, total_dur))
+        d.rectangle((0, 31, int(PANEL_W * pct), 31), fill=self.dominant_color)
+        
+        return img
 
     # --- SPORTS HELPER DRAWING FUNCTIONS ---
     def draw_hockey_stick(self, draw, cx, cy, size):
@@ -580,6 +770,12 @@ class TickerStreamer:
     def draw_single_game(self, game):
         game_hash = self.get_game_hash(game)
         
+        # [NEW] Check for Music Type first
+        if game.get('type') == 'music' or game.get('sport') == 'music':
+            # Note: Music is dynamic and high-frame-rate, so we generally 
+            # don't cache it, or cache it very briefly.
+            return self.draw_music_card(game)
+
         if game.get('type') != 'weather' and game.get('sport') != 'clock':
              if game_hash in self.game_render_cache: return self.game_render_cache[game_hash]
         
@@ -742,6 +938,10 @@ class TickerStreamer:
         # Helper to know how wide an item is in pixels
         t = game.get('type')
         s = game.get('sport')
+        
+        # [NEW] Music width is typically full panel
+        if t == 'music' or s == 'music': return 384
+        
         if t == 'stock_ticker' or (s and s.startswith('stock')): return 128
         if t == 'weather': return 384 # 6 panels
         return 64 # Standard scoreboard/leaderboard/clock
@@ -785,7 +985,7 @@ class TickerStreamer:
         return float('inf')
 
     def start_static_display(self):
-        # Show next static card (clock/weather) without scrolling
+        # Show next static card (clock/weather/MUSIC) without scrolling
         if not self.static_items: return False
         game = self.static_items[self.static_index % len(self.static_items)]
         self.static_index += 1
@@ -860,9 +1060,28 @@ class TickerStreamer:
             try:
                 if self.showing_static:
                     # Hold static pages (clock/weather) without movement
-                    if self.static_current_game and str(self.static_current_game.get('sport','')).lower().startswith('clock'):
-                        # Re-render clock every pass so seconds advance
-                        self.static_current_image = self.draw_single_game(self.static_current_game)
+                    if self.static_current_game:
+                        game_type = str(self.static_current_game.get('type', ''))
+                        sport = str(self.static_current_game.get('sport','')).lower()
+                        
+                        # [NEW] ANIMATED STATIC ITEMS (Clock & Music)
+                        # Need high refresh rate for these
+                        if sport.startswith('clock') or game_type == 'music' or sport == 'music':
+                            self.static_current_image = self.draw_single_game(self.static_current_game)
+                            # Render faster for animation smoothness
+                            if self.static_current_image:
+                                self.update_display(self.static_current_image)
+                            
+                            if time.time() >= self.static_until:
+                                self.showing_static = False
+                                self.static_current_image = None
+                                self.static_current_game = None
+                            
+                            # Fast sleep for animation
+                            time.sleep(0.03) 
+                            continue
+
+                    # Standard Static items (Weather) - Slow refresh
                     if self.static_current_image:
                         self.update_display(self.static_current_image)
                     if time.time() >= self.static_until:
@@ -962,6 +1181,7 @@ class TickerStreamer:
                     
             except Exception as e:
                 print(f"Render Loop Crash Prevented: {e}")
+                traceback.print_exc()
                 time.sleep(1)
 
     def poll_backend(self):
@@ -1013,7 +1233,9 @@ class TickerStreamer:
                 scrolling_items = []
                 for g in new_games:
                     sport = str(g.get('sport', '')).lower()
-                    if g.get('type') == 'weather' or sport == 'clock' or sport.startswith('clock'):
+                    
+                    # [NEW] Add 'music' to the list of static items
+                    if g.get('type') == 'weather' or sport == 'clock' or sport.startswith('clock') or g.get('type') == 'music':
                         static_items.append(g)
                     else:
                         scrolling_items.append(g)
