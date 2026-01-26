@@ -262,7 +262,7 @@ class TickerStreamer:
         self.static_current_game = None
         
         # [NEW] MUSIC UI STATE
-        self.VINYL_SIZE = 51 # CHANGED FROM 50 to 51 (ODD NUMBER) TO FIX WOBBLE
+        self.VINYL_SIZE = 51 # ODD NUMBER FIXES WOBBLE
         self.COVER_SIZE = 42
         self.vinyl_mask = Image.new("L", (self.COVER_SIZE, self.COVER_SIZE), 0)
         ImageDraw.Draw(self.vinyl_mask).ellipse((0, 0, self.COVER_SIZE, self.COVER_SIZE), fill=255)
@@ -396,28 +396,70 @@ class TickerStreamer:
         d.arc((x+3, y+5, x+9, y+11), 190, 350, fill="black", width=1)
         d.arc((x+4, y+7, x+8, y+12), 190, 350, fill="black", width=1)
 
+    def draw_scrolling_text(self, canvas, text, font, x, y, max_width, scroll_pos, color="white"):
+        """Helper to draw scrolling text with taller buffer to prevent clipping"""
+        text = str(text).strip() # Clean text of trailing spaces
+        
+        # Create a temp draw object just to measure text length
+        temp_d = ImageDraw.Draw(canvas)
+        text_w = temp_d.textlength(text, font=font)
+        
+        # Ensure strict integers for coordinates and dimensions
+        max_width = int(max_width)
+        x = int(x)
+        y = int(y)
+
+        # If text fits (add a 2px buffer to ensure it doesn't clip at the exact edge), draw static
+        if text_w <= (max_width - 2):
+            temp_d.text((x, y), text, font=font, fill=color)
+            return
+
+        # If scrolling needed
+        GAP = 40
+        total_loop = text_w + GAP
+        current_offset = scroll_pos % total_loop
+        
+        # Create a temp image that is TALLER than font to catch descenders (32px to be safe)
+        txt_img = Image.new("RGBA", (max_width, 32), (0,0,0,0))
+        d_txt = ImageDraw.Draw(txt_img)
+        
+        # Draw first copy (Cast coordinates to int to prevent rendering errors)
+        d_txt.text((int(-current_offset), 0), text, font=font, fill=color)
+        
+        # Draw second copy for seamless scrolling if the gap is visible
+        if (-current_offset + text_w) < max_width:
+             d_txt.text((int(-current_offset + total_loop), 0), text, font=font, fill=color)
+        
+        # Paste onto main image
+        canvas.paste(txt_img, (x, y), txt_img)
+
     def draw_music_card(self, game):
         # 384px wide fixed canvas
         img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
         
-        # Backend sends: home_abbr=Artist, away_abbr=Song, home_logo=Cover
-        artist = str(game.get('home_abbr', 'Unknown'))
-        song = str(game.get('away_abbr', 'Unknown'))
+        # Strip text to ensure accurate length measurement
+        artist = str(game.get('home_abbr', 'Unknown')).strip()
+        song = str(game.get('away_abbr', 'Unknown')).strip()
         cover_url = game.get('home_logo')
         
-        # Check explicit pause state from backend, or assume playing
+        # --- CONNECTION & PAUSE LOGIC ---
+        # 1. Check if user manually paused
         is_playing = game.get('is_playing', True)
-        # If the status string says "Paused", treat it as paused
         if "paused" in str(game.get('status', '')).lower(): is_playing = False
+        
+        # 2. Check if connection is lost (stale data > 5 seconds)
+        last_rx = game.get('_received_at', 0)
+        time_since_rx = time.time() - last_rx
+        if time_since_rx > 5.0:
+            is_playing = False # FORCE PAUSE IF DATA IS STALE
 
-        # Parse status "2:30 / 3:45"
+        # Parse duration
         status_str = str(game.get('status', '0:00 / 0:00'))
         parts = status_str.split(' / ')
         curr_str = parts[0] if len(parts) > 0 else "0:00"
         dur_str = parts[1] if len(parts) > 1 else "0:00"
         
-        # Convert duration to seconds for progress bar
         def time_to_sec(s):
             try:
                 m, sec = s.split(':')
@@ -432,18 +474,19 @@ class TickerStreamer:
         dt = now - self.last_frame_time
         self.last_frame_time = now
         
-        # ONLY UPDATE ROTATION AND SCROLL IF PLAYING
+        # ONLY ANIMATE IF PLAYING AND CONNECTION GOOD
         if is_playing:
             self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt)) % 360
             self.text_scroll_pos += (15.0 * dt)
+            # Reset scroll pos if it gets absurdly high to prevent float errors
+            if self.text_scroll_pos > 1000000: self.text_scroll_pos = 0
         
-        # 1. Update Cover & Vinyl Cache
+        # 1. Update Cover
         if cover_url != self.last_cover_url:
             self.last_cover_url = cover_url
             self.vinyl_cache = None
             if cover_url:
                 try:
-                    # Sync fetch here (in render thread) because this is a specific music mode
                     r = requests.get(cover_url, timeout=1)
                     raw = Image.open(io.BytesIO(r.content)).convert("RGBA")
                     self.extract_colors_and_spindle(raw)
@@ -459,76 +502,31 @@ class TickerStreamer:
             offset = (self.VINYL_SIZE - self.COVER_SIZE) // 2
             composite.paste(self.vinyl_cache, (offset, offset), self.vinyl_cache)
         
-        # Draw Border & Hole
-        # On 51x51 canvas, center is pixel 25.
-        # Box (22, 22, 28, 28) -> Center is 25. PERFECT.
         draw_comp = ImageDraw.Draw(composite)
         draw_comp.ellipse((22, 22, 28, 28), fill="#222")
         draw_comp.ellipse((23, 23, 27, 27), fill=self.spindle_color)
 
-        # Rotate around the true center
         rotated = composite.rotate(self.vinyl_rotation, resample=Image.Resampling.BICUBIC)
         img.paste(rotated, (4, -9), rotated)
 
-        # 3. Song Name (Scrolling)
+        # 3. Text Section
         TEXT_START_X = 60
-        # Increased width to fill space up to visualizer (248 - 60 = 188)
+        # Safe text area width before hitting visualizer
         TEXT_AREA_W = 188 
-        TEXT_AREA_H = 32
         
-        name_w = d.textlength(song, font=self.medium_font)
+        # Draw Song Name (y=0) - Pass 'img' (canvas), NOT 'd'
+        self.draw_scrolling_text(img, song, self.medium_font, TEXT_START_X, 0, TEXT_AREA_W, self.text_scroll_pos, "white")
         
-        if name_w > TEXT_AREA_W:
-            GAP = 50
-            total_loop = name_w + GAP
-            current_offset = self.text_scroll_pos % total_loop
-            
-            txt_img = Image.new("RGBA", (TEXT_AREA_W, TEXT_AREA_H), (0,0,0,0))
-            d_txt = ImageDraw.Draw(txt_img)
-            
-            d_txt.text((-current_offset, 0), song, font=self.medium_font, fill="white")
-            if (-current_offset + name_w) < TEXT_AREA_W:
-                d_txt.text((-current_offset + total_loop, 0), song, font=self.medium_font, fill="white")
-            
-            img.paste(txt_img, (TEXT_START_X, 0), txt_img)
-        else:
-            d.text((TEXT_START_X, 0), song, font=self.medium_font, fill="white")
-
-        # 4. Artist Name (Scrolling) - [FIXED]
+        # Draw Artist Name (y=16) - Pass 'img' (canvas), NOT 'd'
         self.draw_spotify_logo(d, TEXT_START_X, 15)
-        
-        ARTIST_X = TEXT_START_X + 16
-        ARTIST_W = 172 # Width available before visualizer
-        
-        art_w = d.textlength(artist, font=self.tiny)
-        
-        if art_w > ARTIST_W:
-            GAP = 40
-            total_loop_art = art_w + GAP
-            # Use same scroll position but different loop length
-            current_offset_art = self.text_scroll_pos % total_loop_art
-            
-            art_img = Image.new("RGBA", (ARTIST_W, 16), (0,0,0,0))
-            d_art = ImageDraw.Draw(art_img)
-            
-            # Draw scrolling artist
-            d_art.text((-current_offset_art, 1), artist, font=self.tiny, fill=(180, 180, 180))
-            if (-current_offset_art + art_w) < ARTIST_W:
-                d_art.text((-current_offset_art + total_loop_art, 1), artist, font=self.tiny, fill=(180, 180, 180))
-            
-            # Paste (adjust Y slightly for container)
-            img.paste(art_img, (ARTIST_X, 16), art_img)
-        else:
-            # Static draw if it fits
-            d.text((ARTIST_X, 17), artist, font=self.tiny, fill=(180, 180, 180))
+        self.draw_scrolling_text(img, artist, self.tiny, TEXT_START_X + 16, 17, 172, self.text_scroll_pos, (180, 180, 180))
 
-        # 5. Viz
+        # 5. Viz (Pass is_playing status)
         self.render_visualizer(d, 248, 6, 80, 20, is_playing=is_playing)
 
         # 6. Time & Bar
         remaining_seconds = max(0, total_dur - curr_dur)
         rem_str = f"- {remaining_seconds//60}:{remaining_seconds%60:02}"
-        
         w_time = d.textlength(rem_str, font=self.micro)
         d.text((PANEL_W - w_time - 5, 10), rem_str, font=self.micro, fill="white")
         
@@ -1272,7 +1270,10 @@ class TickerStreamer:
                 new_games = content.get('sports', [])
 
                 for idx, g in enumerate(new_games):
-                    if isinstance(g, dict): g['_orig_index'] = idx
+                    if isinstance(g, dict): 
+                        g['_orig_index'] = idx
+                        # [NEW] Add reception timestamp for stale check
+                        g['_received_at'] = time.time()
 
                 new_games.sort(key=lambda x: (self.get_game_start_key(x), x.get('_orig_index', 0), x.get('sport', ''), x.get('id', '')))
 
