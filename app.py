@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v0.82"
+SERVER_VERSION = "v0.83"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -2289,17 +2289,16 @@ class SportsFetcher:
             except Exception as e:
                 print(f"Fetcher error for {futures.get(f, 'unknown')}: {e}")
 
-        # Sorting: Clock -> Weather -> Active Games -> Final Games -> PPD
-        # Tie-breakers added (sport, id) to keep ordering stable when multiple games share the same start time
-        all_games.sort(key=lambda x: (
-            0 if x.get('type') == 'clock' else
-            1 if x.get('type') == 'weather' else
-            4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "ppd"]) else
-            3 if "FINAL" in str(x.get('status', '')).upper() else 2,
-            x.get('startTimeUTC', '9999'),
-            str(x.get('sport', '')),  # stabilizes ordering for same-time games (e.g., multiple soccer matches)
-            str(x.get('id', ''))
-        ))
+            # Look for this block around line 500:
+            all_games.sort(key=lambda x: (
+                0 if x.get('type') == 'clock' else
+                1 if x.get('type') == 'weather' else
+                4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "ppd"]) else
+                3 if "FINAL" in str(x.get('status', '')).upper() else 2,
+                str(x.get('startTimeUTC', '9999')), # Primary sort by time
+                str(x.get('sport', '')),           # Secondary sort by league
+                str(x.get('id', ''))                # FINAL tie-breaker for stability
+            ))
 
         with data_lock: 
             state['buffer_sports'] = all_games
@@ -2579,6 +2578,7 @@ def api_spotify():
     return jsonify(data)
 
 @app.route('/data', methods=['GET'])
+@app.route('/data', methods=['GET'])
 def get_ticker_data():
     ticker_id = request.args.get('id')
     
@@ -2614,11 +2614,15 @@ def get_ticker_data():
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
     
     visible_games = []
-    COLLISION_ABBRS = {'LV'} 
+    COLLISION_ABBRS = {'LV'} # For Lehigh Valley Phantoms specifically
 
     for g in raw_games:
         should_show = True
-        if current_mode == 'live' and g.get('state') not in ['in', 'half']: should_show = False
+        
+        # --- MODE FILTERING ---
+        if current_mode == 'live' and g.get('state') not in ['in', 'half']: 
+            should_show = False
+            
         elif current_mode == 'my_teams':
             sport = g.get('sport')
             h_abbr = str(g.get('home_abbr', '')).upper()
@@ -2634,9 +2638,18 @@ def get_ticker_data():
             
             if not (in_home or in_away): should_show = False
 
+        # --- RULE #4: CUSTOM CONTENT FILTERS (MODIFY THESE) ---
+        # Example: Hide games that are Postponed or Cancelled
         status_lower = str(g.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
             should_show = False
+
+        # Example: Hide soccer games that haven't started yet (keep the ticker clean)
+        if g.get('sport', '').startswith('soccer') and g.get('state') == 'pre':
+            # should_show = False # Uncomment to enable
+            pass
+
+        # --- END CUSTOM FILTERS ---
 
         if should_show:
             visible_games.append(g)
@@ -2644,11 +2657,10 @@ def get_ticker_data():
     # Construct the response config
     g_config = { "mode": current_mode }
     
-    # Handle Reboot Flag
+    # Handle Hardware Command Flags (Reboot/Update)
     if rec.get('reboot_requested', False):
         g_config['reboot'] = True
 
-    # Handle Update Flag (NEW)
     if rec.get('update_requested', False):
         g_config['update'] = True
         
@@ -2660,6 +2672,7 @@ def get_ticker_data():
         "content": { "sports": visible_games } 
     })
     
+    # Force the hardware NOT to cache this response so it stays live
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
