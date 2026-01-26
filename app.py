@@ -714,7 +714,6 @@ class StockFetcher:
         return res
 
 # ================= NEW: SPOTIFY FETCHER =================
-# ================= NEW: SPOTIFY FETCHER =================
 class SpotifyFetcher:
     def __init__(self):
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
@@ -761,8 +760,7 @@ class SpotifyFetcher:
             return self.waveform_cache[track_id]
             
         try:
-            # 2. Fetch Audio Analysis from Spotify
-            # We use the direct API here for maximum compatibility
+            # 2. Fetch Audio Analysis from DIRECT Spotify API
             url = f"https://api.spotify.com/v1/audio-analysis/{track_id}"
             
             r = self.session.get(
@@ -781,12 +779,9 @@ class SpotifyFetcher:
             if not segments: return []
             
             # 3. Process Waveform 
-            # We want to normalize the loudness (dB) into a 0-100 scale.
-            # Typical loudness is -60dB (silence) to 0dB (loud).
-            
             processed_wave = []
             
-            # Resample to a fixed size (e.g. 100 bars)
+            # Resample to ~100 bars
             target_samples = 100
             step = max(1, len(segments) // target_samples)
             
@@ -794,13 +789,8 @@ class SpotifyFetcher:
                 s = segments[i]
                 loudness = s.get('loudness_max', -60)
                 
-                # Normalize: Map -60...0 to 0...1
-                normalized = (loudness + 60) / 60
-                # Clamp between 0 and 1
-                normalized = max(0.0, min(1.0, normalized))
-                
-                # Scale to integer 0-100
-                val = int(normalized * 100)
+                # Normalize: Map -60...0 to 0...100
+                val = max(0, min(100, int((loudness + 60) * (100/60))))
                 processed_wave.append(val)
 
             print(f"✅ Generated Waveform: {len(processed_wave)} points for {track_id}")
@@ -808,7 +798,7 @@ class SpotifyFetcher:
             # Cache it
             self.waveform_cache[track_id] = processed_wave
             
-            # Keep cache clean (max 10 songs)
+            # Keep cache clean
             if len(self.waveform_cache) > 10:
                 self.waveform_cache.pop(next(iter(self.waveform_cache)))
                 
@@ -850,7 +840,7 @@ class SpotifyFetcher:
             tid = item.get('id')
             waveform = []
             
-            # Fetch Waveform if Track ID is valid
+            # Fetch Waveform
             if tid:
                 waveform = self.get_audio_analysis(tid)
 
