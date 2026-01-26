@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v7-waveform"
+SERVER_VERSION = "v8"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -2494,7 +2494,7 @@ def music_worker():
             # Silent fail to keep thread alive
             pass
             
-        time.sleep(1.0) # Fast update rate
+        time.sleep(0.5) # Fast update rate
 
 # ================= FLASK API =================
 app = Flask(__name__)
