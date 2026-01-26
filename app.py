@@ -7,6 +7,7 @@ import re
 import random
 import string
 import glob
+import base64
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from requests.adapters import HTTPAdapter
@@ -711,6 +712,111 @@ class StockFetcher:
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
         return res
+
+# ================= NEW: SPOTIFY FETCHER =================
+class SpotifyFetcher:
+    def __init__(self):
+        self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
+        self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+        self.refresh_token = os.getenv('SPOTIFY_REFRESH_TOKEN')
+        self.access_token = None
+        self.token_expiry = 0
+        self.session = requests.Session()
+        
+        if not self.refresh_token:
+            print("⚠️ Spotify: No Refresh Token found. Running in MOCK mode.")
+
+    def _refresh_access_token(self):
+        """Exchanges the refresh token for a new short-lived access token."""
+        if not all([self.client_id, self.client_secret, self.refresh_token]): 
+            return False
+        
+        # Spotify requires Basic Auth with Client ID:Secret encoded
+        auth_str = f"{self.client_id}:{self.client_secret}"
+        b64_auth = base64.b64encode(auth_str.encode()).decode()
+        
+        try:
+            # Official Spotify Token Endpoint
+            r = self.session.post(
+                "https://accounts.spotify.com/api/token",
+                data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
+                headers={"Authorization": f"Basic {b64_auth}"},
+                timeout=5
+            )
+            
+            if r.status_code == 200:
+                data = r.json()
+                self.access_token = data['access_token']
+                # Token usually expires in 3600s (1 hour). Refresh 60s early to be safe.
+                self.token_expiry = time.time() + data.get('expires_in', 3600) - 60
+                return True
+            else:
+                print(f"Spotify Refresh Failed: {r.status_code} - {r.text}")
+        except Exception as e:
+            print(f"Spotify Auth Connection Error: {e}")
+        return False
+
+    def get_now_playing(self):
+        """Fetches the currently playing song from Spotify."""
+        
+        # --- MOCK MODE (For testing without keys) ---
+        if not self.refresh_token:
+            # Returns a fake song (Pink Floyd - Money) to test the UI
+            duration = 382.0 
+            return {
+                "is_playing": True, 
+                "name": "Money", 
+                "artist": "Pink Floyd",
+                "cover": "https://i.scdn.co/image/ab67616d0000b273ea7caaff71dea1051d49b2fe",
+                "duration": duration,
+                "progress": (time.time() % duration)
+            }
+
+        # --- REAL PRODUCTION MODE ---
+        # 1. Check if token is expired (or missing) and refresh if needed
+        if not self.access_token or time.time() > self.token_expiry:
+            if not self._refresh_access_token(): 
+                return None
+
+        try:
+            # 2. Call Spotify API
+            r = self.session.get(
+                "https://api.spotify.com/v1/me/player/currently-playing",
+                headers={"Authorization": f"Bearer {self.access_token}"},
+                timeout=3
+            )
+            
+            # 204 means content was successful but returned no content (User is paused/stopped)
+            if r.status_code == 204: 
+                return {"is_playing": False} 
+            
+            if r.status_code != 200: 
+                # Token might have been revoked or some other error
+                print(f"Spotify API Error: {r.status_code}")
+                return None
+            
+            data = r.json()
+            item = data.get('item')
+            
+            # Handle cases like Podcasts where 'item' structure is different or missing
+            if not item or data.get('currently_playing_type') != 'track': 
+                return {"is_playing": False} 
+
+            # 3. Format data for the Ticker
+            return {
+                "is_playing": data.get('is_playing', False),
+                "name": item.get('name'),
+                # Join multiple artists with commas
+                "artist": ", ".join(a['name'] for a in item.get('artists', [])),
+                # Get the first (largest) album cover
+                "cover": item['album']['images'][0]['url'] if item['album']['images'] else "",
+                # Convert milliseconds to seconds
+                "duration": item.get('duration_ms', 0) / 1000.0,
+                "progress": data.get('progress_ms', 0) / 1000.0
+            }
+        except Exception as e:
+            print(f"Spotify Fetch Error: {e}")
+            return None
 
 class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
@@ -2279,6 +2385,8 @@ fetcher = SportsFetcher(
     initial_lon=state['weather_lon']
 )
 
+spotify_fetcher = SpotifyFetcher()
+
 # ========================================================
 # FIX #2: DRIFT CORRECTION LOOP
 # ========================================================
@@ -2415,6 +2523,17 @@ def get_league_options():
              'enabled': state['active_sports'].get(item['id'], False)
          })
     return jsonify(league_meta)
+
+@app.route('/api/spotify/now', methods=['GET'])
+def api_spotify():
+    """Endpoint for the ticker client to get current song info"""
+    data = spotify_fetcher.get_now_playing()
+    
+    # If something went wrong or nothing is playing, return a safe default
+    if not data: 
+        return jsonify({"is_playing": False})
+        
+    return jsonify(data)
 
 @app.route('/data', methods=['GET'])
 def get_ticker_data():

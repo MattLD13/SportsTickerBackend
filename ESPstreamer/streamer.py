@@ -22,24 +22,26 @@ HORNS_DIR = "horns"
 def upload_and_play(ip, filename):
     print(f"\n[JOB START] Processing: {filename}")
     filepath = os.path.join(HORNS_DIR, filename)
-    temp_path = "temp_stream.mp3"
+    temp_path = "temp_hq.mp3"
 
     try:
-        # 1. CONVERT
+        # 1. CONVERT (High Quality for ESP32-S3)
         print(">> Converting audio...")
         audio = AudioSegment.from_mp3(filepath)
-
-        # FORCE MONO and LOWER SAMPLE RATE (Critical for ESP8266)
-        # 22050Hz is the sweet spot: sounds good, but easy to decode.
-        audio = audio.set_channels(1).set_frame_rate(22050) 
-        audio.export(temp_path, format="mp3", bitrate="64k") # 64k is plenty for horns
+        
+        # ESP32-S3 supports 44100Hz perfectly!
+        # Mono is still best for I2S amps unless you have a stereo decoder board.
+        audio = audio.set_channels(1).set_frame_rate(44100) 
+        
+        # 128k bitrate is much better quality than 32k/64k
+        audio.export(temp_path, format="mp3", bitrate="128k") 
 
         # 2. UPLOAD
         print(f">> Uploading to {ip}...")
         with open(temp_path, 'rb') as f:
             files = {'file': ('current.mp3', f, 'audio/mpeg')}
             try:
-                # 10s connect timeout, 60s read timeout
+                # 10s connect, 60s read timeout
                 r = requests.post(f"http://{ip}/upload", files=files, timeout=(10, 60))
                 if r.status_code != 200:
                     print(f"[ERROR] Upload failed: {r.status_code}")
@@ -54,7 +56,7 @@ def upload_and_play(ip, filename):
             requests.get(f"http://{ip}/play", timeout=3)
             print("[SUCCESS] Playing!")
         except:
-            pass # Ignore timeout on play command (it happens)
+            pass 
 
     except Exception as e:
         print(f"[CRITICAL ERROR] {e}")
