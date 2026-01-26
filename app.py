@@ -2909,7 +2909,4 @@ if __name__ == "__main__":
     # - Sports Worker (5.0s) starts inside SportsFetcher.__init__
     
     print("✅ All Workers Started. Server is ready.")
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000))) __name__ == "__main__":
-    threading.Thread(target=sports_worker, daemon=True).start()
-    threading.Thread(target=stocks_worker, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
