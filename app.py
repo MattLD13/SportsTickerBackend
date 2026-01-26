@@ -724,10 +724,9 @@ class SpotifyFetcher:
         self._lock = threading.Lock()
         self._running = True
         
+        # State
         self.access_token = None
         self.token_expiry = 0
-        
-        # State
         self._current_track_id = None
         self._cached_analysis = [] 
         self._latest_playback = {"is_playing": False}
@@ -741,7 +740,7 @@ class SpotifyFetcher:
         """Zero-latency read for the API endpoint"""
         with self._lock:
             payload = self._latest_playback.copy()
-            # CRITICAL: If analysis is empty, generate a fallback on the fly
+            # If we have a track ID but no waveform yet, generate a fallback immediately
             if not self._cached_analysis and payload.get('id'):
                 self._cached_analysis = self._generate_fallback(payload['id'])
             
@@ -752,45 +751,40 @@ class SpotifyFetcher:
         print("🚀 Spotify Background Processor Started")
         while self._running:
             try:
-                # 1. Get Playback State
+                # 1. Get Playback State (Lightweight)
                 playback = self._fetch_playback_state()
                 
                 if playback:
                     tid = playback.get('id')
                     
-                    # 2. If Track Changed, Fetch Analysis
+                    # 2. If Track Changed, Fetch & Process ENTIRE Analysis (Heavy)
                     if tid and tid != self._current_track_id:
-                        print(f"🎵 New Track: {playback.get('name')}... Fetching Analysis")
+                        print(f"🎵 New Track: {playback.get('name')}")
                         analysis = self._fetch_and_process_analysis(tid, playback['duration'])
                         
                         if not analysis:
-                             print(f"⚠️ Analysis Failed. Generating Fallback for {tid}")
+                             # Generate fallback if API fails so the visualizer never breaks
                              analysis = self._generate_fallback(tid)
-                        else:
-                             print(f"✅ Analysis Loaded: {len(analysis)} bars")
 
                         with self._lock:
                             self._current_track_id = tid
                             self._cached_analysis = analysis
                             self._latest_playback = playback
                     else:
-                        # Just update progress
+                        # Just update progress/status
                         with self._lock:
                             self._latest_playback = playback
-                            # Ensure waveform persists
-                            if not self._cached_analysis and tid:
-                                self._cached_analysis = self._generate_fallback(tid)
                             
             except Exception as e:
                 print(f"Spotify Worker Error: {e}")
             
+            # Poll interval (1.2s is optimal for rate limits)
             time.sleep(1.2)
 
     def _refresh_access_token(self):
         if not self.refresh_token: return False
         try:
             auth = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
-            # OFFICIAL TOKEN URL
             r = self.session.post(
                 "https://accounts.spotify.com/api/token",
                 data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
@@ -801,15 +795,12 @@ class SpotifyFetcher:
                 self.access_token = d['access_token']
                 self.token_expiry = time.time() + d.get('expires_in', 3600) - 60
                 return True
-            else:
-                print(f"Token Refresh Failed: {r.text}")
         except: pass
         return False
 
     def _fetch_playback_state(self):
         if time.time() > self.token_expiry: self._refresh_access_token()
         try:
-            # OFFICIAL PLAYER URL
             r = self.session.get(
                 "https://api.spotify.com/v1/me/player/currently-playing",
                 headers={"Authorization": f"Bearer {self.access_token}"}, timeout=3
@@ -833,20 +824,19 @@ class SpotifyFetcher:
         except: return None
 
     def _fetch_and_process_analysis(self, track_id, duration_sec):
+        """Fetches full analysis and approximates 3-band EQ"""
         try:
-            # OFFICIAL ANALYSIS URL
             r = self.session.get(
                 f"https://api.spotify.com/v1/audio-analysis/{track_id}",
                 headers={"Authorization": f"Bearer {self.access_token}"}, timeout=5
             )
-            if r.status_code != 200: 
-                print(f"Analysis API Error {r.status_code}: {r.text[:50]}")
-                return []
+            if r.status_code != 200: return []
             
             data = r.json()
             segments = data.get('segments', [])
             if not segments: return []
 
+            # Downsample to fixed resolution (100 bars)
             TARGET_RES = 100 
             processed = []
             
@@ -858,6 +848,8 @@ class SpotifyFetcher:
             
             for i in range(TARGET_RES):
                 time_point = i * step_size
+                
+                # Fast-forward to correct segment
                 while cur_idx < n_segs - 1:
                     if time_point < (segments[cur_idx]['start'] + segments[cur_idx]['duration']): break
                     cur_idx += 1
@@ -867,47 +859,37 @@ class SpotifyFetcher:
                 timbre = seg.get('timbre', [0,0,0]) 
                 brightness = timbre[0] if len(timbre) > 0 else 0
                 
-                # Normalize Energy
+                # Base energy (0-100)
                 energy = max(0, min(100, int((loudness + 60) * 1.666)))
                 
-                # --- 3-BAND SEPARATION LOGIC ---
-                # Bass: Boost if brightness is low
+                # 1. BASS: High energy + Low brightness
                 bass_boost = max(0, (40 - brightness)) 
                 bass_val = min(100, energy + (bass_boost * 0.5))
                 
-                # Mids: Pure energy
+                # 2. MIDS: Raw energy
                 mid_val = energy
                 
-                # Highs: Boost if brightness is high
+                # 3. HIGHS: Correlates with brightness
                 high_boost = max(0, brightness - 20)
                 high_val = min(100, (energy * 0.6) + high_boost)
                 
-                # Visual Separation (Avoid all bars being equal)
+                # Separation logic
                 if bass_val > high_val: high_val *= 0.7
                 if high_val > bass_val: bass_val *= 0.8
 
                 processed.append([int(bass_val), int(mid_val), int(high_val)])
                 
             return processed
-        except Exception as e:
-            print(f"Analysis Proc Error: {e}")
-            return []
+        except: return []
 
     def _generate_fallback(self, track_id):
-        """Generates a consistent 3-band waveform based on track ID seed"""
-        # Seed random with track ID so the "fake" waveform is always the same for this song
-        seed_val = sum(ord(c) for c in track_id) if track_id else 0
-        random.seed(seed_val)
-        
+        """Generates consistent fake waveform if API fails"""
+        seed = sum(ord(c) for c in track_id) if track_id else 0
+        random.seed(seed)
         fallback = []
         for _ in range(100):
-            # Create semi-realistic movement
-            b = random.randint(20, 90)
-            m = random.randint(20, 90)
-            h = random.randint(10, 70)
-            fallback.append([b, m, h])
-            
-        random.seed() # Reset seed
+            fallback.append([random.randint(20, 90), random.randint(20, 90), random.randint(10, 70)])
+        random.seed()
         return fallback
 
 class SportsFetcher:
@@ -2618,15 +2600,8 @@ def get_league_options():
 
 @app.route('/api/spotify/now', methods=['GET'])
 def api_spotify():
-    # OLD WAY (SLOW): data = spotify_fetcher.get_now_playing()
-    
-    # NEW WAY (INSTANT):
+    # Use the new instant-read method
     data = spotify_fetcher.get_cached_state()
-    
-    # Calculate simulated live progress
-    # (Since the cache might be 0.5s old, we can extrapolate slightly if needed, 
-    # but for safety, just returning the raw cache is usually fine)
-    
     return jsonify(data)
 
 @app.route('/data', methods=['GET'])
