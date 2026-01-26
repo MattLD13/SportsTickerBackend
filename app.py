@@ -2163,41 +2163,35 @@ class SportsFetcher:
             w = self.weather.get_weather()
             if w: all_games.append(w)
 
-        if conf['active_sports'].get('music'):
+        if conf['active_sports'].get('music', False):
             try:
                 s_data = spotify_fetcher.get_cached_state()
                 if s_data and s_data.get('is_playing'):
-                    # Format seconds to MM:SS
+                    # Calculate timestamps (e.g., 2:30 / 3:45)
                     cur_m, cur_s = divmod(int(s_data.get('progress', 0)), 60)
                     tot_m, tot_s = divmod(int(s_data.get('duration', 0)), 60)
-                    time_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
+                    status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
 
-                    # Map Artist/Song to Home/Away fields for the ticker
                     music_obj = {
-                        'type': 'music',         # Unique type for frontend handling
-                        'sport': 'music',        # Category
-                        'id': 'spotify_now',     # Static ID
-                        'status': time_str,      # Shows as time in the corner
-                        'state': 'in',           # 'in' means active/playing
+                        'type': 'music',         # Special type
+                        'sport': 'music',        # Category for filtering
+                        'id': 'spotify_now',     # Constant ID
+                        'status': status_str,
+                        'state': 'in',           # 'in' = Active
                         'is_shown': True,
                         
-                        # Primary Text (Artist)
-                        'home_abbr': s_data.get('artist', 'Unknown')[:10], 
-                        'home_score': '',        # No score
+                        # Use Home/Away fields for Artist/Song
+                        'home_abbr': s_data.get('artist', 'Unknown')[:12], 
+                        'home_score': '',        
                         'home_logo': s_data.get('cover', ''),
                         
-                        # Secondary Text (Song)
-                        'away_abbr': s_data.get('name', '')[:10],
+                        'away_abbr': s_data.get('name', '')[:12],
                         'away_score': '',
-                        'away_logo': '',         # Optional: spotify icon
+                        'away_logo': 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
                         
                         'home_color': '#1DB954', # Spotify Green
                         'away_color': '#FFFFFF',
-                        'situation': {
-                            'full_artist': s_data.get('artist'),
-                            'full_title': s_data.get('name'),
-                            'is_playing': True
-                        }
+                        'situation': {}
                     }
                     all_games.append(music_obj)
             except Exception as e:
@@ -2350,7 +2344,6 @@ class SportsFetcher:
             stocks_snap = state.get('buffer_stocks', [])
             mode = state['mode']
         
-        # [MODIFIED] Filter logic
         utils = [g for g in sports_snap if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
         pure_sports = [g for g in sports_snap if g not in utils]
         
@@ -2358,7 +2351,7 @@ class SportsFetcher:
         elif mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
         
-        # [NEW]
+        # [NEW] Return ONLY music when mode is music
         elif mode == 'music': return [g for g in utils if g.get('sport') == 'music']
         
         elif mode in ['sports', 'live', 'my_teams']: return pure_sports
@@ -2385,23 +2378,30 @@ class SportsFetcher:
         sports_buffer = state.get('buffer_sports', [])
         stocks_buffer = state.get('buffer_stocks', [])
         
-        # [MODIFIED] Include 'music' in utils list
+        # Identify Utility Types
         utils = [g for g in sports_buffer if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
+        
+        # Pure sports excludes music/weather/clock
         pure_sports = [g for g in sports_buffer if g not in utils]
 
-        if mode == 'stocks': final_list = stocks_buffer
-        elif mode == 'weather': final_list = [g for g in utils if g.get('type') == 'weather']
-        elif mode == 'clock': final_list = [g for g in utils if g.get('sport') == 'clock']
-        
-        # [NEW] Handle Music Mode
-        elif mode == 'music': final_list = [g for g in utils if g.get('sport') == 'music']
-        
-        elif mode in ['sports', 'live', 'my_teams']: final_list = pure_sports
-        # [MODIFIED] 'all' mode should probably include playing music if active
-        elif mode == 'all': 
-            final_list = pure_sports + [g for g in utils if g.get('sport') == 'music']
+        if mode == 'stocks': 
+            final_list = stocks_buffer
+        elif mode == 'weather': 
+            final_list = [g for g in utils if g.get('type') == 'weather']
+        elif mode == 'clock': 
+            final_list = [g for g in utils if g.get('sport') == 'clock']
             
-        else: final_list = pure_sports
+        # [NEW] Strict Isolation for Music Mode
+        elif mode == 'music': 
+            final_list = [g for g in utils if g.get('sport') == 'music']
+        
+        # 'all' / 'sports' modes ONLY show pure sports (plus maybe clock if you want)
+        # Music is EXCLUDED here, just like stocks/weather are excluded.
+        elif mode in ['sports', 'live', 'my_teams', 'all']: 
+            final_list = pure_sports
+            
+        else: 
+            final_list = pure_sports
 
         state['current_games'] = final_list
 
