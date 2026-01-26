@@ -746,13 +746,13 @@ class SpotifyFetcher:
             try:
                 if time.time() > self.token_expiry: self._refresh_access_token()
                 
-                # FIXED: Updated URL to official Spotify API
+                # --- CHANGE 1: CORRECT API ENDPOINT ---
                 r = self.session.get(
                     "https://api.spotify.com/v1/me/player/currently-playing",
                     headers={"Authorization": f"Bearer {self.access_token}"}, timeout=2
                 )
                 
-                # FIXED: Handle 204 No Content (Not Playing) to avoid JSON decode errors
+                # Spotify returns 204 if nothing is active/playing
                 if r.status_code == 204:
                     with self._lock: self._latest_playback = {"is_playing": False}
 
@@ -774,7 +774,8 @@ class SpotifyFetcher:
                         with self._lock: self._latest_playback = {"is_playing": False}
                         
             except Exception as e:
-                print(f"Spotify Poll Error: {e}")
+                # print(f"Spotify Poll Error: {e}") # Optional: silence errors to keep logs clean
+                pass
             
             time.sleep(1.0) # Poll every 1s
 
@@ -782,7 +783,8 @@ class SpotifyFetcher:
         if not self.refresh_token: return False
         try:
             auth = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
-            # FIXED: Updated URL to official Spotify Accounts API
+            
+            # --- CHANGE 2: CORRECT TOKEN ENDPOINT ---
             r = self.session.post(
                 "https://accounts.spotify.com/api/token",
                 data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
@@ -793,7 +795,10 @@ class SpotifyFetcher:
                 self.access_token = d['access_token']
                 self.token_expiry = time.time() + d.get('expires_in', 3600) - 60
                 return True
-        except: pass
+            else:
+                print(f"Spotify Token Error: {r.status_code} {r.text}")
+        except Exception as e:
+            print(f"Spotify Auth Exception: {e}")
         return False
 
 class SportsFetcher:
