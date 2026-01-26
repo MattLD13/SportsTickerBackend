@@ -263,7 +263,8 @@ default_state = {
     'weather_lat': 40.7128,
     'weather_lon': -74.0060,
     'utc_offset': -5,
-    'show_debug_options': False 
+    'show_debug_options': False,
+    'music_toggle_time': 0  # Track when music was last toggled to prevent rapid flips
 }
 
 DEFAULT_TICKER_SETTINGS = {
@@ -2497,7 +2498,22 @@ def api_config():
 
                 # HANDLE ACTIVE SPORTS
                 if k == 'active_sports' and isinstance(v, dict): 
-                    state['active_sports'].update(v)
+                    # Add debounce for music toggle to prevent rapid oscillation
+                    # Only allow music state to change if 2+ seconds have passed since last toggle
+                    if 'music' in v:
+                        current_time = time.time()
+                        last_toggle_time = state.get('music_toggle_time', 0)
+                        if current_time - last_toggle_time >= 2.0:
+                            state['active_sports']['music'] = v['music']
+                            state['music_toggle_time'] = current_time
+                            print(f"[MUSIC] Toggle to {v['music']} (debounced)")
+                        else:
+                            print(f"[MUSIC] Toggle blocked by debounce ({current_time - last_toggle_time:.1f}s / 2.0s)")
+                        # Remove music from v so it doesn't get processed twice
+                        v = {k2: v2 for k2, v2 in v.items() if k2 != 'music'}
+                    
+                    if v:  # Only update if there are other items after removing music
+                        state['active_sports'].update(v)
                     continue
                 
                 # HANDLE MODES & SETTINGS
