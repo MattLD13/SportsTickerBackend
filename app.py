@@ -2153,42 +2153,42 @@ class SportsFetcher:
         return local_games
 
     def get_music_object(self):
-    if not state['active_sports'].get('music', False):
-        return None
-
-    try:
-        # 1. Call the same logic used in the API route
-        s_data = spotify_fetcher.get_cached_state()
-        
-        if s_data and s_data.get('is_playing'):
-            # 2. Local calculation for the ticker display
-            time_since_fetch = time.time() - s_data.get('last_fetch_ts', time.time())
-            current_progress = s_data['progress'] + time_since_fetch
-            
-            # Formatting (e.g., 2:30 / 3:45)
-            cur_m, cur_s = divmod(int(current_progress), 60)
-            tot_m, tot_s = divmod(int(s_data.get('duration', 0)), 60)
-            status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
-
-            return {
-                'type': 'music',
-                'sport': 'music',
-                'id': 'spotify_now',
-                'status': status_str,
-                'state': 'in',
-                'is_shown': True,
-                'home_abbr': s_data.get('artist', 'Unknown')[:12],
-                'home_logo': s_data.get('cover', ''),
-                'away_abbr': s_data.get('name', 'Unknown')[:12],
-                'away_logo': 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
-                'home_color': '#1DB954',
-                'away_color': '#FFFFFF',
-                'situation': {}
-            }
-    except Exception as e:
-        print(f"Music Gen Error: {e}")
+        if not state['active_sports'].get('music', False):
+            return None
     
-    return None
+        try:
+            # 1. Call the same logic used in the API route
+            s_data = spotify_fetcher.get_cached_state()
+            
+            if s_data and s_data.get('is_playing'):
+                # 2. Local calculation for the ticker display
+                time_since_fetch = time.time() - s_data.get('last_fetch_ts', time.time())
+                current_progress = s_data['progress'] + time_since_fetch
+                
+                # Formatting (e.g., 2:30 / 3:45)
+                cur_m, cur_s = divmod(int(current_progress), 60)
+                tot_m, tot_s = divmod(int(s_data.get('duration', 0)), 60)
+                status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
+    
+                return {
+                    'type': 'music',
+                    'sport': 'music',
+                    'id': 'spotify_now',
+                    'status': status_str,
+                    'state': 'in',
+                    'is_shown': True,
+                    'home_abbr': s_data.get('artist', 'Unknown')[:12],
+                    'home_logo': s_data.get('cover', ''),
+                    'away_abbr': s_data.get('name', 'Unknown')[:12],
+                    'away_logo': 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
+                    'home_color': '#1DB954',
+                    'away_color': '#FFFFFF',
+                    'situation': {}
+                }
+        except Exception as e:
+            print(f"Music Gen Error: {e}")
+        
+        return None
 
     def update_buffer_sports(self):
         all_games = []
