@@ -737,6 +737,7 @@ class SpotifyFetcher:
         b64_auth = base64.b64encode(auth_str.encode()).decode()
         
         try:
+            # Official Spotify Token Endpoint
             r = self.session.post(
                 "https://accounts.spotify.com/api/token",
                 data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
@@ -746,6 +747,7 @@ class SpotifyFetcher:
             if r.status_code == 200:
                 data = r.json()
                 self.access_token = data['access_token']
+                # Token usually lasts 3600s, refresh 60s early
                 self.token_expiry = time.time() + data.get('expires_in', 3600) - 60
                 return True
             else:
@@ -754,13 +756,15 @@ class SpotifyFetcher:
             print(f"Spotify Auth Exception: {e}")
         return False
 
-    def get_audio_analysis(self, track_id):
+    def get_audio_analysis(self, track_id, track_duration_sec):
         # 1. Return cached if available
         if track_id in self.waveform_cache:
             return self.waveform_cache[track_id]
             
         try:
-            # 2. Fetch Audio Analysis from DIRECT Spotify API
+            if not self.access_token: return []
+
+            # 2. Fetch Audio Analysis from Spotify API
             url = f"https://api.spotify.com/v1/audio-analysis/{track_id}"
             
             r = self.session.get(
@@ -770,7 +774,7 @@ class SpotifyFetcher:
             )
             
             if r.status_code != 200:
-                print(f"⚠️ Analysis HTTP Error {r.status_code}: {r.text[:50]}")
+                print(f"⚠️ Analysis HTTP Error {r.status_code}")
                 return []
 
             data = r.json()
@@ -778,28 +782,52 @@ class SpotifyFetcher:
             
             if not segments: return []
             
-            # 3. Process Waveform 
+            # 3. Process Waveform (Time-based Sampling)
             processed_wave = []
+            TARGET_BARS = 100
             
-            # Resample to ~100 bars
-            target_samples = 100
-            step = max(1, len(segments) // target_samples)
+            if track_duration_sec <= 0:
+                track_duration_sec = data.get('track', {}).get('duration', 180)
+
+            # Calculate time step per bar
+            step_duration = track_duration_sec / TARGET_BARS
             
-            for i in range(0, len(segments), step):
-                s = segments[i]
-                loudness = s.get('loudness_max', -60)
+            current_seg_idx = 0
+            total_segments = len(segments)
+
+            for i in range(TARGET_BARS):
+                # Calculate the timestamp for this bar
+                target_time = i * step_duration
+                
+                # Advance segment index until we find the segment covering target_time
+                while current_seg_idx < total_segments - 1:
+                    seg = segments[current_seg_idx]
+                    seg_end = seg['start'] + seg['duration']
+                    if target_time < seg_end:
+                        break
+                    current_seg_idx += 1
+                
+                # Get the segment at this time
+                active_seg = segments[current_seg_idx]
+                
+                # Extract loudness (typically -60dB to 0dB)
+                loudness = active_seg.get('loudness_max', -60)
                 
                 # Normalize: Map -60...0 to 0...100
-                val = max(0, min(100, int((loudness + 60) * (100/60))))
+                # Formula: (loudness + 60) * (100 / 60)
+                # Any loudness below -60 becomes 0, above 0 clips to 100
+                normalized = (loudness + 60) * 1.666
+                val = max(0, min(100, int(normalized)))
+                
                 processed_wave.append(val)
 
-            print(f"✅ Generated Waveform: {len(processed_wave)} points for {track_id}")
+            print(f"✅ Generated Waveform: {len(processed_wave)} bars for {track_id}")
             
             # Cache it
             self.waveform_cache[track_id] = processed_wave
             
-            # Keep cache clean
-            if len(self.waveform_cache) > 10:
+            # Keep cache clean (limit to 20 tracks)
+            if len(self.waveform_cache) > 20:
                 self.waveform_cache.pop(next(iter(self.waveform_cache)))
                 
             return processed_wave
@@ -809,20 +837,21 @@ class SpotifyFetcher:
             return []
 
     def get_now_playing(self):
-        # MOCK MODE
+        # MOCK MODE check
         if not self.refresh_token:
             return {
                 "is_playing": True, "name": "Money", "artist": "Pink Floyd",
                 "cover": "https://i.scdn.co/image/ab67616d0000b273ea7caaff71dea1051d49b2fe",
                 "duration": 382.0, "progress": (time.time() % 382), 
-                "waveform": [random.randint(10,90) for _ in range(50)]
+                "waveform": [random.randint(10,90) for _ in range(100)]
             }
 
-        # REAL MODE
+        # Token Refresh Check
         if time.time() > self.token_expiry:
             if not self._refresh_access_token(): return None
 
         try:
+            # Official Currently Playing Endpoint
             r = self.session.get(
                 "https://api.spotify.com/v1/me/player/currently-playing",
                 headers={"Authorization": f"Bearer {self.access_token}"},
@@ -838,18 +867,19 @@ class SpotifyFetcher:
 
             # Identify Track
             tid = item.get('id')
+            duration_sec = item.get('duration_ms', 0) / 1000.0
             waveform = []
             
-            # Fetch Waveform
+            # Fetch Waveform if we have an ID
             if tid:
-                waveform = self.get_audio_analysis(tid)
+                waveform = self.get_audio_analysis(tid, duration_sec)
 
             return {
                 "is_playing": data.get('is_playing', False),
                 "name": item.get('name'),
                 "artist": ", ".join(a['name'] for a in item.get('artists', [])),
-                "cover": item['album']['images'][0]['url'] if item['album']['images'] else "",
-                "duration": item.get('duration_ms', 0) / 1000.0,
+                "cover": item['album']['images'][0]['url'] if item.get('album', {}).get('images') else "",
+                "duration": duration_sec,
                 "progress": data.get('progress_ms', 0) / 1000.0,
                 "waveform": waveform
             }
