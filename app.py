@@ -721,58 +721,43 @@ class SpotifyFetcher:
         self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
         self.refresh_token = os.getenv('SPOTIFY_REFRESH_TOKEN')
         self.session = requests.Session()
-        
         self._lock = threading.Lock()
         self._running = True
         self.access_token = None
         self.token_expiry = 0
-        
-        # Simple State (No Analysis)
         self._latest_playback = {"is_playing": False}
         
         if self.refresh_token:
             threading.Thread(target=self._background_worker, daemon=True).start()
-        else:
-            print("⚠️ Spotify: No Refresh Token. Mock Mode.")
 
     def get_cached_state(self):
-        """Instant read of playback status"""
         with self._lock:
             return self._latest_playback.copy()
 
     def _background_worker(self):
-        print("🚀 Spotify Poller Started")
-        while self._running:
-            sleep_time = 3.0 # Default poll rate (3 seconds)
+        # Poll every 5 seconds instead of 1.
+        # This keeps us safe from the 429 "penalty box".
+        POLL_INTERVAL = 5.0 
 
+        while self._running:
             try:
-                if time.time() > self.token_expiry: 
-                    if not self._refresh_access_token():
-                        time.sleep(10) # Wait if token refresh fails
-                        continue
+                if time.time() > self.token_expiry: self._refresh_access_token()
                 
-                # USE OFFICIAL SPOTIFY URL
+                # Correct Web API URL
                 r = self.session.get(
                     "https://api.spotify.com/v1/me/player/currently-playing",
-                    headers={"Authorization": f"Bearer {self.access_token}"}, 
-                    timeout=2
+                    headers={"Authorization": f"Bearer {self.access_token}"}, timeout=2
                 )
                 
                 if r.status_code == 429:
-                    # RATE LIMIT HIT: Slow down significantly
-                    retry_after = int(r.headers.get('Retry-After', 10))
-                    print(f"⚠️ Spotify Rate Limit (429). Sleeping {retry_after}s...")
-                    time.sleep(retry_after)
+                    wait_time = int(r.headers.get('Retry-After', 30))
+                    print(f"🛑 429 Rate Limit! Waiting {wait_time}s...")
+                    time.sleep(wait_time)
                     continue
 
-                elif r.status_code == 204:
-                    # Nothing playing
-                    with self._lock: self._latest_playback = {"is_playing": False}
-
-                elif r.status_code == 200:
+                if r.status_code == 200:
                     d = r.json()
                     item = d.get('item')
-                    
                     if item:
                         payload = {
                             "is_playing": d.get('is_playing', False),
@@ -781,22 +766,21 @@ class SpotifyFetcher:
                             "cover": item['album']['images'][0]['url'] if item.get('album',{}).get('images') else "",
                             "duration": item.get('duration_ms', 0) / 1000.0,
                             "progress": d.get('progress_ms', 0) / 1000.0,
+                            "last_fetch_ts": time.time()  # KEY: Record the timestamp of this fetch
                         }
                         with self._lock: self._latest_playback = payload
-                    else:
-                        with self._lock: self._latest_playback = {"is_playing": False}
-                        
+                elif r.status_code == 204:
+                    with self._lock: self._latest_playback = {"is_playing": False}
+
             except Exception as e:
                 print(f"Spotify Poll Error: {e}")
             
-            time.sleep(sleep_time)
+            time.sleep(POLL_INTERVAL)
 
     def _refresh_access_token(self):
         if not self.refresh_token: return False
         try:
             auth = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
-            
-            # USE OFFICIAL TOKEN URL
             r = self.session.post(
                 "https://accounts.spotify.com/api/token",
                 data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
@@ -807,10 +791,7 @@ class SpotifyFetcher:
                 self.access_token = d['access_token']
                 self.token_expiry = time.time() + d.get('expires_in', 3600) - 60
                 return True
-            else:
-                print(f"Spotify Token Error: {r.status_code} {r.text}")
-        except Exception as e:
-            print(f"Spotify Auth Exception: {e}")
+        except: pass
         return False
 
 class SportsFetcher:
@@ -2172,45 +2153,42 @@ class SportsFetcher:
         return local_games
 
     def get_music_object(self):
-        # check global state directly to avoid passing args
-        if not state['active_sports'].get('music', False):
-            return None
-
-        try:
-            # Access the global spotify_fetcher instance
-            s_data = spotify_fetcher.get_cached_state()
-            
-            if s_data and s_data.get('is_playing'):
-                # Calculate timestamps (e.g., 2:30 / 3:45)
-                cur_m, cur_s = divmod(int(s_data.get('progress', 0)), 60)
-                tot_m, tot_s = divmod(int(s_data.get('duration', 0)), 60)
-                status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
-
-                return {
-                    'type': 'music',         # Special type
-                    'sport': 'music',        # Category for filtering
-                    'id': 'spotify_now',     # Constant ID
-                    'status': status_str,
-                    'state': 'in',           # 'in' = Active
-                    'is_shown': True,
-                    
-                    # Use Home/Away fields for Artist/Song
-                    'home_abbr': s_data.get('artist', 'Unknown')[:12], 
-                    'home_score': '',        
-                    'home_logo': s_data.get('cover', ''),
-                    
-                    'away_abbr': s_data.get('name', '')[:12],
-                    'away_score': '',
-                    'away_logo': 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
-                    
-                    'home_color': '#1DB954', # Spotify Green
-                    'away_color': '#FFFFFF',
-                    'situation': {}
-                }
-        except Exception as e:
-            print(f"Music Gen Error: {e}")
-        
+    if not state['active_sports'].get('music', False):
         return None
+
+    try:
+        # 1. Call the same logic used in the API route
+        s_data = spotify_fetcher.get_cached_state()
+        
+        if s_data and s_data.get('is_playing'):
+            # 2. Local calculation for the ticker display
+            time_since_fetch = time.time() - s_data.get('last_fetch_ts', time.time())
+            current_progress = s_data['progress'] + time_since_fetch
+            
+            # Formatting (e.g., 2:30 / 3:45)
+            cur_m, cur_s = divmod(int(current_progress), 60)
+            tot_m, tot_s = divmod(int(s_data.get('duration', 0)), 60)
+            status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
+
+            return {
+                'type': 'music',
+                'sport': 'music',
+                'id': 'spotify_now',
+                'status': status_str,
+                'state': 'in',
+                'is_shown': True,
+                'home_abbr': s_data.get('artist', 'Unknown')[:12],
+                'home_logo': s_data.get('cover', ''),
+                'away_abbr': s_data.get('name', 'Unknown')[:12],
+                'away_logo': 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
+                'home_color': '#1DB954',
+                'away_color': '#FFFFFF',
+                'situation': {}
+            }
+    except Exception as e:
+        print(f"Music Gen Error: {e}")
+    
+    return None
 
     def update_buffer_sports(self):
         all_games = []
@@ -2627,8 +2605,18 @@ def get_league_options():
 
 @app.route('/api/spotify/now', methods=['GET'])
 def api_spotify():
-    # Use the new instant-read method
+    # Get the static data from the last poll
     data = spotify_fetcher.get_cached_state()
+    
+    # INTERPOLATION: If music is playing, update the progress locally
+    if data.get('is_playing') and 'progress' in data and 'last_fetch_ts' in data:
+        time_since_fetch = time.time() - data['last_fetch_ts']
+        data['progress'] += time_since_fetch
+        
+        # Prevent progress from exceeding the actual song duration
+        if data['progress'] > data.get('duration', 0):
+            data['progress'] = data['duration']
+            
     return jsonify(data)
 
 @app.route('/data', methods=['GET'])
