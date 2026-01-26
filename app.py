@@ -45,156 +45,6 @@ class Tee(object):
             self.original_stdout.flush()
 
 try:
-    if not os.path.exists("ticker.log"):
-        with open("ticker.log", "w") as f: f.write("--- Log Started ---\n")
-    Tee("ticker.log", "a")
-except Exception as e:
-    print(f"Logging setup failed: {e}")
-
-# ================= CACHE CLEANUP ON STARTUP =================
-if os.path.exists("stock_cache.json"):
-    try:
-        print("🧹 Wiping old stock cache on startup...")
-        os.remove("stock_cache.json")
-    except: pass
-
-def build_pooled_session(pool_size=20, retries=2):
-    session = requests.Session()
-    adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size, max_retries=retries, pool_block=True)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
-
-# ================= CONFIGURATION & STORAGE =================
-TICKER_DATA_DIR = "ticker_data"
-if not os.path.exists(TICKER_DATA_DIR):
-    os.makedirs(TICKER_DATA_DIR)
-
-GLOBAL_CONFIG_FILE = "global_config.json"
-STOCK_CACHE_FILE = "stock_cache.json"
-
-# === MICRO INSTANCE TUNING (SMART-5) ===
-SPORTS_UPDATE_INTERVAL = 5.0   # Keep this fast
-STOCKS_UPDATE_INTERVAL = 30    # Slow down stocks to save CPU
-WORKER_THREAD_COUNT = 10       # LIMIT THIS to 10 to save RAM (Critical)
-API_TIMEOUT = 3.0              # New constant for hard timeouts        
-
-data_lock = threading.Lock()
-
-# Headers for FotMob/ESPN
-HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json",
-    "Accept-Language": "en",
-    "Referer": "https://www.fotmob.com/"
-}
-
-# ================= FOTMOB MAPPING =================
-FOTMOB_LEAGUE_MAP = {
-    'soccer_epl': 47,
-    'soccer_fa_cup': 132,
-    'soccer_champ': 48,
-    'soccer_l1': 108,
-    'soccer_l2': 109,
-    'soccer_wc': 77,
-    'soccer_champions_league': 42,
-    'soccer_europa_league': 73,
-    'soccer_mls': 130
-}
-
-# ================= AHL CONFIGURATION =================
-AHL_API_KEYS = [
-    "ccb91f29d6744675", "694cfeed58c932ee", "50c2cd9b5e18e390"
-]
-
-TZ_OFFSETS = {
-    "EST": -5, "EDT": -4, "CST": -6, "CDT": -5,
-    "MST": -7, "MDT": -6, "PST": -8, "PDT": -7, "AST": -4, "ADT": -3
-}
-
-# ================= CBA TEAMS (SofaScore Names) =================
-# Keyed by team name (with fuzzy match support)
-CBA_TEAMS = {
-    "Beijing Ducks": {"abbr": "BJD", "primary": "006BB6", "secondary": "FFFFFF", "tertiary": "000000"},
-    "Beijing Royal Fighters": {"abbr": "BRF", "primary": "002855", "secondary": "C8102E", "tertiary": "FFFFFF"},
-    "Fujian Sturgeons": {"abbr": "FUJ", "primary": "00529B", "secondary": "FFFFFF", "tertiary": "FFC72C"},
-    "Guangdong Southern Tigers": {"abbr": "GDT", "primary": "C8102E", "secondary": "FDB927", "tertiary": "000000"},
-    "Guangzhou Loong Lions": {"abbr": "GZL", "primary": "CE1141", "secondary": "000000", "tertiary": "C4CED4"},
-    "Jiangsu Dragons": {"abbr": "JSD", "primary": "00471B", "secondary": "EEE1C6", "tertiary": "FFFFFF"},
-    "Jilin Northeast Tigers": {"abbr": "JNT", "primary": "FF6B00", "secondary": "000000", "tertiary": "FFFFFF"},
-    "Liaoning Flying Leopards": {"abbr": "LFL", "primary": "00538C", "secondary": "C8102E", "tertiary": "FFFFFF"},
-    "Nanjing Monkey Kings": {"abbr": "NMK", "primary": "5A2D81", "secondary": "FDB927", "tertiary": "000000"},
-    "Nanjing Tongxi Monkey King": {"abbr": "NMK", "primary": "5A2D81", "secondary": "FDB927", "tertiary": "000000"},
-    "Ningbo Rockets": {"abbr": "NBR", "primary": "CE1141", "secondary": "000000", "tertiary": "C4CED4"},
-    "Qingdao Eagles": {"abbr": "QDE", "primary": "007AC1", "secondary": "EF3B24", "tertiary": "002D62"},
-    "Shanghai Sharks": {"abbr": "SHS", "primary": "006BB6", "secondary": "ED174C", "tertiary": "FFFFFF"},
-    "Shanxi Loongs": {"abbr": "SXL", "primary": "002B5C", "secondary": "FDBB30", "tertiary": "E03A3E"},
-    "Shanxi Zhongyu": {"abbr": "SXL", "primary": "002B5C", "secondary": "FDBB30", "tertiary": "E03A3E"},
-    "Shenzhen Leopards": {"abbr": "SZL", "primary": "00471B", "secondary": "000000", "tertiary": "FFFFFF"},
-    "Sichuan Blue Whales": {"abbr": "SCW", "primary": "00788C", "secondary": "FFC72C", "tertiary": "000000"},
-    "Tianjin Pioneers": {"abbr": "TJP", "primary": "00275D", "secondary": "C8102E", "tertiary": "FFFFFF"},
-    "Xinjiang Flying Tigers": {"abbr": "XFT", "primary": "007AC1", "secondary": "EF3B24", "tertiary": "002D62"},
-    "Zhejiang Lions": {"abbr": "ZJL", "primary": "860038", "secondary": "FDBB30", "tertiary": "000000"},
-    "Zhejiang Guangsha Lions": {"abbr": "ZJL", "primary": "860038", "secondary": "FDBB30", "tertiary": "000000"},
-    "Zhejiang Golden Bulls": {"abbr": "ZGB", "primary": "FFD700", "secondary": "000000", "tertiary": "FFFFFF"},
-    "Zhejiang Chouzhou": {"abbr": "ZCZ", "primary": "4A90D9", "secondary": "FFFFFF", "tertiary": "000000"},
-    "Shandong Heroes": {"abbr": "SDH", "primary": "00538C", "secondary": "FDB927", "tertiary": "FFFFFF"},
-    "Shandong Hi-Speed Kirin": {"abbr": "SDK", "primary": "00538C", "secondary": "FDB927", "tertiary": "FFFFFF"},
-    
-    # Short name fallbacks
-    "Beijing": {"abbr": "BEI", "primary": "006BB6", "secondary": "FFFFFF", "tertiary": "000000"},
-    "Fujian": {"abbr": "FUJ", "primary": "00529B", "secondary": "FFFFFF", "tertiary": "FFC72C"},
-    "Guangdong": {"abbr": "GDT", "primary": "C8102E", "secondary": "FDB927", "tertiary": "000000"},
-    "Guangzhou": {"abbr": "GZL", "primary": "CE1141", "secondary": "000000", "tertiary": "C4CED4"},
-    "Jilin": {"abbr": "JNT", "primary": "FF6B00", "secondary": "000000", "tertiary": "FFFFFF"},
-    "Liaoning": {"abbr": "LFL", "primary": "00538C", "secondary": "C8102E", "tertiary": "FFFFFF"},
-    "Qingdao": {"abbr": "QDE", "primary": "007AC1", "secondary": "EF3B24", "tertiary": "002D62"},
-    "Shanghai": {"abbr": "SHS", "primary": "006BB6", "secondary": "ED174C", "tertiary": "FFFFFF"},
-    "Shenzhen": {"abbr": "SZL", "primary": "00471B", "secondary": "000000", "tertiary": "FFFFFF"},
-    "Sichuan": {"abbr": "SCW", "primary": "00788C", "secondary": "FFC72C", "tertiary": "000000"},
-    "Tianjin": {"abbr": "TJP", "primary": "00275D", "secondary": "C8102E", "tertiary": "FFFFFF"},
-    "Xinjiang": {"abbr": "XFT", "primary": "007AC1", "secondary": "EF3B24", "tertiary": "002D62"},
-    "Shandong": {"abbr": "SDH", "primary": "00538C", "secondary": "FDB927", "tertiary": "FFFFFF"},
-}
-
-# ================= AHL TEAMS (Official LeagueStat IDs) =================
-AHL_TEAMS = {
-    "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "id": "317"},
-    "CLT": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"},
-    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"},
-    "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240", "id": "307"},
-    "HER": {"name": "Hershey Bears", "color": "4F2C1D", "id": "319"},
-    "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000", "id": "313"},
-    "PRO": {"name": "Providence Bruins", "color": "000000", "id": "309"},
-    "SPR": {"name": "Springfield Thunderbirds", "color": "003087", "id": "411"},
-    "WBS": {"name": "W-B/Scranton", "color": "000000", "id": "316"},
-    "BEL": {"name": "Belleville Senators", "color": "C52032", "id": "413"},
-    "CLE": {"name": "Cleveland Monsters", "color": "041E42", "id": "373"},
-    "LAV": {"name": "Laval Rocket", "color": "00205B", "id": "415"},
-    "ROC": {"name": "Rochester Americans", "color": "00539B", "id": "323"},
-    "SYR": {"name": "Syracuse Crunch", "color": "003087", "id": "324"},
-    "TOR": {"name": "Toronto Marlies", "color": "00205B", "id": "335"},
-    "UTC": {"name": "Utica Comets", "color": "006341", "id": "390"},
-    "UTI": {"name": "Utica Comets", "color": "006341", "id": "390"},
-    "CHI": {"name": "Chicago Wolves", "color": "7C2529", "id": "330"},
-    "GR":  {"name": "Grand Rapids Griffins", "color": "BE1E2D", "id": "328"},
-    "IA":  {"name": "Iowa Wild", "color": "154734", "id": "389"},
-    "MB":  {"name": "Manitoba Moose", "color": "003E7E", "id": "321"},
-    "MIL": {"name": "Milwaukee Admirals", "color": "041E42", "id": "327"},
-    "RFD": {"name": "Rockford IceHogs", "color": "CE1126", "id": "372"},
-    "TEX": {"name": "Texas Stars", "color": "154734", "id": "380"},
-    "ABB": {"name": "Abbotsford Canucks", "color": "00744F", "id": "440"},
-    "BAK": {"name": "Bakersfield Condors", "color": "F47A38", "id": "402"},
-    "CGY": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"},
-    "CAL": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"},
-    "CV":  {"name": "Coachella Valley", "color": "D32027", "id": "445"},
-    "CVF": {"name": "Coachella Valley", "color": "D32027", "id": "445"},
-    "COL": {"name": "Colorado Eagles", "color": "003087", "id": "419"},
-    "HSK": {"name": "Henderson Silver Knights", "color": "111111", "id": "437"},
-    "ONT": {"name": "Ontario Reign", "color": "111111", "id": "403"},
-    "SD":  {"name": "San Diego Gulls", "color": "041E42", "id": "404"},
-    "SJ":  {"name": "San Jose Barracuda", "color": "006D75", "id": "405"},
-    "SJS": {"name": "San Jose Barracuda", "color": "006D75", "id": "405"},
     "TUC": {"name": "Tucson Roadrunners", "color": "8C2633", "id": "412"},
 }
 
@@ -206,7 +56,6 @@ LEAGUE_OPTIONS = [
     {'id': 'nhl',           'label': 'NHL',                 'type': 'sport', 'default': True,  'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'ahl',           'label': 'AHL',                 'type': 'sport', 'default': True,  'fetch': {'type': 'ahl_native'}}, 
     {'id': 'nba',           'label': 'NBA',                 'type': 'sport', 'default': True,  'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'cba',           'label': 'CBA (China)',         'type': 'sport', 'default': True, 'fetch': {'type': 'cba_native'}},
     # --- COLLEGE SPORTS ---
     {'id': 'ncf_fbs',       'label': 'NCAA (FBS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs',       'label': 'NCAA (FCS)', 'type': 'sport', 'default': True,  'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
@@ -468,7 +317,7 @@ SOCCER_COLOR_FALLBACK = {
 SPORT_DURATIONS = {
     'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
     'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115,
-    'cba': 120, 'ahl': 150
+    'ahl': 150
 }
 
 # ================= FETCHING LOGIC =================
@@ -937,7 +786,6 @@ class SportsFetcher:
             teams_catalog = {k: [] for k in self.leagues.keys()}
             
             self._fetch_ahl_teams_reference(teams_catalog)
-            self._fetch_cba_teams_reference(teams_catalog)
 
             for t in OLYMPIC_HOCKEY_TEAMS:
                 teams_catalog['hockey_olympics'].append({
@@ -1026,33 +874,6 @@ class SportsFetcher:
                 'alt_color': '444444', 
                 'name': meta.get('name', code), 
                 'shortName': meta.get('name', code).split(" ")[-1]
-            })
-
-    def _fetch_cba_teams_reference(self, catalog):
-        """Populate CBA teams from hardcoded CBA_TEAMS data (Updated for new color keys)"""
-        catalog['cba'] = []
-        seen_abbrs = set()
-        
-        # Ensure we don't crash if the dict keys don't match
-        for team_name, meta in CBA_TEAMS.items():
-            abbr = meta.get('abbr', 'UNK')
-            if abbr in seen_abbrs: continue
-            seen_abbrs.add(abbr)
-            
-            # MAP NEW KEYS (primary/secondary) TO OLD KEYS (color/alt_color)
-            # Remove '#' if present to ensure clean hex codes
-            p_color = meta.get('primary', '333333').replace('#', '')
-            s_color = meta.get('secondary', '666666').replace('#', '')
-            
-            catalog['cba'].append({
-                'abbr': abbr,
-                'id': f"cba:{abbr}",
-                'real_id': abbr, 
-                'logo': '',  # Logos will be provided by the live fetch
-                'color': p_color,
-                'alt_color': s_color,
-                'name': team_name,
-                'shortName': team_name.split(" ")[-1] if " " in team_name else team_name
             })
 
     def check_shootout(self, game, summary=None):
@@ -1231,174 +1052,6 @@ class SportsFetcher:
         except Exception as e:
             print(f"AHL Fetch Error: {e}")
         
-        return games_found
-
-    def _get_cba_team_meta(self, team_name):
-        """Get CBA team metadata by name with fuzzy matching"""
-        # Direct match
-        if team_name in CBA_TEAMS:
-            return CBA_TEAMS[team_name]
-        
-        # Partial match
-        team_lower = team_name.lower()
-        for name, meta in CBA_TEAMS.items():
-            if name.lower() in team_lower or team_lower in name.lower():
-                return meta
-        
-        # Default fallback
-        return {"abbr": team_name[:3].upper(), "primary": "333333", "secondary": "666666"}
-
-    def _fetch_cba(self, conf, visible_start_utc, visible_end_utc):
-        """Fetch CBA (Chinese Basketball Association) games from SofaScore API"""
-        games_found = []
-        
-        # 1. Check if enabled
-        if not conf['active_sports'].get('cba', False): 
-            return []
-        
-        try:
-            # 2. Setup Timezones (Mimic cbatest.py logic)
-            utc_offset = conf.get('utc_offset', -5)
-            now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
-            
-            # 3AM Cutoff Logic from cbatest.py
-            if now_local.hour < 3:
-                base_date = now_local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
-            else:
-                base_date = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-            
-            dates_to_fetch = [
-                base_date.strftime("%Y-%m-%d"), 
-                (base_date + timedelta(days=1)).strftime("%Y-%m-%d")
-            ]
-            
-            # 3. STRICT HEADERS (Exactly from cbatest.py)
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json',
-                'Accept-Language': 'en-US,en;q=0.9',
-            }
-            
-            seen_event_ids = set()
-            
-            for fetch_date in dates_to_fetch:
-                url = f"https://api.sofascore.com/api/v1/sport/basketball/scheduled-events/{fetch_date}"
-                
-                try:
-                    # CRITICAL FIX: Use clean requests.get, NOT self.session.get
-                    # self.session has 'FotMob' referrers which block SofaScore
-                    r = requests.get(url, headers=headers, timeout=5)
-                    
-                    if r.status_code != 200: 
-                        print(f"CBA Fetch Status {r.status_code} for {fetch_date}")
-                        continue
-                    
-                    data = r.json()
-                    events = data.get('events', [])
-                    
-                    # Filter for CBA (Tournament ID 1566)
-                    cba_events = [e for e in events if e.get('tournament', {}).get('uniqueTournament', {}).get('id') == 1566]
-                    
-                    for event in cba_events:
-                        event_id = event.get('id')
-                        if event_id in seen_event_ids: continue
-                        seen_event_ids.add(event_id)
-                        
-                        gid = f"cba_{event_id}"
-                        
-                        # Check Cache
-                        if gid in self.final_game_cache:
-                            games_found.append(self.final_game_cache[gid])
-                            continue
-                        
-                        # Extract Teams
-                        home_team = event.get('homeTeam', {})
-                        away_team = event.get('awayTeam', {})
-                        h_name = home_team.get('name', 'Home')
-                        a_name = away_team.get('name', 'Away')
-                        h_id = home_team.get('id')
-                        a_id = away_team.get('id')
-                        
-                        # Metadata
-                        h_meta = self._get_cba_team_meta(h_name)
-                        a_meta = self._get_cba_team_meta(a_name)
-                        
-                        h_abbr = h_meta.get('abbr', h_name[:3].upper())
-                        a_abbr = a_meta.get('abbr', a_name[:3].upper())
-                        
-                        # Logos (Direct SofaScore URLs)
-                        h_logo = f"https://api.sofascore.com/api/v1/team/{h_id}/image" if h_id else ""
-                        a_logo = f"https://api.sofascore.com/api/v1/team/{a_id}/image" if a_id else ""
-
-                        # Scores
-                        h_sc = str(event.get('homeScore', {}).get('display', '0'))
-                        a_sc = str(event.get('awayScore', {}).get('display', '0'))
-                        if h_sc == "None": h_sc = "0"
-                        if a_sc == "None": a_sc = "0"
-                        
-                        # Timestamps
-                        start_ts = event.get('startTimestamp', 0)
-                        if start_ts:
-                            parsed_utc = dt.utcfromtimestamp(start_ts).strftime("%Y-%m-%dT%H:%M:%SZ")
-                            local_dt = dt.utcfromtimestamp(start_ts).replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
-                            time_disp = local_dt.strftime("%I:%M %p").lstrip('0')
-                        else:
-                            parsed_utc = f"{fetch_date}T00:00:00Z"
-                            time_disp = "Scheduled"
-
-                        # Status Logic
-                        status_code = event.get('status', {}).get('code', 0)
-                        status_desc = event.get('status', {}).get('description', '')
-                        
-                        gst = 'pre'; disp = time_disp
-                        
-                        if status_code == 100:
-                            gst = 'post'; disp = "FINAL"
-                        elif status_code in [110, 120] or status_desc == 'AET':
-                            gst = 'post'; disp = "FINAL OT"
-                        elif status_code == 31:
-                            gst = 'half'; disp = "HALF"
-                        elif 6 <= status_code < 100:
-                            gst = 'in'
-                            if status_code == 6: disp = "Q1"
-                            elif status_code == 7: disp = "Q2"
-                            elif status_code == 8: disp = "Q3"
-                            elif status_code == 9: disp = "Q4"
-                            elif status_code >= 10: disp = "OT"
-                            else: disp = "Live"
-                        
-                        # Colors (Handle clean hex)
-                        h_col = h_meta.get('primary', '333333').replace('#', '')
-                        h_alt = h_meta.get('secondary', '666666').replace('#', '')
-                        a_col = a_meta.get('primary', '333333').replace('#', '')
-                        a_alt = a_meta.get('secondary', '666666').replace('#', '')
-
-                        game_obj = {
-                            'type': 'scoreboard', 'sport': 'cba', 'id': gid,
-                            'status': disp, 'state': gst, 'is_shown': True,
-                            'home_abbr': h_abbr, 'home_score': h_sc, 'home_logo': h_logo,
-                            'away_abbr': a_abbr, 'away_score': a_sc, 'away_logo': a_logo,
-                            'home_color': f"#{h_col}", 'home_alt_color': f"#{h_alt}",
-                            'away_color': f"#{a_col}", 'away_alt_color': f"#{a_alt}",
-                            'startTimeUTC': parsed_utc,
-                            'estimated_duration': 135,
-                            'situation': {}
-                        }
-                        
-                        games_found.append(game_obj)
-                        
-                        if gst == 'post' and "FINAL" in disp:
-                            self.final_game_cache[gid] = game_obj
-                            
-                except Exception as e:
-                    print(f"CBA Fetch Inner Error ({fetch_date}): {e}")
-                    continue
-                    
-        except Exception as e:
-            print(f"CBA Fetch Outer Error: {e}")
-
-        # Sort by start time
-        games_found.sort(key=lambda x: x.get('startTimeUTC', ''))
         return games_found
 
     def fetch_shootout_details(self, game_id, away_id, home_id):
@@ -2217,8 +1870,21 @@ class SportsFetcher:
         with data_lock: 
             conf = state.copy()
 
+        mode = conf.get('mode', 'all')
+        fetch_weather = mode in ['all', 'weather']
+        fetch_music = mode in ['all', 'music']
+        fetch_clock = mode in ['all', 'clock']
+        fetch_scoreboards = mode not in ['stocks', 'weather', 'clock', 'music']
+
+        # Skip sports polling entirely when only stocks are requested to reduce bandwidth
+        if mode == 'stocks':
+            with data_lock:
+                state['buffer_sports'] = []
+                self.merge_buffers()
+            return
+
         # 1. WEATHER & UTILS
-        if conf['active_sports'].get('weather'):
+        if fetch_weather and conf['active_sports'].get('weather'):
             if (conf['weather_lat'] != self.weather.lat or 
                 conf['weather_lon'] != self.weather.lon or 
                 conf['weather_city'] != self.weather.city_name):
@@ -2226,10 +1892,10 @@ class SportsFetcher:
             w = self.weather.get_weather()
             if w: all_games.append(w)
 
-        music_obj = self.get_music_object()
+        music_obj = self.get_music_object() if fetch_music else None
         if music_obj: all_games.append(music_obj)
 
-        if conf['active_sports'].get('clock'):
+        if fetch_clock and conf['active_sports'].get('clock'):
             all_games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
 
         # 2. DATE & WINDOW LOGIC
@@ -2251,50 +1917,49 @@ class SportsFetcher:
         
         futures = {}
 
-        # 3. SPECIALIZED NATIVE FETCHERS (NHL, AHL, CBA)
-        if conf['active_sports'].get('nhl'):
-            f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
-            futures[f] = 'nhl'
-        
-        if conf['active_sports'].get('ahl'):
-            f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
-            futures[f] = 'ahl'
+        # 3. SPORTS SCOREBOARD FETCHERS (Skip when mode excludes sports)
+        if fetch_scoreboards:
+            # SPECIALIZED NATIVE FETCHERS (NHL, AHL)
+            if conf['active_sports'].get('nhl'):
+                f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                futures[f] = 'nhl'
             
-        if conf['active_sports'].get('cba'):
-            f = self.executor.submit(self._fetch_cba, conf, visible_start_utc, visible_end_utc)
-            futures[f] = 'cba'
+            if conf['active_sports'].get('ahl'):
+                f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
+                futures[f] = 'ahl'
 
-        # 4. SOCCER FETCHERS (FotMob)
-        for league_key in FOTMOB_LEAGUE_MAP:
-            if conf['active_sports'].get(league_key):
-                f = self.executor.submit(self._fetch_fotmob_league, FOTMOB_LEAGUE_MAP[league_key], league_key, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+            # SOCCER FETCHERS (FotMob)
+            for league_key in FOTMOB_LEAGUE_MAP:
+                if conf['active_sports'].get(league_key):
+                    f = self.executor.submit(self._fetch_fotmob_league, FOTMOB_LEAGUE_MAP[league_key], league_key, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                    futures[f] = league_key
+
+            # STANDARD ESPN FETCHERS (NBA, NFL, MLB, NCABB)
+            for league_key, config in self.leagues.items():
+                if not conf['active_sports'].get(league_key, False): continue
+                # Don't double-fetch things we handled natively above
+                if league_key in ['nhl', 'ahl'] or league_key.startswith('soccer_'): continue
+                
+                f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
                 futures[f] = league_key
-
-        # 5. STANDARD ESPN FETCHERS (NBA, NFL, MLB, NCABB)
-        for league_key, config in self.leagues.items():
-            if not conf['active_sports'].get(league_key, False): continue
-            # Don't double-fetch things we handled natively above
-            if league_key in ['nhl', 'ahl', 'cba'] or league_key.startswith('soccer_'): continue
-            
-            f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
-            futures[f] = league_key
 
         # 6. WAIT AND MERGE
         # Increased timeout to 8.0s to account for slower Soccer/AHL API responses
-        done, _ = concurrent.futures.wait(futures.keys(), timeout=8.0)
-        for f in done:
-            try:
-                res = f.result()
-                if res: all_games.extend(res)
-            except Exception as e:
-                print(f"Fetcher error for {futures.get(f, 'unknown')}: {e}")
+        if futures:
+            done, _ = concurrent.futures.wait(futures.keys(), timeout=8.0)
+            for f in done:
+                try:
+                    res = f.result()
+                    if res: all_games.extend(res)
+                except Exception as e:
+                    print(f"Fetcher error for {futures.get(f, 'unknown')}: {e}")
 
-        # Sorting: Clock -> Weather -> Active Games -> Final Games -> PPD
+        # Sorting: Clock -> Weather -> Active Games -> Final Games -> Postponed/Cancelled/Suspended
         # Tie-breakers added (sport, id) to keep ordering stable when multiple games share the same start time
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
-            4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "ppd"]) else
+            5 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "ppd", "suspended"]) else
             3 if "FINAL" in str(x.get('status', '')).upper() else 2,
             x.get('startTimeUTC', '9999'),
             str(x.get('sport', '')),  # stabilizes ordering for same-time games (e.g., multiple soccer matches)
@@ -2404,7 +2069,14 @@ def stocks_worker():
     while True:
         try: 
             with data_lock:
+                mode = state.get('mode', 'all')
                 active_cats = [k for k, v in state['active_sports'].items() if k.startswith('stock_') and v]
+            # Skip polling when stocks are not part of the current mode to save bandwidth
+            if mode not in ['stocks', 'all'] or not active_cats:
+                fetcher.update_buffer_stocks()
+                time.sleep(1)
+                continue
+
             fetcher.stocks.update_market_data(active_cats)
             fetcher.update_buffer_stocks()
         except Exception as e: 
