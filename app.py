@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v8"
+SERVER_VERSION = "v7-waveform"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -74,14 +74,10 @@ GLOBAL_CONFIG_FILE = "global_config.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 
 # === MICRO INSTANCE TUNING (SMART-5) ===
-# ================= INSTANCE TUNING =================
-# Each system gets its own independent heartbeat
-SPOTIFY_UPDATE_INTERVAL = 0.5  # Fast: Smooth progress bar updates
-SPORTS_UPDATE_INTERVAL = 5.0   # Medium: Protects ESPN/FotMob API limits
-STOCKS_UPDATE_INTERVAL = 15.0  # Slow: Stock markets don't need sub-second updates
-
-WORKER_THREAD_COUNT = 10       
-API_TIMEOUT = 3.0    
+SPORTS_UPDATE_INTERVAL = 5.0   # Keep this fast
+STOCKS_UPDATE_INTERVAL = 30    # Slow down stocks to save CPU
+WORKER_THREAD_COUNT = 10       # LIMIT THIS to 10 to save RAM (Critical)
+API_TIMEOUT = 3.0              # New constant for hard timeouts        
 
 data_lock = threading.Lock()
 
@@ -731,7 +727,7 @@ class SpotifyFetcher:
         self.access_token = None
         self.token_expiry = 0
         
-        # Simple State
+        # Simple State (No Analysis)
         self._latest_playback = {"is_playing": False}
         
         if self.refresh_token:
@@ -745,9 +741,8 @@ class SpotifyFetcher:
             return self._latest_playback.copy()
 
     def _background_worker(self):
-        print(f"🚀 Spotify Poller Started ({SPOTIFY_UPDATE_INTERVAL}s interval)")
+        print("🚀 Spotify Poller Started")
         while self._running:
-            start_time = time.time()
             try:
                 if time.time() > self.token_expiry: self._refresh_access_token()
                 
@@ -777,10 +772,7 @@ class SpotifyFetcher:
             except Exception as e:
                 print(f"Spotify Poll Error: {e}")
             
-            # Precise sleep to maintain 0.5s rhythm
-            execution_time = time.time() - start_time
-            sleep_dur = max(0, SPOTIFY_UPDATE_INTERVAL - execution_time)
-            time.sleep(sleep_dur)
+            time.sleep(0.25) # Poll every 1s
 
     def _refresh_access_token(self):
         if not self.refresh_token: return False
@@ -806,15 +798,17 @@ class SportsFetcher:
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         
-        # Optimized Pool & Thread Settings
+        # CHANGE 1: Reduce Pool Size to 15 (Save RAM)
         self.session = build_pooled_session(pool_size=15)
+        
+        # CHANGE 2: Use Configured Thread Count (10)
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=WORKER_THREAD_COUNT)
         
-        # Caches
+        # CHANGE 3: Add New Caches for Smart Sleep
         self.history_buffer = [] 
-        self.final_game_cache = {}      
-        self.league_next_update = {}    
-        self.league_last_data = {}      
+        self.final_game_cache = {}      # Stores finished games so we don't re-fetch
+        self.league_next_update = {}    # Stores "Wake Up" time for sleeping leagues
+        self.league_last_data = {}      # Stores last data for sleeping leagues
         
         self.consecutive_empty_fetches = 0
         self.ahl_cached_key = None
@@ -826,12 +820,6 @@ class SportsFetcher:
             if item['type'] == 'sport' and 'fetch' in item 
         }
 
-        # [NEW] The "Mailbox" for the display loop to read from
-        self.cached_sports_data = []
-        
-        # Start the dedicated worker immediately
-        threading.Thread(target=self._dedicated_sports_worker, daemon=True).start()
-
     def _calculate_next_update(self, games):
         """Returns TIMESTAMP when we should next fetch this league"""
         if not games: return 0 
@@ -839,7 +827,7 @@ class SportsFetcher:
         earliest_start = None
         
         for g in games:
-            # If ACTIVE -> Fetch "Immediately" (but throttled by the 5s loop)
+            # If ACTIVE (In/Half/Crit) -> Fetch Immediately (0)
             if g['state'] in ['in', 'half', 'crit']: return 0
             
             # If SCHEDULED -> Track earliest start time
@@ -1037,14 +1025,18 @@ class SportsFetcher:
             })
 
     def _fetch_cba_teams_reference(self, catalog):
+        """Populate CBA teams from hardcoded CBA_TEAMS data (Updated for new color keys)"""
         catalog['cba'] = []
         seen_abbrs = set()
         
+        # Ensure we don't crash if the dict keys don't match
         for team_name, meta in CBA_TEAMS.items():
             abbr = meta.get('abbr', 'UNK')
             if abbr in seen_abbrs: continue
             seen_abbrs.add(abbr)
             
+            # MAP NEW KEYS (primary/secondary) TO OLD KEYS (color/alt_color)
+            # Remove '#' if present to ensure clean hex codes
             p_color = meta.get('primary', '333333').replace('#', '')
             s_color = meta.get('secondary', '666666').replace('#', '')
             
@@ -1052,7 +1044,7 @@ class SportsFetcher:
                 'abbr': abbr,
                 'id': f"cba:{abbr}",
                 'real_id': abbr, 
-                'logo': '', 
+                'logo': '',  # Logos will be provided by the live fetch
                 'color': p_color,
                 'alt_color': s_color,
                 'name': team_name,
@@ -1181,16 +1173,17 @@ class SportsFetcher:
                 elif "scheduled" in status_lower or "pre" in status_lower or (re.search(r'\d+:\d+', status_lower) and "1st" not in status_lower and "2nd" not in status_lower and "3rd" not in status_lower and "ot" not in status_lower):
                     gst = "pre"
                     try:
-                          if iso_date:
+                         if iso_date:
                            local_dt = dt.fromisoformat(iso_date).astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
                            disp = local_dt.strftime("%I:%M %p").lstrip('0')
-                          else:
-                              raw_time_clean = (g.get("GameTime") or "").strip()
-                              disp = raw_time_clean.split(" ")[0] + " " + raw_time_clean.split(" ")[1]
+                         else:
+                             raw_time_clean = (g.get("GameTime") or "").strip()
+                             disp = raw_time_clean.split(" ")[0] + " " + raw_time_clean.split(" ")[1]
                     except: disp = "Scheduled"
                 else:
                     gst = "in"
                     if "intermission" in status_lower:
+                        # Check text first, then fallback to the period number
                         if "1st" in status_lower or period_str == "1": disp = "End 1st"
                         elif "2nd" in status_lower or period_str == "2": disp = "End 2nd"
                         elif "3rd" in status_lower or period_str == "3": disp = "End 3rd"
@@ -1204,6 +1197,7 @@ class SportsFetcher:
                         else: disp = raw_status
 
                 is_shown = True
+                # NO LOCAL FILTERING HERE - LET /DATA DO IT
 
                 h_obj = next((t for t in ahl_refs if t['abbr'] == h_code), None)
                 a_obj = next((t for t in ahl_refs if t['abbr'] == a_code), None)
@@ -1236,23 +1230,34 @@ class SportsFetcher:
         return games_found
 
     def _get_cba_team_meta(self, team_name):
+        """Get CBA team metadata by name with fuzzy matching"""
+        # Direct match
         if team_name in CBA_TEAMS:
             return CBA_TEAMS[team_name]
         
+        # Partial match
         team_lower = team_name.lower()
         for name, meta in CBA_TEAMS.items():
             if name.lower() in team_lower or team_lower in name.lower():
                 return meta
         
+        # Default fallback
         return {"abbr": team_name[:3].upper(), "primary": "333333", "secondary": "666666"}
 
     def _fetch_cba(self, conf, visible_start_utc, visible_end_utc):
+        """Fetch CBA (Chinese Basketball Association) games from SofaScore API"""
         games_found = []
-        if not conf['active_sports'].get('cba', False): return []
+        
+        # 1. Check if enabled
+        if not conf['active_sports'].get('cba', False): 
+            return []
+        
         try:
+            # 2. Setup Timezones (Mimic cbatest.py logic)
             utc_offset = conf.get('utc_offset', -5)
             now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
             
+            # 3AM Cutoff Logic from cbatest.py
             if now_local.hour < 3:
                 base_date = now_local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
             else:
@@ -1263,6 +1268,7 @@ class SportsFetcher:
                 (base_date + timedelta(days=1)).strftime("%Y-%m-%d")
             ]
             
+            # 3. STRICT HEADERS (Exactly from cbatest.py)
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept': 'application/json',
@@ -1275,11 +1281,18 @@ class SportsFetcher:
                 url = f"https://api.sofascore.com/api/v1/sport/basketball/scheduled-events/{fetch_date}"
                 
                 try:
+                    # CRITICAL FIX: Use clean requests.get, NOT self.session.get
+                    # self.session has 'FotMob' referrers which block SofaScore
                     r = requests.get(url, headers=headers, timeout=5)
-                    if r.status_code != 200: continue
+                    
+                    if r.status_code != 200: 
+                        print(f"CBA Fetch Status {r.status_code} for {fetch_date}")
+                        continue
                     
                     data = r.json()
                     events = data.get('events', [])
+                    
+                    # Filter for CBA (Tournament ID 1566)
                     cba_events = [e for e in events if e.get('tournament', {}).get('uniqueTournament', {}).get('id') == 1566]
                     
                     for event in cba_events:
@@ -1288,10 +1301,13 @@ class SportsFetcher:
                         seen_event_ids.add(event_id)
                         
                         gid = f"cba_{event_id}"
+                        
+                        # Check Cache
                         if gid in self.final_game_cache:
                             games_found.append(self.final_game_cache[gid])
                             continue
                         
+                        # Extract Teams
                         home_team = event.get('homeTeam', {})
                         away_team = event.get('awayTeam', {})
                         h_name = home_team.get('name', 'Home')
@@ -1299,20 +1315,24 @@ class SportsFetcher:
                         h_id = home_team.get('id')
                         a_id = away_team.get('id')
                         
+                        # Metadata
                         h_meta = self._get_cba_team_meta(h_name)
                         a_meta = self._get_cba_team_meta(a_name)
                         
                         h_abbr = h_meta.get('abbr', h_name[:3].upper())
                         a_abbr = a_meta.get('abbr', a_name[:3].upper())
                         
+                        # Logos (Direct SofaScore URLs)
                         h_logo = f"https://api.sofascore.com/api/v1/team/{h_id}/image" if h_id else ""
                         a_logo = f"https://api.sofascore.com/api/v1/team/{a_id}/image" if a_id else ""
 
+                        # Scores
                         h_sc = str(event.get('homeScore', {}).get('display', '0'))
                         a_sc = str(event.get('awayScore', {}).get('display', '0'))
                         if h_sc == "None": h_sc = "0"
                         if a_sc == "None": a_sc = "0"
                         
+                        # Timestamps
                         start_ts = event.get('startTimestamp', 0)
                         if start_ts:
                             parsed_utc = dt.utcfromtimestamp(start_ts).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1322,6 +1342,7 @@ class SportsFetcher:
                             parsed_utc = f"{fetch_date}T00:00:00Z"
                             time_disp = "Scheduled"
 
+                        # Status Logic
                         status_code = event.get('status', {}).get('code', 0)
                         status_desc = event.get('status', {}).get('description', '')
                         
@@ -1342,6 +1363,7 @@ class SportsFetcher:
                             elif status_code >= 10: disp = "OT"
                             else: disp = "Live"
                         
+                        # Colors (Handle clean hex)
                         h_col = h_meta.get('primary', '333333').replace('#', '')
                         h_alt = h_meta.get('secondary', '666666').replace('#', '')
                         a_col = a_meta.get('primary', '333333').replace('#', '')
@@ -1371,6 +1393,7 @@ class SportsFetcher:
         except Exception as e:
             print(f"CBA Fetch Outer Error: {e}")
 
+        # Sort by start time
         games_found.sort(key=lambda x: x.get('startTimeUTC', ''))
         return games_found
 
@@ -1469,8 +1492,8 @@ class SportsFetcher:
                     g_local = g_dt.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
 
                     if st in ['PRE', 'FUT']:
-                            try: disp = g_local.strftime("%I:%M %p").lstrip('0')
-                            except: pass
+                           try: disp = g_local.strftime("%I:%M %p").lstrip('0')
+                           except: pass
                     elif st in ['FINAL', 'OFF']:
                           disp = "FINAL"
                           pd = g.get('periodDescriptor', {})
@@ -1510,7 +1533,7 @@ class SportsFetcher:
                                                 p_lbl = f"P{p_num}"
                                             
                                             disp = f"{p_lbl} {time_rem}"
-                                    
+                                     
                                 sit_obj = d2.get('situation', {})
                                 if sit_obj:
                                     sit = sit_obj.get('situationCode', '1551')
@@ -1946,17 +1969,20 @@ class SportsFetcher:
         try:
             curr_p = config.get('scoreboard_params', {}).copy()
             
+            # CHANGE B: DATE OPTIMIZATION (Fetch correct date based on time of day)
             now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
             
             if conf['debug_mode'] and conf['custom_date']:
                 curr_p['dates'] = conf['custom_date'].replace('-', '')
             else:
+                # Before 3 AM local, fetch yesterday's games (late-night viewing of evening games)
                 if now_local.hour < 3:
                     fetch_date = now_local - timedelta(days=1)
                 else:
                     fetch_date = now_local
                 curr_p['dates'] = fetch_date.strftime("%Y%m%d")
             
+            # CHANGE: Use API_TIMEOUT
             r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=API_TIMEOUT)
             data = r.json()
             
@@ -1969,9 +1995,10 @@ class SportsFetcher:
             for e in events:
                 gid = str(e['id'])
 
+                # CHANGE A: CACHE CHECK
                 if gid in self.final_game_cache:
                     local_games.append(self.final_game_cache[gid])
-                    continue 
+                    continue # Skip processing
                 
                 utc_str = e['date'].replace('Z', '')
                 st = e.get('status', {})
@@ -1997,6 +2024,7 @@ class SportsFetcher:
                 if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
                 if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
 
+                # Seed Extraction Logic for March Madness
                 h_seed = h.get('curatedRank', {}).get('current', '')
                 a_seed = a.get('curatedRank', {}).get('current', '')
                 if h_seed == 99: h_seed = ""
@@ -2092,8 +2120,11 @@ class SportsFetcher:
                     'away_color': f"#{a['team'].get('color','000000')}", 'away_alt_color': f"#{a['team'].get('alternateColor','ffffff')}",
                     'startTimeUTC': e['date'],
                     'estimated_duration': duration_est,
+                    
+                    # MARCH MADNESS SPECIFIC FIELDS
                     'home_seed': str(h_seed),
                     'away_seed': str(a_seed),
+                    
                     'situation': { 
                         'possession': poss_abbr, 
                         'isRedZone': sit.get('isRedZone', False), 
@@ -2111,133 +2142,195 @@ class SportsFetcher:
                 
                 local_games.append(game_obj)
                 
+                # CHANGE C: SAVE FINAL GAMES TO CACHE
                 if gst == 'post' and "FINAL" in s_disp:
                     self.final_game_cache[gid] = game_obj
 
         except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games
 
-    def _dedicated_sports_worker(self):
-        """
-        Background Loop (5s Interval).
-        Fetches ESPN, FotMob, AHL, and Weather.
-        Stores result in self.cached_sports_data.
-        """
-        print(f"🐢 Sports Worker Started ({SPORTS_UPDATE_INTERVAL}s interval)")
-        
-        while True:
-            start_time = time.time()
-            new_data = []
-            
+    def update_buffer_sports(self):
+        all_games = []
+        with data_lock: 
+            conf = state.copy()
+
+        # 1. WEATHER & CLOCK (Simple, fast)
+        if conf['active_sports'].get('weather'):
+            if (conf['weather_lat'] != self.weather.lat or 
+                conf['weather_lon'] != self.weather.lon or 
+                conf['weather_city'] != self.weather.city_name):
+                self.weather.update_config(city=conf['weather_city'], lat=conf['weather_lat'], lon=conf['weather_lon'])
+            w = self.weather.get_weather()
+            if w: all_games.append(w)
+
+        if conf['active_sports'].get('music', False):
             try:
-                # 1. Snapshot Configuration
-                with data_lock: conf = state.copy()
+                s_data = spotify_fetcher.get_cached_state()
+                if s_data and s_data.get('is_playing'):
+                    # Calculate timestamps (e.g., 2:30 / 3:45)
+                    cur_m, cur_s = divmod(int(s_data.get('progress', 0)), 60)
+                    tot_m, tot_s = divmod(int(s_data.get('duration', 0)), 60)
+                    status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
 
-                # 2. Weather
-                if conf['active_sports'].get('weather'):
-                    if (conf['weather_lat'] != self.weather.lat or 
-                        conf['weather_lon'] != self.weather.lon or 
-                        conf['weather_city'] != self.weather.city_name):
-                        self.weather.update_config(city=conf['weather_city'], lat=conf['weather_lat'], lon=conf['weather_lon'])
-                    
-                    w_data = self.weather.get_weather()
-                    if w_data: new_data.append(w_data)
-
-                # 3. Sports Logic (If active)
-                if conf['mode'] in ['sports', 'live', 'my_teams', 'all']:
-                    utc_offset = conf.get('utc_offset', -5)
-                    now_utc = dt.now(timezone.utc)
-                    now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-                    
-                    # 3AM Cutoff Logic
-                    if now_local.hour < 3:
-                        visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
-                        visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
-                    else:
-                        visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-                        visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
-                    
-                    visible_start_utc = visible_start_local.astimezone(timezone.utc)
-                    visible_end_utc = visible_end_local.astimezone(timezone.utc)
-                    window_start_utc = (now_local - timedelta(hours=30)).astimezone(timezone.utc)
-                    window_end_utc = (now_local + timedelta(hours=48)).astimezone(timezone.utc)
-
-                    futures = {}
-
-                    # A. Special Fetchers (AHL, CBA, FotMob, NHL Native)
-                    if conf['active_sports'].get('ahl', False):
-                        f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
-                        futures[f] = 'ahl'
-                    
-                    if conf['active_sports'].get('cba', False):
-                        f = self.executor.submit(self._fetch_cba, conf, visible_start_utc, visible_end_utc)
-                        futures[f] = 'cba'
-
-                    if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
-                        f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
-                        futures[f] = 'nhl_native'
-
-                    for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
-                        if conf['active_sports'].get(internal_id, False):
-                            f = self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
-                            futures[f] = internal_id
-
-                    # B. Standard ESPN Fetchers (With Smart Sleep)
-                    for league_key, config in self.leagues.items():
-                        if league_key == 'nhl' and not conf['debug_mode']: continue
-                        if league_key.startswith('soccer_'): continue
-                        if league_key == 'ahl' or league_key == 'cba': continue
+                    music_obj = {
+                        'type': 'music',         # Special type
+                        'sport': 'music',        # Category for filtering
+                        'id': 'spotify_now',     # Constant ID
+                        'status': status_str,
+                        'state': 'in',           # 'in' = Active
+                        'is_shown': True,
                         
-                        # Check Sleep
-                        if time.time() < self.league_next_update.get(league_key, 0):
-                            if league_key in self.league_last_data:
-                                new_data.extend(self.league_last_data[league_key])
-                            continue
+                        # Use Home/Away fields for Artist/Song
+                        'home_abbr': s_data.get('artist', 'Unknown')[:12], 
+                        'home_score': '',        
+                        'home_logo': s_data.get('cover', ''),
                         
-                        # Submit Fetch
-                        f = self.executor.submit(
-                            self.fetch_single_league, 
-                            league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc
-                        )
-                        futures[f] = league_key
-
-                    # Wait for results
-                    done, not_done = concurrent.futures.wait(futures.keys(), timeout=5.0)
-                    for f in done:
-                        lk = futures[f]
-                        try:
-                            res = f.result()
-                            if res:
-                                new_data.extend(res)
-                                if lk not in ['ahl', 'nhl_native'] and not lk.startswith('soccer_'):
-                                    self.league_last_data[lk] = res
-                                    self.league_next_update[lk] = self._calculate_next_update(res)
-                        except Exception as e:
-                            print(f"Fetch error {lk}: {e}")
-
-                # 4. Sort Data (Expensive operation done in slow loop)
-                new_data.sort(key=lambda x: (
-                    0 if x.get('type') == 'clock' else
-                    2 if x.get('type') == 'weather' else
-                    5 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "suspended", "ppd"]) else
-                    4 if "FINAL" in str(x.get('status', '')).upper() else
-                    3, 
-                    x.get('startTimeUTC', '9999'),
-                    x.get('sport', '')
-                ))
-
-                # 5. Push to Cache (Atomic Swap)
-                self.cached_sports_data = new_data
-
+                        'away_abbr': s_data.get('name', '')[:12],
+                        'away_score': '',
+                        'away_logo': 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
+                        
+                        'home_color': '#1DB954', # Spotify Green
+                        'away_color': '#FFFFFF',
+                        'situation': {}
+                    }
+                    all_games.append(music_obj)
             except Exception as e:
-                print(f"Sports Worker Error: {e}")
+                print(f"Music Pack Error: {e}")
 
-            # Sleep remainder of 5s
-            execution_time = time.time() - start_time
-            sleep_dur = max(0, SPORTS_UPDATE_INTERVAL - execution_time)
-            time.sleep(sleep_dur)
+        if conf['active_sports'].get('clock'):
+            all_games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
 
-    # Legacy method used by hardware API via global state
+        # 2. SPORTS (Parallelized & Smart)
+        if conf['mode'] in ['sports', 'live', 'my_teams', 'all']:
+            utc_offset = conf.get('utc_offset', -5)
+            now_utc = dt.now(timezone.utc)
+            now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+            
+            if now_local.hour < 3:
+                visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+                visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
+            else:
+                visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
+            
+            visible_start_utc = visible_start_local.astimezone(timezone.utc)
+            visible_end_utc = visible_end_local.astimezone(timezone.utc)
+            
+            window_start_local = now_local - timedelta(hours=30)
+            window_end_local = now_local + timedelta(hours=48)
+            
+            window_start_utc = window_start_local.astimezone(timezone.utc)
+            window_end_utc = window_end_local.astimezone(timezone.utc)
+            
+            futures = {}
+
+            # --- SMART LOOP IMPLEMENTATION ---
+            
+            # Special fetchers (Always submit for now, but with timeout)
+            if conf['active_sports'].get('ahl', False):
+                f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
+                futures[f] = 'ahl'
+            
+            if conf['active_sports'].get('cba', False):
+                f = self.executor.submit(self._fetch_cba, conf, visible_start_utc, visible_end_utc)
+                futures[f] = 'cba'
+            
+            if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
+                f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                futures[f] = 'nhl_native'
+            
+            for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
+                if conf['active_sports'].get(internal_id, False):
+                    f = self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                    futures[f] = internal_id
+
+            # Standard ESPN fetchers (Apply Smart Sleep)
+            for league_key, config in self.leagues.items():
+                if league_key == 'nhl' and not conf['debug_mode']: continue 
+                if league_key.startswith('soccer_'): continue
+                if league_key == 'ahl': continue
+                if league_key == 'cba': continue
+                
+                # Check Sleep Status
+                if time.time() < self.league_next_update.get(league_key, 0):
+                    # SLEEPING: Use cached data (Instant)
+                    if league_key in self.league_last_data:
+                        all_games.extend(self.league_last_data[league_key])
+                    continue
+                
+                # AWAKE: Submit task
+                f = self.executor.submit(
+                    self.fetch_single_league, 
+                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc
+                )
+                futures[f] = league_key
+            
+            # HARD TIMEOUT: Wait max 5.0s for threads (increased from 3.0s for SofaScore/CBA)
+            done, not_done = concurrent.futures.wait(futures.keys(), timeout=5.0)
+            
+            # Log any timed-out futures for debugging
+            for f in not_done:
+                lk = futures.get(f, 'unknown')
+                print(f"Warning: {lk} fetch timed out")
+            
+            for f in done:
+                lk = futures[f]
+                try: 
+                    res = f.result()
+                    if res: 
+                        all_games.extend(res)
+                        # Save data for next sleep cycle
+                        if lk not in ['ahl', 'nhl_native'] and not lk.startswith('soccer_'):
+                            self.league_last_data[lk] = res
+                            self.league_next_update[lk] = self._calculate_next_update(res)
+                except Exception as e: 
+                    print(f"Fetch error {lk}: {e}")
+
+        sports_count = len([g for g in all_games if g.get('type') == 'scoreboard'])
+        
+        with data_lock:
+            prev_buffer = state.get('buffer_sports', [])
+            prev_sports_count = len([g for g in prev_buffer if g.get('type') == 'scoreboard'])
+
+        if sports_count == 0 and prev_sports_count > 0:
+            self.consecutive_empty_fetches += 1
+            if self.consecutive_empty_fetches < 3:
+                prev_pure_sports = [g for g in prev_buffer if g.get('type') == 'scoreboard']
+                utils = [g for g in all_games if g.get('type') != 'scoreboard']
+                all_games = prev_pure_sports + utils
+            else:
+                self.consecutive_empty_fetches = 0
+        else:
+            self.consecutive_empty_fetches = 0
+
+        for g in all_games:
+            ts = g.get('startTimeUTC')
+            if ts and isinstance(ts, str):
+                try:
+                    d = dt.fromisoformat(ts.replace('Z', '+00:00'))
+                    g['startTimeUTC'] = d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except: pass
+
+        all_games.sort(key=lambda x: (
+            0 if x.get('type') == 'clock' else
+            1 if x.get('type') == 'weather' else
+            4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "canceled", "suspended", "ppd"]) else
+            3 if "FINAL" in str(x.get('status', '')).upper() or "FIN" == str(x.get('status', '')) else
+            2, # Active
+            x.get('startTimeUTC', '9999'),
+            x.get('sport', ''),
+            x.get('id', '0')
+        ))
+
+        now_ts = time.time()
+        self.history_buffer.append((now_ts, all_games))
+        cutoff_time = now_ts - 120
+        self.history_buffer = [x for x in self.history_buffer if x[0] > cutoff_time]
+        
+        with data_lock: 
+            state['buffer_sports'] = all_games
+            self.merge_buffers()
+
     def get_snapshot_for_delay(self, delay_seconds):
         if delay_seconds <= 0 or not self.history_buffer:
             with data_lock:
@@ -2257,7 +2350,10 @@ class SportsFetcher:
         if mode == 'stocks': return stocks_snap
         elif mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
+        
+        # [NEW] Return ONLY music when mode is music
         elif mode == 'music': return [g for g in utils if g.get('sport') == 'music']
+        
         elif mode in ['sports', 'live', 'my_teams']: return pure_sports
         else: return pure_sports
 
@@ -2267,15 +2363,47 @@ class SportsFetcher:
         
         if conf['mode'] in ['stocks', 'all']:
             cats = [item['id'] for item in LEAGUE_OPTIONS if item['type'] == 'stock']
+            
             for cat in cats:
                 if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
         
         with data_lock:
             state['buffer_stocks'] = games
-            # Merge is handled by main loop now
+            self.merge_buffers()
 
     def merge_buffers(self):
-        pass # Obsolete with main_display_loop
+        mode = state['mode']
+        final_list = []
+        
+        sports_buffer = state.get('buffer_sports', [])
+        stocks_buffer = state.get('buffer_stocks', [])
+        
+        # Identify Utility Types
+        utils = [g for g in sports_buffer if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
+        
+        # Pure sports excludes music/weather/clock
+        pure_sports = [g for g in sports_buffer if g not in utils]
+
+        if mode == 'stocks': 
+            final_list = stocks_buffer
+        elif mode == 'weather': 
+            final_list = [g for g in utils if g.get('type') == 'weather']
+        elif mode == 'clock': 
+            final_list = [g for g in utils if g.get('sport') == 'clock']
+            
+        # [NEW] Strict Isolation for Music Mode
+        elif mode == 'music': 
+            final_list = [g for g in utils if g.get('sport') == 'music']
+        
+        # 'all' / 'sports' modes ONLY show pure sports (plus maybe clock if you want)
+        # Music is EXCLUDED here, just like stocks/weather are excluded.
+        elif mode in ['sports', 'live', 'my_teams', 'all']: 
+            final_list = pure_sports
+            
+        else: 
+            final_list = pure_sports
+
+        state['current_games'] = final_list
 
 # Initialize Global Fetcher
 fetcher = SportsFetcher(
@@ -2315,76 +2443,6 @@ def stocks_worker():
         except Exception as e: 
             print(f"Stock worker error: {e}")
         time.sleep(1)
-
-def main_display_loop():
-    """
-    High-Speed Merger Loop (0.5s Interval).
-    Combines cached sports (slow), stocks (slow), and live music (fast).
-    """
-    print(f"⚡ Display Loop Started ({SPOTIFY_UPDATE_INTERVAL}s interval)")
-    while True:
-        start_time = time.time()
-        final_list = []
-        
-        try:
-            # 1. Grab Clock (Always live)
-            if state['active_sports'].get('clock'):
-                final_list.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
-            
-            # 2. Grab Sports/Weather (From Slow Cache)
-            # Music mode hides sports, but we still allow weather/clock if configured
-            if state['mode'] != 'music':
-                final_list.extend(fetcher.cached_sports_data)
-            
-            # 3. Grab Stocks (From Slow Cache)
-            if state['mode'] == 'stocks' or state['mode'] == 'all':
-                final_list.extend(state.get('buffer_stocks', []))
-
-            # 4. Grab Music (From Fast Cache)
-            if state['active_sports'].get('music'):
-                s_data = spotify_fetcher.get_cached_state()
-                if s_data and s_data.get('is_playing'):
-                    # Calculate live timestamps
-                    cur_m, cur_s = divmod(int(s_data.get('progress', 0)), 60)
-                    tot_m, tot_s = divmod(int(s_data.get('duration', 0)), 60)
-                    
-                    music_obj = {
-                        'type': 'music', 'sport': 'music', 'id': 'spotify_now',
-                        'status': f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}",
-                        'state': 'in', 'is_shown': True,
-                        'home_abbr': s_data.get('artist', 'Unknown')[:20],
-                        'home_logo': s_data.get('cover', ''),
-                        'away_abbr': s_data.get('name', '')[:25],
-                        'home_color': '#1DB954', 'away_color': '#FFFFFF',
-                        'situation': {}
-                    }
-                    
-                    # If mode is explicitly Music, clear other items (except maybe clock?)
-                    if state['mode'] == 'music':
-                        # Keep clock if active, but remove sports
-                        final_list = [x for x in final_list if x.get('type') == 'clock']
-                        final_list.insert(0, music_obj)
-                    else:
-                        # In 'all' mode, put music at the top
-                        final_list.insert(0, music_obj)
-
-            # 5. Push to Global State
-            # We skip 'fetcher.merge_buffers()' because we just did the merging here.
-            with data_lock:
-                state['current_games'] = final_list
-                # Update history buffer for the "Live Delay" feature
-                fetcher.history_buffer.append((time.time(), final_list))
-                # Cleanup history
-                cutoff = time.time() - 120
-                fetcher.history_buffer = [x for x in fetcher.history_buffer if x[0] > cutoff]
-
-        except Exception as e:
-            print(f"Display Loop Error: {e}")
-
-        # Sleep to maintain fast rhythm
-        execution_time = time.time() - start_time
-        sleep_dur = max(0, SPOTIFY_UPDATE_INTERVAL - execution_time)
-        time.sleep(sleep_dur)
 
 # ================= FLASK API =================
 app = Flask(__name__)
@@ -2898,15 +2956,6 @@ def check_my_teams():
 def root(): return "Ticker Server Running on Version: " + SERVER_VERSION
 
 if __name__ == "__main__":
-    # 1. Stocks Worker (30s)
+    threading.Thread(target=sports_worker, daemon=True).start()
     threading.Thread(target=stocks_worker, daemon=True).start()
-    
-    # 2. Main Display Loop (0.5s - Merges everything)
-    threading.Thread(target=main_display_loop, daemon=True).start()
-    
-    # Note: 
-    # - Spotify Worker (0.5s) starts inside SpotifyFetcher.__init__
-    # - Sports Worker (5.0s) starts inside SportsFetcher.__init__
-    
-    print("✅ All Workers Started. Server is ready.")
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
