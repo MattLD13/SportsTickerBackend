@@ -2009,7 +2009,7 @@ class SportsFetcher:
         
         futures = {}
 
-        # 3. SPECIALIZED NATIVE FETCHERS (NHL, AHL)
+        # 3. SPECIALIZED NATIVE FETCHERS
         if conf['active_sports'].get('nhl'):
             f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
             futures[f] = 'nhl'
@@ -2018,23 +2018,21 @@ class SportsFetcher:
             f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
             futures[f] = 'ahl'
             
-        # 4. SOCCER FETCHERS (FotMob)
+        # 4. SOCCER FETCHERS
         for league_key in FOTMOB_LEAGUE_MAP:
             if conf['active_sports'].get(league_key):
                 f = self.executor.submit(self._fetch_fotmob_league, FOTMOB_LEAGUE_MAP[league_key], league_key, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
                 futures[f] = league_key
 
-        # 5. STANDARD ESPN FETCHERS (NBA, NFL, MLB, NCABB)
+        # 5. STANDARD ESPN FETCHERS
         for league_key, config in self.leagues.items():
             if not conf['active_sports'].get(league_key, False): continue
-            # Don't double-fetch things we handled natively above
             if league_key in ['nhl', 'ahl'] or league_key.startswith('soccer_'): continue
             
             f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
             futures[f] = league_key
 
         # 6. WAIT AND MERGE
-        # Increased timeout to 8.0s to account for slower Soccer/AHL API responses
         done, _ = concurrent.futures.wait(futures.keys(), timeout=8.0)
         for f in done:
             try:
@@ -2043,20 +2041,29 @@ class SportsFetcher:
             except Exception as e:
                 print(f"Fetcher error for {futures.get(f, 'unknown')}: {e}")
 
-        # Sorting: Clock -> Weather -> Active Games -> Final Games -> PPD
-        # Tie-breakers added (sport, id) to keep ordering stable when multiple games share the same start time
+        # Sorting Logic
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
             4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "ppd"]) else
             3 if "FINAL" in str(x.get('status', '')).upper() else 2,
             x.get('startTimeUTC', '9999'),
-            str(x.get('sport', '')),  # stabilizes ordering for same-time games (e.g., multiple soccer matches)
+            str(x.get('sport', '')),
             str(x.get('id', ''))
         ))
 
         with data_lock: 
             state['buffer_sports'] = all_games
+            
+            # --- FIX: RECORD SNAPSHOT FOR LIVE DELAY ---
+            # We deep copy the games list so future updates don't mutate our history
+            snapshot = (time.time(), [dict(g) for g in all_games])
+            self.history_buffer.append(snapshot)
+            
+            # PRUNE BUFFER: Keep only the last 20 minutes (1200 seconds)
+            cutoff = time.time() - 1200
+            self.history_buffer = [s for s in self.history_buffer if s[0] > cutoff]
+            
             self.merge_buffers()
 
     def get_snapshot_for_delay(self, delay_seconds):
@@ -2204,36 +2211,25 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
         
-        # 1. Determine which ticker is being targeted
         target_id = new_data.get('ticker_id') or request.args.get('id')
-        
         cid = request.headers.get('X-Client-ID')
         
-        # If we have a CID, try to find the associated ticker
         if not target_id and cid:
             for tid, t_data in tickers.items():
                 if cid in t_data.get('clients', []):
                     target_id = tid
                     break
         
-        # Fallback for single-ticker setups
         if not target_id and len(tickers) == 1: 
             target_id = list(tickers.keys())[0]
 
-        # ================= SECURITY CHECK START =================
         if target_id and target_id in tickers:
             rec = tickers[target_id]
-            
-            # STRICT FIX: remove "if rec.get('paired')"
-            # If the client ID is not in the list, block them. 
-            # The ONLY way to get in the list is via the /pair endpoint.
             if cid not in rec.get('clients', []):
-                print(f"⛔ Blocked unauthorized config change from {cid}")
-                return jsonify({"error": "Unauthorized: Device not paired"}), 403
-        # ================== SECURITY CHECK END ==================
+                return jsonify({"error": "Unauthorized"}), 403
 
         with data_lock:
-            # Update Weather (Global)
+            # Update Weather
             new_city = new_data.get('weather_city')
             if new_city: 
                 fetcher.weather.update_config(city=new_city, lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
@@ -2245,78 +2241,47 @@ def api_config():
                 
                 # HANDLE TEAMS
                 if k == 'my_teams' and isinstance(v, list):
-                    cleaned = []
-                    seen = set()
-                    for e in v:
-                        if e:
-                            k_str = str(e).strip()
-                            if k_str == "LV": k_str = "ahl:LV"
-                            if k_str not in seen:
-                                seen.add(k_str)
-                                cleaned.append(k_str)
-                    
+                    cleaned = list(set([str(e).strip() for e in v if e]))
                     if target_id and target_id in tickers:
                         tickers[target_id]['my_teams'] = cleaned
                     else:
                         state['my_teams'] = cleaned
                     continue
 
-                # HANDLE ACTIVE SPORTS
+                # HANDLE ACTIVE SPORTS (MUSIC DEBOUNCE FIX)
                 if k == 'active_sports' and isinstance(v, dict): 
-                    # Add debounce for music toggle to prevent rapid oscillation
-                    # Only allow music state to change if 2+ seconds have passed since last toggle
                     if 'music' in v:
                         current_time = time.time()
                         last_toggle_time = state.get('music_toggle_time', 0)
-                        if current_time - last_toggle_time >= 2.0:
+                        # Reduced from 2.0s to 0.4s for snappier UI
+                        if current_time - last_toggle_time >= 0.4:
                             state['active_sports']['music'] = v['music']
                             state['music_toggle_time'] = current_time
-                            print(f"[MUSIC] Toggle to {v['music']} (debounced)")
-                        else:
-                            print(f"[MUSIC] Toggle blocked by debounce ({current_time - last_toggle_time:.1f}s / 2.0s)")
-                        # Remove music from v so it doesn't get processed twice
-                        v = {k2: v2 for k2, v2 in v.items() if k2 != 'music'}
                     
-                    if v:  # Only update if there are other items after removing music
-                        state['active_sports'].update(v)
+                    v_filtered = {k2: v2 for k2, v2 in v.items() if k2 != 'music'}
+                    state['active_sports'].update(v_filtered)
                     continue
                 
-                # HANDLE MODES & SETTINGS
+                # HANDLE MODES (JUMPING BUTTONS FIX)
                 if k == 'mode':
                     valid_modes = ['all', 'stocks', 'weather', 'clock', 'music', 'sports', 'live', 'my_teams']
-                    if v not in valid_modes:
-                        print(f"⚠️ Invalid mode '{v}' requested, ignoring")
+                    if v not in valid_modes: continue
+                    
+                    current_time = time.time()
+                    last_mode_change = state.get('last_mode_change_time', 0)
+                    # Reduced from 5.0s to 0.5s to prevent "jumping"
+                    if current_time - last_mode_change < 0.5:
                         continue
-                    old_mode = state.get('mode', 'all')
-                    if old_mode != v:
-                        # Rate limit mode changes to prevent rapid switching
-                        current_time = time.time()
-                        last_mode_change = state.get('last_mode_change_time', 0)
-                        if current_time - last_mode_change < 5.0:  # 5 second minimum between changes
-                            print(f"⚠️ Mode change blocked by rate limit ({current_time - last_mode_change:.1f}s / 5.0s)")
-                            continue
-                        print(f"🔄 Mode changed from '{old_mode}' to '{v}'")
-                        state['last_mode_change_time'] = current_time
+                    
+                    state['last_mode_change_time'] = current_time
                     state[k] = v
+                    
+                    if target_id and target_id in tickers:
+                        tickers[target_id]['settings']['mode'] = v
+                
                 elif v is not None: 
                     state[k] = v
-                
-                # SYNC TO TICKER SETTINGS
-                if target_id and target_id in tickers:
-                    if k == 'mode':
-                        old_ticker_mode = tickers[target_id]['settings'].get('mode', 'all')
-                        if old_ticker_mode != v:
-                            # Rate limit ticker mode changes
-                            current_time = time.time()
-                            last_ticker_change = tickers[target_id]['settings'].get('last_mode_change_time', 0)
-                            if current_time - last_ticker_change < 5.0:
-                                print(f"⚠️ Ticker {target_id} mode change blocked by rate limit ({current_time - last_ticker_change:.1f}s / 5.0s)")
-                                continue
-                            print(f"🔄 Ticker {target_id} mode changed from '{old_ticker_mode}' to '{v}'")
-                            tickers[target_id]['settings']['last_mode_change_time'] = current_time
-                    if k in tickers[target_id]['settings'] or k == 'mode':
-                        tickers[target_id]['settings'][k] = v
-            
+
             fetcher.merge_buffers()
         
         if target_id:
@@ -2324,9 +2289,7 @@ def api_config():
         else:
             save_global_config()
         
-        current_teams = tickers[target_id].get('my_teams', []) if (target_id and target_id in tickers) else state['my_teams']
-        
-        return jsonify({"status": "ok", "saved_teams": current_teams, "ticker_id": target_id})
+        return jsonify({"status": "ok", "ticker_id": target_id})
         
     except Exception as e:
         print(f"Config Error: {e}") 
