@@ -2282,10 +2282,38 @@ def api_config():
                     continue
                 
                 # HANDLE MODES & SETTINGS
-                if v is not None: state[k] = v
+                if k == 'mode':
+                    valid_modes = ['all', 'stocks', 'weather', 'clock', 'music', 'sports', 'live', 'my_teams']
+                    if v not in valid_modes:
+                        print(f"⚠️ Invalid mode '{v}' requested, ignoring")
+                        continue
+                    old_mode = state.get('mode', 'all')
+                    if old_mode != v:
+                        # Rate limit mode changes to prevent rapid switching
+                        current_time = time.time()
+                        last_mode_change = state.get('last_mode_change_time', 0)
+                        if current_time - last_mode_change < 5.0:  # 5 second minimum between changes
+                            print(f"⚠️ Mode change blocked by rate limit ({current_time - last_mode_change:.1f}s / 5.0s)")
+                            continue
+                        print(f"🔄 Mode changed from '{old_mode}' to '{v}'")
+                        state['last_mode_change_time'] = current_time
+                    state[k] = v
+                elif v is not None: 
+                    state[k] = v
                 
                 # SYNC TO TICKER SETTINGS
                 if target_id and target_id in tickers:
+                    if k == 'mode':
+                        old_ticker_mode = tickers[target_id]['settings'].get('mode', 'all')
+                        if old_ticker_mode != v:
+                            # Rate limit ticker mode changes
+                            current_time = time.time()
+                            last_ticker_change = tickers[target_id]['settings'].get('last_mode_change_time', 0)
+                            if current_time - last_ticker_change < 5.0:
+                                print(f"⚠️ Ticker {target_id} mode change blocked by rate limit ({current_time - last_ticker_change:.1f}s / 5.0s)")
+                                continue
+                            print(f"🔄 Ticker {target_id} mode changed from '{old_ticker_mode}' to '{v}'")
+                            tickers[target_id]['settings']['last_mode_change_time'] = current_time
                     if k in tickers[target_id]['settings'] or k == 'mode':
                         tickers[target_id]['settings'][k] = v
             
