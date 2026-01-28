@@ -395,22 +395,21 @@ def generate_pairing_code():
         active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
         if code not in active_codes: return code
 
-# ================= SPOTIFY FETCHER (SMART STATUS) =================
+# ================= SPOTIFY FETCHER (EVENT-DRIVEN QUEUE) =================
 class SpotifyFetcher(threading.Thread):
     def __init__(self):
         super().__init__()
         self.daemon = True
         self._lock = threading.Lock()
         
-        # --- CONFIGURATION ---
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
         self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
 
-        # --- INTERNAL CACHE ---
+        # --- CACHE ---
         self.cached_current_id = None
         self.cached_current_cover = ""
+        self.cached_queue_covers = [] # Store queue here to avoid re-fetching
 
-        # --- STATE ---
         self.state = {
             "is_playing": False,
             "name": "Waiting for Music...",
@@ -428,13 +427,13 @@ class SpotifyFetcher(threading.Thread):
             return self.state.copy()
 
     def run(self):
-        """Main Loop: Smart Polling"""
         if not self.client_id or not self.client_secret:
-            print("⚠️ SPOTIFY: Missing Client ID or Secret in .env")
+            print("⚠️ SPOTIFY: Missing Client ID")
             return
 
-        print("✅ Spotify Smart Tracker Started")
+        print("✅ Spotify Low-Latency Tracker Started")
 
+        # Auth Setup
         try:
             auth_manager = SpotifyOAuth(
                 client_id=self.client_id,
@@ -449,79 +448,77 @@ class SpotifyFetcher(threading.Thread):
             print(f"Spotify Init Failed: {e}")
             return
         
-        current_delay = 2.0
+        current_delay = 1.0
 
         while True:
             try:
-                # 1. Fetch Playback (Get Raw Response to check for 204)
-                # We use internal call to get response object for status code check
+                # 1. LIGHTWEIGHT POLL (Current Track Only)
+                # This is much faster than fetching the whole player state or queue
                 try:
-                    raw_playback = sp._get("me/player/currently-playing")
-                except Exception:
-                    raw_playback = None
+                    current = sp.current_user_playing_track()
+                except:
+                    current = None
 
-                # DEFAULT: Assume inactive (204) logic if None
-                is_active_session = False
-                playback_item = None
+                # Determine if active (204 returns None)
+                is_active = current is not None
+                is_playing = current.get('is_playing', False) if is_active else False
                 
-                if raw_playback:
-                    is_active_session = True # We got data, so a device is active
-                    playback_item = raw_playback
-
-                # 2. Fetch Queue (Only if session is active to save calls)
-                queue_data = None
-                if is_active_session and current_delay < 5.0: 
-                    try: queue_data = sp.queue()
-                    except: pass
-                
-                with self._lock:
-                    if is_active_session and playback_item and playback_item.get('item'):
-                        item = playback_item['item']
-                        is_playing = playback_item.get('is_playing', False)
-                        
-                        current_id = item.get('id')
-                        current_cover = item['album']['images'][0]['url'] if item.get('album',{}).get('images') else ""
-                        
-                        # History Logic
-                        if self.cached_current_id and self.cached_current_id != current_id:
+                # --- QUEUE & HISTORY LOGIC ---
+                if is_active and current.get('item'):
+                    item = current['item']
+                    current_id = item.get('id')
+                    current_cover = item['album']['images'][0]['url'] if item.get('album',{}).get('images') else ""
+                    
+                    # ONLY fetch the heavy Queue if the song changed!
+                    if self.cached_current_id != current_id:
+                        # 1. Update History
+                        if self.cached_current_id: 
                             self.state['last_cover'] = self.cached_current_cover
+                        
+                        # 2. Fetch New Queue (Blocking call, but only happens once per song)
+                        try:
+                            queue_data = sp.queue()
+                            new_queue_covers = []
+                            if queue_data and 'queue' in queue_data:
+                                for q_track in queue_data['queue'][:3]:
+                                    if q_track.get('album') and q_track['album'].get('images'):
+                                        new_queue_covers.append(q_track['album']['images'][0]['url'])
+                                    else:
+                                        new_queue_covers.append("")
+                            self.cached_queue_covers = new_queue_covers
+                        except:
+                            pass # Keep old queue on error to prevent flicker
+
+                        # 3. Update ID Cache
                         self.cached_current_id = current_id
                         self.cached_current_cover = current_cover
 
-                        # Queue Logic
-                        next_covers = []
-                        if queue_data and 'queue' in queue_data:
-                            for q_track in queue_data['queue'][:3]:
-                                if q_track.get('album') and q_track['album'].get('images'):
-                                    next_covers.append(q_track['album']['images'][0]['url'])
-                                else:
-                                    next_covers.append("")
-
+                    # Update State
+                    with self._lock:
                         self.state.update({
                             "is_playing": is_playing,
                             "name": item.get('name', 'Unknown'),
                             "artist": ", ".join(a['name'] for a in item.get('artists', [])),
                             "cover": current_cover,
-                            "next_covers": next_covers,
+                            "next_covers": self.cached_queue_covers, # Use cached queue
                             "duration": item.get('duration_ms', 0) / 1000.0,
-                            "progress": playback_item.get('progress_ms', 0) / 1000.0,
+                            "progress": current.get('progress_ms', 0) / 1000.0,
                             "last_fetch_ts": time.time()
                         })
-                        
-                        # --- SMART TIMING ---
-                        if is_playing:
-                            current_delay = 0.8  # TURBO: Live updates
-                        else:
-                            current_delay = 2.0  # STANDBY: Paused but session active (Fast Resume)
+
+                    # --- AGGRESSIVE TIMING ---
+                    if is_playing:
+                        current_delay = 0.6  # ULTRA TURBO: Catch pauses instantly
                     else:
-                        # 204 NO CONTENT (Or empty item)
-                        # No device is active. It takes time to connect a device anyway.
-                        self.state['is_playing'] = False
-                        current_delay = 5.0      # SLEEP: Check less frequently
+                        current_delay = 1.5  # STANDBY: Paused, but keep checking fast
+                else:
+                    # Device inactive / Spotify Closed
+                    with self._lock: self.state['is_playing'] = False
+                    current_delay = 3.0      # SLEEP: Check every 3s (Aggressive enough)
 
             except Exception as e:
-                print(f"Spotify API Error: {e}")
-                current_delay = 30.0
+                print(f"Spotify Loop Error: {e}")
+                current_delay = 5.0
 
             time.sleep(current_delay)
 
