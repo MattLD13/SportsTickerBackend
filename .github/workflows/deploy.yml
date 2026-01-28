@@ -48,7 +48,13 @@ jobs:
             echo "FINNHUB_KEY_4=${{ secrets.FINNHUB_KEY_4 }}" >> .env
             echo "FINNHUB_KEY_5=${{ secrets.FINNHUB_KEY_5 }}" >> .env
             
-            # Spotify Keys (UPDATED FOR LIBRESPOT)
+            # Spotify Keys (HYBRID SETUP: NEEDS ALL 5)
+            # 1. Old Web API Keys (For Metadata)
+            echo "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}" >> .env
+            echo "SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}" >> .env
+            echo "SPOTIFY_REFRESH_TOKEN=${{ secrets.SPOTIFY_REFRESH_TOKEN }}" >> .env
+            
+            # 2. New Librespot Keys (For Instant Trigger)
             echo "SPOTIFY_USERNAME=${{ secrets.SPOTIFY_USERNAME }}" >> .env
             echo "SPOTIFY_PASSWORD=${{ secrets.SPOTIFY_PASSWORD }}" >> .env
             
