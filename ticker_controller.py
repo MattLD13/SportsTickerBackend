@@ -28,10 +28,13 @@ PANEL_H = 32
 SETUP_SSID = "SportsTicker_Setup"
 SETUP_PASS = "setup1234"
 PAGE_HOLD_TIME = 8.0 
-REFRESH_RATE = 0 # ZERO delay for maximum speed
+REFRESH_RATE = 0 
 ID_FILE_PATH = "/boot/ticker_id.txt"
 ID_FILE_FALLBACK = "ticker_id.txt"
 ASSETS_DIR = os.path.expanduser("~/ticker/assets")
+
+# Disable SSL Warnings
+requests.packages.urllib3.disable_warnings()
 
 # --- UI TEMPLATE ---
 HTML_TEMPLATE = """
@@ -114,7 +117,6 @@ TINY_FONT_MAP = {
     '(': [0x2, 0x4, 0x4, 0x4, 0x2], ')': [0x4, 0x2, 0x2, 0x2, 0x4]
 }
 
-# HYBRID FONT (4x6) FOR STATUS
 HYBRID_FONT_MAP = {
     'A': [0x6, 0x9, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x8, 0x9, 0x6],
     'D': [0xE, 0x9, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8, 0x8],
@@ -286,6 +288,9 @@ class TickerStreamer:
         self.viz_phase = [random.random() * 10 for _ in range(16)]
         
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        
+        # --- [FIX] PERSISTENT MUSIC SESSION ---
+        self.music_session = requests.Session()
 
         threading.Thread(target=self.poll_backend, daemon=True).start()
         threading.Thread(target=self.render_loop, daemon=True).start()
@@ -406,7 +411,8 @@ class TickerStreamer:
             else:
                 target_h = 2.0 # Flatline when paused
 
-            self.viz_heights[i] += (target_h - self.viz_heights[i]) * 0.25
+            # SMOOTHING FACTOR: 0.1 makes it fade in/out gracefully
+            self.viz_heights[i] += (target_h - self.viz_heights[i]) * 0.1
             
             h_int = int(self.viz_heights[i])
             start_y = center_y - (h_int // 2)
@@ -438,7 +444,8 @@ class TickerStreamer:
         now = time.time()
         if now - self.spotify_fetch_time > 1.0:
             try:
-                r = requests.get(f"{BACKEND_URL}/api/spotify/now", timeout=0.5)
+                # === FIX: Use Session with Verify=False for SPEED ===
+                r = self.music_session.get(f"{BACKEND_URL}/api/spotify/now", timeout=0.5, verify=False)
                 if r.status_code == 200:
                     self.cached_spotify_data = r.json()
                     self.spotify_fetch_time = now
@@ -460,7 +467,9 @@ class TickerStreamer:
         last_rx = game.get('_received_at', 0)
         time_since_rx = time.time() - last_rx
         if time_since_rx > 5.0:
-            is_playing = False # FORCE PAUSE IF DATA IS STALE
+            # Only force pause if we haven't successfully fetched fresh API data recently
+            if now - self.spotify_fetch_time > 2.0:
+                is_playing = False
 
         # Parse duration from Spotify API or fall back to game status
         duration = spotify.get('duration', 0)
