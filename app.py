@@ -1203,7 +1203,12 @@ class SportsFetcher:
                     st = g.get('gameState', 'OFF')
                     map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
 
-                    h_ab = g['homeTeam']['abbrev']; a_ab = g['awayTeam']['abbrev']
+                    # === FIX START: NORMALIZE ABBREVIATIONS ===
+                    raw_h = g['homeTeam']['abbrev']; raw_a = g['awayTeam']['abbrev']
+                    h_ab = ABBR_MAPPING.get(raw_h, raw_h) # Translates LAK -> LA
+                    a_ab = ABBR_MAPPING.get(raw_a, raw_a) # Translates TBL -> TB
+                    # === FIX END ===
+
                     h_sc = str(g['homeTeam'].get('score', 0)); a_sc = str(g['awayTeam'].get('score', 0))
                     
                     h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
