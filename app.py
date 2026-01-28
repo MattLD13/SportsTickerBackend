@@ -2371,7 +2371,7 @@ def get_ticker_data():
     if not ticker_id and len(tickers) == 1: 
         ticker_id = list(tickers.keys())[0]
     
-    # 2. Safety check: If ID is invalid, return generic config
+    # 2. Safety check: If ID is invalid, return generic config to prevent crash
     if not ticker_id or ticker_id not in tickers:
         return jsonify({
             "status": "ok",
@@ -2393,6 +2393,20 @@ def get_ticker_data():
     # 3. Standard Data Fetching
     t_settings = rec['settings']
     
+    # ==========================================================
+    # RESTORED: SLEEP MODE LOGIC
+    # If brightness is 0, send 'sleep' status and empty content
+    # ==========================================================
+    if t_settings.get('brightness', 100) <= 0:
+        return jsonify({ 
+            "status": "sleep", 
+            "version": SERVER_VERSION,
+            "global_config": state, 
+            "local_config": t_settings, 
+            "content": { "sports": [] } 
+        })
+    # ==========================================================
+
     # --- FIX 1: Fallback to Global Teams if Ticker-Specific list is empty ---
     saved_teams = rec.get('my_teams', []) 
     if not saved_teams:
@@ -2405,10 +2419,14 @@ def get_ticker_data():
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
     
     processed_games = []
+    visible_games = [] 
     COLLISION_ABBRS = {'LV'} 
 
     for g in raw_games:
+        # Create a copy so we don't modify the global cache for other users
         game_copy = g.copy()
+        
+        # Start by assuming it is shown, unless logic says otherwise
         should_show = True
         
         # Logic 1: Live Mode
@@ -2467,6 +2485,9 @@ def get_ticker_data():
     })
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     return response
 
 @app.route('/pair', methods=['POST'])
