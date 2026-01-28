@@ -396,6 +396,7 @@ def generate_pairing_code():
         if code not in active_codes: return code
 
 # ================= SPOTIFY FETCHER (PASSIVE MODE) =================
+# ================= SPOTIFY FETCHER (PASSIVE MODE) =================
 class SpotifyFetcher(threading.Thread):
     def __init__(self):
         super().__init__()
@@ -406,12 +407,18 @@ class SpotifyFetcher(threading.Thread):
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
         self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
 
+        # --- INTERNAL CACHE (For History Logic) ---
+        self.cached_current_id = None
+        self.cached_current_cover = ""
+
         # --- STATE ---
         self.state = {
             "is_playing": False,
             "name": "Waiting for Music...",
             "artist": "",
-            "cover": "",
+            "cover": "",         # Current Album Art
+            "last_cover": "",    # Previous Album Art
+            "next_covers": [],   # Next 3 Album Arts (List)
             "duration": 0,
             "progress": 0,
             "last_fetch_ts": time.time()
@@ -448,22 +455,52 @@ class SpotifyFetcher(threading.Thread):
 
         while True:
             try:
+                # 1. Fetch Playback
                 playback = sp.current_playback()
+                
+                # 2. Fetch Queue (Safely)
+                try:
+                    queue_data = sp.queue()
+                except Exception:
+                    queue_data = None
                 
                 with self._lock:
                     if playback and playback.get('item'):
                         item = playback['item']
-                        self.state = {
+                        current_id = item.get('id')
+                        current_cover = item['album']['images'][0]['url'] if item.get('album',{}).get('images') else ""
+                        
+                        # --- HISTORY LOGIC ---
+                        # If the song ID changed, save the old cover as 'last_cover'
+                        if self.cached_current_id and self.cached_current_id != current_id:
+                            self.state['last_cover'] = self.cached_current_cover
+                        
+                        # Update internal trackers
+                        self.cached_current_id = current_id
+                        self.cached_current_cover = current_cover
+
+                        # --- QUEUE LOGIC (NEXT 3) ---
+                        next_covers = []
+                        if queue_data and 'queue' in queue_data:
+                            # Extract covers from the next 3 songs
+                            for q_track in queue_data['queue'][:3]:
+                                if q_track.get('album') and q_track['album'].get('images'):
+                                    next_covers.append(q_track['album']['images'][0]['url'])
+                                else:
+                                    next_covers.append("") # Placeholder for missing art
+
+                        self.state.update({
                             "is_playing": playback.get('is_playing', False),
                             "name": item.get('name', 'Unknown'),
                             "artist": ", ".join(a['name'] for a in item.get('artists', [])),
-                            "cover": item['album']['images'][0]['url'] if item.get('album',{}).get('images') else "",
+                            "cover": current_cover,
+                            "next_covers": next_covers,  # <--- Stores the next 3 covers
                             "duration": item.get('duration_ms', 0) / 1000.0,
                             "progress": playback.get('progress_ms', 0) / 1000.0,
                             "last_fetch_ts": time.time()
-                        }
+                        })
                         
-                        # SMART LOGIC: Fast updates if playing, slow if paused
+                        # Smart Delay: Fast updates if playing, slow if paused
                         current_delay = 1.0 if self.state["is_playing"] else 4.0
                     else:
                         # Nothing playing
@@ -471,7 +508,7 @@ class SpotifyFetcher(threading.Thread):
                         current_delay = 4.0
 
             except Exception as e:
-                # API Errors / Rate Limits
+                # API Errors / Rate Limits (Ignore to prevent crash)
                 pass
 
             time.sleep(current_delay)
@@ -1915,7 +1952,13 @@ class SportsFetcher:
                     'is_shown': True,
                     'home_abbr': s_data.get('artist', 'Unknown'), 
                     'away_abbr': s_data.get('name', 'Unknown'),
-                    'home_logo': s_data.get('cover', ''),
+                    
+                    # --- IMAGES FOR TICKER ---
+                    'home_logo': s_data.get('cover', ''),      # Current
+                    'last_logo': s_data.get('last_cover', ''), # Previous
+                    'next_logos': s_data.get('next_covers', []), # Next 3 (List of URLs)
+                    # -------------------------
+
                     'away_logo': 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
                     'home_color': '#1DB954',
                     'away_color': '#FFFFFF',
