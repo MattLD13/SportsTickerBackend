@@ -23,8 +23,7 @@ from spotipy.oauth2 import SpotifyOAuth
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v6-Stable-Music"
-
+SERVER_VERSION = "v0.6-Stable"
 # ================= LOGGING SETUP =================
 class Tee(object):
     def __init__(self, name, mode):
