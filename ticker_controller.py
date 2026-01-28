@@ -210,6 +210,7 @@ class WifiPortal:
         except: pass
 
 # --- MAIN CONTROLLER ---
+# --- MAIN CONTROLLER ---
 class TickerStreamer:
     def __init__(self):
         print("Starting Ticker System...")
@@ -330,6 +331,7 @@ class TickerStreamer:
                 img = Image.open(io.BytesIO(r.content)).convert("RGBA")
                 img.thumbnail(size, Image.Resampling.LANCZOS)
                 final = Image.new("RGBA", size, (0,0,0,0))
+                # Center the image
                 final.paste(img, ((size[0]-img.width)//2, (size[1]-img.height)//2))
                 final.save(local, "PNG")
                 self.logo_cache[cache_key] = final
@@ -441,20 +443,17 @@ class TickerStreamer:
         img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
         
-        # Strip text to ensure accurate length measurement
         artist = str(game.get('home_abbr', 'Unknown')).strip()
         song = str(game.get('away_abbr', 'Unknown')).strip()
         cover_url = game.get('home_logo')
         
         # --- CONNECTION & PAUSE LOGIC ---
-        # 1. Check if user manually paused
         is_playing = game.get('is_playing', True)
         if "paused" in str(game.get('status', '')).lower(): is_playing = False
         
-        # 2. Check if connection is lost (stale data > 5 seconds)
         last_rx = game.get('_received_at', 0)
         time_since_rx = time.time() - last_rx
-        if time_since_rx > 5.0: # [OPTIMIZED] Increased timeout from 5s to 30s
+        if time_since_rx > 30.0: # [OPTIMIZED] Increased timeout
             is_playing = False 
 
         # Parse duration
@@ -481,7 +480,6 @@ class TickerStreamer:
         if is_playing:
             self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt)) % 360
             self.text_scroll_pos += (15.0 * dt)
-            # Reset scroll pos if it gets absurdly high to prevent float errors
             if self.text_scroll_pos > 1000000: self.text_scroll_pos = 0
         
         # 1. Update Cover
@@ -490,14 +488,24 @@ class TickerStreamer:
             self.vinyl_cache = None
             if cover_url:
                 try:
-                    r = requests.get(cover_url, timeout=1)
-                    raw = Image.open(io.BytesIO(r.content)).convert("RGBA")
+                    # [UPDATED] Try fetching from system cache first (pre-downloaded by poll_backend)
+                    # We look for the exact size we need (COVER_SIZE = 42)
+                    raw = self.get_logo(cover_url, (self.COVER_SIZE, self.COVER_SIZE))
+                    
+                    if not raw:
+                        # Fallback: Direct download if cache missed
+                        r = requests.get(cover_url, timeout=1)
+                        raw = Image.open(io.BytesIO(r.content)).convert("RGBA")
+                    
+                    # Process the image (Extract colors, fit to circle)
                     self.extract_colors_and_spindle(raw)
                     raw = raw.resize((self.COVER_SIZE, self.COVER_SIZE))
                     output = ImageOps.fit(raw, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
                     output.putalpha(self.vinyl_mask)
                     self.vinyl_cache = output
-                except: pass
+                except Exception as e: 
+                    print(f"Cover Load Error: {e}")
+                    pass
 
         # 2. Draw Vinyl
         composite = self.scratch_layer.copy()
@@ -514,17 +522,14 @@ class TickerStreamer:
 
         # 3. Text Section
         TEXT_START_X = 60
-        # Safe text area width before hitting visualizer
         TEXT_AREA_W = 188 
         
-        # Draw Song Name (y=0) - Pass 'img' (canvas), NOT 'd'
         self.draw_scrolling_text(img, song, self.medium_font, TEXT_START_X, 0, TEXT_AREA_W, self.text_scroll_pos, "white")
         
-        # Draw Artist Name (y=16) - Pass 'img' (canvas), NOT 'd'
         self.draw_spotify_logo(d, TEXT_START_X, 15)
         self.draw_scrolling_text(img, artist, self.tiny, TEXT_START_X + 16, 17, 172, self.text_scroll_pos, (180, 180, 180))
 
-        # 5. Viz (Pass is_playing status)
+        # 5. Viz
         self.render_visualizer(d, 248, 6, 80, 20, is_playing=is_playing)
 
         # 6. Time & Bar
@@ -1239,33 +1244,21 @@ class TickerStreamer:
 
     def poll_backend(self):
         last_hash = ""
-        # Fix for "Offline" status caused by SSL certs on devices with wrong dates
         requests.packages.urllib3.disable_warnings()
-        
-        # Use a Session to reuse TCP connections (Keep-Alive)
         session = requests.Session()
 
         while self.running:
             try:
                 url = f"{BACKEND_URL}/data?id={self.device_id}"
-                
-                # Use session.get to reuse the connection
                 r = session.get(url, timeout=10, verify=False)
                 data = r.json()
                 
-                # ==========================================
-                # COMMAND LISTENER
-                # ==========================================
+                # ... [Command Listener Logic - Reboot/Update] ...
                 global_conf = data.get('global_config', {})
                 if global_conf.get('reboot') is True:
-                    print("⚠️ REBOOT COMMAND RECEIVED")
-                    self.matrix.Clear()
-                    subprocess.run(['reboot'])
-                    sys.exit(0)
-                
+                    self.matrix.Clear(); subprocess.run(['reboot']); sys.exit(0)
                 if global_conf.get('update') is True:
                     self.perform_update()
-                # ==========================================
 
                 if data.get('status') == 'pairing':
                     self.is_pairing = True
@@ -1280,7 +1273,6 @@ class TickerStreamer:
                 for idx, g in enumerate(new_games):
                     if isinstance(g, dict): 
                         g['_orig_index'] = idx
-                        # [NEW] Add reception timestamp for stale check
                         g['_received_at'] = time.time()
 
                 new_games.sort(key=lambda x: (self.get_game_start_key(x), x.get('_orig_index', 0), x.get('sport', ''), x.get('id', '')))
@@ -1290,18 +1282,19 @@ class TickerStreamer:
                 for g in new_games:
                     sport = str(g.get('sport', '')).lower()
                     
-                    # [NEW] Add 'music' to the list of static items
+                    # [UPDATED] Music is static
                     if g.get('type') == 'weather' or sport == 'clock' or sport.startswith('clock') or g.get('type') == 'music':
                         static_items.append(g)
                     else:
                         scrolling_items.append(g)
                 
-                # Create hash based on Content + Settings to detect changes
                 current_hash = hashlib.md5(json.dumps({'g': new_games, 'c': data.get('local_config')}, sort_keys=True).encode()).hexdigest()
                 
                 if current_hash != last_hash:
                     print(f"Data Update: {len(scrolling_items)} sports")
                     logos = []
+                    
+                    # 1. Collect Sport Logos (Standard sizes)
                     for g in scrolling_items:
                         if g.get('home_logo'): 
                             logos.append((g.get('home_logo'), (24, 24)))
@@ -1310,6 +1303,22 @@ class TickerStreamer:
                             logos.append((g.get('away_logo'), (24, 24)))
                             logos.append((g.get('away_logo'), (16, 16)))
                     
+                    # 2. [NEW] Collect Music Covers (Last, Current, Next 3)
+                    # We cache these at 42x42 to match the vinyl display size
+                    for g in static_items:
+                        if g.get('type') == 'music' or g.get('sport') == 'music':
+                            # Current
+                            if g.get('home_logo'): 
+                                logos.append((g.get('home_logo'), (42, 42)))
+                            
+                            # Last (Keep it in cache)
+                            if g.get('last_logo'): 
+                                logos.append((g.get('last_logo'), (42, 42)))
+                            
+                            # Next 3 (Pre-download)
+                            for url in g.get('next_logos', []):
+                                if url: logos.append((url, (42, 42)))
+
                     unique_logos = list(set(logos))
                     fs = [self.executor.submit(self.download_and_process_logo, u, s) for u, s in unique_logos]
                     concurrent.futures.wait(fs)
@@ -1334,8 +1343,6 @@ class TickerStreamer:
             except Exception as e:
                 print(f"Poll Error: {e}")
                 time.sleep(1)
-            
-            # Sleep removed to allow immediate polling
 
 if __name__ == "__main__":
     app = TickerStreamer()
