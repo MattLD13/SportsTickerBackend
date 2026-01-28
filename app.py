@@ -17,6 +17,7 @@ import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
+import subprocess
 
 # Librespot Imports
 from librespot.core import Session
@@ -2347,7 +2348,10 @@ def get_ticker_data():
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
     
-    visible_games = []
+    # --- FIX: Initialize the list explicitly before the loop ---
+    processed_games = []
+    
+    visible_games = [] # Temp list for filtering logic
     COLLISION_ABBRS = {'LV'} 
 
     for g in raw_games:
@@ -2644,20 +2648,14 @@ def api_debug():
 
 @app.route('/errors', methods=['GET'])
 def get_logs():
-    log_file = "ticker.log"
-    if not os.path.exists(log_file):
-        return "Log file not found", 404
-    
     try:
-        file_size = os.path.getsize(log_file)
-        read_size = min(file_size, 102400) 
-        
-        log_content = ""
-        with open(log_file, 'rb') as f:
-            if file_size > read_size:
-                f.seek(file_size - read_size)
-            data = f.read()
-            log_content = data.decode('utf-8', errors='replace')
+        # Run journalctl to get the last 200 lines of logs for the 'ticker' service
+        result = subprocess.run(
+            ['journalctl', '-u', 'ticker', '-n', '200', '--no-pager'],
+            capture_output=True,
+            text=True
+        )
+        log_content = result.stdout
 
         html_response = f"""
         <!DOCTYPE html>
@@ -2676,19 +2674,17 @@ def get_logs():
             </script>
         </head>
         <body>
-            <h3>Last {read_size / 1024:.0f}KB of Logs (Auto-scrolled)</h3>
+            <h3>Live System Logs (Last 200 lines)</h3>
             <pre>{log_content}</pre>
         </body>
         </html>
         """
         response = app.response_class(response=html_response, status=200, mimetype='text/html')
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
         return response
 
     except Exception as e:
-        return f"Error reading log: {str(e)}", 500
+        return f"Error reading system journal: {str(e)}", 500
 
 @app.route('/api/my_teams', methods=['GET'])
 def check_my_teams():
