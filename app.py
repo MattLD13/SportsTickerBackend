@@ -15,6 +15,11 @@ import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
+import asyncio
+import binascii
+from librespot.core import Session
+from librespot.metadata import TrackId
+from librespot.structure import DeviceType
 
 # Load environment variables for Finnhub Keys
 load_dotenv()
@@ -80,6 +85,9 @@ WORKER_THREAD_COUNT = 10       # LIMIT THIS to 10 to save RAM (Critical)
 API_TIMEOUT = 3.0              # New constant for hard timeouts        
 
 data_lock = threading.Lock()
+
+# Triggers an immediate UI update when music state changes
+music_update_event = threading.Event()
 
 # Headers for FotMob/ESPN
 HEADERS = {
@@ -670,84 +678,102 @@ class StockFetcher:
         return res
 
 # ================= LIGHTWEIGHT SERVER FETCHER =================
-class SpotifyFetcher:
-    def __init__(self):
-        self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
-        self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
-        self.refresh_token = os.getenv('SPOTIFY_REFRESH_TOKEN')
-        self.session = requests.Session()
+class SpotifyFetcher(threading.Thread):
+    def __init__(self, event):
+        super().__init__()
+        self.event = event  # <--- The Trigger
+        self.username = os.getenv('SPOTIFY_USERNAME')
+        self.password = os.getenv('SPOTIFY_PASSWORD')
+        self.daemon = True
         self._lock = threading.Lock()
-        self._running = True
-        self.access_token = None
-        self.token_expiry = 0
-        self._latest_playback = {"is_playing": False}
         
-        if self.refresh_token:
-            threading.Thread(target=self._background_worker, daemon=True).start()
+        self.state = {
+            "is_playing": False,
+            "name": "Waiting for Music...",
+            "artist": "",
+            "cover": "",
+            "duration": 0,
+            "progress": 0,
+            "last_fetch_ts": time.time()
+        }
 
     def get_cached_state(self):
         with self._lock:
-            return self._latest_playback.copy()
+            return self.state.copy()
 
-    def _background_worker(self):
-        # Poll every 5 seconds instead of 1.
-        # This keeps us safe from the 429 "penalty box".
-        POLL_INTERVAL = 5.0 
-
-        while self._running:
+    def run(self):
+        if not self.username or not self.password:
+            print("⚠️ SPOTIFY: Missing SPOTIFY_USERNAME/PASSWORD in .env")
+            return
+        while True:
             try:
-                if time.time() > self.token_expiry: self._refresh_access_token()
-                
-                # Correct Web API URL
-                r = self.session.get(
-                    "https://api.spotify.com/v1/me/player/currently-playing",
-                    headers={"Authorization": f"Bearer {self.access_token}"}, timeout=2
-                )
-                
-                if r.status_code == 429:
-                    wait_time = int(r.headers.get('Retry-After', 30))
-                    print(f"🛑 429 Rate Limit! Waiting {wait_time}s...")
-                    time.sleep(wait_time)
-                    continue
-
-                if r.status_code == 200:
-                    d = r.json()
-                    item = d.get('item')
-                    if item:
-                        payload = {
-                            "is_playing": d.get('is_playing', False),
-                            "name": item.get('name'),
-                            "artist": ", ".join(a['name'] for a in item.get('artists', [])),
-                            "cover": item['album']['images'][0]['url'] if item.get('album',{}).get('images') else "",
-                            "duration": item.get('duration_ms', 0) / 1000.0,
-                            "progress": d.get('progress_ms', 0) / 1000.0,
-                            "last_fetch_ts": time.time()  # KEY: Record the timestamp of this fetch
-                        }
-                        with self._lock: self._latest_playback = payload
-                elif r.status_code == 204:
-                    with self._lock: self._latest_playback = {"is_playing": False}
-
+                asyncio.run(self.async_runner())
             except Exception as e:
-                print(f"Spotify Poll Error: {e}")
-            
-            time.sleep(POLL_INTERVAL)
+                print(f"❌ Spotify Client Crashed: {e}. Restarting in 5s...")
+                time.sleep(5)
 
-    def _refresh_access_token(self):
-        if not self.refresh_token: return False
+    async def async_runner(self):
+        print(f"🔒 Authenticating Spotify as {self.username}...")
         try:
-            auth = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
-            r = self.session.post(
-                "https://accounts.spotify.com/api/token",
-                data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
-                headers={"Authorization": f"Basic {auth}"}, timeout=5
-            )
-            if r.status_code == 200:
-                d = r.json()
-                self.access_token = d['access_token']
-                self.token_expiry = time.time() + d.get('expires_in', 3600) - 60
-                return True
-        except: pass
-        return False
+            session = await Session.Builder() \
+                .user_pass(self.username, self.password) \
+                .device_name("ticker") \
+                .device_type(DeviceType.AUTOMOBILE) \
+                .create()
+            
+            spirc = session.spirc()
+            print("✅ Spotify Connected! Ready to Poll.")
+
+            def on_notify(notify):
+                if not notify.state: return
+                
+                with self._lock:
+                    self.state['is_playing'] = (notify.state.status == 1)
+                    self.state['progress'] = notify.state.position_ms / 1000.0
+                    self.state['last_fetch_ts'] = time.time()
+                    
+                    # 1. INSTANT TRIGGER: Play/Pause/Seek happened
+                    self.event.set()
+
+                    if notify.state.track:
+                        track = notify.state.track[0]
+                        self.state['duration'] = track.duration / 1000.0
+                        asyncio.run_coroutine_threadsafe(self.update_metadata(session, track), loop)
+
+            loop = asyncio.get_running_loop()
+            spirc.add_listener(on_notify)
+
+            while True: await asyncio.sleep(1)
+
+        except Exception as e:
+            print(f"Spotify Connection Error: {e}")
+            raise e
+
+    async def update_metadata(self, session, track_ref):
+        try:
+            track_id = TrackId.from_gid(track_ref.gid)
+            # This is the "Poll": Fetching fresh data from Spotify Servers
+            meta = await session.api().get_metadata_4_track(track_id)
+            
+            name = meta.name
+            artists = ", ".join([a.name for a in meta.artist])
+            
+            cover_url = ""
+            if meta.album.cover_group.image:
+                file_id = meta.album.cover_group.image[0].file_id
+                hex_id = binascii.hexlify(file_id).decode()
+                cover_url = f"https://i.scdn.co/image/{hex_id}"
+
+            with self._lock:
+                self.state['name'] = name
+                self.state['artist'] = artists
+                self.state['cover'] = cover_url
+            
+            # 2. INSTANT TRIGGER: New Metadata Arrived
+            self.event.set()
+                
+        except Exception as e:
+            print(f"Metadata Fetch Failed: {e}")
 
 class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
@@ -2140,7 +2166,8 @@ fetcher = SportsFetcher(
     initial_lon=state['weather_lon']
 )
 
-spotify_fetcher = SpotifyFetcher()
+spotify_fetcher = SpotifyFetcher(music_update_event) # <--- Pass Event Here
+spotify_fetcher.start()
 
 # ========================================================
 # FIX #2: DRIFT CORRECTION LOOP
@@ -2178,13 +2205,14 @@ def stocks_worker():
 def music_worker():
     while True:
         try:
+            # 1. Generate Object
             m_obj = fetcher.get_music_object()
+            
+            # 2. Update Global State
             with data_lock:
                 current_mode = state.get('mode')
-                # If we are in music mode, force the current_games to JUST be the music object
                 if current_mode == 'music':
                     state['current_games'] = [m_obj] if m_obj else []
-                # If in 'all' mode, ensure the music object is updated in the list
                 elif current_mode == 'all':
                     buffer = state.get('buffer_sports', [])
                     found = False
@@ -2199,7 +2227,12 @@ def music_worker():
                     state['buffer_sports'] = buffer
                     fetcher.merge_buffers()
         except: pass
-        time.sleep(1)
+        
+        # 3. SMART SLEEP (The Magic)
+        # Wait 1.0s normally (for progress bar), BUT wake up immediately
+        # if spotify_fetcher calls set()
+        music_update_event.wait(1.0)
+        music_update_event.clear()
 
 # ================= FLASK API =================
 app = Flask(__name__)
