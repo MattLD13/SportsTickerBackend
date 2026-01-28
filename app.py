@@ -330,10 +330,6 @@ print(f"📂 Found {len(ticker_files)} saved tickers in '{TICKER_DATA_DIR}'")
 
 for t_file in ticker_files:
     try:
-        # Skip myTeams files, they're loaded separately
-        if t_file.endswith('_myteams.json'):
-            continue
-            
         with open(t_file, 'r') as f:
             t_data = json.load(f)
             tid = os.path.splitext(os.path.basename(t_file))[0]
@@ -342,16 +338,6 @@ for t_file in ticker_files:
             if 'settings' not in t_data: t_data['settings'] = DEFAULT_TICKER_SETTINGS.copy()
             if 'my_teams' not in t_data: t_data['my_teams'] = []
             if 'clients' not in t_data: t_data['clients'] = []
-            
-            # Load myTeams from separate file if it exists
-            my_teams_file = os.path.join(TICKER_DATA_DIR, f"{tid}_myteams.json")
-            if os.path.exists(my_teams_file):
-                try:
-                    with open(my_teams_file, 'r') as mf:
-                        teams_data = json.load(mf)
-                        t_data['my_teams'] = teams_data.get('my_teams', [])
-                except Exception as e:
-                    print(f"⚠️ Failed to load myTeams for {tid}: {e}")
             
             tickers[tid] = t_data
     except Exception as e:
@@ -396,12 +382,6 @@ def save_specific_ticker(tid):
         data = tickers[tid]
         filepath = os.path.join(TICKER_DATA_DIR, f"{tid}.json")
         save_json_atomically(filepath, data)
-        
-        # Also save myTeams in separate file for this ticker
-        my_teams_file = os.path.join(TICKER_DATA_DIR, f"{tid}_myteams.json")
-        teams_data = {"my_teams": data.get('my_teams', []), "ticker_id": tid, "last_updated": time.time()}
-        save_json_atomically(my_teams_file, teams_data)
-        
         print(f"💾 Saved Ticker: {tid}")
     except Exception as e:
         print(f"Error saving ticker {tid}: {e}")
@@ -437,54 +417,10 @@ class SpotifyFetcher(threading.Thread):
             "progress": 0,
             "last_fetch_ts": time.time()
         }
-        
-        # --- ALBUM COVER QUEUE ---
-        self.cover_queue = {
-            "current": "",           # Currently playing cover URL
-            "history_3": ["", "", ""],   # Last 3 played covers
-            "upcoming_3": ["", "", ""]   # Next 3 upcoming covers from queue
-        }
 
     def get_cached_state(self):
         with self._lock: 
             return self.state.copy()
-
-    def get_cover_queue(self):
-        """Returns the album cover queue: current + next 3"""
-        with self._lock:
-            return self.cover_queue.copy()
-
-    def _update_cover_queue(self, new_cover):
-        """Updates the cover queue when track changes"""
-        with self._lock:
-            # Shift the history: new cover becomes current, old current moves to history_3[0], etc.
-            if new_cover and new_cover != self.cover_queue["current"]:
-                self.cover_queue["history_3"] = [self.cover_queue["current"]] + self.cover_queue["history_3"][:2]
-                self.cover_queue["current"] = new_cover
-
-    def _fetch_upcoming_queue(self, sp):
-        """Fetches the next 3 upcoming tracks from Spotify queue"""
-        try:
-            queue_data = sp.queue()
-            upcoming_tracks = queue_data.get('queue', [])[:3]  # Get next 3 tracks
-            
-            upcoming_covers = []
-            for track in upcoming_tracks:
-                if track and track.get('album', {}).get('images'):
-                    cover_url = track['album']['images'][0]['url']
-                    upcoming_covers.append(cover_url)
-                else:
-                    upcoming_covers.append("")
-            
-            # Pad with empty strings if less than 3 tracks
-            while len(upcoming_covers) < 3:
-                upcoming_covers.append("")
-            
-            with self._lock:
-                self.cover_queue["upcoming_3"] = upcoming_covers
-        except Exception as e:
-            # Queue fetch failed, keep previous upcoming_3
-            print(f"⚠️ Spotify Queue Fetch Failed: {e}")
 
     def run(self):
         """Main Loop: Smart Polling"""
@@ -494,52 +430,19 @@ class SpotifyFetcher(threading.Thread):
 
         print("✅ Spotify Passive Tracker Started")
 
-        sp = None
-        cache_path = ".spotify_token"
-        
-        # Check if token cache already exists (from separate OAuth script)
-        if os.path.exists(cache_path):
-            try:
-                with open(cache_path, 'r') as f:
-                    token_info = json.load(f)
-                    access_token = token_info.get('access_token')
-                    if access_token:
-                        sp = spotipy.Spotify(auth=access_token)
-                        print("✅ Using cached Spotify token from OAuth script")
-                    else:
-                        print("❌ No access token in cache file")
-                        return
-            except Exception as e:
-                print(f"❌ Failed to load cached token: {e}")
-                return
-        else:
-            # No cache file exists, try standard auth flow
-            print("⚠️ No cached token found. Attempting standard OAuth flow...")
-            try:
-                import sys
-                original_stdin = sys.stdin
-                try:
-                    # Redirect stdin to suppress prompts in headless environments
-                    sys.stdin = open(os.devnull, 'r')
-                    
-                    auth_manager = SpotifyOAuth(
-                        client_id=self.client_id,
-                        client_secret=self.client_secret,
-                        redirect_uri="http://127.0.0.1:8888/callback",
-                        scope="user-read-playback-state user-read-currently-playing user-read-private",
-                        open_browser=False,
-                        show_dialog=False,
-                        cache_path=cache_path
-                    )
-                    sp = spotipy.Spotify(auth_manager=auth_manager)
-                finally:
-                    sys.stdin = original_stdin
-            except Exception as e:
-                print(f"❌ Spotify Init Failed: {e}")
-                return
-        
-        if not sp:
-            print("❌ Spotify client initialization failed")
+        # Auto-handles token refresh using the .cache file
+        try:
+            auth_manager = SpotifyOAuth(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                redirect_uri="http://127.0.0.1:8888/callback",
+                scope="user-read-playback-state user-read-currently-playing",
+                open_browser=False,
+                cache_path=".spotify_token"
+            )
+            sp = spotipy.Spotify(auth_manager=auth_manager)
+        except Exception as e:
+            print(f"Spotify Init Failed: {e}")
             return
         
         current_delay = 4.0
@@ -551,28 +454,15 @@ class SpotifyFetcher(threading.Thread):
                 with self._lock:
                     if playback and playback.get('item'):
                         item = playback['item']
-                        new_cover = item['album']['images'][0]['url'] if item.get('album',{}).get('images') else ""
-                        
-                        # Update cover queue when track changes
-                        if new_cover != self.state.get('cover', ''):
-                            self._update_cover_queue(new_cover)
-                        
                         self.state = {
                             "is_playing": playback.get('is_playing', False),
                             "name": item.get('name', 'Unknown'),
                             "artist": ", ".join(a['name'] for a in item.get('artists', [])),
-                            "cover": new_cover,
+                            "cover": item['album']['images'][0]['url'] if item.get('album',{}).get('images') else "",
                             "duration": item.get('duration_ms', 0) / 1000.0,
                             "progress": playback.get('progress_ms', 0) / 1000.0,
                             "last_fetch_ts": time.time()
                         }
-                        
-                        # Fetch upcoming queue tracks (every update when playing)
-                        if self.state["is_playing"]:
-                            try:
-                                self._fetch_upcoming_queue(sp)
-                            except Exception as queue_err:
-                                print(f"⚠️ Queue fetch exception: {queue_err}")
                         
                         # SMART LOGIC: Fast updates if playing, slow if paused
                         current_delay = 1.0 if self.state["is_playing"] else 4.0
@@ -583,7 +473,7 @@ class SpotifyFetcher(threading.Thread):
 
             except Exception as e:
                 # API Errors / Rate Limits
-                print(f"⚠️ Spotify polling error: {e}")
+                pass
 
             time.sleep(current_delay)
 
@@ -1999,8 +1889,6 @@ class SportsFetcher:
    
         try:
             s_data = spotify_fetcher.get_cached_state()
-            cover_queue = spotify_fetcher.get_cover_queue()
-            
             if s_data:
                 is_playing = s_data.get('is_playing', False)
                 time_since_fetch = time.time() - s_data.get('last_fetch_ts', time.time())
@@ -2037,8 +1925,7 @@ class SportsFetcher:
                         'raw_title': s_data.get('name'),
                         'progress': current_progress,
                         'duration': duration,
-                        'is_playing': is_playing,
-                        'cover_queue': cover_queue  # Include the cover queue for easy switching on skip
+                        'is_playing': is_playing
                     }
                 }
         except Exception as e:
