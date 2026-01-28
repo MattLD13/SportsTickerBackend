@@ -484,7 +484,7 @@ class SpotifyFetcher(threading.Thread):
                 self.cover_queue["upcoming_3"] = upcoming_covers
         except Exception as e:
             # Queue fetch failed, keep previous upcoming_3
-            pass
+            print(f"⚠️ Spotify Queue Fetch Failed: {e}")
 
     def run(self):
         """Main Loop: Smart Polling"""
@@ -502,6 +502,7 @@ class SpotifyFetcher(threading.Thread):
                 redirect_uri="http://127.0.0.1:8888/callback",
                 scope="user-read-playback-state user-read-currently-playing user-read-private",
                 open_browser=False,
+                show_dialog=False,
                 cache_path=".spotify_token"
             )
             sp = spotipy.Spotify(auth_manager=auth_manager)
@@ -536,7 +537,10 @@ class SpotifyFetcher(threading.Thread):
                         
                         # Fetch upcoming queue tracks (every update when playing)
                         if self.state["is_playing"]:
-                            self._fetch_upcoming_queue(sp)
+                            try:
+                                self._fetch_upcoming_queue(sp)
+                            except Exception as queue_err:
+                                print(f"⚠️ Queue fetch exception: {queue_err}")
                         
                         # SMART LOGIC: Fast updates if playing, slow if paused
                         current_delay = 1.0 if self.state["is_playing"] else 4.0
@@ -547,7 +551,7 @@ class SpotifyFetcher(threading.Thread):
 
             except Exception as e:
                 # API Errors / Rate Limits
-                pass
+                print(f"⚠️ Spotify polling error: {e}")
 
             time.sleep(current_delay)
 
