@@ -495,6 +495,7 @@ class SpotifyFetcher(threading.Thread):
         print("✅ Spotify Passive Tracker Started")
 
         # Auto-handles token refresh using the .cache file
+        sp = None
         try:
             auth_manager = SpotifyOAuth(
                 client_id=self.client_id,
@@ -506,8 +507,29 @@ class SpotifyFetcher(threading.Thread):
                 cache_path=".spotify_token"
             )
             sp = spotipy.Spotify(auth_manager=auth_manager)
+        except EOFError:
+            # Headless environment: try to use cached token
+            print("⚠️ Headless environment detected. Attempting to use cached token...")
+            try:
+                # Load token directly from cache file
+                import json
+                cache_path = ".spotify_token"
+                if os.path.exists(cache_path):
+                    with open(cache_path, 'r') as f:
+                        token_info = json.load(f)
+                        sp = spotipy.Spotify(auth=token_info.get('access_token'))
+                else:
+                    print("❌ No cached token found. Cannot initialize Spotify.")
+                    return
+            except Exception as e:
+                print(f"❌ Failed to load cached token: {e}")
+                return
         except Exception as e:
             print(f"Spotify Init Failed: {e}")
+            return
+        
+        if not sp:
+            print("❌ Spotify client initialization failed")
             return
         
         current_delay = 4.0
