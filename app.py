@@ -676,7 +676,7 @@ class StockFetcher:
             if obj: res.append(obj)
         return res
 
-# ================= MINIMAL STABLE SPOTIFY FETCHER =================
+# ================= STANDARD SPOTIFY FETCHER =================
 class SpotifyFetcher(threading.Thread):
     def __init__(self, event):
         super().__init__()
@@ -706,6 +706,7 @@ class SpotifyFetcher(threading.Thread):
             return
         while True:
             try:
+                # Create a new event loop for this thread
                 asyncio.run(self.async_runner())
             except Exception as e:
                 print(f"❌ Spotify Client Crashed: {e}. Restarting in 5s...")
@@ -714,15 +715,16 @@ class SpotifyFetcher(threading.Thread):
     async def async_runner(self):
         print(f"🔒 Authenticating Spotify as {self.username}...")
         try:
-            # SIMPLEST WORKING SETUP
+            # STANDARD BUILDER (No custom config, no icons)
             session = await Session.Builder() \
                 .user_pass(self.username, self.password) \
                 .create()
             
             spirc = session.spirc()
-            print("✅ Spotify Connected! Ready to Poll.")
+            print("✅ Spotify Connected! Waiting for events...")
 
             def on_notify(notify):
+                # This function triggers ONLY when you Press Play/Pause/Next
                 if not notify.state: return
                 
                 with self._lock:
@@ -730,7 +732,7 @@ class SpotifyFetcher(threading.Thread):
                     self.state['progress'] = notify.state.position_ms / 1000.0
                     self.state['last_fetch_ts'] = time.time()
                     
-                    self.event.set()
+                    self.event.set() # Wake up the main thread
 
                     if notify.state.track:
                         track = notify.state.track[0]
