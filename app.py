@@ -2346,19 +2346,11 @@ def get_league_options():
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
     ticker_id = request.args.get('id')
-    
-    # 1. Default to the first ticker if none specified
     if not ticker_id and len(tickers) == 1: 
         ticker_id = list(tickers.keys())[0]
     
-    # 2. Safety check
     if not ticker_id or ticker_id not in tickers:
-        return jsonify({
-            "status": "ok",
-            "global_config": state,
-            "local_config": DEFAULT_TICKER_SETTINGS,
-            "content": { "sports": fetcher.get_snapshot_for_delay(0) }
-        })
+        return jsonify({"status": "ok", "content": {"sports": []}})
 
     rec = tickers[ticker_id]
     rec['last_seen'] = time.time()
@@ -2373,95 +2365,70 @@ def get_ticker_data():
     t_settings = rec['settings']
     current_mode = t_settings.get('mode', 'all') 
     
-    # --- RESTORED SLEEP MODE ---
+    # Sleep Mode
     if t_settings.get('brightness', 100) <= 0:
-        return jsonify({ 
-            "status": "sleep", 
-            "version": SERVER_VERSION,
-            "global_config": state, 
-            "local_config": t_settings, 
-            "content": { "sports": [] } 
-        })
+        return jsonify({ "status": "sleep", "content": { "sports": [] } })
 
-    # =================================================================
-    # TURBO MUSIC SHORT-CIRCUIT
-    # =================================================================
-    if current_mode == 'music':
-        music_obj = fetcher.get_music_object()
-        g_config = { "mode": "music" }
-        if rec.get('reboot_requested'): g_config['reboot'] = True
-        if rec.get('update_requested'): g_config['update'] = True
-        
-        return jsonify({
-            "status": "ok",
-            "version": SERVER_VERSION,
-            "global_config": g_config,
-            "local_config": t_settings,
-            "content": { "sports": [music_obj] if music_obj else [] }
-        })
-    # =================================================================
-
-    # 3. Standard Data Fetching for other modes
-    saved_teams = rec.get('my_teams', []) 
+    # Get the base data
+    music_obj = fetcher.get_music_object()
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
     
-    visible_games = []
-    COLLISION_ABBRS = {'LV'} 
-
-    for g in raw_games:
-        should_show = True
-        
-        if current_mode == 'my_teams':
-            sport = g.get('sport')
-            if sport in ['music', 'weather', 'clock']:
-                should_show = True
-            else:
-                h_abbr = str(g.get('home_abbr', '')).upper()
-                a_abbr = str(g.get('away_abbr', '')).upper()
-                h_scoped = f"{sport}:{h_abbr}"
-                a_scoped = f"{sport}:{a_abbr}"
-                
-                if h_abbr in COLLISION_ABBRS: in_home = h_scoped in saved_teams
-                else: in_home = (h_scoped in saved_teams or h_abbr in saved_teams)
-
-                if a_abbr in COLLISION_ABBRS: in_away = a_scoped in saved_teams
-                else: in_away = (a_scoped in saved_teams or a_abbr in saved_teams)
-                
-                if not (in_home or in_away): should_show = False
-        
-        elif current_mode == 'live' and g.get('state') not in ['in', 'half']: 
-            should_show = False
-
-        # Mode: Weather or Clock filtering
-        elif current_mode == 'weather' and g.get('type') != 'weather':
-            should_show = False
-        elif current_mode == 'clock' and g.get('sport') != 'clock':
-            should_show = False
-
-        status_lower = str(g.get('status', '')).lower()
-        if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
-            should_show = False
-
-        if should_show:
-            g['is_shown'] = True
-            visible_games.append(g)
+    visible_items = []
     
-    # Construct flags
+    # =================================================================
+    # LOGIC FIX: Handle "All", "Sports", and "Music" modes properly
+    # =================================================================
+    
+    # 1. If mode is Music or All, add the music object first
+    if current_mode in ['music', 'all'] and music_obj:
+        visible_items.append(music_obj)
+
+    # 2. If mode is NOT exclusively music, process the rest of the sports
+    if current_mode != 'music':
+        saved_teams = rec.get('my_teams', []) 
+        COLLISION_ABBRS = {'LV'} 
+
+        for g in raw_games:
+            # Skip music object if it's already in raw_games to prevent duplicates
+            if g.get('type') == 'music': continue 
+            
+            should_show = True
+            if current_mode == 'my_teams':
+                sport = g.get('sport')
+                if sport in ['weather', 'clock']:
+                    should_show = True
+                else:
+                    h_ab = str(g.get('home_abbr', '')).upper()
+                    a_ab = str(g.get('away_abbr', '')).upper()
+                    h_scoped, a_scoped = f"{sport}:{h_ab}", f"{sport}:{a_ab}"
+                    in_home = h_scoped in saved_teams or (h_ab in saved_teams and h_ab not in COLLISION_ABBRS)
+                    in_away = a_scoped in saved_teams or (a_ab in saved_teams and a_ab not in COLLISION_ABBRS)
+                    if not (in_home or in_away): should_show = False
+            
+            elif current_mode == 'live' and g.get('state') not in ['in', 'half']: 
+                should_show = False
+            elif current_mode == 'weather' and g.get('type') != 'weather':
+                should_show = False
+            elif current_mode == 'clock' and g.get('sport') != 'clock':
+                should_show = False
+
+            if should_show:
+                g['is_shown'] = True
+                visible_items.append(g)
+    
+    # Final Response Construction
     g_config = { "mode": current_mode }
     if rec.get('reboot_requested'): g_config['reboot'] = True
     if rec.get('update_requested'): g_config['update'] = True
         
-    response = jsonify({ 
+    return jsonify({ 
         "status": "ok", 
         "version": SERVER_VERSION,
         "global_config": g_config, 
         "local_config": t_settings, 
-        "content": { "sports": visible_games } 
+        "content": { "sports": visible_items } 
     })
-    
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return response
 
 @app.route('/api/spotify/now', methods=['GET'])
 def api_spotify():
