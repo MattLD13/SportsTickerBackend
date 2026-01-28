@@ -495,52 +495,48 @@ class SpotifyFetcher(threading.Thread):
         print("✅ Spotify Passive Tracker Started")
 
         sp = None
+        cache_path = ".spotify_token"
         
-        # Suppress stdin for headless environments
-        import sys
-        original_stdin = sys.stdin
-        try:
-            # Redirect stdin to suppress prompts in headless environments
-            sys.stdin = open(os.devnull, 'r')
-            
+        # Check if token cache already exists (from separate OAuth script)
+        if os.path.exists(cache_path):
             try:
-                auth_manager = SpotifyOAuth(
-                    client_id=self.client_id,
-                    client_secret=self.client_secret,
-                    redirect_uri="http://127.0.0.1:8888/callback",
-                    scope="user-read-playback-state user-read-currently-playing user-read-private",
-                    open_browser=False,
-                    show_dialog=False,
-                    cache_path=".spotify_token"
-                )
-                sp = spotipy.Spotify(auth_manager=auth_manager)
-            except (EOFError, KeyboardInterrupt):
-                # Headless environment: use cached token directly
-                print("⚠️ Headless environment detected. Loading cached token...")
-                try:
-                    cache_path = ".spotify_token"
-                    if os.path.exists(cache_path):
-                        with open(cache_path, 'r') as f:
-                            token_info = json.load(f)
-                            access_token = token_info.get('access_token')
-                            if access_token:
-                                sp = spotipy.Spotify(auth=access_token)
-                                print("✅ Loaded cached Spotify token successfully")
-                            else:
-                                print("❌ No access token in cache file")
-                                return
+                with open(cache_path, 'r') as f:
+                    token_info = json.load(f)
+                    access_token = token_info.get('access_token')
+                    if access_token:
+                        sp = spotipy.Spotify(auth=access_token)
+                        print("✅ Using cached Spotify token from OAuth script")
                     else:
-                        print("❌ No cached token found at .spotify_token")
+                        print("❌ No access token in cache file")
                         return
-                except Exception as e:
-                    print(f"❌ Failed to load cached token: {e}")
-                    return
+            except Exception as e:
+                print(f"❌ Failed to load cached token: {e}")
+                return
+        else:
+            # No cache file exists, try standard auth flow
+            print("⚠️ No cached token found. Attempting standard OAuth flow...")
+            try:
+                import sys
+                original_stdin = sys.stdin
+                try:
+                    # Redirect stdin to suppress prompts in headless environments
+                    sys.stdin = open(os.devnull, 'r')
+                    
+                    auth_manager = SpotifyOAuth(
+                        client_id=self.client_id,
+                        client_secret=self.client_secret,
+                        redirect_uri="http://127.0.0.1:8888/callback",
+                        scope="user-read-playback-state user-read-currently-playing user-read-private",
+                        open_browser=False,
+                        show_dialog=False,
+                        cache_path=cache_path
+                    )
+                    sp = spotipy.Spotify(auth_manager=auth_manager)
+                finally:
+                    sys.stdin = original_stdin
             except Exception as e:
                 print(f"❌ Spotify Init Failed: {e}")
                 return
-        finally:
-            # Restore stdin
-            sys.stdin = original_stdin
         
         if not sp:
             print("❌ Spotify client initialization failed")
