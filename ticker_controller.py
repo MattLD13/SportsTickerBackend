@@ -439,97 +439,97 @@ class TickerStreamer:
         canvas.paste(txt_img, (x, y), txt_img)
 
     def draw_music_card(self, game):
-    # 384px wide fixed canvas
-    img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
-    d = ImageDraw.Draw(img)
-    
-    artist = str(game.get('home_abbr', 'Unknown')).strip()
-    song = str(game.get('away_abbr', 'Unknown')).strip()
-    cover_url = game.get('home_logo')
-    
-    # --- DATA & ANCHORING ---
-    sit = game.get('situation', {})
-    is_playing = sit.get('is_playing', False)
-    server_progress = float(sit.get('progress', 0.0))
-    server_fetch_ts = float(sit.get('fetch_ts', time.time()))
-    total_dur = float(sit.get('duration', 1.0))
-    if total_dur <= 0: total_dur = 1.0
-
-    # Physics Update for rotation/scrolling
-    now = time.time()
-    dt_frame = now - self.last_frame_time
-    self.last_frame_time = now
-
-    # --- LATENCY-AWARE INTERPOLATION ---
-    if is_playing:
-        # Calculate exactly how much time passed since Spotify gave the server this data
-        time_since_fetch = now - server_fetch_ts
-        local_progress = server_progress + time_since_fetch
+        # 384px wide fixed canvas
+        img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
         
-        # Animate Vinyl and Text
-        self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt_frame)) % 360
-        self.text_scroll_pos += (15.0 * dt_frame)
-    else:
-        local_progress = server_progress
-
-    # Clamp progress so it doesn't overshoot
-    local_progress = min(local_progress, total_dur)
-
-    # 1. Update/Fetch Cover from local cache
-    if cover_url != self.last_cover_url:
-        self.last_cover_url = cover_url
-        self.vinyl_cache = None
-        if cover_url:
-            try:
-                # Try getting the pre-downloaded 42x42 version
-                raw = self.get_logo(cover_url, (self.COVER_SIZE, self.COVER_SIZE))
-                if not raw:
-                    r = requests.get(cover_url, timeout=1)
-                    raw = Image.open(io.BytesIO(r.content)).convert("RGBA")
-                
-                self.extract_colors_and_spindle(raw)
-                raw = raw.resize((self.COVER_SIZE, self.COVER_SIZE))
-                output = ImageOps.fit(raw, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
-                output.putalpha(self.vinyl_mask)
-                self.vinyl_cache = output
-            except: pass
-
-    # 2. Draw Vinyl
-    composite = self.scratch_layer.copy()
-    if self.vinyl_cache: 
-        offset = (self.VINYL_SIZE - self.COVER_SIZE) // 2
-        composite.paste(self.vinyl_cache, (offset, offset), self.vinyl_cache)
+        artist = str(game.get('home_abbr', 'Unknown')).strip()
+        song = str(game.get('away_abbr', 'Unknown')).strip()
+        cover_url = game.get('home_logo')
+        
+        # --- DATA & ANCHORING ---
+        sit = game.get('situation', {})
+        is_playing = sit.get('is_playing', False)
+        server_progress = float(sit.get('progress', 0.0))
+        server_fetch_ts = float(sit.get('fetch_ts', time.time()))
+        total_dur = float(sit.get('duration', 1.0))
+        if total_dur <= 0: total_dur = 1.0
     
-    draw_comp = ImageDraw.Draw(composite)
-    draw_comp.ellipse((22, 22, 28, 28), fill="#222")
-    draw_comp.ellipse((23, 23, 27, 27), fill=self.spindle_color)
-
-    rotated = composite.rotate(self.vinyl_rotation, resample=Image.Resampling.BICUBIC)
-    img.paste(rotated, (4, -9), rotated)
-
-    # 3. Text Section
-    TEXT_START_X = 60
-    TEXT_AREA_W = 188 
-    self.draw_scrolling_text(img, song, self.medium_font, TEXT_START_X, 0, TEXT_AREA_W, self.text_scroll_pos, "white")
-    self.draw_spotify_logo(d, TEXT_START_X, 15)
-    self.draw_scrolling_text(img, artist, self.tiny, TEXT_START_X + 16, 17, 172, self.text_scroll_pos, (180, 180, 180))
-
-    # 4. Visualizer
-    self.render_visualizer(d, 248, 6, 80, 20, is_playing=is_playing)
-
-    # 5. Time Formatting & Progress Bar
-    def fmt_time(seconds):
-        m, s = divmod(int(max(0, seconds)), 60)
-        return f"{m}:{s:02d}"
-
-    rem_str = f"-{fmt_time(total_dur - local_progress)}"
-    w_time = d.textlength(rem_str, font=self.micro)
-    d.text((PANEL_W - w_time - 5, 10), rem_str, font=self.micro, fill="white")
+        # Physics Update for rotation/scrolling
+        now = time.time()
+        dt_frame = now - self.last_frame_time
+        self.last_frame_time = now
     
-    pct = min(1.0, max(0.0, local_progress / total_dur))
-    d.rectangle((0, 31, int(PANEL_W * pct), 31), fill=self.dominant_color)
+        # --- LATENCY-AWARE INTERPOLATION ---
+        if is_playing:
+            # Calculate exactly how much time passed since Spotify gave the server this data
+            time_since_fetch = now - server_fetch_ts
+            local_progress = server_progress + time_since_fetch
+            
+            # Animate Vinyl and Text
+            self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt_frame)) % 360
+            self.text_scroll_pos += (15.0 * dt_frame)
+        else:
+            local_progress = server_progress
     
-    return img
+        # Clamp progress so it doesn't overshoot
+        local_progress = min(local_progress, total_dur)
+    
+        # 1. Update/Fetch Cover from local cache
+        if cover_url != self.last_cover_url:
+            self.last_cover_url = cover_url
+            self.vinyl_cache = None
+            if cover_url:
+                try:
+                    # Try getting the pre-downloaded 42x42 version
+                    raw = self.get_logo(cover_url, (self.COVER_SIZE, self.COVER_SIZE))
+                    if not raw:
+                        r = requests.get(cover_url, timeout=1)
+                        raw = Image.open(io.BytesIO(r.content)).convert("RGBA")
+                    
+                    self.extract_colors_and_spindle(raw)
+                    raw = raw.resize((self.COVER_SIZE, self.COVER_SIZE))
+                    output = ImageOps.fit(raw, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
+                    output.putalpha(self.vinyl_mask)
+                    self.vinyl_cache = output
+                except: pass
+    
+        # 2. Draw Vinyl
+        composite = self.scratch_layer.copy()
+        if self.vinyl_cache: 
+            offset = (self.VINYL_SIZE - self.COVER_SIZE) // 2
+            composite.paste(self.vinyl_cache, (offset, offset), self.vinyl_cache)
+        
+        draw_comp = ImageDraw.Draw(composite)
+        draw_comp.ellipse((22, 22, 28, 28), fill="#222")
+        draw_comp.ellipse((23, 23, 27, 27), fill=self.spindle_color)
+    
+        rotated = composite.rotate(self.vinyl_rotation, resample=Image.Resampling.BICUBIC)
+        img.paste(rotated, (4, -9), rotated)
+    
+        # 3. Text Section
+        TEXT_START_X = 60
+        TEXT_AREA_W = 188 
+        self.draw_scrolling_text(img, song, self.medium_font, TEXT_START_X, 0, TEXT_AREA_W, self.text_scroll_pos, "white")
+        self.draw_spotify_logo(d, TEXT_START_X, 15)
+        self.draw_scrolling_text(img, artist, self.tiny, TEXT_START_X + 16, 17, 172, self.text_scroll_pos, (180, 180, 180))
+    
+        # 4. Visualizer
+        self.render_visualizer(d, 248, 6, 80, 20, is_playing=is_playing)
+    
+        # 5. Time Formatting & Progress Bar
+        def fmt_time(seconds):
+            m, s = divmod(int(max(0, seconds)), 60)
+            return f"{m}:{s:02d}"
+    
+        rem_str = f"-{fmt_time(total_dur - local_progress)}"
+        w_time = d.textlength(rem_str, font=self.micro)
+        d.text((PANEL_W - w_time - 5, 10), rem_str, font=self.micro, fill="white")
+        
+        pct = min(1.0, max(0.0, local_progress / total_dur))
+        d.rectangle((0, 31, int(PANEL_W * pct), 31), fill=self.dominant_color)
+        
+        return img
 
     # --- SPORTS HELPER DRAWING FUNCTIONS ---
     def draw_hockey_stick(self, draw, cx, cy, size):
@@ -1232,29 +1232,45 @@ class TickerStreamer:
 
     def poll_backend(self):
         last_hash = ""
+        # Disable warnings for the self-signed/verify=False calls
         requests.packages.urllib3.disable_warnings()
+        
+        # Use a Session to reuse TCP connections (Keep-Alive)
         session = requests.Session()
+        # Optimize pool size for a single connection to reduce overhead
+        adapter = requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=1)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
 
         while self.running:
             try:
                 url = f"{BACKEND_URL}/data?id={self.device_id}"
-                r = session.get(url, timeout=10, verify=False)
+                
+                # Fetch data with a tight timeout to prevent hanging
+                r = session.get(url, timeout=5, verify=False)
                 data = r.json()
                 
-                # ... [Command Listener Logic - Reboot/Update] ...
+                # --- 1. Command Listener ---
                 global_conf = data.get('global_config', {})
                 if global_conf.get('reboot') is True:
-                    self.matrix.Clear(); subprocess.run(['reboot']); sys.exit(0)
+                    self.matrix.Clear()
+                    subprocess.run(['reboot'])
+                    sys.exit(0)
+                
                 if global_conf.get('update') is True:
                     self.perform_update()
 
+                # --- 2. Pairing Check ---
                 if data.get('status') == 'pairing':
                     self.is_pairing = True
                     self.pairing_code = data.get('code')
                     self.games = []
-                    time.sleep(2); continue
-                else: self.is_pairing = False
+                    time.sleep(2) 
+                    continue
+                else: 
+                    self.is_pairing = False
                 
+                # --- 3. Process Content ---
                 content = data.get('content', {})
                 new_games = content.get('sports', [])
 
@@ -1263,54 +1279,41 @@ class TickerStreamer:
                         g['_orig_index'] = idx
                         g['_received_at'] = time.time()
 
-                new_games.sort(key=lambda x: (self.get_game_start_key(x), x.get('_orig_index', 0), x.get('sport', ''), x.get('id', '')))
-
-                static_items = []
-                scrolling_items = []
-                for g in new_games:
-                    sport = str(g.get('sport', '')).lower()
-                    
-                    # [UPDATED] Music is static
-                    if g.get('type') == 'weather' or sport == 'clock' or sport.startswith('clock') or g.get('type') == 'music':
-                        static_items.append(g)
-                    else:
-                        scrolling_items.append(g)
-                
+                # Detect changes using a hash of the content and settings
                 current_hash = hashlib.md5(json.dumps({'g': new_games, 'c': data.get('local_config')}, sort_keys=True).encode()).hexdigest()
                 
                 if current_hash != last_hash:
-                    print(f"Data Update: {len(scrolling_items)} sports")
-                    logos = []
-                    
-                    # 1. Collect Sport Logos (Standard sizes)
-                    for g in scrolling_items:
-                        if g.get('home_logo'): 
-                            logos.append((g.get('home_logo'), (24, 24)))
-                            logos.append((g.get('home_logo'), (16, 16)))
-                        if g.get('away_logo'): 
-                            logos.append((g.get('away_logo'), (24, 24)))
-                            logos.append((g.get('away_logo'), (16, 16)))
-                    
-                    # 2. [NEW] Collect Music Covers (Last, Current, Next 3)
-                    # We cache these at 42x42 to match the vinyl display size
-                    for g in static_items:
-                        if g.get('type') == 'music' or g.get('sport') == 'music':
-                            # Current
-                            if g.get('home_logo'): 
-                                logos.append((g.get('home_logo'), (42, 42)))
-                            
-                            # Last (Keep it in cache)
-                            if g.get('last_logo'): 
-                                logos.append((g.get('last_logo'), (42, 42)))
-                            
-                            # Next 3 (Pre-download)
-                            for url in g.get('next_logos', []):
-                                if url: logos.append((url, (42, 42)))
+                    # Sort and categorize items
+                    new_games.sort(key=lambda x: (self.get_game_start_key(x), x.get('_orig_index', 0), x.get('sport', ''), x.get('id', '')))
 
-                    unique_logos = list(set(logos))
+                    static_items = []
+                    scrolling_items = []
+                    logos_to_fetch = []
+
+                    for g in new_games:
+                        sport = str(g.get('sport', '')).lower()
+                        is_music = (g.get('type') == 'music' or sport == 'music')
+                        
+                        if g.get('type') == 'weather' or sport.startswith('clock') or is_music:
+                            static_items.append(g)
+                            # Music specific logo collection (Current, Last, Next 3)
+                            if is_music:
+                                if g.get('home_logo'): logos_to_fetch.append((g.get('home_logo'), (42, 42)))
+                                if g.get('last_logo'): logos_to_fetch.append((g.get('last_logo'), (42, 42)))
+                                for nurl in g.get('next_logos', []):
+                                    if nurl: logos_to_fetch.append((nurl, (42, 42)))
+                        else:
+                            scrolling_items.append(g)
+                            # Standard sports logos
+                            if g.get('home_logo'): logos_to_fetch.append((g.get('home_logo'), (24, 24)))
+                            if g.get('away_logo'): logos_to_fetch.append((g.get('away_logo'), (24, 24)))
+
+                    # Pre-download all logos in parallel
+                    unique_logos = list(set(logos_to_fetch))
                     fs = [self.executor.submit(self.download_and_process_logo, u, s) for u, s in unique_logos]
                     concurrent.futures.wait(fs)
                     
+                    # Apply settings
                     self.brightness = float(data.get('local_config', {}).get('brightness', 100)) / 100.0
                     self.scroll_sleep = data.get('local_config', {}).get('scroll_speed', 0.05)
                     self.inverted = data.get('local_config', {}).get('inverted', False)
@@ -1330,7 +1333,7 @@ class TickerStreamer:
             
             except Exception as e:
                 print(f"Poll Error: {e}")
-                time.sleep(1)
+                time.sleep(1) # Backoff on error
 
 if __name__ == "__main__":
     app = TickerStreamer()
