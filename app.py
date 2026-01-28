@@ -19,7 +19,6 @@ import asyncio
 import binascii
 from librespot.core import Session
 from librespot.metadata import TrackId
-from librespot.structure import DeviceType
 
 # Load environment variables for Finnhub Keys
 load_dotenv()
@@ -678,6 +677,22 @@ class StockFetcher:
         return res
 
 # ================= LIGHTWEIGHT SERVER FETCHER =================
+# Manual definition to fix ImportError
+class DeviceType:
+    COMPUTER = 1
+    TABLET = 2
+    SMARTPHONE = 3
+    SPEAKER = 4
+    TV = 5
+    AVR = 6
+    STB = 7
+    AUDIODONGLE = 8
+    GAMECONSOLE = 9
+    CASTVIDEO = 10
+    CASTAUDIO = 11
+    AUTOMOBILE = 12  # This gives you the Car Thing icon
+    WEARABLE = 13
+
 class SpotifyFetcher(threading.Thread):
     def __init__(self, event):
         super().__init__()
