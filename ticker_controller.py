@@ -449,62 +449,70 @@ class TickerStreamer:
         
         # --- CONNECTION & PAUSE LOGIC ---
         is_playing = game.get('is_playing', True)
-        if "paused" in str(game.get('status', '')).lower(): is_playing = False
+        raw_status = str(game.get('status', '0:00 / 0:00'))
         
+        if "paused" in raw_status.lower(): 
+            is_playing = False
+        
+        # Check for stale data (connection lost)
         last_rx = game.get('_received_at', 0)
         time_since_rx = time.time() - last_rx
-        if time_since_rx > 30.0: # [OPTIMIZED] Increased timeout
+        if time_since_rx > 30.0: 
             is_playing = False 
 
-        # Parse duration
-        status_str = str(game.get('status', '0:00 / 0:00'))
-        parts = status_str.split(' / ')
-        curr_str = parts[0] if len(parts) > 0 else "0:00"
-        dur_str = parts[1] if len(parts) > 1 else "0:00"
+        # --- FIX: ROBUST TIME PARSING ---
+        # Strip "PAUSED" text so we can parse the numbers "1:23 / 3:45"
+        clean_status = raw_status.upper().replace("PAUSED", "").strip()
+        parts = clean_status.split(' / ')
+        curr_str = parts[0].strip() if len(parts) > 0 else "0:00"
+        dur_str = parts[1].strip() if len(parts) > 1 else "0:00"
         
         def time_to_sec(s):
             try:
+                # Handle cases like "1:23" or "10:05"
+                if ':' not in s: return 0
                 m, sec = s.split(':')
                 return int(m) * 60 + int(sec)
-            except: return 1
+            except: 
+                return 0
         
         total_dur = time_to_sec(dur_str)
         curr_dur = time_to_sec(curr_str)
         
+        # Prevent division by zero later
+        if total_dur == 0: total_dur = 1 
+
         # Physics Update using dt
         now = time.time()
         dt = now - self.last_frame_time
         self.last_frame_time = now
         
-        # ONLY ANIMATE IF PLAYING AND CONNECTION GOOD
+        # ONLY ANIMATE IF PLAYING
         if is_playing:
             self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt)) % 360
             self.text_scroll_pos += (15.0 * dt)
             if self.text_scroll_pos > 1000000: self.text_scroll_pos = 0
         
-        # 1. Update Cover
+        # 1. Update Cover (with Cache Check)
         if cover_url != self.last_cover_url:
             self.last_cover_url = cover_url
             self.vinyl_cache = None
             if cover_url:
                 try:
-                    # [UPDATED] Try fetching from system cache first (pre-downloaded by poll_backend)
-                    # We look for the exact size we need (COVER_SIZE = 42)
+                    # Try fetching from system cache first (pre-downloaded by poll_backend)
                     raw = self.get_logo(cover_url, (self.COVER_SIZE, self.COVER_SIZE))
                     
                     if not raw:
-                        # Fallback: Direct download if cache missed
+                        # Fallback: Direct download
                         r = requests.get(cover_url, timeout=1)
                         raw = Image.open(io.BytesIO(r.content)).convert("RGBA")
                     
-                    # Process the image (Extract colors, fit to circle)
                     self.extract_colors_and_spindle(raw)
                     raw = raw.resize((self.COVER_SIZE, self.COVER_SIZE))
                     output = ImageOps.fit(raw, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
                     output.putalpha(self.vinyl_mask)
                     self.vinyl_cache = output
                 except Exception as e: 
-                    print(f"Cover Load Error: {e}")
                     pass
 
         # 2. Draw Vinyl
@@ -525,7 +533,6 @@ class TickerStreamer:
         TEXT_AREA_W = 188 
         
         self.draw_scrolling_text(img, song, self.medium_font, TEXT_START_X, 0, TEXT_AREA_W, self.text_scroll_pos, "white")
-        
         self.draw_spotify_logo(d, TEXT_START_X, 15)
         self.draw_scrolling_text(img, artist, self.tiny, TEXT_START_X + 16, 17, 172, self.text_scroll_pos, (180, 180, 180))
 
@@ -534,11 +541,12 @@ class TickerStreamer:
 
         # 6. Time & Bar
         remaining_seconds = max(0, total_dur - curr_dur)
-        rem_str = f"- {remaining_seconds//60}:{remaining_seconds%60:02}"
+        rem_str = f"-{remaining_seconds//60}:{remaining_seconds%60:02}"
         w_time = d.textlength(rem_str, font=self.micro)
         d.text((PANEL_W - w_time - 5, 10), rem_str, font=self.micro, fill="white")
         
-        pct = min(1.0, curr_dur / max(1, total_dur))
+        # Clamp progress to 0.0 - 1.0 to prevent bar freakout
+        pct = min(1.0, max(0.0, curr_dur / total_dur))
         d.rectangle((0, 31, int(PANEL_W * pct), 31), fill=self.dominant_color)
         
         return img
