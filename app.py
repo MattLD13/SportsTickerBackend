@@ -1977,6 +1977,7 @@ class SportsFetcher:
                         'progress': current_progress,
                         'duration': duration,
                         'is_playing': is_playing
+                        'fetch_ts': time.time()
                     }
                 }
         except Exception as e:
