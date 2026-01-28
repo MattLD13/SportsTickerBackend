@@ -28,7 +28,7 @@ PANEL_H = 32
 SETUP_SSID = "SportsTicker_Setup"
 SETUP_PASS = "setup1234"
 PAGE_HOLD_TIME = 8.0 
-REFRESH_RATE = 0 
+REFRESH_RATE = 0 # ZERO delay for maximum speed
 ID_FILE_PATH = "/boot/ticker_id.txt"
 ID_FILE_FALLBACK = "ticker_id.txt"
 ASSETS_DIR = os.path.expanduser("~/ticker/assets")
@@ -117,6 +117,7 @@ TINY_FONT_MAP = {
     '(': [0x2, 0x4, 0x4, 0x4, 0x2], ')': [0x4, 0x2, 0x2, 0x2, 0x4]
 }
 
+# HYBRID FONT (4x6) FOR STATUS
 HYBRID_FONT_MAP = {
     'A': [0x6, 0x9, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x8, 0x9, 0x6],
     'D': [0xE, 0x9, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8, 0x8],
@@ -280,17 +281,10 @@ class TickerStreamer:
         self.spindle_color = "black"
         self.last_cover_url = ""
         self.vinyl_cache = None
-        self.cover_loading = False  # Flag to prevent multiple simultaneous downloads
-        self.pending_cover_url = None  # Track what's being loaded
-        self.cached_spotify_data = {}  # Cache for full Spotify data
-        self.spotify_fetch_time = 0  # Last fetch timestamp
         self.viz_heights = [2.0] * 16 
         self.viz_phase = [random.random() * 10 for _ in range(16)]
         
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-        
-        # --- [FIX] PERSISTENT MUSIC SESSION ---
-        self.music_session = requests.Session()
 
         threading.Thread(target=self.poll_backend, daemon=True).start()
         threading.Thread(target=self.render_loop, daemon=True).start()
@@ -365,25 +359,6 @@ class TickerStreamer:
         nr, ng, nb = colorsys.hsv_to_rgb(h, s, v)
         self.dominant_color = (int(nr*255), int(ng*255), int(nb*255))
 
-    def _load_album_cover_async(self, cover_url):
-        """Load album cover in background thread to prevent UI freeze"""
-        try:
-            r = requests.get(cover_url, timeout=5)
-            if r.status_code == 200 and r.content:
-                raw = Image.open(io.BytesIO(r.content)).convert("RGBA")
-                self.extract_colors_and_spindle(raw)
-                raw = raw.resize((self.COVER_SIZE, self.COVER_SIZE))
-                output = ImageOps.fit(raw, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
-                output.putalpha(self.vinyl_mask)
-                # Only update cache if this is still the pending URL (prevent race condition)
-                if self.pending_cover_url == cover_url:
-                    self.vinyl_cache = output
-        except Exception as e:
-            print(f"Failed to load album cover: {e}")
-        finally:
-            self.cover_loading = False
-            self.pending_cover_url = None
-
     def render_visualizer(self, draw, x, y, width, height, is_playing=True):
         bar_count = 16
         bar_w = 2
@@ -411,8 +386,7 @@ class TickerStreamer:
             else:
                 target_h = 2.0 # Flatline when paused
 
-            # SMOOTHING FACTOR: 0.1 makes it fade in/out gracefully
-            self.viz_heights[i] += (target_h - self.viz_heights[i]) * 0.1
+            self.viz_heights[i] += (target_h - self.viz_heights[i]) * 0.25
             
             h_int = int(self.viz_heights[i])
             start_y = center_y - (h_int // 2)
@@ -426,71 +400,77 @@ class TickerStreamer:
         d.arc((x+4, y+7, x+8, y+12), 190, 350, fill="black", width=1)
 
     def draw_scrolling_text(self, canvas, text, font, x, y, max_width, scroll_pos, color="white"):
-        """Draw text statically (scrolling disabled for debugging)"""
-        text = str(text).strip()
-        if not text:
-            return
+        """Helper to draw scrolling text with taller buffer to prevent clipping"""
+        text = str(text).strip() # Clean text of trailing spaces
         
-        # Simply draw the text at the position - no scrolling
-        d = ImageDraw.Draw(canvas)
-        d.text((x, y), text, font=font, fill=color)
+        # Create a temp draw object just to measure text length
+        temp_d = ImageDraw.Draw(canvas)
+        text_w = temp_d.textlength(text, font=font)
+        
+        # Ensure strict integers for coordinates and dimensions
+        max_width = int(max_width)
+        x = int(x)
+        y = int(y)
+
+        # If text fits (add a 2px buffer to ensure it doesn't clip at the exact edge), draw static
+        if text_w <= (max_width - 2):
+            temp_d.text((x, y), text, font=font, fill=color)
+            return
+
+        # If scrolling needed
+        GAP = 40
+        total_loop = text_w + GAP
+        current_offset = scroll_pos % total_loop
+        
+        # Create a temp image that is TALLER than font to catch descenders (32px to be safe)
+        txt_img = Image.new("RGBA", (max_width, 32), (0,0,0,0))
+        d_txt = ImageDraw.Draw(txt_img)
+        
+        # Draw first copy (Cast coordinates to int to prevent rendering errors)
+        d_txt.text((int(-current_offset), 0), text, font=font, fill=color)
+        
+        # Draw second copy for seamless scrolling if the gap is visible
+        if (-current_offset + text_w) < max_width:
+             d_txt.text((int(-current_offset + total_loop), 0), text, font=font, fill=color)
+        
+        # Paste onto main image
+        canvas.paste(txt_img, (x, y), txt_img)
 
     def draw_music_card(self, game):
         # 384px wide fixed canvas
         img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
         
-        # Fetch full song/artist names from Spotify API (cache for 1 second to avoid hammering)
-        now = time.time()
-        if now - self.spotify_fetch_time > 1.0:
-            try:
-                # === FIX: Use Session with Verify=False for SPEED ===
-                r = self.music_session.get(f"{BACKEND_URL}/api/spotify/now", timeout=0.5, verify=False)
-                if r.status_code == 200:
-                    self.cached_spotify_data = r.json()
-                    self.spotify_fetch_time = now
-            except:
-                pass  # Use cached data on failure
-        
-        # Use full names from Spotify API, fall back to game data
-        spotify = self.cached_spotify_data
-        artist = str(spotify.get('artist', '') or game.get('home_abbr', 'Unknown')).strip()
-        song = str(spotify.get('name', '') or game.get('away_abbr', 'Unknown')).strip()
-        cover_url = spotify.get('cover') or game.get('home_logo')
+        # Strip text to ensure accurate length measurement
+        artist = str(game.get('home_abbr', 'Unknown')).strip()
+        song = str(game.get('away_abbr', 'Unknown')).strip()
+        cover_url = game.get('home_logo')
         
         # --- CONNECTION & PAUSE LOGIC ---
-        # 1. Check if user manually paused (prefer Spotify API data)
-        is_playing = spotify.get('is_playing', game.get('is_playing', True))
+        # 1. Check if user manually paused
+        is_playing = game.get('is_playing', True)
         if "paused" in str(game.get('status', '')).lower(): is_playing = False
         
         # 2. Check if connection is lost (stale data > 5 seconds)
         last_rx = game.get('_received_at', 0)
         time_since_rx = time.time() - last_rx
-        if time_since_rx > 5.0:
-            # Only force pause if we haven't successfully fetched fresh API data recently
-            if now - self.spotify_fetch_time > 2.0:
-                is_playing = False
+        if time_since_rx > 5.0: # [OPTIMIZED] Increased timeout from 5s to 30s
+            is_playing = False 
 
-        # Parse duration from Spotify API or fall back to game status
-        duration = spotify.get('duration', 0)
-        progress = spotify.get('progress', 0)
-        if duration > 0:
-            total_dur = int(duration)
-            curr_dur = int(progress)
-        else:
-            status_str = str(game.get('status', '0:00 / 0:00'))
-            parts = status_str.split(' / ')
-            curr_str = parts[0] if len(parts) > 0 else "0:00"
-            dur_str = parts[1] if len(parts) > 1 else "0:00"
-            
-            def time_to_sec(s):
-                try:
-                    m, sec = s.split(':')
-                    return int(m) * 60 + int(sec)
-                except: return 1
-            
-            total_dur = time_to_sec(dur_str)
-            curr_dur = time_to_sec(curr_str)
+        # Parse duration
+        status_str = str(game.get('status', '0:00 / 0:00'))
+        parts = status_str.split(' / ')
+        curr_str = parts[0] if len(parts) > 0 else "0:00"
+        dur_str = parts[1] if len(parts) > 1 else "0:00"
+        
+        def time_to_sec(s):
+            try:
+                m, sec = s.split(':')
+                return int(m) * 60 + int(sec)
+            except: return 1
+        
+        total_dur = time_to_sec(dur_str)
+        curr_dur = time_to_sec(curr_str)
         
         # Physics Update using dt
         now = time.time()
@@ -504,19 +484,20 @@ class TickerStreamer:
             # Reset scroll pos if it gets absurdly high to prevent float errors
             if self.text_scroll_pos > 1000000: self.text_scroll_pos = 0
         
-        # 1. Update Cover (ASYNC - non-blocking)
-        # Normalize URLs for comparison (treat None and "" as equivalent)
-        normalized_cover_url = cover_url if cover_url else None
-        normalized_last_url = self.last_cover_url if self.last_cover_url else None
-        
-        if normalized_cover_url != normalized_last_url and not self.cover_loading:
+        # 1. Update Cover
+        if cover_url != self.last_cover_url:
             self.last_cover_url = cover_url
             self.vinyl_cache = None
             if cover_url:
-                # Start async download
-                self.cover_loading = True
-                self.pending_cover_url = cover_url
-                self.executor.submit(self._load_album_cover_async, cover_url)
+                try:
+                    r = requests.get(cover_url, timeout=1)
+                    raw = Image.open(io.BytesIO(r.content)).convert("RGBA")
+                    self.extract_colors_and_spindle(raw)
+                    raw = raw.resize((self.COVER_SIZE, self.COVER_SIZE))
+                    output = ImageOps.fit(raw, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
+                    output.putalpha(self.vinyl_mask)
+                    self.vinyl_cache = output
+                except: pass
 
         # 2. Draw Vinyl
         composite = self.scratch_layer.copy()
@@ -531,27 +512,26 @@ class TickerStreamer:
         rotated = composite.rotate(self.vinyl_rotation, resample=Image.Resampling.BICUBIC)
         img.paste(rotated, (4, -9), rotated)
 
-        # 3. Text Section - Draw AFTER visualizer to prevent overlap issues
+        # 3. Text Section
         TEXT_START_X = 60
+        # Safe text area width before hitting visualizer
+        TEXT_AREA_W = 188 
         
-        # 5. Viz (Pass is_playing status) - positioned to not clip with time
-        self.render_visualizer(d, 245, 6, 70, 20, is_playing=is_playing)
+        # Draw Song Name (y=0) - Pass 'img' (canvas), NOT 'd'
+        self.draw_scrolling_text(img, song, self.medium_font, TEXT_START_X, 0, TEXT_AREA_W, self.text_scroll_pos, "white")
+        
+        # Draw Artist Name (y=16) - Pass 'img' (canvas), NOT 'd'
+        self.draw_spotify_logo(d, TEXT_START_X, 15)
+        self.draw_scrolling_text(img, artist, self.tiny, TEXT_START_X + 16, 17, 172, self.text_scroll_pos, (180, 180, 180))
 
-        # 6. Time - Large and positioned near right edge, vertically centered
+        # 5. Viz (Pass is_playing status)
+        self.render_visualizer(d, 248, 6, 80, 20, is_playing=is_playing)
+
+        # 6. Time & Bar
         remaining_seconds = max(0, total_dur - curr_dur)
         rem_str = f"- {remaining_seconds//60}:{remaining_seconds%60:02}"
-        w_time = d.textlength(rem_str, font=self.big_font)
-        d.text((PANEL_W - w_time - 7, 9), rem_str, font=self.big_font, fill="white")
-        
-        # Now draw text - it will have full width up to visualizer
-        TEXT_AREA_W = 180
-        
-        # Draw Song Name (y=2 for better vertical positioning)
-        self.draw_scrolling_text(img, song, self.medium_font, TEXT_START_X, 2, TEXT_AREA_W, self.text_scroll_pos, "white")
-        
-        # Draw Artist Name (y=17)
-        self.draw_spotify_logo(d, TEXT_START_X, 16)
-        self.draw_scrolling_text(img, artist, self.tiny, TEXT_START_X + 16, 18, TEXT_AREA_W - 16, self.text_scroll_pos, (180, 180, 180))
+        w_time = d.textlength(rem_str, font=self.micro)
+        d.text((PANEL_W - w_time - 5, 10), rem_str, font=self.micro, fill="white")
         
         pct = min(1.0, curr_dur / max(1, total_dur))
         d.rectangle((0, 31, int(PANEL_W * pct), 31), fill=self.dominant_color)
@@ -1125,24 +1105,20 @@ class TickerStreamer:
                         # Need high refresh rate for these
                         if sport.startswith('clock') or game_type == 'music' or sport == 'music':
                             
+                            # [OPTIMIZED] SMART SWITCHER LOGIC
+                            # Efficiently check if music exists in the live list without full loop overhead
                             if game_type == 'music' or sport == 'music':
-                            # [FIX] Check if music still exists in the live feed
-                            music_still_active = False 
-                            for item in self.static_items:
-                                if item.get('id') == 'spotify_now':
-                                    self.static_current_game = item
-                                    music_still_active = True
-                                    break
-                            
-                            # [FIX] If backend stopped sending music, break the loop immediately
-                            if not music_still_active:
-                                self.showing_static = False
-                                self.static_current_image = None
-                                self.static_current_game = None
-                                continue
-
-                            # [NEW] Force keep-alive for music (don't respect PAGE_HOLD_TIME)
-                            self.static_until = time.time() + 1.0
+                                live_music_item = next((i for i in self.static_items if i.get('id') == 'spotify_now'), None)
+                                
+                                if live_music_item:
+                                    self.static_current_game = live_music_item # Update with fresh data
+                                    self.static_until = time.time() + 1.0      # Keep alive
+                                else:
+                                    # Music item is gone from the feed -> EXIT IMMEDIATELY
+                                    self.showing_static = False
+                                    self.static_current_image = None
+                                    self.static_current_game = None
+                                    continue
 
                             self.static_current_image = self.draw_single_game(self.static_current_game)
                             # Render faster for animation smoothness
