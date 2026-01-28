@@ -1130,73 +1130,103 @@ class TickerStreamer:
 
     def render_loop(self):
         strip_offset = 0.0
-        self.last_applied_hash = ""
-        
+        self.last_applied_hash = "" # Track content changes to stop jitter
+
         while self.running:
             try:
                 # --- 1. GLOBAL OVERRIDES (Pairing & Brightness) ---
                 if self.is_pairing:
                     self.update_display(self.draw_pairing_screen()); time.sleep(0.5); continue
-                    
                 if self.brightness <= 0.01:
                     self.matrix.Clear(); time.sleep(1.0); continue
 
-                # --- 2. DETERMINE IF MUSIC IS ACTIVE ---
-                # Check background buffer and active display for music
+                # Detect if music is playing in the background
                 live_music = next((g for g in self.static_items if g.get('id') == 'spotify_now'), None)
                 music_is_playing = live_music and live_music.get('situation', {}).get('is_playing')
 
                 # ==========================================================
-                # PATH A: MUSIC LOGIC (High-Speed / Interruptible)
+                # PATH A: STATIC & MUSIC (High Refresh / Interruptible)
                 # ==========================================================
-                if music_is_playing or self.showing_static:
-                    if self.showing_static:
-                        if self.static_current_game:
-                            game_type = str(self.static_current_game.get('type', ''))
-                            sport = str(self.static_current_game.get('sport','')).lower()
+                if self.showing_static:
+                    if self.static_current_game:
+                        game_type = str(self.static_current_game.get('type', ''))
+                        sport = str(self.static_current_game.get('sport','')).lower()
+                        
+                        # High-rate animation for Music/Clock
+                        if sport.startswith('clock') or game_type == 'music' or sport == 'music':
+                            if live_music:
+                                self.static_current_game = live_music # Sync data
+                                if music_is_playing:
+                                    self.static_until = time.time() + 2.0
                             
-                            if sport.startswith('clock') or game_type == 'music' or sport == 'music':
-                                if live_music:
-                                    self.static_current_game = live_music # Sync data
-                                    if music_is_playing:
-                                        self.static_until = time.time() + 2.0
-                                
-                                self.static_current_image = self.draw_single_game(self.static_current_game)
-                                if self.static_current_image:
-                                    self.update_display(self.static_current_image)
-                                
-                                # Exit static if time is up OR if a content change (hash change) happened
-                                # (But we don't interrupt music for standard sports updates)
-                                if time.time() >= self.static_until:
-                                    self.showing_static = False
-                                
-                                time.sleep(0.03) 
-                                continue
+                            self.static_current_image = self.draw_single_game(self.static_current_game)
+                            if self.static_current_image:
+                                self.update_display(self.static_current_image)
+                            
+                            # Exit static if timer expires OR if non-music data arrived
+                            if (time.time() >= self.static_until):
+                                self.showing_static = False
+                            
+                            time.sleep(0.03) # High speed for vinyl/clock
+                            continue
 
-                        # Handle non-animated static (Weather)
-                        if self.static_current_image:
-                            self.update_display(self.static_current_image)
-                        if time.time() >= self.static_until:
-                            self.showing_static = False
-                        time.sleep(0.1)
-                        continue
+                    # Standard Static (Weather)
+                    if self.static_current_image:
+                        self.update_display(self.static_current_image)
+                    if time.time() >= self.static_until:
+                        self.showing_static = False
+                    time.sleep(0.1)
+                    continue
 
                 # ==========================================================
-                # PATH B: SPORTS & STOCKS LOGIC (Original Smooth Scrolling)
+                # PATH B: SPORTS & STOCKS (Original Seamless Scrolling)
                 # ==========================================================
-                # Swap data only when ready
                 if self.bg_strip_ready:
+                    # [JITTER FIX]: Only attempt the complex pixel-matching swap 
+                    # if the content hash actually changed.
                     new_hash = getattr(self, 'current_data_hash', "")
-                    if new_hash != self.last_applied_hash:
-                        self.active_strip = self.bg_strip
-                        self.games = self.new_games_list
-                        self.last_applied_hash = new_hash
-                        # Only reset scroll if the content list actually changed
-                        strip_offset = 0.0 
                     
+                    if new_hash != self.last_applied_hash:
+                        if self.bg_strip is not None:
+                            if self.active_strip is None:
+                                self.active_strip = self.bg_strip
+                                self.games = self.new_games_list 
+                                strip_offset = 0
+                            else:
+                                # YOUR ORIGINAL SEAMLESS MAPPING LOGIC
+                                current_x = int(strip_offset)
+                                accum_w = 0
+                                visible_item_id = None
+                                pixel_delta = 0
+                                for g in self.games:
+                                    w = self.get_item_width(g)
+                                    if accum_w + w > current_x:
+                                        visible_item_id = g.get('id')
+                                        pixel_delta = current_x - accum_w
+                                        break
+                                    accum_w += w
+                                
+                                new_offset = -1
+                                new_accum_w = 0
+                                if visible_item_id:
+                                    for g in self.new_games_list:
+                                        w = self.get_item_width(g)
+                                        if g.get('id') == visible_item_id:
+                                            new_offset = new_accum_w + pixel_delta
+                                            break
+                                        new_accum_w += w
+                                
+                                self.active_strip = self.bg_strip
+                                self.games = self.new_games_list
+                                strip_offset = float(new_offset) if new_offset >= 0 else 0.0
+                        else:
+                            self.active_strip = None
+                        
+                        self.last_applied_hash = new_hash
+
                     self.bg_strip_ready = False
                     
-                    # If Music started while we were processing this, jump immediately
+                    # INTERRUPT: If music is playing, jump out of scroll immediately
                     if music_is_playing:
                         if self.start_static_display(): continue
 
@@ -1204,7 +1234,6 @@ class TickerStreamer:
                     total_w = self.active_strip.width - PANEL_W
                     if total_w <= 0: total_w = 1
                     
-                    # End of scroll loop
                     if strip_offset >= total_w:
                         strip_offset = 0
                         if self.static_items:
@@ -1216,20 +1245,19 @@ class TickerStreamer:
                     
                     strip_offset += 1
                     
-                    # ONLY interrupt the sports scroll if music suddenly starts PLAYING
+                    # ONLY allow mid-scroll interrupts if Music is PLAYING
                     if self.bg_strip_ready and music_is_playing:
                         continue 
                         
                     time.sleep(self.scroll_sleep)
                 else:
-                    # Fallback (Static only or Boot Clock)
                     if self.static_items and self.start_static_display():
                         continue
                     self.update_display(self.draw_boot_clock())
                     time.sleep(0.5) 
                     
             except Exception as e:
-                print(f"Render Loop Error: {e}")
+                print(f"Render Error: {e}")
                 time.sleep(1)
     
     def poll_backend(self):
