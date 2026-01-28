@@ -438,7 +438,7 @@ class SpotifyFetcher(threading.Thread):
                 redirect_uri="http://127.0.0.1:8888/callback",
                 scope="user-read-playback-state user-read-currently-playing",
                 open_browser=False,
-                cache_path=".cache"
+                cache_path=".spotify_token"
             )
             sp = spotipy.Spotify(auth_manager=auth_manager)
         except Exception as e:
