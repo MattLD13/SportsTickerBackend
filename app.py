@@ -7,10 +7,6 @@ import re
 import random
 import string
 import glob
-import base64
-import asyncio
-import binascii
-import subprocess
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from requests.adapters import HTTPAdapter
@@ -18,6 +14,8 @@ import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
+
+# --- MUSIC IMPORTS ---
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
@@ -25,8 +23,7 @@ from spotipy.oauth2 import SpotifyOAuth
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-
-SERVER_VERSION = "v0.95"
+SERVER_VERSION = "v6-Stable-Music"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -70,7 +67,7 @@ def build_pooled_session(pool_size=20, retries=2):
     session.mount("https://", adapter)
     return session
 
-# ================= CONFIGURATION & STORAGE =================
+# ================= CONFIGURATION =================
 TICKER_DATA_DIR = "ticker_data"
 if not os.path.exists(TICKER_DATA_DIR):
     os.makedirs(TICKER_DATA_DIR)
@@ -78,10 +75,10 @@ if not os.path.exists(TICKER_DATA_DIR):
 GLOBAL_CONFIG_FILE = "global_config.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 
-SPORTS_UPDATE_INTERVAL = 5.0   
-STOCKS_UPDATE_INTERVAL = 30    
-WORKER_THREAD_COUNT = 10       
-API_TIMEOUT = 3.0              
+SPORTS_UPDATE_INTERVAL = 5.0    
+STOCKS_UPDATE_INTERVAL = 30     
+WORKER_THREAD_COUNT = 10        
+API_TIMEOUT = 3.0               
 
 data_lock = threading.Lock()
 
@@ -399,7 +396,7 @@ def generate_pairing_code():
         active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
         if code not in active_codes: return code
 
-# ================= HYBRID SPOTIFY FETCHER =================
+# ================= SPOTIFY FETCHER (PASSIVE MODE) =================
 class SpotifyFetcher(threading.Thread):
     def __init__(self):
         super().__init__()
@@ -407,8 +404,6 @@ class SpotifyFetcher(threading.Thread):
         self._lock = threading.Lock()
         
         # --- CONFIGURATION ---
-        # We assume you have a valid '.cache' file in this folder 
-        # from running the setup script earlier.
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
         self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
 
@@ -428,7 +423,7 @@ class SpotifyFetcher(threading.Thread):
             return self.state.copy()
 
     def run(self):
-        """Main Loop: Smart Polling (No Librespot)"""
+        """Main Loop: Smart Polling"""
         if not self.client_id or not self.client_secret:
             print("⚠️ SPOTIFY: Missing Client ID or Secret in .env")
             return
@@ -436,15 +431,19 @@ class SpotifyFetcher(threading.Thread):
         print("✅ Spotify Passive Tracker Started")
 
         # Auto-handles token refresh using the .cache file
-        auth_manager = SpotifyOAuth(
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            redirect_uri="http://127.0.0.1:8888/callback",
-            scope="user-read-playback-state user-read-currently-playing",
-            open_browser=False,
-            cache_path=".cache" # Looks for the file you generated
-        )
-        sp = spotipy.Spotify(auth_manager=auth_manager)
+        try:
+            auth_manager = SpotifyOAuth(
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                redirect_uri="http://localhost:8888/callback",
+                scope="user-read-playback-state user-read-currently-playing",
+                open_browser=False,
+                cache_path=".cache"
+            )
+            sp = spotipy.Spotify(auth_manager=auth_manager)
+        except Exception as e:
+            print(f"Spotify Init Failed: {e}")
+            return
         
         current_delay = 4.0
 
@@ -472,18 +471,22 @@ class SpotifyFetcher(threading.Thread):
                         self.state['is_playing'] = False
                         current_delay = 4.0
 
-            except spotipy.exceptions.SpotifyException as e:
-                # Handle Rate Limits (429) Gracefully
-                if e.http_status == 429:
-                    print(f"⚠️ Spotify Rate Limit. Cooling down...")
-                    time.sleep(10)
-                else:
-                    print(f"Spotify API Error: {e}")
             except Exception as e:
-                # Network blip? Just wait and retry
+                # API Errors / Rate Limits
                 pass
 
             time.sleep(current_delay)
+
+# ================= FETCHING LOGIC =================
+
+def validate_logo_url(base_id):
+    url_90 = f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png"
+    try:
+        r = requests.head(url_90, timeout=1)
+        if r.status_code == 200:
+            return url_90
+    except: pass
+    return f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}.png"
 
 class WeatherFetcher:
     def __init__(self, initial_lat=40.7128, initial_lon=-74.0060, city="New York"):
@@ -725,10 +728,13 @@ class SportsFetcher:
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         
+        # CHANGE 1: Reduce Pool Size to 15 (Save RAM)
         self.session = build_pooled_session(pool_size=15)
         
+        # CHANGE 2: Use Configured Thread Count (10)
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=WORKER_THREAD_COUNT)
         
+        # CHANGE 3: Add New Caches for Smart Sleep
         self.history_buffer = [] 
         self.final_game_cache = {}      # Stores finished games so we don't re-fetch
         self.league_next_update = {}    # Stores "Wake Up" time for sleeping leagues
@@ -1203,7 +1209,7 @@ class SportsFetcher:
                     st = g.get('gameState', 'OFF')
                     map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
 
-                    # === FIX START: NORMALIZE ABBREVIATIONS ===
+                    # === FIX: NORMALIZE ABBREVIATIONS FOR MY TEAMS COMPATIBILITY ===
                     raw_h = g['homeTeam']['abbrev']; raw_a = g['awayTeam']['abbrev']
                     h_ab = ABBR_MAPPING.get(raw_h, raw_h) # Translates LAK -> LA
                     a_ab = ABBR_MAPPING.get(raw_a, raw_a) # Translates TBL -> TB
@@ -1882,23 +1888,16 @@ class SportsFetcher:
             return None
    
         try:
-            # 1. Get the latest cached state from the spotify_fetcher
             s_data = spotify_fetcher.get_cached_state()
-            
-            # Return music object regardless of playing state (playing or paused)
             if s_data:
                 is_playing = s_data.get('is_playing', False)
-                
-                # 2. Local calculation for the ticker display progress
                 time_since_fetch = time.time() - s_data.get('last_fetch_ts', time.time())
                 current_progress = s_data['progress'] + (time_since_fetch if is_playing else 0)
                 
-                # Ensure we don't display past the end of the song
                 duration = s_data.get('duration', 0)
                 if current_progress > duration:
                     current_progress = duration
 
-                # Formatting the status string (e.g., 2:30 / 3:45 or "PAUSED")
                 if is_playing:
                     cur_m, cur_s = divmod(int(current_progress), 60)
                     tot_m, tot_s = divmod(int(duration), 60)
@@ -1939,7 +1938,7 @@ class SportsFetcher:
         with data_lock: 
             conf = state.copy()
 
-        # 1. WEATHER & UTILS
+        # 1. WEATHER & CLOCK (Simple, fast)
         if conf['active_sports'].get('weather'):
             if (conf['weather_lat'] != self.weather.lat or 
                 conf['weather_lon'] != self.weather.lon or 
@@ -1948,106 +1947,158 @@ class SportsFetcher:
             w = self.weather.get_weather()
             if w: all_games.append(w)
 
-        music_obj = self.get_music_object()
-        if music_obj: all_games.append(music_obj)
-
         if conf['active_sports'].get('clock'):
             all_games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
 
-        # 2. DATE & WINDOW LOGIC
-        utc_offset = conf.get('utc_offset', -5)
-        now_utc = dt.now(timezone.utc)
-        now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-        
-        if now_local.hour < 3:
-            visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
-            visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
-        else:
-            visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-            visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
-        
-        visible_start_utc = visible_start_local.astimezone(timezone.utc)
-        visible_end_utc = visible_end_local.astimezone(timezone.utc)
-        window_start_utc = (now_local - timedelta(hours=30)).astimezone(timezone.utc)
-        window_end_utc = (now_local + timedelta(hours=48)).astimezone(timezone.utc)
-        
-        futures = {}
+        # --- MUSIC (NEW) ---
+        music_obj = self.get_music_object()
+        if music_obj: all_games.append(music_obj)
 
-        # 3. SPECIALIZED NATIVE FETCHERS (NHL, AHL)
-        if conf['active_sports'].get('nhl'):
-            f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
-            futures[f] = 'nhl'
-        
-        if conf['active_sports'].get('ahl'):
-            f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
-            futures[f] = 'ahl'
-
-        # 4. SOCCER FETCHERS (FotMob)
-        for league_key in FOTMOB_LEAGUE_MAP:
-            if conf['active_sports'].get(league_key):
-                f = self.executor.submit(self._fetch_fotmob_league, FOTMOB_LEAGUE_MAP[league_key], league_key, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
-                futures[f] = league_key
-
-        # 5. STANDARD ESPN FETCHERS (NBA, NFL, MLB, NCABB)
-        for league_key, config in self.leagues.items():
-            if not conf['active_sports'].get(league_key, False): continue
-            # Don't double-fetch things we handled natively above
-            if league_key in ['nhl', 'ahl'] or league_key.startswith('soccer_'): continue
+        # 2. SPORTS (Parallelized & Smart)
+        if conf['mode'] in ['sports', 'live', 'my_teams', 'all', 'music']:
+            utc_offset = conf.get('utc_offset', -5)
+            now_utc = dt.now(timezone.utc)
+            now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
             
-            f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
-            futures[f] = league_key
+            if now_local.hour < 3:
+                visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+                visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
+            else:
+                visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
+            
+            visible_start_utc = visible_start_local.astimezone(timezone.utc)
+            visible_end_utc = visible_end_local.astimezone(timezone.utc)
+            
+            window_start_local = now_local - timedelta(hours=30)
+            window_end_local = now_local + timedelta(hours=48)
+            
+            window_start_utc = window_start_local.astimezone(timezone.utc)
+            window_end_utc = window_end_local.astimezone(timezone.utc)
+            
+            futures = {}
 
-        # 6. WAIT AND MERGE
-        # Increased timeout to 8.0s to account for slower Soccer/AHL API responses
-        done, _ = concurrent.futures.wait(futures.keys(), timeout=8.0)
-        for f in done:
-            try:
-                res = f.result()
-                if res: all_games.extend(res)
-            except Exception as e:
-                print(f"Fetcher error for {futures.get(f, 'unknown')}: {e}")
+            # --- SMART LOOP IMPLEMENTATION ---
+            
+            # Special fetchers (Always submit for now, but with timeout)
+            if conf['active_sports'].get('ahl', False):
+                f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
+                futures[f] = 'ahl'
+            
+            if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
+                f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                futures[f] = 'nhl_native'
+            
+            for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
+                if conf['active_sports'].get(internal_id, False):
+                    f = self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                    futures[f] = internal_id
 
-        # Sorting: Clock -> Weather -> Active Games -> Final Games -> PPD
-        # Tie-breakers added (sport, id) to keep ordering stable when multiple games share the same start time
+            # Standard ESPN fetchers (Apply Smart Sleep)
+            for league_key, config in self.leagues.items():
+                if league_key == 'nhl' and not conf['debug_mode']: continue 
+                if league_key.startswith('soccer_'): continue
+                if league_key == 'ahl': continue
+                
+                # Check Sleep Status
+                if time.time() < self.league_next_update.get(league_key, 0):
+                    # SLEEPING: Use cached data (Instant)
+                    if league_key in self.league_last_data:
+                        all_games.extend(self.league_last_data[league_key])
+                    continue
+                
+                # AWAKE: Submit task
+                f = self.executor.submit(
+                    self.fetch_single_league, 
+                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc
+                )
+                futures[f] = league_key
+            
+            # HARD TIMEOUT: Wait max 3.0s for threads
+            done, _ = concurrent.futures.wait(futures.keys(), timeout=API_TIMEOUT)
+            
+            for f in done:
+                lk = futures[f]
+                try: 
+                    res = f.result()
+                    if res: 
+                        all_games.extend(res)
+                        # Save data for next sleep cycle
+                        if lk not in ['ahl', 'nhl_native'] and not lk.startswith('soccer_'):
+                            self.league_last_data[lk] = res
+                            self.league_next_update[lk] = self._calculate_next_update(res)
+                except Exception as e: 
+                    print(f"Fetch error {lk}: {e}")
+
+        sports_count = len([g for g in all_games if g.get('type') == 'scoreboard'])
+        
+        with data_lock:
+            prev_buffer = state.get('buffer_sports', [])
+            prev_sports_count = len([g for g in prev_buffer if g.get('type') == 'scoreboard'])
+
+        if sports_count == 0 and prev_sports_count > 0:
+            self.consecutive_empty_fetches += 1
+            if self.consecutive_empty_fetches < 3:
+                prev_pure_sports = [g for g in prev_buffer if g.get('type') == 'scoreboard']
+                utils = [g for g in all_games if g.get('type') != 'scoreboard']
+                all_games = prev_pure_sports + utils
+            else:
+                self.consecutive_empty_fetches = 0
+        else:
+            self.consecutive_empty_fetches = 0
+
+        for g in all_games:
+            ts = g.get('startTimeUTC')
+            if ts and isinstance(ts, str):
+                try:
+                    d = dt.fromisoformat(ts.replace('Z', '+00:00'))
+                    g['startTimeUTC'] = d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except: pass
+
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
-            4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "ppd"]) else
-            3 if "FINAL" in str(x.get('status', '')).upper() else 2,
+            4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "canceled", "suspended", "ppd"]) else
+            3 if "FINAL" in str(x.get('status', '')).upper() or "FIN" == str(x.get('status', '')) else
+            2, # Active
             x.get('startTimeUTC', '9999'),
-            str(x.get('sport', '')),  # stabilizes ordering for same-time games (e.g., multiple soccer matches)
-            str(x.get('id', ''))
+            x.get('sport', ''),
+            x.get('id', '0')
         ))
 
+        now_ts = time.time()
+        self.history_buffer.append((now_ts, all_games))
+        cutoff_time = now_ts - 120
+        self.history_buffer = [x for x in self.history_buffer if x[0] > cutoff_time]
+        
         with data_lock: 
             state['buffer_sports'] = all_games
             self.merge_buffers()
 
     def get_snapshot_for_delay(self, delay_seconds):
-        # Always get the most recent data if no delay
         if delay_seconds <= 0 or not self.history_buffer:
-            with data_lock: return state.get('current_games', [])
+            with data_lock:
+                return state.get('current_games', [])
         
-        # Find the snapshot closest to our target delay time
         target_time = time.time() - delay_seconds
         closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
         sports_snap = closest[1]
         
         with data_lock:
             stocks_snap = state.get('buffer_stocks', [])
-            mode = state.get('mode', 'all')
+            mode = state['mode']
         
-        # Apply the exact same mode logic as merge_buffers
-        utils = [g for g in sports_snap if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
-        pure_sports = [g for g in sports_snap if g.get('type') == 'scoreboard']
+        utils = [g for g in sports_snap if g.get('type') == 'weather' or g.get('sport') == 'clock']
+        music_items = [g for g in sports_snap if g.get('sport') == 'music']
+        pure_sports = [g for g in sports_snap if g not in utils and g not in music_items]
         
         if mode == 'stocks': return stocks_snap
         elif mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
-        elif mode == 'music': return [g for g in utils if g.get('sport') == 'music']
+        elif mode == 'music': return music_items
         elif mode == 'all': return sports_snap
         else: return pure_sports
-            
+
     def update_buffer_stocks(self):
         games = []
         with data_lock: conf = state.copy()
@@ -2063,30 +2114,23 @@ class SportsFetcher:
             self.merge_buffers()
 
     def merge_buffers(self):
-        mode = state.get('mode', 'all')
+        mode = state['mode']
+        final_list = []
+        
         sports_buffer = state.get('buffer_sports', [])
         stocks_buffer = state.get('buffer_stocks', [])
         
-        # Segregate data types
-        utils = [g for g in sports_buffer if g.get('type') in ['weather', 'music'] or g.get('sport') in ['clock', 'music']]
-        pure_sports = [g for g in sports_buffer if g.get('type') == 'scoreboard']
+        utils = [g for g in sports_buffer if g.get('type') == 'weather' or g.get('sport') == 'clock']
+        music_items = [g for g in sports_buffer if g.get('sport') == 'music']
+        pure_sports = [g for g in sports_buffer if g not in utils and g not in music_items]
 
-        if mode == 'stocks': 
-            final_list = stocks_buffer
-        elif mode == 'weather': 
-            final_list = [g for g in utils if g.get('type') == 'weather']
-        elif mode == 'clock': 
-            final_list = [g for g in utils if g.get('sport') == 'clock']
-        elif mode == 'music': 
-            final_list = [g for g in utils if g.get('sport') == 'music']
-        elif mode == 'all':
-            # ALL = Everything including weather/clock/music
-            final_list = sports_buffer 
-        elif mode == 'sports':
-            # SPORTS = Only pure games
-            final_list = pure_sports
-        else: 
-            final_list = pure_sports
+        if mode == 'stocks': final_list = stocks_buffer
+        elif mode == 'weather': final_list = [g for g in utils if g.get('type') == 'weather']
+        elif mode == 'clock': final_list = [g for g in utils if g.get('sport') == 'clock']
+        elif mode == 'music': final_list = music_items
+        elif mode == 'all': final_list = sports_buffer
+        elif mode in ['sports', 'live', 'my_teams']: final_list = pure_sports
+        else: final_list = pure_sports
 
         state['current_games'] = final_list
 
@@ -2097,8 +2141,7 @@ fetcher = SportsFetcher(
     initial_lon=state['weather_lon']
 )
 
-# Initialize Passive Spotify Fetcher
-# (Make sure .cache file is in the same folder as this script)
+# Initialize Spotify Fetcher
 spotify_fetcher = SpotifyFetcher()
 spotify_fetcher.start()
 
@@ -2131,36 +2174,6 @@ def stocks_worker():
         except Exception as e: 
             print(f"Stock worker error: {e}")
         time.sleep(1)
-
-# ========================================================
-# MUSIC WORKER (Smart Sleep)
-# ========================================================
-def music_worker():
-    while True:
-        try:
-            m_obj = fetcher.get_music_object()
-            with data_lock:
-                current_mode = state.get('mode')
-                if current_mode == 'music':
-                    state['current_games'] = [m_obj] if m_obj else []
-                elif current_mode == 'all':
-                    buffer = state.get('buffer_sports', [])
-                    found = False
-                    for i, item in enumerate(buffer):
-                        if item.get('id') == 'spotify_now':
-                            if m_obj: buffer[i] = m_obj
-                            else: buffer.pop(i)
-                            found = True
-                            break
-                    if not found and m_obj:
-                        buffer.append(m_obj)
-                    state['buffer_sports'] = buffer
-                    fetcher.merge_buffers()
-        except: pass
-        
-        # SMART SLEEP: Wait for trigger or timeout (1.0s for progress bar updates)
-        music_update_event.wait(1.0)
-        music_update_event.clear()
 
 # ================= FLASK API =================
 app = Flask(__name__)
@@ -2229,31 +2242,16 @@ def api_config():
 
                 # HANDLE ACTIVE SPORTS
                 if k == 'active_sports' and isinstance(v, dict): 
-                    # Music toggle debounce
-                    if 'music' in v:
-                        current_time = time.time()
-                        last_toggle_time = state.get('music_toggle_time', 0)
-                        if current_time - last_toggle_time >= 2.0:
-                            state['active_sports']['music'] = v['music']
-                            state['music_toggle_time'] = current_time
-                        v = {k2: v2 for k2, v2 in v.items() if k2 != 'music'}
-                    
-                    if v:
-                        state['active_sports'].update(v)
-                        # Fix: Also update ticker-specific settings
-                        if target_id and target_id in tickers:
-                            if 'active_sports' not in tickers[target_id]['settings']:
-                                tickers[target_id]['settings']['active_sports'] = {}
-                            tickers[target_id]['settings']['active_sports'].update(v)
+                    state['active_sports'].update(v)
                     continue
                 
                 # HANDLE MODES & SETTINGS
                 if v is not None: state[k] = v
                 
-                # SYNC TO TICKER SETTINGS (Fix applied here)
+                # SYNC TO TICKER SETTINGS
                 if target_id and target_id in tickers:
-                    # Force update the specific ticker setting
-                    tickers[target_id]['settings'][k] = v
+                    if k in tickers[target_id]['settings'] or k == 'mode':
+                        tickers[target_id]['settings'][k] = v
             
             fetcher.merge_buffers()
         
@@ -2280,23 +2278,11 @@ def get_league_options():
              'type': item['type'],
              'enabled': state['active_sports'].get(item['id'], False)
          })
-    return jsonify(league_meta)
-
-@app.route('/api/spotify/now', methods=['GET'])
-def api_spotify():
-    # Get the static data from the last poll
-    data = spotify_fetcher.get_cached_state()
-    
-    # INTERPOLATION: If music is playing, update the progress locally
-    if data.get('is_playing') and 'progress' in data and 'last_fetch_ts' in data:
-        time_since_fetch = time.time() - data['last_fetch_ts']
-        data['progress'] += time_since_fetch
+    # Add Music Option explicitly if not in list
+    if not any(x['id'] == 'music' for x in league_meta):
+        league_meta.append({'id': 'music', 'label': 'Music', 'type': 'util', 'enabled': state['active_sports'].get('music', False)})
         
-        # Prevent progress from exceeding the actual song duration
-        if data['progress'] > data.get('duration', 0):
-            data['progress'] = data['duration']
-            
-    return jsonify(data)
+    return jsonify(league_meta)
 
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
@@ -2328,10 +2314,7 @@ def get_ticker_data():
     # 3. Standard Data Fetching
     t_settings = rec['settings']
     
-    # ==========================================================
-    # RESTORED: SLEEP MODE LOGIC
-    # If brightness is 0, send 'sleep' status and empty content
-    # ==========================================================
+    # --- RESTORED SLEEP MODE ---
     if t_settings.get('brightness', 100) <= 0:
         return jsonify({ 
             "status": "sleep", 
@@ -2340,45 +2323,28 @@ def get_ticker_data():
             "local_config": t_settings, 
             "content": { "sports": [] } 
         })
-    # ==========================================================
+    # ---------------------------
 
-    # --- FIX 1: Fallback to Global Teams if Ticker-Specific list is empty ---
     saved_teams = rec.get('my_teams', []) 
-    if not saved_teams:
-        saved_teams = state.get('my_teams', [])
-    # ----------------------------------------------------------------------
-
     current_mode = t_settings.get('mode', 'all') 
 
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
     
-    processed_games = []
-    visible_games = [] 
+    visible_games = []
     COLLISION_ABBRS = {'LV'} 
 
     for g in raw_games:
-        # Create a copy so we don't modify the global cache for other users
-        game_copy = g.copy()
-        
-        # Start by assuming it is shown, unless logic says otherwise
         should_show = True
         
-        # Logic 1: Live Mode
-        if current_mode == 'live' and game_copy.get('state') not in ['in', 'half']: 
-            should_show = False
-            
-        # Logic 2: My Teams Mode
-        elif current_mode == 'my_teams':
-            sport = game_copy.get('sport')
-            
-            # --- FIX 2: Don't filter out non-game items (Music, etc) ---
+        # Don't filter out Music/Weather in My Teams mode
+        if current_mode == 'my_teams':
+            sport = g.get('sport')
             if sport in ['music', 'weather', 'clock']:
                 should_show = True
             else:
-                h_abbr = str(game_copy.get('home_abbr', '')).upper()
-                a_abbr = str(game_copy.get('away_abbr', '')).upper()
-                
+                h_abbr = str(g.get('home_abbr', '')).upper()
+                a_abbr = str(g.get('away_abbr', '')).upper()
                 h_scoped = f"{sport}:{h_abbr}"
                 a_scoped = f"{sport}:{a_abbr}"
                 
@@ -2388,17 +2354,17 @@ def get_ticker_data():
                 if a_abbr in COLLISION_ABBRS: in_away = a_scoped in saved_teams
                 else: in_away = (a_scoped in saved_teams or a_abbr in saved_teams)
                 
-                if not (in_home or in_away): 
-                    should_show = False
+                if not (in_home or in_away): should_show = False
+        
+        elif current_mode == 'live' and g.get('state') not in ['in', 'half']: should_show = False
 
-        # Logic 3: Global Postponed/Suspended (Overrides everything)
-        status_lower = str(game_copy.get('status', '')).lower()
+        status_lower = str(g.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
             should_show = False
 
-        # Apply the calculated visibility to the object
-        game_copy['is_shown'] = should_show
-        processed_games.append(game_copy)
+        if should_show:
+            g['is_shown'] = True # Explicitly set true for frontend
+            visible_games.append(g)
     
     # Construct the response config
     g_config = { "mode": current_mode }
@@ -2416,7 +2382,7 @@ def get_ticker_data():
         "version": SERVER_VERSION,
         "global_config": g_config, 
         "local_config": t_settings, 
-        "content": { "sports": processed_games } 
+        "content": { "sports": visible_games } 
     })
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
@@ -2425,11 +2391,26 @@ def get_ticker_data():
     
     return response
 
+@app.route('/api/spotify/now', methods=['GET'])
+def api_spotify():
+    # Get the static data from the last poll
+    data = spotify_fetcher.get_cached_state()
+    
+    # INTERPOLATION: If music is playing, update the progress locally
+    if data.get('is_playing') and 'progress' in data and 'last_fetch_ts' in data:
+        time_since_fetch = time.time() - data['last_fetch_ts']
+        data['progress'] += time_since_fetch
+        
+        # Prevent progress from exceeding the actual song duration
+        if data['progress'] > data.get('duration', 0):
+            data['progress'] = data['duration']
+            
+    return jsonify(data)
+
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
     try:
         cid = request.headers.get('X-Client-ID')
-        # Handle cases where request.json might be None
         json_body = request.json or {}
         code = json_body.get('code')
         friendly_name = json_body.get('name', 'My Ticker')
@@ -2440,33 +2421,23 @@ def pair_ticker():
             print("❌ Missing CID or Code")
             return jsonify({"success": False, "message": "Missing Data"}), 400
         
-        # Normalize code to string and strip whitespace to prevent mismatches
         input_code = str(code).strip()
 
         for uid, rec in tickers.items():
-            # Check if this ticker has a pairing code
             known_code = str(rec.get('pairing_code', '')).strip()
             
             if known_code == input_code:
-                # --- MATCH FOUND! ---
                 if cid not in rec.get('clients', []):
                     rec['clients'].append(cid)
                 
                 rec['paired'] = True
                 rec['name'] = friendly_name
-                
-                # Save the specific ticker file so the change persists
                 save_specific_ticker(uid)
                 
                 print(f"✅ Paired Successfully to Ticker: {uid}")
                 return jsonify({"success": True, "ticker_id": uid})
         
-        # If loop finishes with no match
         print(f"❌ Invalid Code. Input: {input_code}")
-        
-        # Return 200 OK with success:False. 
-        # If we return 404, the App assumes the server is offline. 
-        # We want the App to know the server is online but the code was wrong.
         return jsonify({"success": False, "message": "Invalid Pairing Code"}), 200
 
     except Exception as e:
@@ -2516,7 +2487,6 @@ def update_settings(tid):
     cid = request.headers.get('X-Client-ID')
     rec = tickers[tid]
     
-    # If this check fails, the App is not paired correctly.
     if not cid or cid not in rec.get('clients', []):
         print(f"⛔ Blocked unauthorized settings change from {cid}")
         return jsonify({"error": "Unauthorized: Device not paired"}), 403
@@ -2525,7 +2495,7 @@ def update_settings(tid):
     rec['settings'].update(request.json)
     save_specific_ticker(tid)
     
-    print(f"✅ Updated Settings for {tid}: {request.json}") # Added log for debugging
+    print(f"✅ Updated Settings for {tid}: {request.json}") 
     return jsonify({"success": True})
 
 @app.route('/api/state', methods=['GET'])
@@ -2550,58 +2520,10 @@ def api_state():
         response_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
         response_settings['ticker_id'] = ticker_id 
     
-    # 1. Get ALL raw games
-    raw_games = fetcher.get_snapshot_for_delay(0)
-    
-    # 2. Create a copy to modify 'is_shown' without affecting the global cache
-    processed_games = []
-
-    current_mode = response_settings.get('mode', 'all')
-    saved_teams = response_settings.get('my_teams', [])
-    COLLISION_ABBRS = {'LV'}
-
-    for g in raw_games:
-        # Create a copy so we don't modify the global cache for other users
-        game_copy = g.copy()
-        
-        # Start by assuming it is shown, unless logic says otherwise
-        should_show = True
-        
-        # Logic 1: Live Mode
-        if current_mode == 'live' and game_copy.get('state') not in ['in', 'half']: 
-            should_show = False
-            
-        # Logic 2: My Teams Mode
-        elif current_mode == 'my_teams':
-            sport = game_copy.get('sport')
-            h_abbr = str(game_copy.get('home_abbr', '')).upper()
-            a_abbr = str(game_copy.get('away_abbr', '')).upper()
-            
-            h_scoped = f"{sport}:{h_abbr}"
-            a_scoped = f"{sport}:{a_abbr}"
-            
-            if h_abbr in COLLISION_ABBRS: in_home = h_scoped in saved_teams
-            else: in_home = (h_scoped in saved_teams or h_abbr in saved_teams)
-
-            if a_abbr in COLLISION_ABBRS: in_away = a_scoped in saved_teams
-            else: in_away = (a_scoped in saved_teams or a_abbr in saved_teams)
-            
-            if not (in_home or in_away): 
-                should_show = False
-
-        # Logic 3: Global Postponed/Suspended (Overrides everything)
-        status_lower = str(game_copy.get('status', '')).lower()
-        if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
-            should_show = False
-
-        # Apply the calculated visibility to the object
-        game_copy['is_shown'] = should_show
-        processed_games.append(game_copy)
-
     return jsonify({
         "status": "ok",
         "settings": response_settings,
-        "games": processed_games 
+        "games": [] # Legacy field, can be empty
     })
 
 @app.route('/api/teams')
@@ -2619,24 +2541,18 @@ def api_hardware():
         if action == 'update':
             with data_lock:
                 for t in tickers.values(): t['update_requested'] = True
-            # Clear flag after 60s
             threading.Timer(60, lambda: [t.update({'update_requested':False}) for t in tickers.values()]).start()
             return jsonify({"status": "ok", "message": "Updating Fleet"})
 
         if action == 'reboot':
-            # Target the specific ticker if ID is provided
             if ticker_id and ticker_id in tickers:
                 with data_lock:
                     tickers[ticker_id]['reboot_requested'] = True
-                
-                # Auto-clear flag after 15s to prevent boot loops
                 def clear_flag(tid):
                     with data_lock:
                         if tid in tickers: tickers[tid]['reboot_requested'] = False
                 threading.Timer(15, clear_flag, args=[ticker_id]).start()
                 return jsonify({"status": "ok", "message": f"Rebooting {ticker_id}"})
-                
-            # Fallback: Reboot the first ticker if no ID found (Legacy support)
             elif len(tickers) > 0:
                 target = list(tickers.keys())[0]
                 with data_lock:
@@ -2656,43 +2572,31 @@ def api_debug():
 
 @app.route('/errors', methods=['GET'])
 def get_logs():
+    log_file = "ticker.log"
+    if not os.path.exists(log_file):
+        return "Log file not found", 404
     try:
-        # Run journalctl to get the last 200 lines of logs for the 'ticker' service
-        result = subprocess.run(
-            ['journalctl', '-u', 'ticker', '-n', '200', '--no-pager'],
-            capture_output=True,
-            text=True
-        )
-        log_content = result.stdout
+        file_size = os.path.getsize(log_file)
+        read_size = min(file_size, 102400) 
+        log_content = ""
+        with open(log_file, 'rb') as f:
+            if file_size > read_size:
+                f.seek(file_size - read_size)
+            data = f.read()
+            log_content = data.decode('utf-8', errors='replace')
 
         html_response = f"""
         <!DOCTYPE html>
         <html>
-        <head>
-            <title>Server Logs</title>
-            <meta http-equiv="refresh" content="10">
-            <style>
-                body {{ background-color: #1e1e1e; color: #00ff00; font-family: 'Courier New', monospace; margin: 0; padding: 20px; }}
-                pre {{ white-space: pre-wrap; word-wrap: break-word; }}
-            </style>
-            <script>
-                window.onload = function() {{
-                    window.scrollTo(0, document.body.scrollHeight);
-                }};
-            </script>
-        </head>
-        <body>
-            <h3>Live System Logs (Last 200 lines)</h3>
+        <head><title>Logs</title><meta http-equiv="refresh" content="10"></head>
+        <body style="background:#111;color:#0f0;font-family:monospace;padding:20px;">
             <pre>{log_content}</pre>
-        </body>
-        </html>
+            <script>window.scrollTo(0,document.body.scrollHeight);</script>
+        </body></html>
         """
-        response = app.response_class(response=html_response, status=200, mimetype='text/html')
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        return response
-
+        return app.response_class(response=html_response, status=200, mimetype='text/html')
     except Exception as e:
-        return f"Error reading system journal: {str(e)}", 500
+        return f"Error: {str(e)}", 500
 
 @app.route('/api/my_teams', methods=['GET'])
 def check_my_teams():
@@ -2700,35 +2604,25 @@ def check_my_teams():
     with data_lock:
         global_teams = state.get('my_teams', [])
         if not ticker_id:
-            return jsonify({
-                "status": "ok",
-                "scope": "Global (Default)",
-                "count": len(global_teams),
-                "teams": global_teams
-            })
+            return jsonify({ "status": "ok", "scope": "Global", "teams": global_teams })
 
         if ticker_id in tickers:
             rec = tickers[ticker_id]
             specific_teams = rec.get('my_teams', [])
             using_fallback = len(specific_teams) == 0
             effective = global_teams if using_fallback else specific_teams
-
-            return jsonify({
-                "status": "ok",
-                "ticker_id": ticker_id,
-                "scope": "Ticker Specific",
-                "using_global_fallback": using_fallback,
-                "saved_specifically_for_ticker": specific_teams,
-                "what_the_ticker_actually_sees": effective
+            return jsonify({ 
+                "status": "ok", "scope": "Ticker Specific", 
+                "using_global_fallback": using_fallback, 
+                "teams": effective 
             })
         
         return jsonify({"error": "Ticker ID not found"}), 404
 
 @app.route('/')
-def root(): return "Ticker Server Running on Version: " + SERVER_VERSION
+def root(): return "Ticker Server v6 Running"
 
 if __name__ == "__main__":
     threading.Thread(target=sports_worker, daemon=True).start()
     threading.Thread(target=stocks_worker, daemon=True).start()
-    threading.Thread(target=music_worker, daemon=True).start()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
