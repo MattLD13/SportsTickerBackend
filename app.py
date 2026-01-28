@@ -676,19 +676,32 @@ class StockFetcher:
             if obj: res.append(obj)
         return res
 
-# ================= STANDARD SPOTIFY FETCHER =================
+# ================= HYBRID SPOTIFY FETCHER =================
 class SpotifyFetcher(threading.Thread):
-    def __init__(self, event):
+    def __init__(self, trigger_event):
         super().__init__()
-        self.event = event
-        self.username = os.getenv('SPOTIFY_USERNAME')
-        self.password = os.getenv('SPOTIFY_PASSWORD')
+        self.trigger_event = trigger_event  # Triggers the main loop to update
         self.daemon = True
         self._lock = threading.Lock()
         
+        # --- CREDENTIALS ---
+        # 1. Web API (For Metadata)
+        self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
+        self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+        self.refresh_token = os.getenv('SPOTIFY_REFRESH_TOKEN')
+        
+        # 2. Librespot (For Instant Triggers)
+        self.username = os.getenv('SPOTIFY_USERNAME')
+        self.password = os.getenv('SPOTIFY_PASSWORD')
+
+        # --- STATE ---
+        self.web_token = None
+        self.token_expiry = 0
+        self.session = build_pooled_session()
+        
         self.state = {
             "is_playing": False,
-            "name": "Waiting for Music...",
+            "name": "Waiting...",
             "artist": "",
             "cover": "",
             "duration": 0,
@@ -697,80 +710,116 @@ class SpotifyFetcher(threading.Thread):
         }
 
     def get_cached_state(self):
-        with self._lock:
-            return self.state.copy()
+        with self._lock: return self.state.copy()
 
     def run(self):
-        if not self.username or not self.password:
-            print("⚠️ SPOTIFY: Missing SPOTIFY_USERNAME/PASSWORD in .env")
+        """Main Thread: Handles Web API Polling & Token Refresh"""
+        if not self.client_id or not self.username:
+            print("⚠️ SPOTIFY: Missing secrets. Needs CLIENT_ID, SECRET, REFRESH_TOKEN, USERNAME, PASSWORD.")
             return
+
+        # Start the "Spy" Listener in a background task
+        threading.Thread(target=self.run_librespot_spy, daemon=True).start()
+
+        # Main Polling Loop
         while True:
             try:
-                # Create a new event loop for this thread
-                asyncio.run(self.async_runner())
+                # 1. Check Token
+                if time.time() > self.token_expiry:
+                    self.refresh_access_token()
+
+                # 2. Fetch Data (If token valid)
+                if self.web_token:
+                    self.poll_web_api()
+
             except Exception as e:
-                print(f"❌ Spotify Client Crashed: {e}. Restarting in 5s...")
+                print(f"Spotify Web API Error: {e}")
+
+            # 3. SMART SLEEP
+            # Wait 5 seconds normally, OR wake up instantly if Librespot hears a click.
+            # This is the key to "Instant" updates with "Old Client" reliability.
+            self.trigger_event.wait(5.0)
+            self.trigger_event.clear() # Reset flag after waking up
+
+    def refresh_access_token(self):
+        try:
+            auth = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
+            r = self.session.post(
+                "https://accounts.spotify.com/api/token",
+                data={"grant_type": "refresh_token", "refresh_token": self.refresh_token},
+                headers={"Authorization": f"Basic {auth}"}, timeout=5
+            )
+            if r.status_code == 200:
+                d = r.json()
+                self.web_token = d['access_token']
+                self.token_expiry = time.time() + d.get('expires_in', 3600) - 60
+                print("✅ Spotify Web Token Refreshed")
+        except Exception as e:
+            print(f"Token Refresh Failed: {e}")
+
+    def poll_web_api(self):
+        try:
+            r = self.session.get(
+                "https://api.spotify.com/v1/me/player/currently-playing",
+                headers={"Authorization": f"Bearer {self.web_token}"}, timeout=3
+            )
+            
+            if r.status_code == 200:
+                d = r.json()
+                item = d.get('item')
+                if item:
+                    with self._lock:
+                        self.state = {
+                            "is_playing": d.get('is_playing', False),
+                            "name": item.get('name'),
+                            "artist": ", ".join(a['name'] for a in item.get('artists', [])),
+                            "cover": item['album']['images'][0]['url'] if item.get('album',{}).get('images') else "",
+                            "duration": item.get('duration_ms', 0) / 1000.0,
+                            "progress": d.get('progress_ms', 0) / 1000.0,
+                            "last_fetch_ts": time.time()
+                        }
+            elif r.status_code == 204:
+                # 204 = No Content (Nothing playing), but we KEEP the old state
+                # so the ticker doesn't go blank. We just set playing to false.
+                with self._lock:
+                    self.state['is_playing'] = False
+
+        except Exception as e:
+            pass
+
+    # --- LIBRESPOT SECTION (The Trigger) ---
+    def run_librespot_spy(self):
+        """Runs purely to detect Play/Pause and wake up the Web API"""
+        while True:
+            try:
+                asyncio.run(self.async_spy())
+            except Exception as e:
+                print(f"Librespot Spy Crashed (Restarting): {e}")
                 time.sleep(5)
 
-    async def async_runner(self):
-        print(f"🔒 Authenticating Spotify as {self.username}...")
+    async def async_spy(self):
+        print(f"🔒 Authenticating Librespot Trigger...")
         try:
-            # STANDARD BUILDER (No custom config, no icons)
+            # Standard Session (No Custom Device Type to ensure compatibility)
             session = await Session.Builder() \
                 .user_pass(self.username, self.password) \
                 .create()
             
             spirc = session.spirc()
-            print("✅ Spotify Connected! Waiting for events...")
+            print("✅ Librespot Connected! Listening for Triggers...")
 
             def on_notify(notify):
-                # This function triggers ONLY when you Press Play/Pause/Next
-                if not notify.state: return
-                
-                with self._lock:
-                    self.state['is_playing'] = (notify.state.status == 1)
-                    self.state['progress'] = notify.state.position_ms / 1000.0
-                    self.state['last_fetch_ts'] = time.time()
-                    
-                    self.event.set() # Wake up the main thread
-
-                    if notify.state.track:
-                        track = notify.state.track[0]
-                        self.state['duration'] = track.duration / 1000.0
-                        asyncio.run_coroutine_threadsafe(self.update_metadata(session, track), loop)
+                # When ANY device changes state (Play/Pause/Skip)
+                # We simply set the event. This wakes up 'poll_web_api' instantly.
+                if notify.state:
+                    self.trigger_event.set() 
 
             loop = asyncio.get_running_loop()
             spirc.add_listener(on_notify)
 
             while True: await asyncio.sleep(1)
-
         except Exception as e:
-            print(f"Spotify Connection Error: {e}")
             raise e
-
-    async def update_metadata(self, session, track_ref):
-        try:
-            track_id = TrackId.from_gid(track_ref.gid)
-            meta = await session.api().get_metadata_4_track(track_id)
-            
-            name = meta.name
-            artists = ", ".join([a.name for a in meta.artist])
-            
-            cover_url = ""
-            if meta.album.cover_group.image:
-                file_id = meta.album.cover_group.image[0].file_id
-                hex_id = binascii.hexlify(file_id).decode()
-                cover_url = f"https://i.scdn.co/image/{hex_id}"
-
-            with self._lock:
-                self.state['name'] = name
-                self.state['artist'] = artists
-                self.state['cover'] = cover_url
-            
-            self.event.set()
-                
-        except Exception as e:
-            print(f"Metadata Fetch Failed: {e}")
 
 class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
@@ -2163,7 +2212,11 @@ fetcher = SportsFetcher(
     initial_lon=state['weather_lon']
 )
 
-spotify_fetcher = SpotifyFetcher(music_update_event) # <--- Pass Event Here
+# Create the Event
+music_update_event = threading.Event()
+
+# Initialize Fetcher
+spotify_fetcher = SpotifyFetcher(music_update_event)
 spotify_fetcher.start()
 
 # ========================================================
