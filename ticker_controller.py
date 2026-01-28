@@ -1130,24 +1130,21 @@ class TickerStreamer:
 
     def render_loop(self):
         strip_offset = 0.0
+        self.last_applied_hash = ""
         
         while self.running:
             try:
-                # --- 1. INTERRUPTIBLE STATIC DISPLAY (Music, Clock, Weather) ---
+                # 1. INTERRUPTIBLE STATIC DISPLAY (Music, Clock, Weather)
                 if self.showing_static:
                     if self.static_current_game:
                         game_type = str(self.static_current_game.get('type', ''))
                         sport = str(self.static_current_game.get('sport','')).lower()
                         
-                        # High-rate animation for Music/Clock
                         if sport.startswith('clock') or game_type == 'music' or sport == 'music':
-                            # Look for fresh music data in the background buffer
                             live_music_item = next((i for i in self.static_items if i.get('id') == 'spotify_now'), None)
                             
                             if live_music_item:
-                                # Update current display object with fresh timing/progress from backend
                                 self.static_current_game = live_music_item
-                                # If music is playing, push the exit timer forward so it stays on screen
                                 if live_music_item.get('situation', {}).get('is_playing'):
                                     self.static_until = time.time() + 2.0
                             
@@ -1155,77 +1152,75 @@ class TickerStreamer:
                             if self.static_current_image:
                                 self.update_display(self.static_current_image)
                             
-                            # EXIT STATIC MODE IF: 
-                            # A) Timer expires AND no music is playing
-                            # B) New background data (Sports/Settings) is ready to be swapped
-                            if (time.time() >= self.static_until) or self.bg_strip_ready:
+                            # Interrupt static only if a DIFFERENT hash arrives or music stops
+                            if (time.time() >= self.static_until):
                                 self.showing_static = False
                             
-                            time.sleep(0.03) # ~30FPS for vinyl animation
+                            time.sleep(0.03) 
                             continue
 
-                    # Standard Static (Weather - Slow Refresh)
                     if self.static_current_image:
                         self.update_display(self.static_current_image)
-                    
-                    # Interrupt if new data arrives
-                    if time.time() >= self.static_until or self.bg_strip_ready:
+                    if time.time() >= self.static_until:
                         self.showing_static = False
                     time.sleep(0.1)
                     continue
 
-                # --- 2. GLOBAL OVERRIDES (Pairing & Brightness) ---
+                # 2. GLOBAL OVERRIDES
                 if self.is_pairing:
-                    self.update_display(self.draw_pairing_screen())
-                    time.sleep(0.5)
-                    continue
+                    self.update_display(self.draw_pairing_screen()); time.sleep(0.5); continue
                     
                 if self.brightness <= 0.01:
-                    self.matrix.Clear()
-                    time.sleep(1.0)
-                    continue
+                    self.matrix.Clear(); time.sleep(1.0); continue
                 
-                # --- 3. HOT SWAP DATA ---
-                # This happens the moment poll_backend finishes a fetch
+                # 3. DATA SWAP LOGIC (The Jitter Fix)
                 if self.bg_strip_ready:
-                    self.active_strip = self.bg_strip
-                    self.games = self.new_games_list
-                    strip_offset = 0.0 
-                    self.bg_strip_ready = False
+                    # current_hash is generated in poll_backend. Let's track it locally.
+                    # We only reset the strip if the content is actually NEW.
+                    new_hash = getattr(self, 'current_data_hash', "")
                     
-                    # PRIORITY: If music is in the new data, jump to it immediately
-                    if any((g.get('id') == 'spotify_now' or g.get('type') == 'music') for g in self.static_items):
-                        if self.start_static_display():
-                            continue
+                    if new_hash != self.last_applied_hash:
+                        self.active_strip = self.bg_strip
+                        self.games = self.new_games_list
+                        # ONLY reset the scroll to 0 if it's a real content change
+                        strip_offset = 0.0 
+                        self.last_applied_hash = new_hash
+                        
+                        # PRIORITY: Jump to playing music
+                        music_item = next((g for g in self.static_items if g.get('id') == 'spotify_now'), None)
+                        if music_item and music_item.get('situation', {}).get('is_playing'):
+                            self.bg_strip_ready = False # Consume flag
+                            if self.start_static_display():
+                                continue
+                    
+                    # Consume flag regardless of whether we reset offset
+                    self.bg_strip_ready = False
 
-                # --- 4. SCROLLING ENGINE ---
+                # 4. SCROLLING ENGINE
                 if self.active_strip:
                     total_w = self.active_strip.width - PANEL_W
                     if total_w <= 0: total_w = 1
                     
-                    # End of scroll reached
                     if strip_offset >= total_w:
                         strip_offset = 0
-                        # Try to show a static card (Music/Clock) before restarting sports loop
                         if self.static_items:
-                            if self.start_static_display(): 
-                                continue
+                            if self.start_static_display(): continue
                         
-                    # Crop the view from the long strip and push to matrix
                     x = int(strip_offset)
                     view = self.active_strip.crop((x, 0, x + PANEL_W, PANEL_H))
                     self.update_display(view)
                     
                     strip_offset += 1
                     
-                    # CHECK FOR INTERRUPT: If data arrived while we were scrolling, 
-                    # break this frame and go to the top to swap/prioritize music.
+                    # DO NOT check bg_strip_ready here for interrupts unless music is playing
+                    # This prevents the "3 pixel jitter"
                     if self.bg_strip_ready:
-                        continue 
+                        music_item = next((g for g in self.static_items if g.get('id') == 'spotify_now'), None)
+                        if music_item and music_item.get('situation', {}).get('is_playing'):
+                            continue # Only interrupt for playing music
                         
                     time.sleep(self.scroll_sleep)
                 else:
-                    # --- 5. FALLBACK (No Active Sports) ---
                     if self.static_items and self.start_static_display():
                         continue
                     self.update_display(self.draw_boot_clock())
