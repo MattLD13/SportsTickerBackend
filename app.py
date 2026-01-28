@@ -10,6 +10,7 @@ import glob
 import base64
 import asyncio
 import binascii
+import subprocess
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from requests.adapters import HTTPAdapter
@@ -17,7 +18,6 @@ import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
-import subprocess
 
 # Librespot Imports
 from librespot.core import Session
@@ -27,7 +27,7 @@ from librespot.metadata import TrackId
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v0.98-Hybrid"
+SERVER_VERSION = "v0.99-Stable"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
@@ -85,7 +85,7 @@ WORKER_THREAD_COUNT = 10
 API_TIMEOUT = 3.0              
 
 data_lock = threading.Lock()
-music_update_event = threading.Event() # Trigger for instant updates
+music_update_event = threading.Event()
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
@@ -108,10 +108,47 @@ TZ_OFFSETS = {
     "MST": -7, "MDT": -6, "PST": -8, "PDT": -7, "AST": -4, "ADT": -3
 }
 
-# [Place your large AHL_TEAMS, LEAGUE_OPTIONS, LOGO_OVERRIDES, etc here]
-# ... (Assuming standard lists are present or imported) ...
-# For brevity in this response, I am retaining the structure but omitting the 500 lines of team lists.
-# Ensure LEAGUE_OPTIONS is defined as per your previous code.
+# ================= LARGE LISTS =================
+AHL_TEAMS = {
+    "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "id": "317"},
+    "CLT": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"},
+    "CHA": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"},
+    "HFD": {"name": "Hartford Wolf Pack", "color": "0D2240", "id": "307"},
+    "HER": {"name": "Hershey Bears", "color": "4F2C1D", "id": "319"},
+    "LV":  {"name": "Lehigh Valley Phantoms", "color": "000000", "id": "313"},
+    "PRO": {"name": "Providence Bruins", "color": "000000", "id": "309"},
+    "SPR": {"name": "Springfield Thunderbirds", "color": "003087", "id": "411"},
+    "WBS": {"name": "W-B/Scranton", "color": "000000", "id": "316"},
+    "BEL": {"name": "Belleville Senators", "color": "C52032", "id": "413"},
+    "CLE": {"name": "Cleveland Monsters", "color": "041E42", "id": "373"},
+    "LAV": {"name": "Laval Rocket", "color": "00205B", "id": "415"},
+    "ROC": {"name": "Rochester Americans", "color": "00539B", "id": "323"},
+    "SYR": {"name": "Syracuse Crunch", "color": "003087", "id": "324"},
+    "TOR": {"name": "Toronto Marlies", "color": "00205B", "id": "335"},
+    "UTC": {"name": "Utica Comets", "color": "006341", "id": "390"},
+    "UTI": {"name": "Utica Comets", "color": "006341", "id": "390"},
+    "CHI": {"name": "Chicago Wolves", "color": "7C2529", "id": "330"},
+    "GR":  {"name": "Grand Rapids Griffins", "color": "BE1E2D", "id": "328"},
+    "IA":  {"name": "Iowa Wild", "color": "154734", "id": "389"},
+    "MB":  {"name": "Manitoba Moose", "color": "003E7E", "id": "321"},
+    "MIL": {"name": "Milwaukee Admirals", "color": "041E42", "id": "327"},
+    "RFD": {"name": "Rockford IceHogs", "color": "CE1126", "id": "372"},
+    "TEX": {"name": "Texas Stars", "color": "154734", "id": "380"},
+    "ABB": {"name": "Abbotsford Canucks", "color": "00744F", "id": "440"},
+    "BAK": {"name": "Bakersfield Condors", "color": "F47A38", "id": "402"},
+    "CGY": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"},
+    "CAL": {"name": "Calgary Wranglers", "color": "C8102E", "id": "444"},
+    "CV":  {"name": "Coachella Valley", "color": "D32027", "id": "445"},
+    "CVF": {"name": "Coachella Valley", "color": "D32027", "id": "445"},
+    "COL": {"name": "Colorado Eagles", "color": "003087", "id": "419"},
+    "HSK": {"name": "Henderson Silver Knights", "color": "111111", "id": "437"},
+    "ONT": {"name": "Ontario Reign", "color": "111111", "id": "403"},
+    "SD":  {"name": "San Diego Gulls", "color": "041E42", "id": "404"},
+    "SJ":  {"name": "San Jose Barracuda", "color": "006D75", "id": "405"},
+    "SJS": {"name": "San Jose Barracuda", "color": "006D75", "id": "405"},
+    "TUC": {"name": "Tucson Roadrunners", "color": "8C2633", "id": "412"},
+}
+
 LEAGUE_OPTIONS = [
     {'id': 'nfl', 'label': 'NFL', 'type': 'sport', 'default': True, 'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'mlb', 'label': 'MLB', 'type': 'sport', 'default': True, 'fetch': {'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
@@ -137,11 +174,12 @@ LEAGUE_OPTIONS = [
     {'id': 'clock', 'label': 'Clock', 'type': 'util', 'default': True},
     {'id': 'music', 'label': 'Music', 'type': 'util', 'default': True},
     {'id': 'stock_tech_ai', 'label': 'Tech / AI Stocks', 'type': 'stock', 'default': True, 'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
+    {'id': 'stock_momentum', 'label': 'Momentum Stocks', 'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
+    {'id': 'stock_energy', 'label': 'Energy Stocks', 'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
+    {'id': 'stock_finance', 'label': 'Financial Stocks', 'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
+    {'id': 'stock_consumer', 'label': 'Consumer Stocks', 'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
 ]
 
-# (Assume standard lists FBS_TEAMS, FCS_TEAMS, OLYMPIC_HOCKEY_TEAMS, SOCCER_ABBR_OVERRIDES, LOGO_OVERRIDES, ABBR_MAPPING, SOCCER_COLOR_FALLBACK, SPORT_DURATIONS, AHL_TEAMS exist here - keeping your file's existing data)
-# ... [Insert your existing long lists here] ... 
-# I am not pasting them to keep the response concise, but DO NOT DELETE THEM.
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 OLYMPIC_HOCKEY_TEAMS = [
@@ -195,6 +233,18 @@ SOCCER_ABBR_OVERRIDES = {
     "Newport": "NEW", "Newport County": "NEW", "Notts Co": "NCO", "Notts County": "NCO",
     "Port Vale": "POR", "Salford": "SAL", "Salford City": "SAL", "Swindon": "SWI", "Swindon Town": "SWI",
     "Tranmere": "TRA", "Tranmere Rovers": "TRA", "Walsall": "WAL"
+}
+
+LOGO_OVERRIDES = {
+    "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png", "NBA:HOU": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png", "MLB:HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png", "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
+    "NFL:MIA": "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png", "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png", "MLB:MIA": "https://a.espncdn.com/i/teamlogos/mlb/500/mia.png", "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png", "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
+    "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png", "NBA:IND": "https://a.espncdn.com/i/teamlogos/nba/500/ind.png", "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
+    "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png", "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
+    "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png", "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
+    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "NCF_FBS:WASH": "https://a.espncdn.com/i/teamlogos/ncaa/500/264.png",
+    "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png", "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png", "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png", "NHL:LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
+    "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
+    "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png", "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png", "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png", "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png", "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
 }
 ABBR_MAPPING = {
     'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI',
@@ -495,8 +545,8 @@ class SpotifyFetcher(threading.Thread):
         except Exception as e:
             raise e
 
-# ... [Fetchers for Weather, Stock, Sports - Same as before] ...
-# (WeatherFetcher, StockFetcher, SportsFetcher classes remain unchanged from your provided code)
+# ================= FETCHING LOGIC =================
+
 def validate_logo_url(base_id):
     url_90 = f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png"
     try:
@@ -2351,7 +2401,7 @@ def get_ticker_data():
     # --- FIX: Initialize the list explicitly before the loop ---
     processed_games = []
     
-    visible_games = [] # Temp list for filtering logic
+    visible_games = [] 
     COLLISION_ABBRS = {'LV'} 
 
     for g in raw_games:
