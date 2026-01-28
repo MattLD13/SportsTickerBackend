@@ -2344,7 +2344,7 @@ def get_ticker_data():
     if not ticker_id and len(tickers) == 1: 
         ticker_id = list(tickers.keys())[0]
     
-    # 2. Safety check: If ID is invalid, return generic config to prevent crash
+    # 2. Safety check
     if not ticker_id or ticker_id not in tickers:
         return jsonify({
             "status": "ok",
@@ -2363,8 +2363,8 @@ def get_ticker_data():
             save_specific_ticker(ticker_id)
         return jsonify({ "status": "pairing", "code": rec['pairing_code'] })
 
-    # 3. Standard Data Fetching
     t_settings = rec['settings']
+    current_mode = t_settings.get('mode', 'all') 
     
     # --- RESTORED SLEEP MODE ---
     if t_settings.get('brightness', 100) <= 0:
@@ -2375,11 +2375,27 @@ def get_ticker_data():
             "local_config": t_settings, 
             "content": { "sports": [] } 
         })
-    # ---------------------------
 
+    # =================================================================
+    # TURBO MUSIC SHORT-CIRCUIT
+    # =================================================================
+    if current_mode == 'music':
+        music_obj = fetcher.get_music_object()
+        g_config = { "mode": "music" }
+        if rec.get('reboot_requested'): g_config['reboot'] = True
+        if rec.get('update_requested'): g_config['update'] = True
+        
+        return jsonify({
+            "status": "ok",
+            "version": SERVER_VERSION,
+            "global_config": g_config,
+            "local_config": t_settings,
+            "content": { "sports": [music_obj] if music_obj else [] }
+        })
+    # =================================================================
+
+    # 3. Standard Data Fetching for other modes
     saved_teams = rec.get('my_teams', []) 
-    current_mode = t_settings.get('mode', 'all') 
-
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
     
@@ -2389,7 +2405,6 @@ def get_ticker_data():
     for g in raw_games:
         should_show = True
         
-        # Don't filter out Music/Weather in My Teams mode
         if current_mode == 'my_teams':
             sport = g.get('sport')
             if sport in ['music', 'weather', 'clock']:
@@ -2408,26 +2423,27 @@ def get_ticker_data():
                 
                 if not (in_home or in_away): should_show = False
         
-        elif current_mode == 'live' and g.get('state') not in ['in', 'half']: should_show = False
+        elif current_mode == 'live' and g.get('state') not in ['in', 'half']: 
+            should_show = False
+
+        # Mode: Weather or Clock filtering
+        elif current_mode == 'weather' and g.get('type') != 'weather':
+            should_show = False
+        elif current_mode == 'clock' and g.get('sport') != 'clock':
+            should_show = False
 
         status_lower = str(g.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
             should_show = False
 
         if should_show:
-            g['is_shown'] = True # Explicitly set true for frontend
+            g['is_shown'] = True
             visible_games.append(g)
     
-    # Construct the response config
+    # Construct flags
     g_config = { "mode": current_mode }
-    
-    # Handle Reboot Flag
-    if rec.get('reboot_requested', False):
-        g_config['reboot'] = True
-
-    # Handle Update Flag
-    if rec.get('update_requested', False):
-        g_config['update'] = True
+    if rec.get('reboot_requested'): g_config['reboot'] = True
+    if rec.get('update_requested'): g_config['update'] = True
         
     response = jsonify({ 
         "status": "ok", 
@@ -2438,9 +2454,6 @@ def get_ticker_data():
     })
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    
     return response
 
 @app.route('/api/spotify/now', methods=['GET'])
