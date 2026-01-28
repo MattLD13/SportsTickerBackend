@@ -395,7 +395,7 @@ def generate_pairing_code():
         active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
         if code not in active_codes: return code
 
-# ================= SPOTIFY FETCHER (EVENT-DRIVEN QUEUE) =================
+# ================= SPOTIFY FETCHER (LOW LATENCY + ADAPTIVE) =================
 class SpotifyFetcher(threading.Thread):
     def __init__(self):
         super().__init__()
@@ -405,18 +405,19 @@ class SpotifyFetcher(threading.Thread):
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
         self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
 
-        # --- CACHE ---
+        # --- INTERNAL CACHE ---
         self.cached_current_id = None
         self.cached_current_cover = ""
-        self.cached_queue_covers = [] # Store queue here to avoid re-fetching
+        self.cached_queue_covers = [] 
 
+        # --- STATE ---
         self.state = {
             "is_playing": False,
             "name": "Waiting for Music...",
             "artist": "",
-            "cover": "",         
-            "last_cover": "",    
-            "next_covers": [],   
+            "cover": "",         # Current Album Art (home_logo)
+            "last_cover": "",    # Previous Album Art (last_logo)
+            "next_covers": [],   # Next 3 Album Arts (next_logos)
             "duration": 0,
             "progress": 0,
             "last_fetch_ts": time.time()
@@ -427,13 +428,14 @@ class SpotifyFetcher(threading.Thread):
             return self.state.copy()
 
     def run(self):
+        """Main Loop: High-speed status check with event-driven queue fetching"""
         if not self.client_id or not self.client_secret:
-            print("⚠️ SPOTIFY: Missing Client ID")
+            print("⚠️ SPOTIFY: Missing Client ID or Secret in .env")
             return
 
         print("✅ Spotify Low-Latency Tracker Started")
 
-        # Auth Setup
+        # Initialize Auth
         try:
             auth_manager = SpotifyOAuth(
                 client_id=self.client_id,
@@ -448,77 +450,82 @@ class SpotifyFetcher(threading.Thread):
             print(f"Spotify Init Failed: {e}")
             return
         
+        # Start with a standard polling interval
         current_delay = 1.0
 
         while True:
+            # OPTIONAL: Only poll if the ticker is active (saves bandwidth)
+            # if not state['active_sports'].get('music', False):
+            #     time.sleep(2.0); continue
+
             try:
-                # 1. LIGHTWEIGHT POLL (Current Track Only)
-                # This is much faster than fetching the whole player state or queue
+                # 1. LIGHTWEIGHT POLL (Current track only - very fast)
                 try:
                     current = sp.current_user_playing_track()
-                except:
+                except Exception:
                     current = None
 
-                # Determine if active (204 returns None)
                 is_active = current is not None
-                is_playing = current.get('is_playing', False) if is_active else False
                 
-                # --- QUEUE & HISTORY LOGIC ---
                 if is_active and current.get('item'):
                     item = current['item']
+                    is_playing = current.get('is_playing', False)
                     current_id = item.get('id')
                     current_cover = item['album']['images'][0]['url'] if item.get('album',{}).get('images') else ""
                     
-                    # ONLY fetch the heavy Queue if the song changed!
+                    # --- EVENT: SONG CHANGED ---
+                    # Only fetch the "Heavy" Queue data if the song actually changed
                     if self.cached_current_id != current_id:
-                        # 1. Update History
-                        if self.cached_current_id: 
+                        # Update 'Last' cover
+                        if self.cached_current_id:
                             self.state['last_cover'] = self.cached_current_cover
                         
-                        # 2. Fetch New Queue (Blocking call, but only happens once per song)
+                        # Fetch 'Next 3' covers (Heavy API call)
                         try:
                             queue_data = sp.queue()
-                            new_queue_covers = []
+                            new_queue = []
                             if queue_data and 'queue' in queue_data:
                                 for q_track in queue_data['queue'][:3]:
                                     if q_track.get('album') and q_track['album'].get('images'):
-                                        new_queue_covers.append(q_track['album']['images'][0]['url'])
+                                        new_queue.append(q_track['album']['images'][0]['url'])
                                     else:
-                                        new_queue_covers.append("")
-                            self.cached_queue_covers = new_queue_covers
+                                        new_queue.append("")
+                            self.cached_queue_covers = new_queue
                         except:
-                            pass # Keep old queue on error to prevent flicker
-
-                        # 3. Update ID Cache
+                            pass # Keep current queue covers on minor API failure
+                        
                         self.cached_current_id = current_id
                         self.cached_current_cover = current_cover
 
-                    # Update State
+                    # --- UPDATE STATE ---
                     with self._lock:
                         self.state.update({
                             "is_playing": is_playing,
                             "name": item.get('name', 'Unknown'),
                             "artist": ", ".join(a['name'] for a in item.get('artists', [])),
                             "cover": current_cover,
-                            "next_covers": self.cached_queue_covers, # Use cached queue
+                            "next_covers": self.cached_queue_covers,
                             "duration": item.get('duration_ms', 0) / 1000.0,
                             "progress": current.get('progress_ms', 0) / 1000.0,
-                            "last_fetch_ts": time.time()
+                            "last_fetch_ts": time.time() # Accurate anchor for ticker interpolation
                         })
 
-                    # --- AGGRESSIVE TIMING ---
+                    # --- ADAPTIVE TIMING ---
                     if is_playing:
-                        current_delay = 0.6  # ULTRA TURBO: Catch pauses instantly
+                        current_delay = 0.6  # TURBO: Catch skips/pauses instantly
                     else:
-                        current_delay = 1.5  # STANDBY: Paused, but keep checking fast
+                        current_delay = 1.5  # STANDBY: Paused, but session is active
+                
                 else:
-                    # Device inactive / Spotify Closed
-                    with self._lock: self.state['is_playing'] = False
-                    current_delay = 3.0      # SLEEP: Check every 3s (Aggressive enough)
+                    # 204 NO CONTENT: No device active or Spotify closed
+                    # FIX: We keep the old song metadata so the ticker doesn't flicker to "Waiting"
+                    with self._lock:
+                        self.state['is_playing'] = False
+                    current_delay = 3.0 # SLEEP: Check less frequently
 
             except Exception as e:
-                print(f"Spotify Loop Error: {e}")
-                current_delay = 5.0
+                print(f"Spotify Poll Error: {e}")
+                current_delay = 10.0 # Back off significantly on API error/Rate limit
 
             time.sleep(current_delay)
 
