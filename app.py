@@ -415,8 +415,14 @@ class SpotifyFetcher(threading.Thread):
             "cover": "",
             "duration": 0,
             "progress": 0,
-            "last_fetch_ts": time.time()
+            "last_fetch_ts": time.time(),
+            "next_tracks": [],     # Buffer for next 3 songs
+            "previous_track": None # Buffer for previous song
         }
+        
+        self.last_track_id = None
+        self.queue_cache = []
+        self.prev_cache = None
 
     def get_cached_state(self):
         with self._lock: 
@@ -436,7 +442,7 @@ class SpotifyFetcher(threading.Thread):
                 client_id=self.client_id,
                 client_secret=self.client_secret,
                 redirect_uri="http://127.0.0.1:8888/callback",
-                scope="user-read-playback-state user-read-currently-playing",
+                scope="user-read-playback-state user-read-currently-playing user-read-recently-played", # Added recently-played scope
                 open_browser=False,
                 cache_path=".spotify_token"
             )
@@ -454,6 +460,38 @@ class SpotifyFetcher(threading.Thread):
                 with self._lock:
                     if playback and playback.get('item'):
                         item = playback['item']
+                        tid = item.get('id')
+                        
+                        # --- SMART QUEUE FETCHING ---
+                        # Only fetch queue/history if the track has changed to save API limits
+                        if tid != self.last_track_id:
+                            self.last_track_id = tid
+                            
+                            # 1. Fetch Next 3 Songs from Queue
+                            try:
+                                q_data = sp.queue()
+                                self.queue_cache = []
+                                if q_data and 'queue' in q_data:
+                                    for t in q_data['queue'][:3]: # Get Next 3
+                                        self.queue_cache.append({
+                                            'name': t.get('name'),
+                                            'artist': ", ".join(a['name'] for a in t.get('artists', [])),
+                                            'cover': t['album']['images'][0]['url'] if t.get('album',{}).get('images') else ""
+                                        })
+                            except: pass
+
+                            # 2. Fetch Last Song (Previous)
+                            try:
+                                h_data = sp.current_user_recently_played(limit=1)
+                                if h_data and h_data.get('items'):
+                                    t = h_data['items'][0].get('track', {})
+                                    self.prev_cache = {
+                                        'name': t.get('name'),
+                                        'artist': ", ".join(a['name'] for a in t.get('artists', [])),
+                                        'cover': t['album']['images'][0]['url'] if t.get('album',{}).get('images') else ""
+                                    }
+                            except: pass
+
                         self.state = {
                             "is_playing": playback.get('is_playing', False),
                             "name": item.get('name', 'Unknown'),
@@ -461,10 +499,12 @@ class SpotifyFetcher(threading.Thread):
                             "cover": item['album']['images'][0]['url'] if item.get('album',{}).get('images') else "",
                             "duration": item.get('duration_ms', 0) / 1000.0,
                             "progress": playback.get('progress_ms', 0) / 1000.0,
-                            "last_fetch_ts": time.time()
+                            "last_fetch_ts": time.time(),
+                            "next_tracks": self.queue_cache,
+                            "previous_track": self.prev_cache
                         }
                         
-                        # SMART LOGIC: Fast updates if playing, slow if paused
+                        # Smart Delay: Fast updates if playing, slow if paused
                         current_delay = 1.0 if self.state["is_playing"] else 4.0
                     else:
                         # Nothing playing
@@ -476,17 +516,6 @@ class SpotifyFetcher(threading.Thread):
                 pass
 
             time.sleep(current_delay)
-
-# ================= FETCHING LOGIC =================
-
-def validate_logo_url(base_id):
-    url_90 = f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png"
-    try:
-        r = requests.head(url_90, timeout=1)
-        if r.status_code == 200:
-            return url_90
-    except: pass
-    return f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}.png"
 
 class WeatherFetcher:
     def __init__(self, initial_lat=40.7128, initial_lon=-74.0060, city="New York"):
@@ -1925,7 +1954,10 @@ class SportsFetcher:
                         'raw_title': s_data.get('name'),
                         'progress': current_progress,
                         'duration': duration,
-                        'is_playing': is_playing
+                        'is_playing': is_playing,
+                        # Pass the buffer to the ticker for image pre-loading
+                        'next_tracks': s_data.get('next_tracks', []),
+                        'previous_track': s_data.get('previous_track')
                     }
                 }
         except Exception as e:
