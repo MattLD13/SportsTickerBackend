@@ -25,7 +25,8 @@ from spotipy.oauth2 import SpotifyOAuth
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v0.99-Stable"
+
+SERVER_VERSION = "v0.95"
 
 # ================= LOGGING SETUP =================
 class Tee(object):
