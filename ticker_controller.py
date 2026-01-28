@@ -1125,15 +1125,24 @@ class TickerStreamer:
                         # Need high refresh rate for these
                         if sport.startswith('clock') or game_type == 'music' or sport == 'music':
                             
-                            # [NEW] For Music, explicitly refresh the object from the global list
-                            # This ensures we get the latest progress/time from the poll_backend thread
                             if game_type == 'music' or sport == 'music':
-                                for item in self.static_items:
-                                    if item.get('id') == 'spotify_now':
-                                        self.static_current_game = item
-                                        break
-                                # [NEW] Force keep-alive for music (don't respect PAGE_HOLD_TIME)
-                                self.static_until = time.time() + 1.0
+                            # [FIX] Check if music still exists in the live feed
+                            music_still_active = False 
+                            for item in self.static_items:
+                                if item.get('id') == 'spotify_now':
+                                    self.static_current_game = item
+                                    music_still_active = True
+                                    break
+                            
+                            # [FIX] If backend stopped sending music, break the loop immediately
+                            if not music_still_active:
+                                self.showing_static = False
+                                self.static_current_image = None
+                                self.static_current_game = None
+                                continue
+
+                            # [NEW] Force keep-alive for music (don't respect PAGE_HOLD_TIME)
+                            self.static_until = time.time() + 1.0
 
                             self.static_current_image = self.draw_single_game(self.static_current_game)
                             # Render faster for animation smoothness
