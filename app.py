@@ -19,6 +19,7 @@ import asyncio
 import binascii
 from librespot.core import Session
 from librespot.metadata import TrackId
+from librespot.config import SessionConfig
 
 # Load environment variables for Finnhub Keys
 load_dotenv()
@@ -696,7 +697,7 @@ class DeviceType:
 class SpotifyFetcher(threading.Thread):
     def __init__(self, event):
         super().__init__()
-        self.event = event  # <--- The Trigger
+        self.event = event
         self.username = os.getenv('SPOTIFY_USERNAME')
         self.password = os.getenv('SPOTIFY_PASSWORD')
         self.daemon = True
@@ -730,10 +731,14 @@ class SpotifyFetcher(threading.Thread):
     async def async_runner(self):
         print(f"🔒 Authenticating Spotify as {self.username}...")
         try:
-            session = await Session.Builder() \
+            # --- FIX: Use SessionConfig for Device Settings ---
+            conf = SessionConfig()
+            conf.device_name = "ticker"
+            conf.device_type = DeviceType.AUTOMOBILE
+            
+            # Pass config to Builder
+            session = await Session.Builder(conf) \
                 .user_pass(self.username, self.password) \
-                .device_name("ticker") \
-                .device_type(DeviceType.AUTOMOBILE) \
                 .create()
             
             spirc = session.spirc()
@@ -747,7 +752,6 @@ class SpotifyFetcher(threading.Thread):
                     self.state['progress'] = notify.state.position_ms / 1000.0
                     self.state['last_fetch_ts'] = time.time()
                     
-                    # 1. INSTANT TRIGGER: Play/Pause/Seek happened
                     self.event.set()
 
                     if notify.state.track:
@@ -767,7 +771,6 @@ class SpotifyFetcher(threading.Thread):
     async def update_metadata(self, session, track_ref):
         try:
             track_id = TrackId.from_gid(track_ref.gid)
-            # This is the "Poll": Fetching fresh data from Spotify Servers
             meta = await session.api().get_metadata_4_track(track_id)
             
             name = meta.name
@@ -784,7 +787,6 @@ class SpotifyFetcher(threading.Thread):
                 self.state['artist'] = artists
                 self.state['cover'] = cover_url
             
-            # 2. INSTANT TRIGGER: New Metadata Arrived
             self.event.set()
                 
         except Exception as e:
