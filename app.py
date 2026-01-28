@@ -2501,6 +2501,8 @@ def update_settings(tid):
 @app.route('/api/state', methods=['GET'])
 def api_state():
     ticker_id = request.args.get('id')
+    
+    # 1. Resolve Ticker ID
     if not ticker_id:
         cid = request.headers.get('X-Client-ID')
         if cid:
@@ -2514,16 +2516,65 @@ def api_state():
 
     response_settings = state.copy()
     
+    # 2. Merge Local Settings if Ticker Found
     if ticker_id and ticker_id in tickers:
         local_settings = tickers[ticker_id]['settings']
         response_settings.update(local_settings)
         response_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
         response_settings['ticker_id'] = ticker_id 
     
+    # 3. Get Game Data & Apply Filters
+    raw_games = fetcher.get_snapshot_for_delay(0)
+    processed_games = []
+
+    current_mode = response_settings.get('mode', 'all')
+    saved_teams = response_settings.get('my_teams', [])
+    COLLISION_ABBRS = {'LV'} 
+
+    for g in raw_games:
+        # Copy to avoid modifying global cache
+        game_copy = g.copy()
+        should_show = True
+        
+        # Filter Logic: Live Mode
+        if current_mode == 'live' and game_copy.get('state') not in ['in', 'half']: 
+            should_show = False
+            
+        # Filter Logic: My Teams Mode
+        elif current_mode == 'my_teams':
+            sport = game_copy.get('sport')
+            
+            # Always show non-game items in My Teams mode
+            if sport in ['music', 'weather', 'clock']:
+                should_show = True
+            else:
+                h_abbr = str(game_copy.get('home_abbr', '')).upper()
+                a_abbr = str(game_copy.get('away_abbr', '')).upper()
+                
+                h_scoped = f"{sport}:{h_abbr}"
+                a_scoped = f"{sport}:{a_abbr}"
+                
+                if h_abbr in COLLISION_ABBRS: in_home = h_scoped in saved_teams
+                else: in_home = (h_scoped in saved_teams or h_abbr in saved_teams)
+
+                if a_abbr in COLLISION_ABBRS: in_away = a_scoped in saved_teams
+                else: in_away = (a_scoped in saved_teams or a_abbr in saved_teams)
+                
+                if not (in_home or in_away): 
+                    should_show = False
+
+        # Filter Logic: Suspended/Postponed (Global Hide)
+        status_lower = str(game_copy.get('status', '')).lower()
+        if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
+            should_show = False
+
+        game_copy['is_shown'] = should_show
+        processed_games.append(game_copy)
+
     return jsonify({
         "status": "ok",
         "settings": response_settings,
-        "games": [] # Legacy field, can be empty
+        "games": processed_games 
     })
 
 @app.route('/api/teams')
