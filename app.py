@@ -2371,7 +2371,7 @@ def get_ticker_data():
     if not ticker_id and len(tickers) == 1: 
         ticker_id = list(tickers.keys())[0]
     
-    # 2. Safety check: If ID is invalid, return generic config to prevent crash
+    # 2. Safety check: If ID is invalid, return generic config
     if not ticker_id or ticker_id not in tickers:
         return jsonify({
             "status": "ok",
@@ -2392,23 +2392,23 @@ def get_ticker_data():
 
     # 3. Standard Data Fetching
     t_settings = rec['settings']
+    
+    # --- FIX 1: Fallback to Global Teams if Ticker-Specific list is empty ---
     saved_teams = rec.get('my_teams', []) 
+    if not saved_teams:
+        saved_teams = state.get('my_teams', [])
+    # ----------------------------------------------------------------------
+
     current_mode = t_settings.get('mode', 'all') 
 
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
     
-    # --- FIX: Initialize the list explicitly before the loop ---
     processed_games = []
-    
-    visible_games = [] 
     COLLISION_ABBRS = {'LV'} 
 
     for g in raw_games:
-        # Create a copy so we don't modify the global cache for other users
         game_copy = g.copy()
-        
-        # Start by assuming it is shown, unless logic says otherwise
         should_show = True
         
         # Logic 1: Live Mode
@@ -2418,20 +2418,25 @@ def get_ticker_data():
         # Logic 2: My Teams Mode
         elif current_mode == 'my_teams':
             sport = game_copy.get('sport')
-            h_abbr = str(game_copy.get('home_abbr', '')).upper()
-            a_abbr = str(game_copy.get('away_abbr', '')).upper()
             
-            h_scoped = f"{sport}:{h_abbr}"
-            a_scoped = f"{sport}:{a_abbr}"
-            
-            if h_abbr in COLLISION_ABBRS: in_home = h_scoped in saved_teams
-            else: in_home = (h_scoped in saved_teams or h_abbr in saved_teams)
+            # --- FIX 2: Don't filter out non-game items (Music, etc) ---
+            if sport in ['music', 'weather', 'clock']:
+                should_show = True
+            else:
+                h_abbr = str(game_copy.get('home_abbr', '')).upper()
+                a_abbr = str(game_copy.get('away_abbr', '')).upper()
+                
+                h_scoped = f"{sport}:{h_abbr}"
+                a_scoped = f"{sport}:{a_abbr}"
+                
+                if h_abbr in COLLISION_ABBRS: in_home = h_scoped in saved_teams
+                else: in_home = (h_scoped in saved_teams or h_abbr in saved_teams)
 
-            if a_abbr in COLLISION_ABBRS: in_away = a_scoped in saved_teams
-            else: in_away = (a_scoped in saved_teams or a_abbr in saved_teams)
-            
-            if not (in_home or in_away): 
-                should_show = False
+                if a_abbr in COLLISION_ABBRS: in_away = a_scoped in saved_teams
+                else: in_away = (a_scoped in saved_teams or a_abbr in saved_teams)
+                
+                if not (in_home or in_away): 
+                    should_show = False
 
         # Logic 3: Global Postponed/Suspended (Overrides everything)
         status_lower = str(game_copy.get('status', '')).lower()
@@ -2449,7 +2454,7 @@ def get_ticker_data():
     if rec.get('reboot_requested', False):
         g_config['reboot'] = True
 
-    # Handle Update Flag (NEW)
+    # Handle Update Flag
     if rec.get('update_requested', False):
         g_config['update'] = True
         
@@ -2462,9 +2467,6 @@ def get_ticker_data():
     })
     
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    
     return response
 
 @app.route('/pair', methods=['POST'])
