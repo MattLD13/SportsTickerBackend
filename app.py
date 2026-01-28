@@ -19,7 +19,6 @@ import asyncio
 import binascii
 from librespot.core import Session
 from librespot.metadata import TrackId
-from librespot.config import SessionConfig
 
 # Load environment variables for Finnhub Keys
 load_dotenv()
@@ -677,23 +676,7 @@ class StockFetcher:
             if obj: res.append(obj)
         return res
 
-# ================= LIGHTWEIGHT SERVER FETCHER =================
-# Manual definition to fix ImportError
-class DeviceType:
-    COMPUTER = 1
-    TABLET = 2
-    SMARTPHONE = 3
-    SPEAKER = 4
-    TV = 5
-    AVR = 6
-    STB = 7
-    AUDIODONGLE = 8
-    GAMECONSOLE = 9
-    CASTVIDEO = 10
-    CASTAUDIO = 11
-    AUTOMOBILE = 12  # This gives you the Car Thing icon
-    WEARABLE = 13
-
+# ================= MINIMAL STABLE SPOTIFY FETCHER =================
 class SpotifyFetcher(threading.Thread):
     def __init__(self, event):
         super().__init__()
@@ -731,13 +714,8 @@ class SpotifyFetcher(threading.Thread):
     async def async_runner(self):
         print(f"🔒 Authenticating Spotify as {self.username}...")
         try:
-            # --- FIX: Use SessionConfig for Device Settings ---
-            conf = SessionConfig()
-            conf.device_name = "ticker"
-            conf.device_type = DeviceType.AUTOMOBILE
-            
-            # Pass config to Builder
-            session = await Session.Builder(conf) \
+            # SIMPLEST WORKING SETUP
+            session = await Session.Builder() \
                 .user_pass(self.username, self.password) \
                 .create()
             
