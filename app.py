@@ -395,8 +395,7 @@ def generate_pairing_code():
         active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
         if code not in active_codes: return code
 
-# ================= SPOTIFY FETCHER (PASSIVE MODE) =================
-# ================= SPOTIFY FETCHER (PASSIVE MODE) =================
+# ================= SPOTIFY FETCHER (SMART STATUS) =================
 class SpotifyFetcher(threading.Thread):
     def __init__(self):
         super().__init__()
@@ -407,7 +406,7 @@ class SpotifyFetcher(threading.Thread):
         self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
         self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
 
-        # --- INTERNAL CACHE (For History Logic) ---
+        # --- INTERNAL CACHE ---
         self.cached_current_id = None
         self.cached_current_cover = ""
 
@@ -416,9 +415,9 @@ class SpotifyFetcher(threading.Thread):
             "is_playing": False,
             "name": "Waiting for Music...",
             "artist": "",
-            "cover": "",         # Current Album Art
-            "last_cover": "",    # Previous Album Art
-            "next_covers": [],   # Next 3 Album Arts (List)
+            "cover": "",         
+            "last_cover": "",    
+            "next_covers": [],   
             "duration": 0,
             "progress": 0,
             "last_fetch_ts": time.time()
@@ -434,9 +433,8 @@ class SpotifyFetcher(threading.Thread):
             print("⚠️ SPOTIFY: Missing Client ID or Secret in .env")
             return
 
-        print("✅ Spotify Passive Tracker Started")
+        print("✅ Spotify Smart Tracker Started")
 
-        # Auto-handles token refresh using the .cache file
         try:
             auth_manager = SpotifyOAuth(
                 client_id=self.client_id,
@@ -451,65 +449,79 @@ class SpotifyFetcher(threading.Thread):
             print(f"Spotify Init Failed: {e}")
             return
         
-        current_delay = 4.0
+        current_delay = 2.0
 
         while True:
             try:
-                # 1. Fetch Playback
-                playback = sp.current_playback()
-                
-                # 2. Fetch Queue (Safely)
+                # 1. Fetch Playback (Get Raw Response to check for 204)
+                # We use internal call to get response object for status code check
                 try:
-                    queue_data = sp.queue()
+                    raw_playback = sp._get("me/player/currently-playing")
                 except Exception:
-                    queue_data = None
+                    raw_playback = None
+
+                # DEFAULT: Assume inactive (204) logic if None
+                is_active_session = False
+                playback_item = None
+                
+                if raw_playback:
+                    is_active_session = True # We got data, so a device is active
+                    playback_item = raw_playback
+
+                # 2. Fetch Queue (Only if session is active to save calls)
+                queue_data = None
+                if is_active_session and current_delay < 5.0: 
+                    try: queue_data = sp.queue()
+                    except: pass
                 
                 with self._lock:
-                    if playback and playback.get('item'):
-                        item = playback['item']
+                    if is_active_session and playback_item and playback_item.get('item'):
+                        item = playback_item['item']
+                        is_playing = playback_item.get('is_playing', False)
+                        
                         current_id = item.get('id')
                         current_cover = item['album']['images'][0]['url'] if item.get('album',{}).get('images') else ""
                         
-                        # --- HISTORY LOGIC ---
-                        # If the song ID changed, save the old cover as 'last_cover'
+                        # History Logic
                         if self.cached_current_id and self.cached_current_id != current_id:
                             self.state['last_cover'] = self.cached_current_cover
-                        
-                        # Update internal trackers
                         self.cached_current_id = current_id
                         self.cached_current_cover = current_cover
 
-                        # --- QUEUE LOGIC (NEXT 3) ---
+                        # Queue Logic
                         next_covers = []
                         if queue_data and 'queue' in queue_data:
-                            # Extract covers from the next 3 songs
                             for q_track in queue_data['queue'][:3]:
                                 if q_track.get('album') and q_track['album'].get('images'):
                                     next_covers.append(q_track['album']['images'][0]['url'])
                                 else:
-                                    next_covers.append("") # Placeholder for missing art
+                                    next_covers.append("")
 
                         self.state.update({
-                            "is_playing": playback.get('is_playing', False),
+                            "is_playing": is_playing,
                             "name": item.get('name', 'Unknown'),
                             "artist": ", ".join(a['name'] for a in item.get('artists', [])),
                             "cover": current_cover,
-                            "next_covers": next_covers,  # <--- Stores the next 3 covers
+                            "next_covers": next_covers,
                             "duration": item.get('duration_ms', 0) / 1000.0,
-                            "progress": playback.get('progress_ms', 0) / 1000.0,
+                            "progress": playback_item.get('progress_ms', 0) / 1000.0,
                             "last_fetch_ts": time.time()
                         })
                         
-                        # Smart Delay: Fast updates if playing, slow if paused
-                        current_delay = 1.0 if self.state["is_playing"] else 4.0
+                        # --- SMART TIMING ---
+                        if is_playing:
+                            current_delay = 0.8  # TURBO: Live updates
+                        else:
+                            current_delay = 2.0  # STANDBY: Paused but session active (Fast Resume)
                     else:
-                        # Nothing playing
+                        # 204 NO CONTENT (Or empty item)
+                        # No device is active. It takes time to connect a device anyway.
                         self.state['is_playing'] = False
-                        current_delay = 4.0
+                        current_delay = 5.0      # SLEEP: Check less frequently
 
             except Exception as e:
-                # API Errors / Rate Limits (Ignore to prevent crash)
-                pass
+                print(f"Spotify API Error: {e}")
+                current_delay = 30.0
 
             time.sleep(current_delay)
 
