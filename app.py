@@ -1976,7 +1976,7 @@ class SportsFetcher:
                         'raw_title': s_data.get('name'),
                         'progress': current_progress,
                         'duration': duration,
-                        'is_playing': is_playing
+                        'is_playing': is_playing,
                         'fetch_ts': time.time()
                     }
                 }
