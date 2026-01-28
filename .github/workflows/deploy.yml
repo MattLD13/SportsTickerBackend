@@ -21,7 +21,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          # Ensure server.py is included (assuming you renamed app.py to server.py or are using server.py now)
+          # Ensure server.py is included
           source: "server.py,app.py,requirements.txt,*.json,ticker_controller.py"
           target: "/home/${{ secrets.SSH_USER }}/"
 
@@ -48,10 +48,9 @@ jobs:
             echo "FINNHUB_KEY_4=${{ secrets.FINNHUB_KEY_4 }}" >> .env
             echo "FINNHUB_KEY_5=${{ secrets.FINNHUB_KEY_5 }}" >> .env
             
-            # Spotify Keys (NEW)
-            echo "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}" >> .env
-            echo "SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}" >> .env
-            echo "SPOTIFY_REFRESH_TOKEN=${{ secrets.SPOTIFY_REFRESH_TOKEN }}" >> .env
+            # Spotify Keys (UPDATED FOR LIBRESPOT)
+            echo "SPOTIFY_USERNAME=${{ secrets.SPOTIFY_USERNAME }}" >> .env
+            echo "SPOTIFY_PASSWORD=${{ secrets.SPOTIFY_PASSWORD }}" >> .env
             
             chmod 600 .env
 
@@ -59,9 +58,14 @@ jobs:
             # INSTALL & RESTART
             # ---------------------------------------------------------
             if pip3 --version; then
+                # Install standard requirements
                 pip3 install -r requirements.txt --break-system-packages || pip3 install -r requirements.txt
+                
+                # Install Librespot Dependencies
+                pip3 install librespot protobuf --break-system-packages
             else
                 pip install -r requirements.txt
+                pip install librespot protobuf
             fi
 
             echo "Restarting ticker service..."
@@ -71,31 +75,31 @@ jobs:
   # ---------------------------------------------------
   # JOB 2: Trigger Ticker Update (If Controller Changed)
   # ---------------------------------------------------
-  signal-fleet:
-    runs-on: ubuntu-latest
-    needs: deploy # Wait for server to be up before signaling
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 2 # Important: Required to see file changes
+  # signal-fleet:
+  #   runs-on: ubuntu-latest
+  #   needs: deploy # Wait for server to be up before signaling
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
+  #       with:
+  #         fetch-depth: 2 # Important: Required to see file changes
 
-      - name: Check if Controller Code Changed
-        id: check_changes
-        run: |
-          # Check git diff for the specific controller file
-          if git diff --name-only HEAD^ HEAD | grep -q "ticker_controller.py"; then
-            echo "updated=true" >> $GITHUB_OUTPUT
-            echo "Controller code changed. Triggering fleet update."
-          else
-            echo "updated=false" >> $GITHUB_OUTPUT
-            echo "No controller changes. Skipping fleet signal."
-          fi
+  #     - name: Check if Controller Code Changed
+  #       id: check_changes
+  #       run: |
+  #         # Check git diff for the specific controller file
+  #         if git diff --name-only HEAD^ HEAD | grep -q "ticker_controller.py"; then
+  #           echo "updated=true" >> $GITHUB_OUTPUT
+  #           echo "Controller code changed. Triggering fleet update."
+  #         else
+  #           echo "updated=false" >> $GITHUB_OUTPUT
+  #           echo "No controller changes. Skipping fleet signal."
+  #         fi
 
-      - name: Send Update Signal to Server
-        if: steps.check_changes.outputs.updated == 'true'
-        run: |
-          # Uses your real domain.
-          curl -X POST https://ticker.mattdicks.org/api/hardware \
-          -H "Content-Type: application/json" \
-          -d '{"action": "update", "ticker_id": "all"}'
+  #     - name: Send Update Signal to Server
+  #       if: steps.check_changes.outputs.updated == 'true'
+  #       run: |
+  #         # Uses your real domain.
+  #         curl -X POST https://ticker.mattdicks.org/api/hardware \
+  #         -H "Content-Type: application/json" \
+  #         -d '{"action": "update", "ticker_id": "all"}'
