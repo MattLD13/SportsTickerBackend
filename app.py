@@ -396,7 +396,7 @@ def generate_pairing_code():
         active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
         if code not in active_codes: return code
 
-# ================= SPOTIFY FETCHER (PASSIVE MODE - HIGH PERFORMANCE) =================
+# ================= SPOTIFY FETCHER (PASSIVE MODE) =================
 class SpotifyFetcher(threading.Thread):
     def __init__(self):
         super().__init__()
@@ -417,14 +417,13 @@ class SpotifyFetcher(threading.Thread):
             "progress": 0,
             "last_fetch_ts": time.time()
         }
-        self.last_playing_time = time.time() # Track when we last saw music active
 
     def get_cached_state(self):
         with self._lock: 
             return self.state.copy()
 
     def run(self):
-        """Main Loop: High Performance Polling"""
+        """Main Loop: Smart Polling"""
         if not self.client_id or not self.client_secret:
             print("⚠️ SPOTIFY: Missing Client ID or Secret in .env")
             return
@@ -436,67 +435,58 @@ class SpotifyFetcher(threading.Thread):
             auth_manager = SpotifyOAuth(
                 client_id=self.client_id,
                 client_secret=self.client_secret,
-                redirect_uri="http://localhost:8888/callback",
+                redirect_uri="http://127.0.0.1:8888/callback",
                 scope="user-read-playback-state user-read-currently-playing",
                 open_browser=False,
-                cache_path=".cache"
+                cache_path=".spotify_token"
             )
             sp = spotipy.Spotify(auth_manager=auth_manager)
         except Exception as e:
             print(f"Spotify Init Failed: {e}")
             return
         
-        # Default start delay
-        current_delay = 1.0
+        current_delay = 4.0
 
         while True:
             try:
-                # Poll Spotify
                 playback = sp.current_playback()
-                now = time.time()
                 
                 with self._lock:
                     if playback and playback.get('item'):
                         item = playback['item']
-                        is_playing = playback.get('is_playing', False)
-                        
                         self.state = {
-                            "is_playing": is_playing,
+                            "is_playing": playback.get('is_playing', False),
                             "name": item.get('name', 'Unknown'),
                             "artist": ", ".join(a['name'] for a in item.get('artists', [])),
                             "cover": item['album']['images'][0]['url'] if item.get('album',{}).get('images') else "",
                             "duration": item.get('duration_ms', 0) / 1000.0,
                             "progress": playback.get('progress_ms', 0) / 1000.0,
-                            "last_fetch_ts": now
+                            "last_fetch_ts": time.time()
                         }
                         
-                        if is_playing:
-                            self.last_playing_time = now
-                            current_delay = 0.8 # Ultra fast while playing
-                        else:
-                            # --- FAST WAKE LOGIC ---
-                            # If we paused less than 60 seconds ago, stay ALERT (1.0s)
-                            # Otherwise, relax to 3.0s to save API/CPU
-                            if (now - self.last_playing_time) < 60:
-                                current_delay = 1.0
-                            else:
-                                current_delay = 3.0
+                        # SMART LOGIC: Fast updates if playing, slow if paused
+                        current_delay = 1.0 if self.state["is_playing"] else 4.0
                     else:
                         # Nothing playing
                         self.state['is_playing'] = False
-                        current_delay = 3.0
+                        current_delay = 4.0
 
-            except spotipy.exceptions.SpotifyException as e:
-                # Handle Rate Limits (429) Gracefully
-                if e.http_status == 429:
-                    print(f"⚠️ Spotify Rate Limit. Cooling down 10s...")
-                    time.sleep(10)
-                pass
-            except Exception:
-                # Network blip? Just wait and retry
+            except Exception as e:
+                # API Errors / Rate Limits
                 pass
 
             time.sleep(current_delay)
+
+# ================= FETCHING LOGIC =================
+
+def validate_logo_url(base_id):
+    url_90 = f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png"
+    try:
+        r = requests.head(url_90, timeout=1)
+        if r.status_code == 200:
+            return url_90
+    except: pass
+    return f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}.png"
 
 class WeatherFetcher:
     def __init__(self, initial_lat=40.7128, initial_lon=-74.0060, city="New York"):
