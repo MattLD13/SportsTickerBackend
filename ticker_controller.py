@@ -439,13 +439,13 @@ class TickerStreamer:
         canvas.paste(txt_img, (x, y), txt_img)
 
     def draw_music_card(self, game):
-        # 384px wide fixed canvas
         img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
         
         artist = str(game.get('home_abbr', 'Unknown')).strip()
         song = str(game.get('away_abbr', 'Unknown')).strip()
         cover_url = game.get('home_logo')
+        next_covers = game.get('next_logos', [])
         
         # --- DATA & ANCHORING ---
         sit = game.get('situation', {})
@@ -454,80 +454,125 @@ class TickerStreamer:
         server_fetch_ts = float(sit.get('fetch_ts', time.time()))
         total_dur = float(sit.get('duration', 1.0))
         if total_dur <= 0: total_dur = 1.0
-    
-        # Physics Update for rotation/scrolling
+
         now = time.time()
         dt_frame = now - self.last_frame_time
         self.last_frame_time = now
-    
-        # --- LATENCY-AWARE INTERPOLATION ---
+
         if is_playing:
-            # Calculate exactly how much time passed since Spotify gave the server this data
             time_since_fetch = now - server_fetch_ts
             local_progress = server_progress + time_since_fetch
-            
-            # Animate Vinyl and Text
             self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt_frame)) % 360
             self.text_scroll_pos += (15.0 * dt_frame)
         else:
             local_progress = server_progress
-    
-        # Clamp progress so it doesn't overshoot
         local_progress = min(local_progress, total_dur)
-    
-        # 1. Update/Fetch Cover from local cache
+
+        # --- TRANSITION STATE ---
+        if not hasattr(self, 'prev_vinyl_cache'): self.prev_vinyl_cache = None
+        if not hasattr(self, 'prev_dominant_color'): self.prev_dominant_color = self.dominant_color
+        if not hasattr(self, 'fade_alpha'): self.fade_alpha = 1.0
+        if not hasattr(self, 'transitioning_out'): self.transitioning_out = False
+
+        # 1. DETECT END OF SONG (Start Natural Out-Fade)
+        time_remaining = total_dur - local_progress
+        if is_playing and time_remaining <= 5.0 and not self.transitioning_out:
+            self.transitioning_out = True
+            self.prev_vinyl_cache = self.vinyl_cache
+            self.prev_dominant_color = self.dominant_color
+            self.fade_alpha = 0.5 # Mid-point for natural rollover
+            
+            # Pre-load next cover for the fade
+            if next_covers and next_covers[0]:
+                try:
+                    next_url = next_covers[0]
+                    raw_next = self.get_logo(next_url, (self.COVER_SIZE, self.COVER_SIZE))
+                    if not raw_next:
+                        raw_next = Image.open(io.BytesIO(requests.get(next_url, timeout=1).content)).convert("RGBA")
+                    raw_next = raw_next.resize((self.COVER_SIZE, self.COVER_SIZE))
+                    next_art = ImageOps.fit(raw_next, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
+                    next_art.putalpha(self.vinyl_mask)
+                    self.vinyl_cache = next_art
+                    stat = ImageStat.Stat(raw_next)
+                    self.dominant_color = tuple(int(x) for x in stat.mean[:3])
+                except: pass
+
+        # 2. DETECT SONG CHANGE (Skip vs Natural)
         if cover_url != self.last_cover_url:
+            if not self.transitioning_out:
+                # MANUAL SKIP DETECTED: Snap everything instantly
+                self.fade_alpha = 1.0
+                self.prev_vinyl_cache = None
+            else:
+                # NATURAL ROLLOVER: Keep the fade going
+                self.transitioning_out = False 
+            
             self.last_cover_url = cover_url
-            self.vinyl_cache = None
             if cover_url:
                 try:
-                    # Try getting the pre-downloaded 42x42 version
                     raw = self.get_logo(cover_url, (self.COVER_SIZE, self.COVER_SIZE))
                     if not raw:
-                        r = requests.get(cover_url, timeout=1)
-                        raw = Image.open(io.BytesIO(r.content)).convert("RGBA")
-                    
+                        raw = Image.open(io.BytesIO(requests.get(cover_url, timeout=1).content)).convert("RGBA")
                     self.extract_colors_and_spindle(raw)
                     raw = raw.resize((self.COVER_SIZE, self.COVER_SIZE))
                     output = ImageOps.fit(raw, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
                     output.putalpha(self.vinyl_mask)
                     self.vinyl_cache = output
                 except: pass
-    
-        # 2. Draw Vinyl
+
+        # 3. ANIMATION
+        if self.fade_alpha < 1.0:
+            self.fade_alpha = min(1.0, self.fade_alpha + (0.1 * dt_frame))
+
+        t = self.fade_alpha
+        smooth_alpha = t * t * (3 - 2 * t)
+
+        def blend_colors(c1, c2, alpha):
+            return tuple(int(c1[i] + (c2[i] - c1[i]) * alpha) for i in range(3))
+
+        current_ui_color = blend_colors(self.prev_dominant_color, self.dominant_color, smooth_alpha)
+
+        # --- 4. RENDER ---
         composite = self.scratch_layer.copy()
-        if self.vinyl_cache: 
-            offset = (self.VINYL_SIZE - self.COVER_SIZE) // 2
-            composite.paste(self.vinyl_cache, (offset, offset), self.vinyl_cache)
+        if self.vinyl_cache:
+            if smooth_alpha < 1.0 and self.prev_vinyl_cache:
+                blended_cover = Image.blend(self.prev_vinyl_cache, self.vinyl_cache, smooth_alpha)
+                offset = (self.VINYL_SIZE - self.COVER_SIZE) // 2
+                composite.paste(blended_cover, (offset, offset), blended_cover)
+            else:
+                offset = (self.VINYL_SIZE - self.COVER_SIZE) // 2
+                composite.paste(self.vinyl_cache, (offset, offset), self.vinyl_cache)
         
         draw_comp = ImageDraw.Draw(composite)
         draw_comp.ellipse((22, 22, 28, 28), fill="#222")
         draw_comp.ellipse((23, 23, 27, 27), fill=self.spindle_color)
-    
         rotated = composite.rotate(self.vinyl_rotation, resample=Image.Resampling.BICUBIC)
         img.paste(rotated, (4, -9), rotated)
-    
-        # 3. Text Section
-        TEXT_START_X = 60
-        TEXT_AREA_W = 188 
-        self.draw_scrolling_text(img, song, self.medium_font, TEXT_START_X, 0, TEXT_AREA_W, self.text_scroll_pos, "white")
-        self.draw_spotify_logo(d, TEXT_START_X, 15)
-        self.draw_scrolling_text(img, artist, self.tiny, TEXT_START_X + 16, 17, 172, self.text_scroll_pos, (180, 180, 180))
-    
-        # 4. Visualizer
+
+        # Names (Instant Change)
+        TEXT_X = 60
+        self.draw_scrolling_text(img, song, self.medium_font, TEXT_X, 0, 188, self.text_scroll_pos, "white")
+        self.draw_scrolling_text(img, artist, self.tiny, TEXT_X + 16, 17, 172, self.text_scroll_pos, (180, 180, 180))
+
+        # UI Color elements (Logo/Viz/Bar)
+        d.ellipse((TEXT_X, 15, TEXT_X+12, 15+12), fill=current_ui_color)
+        d.arc((TEXT_X+3, 15+3, TEXT_X+9, 15+9), 190, 350, fill="black", width=1)
+        d.arc((TEXT_X+3, 15+5, TEXT_X+9, 15+11), 190, 350, fill="black", width=1)
+        d.arc((TEXT_X+4, 15+7, TEXT_X+8, 15+12), 190, 350, fill="black", width=1)
+
+        old_dom = self.dominant_color
+        self.dominant_color = current_ui_color
         self.render_visualizer(d, 248, 6, 80, 20, is_playing=is_playing)
-    
-        # 5. Time Formatting & Progress Bar
+        self.dominant_color = old_dom
+
+        pct = min(1.0, max(0.0, local_progress / total_dur))
+        d.rectangle((0, 31, int(PANEL_W * pct), 31), fill=current_ui_color)
+        
         def fmt_time(seconds):
             m, s = divmod(int(max(0, seconds)), 60)
             return f"{m}:{s:02d}"
-    
         rem_str = f"-{fmt_time(total_dur - local_progress)}"
-        w_time = d.textlength(rem_str, font=self.micro)
-        d.text((PANEL_W - w_time - 5, 10), rem_str, font=self.micro, fill="white")
-        
-        pct = min(1.0, max(0.0, local_progress / total_dur))
-        d.rectangle((0, 31, int(PANEL_W * pct), 31), fill=self.dominant_color)
+        d.text((PANEL_W - d.textlength(rem_str, font=self.micro) - 5, 10), rem_str, font=self.micro, fill="white")
         
         return img
 
