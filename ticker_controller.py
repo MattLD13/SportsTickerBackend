@@ -1134,11 +1134,18 @@ class TickerStreamer:
 
         while self.running:
             try:
-                # --- 1. GLOBAL OVERRIDES (Pairing & Brightness) ---
+                # --- 1. GLOBAL OVERRIDES ---
                 if self.is_pairing:
-                    self.update_display(self.draw_pairing_screen()); time.sleep(0.5); continue
-                if self.brightness <= 0.01:
-                    self.matrix.Clear(); time.sleep(1.0); continue
+                    self.update_display(self.draw_pairing_screen())
+                    time.sleep(0.5)
+                    continue
+                    
+                # [FIXED] Sleep Mode: Ensure matrix brightness is actually set to 0
+                if self.brightness <= 0.001:  # Use a tiny threshold
+                    self.matrix.brightness = 0
+                    self.matrix.Clear()
+                    time.sleep(1.0)
+                    continue
 
                 # Detect if music is playing in the background
                 live_music = next((g for g in self.static_items if g.get('id') == 'spotify_now'), None)
@@ -1261,12 +1268,8 @@ class TickerStreamer:
                 time.sleep(1)
     
     def poll_backend(self):
+        print("Backend Poller Started...")
         last_hash = ""
-        # Fix for potential SSL issues on devices with incorrect system time
-        requests.packages.urllib3.disable_warnings()
-        
-        # PERSISTENT SESSION: This is critical for high-speed updates.
-        # It keeps the TCP connection open so we don't handshake every 0.5s.
         session = requests.Session()
         adapter = requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=1)
         session.mount('http://', adapter)
@@ -1275,15 +1278,17 @@ class TickerStreamer:
         while self.running:
             try:
                 url = f"{BACKEND_URL}/data?id={self.device_id}"
-                
-                # Fetch data. verify=False handles local/self-signed cert issues.
                 r = session.get(url, timeout=5, verify=False)
+                if r.status_code != 200:
+                    time.sleep(2)
+                    continue
+
                 data = r.json()
-                
-                # --- 1. COMMAND LISTENER ---
+                server_status = data.get('status', 'active')
+
+                # --- 1. GLOBAL COMMANDS ---
                 global_conf = data.get('global_config', {})
                 if global_conf.get('reboot') is True:
-                    print("⚠️ REBOOT COMMAND RECEIVED")
                     self.matrix.Clear()
                     subprocess.run(['reboot'])
                     sys.exit(0)
@@ -1291,35 +1296,41 @@ class TickerStreamer:
                 if global_conf.get('update') is True:
                     self.perform_update()
 
-                # --- 2. PAIRING CHECK ---
-                if data.get('status') == 'pairing':
+                # --- 2. CONFIGURATION & SLEEP LOGIC ---
+                local_conf = data.get('local_config') or {}
+                
+                # FORCE SLEEP if server status is 'sleep'
+                if server_status == 'sleep':
+                    self.brightness = 0.0
+                else:
+                    # Default to 100 if active but no config sent
+                    raw_brightness = local_conf.get('brightness', 100)
+                    self.brightness = float(raw_brightness) / 100.0
+                
+                self.scroll_sleep = local_conf.get('scroll_speed', 0.05)
+                self.inverted = local_conf.get('inverted', False)
+
+                # --- 3. PAIRING STATE ---
+                if server_status == 'pairing':
                     self.is_pairing = True
-                    self.pairing_code = data.get('code')
-                    self.games = []
-                    time.sleep(2) 
+                    self.pairing_code = data.get('code', "0000")
+                    time.sleep(1)
                     continue
                 else: 
                     self.is_pairing = False
-                
-                # --- 3. PROCESS CONTENT ---
+
+                # --- 4. CONTENT PROCESSING ---
                 content = data.get('content', {})
                 new_games = content.get('sports', [])
 
-                for idx, g in enumerate(new_games):
-                    if isinstance(g, dict): 
-                        g['_orig_index'] = idx
-                        # Mark arrival time for pause/stale logic
-                        g['_received_at'] = time.time()
-
-                # GENERATE DATA HASH: This is what stops the jitter.
-                # We compare this hash to the last one we actually showed on screen.
-                current_hash = hashlib.md5(json.dumps({'g': new_games, 'c': data.get('local_config')}, sort_keys=True).encode()).hexdigest()
+                # Stable Hash (Includes status so sleep/active swaps are clean)
+                current_payload = {'games': new_games, 'config': local_conf, 'status': server_status}
+                current_hash = hashlib.md5(json.dumps(current_payload, sort_keys=True).encode()).hexdigest()
                 self.current_data_hash = current_hash 
 
-                # Only rebuild the scroll strip if the data actually CHANGED
                 if current_hash != last_hash:
-                    # Sort logic to keep items consistent
-                    new_games.sort(key=lambda x: (self.get_game_start_key(x), x.get('_orig_index', 0), x.get('sport', ''), x.get('id', '')))
+                    # Sort to keep the scrolling order stable
+                    new_games.sort(key=lambda x: (self.get_game_start_key(x), x.get('id', '')))
 
                     static_items = []
                     scrolling_items = []
@@ -1327,21 +1338,18 @@ class TickerStreamer:
 
                     for g in new_games:
                         sport = str(g.get('sport', '')).lower()
-                        is_music = (g.get('type') == 'music' or sport == 'music')
+                        g_type = g.get('type', '')
+                        is_music = (g_type == 'music' or sport == 'music')
                         
-                        if g.get('type') == 'weather' or sport.startswith('clock') or is_music:
-                            static_items.append(g)
-                            
-                            # MUSIC PRE-FETCH: Grab current, last, and the next 3 covers @ 42x42
-                            if is_music:
-                                if g.get('home_logo'): logos_to_fetch.append((g.get('home_logo'), (42, 42)))
-                                if g.get('last_logo'): logos_to_fetch.append((g.get('last_logo'), (42, 42)))
-                                # This ensures the next covers are in ASSETS_DIR before the fade starts
-                                for nurl in g.get('next_logos', []):
-                                    if nurl: logos_to_fetch.append((nurl, (42, 42)))
+                        # --- LOGO QUEUING ---
+                        # Music needs larger 42px covers
+                        if is_music:
+                            if g.get('home_logo'): logos_to_fetch.append((g.get('home_logo'), (42, 42)))
+                            for nurl in g.get('next_logos', []):
+                                if nurl: logos_to_fetch.append((nurl, (42, 42)))
+                        
+                        # Stocks/Sports/Leaderboards need 24px (and 16px for wide mode)
                         else:
-                            scrolling_items.append(g)
-                            # Standard sports logos @ 24x24 and 16x16
                             if g.get('home_logo'): 
                                 logos_to_fetch.append((g.get('home_logo'), (24, 24)))
                                 logos_to_fetch.append((g.get('home_logo'), (16, 16)))
@@ -1349,37 +1357,43 @@ class TickerStreamer:
                                 logos_to_fetch.append((g.get('away_logo'), (24, 24)))
                                 logos_to_fetch.append((g.get('away_logo'), (16, 16)))
 
-                    # DOWNLOAD LOGOS: Do this in parallel so it doesn't block the loop
+                        # --- CATEGORIZATION ---
+                        if g_type == 'weather' or sport.startswith('clock') or is_music:
+                            static_items.append(g)
+                        else:
+                            scrolling_items.append(g)
+
+                    # --- DOWNLOAD LOGOS IN PARALLEL ---
+                    # This was likely the missing "fix" for your missing logos
                     unique_logos = list(set(logos_to_fetch))
-                    fs = [self.executor.submit(self.download_and_process_logo, u, s) for u, s in unique_logos]
-                    concurrent.futures.wait(fs)
+                    if unique_logos:
+                        fs = [self.executor.submit(self.download_and_process_logo, u, s) for u, s in unique_logos]
+                        concurrent.futures.wait(fs)
                     
-                    # Update local state variables
-                    local_conf = data.get('local_config', {})
-                    self.brightness = float(local_conf.get('brightness', 100)) / 100.0
-                    self.scroll_sleep = local_conf.get('scroll_speed', 0.05)
-                    self.inverted = local_conf.get('inverted', False)
-                    
+                    # --- UPDATE INTERNAL STATE ---
                     self.new_games_list = scrolling_items 
                     self.static_items = static_items
                     self.static_index = 0
                     
-                    # Build the long scrollable image strip
-                    if not scrolling_items:
-                        self.bg_strip = None
-                    else:
+                    # Build the new strip
+                    if scrolling_items:
                         self.bg_strip = self.build_seamless_strip(scrolling_items)
+                    else:
+                        self.bg_strip = None
                     
-                    # ALERT RENDER LOOP: Data is ready to be swapped/interrupted
+                    # Clear cache to force redrawing with newly downloaded logos
+                    self.game_render_cache.clear()
+                    
+                    # Signal render loop to swap strips
                     self.bg_strip_ready = True
                     last_hash = current_hash
-                    # Clear render cache so updated scores/times are redrawn
-                    self.game_render_cache.clear()
-            
+
+                time.sleep(0.5)
+
             except Exception as e:
                 print(f"Poll Error: {e}")
-                time.sleep(1) # Brief sleep on error to prevent CPU spam
-
+                time.sleep(1)
+    
 if __name__ == "__main__":
     app = TickerStreamer()
     try:
