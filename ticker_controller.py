@@ -210,13 +210,15 @@ class WifiPortal:
         except: pass
 
 # --- MAIN CONTROLLER ---
-# --- MAIN CONTROLLER ---
 class TickerStreamer:
     def __init__(self):
         print("Starting Ticker System...")
         self.device_id = get_device_id()
         if not os.path.exists(ASSETS_DIR): os.makedirs(ASSETS_DIR, exist_ok=True)
         
+        # [INIT FIX] Default to 'sports' to avoid crashing before data loads
+        self.mode = 'sports'
+
         options = RGBMatrixOptions()
         options.rows = 32
         options.cols = 64
@@ -1130,7 +1132,7 @@ class TickerStreamer:
 
     def render_loop(self):
         strip_offset = 0.0
-        self.last_applied_hash = "" # Track content changes to stop jitter
+        self.last_applied_hash = "" 
 
         while self.running:
             try:
@@ -1140,16 +1142,24 @@ class TickerStreamer:
                     time.sleep(0.5)
                     continue
                     
-                # [FIXED] Sleep Mode: Ensure matrix brightness is actually set to 0
-                if self.brightness <= 0.001:  # Use a tiny threshold
+                if self.brightness <= 0.001: 
                     self.matrix.brightness = 0
                     self.matrix.Clear()
                     time.sleep(1.0)
                     continue
 
-                # Detect if music is playing in the background
-                live_music = next((g for g in self.static_items if g.get('id') == 'spotify_now'), None)
-                music_is_playing = live_music and live_music.get('situation', {}).get('is_playing')
+                # --- DETECT MUSIC FROM /DATA ---
+                # We look in static_items because poll_backend sorts 'music' types there.
+                spotify_data = next((g for g in self.static_items if g.get('id') == 'spotify_now'), None)
+                
+                # Check if it's actually playing
+                music_is_playing = False
+                if spotify_data:
+                    music_is_playing = spotify_data.get('situation', {}).get('is_playing', False)
+
+                # [MODE CHECK] Only force the UI to lock onto music if we are in "music" mode
+                if self.mode != 'music':
+                    music_is_playing = False
 
                 # ==========================================================
                 # PATH A: STATIC & MUSIC (High Refresh / Interruptible)
@@ -1161,16 +1171,20 @@ class TickerStreamer:
                         
                         # High-rate animation for Music/Clock
                         if sport.startswith('clock') or game_type == 'music' or sport == 'music':
-                            if live_music:
-                                self.static_current_game = live_music # Sync data
-                                if music_is_playing:
-                                    self.static_until = time.time() + 2.0
+                            
+                            # If we are showing music, ensure we have the freshest data from /data
+                            if game_type == 'music' or sport == 'music':
+                                if spotify_data:
+                                    self.static_current_game = spotify_data # Update live with latest poll
+                                    # If playing (and in music mode), keep extending the timer
+                                    if music_is_playing:
+                                        self.static_until = time.time() + 2.0
                             
                             self.static_current_image = self.draw_single_game(self.static_current_game)
                             if self.static_current_image:
                                 self.update_display(self.static_current_image)
                             
-                            # Exit static if timer expires OR if non-music data arrived
+                            # Exit static if timer expires
                             if (time.time() >= self.static_until):
                                 self.showing_static = False
                             
@@ -1189,8 +1203,6 @@ class TickerStreamer:
                 # PATH B: SPORTS & STOCKS (Original Seamless Scrolling)
                 # ==========================================================
                 if self.bg_strip_ready:
-                    # [JITTER FIX]: Only attempt the complex pixel-matching swap 
-                    # if the content hash actually changed.
                     new_hash = getattr(self, 'current_data_hash', "")
                     
                     if new_hash != self.last_applied_hash:
@@ -1200,7 +1212,6 @@ class TickerStreamer:
                                 self.games = self.new_games_list 
                                 strip_offset = 0
                             else:
-                                # YOUR ORIGINAL SEAMLESS MAPPING LOGIC
                                 current_x = int(strip_offset)
                                 accum_w = 0
                                 visible_item_id = None
@@ -1233,9 +1244,15 @@ class TickerStreamer:
 
                     self.bg_strip_ready = False
                     
-                    # INTERRUPT: If music is playing, jump out of scroll immediately
+                    # INTERRUPT: If music is playing AND in music mode, jump out of scroll immediately
                     if music_is_playing:
-                        if self.start_static_display(): continue
+                        # Find the music item and force it to display
+                        if spotify_data:
+                            self.static_current_game = spotify_data
+                            self.static_current_image = self.draw_single_game(spotify_data)
+                            self.static_until = time.time() + 2.0
+                            self.showing_static = True
+                            continue
 
                 if self.active_strip:
                     total_w = self.active_strip.width - PANEL_W
@@ -1252,7 +1269,7 @@ class TickerStreamer:
                     
                     strip_offset += 1
                     
-                    # ONLY allow mid-scroll interrupts if Music is PLAYING
+                    # Allow interrupt mid-scroll if music starts playing
                     if self.bg_strip_ready and music_is_playing:
                         continue 
                         
@@ -1298,6 +1315,9 @@ class TickerStreamer:
 
                 # --- 2. CONFIGURATION & SLEEP LOGIC ---
                 local_conf = data.get('local_config') or {}
+                
+                # [FIX] Capture the current mode (Default: 'sports')
+                self.mode = local_conf.get('mode', 'sports')
                 
                 # FORCE SLEEP if server status is 'sleep'
                 if server_status == 'sleep':
