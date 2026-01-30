@@ -1329,8 +1329,12 @@ class TickerStreamer:
                 self.current_data_hash = current_hash 
 
                 if current_hash != last_hash:
-                    # Sort to keep the scrolling order stable
-                    new_games.sort(key=lambda x: (self.get_game_start_key(x), x.get('id', '')))
+                    # --- CRITICAL FIX ---
+                    # We disabled the client-side sort below.
+                    # The server sends data already sorted by time. The client was failing 
+                    # to parse 'startTimeUTC', defaulting to ID sort, which grouped leagues together.
+                    
+                    # new_games.sort(key=lambda x: (self.get_game_start_key(x), x.get('id', '')))
 
                     static_items = []
                     scrolling_items = []
@@ -1364,7 +1368,6 @@ class TickerStreamer:
                             scrolling_items.append(g)
 
                     # --- DOWNLOAD LOGOS IN PARALLEL ---
-                    # This was likely the missing "fix" for your missing logos
                     unique_logos = list(set(logos_to_fetch))
                     if unique_logos:
                         fs = [self.executor.submit(self.download_and_process_logo, u, s) for u, s in unique_logos]
