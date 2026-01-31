@@ -2136,6 +2136,7 @@ class SportsFetcher:
                     g['startTimeUTC'] = d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 except: pass
 
+        # STABILITY FIX: Sort by Abbreviation to prevent jumping
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
@@ -2144,7 +2145,8 @@ class SportsFetcher:
             2, # Active
             x.get('startTimeUTC', '9999'),
             x.get('sport', ''),
-            x.get('id', '0')
+            x.get('home_abbr', ''), # Alphabetical Tie-Breaker (Fixes Jumping)
+            str(x.get('id', '0'))   # Final ID Tie-Breaker
         ))
 
         now_ts = time.time()
