@@ -1041,6 +1041,7 @@ class SportsFetcher:
 
         try:
             key = self._get_ahl_key()
+            # Calculate req_date based on the configured timezone
             req_date = visible_start_utc.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5)))).strftime("%Y-%m-%d")
 
             params = {
@@ -1064,7 +1065,13 @@ class SportsFetcher:
                 h_sc = str(g.get("HomeGoals", "0"))
                 a_sc = str(g.get("VisitorGoals", "0"))
                 
+                # Date Filter
+                if g_date_str != req_date: continue
+
+                # --- ROBUST TIME PARSING START ---
                 parsed_utc = ""
+                
+                # 1. Try ISO Format (Best, but sometimes missing)
                 iso_date = g.get("GameDateISO8601", "")
                 if iso_date:
                     try:
@@ -1072,21 +1079,40 @@ class SportsFetcher:
                         parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                     except: pass
                 
+                # 2. Try 'ScheduledTime' (Stable, usually "19:00")
+                if not parsed_utc:
+                    sched = g.get("ScheduledTime", "")
+                    if sched and ":" in sched:
+                         try:
+                            hh, mm = map(int, sched.split(":"))
+                            dt_obj = dt.strptime(f"{g_date_str} {hh}:{mm}", "%Y-%m-%d %H:%M")
+                            # Assume configured offset since API lacks TZ
+                            dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=conf.get('utc_offset', -5))))
+                            parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                         except: pass
+
+                # 3. Fallback to 'GameTime' or 'Time' (Unstable)
+                # Only use if it explicitly looks like a start time (contains AM/PM)
                 if not parsed_utc:
                     raw_time = (g.get("GameTime") or g.get("Time") or "").strip()
-                    parsed_utc = f"{g_date_str}T00:00:00Z" # Fallback
-                    try:
-                        tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
-                        if tm_match:
-                            time_str, meridiem, tz_str = tm_match.groups()
-                            offset = -5
-                            if tz_str: offset = TZ_OFFSETS.get(tz_str.upper(), -5)
-                            dt_obj = dt.strptime(f"{g_date_str} {time_str} {meridiem}", "%Y-%m-%d %I:%M %p")
-                            dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
-                            parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                    except: pass
-                
-                if g_date_str != req_date: continue
+                    if "am" in raw_time.lower() or "pm" in raw_time.lower():
+                        try:
+                            tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
+                            if tm_match:
+                                time_str, meridiem, tz_str = tm_match.groups()
+                                offset = conf.get('utc_offset', -5)
+                                if tz_str: offset = TZ_OFFSETS.get(tz_str.upper(), offset)
+                                
+                                dt_obj = dt.strptime(f"{g_date_str} {time_str} {meridiem}", "%Y-%m-%d %I:%M %p")
+                                dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
+                                parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                        except: pass
+
+                # 4. Absolute Fail-safe (Start of day)
+                # This prevents crashes, but effectively puts it at the top of the list if parsing failed
+                if not parsed_utc:
+                     parsed_utc = f"{g_date_str}T00:00:00Z"
+                # --- ROBUST TIME PARSING END ---
 
                 raw_status = g.get("GameStatusString", "")
                 status_lower = raw_status.lower()
@@ -1097,6 +1123,7 @@ class SportsFetcher:
                 if "final" in status_lower:
                     gst = "post"
                     summary_data = None
+                    # Try to fetch summary for shootout/OT details
                     try:
                         sum_params = {
                             "feed": "statviewfeed", "view": "gameSummary", "key": key,
@@ -1105,8 +1132,7 @@ class SportsFetcher:
                         r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=4)
                         if r_sum.status_code == 200:
                             text = r_sum.text.strip()
-                            if text.startswith("(") and text.endswith(")"):
-                                text = text[1:-1]
+                            if text.startswith("(") and text.endswith(")"): text = text[1:-1]
                             summary_data = json.loads(text)
                     except: pass
 
@@ -1120,20 +1146,16 @@ class SportsFetcher:
                         else:
                              disp = "FINAL"
 
-                elif "scheduled" in status_lower or "pre" in status_lower or (re.search(r'\d+:\d+', status_lower) and "1st" not in status_lower and "2nd" not in status_lower and "3rd" not in status_lower and "ot" not in status_lower):
+                elif "scheduled" in status_lower or "pre" in status_lower or (re.search(r'\d+:\d+', status_lower) and "1st" not in status_lower):
                     gst = "pre"
                     try:
-                         if iso_date:
-                           local_dt = dt.fromisoformat(iso_date).astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
-                           disp = local_dt.strftime("%I:%M %p").lstrip('0')
-                         else:
-                             raw_time_clean = (g.get("GameTime") or "").strip()
-                             disp = raw_time_clean.split(" ")[0] + " " + raw_time_clean.split(" ")[1]
+                         # Use our robust parsed_utc to generate the display time
+                         local_dt = dt.fromisoformat(parsed_utc.replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
+                         disp = local_dt.strftime("%I:%M %p").lstrip('0')
                     except: disp = "Scheduled"
                 else:
                     gst = "in"
                     if "intermission" in status_lower:
-                        # Check text first, then fallback to the period number
                         if "1st" in status_lower or period_str == "1": disp = "End 1st"
                         elif "2nd" in status_lower or period_str == "2": disp = "End 2nd"
                         elif "3rd" in status_lower or period_str == "3": disp = "End 3rd"
@@ -1147,8 +1169,6 @@ class SportsFetcher:
                         else: disp = raw_status
 
                 is_shown = True
-                # NO LOCAL FILTERING HERE - LET /DATA DO IT
-
                 h_obj = next((t for t in ahl_refs if t['abbr'] == h_code), None)
                 a_obj = next((t for t in ahl_refs if t['abbr'] == a_code), None)
                 
