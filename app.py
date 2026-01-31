@@ -2379,21 +2379,27 @@ def get_ticker_data():
     visible_items = []
     
     # =================================================================
-    # LOGIC FIX: Handle "All", "Sports", and "Music" modes properly
+    # FIX: STRICT MUSIC FILTERING
+    # Music data is ONLY shown if the mode is explicitly 'music'.
+    # It is excluded from 'all', 'sports', 'my_teams', etc.
     # =================================================================
     
-    # 1. If mode is Music or All, add the music object first
-    if current_mode in ['music', 'all'] and music_obj:
+    # 1. Only add music object if we are strictly in Music mode
+    if current_mode == 'music' and music_obj:
         visible_items.append(music_obj)
 
-    # 2. If mode is NOT exclusively music, process the rest of the sports
+    # 2. Process other items (Sports, Weather, Clock)
+    # Even in 'music' mode, we might want to skip this if you want ONLY music.
+    # But usually 'music' mode replaces the list. 
+    # If mode is NOT music, we process the list and strictly remove music items.
     if current_mode != 'music':
         saved_teams = rec.get('my_teams', []) 
         COLLISION_ABBRS = {'LV'} 
 
         for g in raw_games:
-            # Skip music object if it's already in raw_games to prevent duplicates
-            if g.get('type') == 'music': continue 
+            # STRICT FILTER: Never allow music objects in non-music modes
+            if g.get('type') == 'music' or g.get('sport') == 'music': 
+                continue 
             
             should_show = True
             if current_mode == 'my_teams':
