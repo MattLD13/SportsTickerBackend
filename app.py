@@ -1760,13 +1760,19 @@ class SportsFetcher:
         try:
             curr_p = config.get('scoreboard_params', {}).copy()
             
-            # CHANGE B: DATE OPTIMIZATION (Only fetch TODAY)
+            # CHANGE B: DATE OPTIMIZATION
             now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
             
             if conf['debug_mode'] and conf['custom_date']:
                 curr_p['dates'] = conf['custom_date'].replace('-', '')
             else:
-                curr_p['dates'] = now_local.strftime("%Y%m%d") # Only fetch today
+                # FIX: If before 3AM, fetch yesterday's games so finals persist
+                # otherwise, the API defaults to the new day (which has no games yet)
+                if now_local.hour < 3:
+                    fetch_date = now_local - timedelta(days=1)
+                else:
+                    fetch_date = now_local
+                curr_p['dates'] = fetch_date.strftime("%Y%m%d")
             
             # CHANGE: Use API_TIMEOUT
             r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=API_TIMEOUT)
