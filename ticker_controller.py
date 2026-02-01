@@ -543,7 +543,6 @@ class TickerStreamer:
         artist = str(game.get('home_abbr', 'Unknown')).strip()
         song = str(game.get('away_abbr', 'Unknown')).strip()
         cover_url = game.get('home_logo')
-        next_covers = game.get('next_logos', [])
         
         # --- DATA & ANCHORING ---
         sit = game.get('situation', {})
@@ -551,80 +550,91 @@ class TickerStreamer:
         server_progress = float(sit.get('progress', 0.0))
         server_fetch_ts = float(sit.get('fetch_ts', time.time()))
         total_dur = float(sit.get('duration', 1.0))
-        if total_dur <= 0: total_dur = 1.0
 
         now = time.time()
-        # Cap dt_frame to prevent wild jumps if a thread hangs
         dt_frame = min(0.1, now - self.last_frame_time)
         self.last_frame_time = now
 
         if is_playing:
             time_since_fetch = now - server_fetch_ts
-            local_progress = server_progress + time_since_fetch
+            local_progress = min(server_progress + time_since_fetch, total_dur)
             self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt_frame)) % 360
             self.text_scroll_pos += (15.0 * dt_frame)
         else:
-            # Freeze animations at current position
             local_progress = server_progress
-        
-        local_progress = min(local_progress, total_dur)
 
-        # --- TRANSITION & COVER LOGIC ---
-        if not hasattr(self, 'prev_vinyl_cache'): self.prev_vinyl_cache = None
-        if not hasattr(self, 'prev_dominant_color'): self.prev_dominant_color = self.dominant_color
+        # --- FADE / TRANSITION LOGIC ---
         if not hasattr(self, 'fade_alpha'): self.fade_alpha = 1.0
-        if not hasattr(self, 'transitioning_out'): self.transitioning_out = False
+        if not hasattr(self, 'prev_vinyl_cache'): self.prev_vinyl_cache = None
 
-        # Detect Song Change
+        # Detect song change for crossfade
         if cover_url != self.last_cover_url:
+            # Move current art to 'previous' slot for the blend
+            if self.vinyl_cache:
+                self.prev_vinyl_cache = self.vinyl_cache.copy()
+            
             self.last_cover_url = cover_url
+            self.fade_alpha = 0.0 # Start crossfade
+            
             if cover_url:
                 try:
                     raw = self.get_logo(cover_url, (self.COVER_SIZE, self.COVER_SIZE))
                     if not raw:
-                        # Fallback for dynamic fetching
                         raw = Image.open(io.BytesIO(requests.get(cover_url, timeout=1).content)).convert("RGBA")
+                    
                     self.extract_colors_and_spindle(raw)
                     raw = raw.resize((self.COVER_SIZE, self.COVER_SIZE))
                     output = ImageOps.fit(raw, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
                     output.putalpha(self.vinyl_mask)
                     self.vinyl_cache = output
-                    # Force a refresh of transition states on manual skip
-                    self.fade_alpha = 1.0 
                 except: pass
 
-        # --- RENDER ---
-        current_ui_color = self.dominant_color
+        # Increment fade
+        if self.fade_alpha < 1.0:
+            self.fade_alpha = min(1.0, self.fade_alpha + (2.0 * dt_frame)) # 0.5s fade
 
-        # Vinyl Record
+        # --- RENDER ---
+        # Vinyl Record Layer
         composite = self.scratch_layer.copy()
         if self.vinyl_cache:
             offset = (self.VINYL_SIZE - self.COVER_SIZE) // 2
-            composite.paste(self.vinyl_cache, (offset, offset), self.vinyl_cache)
+            
+            # Apply Crossfade Blend
+            if self.fade_alpha < 1.0 and self.prev_vinyl_cache:
+                blended = Image.blend(self.prev_vinyl_cache, self.vinyl_cache, self.fade_alpha)
+                composite.paste(blended, (offset, offset), blended)
+            else:
+                composite.paste(self.vinyl_cache, (offset, offset), self.vinyl_cache)
         
+        # Center Spindle
         draw_comp = ImageDraw.Draw(composite)
         draw_comp.ellipse((22, 22, 28, 28), fill="#222")
         draw_comp.ellipse((23, 23, 27, 27), fill=self.spindle_color)
+        
         rotated = composite.rotate(self.vinyl_rotation, resample=Image.Resampling.BICUBIC)
         img.paste(rotated, (4, -9), rotated)
 
-        # Text
+        # Scrolling Text
         TEXT_X = 60
         self.draw_scrolling_text(img, song, self.medium_font, TEXT_X, 0, 188, self.text_scroll_pos, "white")
         self.draw_scrolling_text(img, artist, self.tiny, TEXT_X + 16, 17, 172, self.text_scroll_pos, (180, 180, 180))
 
-        # Spotify Icon
-        d.ellipse((TEXT_X, 15, TEXT_X+12, 15+12), fill=current_ui_color)
-        d.arc((TEXT_X+3, 15+3, TEXT_X+9, 15+9), 190, 350, fill="black", width=1)
-        d.arc((TEXT_X+3, 15+5, TEXT_X+9, 15+11), 190, 350, fill="black", width=1)
-        d.arc((TEXT_X+4, 15+7, TEXT_X+8, 15+12), 190, 350, fill="black", width=1)
-
-        # Visualizer (Automatically handles pause logic via render_visualizer)
+        # Spotify Icon & Visualizer
+        self.draw_spotify_logo_at(img, TEXT_X, 15, self.dominant_color)
         self.render_visualizer(d, 248, 6, 80, 20, is_playing=is_playing)
 
         # Progress Bar
         pct = min(1.0, max(0.0, local_progress / total_dur))
-        d.rectangle((0, 31, int(PANEL_W * pct), 31), fill=current_ui_color)
+        d.rectangle((0, 31, int(PANEL_W * pct), 31), fill=self.dominant_color)
+        
+        return img
+
+    def draw_spotify_logo_at(self, img, x, y, color):
+        d = ImageDraw.Draw(img)
+        d.ellipse((x, y, x+12, y+12), fill=color)
+        d.arc((x+3, y+3, x+9, y+9), 190, 350, fill="black", width=1)
+        d.arc((x+3, y+5, x+9, y+11), 190, 350, fill="black", width=1)
+        d.arc((x+4, y+7, x+8, y+12), 190, 350, fill="black", width=1)
         
         # Time Remaining
         def fmt_time(seconds):
@@ -951,14 +961,14 @@ class TickerStreamer:
         return hashlib.md5(s.encode()).hexdigest()
 
     def draw_single_game(self, game):
-        game_hash = self.get_game_hash(game)
-        
-        # [NEW] Check for Music Type first
+        # [FIX] BYPASS CACHE FOR MUSIC
+        # Music is high-frame-rate; caching it prevents animation.
         if game.get('type') == 'music' or game.get('sport') == 'music':
-            # Note: Music is dynamic and high-frame-rate, so we generally 
-            # don't cache it, or cache it very briefly.
             return self.draw_music_card(game)
 
+        game_hash = self.get_game_hash(game)
+        
+        # Original caching logic for non-music items
         if game.get('type') != 'weather' and game.get('sport') != 'clock':
              if game_hash in self.game_render_cache: return self.game_render_cache[game_hash]
         
