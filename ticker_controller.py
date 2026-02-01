@@ -14,6 +14,7 @@ import hashlib
 import math
 import random
 import colorsys
+import unicodedata
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
 from rgbmatrix import RGBMatrix, RGBMatrixOptions
@@ -114,7 +115,13 @@ TINY_FONT_MAP = {
     '.': [0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x4, 0x8, 0x0],
     "'": [0x4, 0x4, 0x0, 0x0, 0x0], '$': [0x4, 0xF, 0x5, 0xF, 0x4], '%': [0x9, 0x2, 0x4, 0x8, 0x12],
     '^': [0x4, 0xA, 0x0, 0x0, 0x0], '▲': [0x4, 0xE, 0x1F, 0x0, 0x0], '▼': [0x1F, 0xE, 0x4, 0x0, 0x0],
-    '(': [0x2, 0x4, 0x4, 0x4, 0x2], ')': [0x4, 0x2, 0x2, 0x2, 0x4]
+    '(': [0x2, 0x4, 0x4, 0x4, 0x2], ')': [0x4, 0x2, 0x2, 0x2, 0x4],
+    ':': [0x0, 0x4, 0x0, 0x4, 0x0], ',': [0x0, 0x0, 0x0, 0x4, 0x8], '!': [0x4, 0x4, 0x4, 0x0, 0x4],
+    '?': [0x6, 0x1, 0x2, 0x0, 0x2], '@': [0x6, 0xB, 0xB, 0x8, 0x6], '#': [0xA, 0xF, 0xA, 0xF, 0xA],
+    '&': [0x4, 0xA, 0x5, 0xA, 0x5], '*': [0x0, 0xA, 0x4, 0xA, 0x0], '=': [0x0, 0xF, 0x0, 0xF, 0x0],
+    '_': [0x0, 0x0, 0x0, 0x0, 0xF], '<': [0x1, 0x2, 0x4, 0x2, 0x1], '>': [0x4, 0x2, 0x1, 0x2, 0x4],
+    '[': [0x6, 0x4, 0x4, 0x4, 0x6], ']': [0x6, 0x2, 0x2, 0x2, 0x6], '"': [0xA, 0xA, 0x0, 0x0, 0x0],
+    ';': [0x0, 0x4, 0x0, 0x4, 0x8], '~': [0x0, 0x0, 0x0, 0x0, 0x0]
 }
 
 # HYBRID FONT (4x6) FOR STATUS
@@ -133,30 +140,119 @@ HYBRID_FONT_MAP = {
     '6': [0x6, 0x8, 0xE, 0x9, 0x9, 0x6], '7': [0xF, 0x1, 0x2, 0x4, 0x8, 0x8], '8': [0x6, 0x9, 0x6, 0x9, 0x9, 0x6],
     '9': [0x6, 0x9, 0x9, 0x7, 0x1, 0x6], '+': [0x0, 0x0, 0x4, 0xE, 0x4, 0x0], '-': [0x0, 0x0, 0x0, 0xE, 0x0, 0x0],
     '.': [0x0, 0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], ':': [0x0, 0x6, 0x6, 0x0, 0x6, 0x6],
-    '~': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x2, 0x4, 0x4, 0x8], "'": [0x4, 0x4, 0x0, 0x0, 0x0, 0x0]
+    '~': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x2, 0x4, 0x4, 0x8], "'": [0x4, 0x4, 0x0, 0x0, 0x0, 0x0],
+    ',': [0x0, 0x0, 0x0, 0x0, 0x4, 0x8], '!': [0x4, 0x4, 0x4, 0x4, 0x0, 0x4], '?': [0x6, 0x9, 0x2, 0x4, 0x0, 0x4],
+    '@': [0x6, 0x9, 0xB, 0xB, 0x8, 0x6], '#': [0xA, 0xF, 0xA, 0xA, 0xF, 0xA], '&': [0x4, 0xA, 0x4, 0xA, 0x9, 0x6],
+    '*': [0x0, 0xA, 0x4, 0xA, 0x0, 0x0], '=': [0x0, 0xF, 0x0, 0x0, 0xF, 0x0], '_': [0x0, 0x0, 0x0, 0x0, 0x0, 0xF],
+    '<': [0x1, 0x2, 0x4, 0x4, 0x2, 0x1], '>': [0x4, 0x2, 0x1, 0x1, 0x2, 0x4], '[': [0x6, 0x4, 0x4, 0x4, 0x4, 0x6],
+    ']': [0x6, 0x2, 0x2, 0x2, 0x2, 0x6], '"': [0xA, 0xA, 0x0, 0x0, 0x0, 0x0], ';': [0x0, 0x4, 0x0, 0x0, 0x4, 0x8],
+    '$': [0x4, 0xF, 0xC, 0x6, 0xF, 0x4], '%': [0x9, 0x2, 0x2, 0x4, 0x4, 0x9], '(': [0x2, 0x4, 0x4, 0x4, 0x4, 0x2],
+    ')': [0x4, 0x2, 0x2, 0x2, 0x2, 0x4], '^': [0x4, 0xA, 0x0, 0x0, 0x0, 0x0]
 }
 
+# ================= SPECIAL CHARACTER HANDLING =================
+# Mapping of special/accented characters to their ASCII equivalents (case-preserved)
+SPECIAL_CHAR_MAP = {
+    # German umlauts - simplified to single letter
+    'Ä': 'A', 'ä': 'a', 'Ö': 'O', 'ö': 'o', 'Ü': 'U', 'ü': 'u', 'ß': 'ss',
+    # French accents
+    'À': 'A', 'à': 'a', 'Â': 'A', 'â': 'a', 'Ç': 'C', 'ç': 'c',
+    'È': 'E', 'è': 'e', 'É': 'E', 'é': 'e', 'Ê': 'E', 'ê': 'e', 'Ë': 'E', 'ë': 'e',
+    'Î': 'I', 'î': 'i', 'Ï': 'I', 'ï': 'i',
+    'Ô': 'O', 'ô': 'o', 'Ù': 'U', 'ù': 'u', 'Û': 'U', 'û': 'u',
+    'Œ': 'O', 'œ': 'o',
+    # Spanish accents
+    'Á': 'A', 'á': 'a', 'Í': 'I', 'í': 'i', 'Ñ': 'N', 'ñ': 'n',
+    'Ó': 'O', 'ó': 'o', 'Ú': 'U', 'ú': 'u',
+    # Portuguese accents
+    'Ã': 'A', 'ã': 'a', 'Õ': 'O', 'õ': 'o',
+    # Scandinavian characters
+    'Å': 'A', 'å': 'a', 'Æ': 'A', 'æ': 'a', 'Ø': 'O', 'ø': 'o',
+    # Eastern European
+    'Ł': 'L', 'ł': 'l', 'Ś': 'S', 'ś': 's', 'Ź': 'Z', 'ź': 'z', 'Ż': 'Z', 'ż': 'z',
+    'Č': 'C', 'č': 'c', 'Ř': 'R', 'ř': 'r', 'Š': 'S', 'š': 's', 'Ž': 'Z', 'ž': 'z',
+    'Ć': 'C', 'ć': 'c', 'Đ': 'D', 'đ': 'd',
+    # Turkish
+    'Ğ': 'G', 'ğ': 'g', 'İ': 'I', 'ı': 'i', 'Ş': 'S', 'ş': 's',
+    # Icelandic
+    'Ð': 'D', 'ð': 'd', 'Þ': 'T', 'þ': 't',
+    # Special punctuation and symbols
+    ''': "'", ''': "'", '"': '"', '"': '"', '„': '"',
+    '–': '-', '—': '-', '…': '...',
+    '×': 'x', '÷': '/', '±': '+/-',
+    '°': 'o', '©': '(c)', '®': '(r)', '™': 'tm',
+    '€': 'E', '£': 'L', '¥': 'Y', '¢': 'c',
+    '½': '1/2', '¼': '1/4', '¾': '3/4',
+    '²': '2', '³': '3', '¹': '1',
+    # Greek letters (common ones)
+    'α': 'a', 'β': 'b', 'γ': 'g', 'δ': 'd', 'μ': 'u', 'π': 'p', 'σ': 's', 'Ω': 'O',
+    # Misc
+    '¡': '!', '¿': '?', '«': '<<', '»': '>>', '·': '.', '•': '*',
+}
+
+def normalize_special_chars(text):
+    """
+    Normalize special characters to ASCII equivalents.
+    Handles umlauts, accented characters, and other special symbols.
+    """
+    if not text:
+        return text
+    
+    result = []
+    for char in str(text):
+        # First check our custom mapping
+        if char in SPECIAL_CHAR_MAP:
+            result.append(SPECIAL_CHAR_MAP[char])
+        elif char.upper() in SPECIAL_CHAR_MAP:
+            result.append(SPECIAL_CHAR_MAP[char.upper()])
+        else:
+            # Try Unicode normalization (NFD decomposes, then we strip combining marks)
+            try:
+                normalized = unicodedata.normalize('NFD', char)
+                # Keep only non-combining characters (category starting with 'M' are marks)
+                ascii_char = ''.join(c for c in normalized if not unicodedata.combining(c))
+                if ascii_char and all(ord(c) < 128 for c in ascii_char):
+                    result.append(ascii_char)
+                elif ord(char) < 128:
+                    # Already ASCII
+                    result.append(char)
+                else:
+                    # Fallback: try to get ASCII representation or use placeholder
+                    try:
+                        ascii_repr = char.encode('ascii', 'ignore').decode('ascii')
+                        result.append(ascii_repr if ascii_repr else '?')
+                    except:
+                        result.append('?')
+            except:
+                result.append('?' if ord(char) >= 128 else char)
+    
+    return ''.join(result)
+
 def draw_tiny_text(draw, x, y, text, color):
-    text = str(text).upper()
+    text = normalize_special_chars(str(text)).upper()
     x_cursor = x
     for char in text:
-        bitmap = TINY_FONT_MAP.get(char, TINY_FONT_MAP[' '])
+        if char == '~':  # Tilde is a small gap marker
+            x_cursor += 2
+            continue
+        bitmap = TINY_FONT_MAP.get(char, TINY_FONT_MAP.get(' ', [0x0, 0x0, 0x0, 0x0, 0x0]))
         for r, row_byte in enumerate(bitmap):
             if row_byte & 0x8: draw.point((x_cursor+0, y+r), fill=color)
             if row_byte & 0x4: draw.point((x_cursor+1, y+r), fill=color)
             if row_byte & 0x2: draw.point((x_cursor+2, y+r), fill=color)
             if row_byte & 0x1: draw.point((x_cursor+3, y+r), fill=color)
             if len(bitmap) > 4 and (row_byte & 0x10): draw.point((x_cursor+4, y+r), fill=color)
-        x_cursor += 4 
+        x_cursor += 5  # 4px glyph + 1px spacing
     return x_cursor - x
 
 def draw_hybrid_text(draw, x, y, text, color):
-    text = str(text).upper()
+    text = normalize_special_chars(str(text)).upper()
     x_cursor = x
     for char in text:
         if char == '~':
-            x_cursor += 2; continue
-        bitmap = HYBRID_FONT_MAP.get(char, HYBRID_FONT_MAP[' '])
+            x_cursor += 2
+            continue
+        bitmap = HYBRID_FONT_MAP.get(char, HYBRID_FONT_MAP.get(' ', [0x0, 0x0, 0x0, 0x0, 0x0, 0x0]))
         for r, row_byte in enumerate(bitmap):
             if row_byte & 0x8: draw.point((x_cursor+0, y+r), fill=color)
             if row_byte & 0x4: draw.point((x_cursor+1, y+r), fill=color)
@@ -405,7 +501,7 @@ class TickerStreamer:
 
     def draw_scrolling_text(self, canvas, text, font, x, y, max_width, scroll_pos, color="white"):
         """Helper to draw scrolling text with taller buffer to prevent clipping"""
-        text = str(text).strip() # Clean text of trailing spaces
+        text = normalize_special_chars(str(text).strip()) # Clean text and normalize special characters
         
         # Create a temp draw object just to measure text length
         temp_d = ImageDraw.Draw(canvas)
@@ -684,7 +780,7 @@ class TickerStreamer:
             d.rectangle((0, 0, 63, 7), fill=(20, 20, 20))
             d.line((0, 8, 63, 8), fill=accent_color, width=1)
             t_name = str(game.get('tourney_name', '')).upper().replace("GRAND PRIX", "GP").replace("TT", "").strip()[:14]
-            header_w = len(t_name) * 4
+            header_w = len(t_name) * 5  # 4px glyph + 1px spacing per char
             hx = (64 - header_w) // 2
             draw_tiny_text(d, hx, 1, t_name, (220, 220, 220))
             leaders = game.get('leaders', [])
@@ -700,7 +796,7 @@ class TickerStreamer:
                 display_score = "LDR" if "LEADER" in raw_score.upper() else raw_score
                 draw_tiny_text(d, 1, y_off, str(i+1), rank_color)
                 draw_tiny_text(d, 8, y_off, acronym, (255, 255, 255))
-                score_w = len(display_score) * 4
+                score_w = len(display_score) * 5  # 4px glyph + 1px spacing per char
                 draw_tiny_text(d, 63 - score_w, y_off, display_score, (255, 100, 100))
                 y_off += 8
         except Exception as e: return Image.new("RGBA", (64, 32), (0, 0, 0, 255))
@@ -931,15 +1027,16 @@ class TickerStreamer:
                 # Draw Away Seed (Left - Centered under 24px logo)
                 if a_seed:
                     # Center of 24px logo (starting at 0) is 12
-                    # Font is 4px wide + 1px gap per char
-                    w = (len(a_seed) * 4) + (max(0, len(a_seed) - 1))
+                    # 5px per char (4px glyph + 1px spacing)
+                    w = len(a_seed) * 5
                     sx = 12 - (w // 2)
                     draw_tiny_text(d, sx, 26, a_seed, (200, 200, 200))
 
                 # Draw Home Seed (Right - Centered under 24px logo)
                 if h_seed:
                     # Center of 24px logo (starting at 40) is 52
-                    w = (len(h_seed) * 4) + (max(0, len(h_seed) - 1))
+                    # 5px per char (4px glyph + 1px spacing)
+                    w = len(h_seed) * 5
                     sx = 52 - (w // 2)
                     draw_tiny_text(d, sx, 26, h_seed, (200, 200, 200))
 
