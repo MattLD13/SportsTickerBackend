@@ -395,8 +395,6 @@ def generate_pairing_code():
         active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
         if code not in active_codes: return code
 
-# ================= SPOTIFY FETCHER (LOW LATENCY + ADAPTIVE) =================
-# ================= SPOTIFY FETCHER (ROBUST / ANTI-FLICKER) =================
 class SpotifyFetcher(threading.Thread):
     def __init__(self):
         super().__init__()
@@ -429,14 +427,12 @@ class SpotifyFetcher(threading.Thread):
             return self.state.copy()
 
     def run(self):
-        """Main Loop: Robust polling that ignores transient network errors"""
         if not self.client_id or not self.client_secret:
             print("⚠️ SPOTIFY: Missing Client ID or Secret in .env")
             return
 
-        print("✅ Spotify Robust Tracker Started")
+        print("✅ Spotify Adaptive Polling Started")
 
-        # Initialize Auth
         sp = None
         while not sp:
             try:
@@ -457,7 +453,6 @@ class SpotifyFetcher(threading.Thread):
 
         while True:
             try:
-                # 1. POLL (Use a separate try/catch so we distinguish ERROR from EMPTY)
                 current = None
                 fetch_success = False
                 
@@ -465,24 +460,20 @@ class SpotifyFetcher(threading.Thread):
                     current = sp.current_user_playing_track()
                     fetch_success = True
                 except Exception as e:
-                    # NETWORK ERROR: Do NOT clear state. Just wait and retry.
-                    # This prevents the "Flicker" where the ticker thinks music stopped on a timeout.
-                    # print(f"Spotify Poll Glitch: {e}") 
-                    current_delay = 2.0 
+                    # STAGE 3: Error/Long Polling (>5s)
+                    print(f"Spotify API Error: {e}")
+                    current_delay = 5.0 
 
                 if fetch_success:
-                    # Case A: Music is Playing
                     if current and current.get('item'):
                         item = current['item']
                         is_playing = current.get('is_playing', False)
                         current_id = item.get('id')
                         current_cover = item['album']['images'][0]['url'] if item.get('album',{}).get('images') else ""
                         
-                        # Only fetch the Heavy Queue data if the song ID actually changed
+                        # Only fetch heavy queue data if the song changed
                         if self.cached_current_id != current_id:
                             self.state['last_cover'] = self.cached_current_cover
-                            
-                            # Try to get next up (Heavy API call)
                             try:
                                 queue_data = sp.queue()
                                 new_queue = []
@@ -493,7 +484,7 @@ class SpotifyFetcher(threading.Thread):
                                         else:
                                             new_queue.append("")
                                 self.cached_queue_covers = new_queue
-                            except: pass # Ignore queue errors, keep old queue
+                            except: pass 
                             
                             self.cached_current_id = current_id
                             self.cached_current_cover = current_cover
@@ -510,18 +501,19 @@ class SpotifyFetcher(threading.Thread):
                                 "last_fetch_ts": time.time()
                             })
 
+                        # STAGE 1 vs STAGE 2
+                        # Quick Polling (0.6s) if playing, Medium (1.5s) if paused
                         current_delay = 0.6 if is_playing else 1.5
 
-                    # Case B: Explicit "Nothing Playing" (204 No Content from Spotify)
                     elif current is None:
-                        # Only NOW do we set is_playing to False
+                        # STAGE 2: No Content / Idle (3s)
                         with self._lock:
                             self.state['is_playing'] = False
                         current_delay = 3.0
 
             except Exception as e:
                 print(f"Spotify Critical Loop Error: {e}")
-                current_delay = 5.0
+                current_delay = 10.0 # Long backoff for critical failures
 
             time.sleep(current_delay)
 
