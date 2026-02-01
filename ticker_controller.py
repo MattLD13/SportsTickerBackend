@@ -543,6 +543,7 @@ class TickerStreamer:
         artist = str(game.get('home_abbr', 'Unknown')).strip()
         song = str(game.get('away_abbr', 'Unknown')).strip()
         cover_url = game.get('home_logo')
+        next_covers = game.get('next_logos', [])
         
         # --- DATA & ANCHORING ---
         sit = game.get('situation', {})
@@ -550,38 +551,66 @@ class TickerStreamer:
         server_progress = float(sit.get('progress', 0.0))
         server_fetch_ts = float(sit.get('fetch_ts', time.time()))
         total_dur = float(sit.get('duration', 1.0))
+        if total_dur <= 0: total_dur = 1.0
 
         now = time.time()
-        dt_frame = min(0.1, now - self.last_frame_time)
+        dt_frame = now - self.last_frame_time
         self.last_frame_time = now
 
         if is_playing:
             time_since_fetch = now - server_fetch_ts
-            local_progress = min(server_progress + time_since_fetch, total_dur)
+            local_progress = server_progress + time_since_fetch
             self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt_frame)) % 360
             self.text_scroll_pos += (15.0 * dt_frame)
         else:
             local_progress = server_progress
+        local_progress = min(local_progress, total_dur)
 
-        # --- FADE / TRANSITION LOGIC ---
-        if not hasattr(self, 'fade_alpha'): self.fade_alpha = 1.0
+        # --- TRANSITION STATE ---
         if not hasattr(self, 'prev_vinyl_cache'): self.prev_vinyl_cache = None
+        if not hasattr(self, 'prev_dominant_color'): self.prev_dominant_color = self.dominant_color
+        if not hasattr(self, 'fade_alpha'): self.fade_alpha = 1.0
+        if not hasattr(self, 'transitioning_out'): self.transitioning_out = False
 
-        # Detect song change for crossfade
+        # 1. DETECT END OF SONG (Start Natural Out-Fade)
+        time_remaining = total_dur - local_progress
+        if is_playing and time_remaining <= 5.0 and not self.transitioning_out:
+            self.transitioning_out = True
+            self.prev_vinyl_cache = self.vinyl_cache
+            self.prev_dominant_color = self.dominant_color
+            self.fade_alpha = 0.5 # Mid-point for natural rollover
+            
+            # Pre-load next cover for the fade
+            if next_covers and next_covers[0]:
+                try:
+                    next_url = next_covers[0]
+                    raw_next = self.get_logo(next_url, (self.COVER_SIZE, self.COVER_SIZE))
+                    if not raw_next:
+                        raw_next = Image.open(io.BytesIO(requests.get(next_url, timeout=1).content)).convert("RGBA")
+                    raw_next = raw_next.resize((self.COVER_SIZE, self.COVER_SIZE))
+                    next_art = ImageOps.fit(raw_next, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
+                    next_art.putalpha(self.vinyl_mask)
+                    self.vinyl_cache = next_art
+                    stat = ImageStat.Stat(raw_next)
+                    self.dominant_color = tuple(int(x) for x in stat.mean[:3])
+                except: pass
+
+        # 2. DETECT SONG CHANGE (Skip vs Natural)
         if cover_url != self.last_cover_url:
-            # Move current art to 'previous' slot for the blend
-            if self.vinyl_cache:
-                self.prev_vinyl_cache = self.vinyl_cache.copy()
+            if not self.transitioning_out:
+                # MANUAL SKIP DETECTED: Snap everything instantly
+                self.fade_alpha = 1.0
+                self.prev_vinyl_cache = None
+            else:
+                # NATURAL ROLLOVER: Keep the fade going
+                self.transitioning_out = False 
             
             self.last_cover_url = cover_url
-            self.fade_alpha = 0.0 # Start crossfade
-            
             if cover_url:
                 try:
                     raw = self.get_logo(cover_url, (self.COVER_SIZE, self.COVER_SIZE))
                     if not raw:
                         raw = Image.open(io.BytesIO(requests.get(cover_url, timeout=1).content)).convert("RGBA")
-                    
                     self.extract_colors_and_spindle(raw)
                     raw = raw.resize((self.COVER_SIZE, self.COVER_SIZE))
                     output = ImageOps.fit(raw, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
@@ -589,61 +618,12 @@ class TickerStreamer:
                     self.vinyl_cache = output
                 except: pass
 
-        # Increment fade
+        # 3. ANIMATION
         if self.fade_alpha < 1.0:
-            self.fade_alpha = min(1.0, self.fade_alpha + (2.0 * dt_frame)) # 0.5s fade
+            self.fade_alpha = min(1.0, self.fade_alpha + (0.1 * dt_frame))
 
-        # --- RENDER ---
-        # Vinyl Record Layer
-        composite = self.scratch_layer.copy()
-        if self.vinyl_cache:
-            offset = (self.VINYL_SIZE - self.COVER_SIZE) // 2
-            
-            # Apply Crossfade Blend
-            if self.fade_alpha < 1.0 and self.prev_vinyl_cache:
-                blended = Image.blend(self.prev_vinyl_cache, self.vinyl_cache, self.fade_alpha)
-                composite.paste(blended, (offset, offset), blended)
-            else:
-                composite.paste(self.vinyl_cache, (offset, offset), self.vinyl_cache)
-        
-        # Center Spindle
-        draw_comp = ImageDraw.Draw(composite)
-        draw_comp.ellipse((22, 22, 28, 28), fill="#222")
-        draw_comp.ellipse((23, 23, 27, 27), fill=self.spindle_color)
-        
-        rotated = composite.rotate(self.vinyl_rotation, resample=Image.Resampling.BICUBIC)
-        img.paste(rotated, (4, -9), rotated)
-
-        # Scrolling Text
-        TEXT_X = 60
-        self.draw_scrolling_text(img, song, self.medium_font, TEXT_X, 0, 188, self.text_scroll_pos, "white")
-        self.draw_scrolling_text(img, artist, self.tiny, TEXT_X + 16, 17, 172, self.text_scroll_pos, (180, 180, 180))
-
-        # Spotify Icon & Visualizer
-        self.draw_spotify_logo_at(img, TEXT_X, 15, self.dominant_color)
-        self.render_visualizer(d, 248, 6, 80, 20, is_playing=is_playing)
-
-        # Progress Bar
-        pct = min(1.0, max(0.0, local_progress / total_dur))
-        d.rectangle((0, 31, int(PANEL_W * pct), 31), fill=self.dominant_color)
-        
-        return img
-
-    def draw_spotify_logo_at(self, img, x, y, color):
-        d = ImageDraw.Draw(img)
-        d.ellipse((x, y, x+12, y+12), fill=color)
-        d.arc((x+3, y+3, x+9, y+9), 190, 350, fill="black", width=1)
-        d.arc((x+3, y+5, x+9, y+11), 190, 350, fill="black", width=1)
-        d.arc((x+4, y+7, x+8, y+12), 190, 350, fill="black", width=1)
-        
-        # Time Remaining
-        def fmt_time(seconds):
-            m, s = divmod(int(max(0, seconds)), 60)
-            return f"{m}:{s:02d}"
-        rem_str = f"-{fmt_time(total_dur - local_progress)}"
-        d.text((PANEL_W - d.textlength(rem_str, font=self.micro) - 5, 10), rem_str, font=self.micro, fill="white")
-        
-        return img
+        t = self.fade_alpha
+        smooth_alpha = t * t * (3 - 2 * t)
 
         def blend_colors(c1, c2, alpha):
             return tuple(int(c1[i] + (c2[i] - c1[i]) * alpha) for i in range(3))
@@ -961,14 +941,14 @@ class TickerStreamer:
         return hashlib.md5(s.encode()).hexdigest()
 
     def draw_single_game(self, game):
-        # [FIX] BYPASS CACHE FOR MUSIC
-        # Music is high-frame-rate; caching it prevents animation.
-        if game.get('type') == 'music' or game.get('sport') == 'music':
-            return self.draw_music_card(game)
-
         game_hash = self.get_game_hash(game)
         
-        # Original caching logic for non-music items
+        # [NEW] Check for Music Type first
+        if game.get('type') == 'music' or game.get('sport') == 'music':
+            # Note: Music is dynamic and high-frame-rate, so we generally 
+            # don't cache it, or cache it very briefly.
+            return self.draw_music_card(game)
+
         if game.get('type') != 'weather' and game.get('sport') != 'clock':
              if game_hash in self.game_render_cache: return self.game_render_cache[game_hash]
         
@@ -1266,13 +1246,15 @@ class TickerStreamer:
                     continue
 
                 # --- DETECT MUSIC FROM /DATA ---
+                # We look in static_items because poll_backend sorts 'music' types there.
                 spotify_data = next((g for g in self.static_items if g.get('id') == 'spotify_now'), None)
                 
+                # Check if it's actually playing
                 music_is_playing = False
                 if spotify_data:
                     music_is_playing = spotify_data.get('situation', {}).get('is_playing', False)
 
-                # Only force the UI to lock onto music if we are in "music" mode
+                # [MODE CHECK] Only force the UI to lock onto music if we are in "music" mode
                 if self.mode != 'music':
                     music_is_playing = False
 
@@ -1287,23 +1269,23 @@ class TickerStreamer:
                         # High-rate animation for Music/Clock
                         if sport.startswith('clock') or game_type == 'music' or sport == 'music':
                             
-                            # FIX: Always update the local game data from the global poller
-                            # This allows the cover art to update even if music is PAUSED.
-                            if (game_type == 'music' or sport == 'music') and spotify_data:
-                                self.static_current_game = spotify_data 
-                                
-                                # While music is playing (and in music mode), keep timer alive
-                                if music_is_playing:
-                                    self.static_until = time.time() + 2.0
+                            # If we are showing music, ensure we have the freshest data from /data
+                            if game_type == 'music' or sport == 'music':
+                                if spotify_data:
+                                    self.static_current_game = spotify_data # Update live with latest poll
+                                    # If playing (and in music mode), keep extending the timer
+                                    if music_is_playing:
+                                        self.static_until = time.time() + 2.0
                             
                             self.static_current_image = self.draw_single_game(self.static_current_game)
                             if self.static_current_image:
                                 self.update_display(self.static_current_image)
                             
+                            # Exit static if timer expires
                             if (time.time() >= self.static_until):
                                 self.showing_static = False
                             
-                            time.sleep(0.03) # ~33 FPS for smooth vinyl rotation
+                            time.sleep(0.03) # High speed for vinyl/clock
                             continue
 
                     # Standard Static (Weather)
@@ -1356,15 +1338,18 @@ class TickerStreamer:
                             self.active_strip = None
                         
                         self.last_applied_hash = new_hash
+
                     self.bg_strip_ready = False
                     
-                    # INTERRUPT: Jump out of scroll immediately if music starts
-                    if music_is_playing and spotify_data:
-                        self.static_current_game = spotify_data
-                        self.static_current_image = self.draw_single_game(spotify_data)
-                        self.static_until = time.time() + 2.0
-                        self.showing_static = True
-                        continue
+                    # INTERRUPT: If music is playing AND in music mode, jump out of scroll immediately
+                    if music_is_playing:
+                        # Find the music item and force it to display
+                        if spotify_data:
+                            self.static_current_game = spotify_data
+                            self.static_current_image = self.draw_single_game(spotify_data)
+                            self.static_until = time.time() + 2.0
+                            self.showing_static = True
+                            continue
 
                 if self.active_strip:
                     total_w = self.active_strip.width - PANEL_W
@@ -1381,7 +1366,7 @@ class TickerStreamer:
                     
                     strip_offset += 1
                     
-                    # Interrupt mid-scroll for Music
+                    # Allow interrupt mid-scroll if music starts playing
                     if self.bg_strip_ready and music_is_playing:
                         continue 
                         
@@ -1395,7 +1380,7 @@ class TickerStreamer:
             except Exception as e:
                 print(f"Render Error: {e}")
                 time.sleep(1)
-
+    
     def poll_backend(self):
         print("Backend Poller Started...")
         last_hash = ""
