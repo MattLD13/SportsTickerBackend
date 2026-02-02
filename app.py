@@ -2584,7 +2584,7 @@ def api_state():
         response_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
         response_settings['ticker_id'] = ticker_id 
     
-    # 3. Get Game Data & Apply Filters
+    # 3. Get All Available Games from the buffer
     raw_games = fetcher.get_snapshot_for_delay(0)
     processed_games = []
 
@@ -2594,59 +2594,47 @@ def api_state():
 
     for g in raw_games:
         game_copy = g.copy()
+        
+        # Default to hidden; we will prove it should be shown
         should_show = True
         
-        # --- FIX: STRICT MUSIC FILTERING ---
-        # If the item is music, ONLY show it if mode is 'music' or 'all'
-        # (Change to 'if current_mode != "music"' if you want it EXCLUSIVELY in music mode)
+        # --- LOGIC: Filter matching the /data endpoint ---
         is_music_item = (game_copy.get('type') == 'music' or game_copy.get('sport') == 'music')
         
         if is_music_item:
             if current_mode != 'music' and current_mode != 'all':
                 should_show = False
-        # ------------------------------------
-
-        # Filter Logic: Live Mode
+        
         elif current_mode == 'live' and game_copy.get('state') not in ['in', 'half']: 
             should_show = False
             
-        # Filter Logic: My Teams Mode
         elif current_mode == 'my_teams':
             sport = game_copy.get('sport')
-            
-            # Always show non-game items (Weather/Clock) in My Teams mode
-            if sport in ['weather', 'clock']:
-                should_show = True
-            else:
+            if sport not in ['weather', 'clock']:
                 h_abbr = str(game_copy.get('home_abbr', '')).upper()
                 a_abbr = str(game_copy.get('away_abbr', '')).upper()
-                
                 h_scoped = f"{sport}:{h_abbr}"
                 a_scoped = f"{sport}:{a_abbr}"
                 
-                if h_abbr in COLLISION_ABBRS: in_home = h_scoped in saved_teams
-                else: in_home = (h_scoped in saved_teams or h_abbr in saved_teams)
-
-                if a_abbr in COLLISION_ABBRS: in_away = a_scoped in saved_teams
-                else: in_away = (a_scoped in saved_teams or a_abbr in saved_teams)
+                in_home = h_scoped in saved_teams or (h_abbr in saved_teams and h_abbr not in COLLISION_ABBRS)
+                in_away = a_scoped in saved_teams or (a_abbr in saved_teams and a_abbr not in COLLISION_ABBRS)
                 
                 if not (in_home or in_away): 
                     should_show = False
 
-        # Filter Logic: Mode Specifics
         elif current_mode == 'weather' and game_copy.get('type') != 'weather':
             should_show = False
         elif current_mode == 'clock' and game_copy.get('sport') != 'clock':
             should_show = False
 
-        # Global Hide: Suspended/Postponed
+        # Global Hide: Suspended/Postponed (usually hidden even in master state)
         status_lower = str(game_copy.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
             should_show = False
 
-        if should_show:
-            game_copy['is_shown'] = True
-            processed_games.append(game_copy)
+        # Apply the calculated visibility
+        game_copy['is_shown'] = should_show
+        processed_games.append(game_copy)
 
     return jsonify({
         "status": "ok",
