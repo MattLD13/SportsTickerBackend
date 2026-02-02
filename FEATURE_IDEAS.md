@@ -102,7 +102,7 @@ Highlight individual player performances with stats.
 ### 12. **Game Clock & Countdown Displays**
 Large, prominent time displays utilizing full width.
 - Centered game clock with team logos on sides (192-192 split)
-- Countdown to game start with animated progresstimer
+- Countdown to game start with animated progress timer
 - Period/quarter transitions with animations
 - Overtime clock with flashing border effects
 - Final buzzer animation sequence
