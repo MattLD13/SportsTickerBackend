@@ -2563,7 +2563,7 @@ def update_settings(tid):
 def api_state():
     ticker_id = request.args.get('id')
     
-    # 1. Resolve Ticker ID
+    # 1. Resolve Ticker ID (Manual, Header, or Single-Ticker Fallback)
     if not ticker_id:
         cid = request.headers.get('X-Client-ID')
         if cid:
@@ -2575,16 +2575,15 @@ def api_state():
     if not ticker_id and len(tickers) == 1:
         ticker_id = list(tickers.keys())[0]
 
+    # Initialize with global state, then override with ticker-specific settings if found
     response_settings = state.copy()
-    
-    # 2. Merge Local Settings if Ticker Found
     if ticker_id and ticker_id in tickers:
         local_settings = tickers[ticker_id]['settings']
         response_settings.update(local_settings)
         response_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
         response_settings['ticker_id'] = ticker_id 
     
-    # 3. Get All Available Games from the buffer
+    # 3. Get the "Raw" snapshot of all games (no delay for state view)
     raw_games = fetcher.get_snapshot_for_delay(0)
     processed_games = []
 
@@ -2594,22 +2593,29 @@ def api_state():
 
     for g in raw_games:
         game_copy = g.copy()
+        should_show = True # We start as True and try to disqualify
         
-        # Default to hidden; we will prove it should be shown
-        should_show = True
+        sport = game_copy.get('sport')
+        is_music_item = (game_copy.get('type') == 'music' or sport == 'music')
+
+        # --- MODE-BASED FILTERING (Synchronized with /data) ---
         
-        # --- LOGIC: Filter matching the /data endpoint ---
-        is_music_item = (game_copy.get('type') == 'music' or game_copy.get('sport') == 'music')
-        
+        # MUSIC FILTER: Only shown if mode is strictly 'music'
         if is_music_item:
-            if current_mode != 'music' and current_mode != 'all':
+            if current_mode != 'music':
                 should_show = False
         
+        # If in 'music' mode, only show the music item
+        elif current_mode == 'music' and not is_music_item:
+            should_show = False
+
+        # LIVE FILTER
         elif current_mode == 'live' and game_copy.get('state') not in ['in', 'half']: 
             should_show = False
             
+        # MY TEAMS FILTER
         elif current_mode == 'my_teams':
-            sport = game_copy.get('sport')
+            # Utils (Weather/Clock) usually pass through in My Teams
             if sport not in ['weather', 'clock']:
                 h_abbr = str(game_copy.get('home_abbr', '')).upper()
                 a_abbr = str(game_copy.get('away_abbr', '')).upper()
@@ -2622,17 +2628,18 @@ def api_state():
                 if not (in_home or in_away): 
                     should_show = False
 
+        # UTILITY FILTERS
         elif current_mode == 'weather' and game_copy.get('type') != 'weather':
             should_show = False
-        elif current_mode == 'clock' and game_copy.get('sport') != 'clock':
+        elif current_mode == 'clock' and sport != 'clock':
             should_show = False
 
-        # Global Hide: Suspended/Postponed (usually hidden even in master state)
+        # GLOBAL HIDE: Suspended or PPD games are usually hidden regardless of mode
         status_lower = str(game_copy.get('status', '')).lower()
         if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
             should_show = False
 
-        # Apply the calculated visibility
+        # Apply calculated visibility to the master list
         game_copy['is_shown'] = should_show
         processed_games.append(game_copy)
 
@@ -2641,7 +2648,7 @@ def api_state():
         "settings": response_settings,
         "games": processed_games 
     })
-
+    
 @app.route('/api/teams')
 def api_teams():
     with data_lock: return jsonify(state['all_teams_data'])
