@@ -912,15 +912,14 @@ class TickerStreamer:
         img = Image.new("RGBA", (384, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
         
-        # Draw news icon/emoji on left
-        d.text((4, 4), "📰", font=self.font, fill=(255, 255, 255))
+        # Draw "BREAKING NEWS" icon on left with bright red background
+        d.rectangle((0, 0, 24, 32), fill=(200, 0, 0))
+        d.text((2, 4), "!", font=self.big_font, fill=(255, 255, 255))
+        d.text((2, 18), "NEWS", font=self.micro, fill=(255, 255, 255))
         
-        # Draw "NEWS" label
-        d.text((4, 21), "NEWS", font=self.micro, fill=(255, 200, 0))
-        
-        # Draw the headline
+        # Draw the headline with yellow color for emphasis
         headline = game.get('headline', 'Breaking Sports News')
-        d.text((30, 8), headline, font=self.font, fill=(255, 255, 255))
+        d.text((28, 8), headline, font=self.font, fill=(255, 220, 0))
         
         return img
 

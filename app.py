@@ -625,7 +625,7 @@ class NewsAggregator:
             'trade', 'traded', 'signs', 'signed', 'fired', 'hire', 'hired',
             'retire', 'retired', 'injury', 'injured', 'suspend', 'suspended',
             'championship', 'playoff', 'record', 'mvp', 'breaking', 'deal',
-            'contract', 'extension', 'resign', 'released', 'waive', 'waived'
+            'contract', 'extension', 'released', 'waive', 'waived', 're-sign'
         ]
         
     def is_major_news(self, headline):
@@ -665,7 +665,7 @@ class NewsAggregator:
                             'sport': 'news',
                             'id': f"news_{hash(headline) % 100000}",
                             'status': 'NEWS',
-                            'away_abbr': '📰',
+                            'away_abbr': 'BREAKING',
                             'home_abbr': 'NEWS',
                             'away_score': '',
                             'home_score': '',
