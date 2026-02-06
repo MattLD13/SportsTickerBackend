@@ -167,6 +167,7 @@ LEAGUE_OPTIONS = [
     {'id': 'weather', 'label': 'Weather', 'type': 'util', 'default': True},
     {'id': 'clock', 'label': 'Clock', 'type': 'util', 'default': True},
     {'id': 'music', 'label': 'Music', 'type': 'util', 'default': True},
+    {'id': 'sports_news', 'label': 'Sports News', 'type': 'util', 'default': True},
     {'id': 'stock_tech_ai', 'label': 'Tech / AI Stocks', 'type': 'stock', 'default': True, 'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
     {'id': 'stock_momentum', 'label': 'Momentum Stocks', 'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
     {'id': 'stock_energy', 'label': 'Energy Stocks', 'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
@@ -613,6 +614,80 @@ class WeatherFetcher:
             print(f"Weather fetch failed: {e}")
             return None
 
+class NewsAggregator:
+    def __init__(self):
+        self.last_fetch = 0
+        self.cache = []
+        self.update_interval = 300  # 5 minutes
+        self.session = build_pooled_session(pool_size=5)
+        # Keywords that indicate "big" sports news
+        self.major_keywords = [
+            'trade', 'traded', 'signs', 'signed', 'fired', 'hire', 'hired',
+            'retire', 'retired', 'injury', 'injured', 'suspend', 'suspended',
+            'championship', 'playoff', 'record', 'mvp', 'breaking', 'deal',
+            'contract', 'extension', 'released', 'waive', 'waived', 're-sign'
+        ]
+        
+    def is_major_news(self, headline):
+        """Filter for only major news items"""
+        headline_lower = headline.lower()
+        return any(keyword in headline_lower for keyword in self.major_keywords)
+    
+    def get_news(self):
+        """Fetch major sports news from ESPN RSS feed"""
+        if time.time() - self.last_fetch < self.update_interval:
+            return self.cache
+        
+        try:
+            # ESPN provides free RSS feeds for sports news
+            rss_url = "https://www.espn.com/espn/rss/news"
+            response = self.session.get(rss_url, timeout=5, headers=HEADERS)
+            response.raise_for_status()
+            
+            # Parse RSS XML
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(response.content)
+            
+            news_items = []
+            for item in root.findall('.//item')[:20]:  # Get latest 20 items
+                title_elem = item.find('title')
+                link_elem = item.find('link')
+                desc_elem = item.find('description')
+                
+                if title_elem is not None and title_elem.text:
+                    headline = title_elem.text.strip()
+                    
+                    # Only include major news
+                    if self.is_major_news(headline):
+                        # Create news object matching the ticker format
+                        news_obj = {
+                            'type': 'news_item',
+                            'sport': 'news',
+                            'id': f"news_{hash(headline) % 100000}",
+                            'status': 'NEWS',
+                            'away_abbr': 'BREAKING',
+                            'home_abbr': 'NEWS',
+                            'away_score': '',
+                            'home_score': '',
+                            'headline': headline[:100],  # Truncate long headlines
+                            'is_shown': True,
+                            'state': 'in'
+                        }
+                        news_items.append(news_obj)
+                        
+                        # Limit to 5 major news items to avoid overwhelming the ticker
+                        if len(news_items) >= 5:
+                            break
+            
+            self.cache = news_items
+            self.last_fetch = time.time()
+            print(f"✅ Fetched {len(news_items)} major sports news items")
+            return self.cache
+            
+        except Exception as e:
+            print(f"News fetch failed: {e}")
+            return self.cache  # Return cached items on error
+
 class StockFetcher:
     def __init__(self):
         self.market_cache = {}
@@ -765,6 +840,7 @@ class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
         self.weather = WeatherFetcher(initial_lat=initial_lat, initial_lon=initial_lon, city=initial_city)
         self.stocks = StockFetcher()
+        self.news = NewsAggregator()
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         
@@ -2022,6 +2098,12 @@ class SportsFetcher:
 
         if conf['active_sports'].get('clock'):
             all_games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
+
+        # --- SPORTS NEWS (NEW) ---
+        if conf['active_sports'].get('sports_news'):
+            news_items = self.news.get_news()
+            if news_items:
+                all_games.extend(news_items)
 
         # --- MUSIC (NEW) ---
         music_obj = self.get_music_object()

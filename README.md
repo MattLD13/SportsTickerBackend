@@ -30,6 +30,11 @@ The Sports Ticker Backend is a powerful API server designed to aggregate and ser
   - NASCAR
 
 ### Additional Features
+- **Live Sports News** - Breaking sports news from ESPN RSS feed
+  - Automatically filtered for major events (trades, signings, injuries, etc.)
+  - Interspersed between sports scores
+  - Updates every 5 minutes
+  - Free - no API key required
 - Real-time stock price tracking with Finnhub API integration
 - Weather data integration
 - Clock display
