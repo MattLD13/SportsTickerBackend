@@ -906,6 +906,24 @@ class TickerStreamer:
         d.text(((PANEL_W - w)/2, 4), now, font=self.huge_font, fill=(100, 100, 100))
         return img
 
+    def draw_news_card(self, game):
+        """Draw a news card with scrolling headline"""
+        # Use a wide canvas for scrolling text like weather
+        img = Image.new("RGBA", (384, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        
+        # Draw news icon/emoji on left
+        d.text((4, 4), "📰", font=self.font, fill=(255, 255, 255))
+        
+        # Draw "NEWS" label
+        d.text((4, 21), "NEWS", font=self.micro, fill=(255, 200, 0))
+        
+        # Draw the headline
+        headline = game.get('headline', 'Breaking Sports News')
+        d.text((30, 8), headline, font=self.font, fill=(255, 255, 255))
+        
+        return img
+
     def draw_clock_modern(self):
         """Centered HUGE time with full date and bottom progress bar"""
         img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
@@ -959,6 +977,12 @@ class TickerStreamer:
 
         if game.get('sport') == 'clock':
             return self.draw_clock_modern()
+        
+        # Route to news renderer
+        if game.get('type') == 'news_item':
+            img = self.draw_news_card(game)
+            self.game_render_cache[game_hash] = img
+            return img
         
         # Route to stock renderer
         if game.get('type') == 'stock_ticker' or game.get('sport', '').startswith('stock'): 
