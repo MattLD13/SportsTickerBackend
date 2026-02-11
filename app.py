@@ -1792,6 +1792,10 @@ class SportsFetcher:
                     fetch_date = now_local
                 curr_p['dates'] = fetch_date.strftime("%Y%m%d")
             
+            # --- FIX: CACHE BUSTER ---
+            # Forces ESPN's CDN to return live data instead of a stale cached file
+            curr_p['_'] = int(time.time() * 1000)
+            
             # CHANGE: Use API_TIMEOUT
             r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=API_TIMEOUT)
             data = r.json()
