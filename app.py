@@ -2123,6 +2123,12 @@ class SportsFetcher:
             
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
+                    # --- ADD SMART SLEEP CHECK ---
+                    if time.time() < self.league_next_update.get(internal_id, 0):
+                        if internal_id in self.league_last_data:
+                            all_games.extend(self.league_last_data[internal_id])
+                        continue
+                    # -----------------------------
                     f = self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
                     futures[f] = internal_id
 
@@ -2155,8 +2161,8 @@ class SportsFetcher:
                     res = f.result()
                     if res: 
                         all_games.extend(res)
-                        # Save data for next sleep cycle
-                        if lk not in ['ahl', 'nhl_native'] and not lk.startswith('soccer_'):
+                        # --- REMOVE the `and not lk.startswith('soccer_')` restriction ---
+                        if lk not in ['ahl', 'nhl_native']:
                             self.league_last_data[lk] = res
                             self.league_next_update[lk] = self._calculate_next_update(res)
                 except Exception as e: 
@@ -2209,28 +2215,27 @@ class SportsFetcher:
             state['buffer_sports'] = all_games
             self.merge_buffers()
 
-    def get_snapshot_for_delay(self, delay_seconds):
+    def get_snapshot_for_delay(self, delay_seconds, requested_mode):
         if delay_seconds <= 0 or not self.history_buffer:
             with data_lock:
-                return state.get('current_games', [])
-        
-        target_time = time.time() - delay_seconds
-        closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
-        sports_snap = closest[1]
-        
+                sports_snap = state.get('buffer_sports', [])
+        else:
+            target_time = time.time() - delay_seconds
+            closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
+            sports_snap = closest[1]
+
         with data_lock:
             stocks_snap = state.get('buffer_stocks', [])
-            mode = state['mode']
-        
+
         utils = [g for g in sports_snap if g.get('type') == 'weather' or g.get('sport') == 'clock']
         music_items = [g for g in sports_snap if g.get('sport') == 'music']
         pure_sports = [g for g in sports_snap if g not in utils and g not in music_items]
-        
-        if mode == 'stocks': return stocks_snap
-        elif mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
-        elif mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
-        elif mode == 'music': return music_items
-        elif mode == 'all': return sports_snap
+
+        if requested_mode == 'stocks': return stocks_snap
+        elif requested_mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
+        elif requested_mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
+        elif requested_mode == 'music': return music_items
+        elif requested_mode == 'all': return sports_snap
         else: return pure_sports
 
     def update_buffer_stocks(self):
@@ -2447,7 +2452,8 @@ def get_ticker_data():
     # Get the base data
     music_obj = fetcher.get_music_object()
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
-    raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
+    # Update this line
+    raw_games = fetcher.get_snapshot_for_delay(delay_seconds, current_mode)
     
     visible_items = []
     
@@ -2643,7 +2649,8 @@ def api_state():
         response_settings['ticker_id'] = ticker_id 
     
     # 3. Get the "Raw" snapshot of all games (no delay for state view)
-    raw_games = fetcher.get_snapshot_for_delay(0)
+    # Update this line
+    raw_games = fetcher.get_snapshot_for_delay(0, current_mode)
     processed_games = []
 
     current_mode = response_settings.get('mode', 'all')
