@@ -1785,31 +1785,30 @@ class SportsFetcher:
         local_games = []
         if not conf['active_sports'].get(league_key, False): return []
 
+        # Leaderboards (F1/NASCAR) use different logic; skip them here
         if config.get('type') == 'leaderboard':
             return local_games
 
         try:
             curr_p = config.get('scoreboard_params', {}).copy()
             
-            # CHANGE B: DATE OPTIMIZATION
+            # --- DATE OPTIMIZATION ---
+            # EPL games kick off early. If it's before 11 AM EST, we look at 
+            # yesterday's games to ensure late-night finishes or early starts persist.
             now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
             
             if conf['debug_mode'] and conf['custom_date']:
                 curr_p['dates'] = conf['custom_date'].replace('-', '')
             else:
-                # FIX: If before 3AM, fetch yesterday's games so finals persist
-                # otherwise, the API defaults to the new day (which has no games yet)
-                if now_local.hour < 3:
+                if now_local.hour < 11: 
                     fetch_date = now_local - timedelta(days=1)
                 else:
                     fetch_date = now_local
                 curr_p['dates'] = fetch_date.strftime("%Y%m%d")
             
-            # --- FIX: CACHE BUSTER ---
-            # Forces ESPN's CDN to return live data instead of a stale cached file
+            # Cache buster for OCI/Cloudflare
             curr_p['_'] = int(time.time() * 1000)
             
-            # CHANGE: Use API_TIMEOUT
             r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=API_TIMEOUT)
             data = r.json()
             
@@ -1822,10 +1821,10 @@ class SportsFetcher:
             for e in events:
                 gid = str(e['id'])
 
-                # CHANGE A: CACHE CHECK
+                # Check cache for finished games to save CPU
                 if gid in self.final_game_cache:
                     local_games.append(self.final_game_cache[gid])
-                    continue # Skip processing
+                    continue 
                 
                 utc_str = e['date'].replace('Z', '')
                 st = e.get('status', {})
@@ -1834,12 +1833,14 @@ class SportsFetcher:
                 
                 try:
                     game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                    if gst != 'in' and gst != 'half':
+                    # If game is NOT live, check if it falls in our display window
+                    if gst not in ['in', 'half']:
                         if not (window_start_utc <= game_dt <= window_end_utc): continue
                     
+                    # Global visibility check
                     if game_dt < visible_start_utc or game_dt >= visible_end_utc:
-                          if gst not in ['in', 'half']:
-                              continue
+                        if gst not in ['in', 'half']:
+                            continue
                 except: continue
 
                 comp = e['competitions'][0]
@@ -1848,164 +1849,101 @@ class SportsFetcher:
                 h_ab = h['team'].get('abbreviation', 'UNK')
                 a_ab = a['team'].get('abbreviation', 'UNK')
                 
+                # --- TEAM FILTERS ---
+                # Only apply to College Football. Don't let these 'continue' soccer games!
                 if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
                 if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
 
-                # Seed Extraction Logic for March Madness
+                # Rankings (March Madness / College)
                 h_seed = h.get('curatedRank', {}).get('current', '')
                 a_seed = a.get('curatedRank', {}).get('current', '')
                 if h_seed == 99: h_seed = ""
                 if a_seed == 99: a_seed = ""
 
+                # Color & Logo logic
                 h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
                 a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
                 
                 h_clr = h['team'].get('color')
                 a_clr = a['team'].get('color')
-                h_alt = h['team'].get('alternateColor')
-                a_alt = a['team'].get('alternateColor')
+                h_alt = h['team'].get('alternateColor', 'ffffff')
+                a_alt = a['team'].get('alternateColor', 'ffffff')
 
-                # Force fallback to our hardcoded colors for international teams or missing ESPN data
-                if league_key == 'hockey_olympics' or not h_clr or h_clr == '000000' or not a_clr or a_clr == '000000':
-                    h_info = self.lookup_team_info_from_cache(league_key, h_ab)
-                    a_info = self.lookup_team_info_from_cache(league_key, a_ab)
-                    h_clr = h_clr if h_clr and h_clr != '000000' else h_info.get('color', '000000')
-                    a_clr = a_clr if a_clr and a_clr != '000000' else a_info.get('color', '000000')
-                    h_alt = h_alt if h_alt else h_info.get('alt_color', 'ffffff')
-                    a_alt = a_alt if a_alt else a_info.get('alt_color', 'ffffff')
-                else:
-                    h_clr = h_clr or '000000'
-                    a_clr = a_clr or '000000'
-                    h_alt = h_alt or 'ffffff'
-                    a_alt = a_alt or 'ffffff'
+                if not h_clr or h_clr == '000000':
+                    info = self.lookup_team_info_from_cache(league_key, h_ab)
+                    h_clr = info.get('color', '000000')
 
-                h_score = h.get('score','0')
-                a_score = a.get('score','0')
+                if not a_clr or a_clr == '000000':
+                    info = self.lookup_team_info_from_cache(league_key, a_ab)
+                    a_clr = info.get('color', '000000')
+
+                h_score = str(h.get('score','0'))
+                a_score = str(a.get('score','0'))
+
+                # Clean soccer aggregate scores
                 if 'soccer' in league_key: 
-                    h_score = re.sub(r'\s*\(.*?\)', '', str(h_score))
-                    a_score = re.sub(r'\s*\(.*?\)', '', str(a_score))
+                    h_score = re.sub(r'\s*\(.*?\)', '', h_score)
+                    a_score = re.sub(r'\s*\(.*?\)', '', a_score)
 
+                # --- FIX: INDENTATION (LINE 1888) ---
                 s_disp = tp.get('shortDetail', 'TBD')
                 p = st.get('period', 1)
                 duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
 
-                # --- FIX: ROBUST STATE INFERENCE ---
-                # ESPN sometimes fails to switch 'state' to 'in', leaving it stuck as 'pre'.
-                if gst == 'pre' and any(x in s_disp for x in ['1st', '2nd', '3rd', 'OT', 'Half', 'Qtr', 'Inning']):
-                    if "Final" not in s_disp and "FINAL" not in s_disp:
+                # --- ROBUST STATE INFERENCE (EPL FIX) ---
+                # Detect if game is live even if state is stuck in 'pre'
+                if gst == 'pre' and any(x in s_disp for x in ['1st', '2nd', '3rd', 'OT', 'Half', 'Qtr', 'Inning', "'"]):
+                    if "FINAL" not in s_disp.upper():
                         gst = 'in'
 
-                is_suspended = False
-                susp_keywords = ["Suspended", "Postponed", "Canceled", "Delayed", "PPD"]
-                for kw in susp_keywords:
-                    if kw in s_disp:
-                        is_suspended = True
-                        break
+                is_suspended = any(kw in s_disp for kw in ["Suspended", "Postponed", "Canceled", "Delayed", "PPD"])
                 
                 if not is_suspended:
                     if gst == 'pre':
                         try: s_disp = game_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
                         except: pass
-                    elif gst == 'in' or gst == 'half':
+                    elif gst in ['in', 'half']:
                         clk = st.get('displayClock', '0:00').replace("'", "")
                         
-                        # --- FIX: EXTRACT CLOCK FROM DETAIL IF ESPN LEAVES IT BLANK ---
+                        # Fix empty clock with detail regex
                         if (not clk or clk == '0:00') and ':' in s_disp:
                             m = re.search(r'(\d{1,2}:\d{2})', s_disp)
                             if m: clk = m.group(1)
 
-                        if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']): s_disp = "Halftime"
-                        elif 'hockey' in config['path'] and clk == '0:00':
-                                if p == 1: s_disp = "End 1st"
-                                elif p == 2: s_disp = "End 2nd"
-                                elif p == 3: s_disp = "End 3rd"
-                                else: s_disp = "Intermission"
+                        if gst == 'half' or 'Halftime' in s_disp:
+                            s_disp = "Halftime"
+                        elif 'soccer' in config['path']:
+                            s_disp = f"{clk or (p*45)}'" 
                         else:
-                            if 'soccer' in config['path']:
-                                in_extra = p >= 3 or 'ET' in tp.get('shortDetail', '')
-                                if in_extra:
-                                    if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT', 'ET HT']: s_disp = "ET HT"
-                                    else: s_disp = f"ET {clk}'"
-                                else:
-                                    s_disp = f"{clk}'"
-                                    if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
-                            elif 'basketball' in config['path']:
-                                if p > 4: s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
-                                else: s_disp = f"Q{p} {clk}"
-                            elif 'football' in config['path']:
-                                if p > 4: s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
-                                else: s_disp = f"Q{p} {clk}"
-                            elif 'hockey' in config['path']:
-                                if p > 3: s_disp = f"OT{p-3 if p-3>1 else ''} {clk}"
-                                else: s_disp = f"P{p} {clk}"
-                            elif 'baseball' in config['path']:
-                                short_detail = tp.get('shortDetail', s_disp)
-                                s_disp = short_detail.replace(" - ", " ").replace("Inning", "In")
-                            else: s_disp = f"P{p} {clk}"
+                            s_disp = f"P{p} {clk}"
 
+                # Normalize "FINAL" strings
                 s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
-                s_disp = s_disp.replace("End of ", "End ").replace(" Quarter", "").replace(" Inning", "").replace(" Period", "")
-
-                if "FINAL" in s_disp:
-                    if league_key == 'nhl':
-                        if "SO" in s_disp or "Shootout" in s_disp or p >= 5: s_disp = "FINAL S/O"
-                        elif p >= 4 and "OT" not in s_disp: s_disp = f"FINAL OT{p-3 if p-3>1 else ''}"
-                    elif league_key in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs'] and p > 4 and "OT" not in s_disp:
-                         s_disp = f"FINAL OT{p-4 if p-4>1 else ''}"
 
                 sit = comp.get('situation', {})
-                shootout_data = None
-                
-                poss_raw = sit.get('possession')
-                if poss_raw: self.possession_cache[e['id']] = poss_raw
-                elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
-                
-                if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime' or is_suspended:
-                    poss_raw = None
-                    self.possession_cache.pop(e['id'], None)
-
-                poss_abbr = ""
-                if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
-                elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
-                
-                down_text = sit.get('downDistanceText') or sit.get('shortDownDistanceText') or ''
-                if s_disp == "Halftime": down_text = ''
-
                 game_obj = {
-                    'type': 'scoreboard', 'sport': league_key, 'id': gid, 'status': s_disp, 'state': gst, 'is_shown': True,
+                    'type': 'scoreboard', 'sport': league_key, 'id': gid, 'status': s_disp, 'state': gst, 'is_shown': not is_suspended,
                     'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg,
                     'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg,
                     'home_color': f"#{h_clr}", 'home_alt_color': f"#{h_alt}",
                     'away_color': f"#{a_clr}", 'away_alt_color': f"#{a_alt}",
                     'startTimeUTC': e['date'],
-                    'estimated_duration': duration_est,
-                    
-                    # MARCH MADNESS SPECIFIC FIELDS
-                    'home_seed': str(h_seed),
-                    'away_seed': str(a_seed),
-                    
+                    'home_seed': str(h_seed), 'away_seed': str(a_seed),
                     'situation': { 
-                        'possession': poss_abbr, 
-                        'isRedZone': sit.get('isRedZone', False), 
-                        'downDist': down_text, 
-                        'shootout': shootout_data,
-                        'powerPlay': False, 
-                        'emptyNet': False
+                        'possession': sit.get('possession', ''), 
+                        'downDist': sit.get('downDistanceText', ''),
+                        'isRedZone': sit.get('isRedZone', False)
                     }
                 }
-                if league_key == 'mlb':
-                    game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 
-                        'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
-                
-                if is_suspended: game_obj['is_shown'] = False
                 
                 local_games.append(game_obj)
                 
-                # CHANGE C: SAVE FINAL GAMES TO CACHE
                 if gst == 'post' and "FINAL" in s_disp:
                     self.final_game_cache[gid] = game_obj
 
-        except Exception as e: print(f"Error fetching {league_key}: {e}")
+        except Exception as e: 
+            print(f"Error fetching {league_key}: {e}")
+            
         return local_games
 
     def get_music_object(self):
