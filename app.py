@@ -2110,9 +2110,9 @@ class SportsFetcher:
             
             futures = {}
 
-            # --- SMART LOOP IMPLEMENTATION ---
+            # --- SIMPLE LOOP IMPLEMENTATION ---
             
-            # Special fetchers (Always submit for now, but with timeout)
+            # Special fetchers
             if conf['active_sports'].get('ahl', False):
                 f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
                 futures[f] = 'ahl'
@@ -2123,36 +2123,22 @@ class SportsFetcher:
             
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
-                    # --- ADD SMART SLEEP CHECK ---
-                    if time.time() < self.league_next_update.get(internal_id, 0):
-                        if internal_id in self.league_last_data:
-                            all_games.extend(self.league_last_data[internal_id])
-                        continue
-                    # -----------------------------
                     f = self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
                     futures[f] = internal_id
 
-            # Standard ESPN fetchers (Apply Smart Sleep)
+            # Standard ESPN fetchers
             for league_key, config in self.leagues.items():
                 if league_key == 'nhl' and not conf['debug_mode']: continue 
                 if league_key.startswith('soccer_'): continue
                 if league_key == 'ahl': continue
                 
-                # Check Sleep Status
-                if time.time() < self.league_next_update.get(league_key, 0):
-                    # SLEEPING: Use cached data (Instant)
-                    if league_key in self.league_last_data:
-                        all_games.extend(self.league_last_data[league_key])
-                    continue
-                
-                # AWAKE: Submit task
                 f = self.executor.submit(
                     self.fetch_single_league, 
                     league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc
                 )
                 futures[f] = league_key
             
-            # HARD TIMEOUT: Wait max 3.0s for threads
+            # HARD TIMEOUT: Wait max for threads
             done, _ = concurrent.futures.wait(futures.keys(), timeout=API_TIMEOUT)
             
             for f in done:
@@ -2161,12 +2147,16 @@ class SportsFetcher:
                     res = f.result()
                     if res: 
                         all_games.extend(res)
-                        # --- REMOVE the `and not lk.startswith('soccer_')` restriction ---
-                        if lk not in ['ahl', 'nhl_native']:
-                            self.league_last_data[lk] = res
-                            self.league_next_update[lk] = self._calculate_next_update(res)
+                        self.league_last_data[lk] = res # Save successful pull!
+                    else:
+                        # API returned empty, immediately fall back to cache
+                        if lk in self.league_last_data:
+                            all_games.extend(self.league_last_data[lk])
                 except Exception as e: 
                     print(f"Fetch error {lk}: {e}")
+                    # If request completely crashes, fall back to cache
+                    if lk in self.league_last_data:
+                        all_games.extend(self.league_last_data[lk])
 
         sports_count = len([g for g in all_games if g.get('type') == 'scoreboard'])
         
