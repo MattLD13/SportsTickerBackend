@@ -161,7 +161,7 @@ LEAGUE_OPTIONS = [
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_europa_league', 'label': 'Europa League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 200}, 'type': 'scoreboard'}},
     {'id': 'soccer_mls', 'label': 'MLS', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/usa.1', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'hockey_olympics', 'label': 'Olympic Hockey', 'type': 'sport', 'default': True, 'fetch': {'path': 'hockey/mens-olympic-hockey', 'type': 'scoreboard'}},
+    {'id': 'hockey_olympics', 'label': 'Olympic Hockey', 'type': 'sport', 'default': True, 'fetch': {'path': 'hockey/olympics-mens-ice-hockey', 'type': 'scoreboard'}},
     {'id': 'f1', 'label': 'Formula 1', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
     {'id': 'nascar', 'label': 'NASCAR', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
     {'id': 'weather', 'label': 'Weather', 'type': 'util', 'default': True},
@@ -177,18 +177,19 @@ LEAGUE_OPTIONS = [
 FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
 FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
 OLYMPIC_HOCKEY_TEAMS = [
-    {"abbr": "CAN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/can.png"},
-    {"abbr": "USA", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/usa.png"},
-    {"abbr": "SWE", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/swe.png"},
-    {"abbr": "FIN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/fin.png"},
-    {"abbr": "RUS", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/rus.png"},
-    {"abbr": "CZE", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png"},
-    {"abbr": "GER", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/ger.png"},
-    {"abbr": "SUI", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/sui.png"},
-    {"abbr": "SVK", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/svk.png"},
-    {"abbr": "LAT", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/lat.png"},
-    {"abbr": "DEN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/den.png"},
-    {"abbr": "CHN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/chn.png"}
+    {"abbr": "CAN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/can.png", "color": "D52B1E", "alt_color": "FFFFFF"},
+    {"abbr": "USA", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/usa.png", "color": "0A3161", "alt_color": "B31942"},
+    {"abbr": "SWE", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/swe.png", "color": "FECC02", "alt_color": "004B87"},
+    {"abbr": "FIN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/fin.png", "color": "002F6C", "alt_color": "FFFFFF"},
+    {"abbr": "RUS", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/rus.png", "color": "D52B1E", "alt_color": "0039A6"},
+    {"abbr": "CZE", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png", "color": "D7141A", "alt_color": "11457E"},
+    {"abbr": "GER", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/ger.png", "color": "000000", "alt_color": "FFCE00"},
+    {"abbr": "SUI", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/sui.png", "color": "FF0000", "alt_color": "FFFFFF"},
+    {"abbr": "SVK", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/svk.png", "color": "0B4EA2", "alt_color": "EE1C25"},
+    {"abbr": "LAT", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/lat.png", "color": "9E3039", "alt_color": "FFFFFF"},
+    {"abbr": "DEN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/den.png", "color": "C60C30", "alt_color": "FFFFFF"},
+    {"abbr": "CHN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/chn.png", "color": "EE1C25", "alt_color": "FFFF00"},
+    {"abbr": "ITA", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/ita.png", "color": "0064A8", "alt_color": "FFFFFF"}
 ]
 
 SOCCER_ABBR_OVERRIDES = {
@@ -909,8 +910,8 @@ class SportsFetcher:
                     'abbr': t['abbr'], 
                     'id': f"hockey_olympics:{t['abbr']}",
                     'logo': t['logo'], 
-                    'color': '000000', 
-                    'alt_color': '444444'
+                    'color': t.get('color', '000000'), 
+                    'alt_color': t.get('alt_color', '444444')
                 })
 
             url = f"{self.base_url}football/college-football/teams"
@@ -1832,6 +1833,26 @@ class SportsFetcher:
 
                 h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
                 a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
+                
+                h_clr = h['team'].get('color')
+                a_clr = a['team'].get('color')
+                h_alt = h['team'].get('alternateColor')
+                a_alt = a['team'].get('alternateColor')
+
+                # Force fallback to our hardcoded colors for international teams or missing ESPN data
+                if league_key == 'hockey_olympics' or not h_clr or h_clr == '000000' or not a_clr or a_clr == '000000':
+                    h_info = self.lookup_team_info_from_cache(league_key, h_ab)
+                    a_info = self.lookup_team_info_from_cache(league_key, a_ab)
+                    h_clr = h_clr if h_clr and h_clr != '000000' else h_info.get('color', '000000')
+                    a_clr = a_clr if a_clr and a_clr != '000000' else a_info.get('color', '000000')
+                    h_alt = h_alt if h_alt else h_info.get('alt_color', 'ffffff')
+                    a_alt = a_alt if a_alt else a_info.get('alt_color', 'ffffff')
+                else:
+                    h_clr = h_clr or '000000'
+                    a_clr = a_clr or '000000'
+                    h_alt = h_alt or 'ffffff'
+                    a_alt = a_alt or 'ffffff'
+
                 h_score = h.get('score','0')
                 a_score = a.get('score','0')
                 if 'soccer' in league_key: 
@@ -1916,8 +1937,8 @@ class SportsFetcher:
                     'type': 'scoreboard', 'sport': league_key, 'id': gid, 'status': s_disp, 'state': gst, 'is_shown': True,
                     'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg,
                     'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg,
-                    'home_color': f"#{h['team'].get('color','000000')}", 'home_alt_color': f"#{h['team'].get('alternateColor','ffffff')}",
-                    'away_color': f"#{a['team'].get('color','000000')}", 'away_alt_color': f"#{a['team'].get('alternateColor','ffffff')}",
+                    'home_color': f"#{h_clr}", 'home_alt_color': f"#{h_alt}",
+                    'away_color': f"#{a_clr}", 'away_alt_color': f"#{a_alt}",
                     'startTimeUTC': e['date'],
                     'estimated_duration': duration_est,
                     
