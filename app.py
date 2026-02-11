@@ -1885,9 +1885,9 @@ class SportsFetcher:
                     h_score = re.sub(r'\s*\(.*?\)', '', str(h_score))
                     a_score = re.sub(r'\s*\(.*?\)', '', str(a_score))
 
-                    s_disp = tp.get('shortDetail', 'TBD')
-                    p = st.get('period', 1)
-                    duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
+                s_disp = tp.get('shortDetail', 'TBD')
+                p = st.get('period', 1)
+                duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
 
                 # --- FIX: ROBUST STATE INFERENCE ---
                 # ESPN sometimes fails to switch 'state' to 'in', leaving it stuck as 'pre'.
