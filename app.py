@@ -188,7 +188,6 @@ OLYMPIC_HOCKEY_TEAMS = [
     {"abbr": "SVK", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/svk.png", "color": "0B4EA2", "alt_color": "EE1C25"},
     {"abbr": "LAT", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/lat.png", "color": "9E3039", "alt_color": "FFFFFF"},
     {"abbr": "DEN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/den.png", "color": "C60C30", "alt_color": "FFFFFF"},
-    {"abbr": "CHN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/chn.png", "color": "EE1C25", "alt_color": "FFFF00"},
     {"abbr": "ITA", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/ita.png", "color": "0064A8", "alt_color": "FFFFFF"}
 ]
 
