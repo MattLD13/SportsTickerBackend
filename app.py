@@ -521,13 +521,18 @@ class SpotifyFetcher(threading.Thread):
 # ================= FETCHING LOGIC =================
 
 def validate_logo_url(base_id):
-    url_90 = f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png"
-    try:
-        r = requests.head(url_90, timeout=1)
-        if r.status_code == 200:
-            return url_90
-    except: pass
-    return f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}.png"
+    urls_to_try = [
+        f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png",
+        f"https://assets.leaguestat.com/ahl/logos/{base_id}_91.png",
+        f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}.png"
+    ]
+    for url in urls_to_try:
+        try:
+            r = requests.head(url, timeout=1)
+            if r.status_code == 200:
+                return url
+        except: pass
+    return f"https://assets.leaguestat.com/ahl/logos/{base_id}.png"
 
 class WeatherFetcher:
     def __init__(self, initial_lat=40.7128, initial_lon=-74.0060, city="New York"):
@@ -1061,6 +1066,10 @@ class SportsFetcher:
                 # Date Filter
                 if g_date_str != req_date: continue
 
+                # --- FIX: FILTER OUT TBD GAMES ---
+                if h_code == "TBD" or a_code == "TBD" or not h_code or not a_code:
+                    continue
+
                 # --- ROBUST TIME PARSING START ---
                 parsed_utc = ""
                 
@@ -1172,8 +1181,12 @@ class SportsFetcher:
                     a_meta_raw = AHL_TEAMS.get(a_code)
                     if a_meta_raw: a_obj = next((t for t in ahl_refs if t.get('real_id') == a_meta_raw.get('id')), None)
                 
-                h_logo = h_obj['logo'] if h_obj else ""
-                a_logo = a_obj['logo'] if a_obj else ""
+                # --- FIX: DYNAMIC LOGOS FOR ALL-STAR/UNKNOWN TEAMS ---
+                h_id_raw = g.get("HomeID") or g.get("HomeTeamID")
+                a_id_raw = g.get("VisitorID") or g.get("VisitorTeamID")
+
+                h_logo = h_obj['logo'] if (h_obj and h_obj.get('logo')) else (f"https://assets.leaguestat.com/ahl/logos/{h_id_raw}_91.png" if h_id_raw else "")
+                a_logo = a_obj['logo'] if (a_obj and a_obj.get('logo')) else (f"https://assets.leaguestat.com/ahl/logos/{a_id_raw}_91.png" if a_id_raw else "")
                 
                 h_meta = AHL_TEAMS.get(h_code, {"color": "000000"})
                 a_meta = AHL_TEAMS.get(a_code, {"color": "000000"})
