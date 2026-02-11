@@ -1235,6 +1235,11 @@ class SportsFetcher:
             for d in r.json().get('gameWeek', []):
                 for g in d.get('games', []):
                     try:
+                        # Filter out non-NHL events (e.g. 9 = Olympics, 6 = World Cup)
+                        # Keep 1 (Preseason), 2 (Regular Season), 3 (Playoffs), 4 (All-Star)
+                        if int(g.get('gameType', 2)) not in [1, 2, 3, 4]:
+                            continue
+
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
                         g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
@@ -1253,6 +1258,10 @@ class SportsFetcher:
             for d in r.json().get('gameWeek', []):
                 for g in d.get('games', []):
                     try:
+                        # Filter out non-NHL events here as well
+                        if int(g.get('gameType', 2)) not in [1, 2, 3, 4]:
+                            continue
+
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
                         g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
