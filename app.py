@@ -2641,6 +2641,7 @@ def api_state():
         ticker_id = list(tickers.keys())[0]
 
     # Initialize with global state, then override with ticker-specific settings if found
+    # Initialize with global state, then override with ticker-specific settings if found
     response_settings = state.copy()
     if ticker_id and ticker_id in tickers:
         local_settings = tickers[ticker_id]['settings']
@@ -2648,14 +2649,16 @@ def api_state():
         response_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
         response_settings['ticker_id'] = ticker_id 
     
-    # 3. Get the "Raw" snapshot of all games (no delay for state view)
-    # Update this line
+    # 1. MOVE THIS UP: Define current_mode first
+    current_mode = response_settings.get('mode', 'all')
+    
+    # 2. NOW call the fetcher with the mode
     raw_games = fetcher.get_snapshot_for_delay(0, current_mode)
     processed_games = []
 
-    current_mode = response_settings.get('mode', 'all')
+    # 3. Continue as normal
     saved_teams = response_settings.get('my_teams', [])
-    COLLISION_ABBRS = {'LV'} 
+    COLLISION_ABBRS = {'LV'}
 
     for g in raw_games:
         game_copy = g.copy()
