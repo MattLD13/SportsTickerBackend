@@ -77,7 +77,7 @@ STOCK_CACHE_FILE = "stock_cache.json"
 SPORTS_UPDATE_INTERVAL = 5.0    
 STOCKS_UPDATE_INTERVAL = 30     
 WORKER_THREAD_COUNT = 10        
-API_TIMEOUT = 3.0               
+API_TIMEOUT = 7.0            
 
 data_lock = threading.Lock()
 
@@ -1885,9 +1885,15 @@ class SportsFetcher:
                     h_score = re.sub(r'\s*\(.*?\)', '', str(h_score))
                     a_score = re.sub(r'\s*\(.*?\)', '', str(a_score))
 
-                s_disp = tp.get('shortDetail', 'TBD')
+               s_disp = tp.get('shortDetail', 'TBD')
                 p = st.get('period', 1)
                 duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
+
+                # --- FIX: ROBUST STATE INFERENCE ---
+                # ESPN sometimes fails to switch 'state' to 'in', leaving it stuck as 'pre'.
+                if gst == 'pre' and any(x in s_disp for x in ['1st', '2nd', '3rd', 'OT', 'Half', 'Qtr', 'Inning']):
+                    if "Final" not in s_disp and "FINAL" not in s_disp:
+                        gst = 'in'
 
                 is_suspended = False
                 susp_keywords = ["Suspended", "Postponed", "Canceled", "Delayed", "PPD"]
@@ -1902,6 +1908,12 @@ class SportsFetcher:
                         except: pass
                     elif gst == 'in' or gst == 'half':
                         clk = st.get('displayClock', '0:00').replace("'", "")
+                        
+                        # --- FIX: EXTRACT CLOCK FROM DETAIL IF ESPN LEAVES IT BLANK ---
+                        if (not clk or clk == '0:00') and ':' in s_disp:
+                            m = re.search(r'(\d{1,2}:\d{2})', s_disp)
+                            if m: clk = m.group(1)
+
                         if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']): s_disp = "Halftime"
                         elif 'hockey' in config['path'] and clk == '0:00':
                                 if p == 1: s_disp = "End 1st"
