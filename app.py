@@ -1821,10 +1821,18 @@ class SportsFetcher:
             for e in events:
                 gid = str(e['id'])
 
-                # CHANGE A: CACHE CHECK
+                # CHANGE A: CACHE CHECK (with date guard)
                 if gid in self.final_game_cache:
-                    local_games.append(self.final_game_cache[gid])
-                    continue # Skip processing
+                    cached = self.final_game_cache[gid]
+                    try:
+                        cached_dt = dt.fromisoformat(cached.get('startTimeUTC', '').replace('Z', '+00:00'))
+                        if visible_start_utc <= cached_dt <= visible_end_utc:
+                            local_games.append(cached)
+                            continue
+                        else:
+                            del self.final_game_cache[gid]
+                    except:
+                        del self.final_game_cache[gid]
                 
                 utc_str = e['date'].replace('Z', '')
                 st = e.get('status', {})
