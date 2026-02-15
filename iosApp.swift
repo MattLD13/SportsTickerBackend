@@ -918,6 +918,19 @@ struct GameRow: View {
         return !activeSituation.isEmpty && !hasPossession(isHome: true) && !hasPossession(isHome: false)
     }
     
+    func weatherIcon(for condition: String) -> String {
+        let c = condition.uppercased()
+        if c.contains("CLEAR") || c.contains("SUNNY") { return "sun.max.fill" }
+        if c.contains("PARTLY") { return "cloud.sun.fill" }
+        if c.contains("CLOUD") || c.contains("OVERCAST") { return "cloud.fill" }
+        if c.contains("RAIN") || c.contains("DRIZZLE") || c.contains("SHOWER") { return "cloud.rain.fill" }
+        if c.contains("SNOW") { return "cloud.snow.fill" }
+        if c.contains("THUNDER") { return "cloud.bolt.rain.fill" }
+        if c.contains("FOG") || c.contains("MIST") || c.contains("HAZE") { return "cloud.fog.fill" }
+        if c.contains("FREEZING") { return "thermometer.snowflake" }
+        return "cloud.fill"
+    }
+    
     var formattedSport: String {
         if let label = leagueLabel { return label }
         switch game.sport {
@@ -1065,62 +1078,147 @@ struct GameRow: View {
             
         } else if game.type == "flight_weather" {
             // MARK: - AIRPORT WEATHER HEADER CARD
-            HStack(spacing: 12) {
-                Capsule().fill(Color.cyan).frame(width: 4, height: 55)
-                Image(systemName: "building.2.fill").font(.title2).foregroundStyle(.cyan)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(game.safeHomeAbbr).font(.headline).bold().foregroundColor(.white)
-                    Text(game.status).font(.caption).foregroundColor(.gray)
+            HStack(spacing: 14) {
+                // Airport icon with glow
+                ZStack {
+                    Circle().fill(Color.cyan.opacity(0.15)).frame(width: 48, height: 48)
+                    Image(systemName: "airplane.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(.cyan)
                 }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(game.safeHomeAbbr)
+                        .font(.system(size: 18, weight: .bold)).foregroundColor(.white)
+                    HStack(spacing: 6) {
+                        Image(systemName: weatherIcon(for: game.status))
+                            .font(.caption).foregroundStyle(.cyan.opacity(0.8))
+                        Text(game.status)
+                            .font(.system(size: 12, weight: .medium)).foregroundColor(.gray)
+                    }
+                }
+                
                 Spacer()
-                Text(game.safeAwayAbbr)
-                    .font(.system(size: 22, weight: .bold)).foregroundColor(.white)
+                
+                // Temperature display
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(game.safeAwayAbbr)
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("AIRPORT")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(.cyan.opacity(0.6))
+                        .tracking(2)
+                }
             }
-            .padding(12).background(LinearGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.15), Color(white: 0.12)]), startPoint: .leading, endPoint: .trailing))
-            .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.4), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
-            .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
+            .padding(16)
+            .background(
+                ZStack {
+                    LinearGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.12), Color(white: 0.08)]), startPoint: .topLeading, endPoint: .bottomTrailing)
+                    // Subtle runway pattern
+                    HStack {
+                        Spacer()
+                        Rectangle().fill(Color.cyan.opacity(0.03)).frame(width: 2).padding(.vertical, 8)
+                        Spacer().frame(width: 6)
+                        Rectangle().fill(Color.cyan.opacity(0.03)).frame(width: 2).padding(.vertical, 8)
+                        Spacer().frame(width: 20)
+                    }
+                }
+            )
+            .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.5), Color.cyan.opacity(0.1)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
+            .clipShape(shape).shadow(color: Color.cyan.opacity(0.08), radius: 12, x: 0, y: 6)
             
         } else if game.type == "flight_arrival" {
             // MARK: - ARRIVAL CARD
             HStack(spacing: 12) {
-                Capsule().fill(Color.green).frame(width: 4, height: 45)
-                Image(systemName: "airplane.arrival").font(.title3).foregroundStyle(.green)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(game.safeAwayAbbr).font(.subheadline).bold().foregroundColor(.white)
-                    Text("from \(game.safeHomeAbbr)").font(.caption).foregroundColor(.gray)
+                // Green accent bar
+                RoundedRectangle(cornerRadius: 2).fill(Color.green).frame(width: 3, height: 50)
+                
+                // Airplane icon in circle
+                ZStack {
+                    Circle().fill(Color.green.opacity(0.12)).frame(width: 36, height: 36)
+                    Image(systemName: "airplane.arrival")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.green)
                 }
+                
+                // Flight info
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(game.safeAwayAbbr)
+                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                    HStack(spacing: 4) {
+                        Text("from")
+                            .font(.system(size: 11)).foregroundColor(.gray)
+                        Text(game.safeHomeAbbr)
+                            .font(.system(size: 11, weight: .semibold)).foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                
                 Spacer()
-                Text("ARRIVING")
-                    .font(.system(size: 10, weight: .bold))
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Color.green.opacity(0.2))
-                    .foregroundColor(.green)
-                    .cornerRadius(6)
+                
+                // Status badge
+                HStack(spacing: 4) {
+                    Circle().fill(Color.green).frame(width: 5, height: 5)
+                    Text("ARRIVING")
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        .tracking(0.5)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(Color.green.opacity(0.12))
+                .foregroundColor(.green)
+                .clipShape(Capsule())
             }
-            .padding(12).background(Color(white: 0.12))
-            .overlay(shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
-            .clipShape(shape).shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 3)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(Color(white: 0.10))
+            .overlay(shape.strokeBorder(Color.green.opacity(0.12), lineWidth: 1))
+            .clipShape(shape).shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
             
         } else if game.type == "flight_departure" {
             // MARK: - DEPARTURE CARD
             HStack(spacing: 12) {
-                Capsule().fill(Color.blue).frame(width: 4, height: 45)
-                Image(systemName: "airplane.departure").font(.title3).foregroundStyle(.blue)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(game.safeAwayAbbr).font(.subheadline).bold().foregroundColor(.white)
-                    Text("to \(game.safeHomeAbbr)").font(.caption).foregroundColor(.gray)
+                // Blue accent bar
+                RoundedRectangle(cornerRadius: 2).fill(Color.blue).frame(width: 3, height: 50)
+                
+                // Airplane icon in circle
+                ZStack {
+                    Circle().fill(Color.blue.opacity(0.12)).frame(width: 36, height: 36)
+                    Image(systemName: "airplane.departure")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.blue)
                 }
+                
+                // Flight info
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(game.safeAwayAbbr)
+                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                    HStack(spacing: 4) {
+                        Text("to")
+                            .font(.system(size: 11)).foregroundColor(.gray)
+                        Text(game.safeHomeAbbr)
+                            .font(.system(size: 11, weight: .semibold)).foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                
                 Spacer()
-                Text("DEPARTING")
-                    .font(.system(size: 10, weight: .bold))
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Color.blue.opacity(0.2))
-                    .foregroundColor(.blue)
-                    .cornerRadius(6)
+                
+                // Status badge
+                HStack(spacing: 4) {
+                    Circle().fill(Color.blue).frame(width: 5, height: 5)
+                    Text("DEPARTING")
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        .tracking(0.5)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(Color.blue.opacity(0.12))
+                .foregroundColor(.blue)
+                .clipShape(Capsule())
             }
-            .padding(12).background(Color(white: 0.12))
-            .overlay(shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
-            .clipShape(shape).shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 3)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(Color(white: 0.10))
+            .overlay(shape.strokeBorder(Color.blue.opacity(0.12), lineWidth: 1))
+            .clipShape(shape).shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
             
         } else if game.type == "leaderboard" {
             // MARK: - LEADERBOARD CARD
