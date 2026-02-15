@@ -1084,7 +1084,11 @@ struct GameRow: View {
 struct ContentView: View {
     @StateObject var vm = TickerViewModel()
     @State private var selectedTab = 0
-    init() { UITabBar.appearance().isHidden = true }
+    
+    init() {
+        URLCache.shared = URLCache(memoryCapacity: 512_000, diskCapacity: 1_000_000, diskPath: nil)
+        UITabBar.appearance().isHidden = true
+    }
     
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -1704,3 +1708,4 @@ struct PairingView: View {
         }
     }
 }
+
