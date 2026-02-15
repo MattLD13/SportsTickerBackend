@@ -112,6 +112,17 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     let situation: Situation?
     let type: String?
     let tourney_name: String?
+    // Flight tracking fields
+    let guest_name: String?
+    let route: String?
+    let origin_city: String?
+    let dest_city: String?
+    let alt: Int?
+    let dist: Int?
+    let eta_str: String?
+    let speed: Int?
+    let progress: Int?
+    let is_live: Bool?
     
     var safeHomeAbbr: String { home_abbr ?? "" }
     var safeAwayAbbr: String { away_abbr ?? "" }
@@ -121,7 +132,7 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     var safeAwayID: String { away_id ?? safeAwayAbbr }
     
     enum CodingKeys: String, CodingKey {
-        case id, sport, status, state, home_abbr, home_id, home_score, home_logo, home_color, home_alt_color, away_abbr, away_id, away_score, away_logo, away_color, away_alt_color, is_shown, situation, type, tourney_name
+        case id, sport, status, state, home_abbr, home_id, home_score, home_logo, home_color, home_alt_color, away_abbr, away_id, away_score, away_logo, away_color, away_alt_color, is_shown, situation, type, tourney_name, guest_name, route, origin_city, dest_city, alt, dist, eta_str, speed, progress, is_live
     }
     
     init(from decoder: Decoder) throws {
@@ -142,6 +153,21 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
         situation = try? c.decode(Situation.self, forKey: .situation)
         type = try? c.decode(String.self, forKey: .type)
         tourney_name = try? c.decode(String.self, forKey: .tourney_name)
+        // Flight fields
+        guest_name = try? c.decode(String.self, forKey: .guest_name)
+        route = try? c.decode(String.self, forKey: .route)
+        origin_city = try? c.decode(String.self, forKey: .origin_city)
+        dest_city = try? c.decode(String.self, forKey: .dest_city)
+        alt = try? c.decode(Int.self, forKey: .alt)
+        dist = try? c.decode(Int.self, forKey: .dist)
+        eta_str = try? c.decode(String.self, forKey: .eta_str)
+        is_live = try? c.decode(Bool.self, forKey: .is_live)
+        if let spd = try? c.decode(Int.self, forKey: .speed) { speed = spd }
+        else if let spdD = try? c.decode(Double.self, forKey: .speed) { speed = Int(spdD) }
+        else { speed = nil }
+        if let prog = try? c.decode(Int.self, forKey: .progress) { progress = prog }
+        else if let progD = try? c.decode(Double.self, forKey: .progress) { progress = Int(progD) }
+        else { progress = nil }
         
         if let hid = try? c.decode(String.self, forKey: .home_id) { home_id = hid }
         else if let hidInt = try? c.decode(Int.self, forKey: .home_id) { home_id = String(hidInt) }
@@ -948,6 +974,153 @@ struct GameRow: View {
             .padding(12).background(Color(white: 0.15))
             .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [.white.opacity(0.3), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
             .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
+            
+        } else if game.type == "flight_visitor" {
+            // MARK: - FLIGHT TRACKER CARD
+            let isInAir = game.is_live == true
+            let progressPct = Double(game.progress ?? 0) / 100.0
+            
+            VStack(alignment: .leading, spacing: 10) {
+                // Header
+                HStack(spacing: 8) {
+                    Image(systemName: "airplane.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(isInAir ? .orange : .gray)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(game.guest_name ?? game.id)
+                            .font(.headline).bold().foregroundColor(.white)
+                        Text(game.route ?? "")
+                            .font(.caption).foregroundColor(.gray)
+                    }
+                    Spacer()
+                    Text(game.status)
+                        .font(.system(size: 11, weight: .bold))
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(isInAir ? Color.orange.opacity(0.2) : Color.green.opacity(0.2))
+                        .foregroundColor(isInAir ? .orange : .green)
+                        .cornerRadius(6)
+                }
+                
+                // Route visualization
+                HStack(spacing: 0) {
+                    Text(game.origin_city ?? "?")
+                        .font(.system(size: 11, weight: .bold)).foregroundColor(.white)
+                    Spacer()
+                    Text(game.dest_city ?? "?")
+                        .font(.system(size: 11, weight: .bold)).foregroundColor(.white)
+                }
+                
+                // Progress bar
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.1)).frame(height: 6)
+                    GeometryReader { geo in
+                        Capsule().fill(Color.orange)
+                            .frame(width: max(6, geo.size.width * progressPct), height: 6)
+                    }.frame(height: 6)
+                    // Airplane icon on progress
+                    GeometryReader { geo in
+                        Image(systemName: "airplane")
+                            .font(.system(size: 12))
+                            .foregroundColor(.orange)
+                            .rotationEffect(.degrees(0))
+                            .offset(x: max(0, min(geo.size.width - 14, geo.size.width * progressPct - 7)), y: -10)
+                    }.frame(height: 6)
+                }
+                
+                // Stats row
+                HStack(spacing: 16) {
+                    if let alt = game.alt, alt > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up").font(.system(size: 9))
+                            Text("\(alt.formatted()) ft").font(.system(size: 11, weight: .medium))
+                        }.foregroundStyle(.gray)
+                    }
+                    if let spd = game.speed, spd > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "speedometer").font(.system(size: 9))
+                            Text("\(spd) mph").font(.system(size: 11, weight: .medium))
+                        }.foregroundStyle(.gray)
+                    }
+                    if let dist = game.dist, dist > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "location").font(.system(size: 9))
+                            Text("\(dist) mi").font(.system(size: 11, weight: .medium))
+                        }.foregroundStyle(.gray)
+                    }
+                    Spacer()
+                    if let eta = game.eta_str, !eta.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock").font(.system(size: 9))
+                            Text("ETA \(eta)").font(.system(size: 11, weight: .bold))
+                        }.foregroundStyle(.orange)
+                    }
+                }
+            }
+            .padding(14)
+            .background(
+                LinearGradient(gradient: Gradient(colors: [Color.orange.opacity(0.15), Color(white: 0.12)]), startPoint: .topLeading, endPoint: .bottomTrailing)
+            )
+            .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [Color.orange.opacity(0.4), Color.white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
+            .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
+            
+        } else if game.type == "flight_weather" {
+            // MARK: - AIRPORT WEATHER HEADER CARD
+            HStack(spacing: 12) {
+                Capsule().fill(Color.cyan).frame(width: 4, height: 55)
+                Image(systemName: "building.2.fill").font(.title2).foregroundStyle(.cyan)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(game.safeHomeAbbr).font(.headline).bold().foregroundColor(.white)
+                    Text(game.status).font(.caption).foregroundColor(.gray)
+                }
+                Spacer()
+                Text(game.safeAwayAbbr)
+                    .font(.system(size: 22, weight: .bold)).foregroundColor(.white)
+            }
+            .padding(12).background(LinearGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.15), Color(white: 0.12)]), startPoint: .leading, endPoint: .trailing))
+            .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.4), .white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
+            .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
+            
+        } else if game.type == "flight_arrival" {
+            // MARK: - ARRIVAL CARD
+            HStack(spacing: 12) {
+                Capsule().fill(Color.green).frame(width: 4, height: 45)
+                Image(systemName: "airplane.arrival").font(.title3).foregroundStyle(.green)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(game.safeAwayAbbr).font(.subheadline).bold().foregroundColor(.white)
+                    Text("from \(game.safeHomeAbbr)").font(.caption).foregroundColor(.gray)
+                }
+                Spacer()
+                Text("ARRIVING")
+                    .font(.system(size: 10, weight: .bold))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.green.opacity(0.2))
+                    .foregroundColor(.green)
+                    .cornerRadius(6)
+            }
+            .padding(12).background(Color(white: 0.12))
+            .overlay(shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+            .clipShape(shape).shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 3)
+            
+        } else if game.type == "flight_departure" {
+            // MARK: - DEPARTURE CARD
+            HStack(spacing: 12) {
+                Capsule().fill(Color.blue).frame(width: 4, height: 45)
+                Image(systemName: "airplane.departure").font(.title3).foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(game.safeAwayAbbr).font(.subheadline).bold().foregroundColor(.white)
+                    Text("to \(game.safeHomeAbbr)").font(.caption).foregroundColor(.gray)
+                }
+                Spacer()
+                Text("DEPARTING")
+                    .font(.system(size: 10, weight: .bold))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.blue.opacity(0.2))
+                    .foregroundColor(.blue)
+                    .cornerRadius(6)
+            }
+            .padding(12).background(Color(white: 0.12))
+            .overlay(shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1))
+            .clipShape(shape).shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 3)
             
         } else if game.type == "leaderboard" {
             // MARK: - LEADERBOARD CARD
