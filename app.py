@@ -1155,6 +1155,27 @@ class FlightTracker:
             flight_clean = flight_id.replace(" ", "").upper()
             if not self.fr_api: return None
 
+            def infer_iata_from_flights(flights, airline_filter, flight_num_part):
+                if not flights or not airline_filter:
+                    return ""
+                counts = {}
+                for fl in flights:
+                    f_num = (fl.number or "").upper()
+                    f_call = (fl.callsign or "").upper()
+                    if not f_num or len(f_num) < 2 or not f_num[:2].isalpha():
+                        continue
+                    prefix = f_num[:2]
+                    if f_call.startswith(airline_filter):
+                        counts[prefix] = counts.get(prefix, 0) + 1
+                        continue
+                    if flight_num_part:
+                        f_num_part = re.sub(r'^[A-Z]{2,3}', '', f_num)
+                        if f_num_part == flight_num_part:
+                            counts[prefix] = counts.get(prefix, 0) + 1
+                if not counts:
+                    return ""
+                return max(counts.items(), key=lambda x: x[1])[0]
+
             # 1. SMART FILTER - Extract airline code (2 or 3 letters)
             airline_filter = None
             if len(flight_clean) >= 3:
@@ -1164,9 +1185,12 @@ class FlightTracker:
                 # Check if first 3 chars are letters (e.g., ELY26, AAL123)
                 elif len(flight_clean) > 3 and flight_clean[:3].isalpha():
                     airline_filter = flight_clean[:3]
-            
+
             # Extract numeric portion for flexible matching (e.g., "1965" from "UAL1965")
             flight_num_part = re.sub(r'^[A-Z]{2,3}', '', flight_clean)
+            flight_variants = {flight_clean}
+            if flight_num_part:
+                flight_variants.add(flight_num_part)
             
             self.log("DEBUG", f"Searching for '{flight_clean}' with airline filter: {airline_filter}, num part: {flight_num_part}")
             
@@ -1179,13 +1203,19 @@ class FlightTracker:
             except Exception as e:
                 self.log("DEBUG", f"API call failed: {e}")
                 return None
+
+            iata_override = infer_iata_from_flights(flights, airline_filter, flight_num_part)
+            if iata_override and flight_num_part:
+                flight_variants.add(f"{iata_override}{flight_num_part}")
+            if iata_override:
+                self.log("DEBUG", f"Inferred IATA code for {airline_filter}: {iata_override}")
             
             target_flight = None
             for flight in flights:
                 f_num = flight.number.upper() if flight.number else ""
                 f_call = flight.callsign.upper() if flight.callsign else ""
                 # Direct match on full flight number or callsign
-                if f_num == flight_clean or f_call == flight_clean:
+                if f_num in flight_variants or f_call in flight_variants:
                     target_flight = flight
                     self.log("DEBUG", f"✓ Match found: {f_num} / {f_call}")
                     break
@@ -1204,10 +1234,14 @@ class FlightTracker:
                 try:
                     flights = self.fr_api.get_flights()
                     self.log("DEBUG", f"Searching {len(flights) if flights else 0} total flights")
+                    iata_override = infer_iata_from_flights(flights, airline_filter, flight_num_part)
+                    if iata_override and flight_num_part:
+                        flight_variants.add(f"{iata_override}{flight_num_part}")
+                        self.log("DEBUG", f"Inferred IATA code in fallback: {iata_override}")
                     for flight in flights:
                         f_num = flight.number.upper() if flight.number else ""
                         f_call = flight.callsign.upper() if flight.callsign else ""
-                        if f_num == flight_clean or f_call == flight_clean:
+                        if f_num in flight_variants or f_call in flight_variants:
                             target_flight = flight
                             self.log("DEBUG", f"✓ Match found in fallback: {f_num} / {f_call}")
                             break
