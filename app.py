@@ -3014,12 +3014,16 @@ def api_config():
                 state['airport_code_iata'] = flight_tracker.airport_code_iata
                 state['airport_code_icao'] = flight_tracker.airport_code_icao
                 state['airport_name'] = flight_tracker.airport_name
+                state['track_flight_id'] = flight_tracker.track_flight_id
+                state['track_guest_name'] = flight_tracker.track_guest_name
                 
                 # Also sync to ticker-specific settings if a ticker is targeted
                 if target_id and target_id in tickers:
                     tickers[target_id]['settings']['airport_code_iata'] = flight_tracker.airport_code_iata
                     tickers[target_id]['settings']['airport_code_icao'] = flight_tracker.airport_code_icao
                     tickers[target_id]['settings']['airport_name'] = flight_tracker.airport_name
+                    tickers[target_id]['settings']['track_flight_id'] = flight_tracker.track_flight_id
+                    tickers[target_id]['settings']['track_guest_name'] = flight_tracker.track_guest_name
             
             # Force airline_filter to always be empty (support all airlines)
             state['airline_filter'] = ''
@@ -3028,6 +3032,8 @@ def api_config():
         
         if target_id:
             save_specific_ticker(target_id)
+            # Also persist global config for flight/weather settings that live globally
+            save_global_config()
         else:
             save_global_config()
         
