@@ -379,6 +379,7 @@ default_state = {
     'airport_code_icao': 'KEWR',
     'airport_code_iata': 'EWR',
     'airport_name': 'Newark',
+    'flight_submode': 'airport',
     'airline_filter': ''
 }
 
@@ -409,6 +410,13 @@ if os.path.exists(GLOBAL_CONFIG_FILE):
                         state[k] = v
     except Exception as e:
         print(f"⚠️ Error loading global config: {e}")
+
+# Normalize legacy flight2 mode and ensure submode exists
+if state.get('mode') == 'flight2':
+    state['mode'] = 'flights'
+    state['flight_submode'] = 'track'
+if 'flight_submode' not in state:
+    state['flight_submode'] = 'airport'
 
 # Force airline_filter to be empty (support all airlines)
 state['airline_filter'] = ''
@@ -476,6 +484,7 @@ def save_global_config():
                 'airport_code_icao': state.get('airport_code_icao', 'KEWR'),
                 'airport_code_iata': state.get('airport_code_iata', 'EWR'),
                 'airport_name': state.get('airport_name', 'Newark'),
+                'flight_submode': state.get('flight_submode', 'airport'),
                 'airline_filter': ''  # Always empty - support all airlines
             }
         
@@ -1159,8 +1168,11 @@ class FlightTracker:
                 
                 speed_mph = int(fr24_data['speed_kts'] * 1.15078)
                 is_live = fr24_data['is_live']
-                status = 'en-route' if is_live else 'scheduled'
-                eta_str = "EN ROUTE" if is_live else "SCHEDULED"
+                delay_min = fr24_data.get('delay_min')
+                status_text = (fr24_data.get('status_text') or '').lower()
+                is_delayed = (delay_min is not None and delay_min >= 15) or ('delay' in status_text)
+                status = 'delayed' if is_delayed else ('en-route' if is_live else 'scheduled')
+                eta_str = "DELAYED" if is_delayed else ("EN ROUTE" if is_live else "SCHEDULED")
                 
                 # Basic Distance Calc
                 dist = 0
@@ -1203,6 +1215,8 @@ class FlightTracker:
                         'speed': speed_mph,
                         'progress': progress,
                         'status': status,
+                        'delay_min': delay_min,
+                        'is_delayed': is_delayed,
                         'is_live': is_live,
                         'is_shown': True
                     }
@@ -1229,6 +1243,8 @@ class FlightTracker:
                     'speed': 0,
                     'progress': 0,
                     'status': "pending",
+                    'delay_min': None,
+                    'is_delayed': False,
                     'is_live': False,
                     'is_shown': True
                 }
@@ -1242,6 +1258,49 @@ class FlightTracker:
             if not self.fr_api: 
                 self.log("ERROR", "FlightRadar24 API not initialized")
                 return None
+
+            def _parse_ts(value):
+                if isinstance(value, dict):
+                    for key in ['utc', 'unix', 'time', 'timestamp']:
+                        if key in value:
+                            value = value.get(key)
+                            break
+                try:
+                    return int(value)
+                except Exception:
+                    return None
+
+            def _get_time(time_info, bucket, point):
+                block = time_info.get(bucket) or {}
+                raw = block.get(point)
+                return _parse_ts(raw)
+
+            def _extract_delay_minutes(details):
+                if not details:
+                    return None, ""
+                time_info = details.get('time') or {}
+                sched_arr = _get_time(time_info, 'scheduled', 'arrival')
+                est_arr = (_get_time(time_info, 'estimated', 'arrival') or
+                           _get_time(time_info, 'real', 'arrival') or
+                           _get_time(time_info, 'actual', 'arrival'))
+                sched_dep = _get_time(time_info, 'scheduled', 'departure')
+                est_dep = (_get_time(time_info, 'estimated', 'departure') or
+                           _get_time(time_info, 'real', 'departure') or
+                           _get_time(time_info, 'actual', 'departure'))
+                delay_min = None
+                if sched_arr and est_arr:
+                    delay_min = max(0, int((est_arr - sched_arr) / 60))
+                elif sched_dep and est_dep:
+                    delay_min = max(0, int((est_dep - sched_dep) / 60))
+
+                status_block = details.get('status') or {}
+                status_text = str(
+                    status_block.get('text') or
+                    status_block.get('description') or
+                    status_block.get('status') or
+                    details.get('statusText') or ''
+                )
+                return delay_min, status_text
             
             # Parse the flight code
             icao, iata, flight_num = self.parse_flight_code(flight_id)
@@ -1298,11 +1357,14 @@ class FlightTracker:
                 return None
             
             # Get detailed information if available
+            details = None
             try:
                 details = self.fr_api.get_flight_details(target_flight)
                 target_flight.set_flight_details(details)
             except Exception as e:
                 self.log("DEBUG", f"Could not get detailed info: {e}")
+
+            delay_min, status_text = _extract_delay_minutes(details)
             
             return {
                 'flight_id': flight_id,
@@ -1312,7 +1374,9 @@ class FlightTracker:
                 'longitude': target_flight.longitude,
                 'altitude': target_flight.altitude or 0,
                 'speed_kts': target_flight.ground_speed or 0,
-                'is_live': (target_flight.altitude or 0) > 0
+                'is_live': (target_flight.altitude or 0) > 0,
+                'delay_min': delay_min,
+                'status_text': status_text
             }
             
         except ValueError as e:
@@ -2671,16 +2735,55 @@ class SportsFetcher:
 
         # --- FLIGHT TRACKING ---
         if flight_tracker:
-            in_flights_mode = (conf['mode'] == 'flights')   # Airport activity mode
-            in_flight2_mode = (conf['mode'] == 'flight2')   # Track specific flight mode
+            in_flights_mode = (conf['mode'] == 'flights')
+            flight_submode = conf.get('flight_submode', 'airport')
             
-            # flight2 mode: ONLY show the tracked visitor flight
-            if in_flight2_mode:
-                visitor = flight_tracker.get_visitor_object()
-                if visitor:
-                    all_games.append(visitor)
-            # flights mode: ONLY show airport activity
-            elif in_flights_mode:
+            if in_flights_mode and flight_submode == 'track':
+                if flight_tracker.track_flight_id:
+                    visitor = flight_tracker.get_visitor_object()
+                    if visitor:
+                        all_games.append(visitor)
+                    else:
+                        all_games.append({
+                            'type': 'flight_visitor',
+                            'sport': 'flight',
+                            'id': 'pending_flight',
+                            'guest_name': flight_tracker.track_flight_id,
+                            'route': 'LOOKUP PENDING',
+                            'origin_city': 'UNKNOWN',
+                            'dest_city': 'UNKNOWN',
+                            'alt': 0,
+                            'dist': 0,
+                            'eta_str': 'PENDING',
+                            'speed': 0,
+                            'progress': 0,
+                            'status': 'pending',
+                            'delay_min': None,
+                            'is_delayed': False,
+                            'is_live': False,
+                            'is_shown': True
+                        })
+                else:
+                    all_games.append({
+                        'type': 'flight_visitor',
+                        'sport': 'flight',
+                        'id': 'no_flight',
+                        'guest_name': 'No Flight Selected',
+                        'route': 'Enter a flight number',
+                        'origin_city': '---',
+                        'dest_city': '---',
+                        'alt': 0,
+                        'dist': 0,
+                        'eta_str': 'WAITING',
+                        'speed': 0,
+                        'progress': 0,
+                        'status': 'no flight',
+                        'delay_min': None,
+                        'is_delayed': False,
+                        'is_live': False,
+                        'is_shown': True
+                    })
+            elif in_flights_mode and flight_submode == 'airport':
                 airport_data = flight_tracker.get_airport_objects()
                 all_games.extend(airport_data)
             else:
@@ -2856,6 +2959,7 @@ class SportsFetcher:
 
     def merge_buffers(self):
         mode = state['mode']
+        flight_submode = state.get('flight_submode', 'airport')
         final_list = []
         
         sports_buffer = state.get('buffer_sports', [])
@@ -2870,8 +2974,12 @@ class SportsFetcher:
         elif mode == 'weather': final_list = [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': final_list = [g for g in utils if g.get('sport') == 'clock']
         elif mode == 'music': final_list = music_items
-        elif mode == 'flights': final_list = flight_items
-        elif mode == 'flight2': final_list = [g for g in flight_items if g.get('type') == 'flight_visitor']
+        elif mode == 'flights' and flight_submode == 'track':
+            final_list = [g for g in flight_items if g.get('type') == 'flight_visitor']
+        elif mode == 'flights':
+            final_list = [g for g in flight_items if g.get('type') != 'flight_visitor']
+        elif mode == 'flight2':
+            final_list = [g for g in flight_items if g.get('type') == 'flight_visitor']
         elif mode == 'all': final_list = sports_buffer
         elif mode in ['sports', 'live', 'my_teams']: final_list = pure_sports
         else: final_list = pure_sports
@@ -2987,6 +3095,15 @@ def api_config():
     try:
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
+
+        # Normalize legacy flight2 mode into flights + submode
+        if new_data.get('mode') == 'flight2':
+            new_data['mode'] = 'flights'
+            new_data['flight_submode'] = 'track'
+        if new_data.get('mode') == 'flights' and 'flight_submode' not in new_data:
+            new_data['flight_submode'] = state.get('flight_submode', 'airport')
+        if 'flight_submode' in new_data and new_data['flight_submode'] not in ['airport', 'track']:
+            new_data['flight_submode'] = 'airport'
         
         # 1. Determine which ticker is being targeted
         target_id = new_data.get('ticker_id') or request.args.get('id')
@@ -3078,7 +3195,7 @@ def api_config():
                 'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date', 
                 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset',
                 'track_flight_id', 'track_guest_name', 'airport_code_icao', 
-                'airport_code_iata', 'airport_name'
+                'airport_code_iata', 'airport_name', 'flight_submode'
             }
             
             for k, v in new_data.items():
@@ -3123,6 +3240,7 @@ def api_config():
                 state['airport_name'] = flight_tracker.airport_name
                 state['track_flight_id'] = flight_tracker.track_flight_id
                 state['track_guest_name'] = flight_tracker.track_guest_name
+                state['flight_submode'] = state.get('flight_submode', 'airport')
                 
                 # Also sync to ticker-specific settings if a ticker is targeted
                 if target_id and target_id in tickers:
@@ -3131,6 +3249,7 @@ def api_config():
                     tickers[target_id]['settings']['airport_name'] = flight_tracker.airport_name
                     tickers[target_id]['settings']['track_flight_id'] = flight_tracker.track_flight_id
                     tickers[target_id]['settings']['track_guest_name'] = flight_tracker.track_guest_name
+                    tickers[target_id]['settings']['flight_submode'] = state.get('flight_submode', 'airport')
             
             # Force airline_filter to always be empty (support all airlines)
             state['airline_filter'] = ''
@@ -3204,6 +3323,7 @@ def get_ticker_data():
 
     t_settings = rec['settings']
     current_mode = t_settings.get('mode', 'all') 
+    flight_submode = t_settings.get('flight_submode', state.get('flight_submode', 'airport'))
     
     # Sleep Mode
     if t_settings.get('brightness', 100) <= 0:
@@ -3260,6 +3380,10 @@ def get_ticker_data():
             elif current_mode == 'clock' and g.get('sport') != 'clock':
                 should_show = False
             elif current_mode == 'flights' and g.get('sport') != 'flight':
+                should_show = False
+            elif current_mode == 'flights' and flight_submode == 'track' and g.get('type') != 'flight_visitor':
+                should_show = False
+            elif current_mode == 'flights' and flight_submode == 'airport' and g.get('type') not in ['flight_weather', 'flight_arrival', 'flight_departure']:
                 should_show = False
             elif current_mode == 'flight2' and g.get('type') != 'flight_visitor':
                 should_show = False
@@ -3516,6 +3640,7 @@ def api_state():
     
     # 1. MOVE THIS UP: Define current_mode first
     current_mode = response_settings.get('mode', 'all')
+    flight_submode = response_settings.get('flight_submode', state.get('flight_submode', 'airport'))
     
     # 2. NOW call the fetcher with the mode
     raw_games = fetcher.get_snapshot_for_delay(0, current_mode)
@@ -3560,7 +3685,11 @@ def api_state():
             should_show = False
         
         # If in 'flight2' mode, only show flight visitor items
-        elif current_mode == 'flight2' and not is_flight_item:
+        elif current_mode == 'flights' and flight_submode == 'track' and game_copy.get('type') != 'flight_visitor':
+            should_show = False
+        elif current_mode == 'flights' and flight_submode == 'airport' and game_copy.get('type') not in ['flight_weather', 'flight_arrival', 'flight_departure']:
+            should_show = False
+        elif current_mode == 'flights' and not is_flight_item:
             should_show = False
 
         # LIVE FILTER
