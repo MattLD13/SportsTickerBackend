@@ -1674,6 +1674,8 @@ struct ModesView: View {
                             }
                             .pickerStyle(.segmented)
                             .onChange(of: flightSubMode) { _ in
+                                // LOCK POLLING: Prevent background fetch from overwriting state
+                                vm.isEditing = true
                                 // When switching sub-modes, clear the other mode's active data
                                 if flightSubMode == 0 {
                                     // Airport mode - clear tracked flight
@@ -1713,6 +1715,7 @@ struct ModesView: View {
                                             .onSubmit {
                                                 let code = localAirportCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
                                                 if code.count >= 3 && code.count <= 4 {
+                                                    vm.isEditing = true
                                                     vm.state.airport_code_iata = code
                                                     vm.saveSettings()
                                                 }
@@ -1744,6 +1747,7 @@ struct ModesView: View {
                                             .focused($isFlightFieldFocused)
                                             .onSubmit {
                                                 let flight = localFlightNumber.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                                                vm.isEditing = true
                                                 vm.state.track_flight_id = flight
                                                 vm.saveSettings()
                                                 isFlightFieldFocused = false
@@ -1759,6 +1763,7 @@ struct ModesView: View {
                                             .foregroundColor(.white)
                                             .focused($isGuestFieldFocused)
                                             .onSubmit {
+                                                vm.isEditing = true
                                                 vm.state.track_guest_name = localGuestName.trimmingCharacters(in: .whitespacesAndNewlines)
                                                 vm.saveSettings()
                                                 isGuestFieldFocused = false
@@ -1772,6 +1777,7 @@ struct ModesView: View {
                                             Text("Tracking: \(vm.state.track_flight_id)").bold().foregroundStyle(.white)
                                             Spacer()
                                             Button {
+                                                vm.isEditing = true
                                                 vm.state.track_flight_id = ""
                                                 vm.state.track_guest_name = ""
                                                 localFlightNumber = ""
