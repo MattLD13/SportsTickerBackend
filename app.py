@@ -3695,6 +3695,13 @@ def get_airlines():
 def get_flight_status():
     if not flight_tracker:
         return jsonify({'available': False})
+    # Optional: force a fresh fetch for debugging
+    force = request.args.get('force') == '1'
+    if force:
+        try:
+            flight_tracker.fetch_visitor_tracking()
+        except Exception as e:
+            print(f"[DEBUG] force fetch failed: {e}")
     with data_lock:
         return jsonify({
             'available': True,
@@ -3710,7 +3717,8 @@ def get_flight_status():
                     'name': state.get('airport_name', ''),
                     'airline': ''  # Always empty - support all airlines
                 }
-            }
+            },
+            'visitor': flight_tracker.get_visitor_object() if force else None
         })
 
 @app.route('/')
