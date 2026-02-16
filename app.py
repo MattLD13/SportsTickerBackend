@@ -30,7 +30,7 @@ except ImportError:
     FLIGHT_TRACKING_AVAILABLE = False
 
 try:
-    from FlightRadar24 import FlightRadar24API
+    from FlightRadar24.api import FlightRadar24API  # ← CORRECT
     FR24_SDK_AVAILABLE = True
 except ImportError:
     FR24_SDK_AVAILABLE = False
