@@ -3720,6 +3720,11 @@ def api_state():
         elif current_mode == 'clock' and sport != 'clock':
             should_show = False
 
+        # Mark postponed/suspended/canceled games as not shown in /api/state.
+        status_lower = str(game_copy.get('status', '')).lower()
+        if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
+            should_show = False
+
         # Apply calculated visibility to the master list
         game_copy['is_shown'] = should_show
         processed_games.append(game_copy)
