@@ -973,6 +973,9 @@ class SpotifyFetcher(threading.Thread):
                 print(f"Spotify Init Failed (Retrying in 5s): {e}")
                 time.sleep(5)
         
+        # Tracking variables for stalled progress detection
+        last_progress_ms = -1
+        last_check_time = 0
         current_delay = 1.0
 
         while True:
@@ -991,7 +994,29 @@ class SpotifyFetcher(threading.Thread):
                 if fetch_success:
                     if current and current.get('item'):
                         item = current['item']
-                        is_playing = current.get('is_playing', False)
+                        api_is_playing = current.get('is_playing', False)
+                        progress_ms = current.get('progress_ms', 0)
+                        
+                        # --- FIX: DETECT STALLED PROGRESS ---
+                        # Sometimes Spotify API says is_playing=True but progress doesn't move.
+                        # We force pause if progress hasn't changed in >2 seconds.
+                        actual_is_playing = api_is_playing
+                        now = time.time()
+                        
+                        if api_is_playing:
+                            if progress_ms == last_progress_ms:
+                                # If progress is exactly the same as last fetch for >2 seconds, force pause
+                                if (now - last_check_time) > 2.0: 
+                                    actual_is_playing = False
+                            else:
+                                # Progress moved, update tracker
+                                last_progress_ms = progress_ms
+                                last_check_time = now
+                        else:
+                            # Naturally paused, reset tracker
+                            last_progress_ms = -1
+                        # ------------------------------------
+
                         current_id = item.get('id')
                         current_cover = item['album']['images'][0]['url'] if item.get('album',{}).get('images') else ""
                         
@@ -1008,26 +1033,26 @@ class SpotifyFetcher(threading.Thread):
                                         else:
                                             new_queue.append("")
                                 self.cached_queue_covers = new_queue
-                            except: pass 
+                            except: pass # Queue fetch failures shouldn't crash the loop
                             
                             self.cached_current_id = current_id
                             self.cached_current_cover = current_cover
 
                         with self._lock:
                             self.state.update({
-                                "is_playing": is_playing,
+                                "is_playing": actual_is_playing,
                                 "name": item.get('name', 'Unknown'),
                                 "artist": ", ".join(a['name'] for a in item.get('artists', [])),
                                 "cover": current_cover,
                                 "next_covers": self.cached_queue_covers,
                                 "duration": item.get('duration_ms', 0) / 1000.0,
-                                "progress": current.get('progress_ms', 0) / 1000.0,
+                                "progress": progress_ms / 1000.0,
                                 "last_fetch_ts": time.time()
                             })
 
                         # STAGE 1 vs STAGE 2
-                        # Quick Polling (0.6s) if playing, Medium (1.5s) if paused
-                        current_delay = 0.6 if is_playing else 1.5
+                        # Quick Polling (0.8s) if playing, Medium (2.0s) if paused
+                        current_delay = 0.8 if actual_is_playing else 2.0
 
                     elif current is None:
                         # STAGE 2: No Content / Idle (3s)
