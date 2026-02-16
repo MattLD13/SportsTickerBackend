@@ -494,7 +494,9 @@ class TickerViewModel: ObservableObject {
         guard let validID = targetID else { return }
         
         let base = getBaseURL()
-        guard let url = URL(string: "\(base)/api/config") else { return }
+        var urlString = "\(base)/api/config"
+        urlString += "?id=\(validID)"
+        guard let url = URL(string: urlString) else { return }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -507,7 +509,11 @@ class TickerViewModel: ObservableObject {
             jsonDict["ticker_id"] = validID
             request.httpBody = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
             
+            print("📤 Saving settings to \(urlString)")
             URLSession.shared.dataTask(with: request) { data, response, error in
+                if let error = error {
+                    print("❌ Save failed: \(error.localizedDescription)")
+                }
                 
                 // === NEW SECURITY HANDLING ===
                 if let httpResponse = response as? HTTPURLResponse {
@@ -520,6 +526,9 @@ class TickerViewModel: ObservableObject {
                             self.updateOverallStatus()
                         }
                         return
+                    }
+                    if httpResponse.statusCode != 200 {
+                        print("⛔ Save rejected. Status: \(httpResponse.statusCode)")
                     }
                 }
                 // =============================
@@ -1645,6 +1654,27 @@ struct ModesView: View {
         }
         vm.saveSettings()
     }
+
+    private func commitFlightNumber() {
+        let flight = localFlightNumber.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if flight != vm.state.track_flight_id {
+            vm.isEditing = true
+            vm.state.track_flight_id = flight
+            if flight.isEmpty {
+                vm.state.track_guest_name = ""
+            }
+            vm.saveSettings()
+        }
+    }
+
+    private func commitGuestName() {
+        let guest = localGuestName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if guest != vm.state.track_guest_name {
+            vm.isEditing = true
+            vm.state.track_guest_name = guest
+            vm.saveSettings()
+        }
+    }
     
     var body: some View {
         ScrollView {
@@ -1734,11 +1764,11 @@ struct ModesView: View {
                                         .disableAutocorrection(true)
                                         .focused($isFlightFieldFocused)
                                         .onSubmit {
-                                            let flight = localFlightNumber.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-                                            vm.isEditing = true
-                                            vm.state.track_flight_id = flight
-                                            vm.saveSettings()
+                                            commitFlightNumber()
                                             isFlightFieldFocused = false
+                                        }
+                                        .onChange(of: isFlightFieldFocused) { focused in
+                                            if !focused { commitFlightNumber() }
                                         }
                                 }
                                 .padding().liquidGlass()
@@ -1751,10 +1781,11 @@ struct ModesView: View {
                                         .foregroundColor(.white)
                                         .focused($isGuestFieldFocused)
                                         .onSubmit {
-                                            vm.isEditing = true
-                                            vm.state.track_guest_name = localGuestName.trimmingCharacters(in: .whitespacesAndNewlines)
-                                            vm.saveSettings()
+                                            commitGuestName()
                                             isGuestFieldFocused = false
+                                        }
+                                        .onChange(of: isGuestFieldFocused) { focused in
+                                            if !focused { commitGuestName() }
                                         }
                                 }
                                 .padding().liquidGlass()
