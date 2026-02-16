@@ -2075,7 +2075,6 @@ class SportsFetcher:
         try:
             key = self._get_ahl_key()
             _local_tz = timezone(timedelta(hours=conf.get('utc_offset', -5)))
-            # Calculate req_date based on the configured timezone
             req_date = visible_start_utc.astimezone(_local_tz).strftime("%Y-%m-%d")
 
             params = {
@@ -2091,156 +2090,62 @@ class SportsFetcher:
             scorebar = data.get("SiteKit", {}).get("Scorebar", [])
             ahl_refs = state['all_teams_data'].get('ahl', [])
             _ahl_by_abbr = {t['abbr']: t for t in ahl_refs}
-            _ahl_by_real_id = {t.get('real_id'): t for t in ahl_refs if t.get('real_id')}
 
             for g in scorebar:
-                g_date_str = g.get("Date", "")
-                gid = g.get("ID")
-                h_code = g.get("HomeCode", "").upper()
-                a_code = g.get("VisitorCode", "").upper()
-                h_sc = str(g.get("HomeGoals", "0"))
-                a_sc = str(g.get("VisitorGoals", "0"))
+                if g.get("Date") != req_date: continue
                 
-                # Date Filter
-                if g_date_str != req_date: continue
+                h_code, a_code = g.get("HomeCode", "").upper(), g.get("VisitorCode", "").upper()
+                if not h_code or h_code == "TBD": continue
 
-                # --- FIX: FILTER OUT TBD GAMES ---
-                if h_code == "TBD" or a_code == "TBD" or not h_code or not a_code:
-                    continue
-
-                # --- ROBUST TIME PARSING START ---
-                parsed_utc = ""
-                
-                # 1. Try ISO Format (Best, but sometimes missing)
-                iso_date = g.get("GameDateISO8601", "")
-                if iso_date:
-                    try:
-                        dt_obj = dt.fromisoformat(iso_date)
-                        parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                    except: pass
-                
-                # 2. Try 'ScheduledTime' (Stable, usually "19:00")
-                if not parsed_utc:
-                    sched = g.get("ScheduledTime", "")
-                    if sched and ":" in sched:
-                         try:
-                            hh, mm = map(int, sched.split(":"))
-                            dt_obj = dt.strptime(f"{g_date_str} {hh}:{mm}", "%Y-%m-%d %H:%M")
-                            # Assume configured offset since API lacks TZ
-                            dt_obj = dt_obj.replace(tzinfo=_local_tz)
-                            parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                         except: pass
-
-                # 3. Fallback to 'GameTime' or 'Time' (Unstable)
-                # Only use if it explicitly looks like a start time (contains AM/PM)
-                if not parsed_utc:
-                    raw_time = (g.get("GameTime") or g.get("Time") or "").strip()
-                    if "am" in raw_time.lower() or "pm" in raw_time.lower():
-                        try:
-                            tm_match = re.search(r"(\d+:\d+)\s*(am|pm)(?:\s*([A-Z]+))?", raw_time, re.IGNORECASE)
-                            if tm_match:
-                                time_str, meridiem, tz_str = tm_match.groups()
-                                offset = conf.get('utc_offset', -5)
-                                if tz_str: offset = TZ_OFFSETS.get(tz_str.upper(), offset)
-                                
-                                dt_obj = dt.strptime(f"{g_date_str} {time_str} {meridiem}", "%Y-%m-%d %I:%M %p")
-                                dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=offset)))
-                                parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                        except: pass
-
-                # 4. Absolute Fail-safe (Start of day)
-                # This prevents crashes, but effectively puts it at the top of the list if parsing failed
-                if not parsed_utc:
-                     parsed_utc = f"{g_date_str}T00:00:00Z"
-                # --- ROBUST TIME PARSING END ---
-
+                h_sc, a_sc = int(g.get("HomeGoals", 0)), int(g.get("VisitorGoals", 0))
                 raw_status = g.get("GameStatusString", "")
                 status_lower = raw_status.lower()
-                period_str = str(g.get("Period", ""))
+                period_str = str(g.get("Period", "0"))
                 
-                disp = "Scheduled"; gst = "pre"
-
+                # REPAIR LOGIC: If goals > 0 or period > 0, the game is active regardless of status string
+                is_active = (h_sc > 0 or a_sc > 0 or (period_str != "0" and period_str != ""))
+                
                 if "final" in status_lower:
                     gst = "post"
-                    summary_data = None
-                    # Try to fetch summary for shootout/OT details
-                    try:
-                        sum_params = {
-                            "feed": "statviewfeed", "view": "gameSummary", "key": key,
-                            "client_code": "ahl", "lang": "en", "fmt": "json", "game_id": gid
-                        }
-                        r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=TIMEOUTS['ahl'])
-                        if r_sum.status_code == 200:
-                            text = r_sum.text.strip()
-                            if text.startswith("(") and text.endswith(")"): text = text[1:-1]
-                            summary_data = json.loads(text)
-                    except: pass
-
-                    is_shootout = self.check_shootout(g, summary_data)
-                    
-                    if is_shootout: disp = "FINAL S/O"
-                    elif period_str == "4" or "ot" in status_lower or "overtime" in status_lower: disp = "FINAL OT"
-                    else:
-                        if summary_data and (summary_data.get("hasOvertime") or "OT" in str(summary_data.get("periodNameShort", "")).upper()):
-                             disp = "FINAL OT"
-                        else:
-                             disp = "FINAL"
-
-                elif "scheduled" in status_lower or "pre" in status_lower or (_TIME_RE.search(status_lower) and "1st" not in status_lower):
-                    gst = "pre"
-                    try:
-                         # Use our robust parsed_utc to generate the display time
-                         local_dt = parse_iso(parsed_utc).astimezone(_local_tz)
-                         disp = local_dt.strftime("%I:%M %p").lstrip('0')
-                    except: disp = "Scheduled"
-                else:
+                    disp = "FINAL"
+                    if period_str == "4": disp = "FINAL OT"
+                    if period_str == "5": disp = "FINAL S/O"
+                elif is_active:
                     gst = "in"
-                    if "intermission" in status_lower:
-                        if "1st" in status_lower or period_str == "1": disp = "End 1st"
-                        elif "2nd" in status_lower or period_str == "2": disp = "End 2nd"
-                        elif "3rd" in status_lower or period_str == "3": disp = "End 3rd"
-                        else: disp = "INT"
+                    # Look for clock in the string (e.g., "15:20 2nd")
+                    m = re.search(r'(\d+:\d+)', raw_status)
+                    if m:
+                        clk = m.group(1)
+                        prd = "OT" if "ot" in status_lower else f"P{period_str}"
+                        disp = f"{prd} {clk}"
+                    elif "intermission" in status_lower:
+                        disp = f"End {period_str}"
                     else:
-                        m = re.search(r'(\d+:\d+)\s*(1st|2nd|3rd|ot|overtime)', raw_status, re.IGNORECASE)
-                        if m:
-                            clk = m.group(1); prd = m.group(2).lower()
-                            p_lbl = "OT" if "ot" in prd else f"P{prd[0]}"
-                            disp = f"{p_lbl} {clk}"
-                        else: disp = raw_status
+                        disp = f"P{period_str} LIVE"
+                else:
+                    gst = "pre"
+                    # Format start time from ScheduledTime
+                    try:
+                        sched = g.get("ScheduledTime", "")
+                        hh, mm = map(int, sched.split(":"))
+                        dt_obj = dt.strptime(f"{req_date} {hh}:{mm}", "%Y-%m-%d %H:%M").replace(tzinfo=_local_tz)
+                        disp = dt_obj.strftime("%I:%M %p").lstrip('0')
+                    except: disp = raw_status
 
-                is_shown = True
-                h_obj = _ahl_by_abbr.get(h_code)
-                a_obj = _ahl_by_abbr.get(a_code)
-
-                if not h_obj:
-                    h_meta_raw = AHL_TEAMS.get(h_code)
-                    if h_meta_raw: h_obj = _ahl_by_real_id.get(h_meta_raw.get('id'))
-                if not a_obj:
-                    a_meta_raw = AHL_TEAMS.get(a_code)
-                    if a_meta_raw: a_obj = _ahl_by_real_id.get(a_meta_raw.get('id'))
-                
-                # --- FIX: DYNAMIC LOGOS FOR ALL-STAR/UNKNOWN TEAMS ---
-                h_id_raw = g.get("HomeID") or g.get("HomeTeamID")
-                a_id_raw = g.get("VisitorID") or g.get("VisitorTeamID")
-
-                h_logo = h_obj['logo'] if (h_obj and h_obj.get('logo')) else (validate_logo_url(h_id_raw) if h_id_raw else "")
-                a_logo = a_obj['logo'] if (a_obj and a_obj.get('logo')) else (validate_logo_url(a_id_raw) if a_id_raw else "")
-                
-                h_meta = AHL_TEAMS.get(h_code, {"color": "000000"})
-                a_meta = AHL_TEAMS.get(a_code, {"color": "000000"})
+                h_obj, a_obj = _ahl_by_abbr.get(h_code), _ahl_by_abbr.get(a_code)
+                h_logo = h_obj['logo'] if h_obj else validate_logo_url(g.get("HomeID"))
+                a_logo = a_obj['logo'] if a_obj else validate_logo_url(g.get("VisitorID"))
 
                 games_found.append({
-                    'type': 'scoreboard', 'sport': 'ahl', 'id': f"ahl_{gid}",
-                    'status': disp, 'state': gst, 'is_shown': is_shown,
-                    'home_abbr': h_code, 'home_score': h_sc, 'home_logo': h_logo,
-                    'away_abbr': a_code, 'away_score': a_sc, 'away_logo': a_logo,
-                    'home_color': f"#{h_meta.get('color','000000')}", 'away_color': f"#{a_meta.get('color','000000')}",
-                    'home_alt_color': '#444444', 'away_alt_color': '#444444',
-                    'startTimeUTC': parsed_utc, 'situation': {}
+                    'type': 'scoreboard', 'sport': 'ahl', 'id': f"ahl_{g.get('ID')}",
+                    'status': disp, 'state': gst, 'is_shown': True,
+                    'home_abbr': h_code, 'home_score': str(h_sc), 'home_logo': h_logo,
+                    'away_abbr': a_code, 'away_score': str(a_sc), 'away_logo': a_logo,
+                    'home_color': f"#{AHL_TEAMS.get(h_code, {}).get('color','000000')}",
+                    'away_color': f"#{AHL_TEAMS.get(a_code, {}).get('color','000000')}",
+                    'startTimeUTC': g.get("GameDateISO8601", "")
                 })
-        except Exception as e:
-            print(f"AHL Fetch Error: {e}")
-        
+        except Exception as e: print(f"AHL Fix Error: {e}")
         return games_found
 
     def fetch_shootout_details(self, game_id, away_id, home_id):
@@ -3058,61 +2963,28 @@ class SportsFetcher:
         return local_games
 
     def get_music_object(self):
-        if not state['active_sports'].get('music', False):
-            return None
-   
-        try:
-            s_data = spotify_fetcher.get_cached_state()
-            if s_data:
-                is_playing = s_data.get('is_playing', False)
-                time_since_fetch = time.time() - s_data.get('last_fetch_ts', time.time())
-                current_progress = s_data['progress'] + (time_since_fetch if is_playing else 0)
-                
-                duration = s_data.get('duration', 0)
-                if current_progress > duration:
-                    current_progress = duration
+        if not state['active_sports'].get('music', False): return None
+        s_data = spotify_fetcher.get_cached_state()
+        if not s_data: return None
 
-                if is_playing:
-                    cur_m, cur_s = divmod(int(current_progress), 60)
-                    tot_m, tot_s = divmod(int(duration), 60)
-                    status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
-                else:
-                    cur_m, cur_s = divmod(int(current_progress), 60)
-                    tot_m, tot_s = divmod(int(duration), 60)
-                    status_str = f"PAUSED {cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
-   
-                return {
-                    'type': 'music',
-                    'sport': 'music',
-                    'id': 'spotify_now',
-                    'status': status_str,
-                    'state': 'paused' if not is_playing else 'in',
-                    'is_shown': True,
-                    'home_abbr': s_data.get('artist', 'Unknown'), 
-                    'away_abbr': s_data.get('name', 'Unknown'),
-                    
-                    # --- IMAGES FOR TICKER ---
-                    'home_logo': s_data.get('cover', ''),      # Current
-                    'last_logo': s_data.get('last_cover', ''), # Previous
-                    'next_logos': s_data.get('next_covers', []), # Next 3 (List of URLs)
-                    # -------------------------
-
-                    'away_logo': 'https://upload.wikimedia.org/wikipedia/commons/1/19/Spotify_logo_without_text.svg',
-                    'home_color': '#1DB954',
-                    'away_color': '#FFFFFF',
-                    'situation': {
-                        'raw_artist': s_data.get('artist'),
-                        'raw_title': s_data.get('name'),
-                        'progress': current_progress,
-                        'duration': duration,
-                        'is_playing': is_playing,
-                        'fetch_ts': time.time()
-                    }
-                }
-        except Exception as e:
-            print(f"Music Gen Error: {e}")
+        # Interpolate progress so the ticker updates every second
+        is_playing = s_data.get('is_playing', False)
+        elapsed = time.time() - s_data.get('last_fetch_ts', time.time())
+        prog = min(s_data['progress'] + (elapsed if is_playing else 0), s_data['duration'])
         
-        return None
+        cur_m, cur_s = divmod(int(prog), 60)
+        tot_m, tot_s = divmod(int(s_data['duration']), 60)
+        status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
+        if not is_playing: status_str = "PAUSED " + status_str
+
+        return {
+            'type': 'music', 'sport': 'music', 'id': 'spotify_now',
+            'status': status_str, 'state': 'in' if is_playing else 'paused',
+            'is_shown': True, 'home_abbr': s_data.get('artist', 'Unknown'),
+            'away_abbr': s_data.get('name', 'Unknown'),
+            'home_logo': s_data.get('cover', ''),
+            'situation': {'progress': prog, 'duration': s_data['duration'], 'is_playing': is_playing}
+        }
 
     # ── Per-mode buffer builders ────────────────────────────────────────────
 
@@ -3754,18 +3626,11 @@ def get_ticker_data():
 
 @app.route('/api/spotify/now', methods=['GET'])
 def api_spotify():
-    # Get the static data from the last poll
     data = spotify_fetcher.get_cached_state()
-    
-    # INTERPOLATION: If music is playing, update the progress locally
-    if data.get('is_playing') and 'progress' in data and 'last_fetch_ts' in data:
-        time_since_fetch = time.time() - data['last_fetch_ts']
-        data['progress'] += time_since_fetch
-        
-        # Prevent progress from exceeding the actual song duration
-        if data['progress'] > data.get('duration', 0):
-            data['progress'] = data['duration']
-            
+    # If playing, calculate real-time progress based on elapsed time since last poll
+    if data.get('is_playing') and data.get('last_fetch_ts'):
+        elapsed = time.time() - data['last_fetch_ts']
+        data['progress'] = min(data['progress'] + elapsed, data.get('duration', 0))
     return jsonify(data)
 
 @app.route('/api/airport/lookup', methods=['GET'])
