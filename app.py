@@ -2734,7 +2734,7 @@ class SportsFetcher:
         if music_obj: all_games.append(music_obj)
 
         # --- FLIGHT TRACKING ---
-        if flight_tracker:
+        if flight_tracker and conf['mode'] in ['flights', 'all']:
             in_flights_mode = (conf['mode'] == 'flights')
             flight_submode = conf.get('flight_submode', 'airport')
             
@@ -2786,17 +2786,13 @@ class SportsFetcher:
             elif in_flights_mode and flight_submode == 'airport':
                 airport_data = flight_tracker.get_airport_objects()
                 all_games.extend(airport_data)
-            else:
-                # Other modes: respect active_sports flags
-                visitor_added = False
-                if conf['active_sports'].get('flight_visitor', False):
-                    visitor = flight_tracker.get_visitor_object()
-                    if visitor:
-                        all_games.append(visitor)
-                        visitor_added = True
-                if not visitor_added and conf['active_sports'].get('flight_airport', False):
-                    airport_data = flight_tracker.get_airport_objects()
-                    all_games.extend(airport_data)
+            elif conf['mode'] == 'all':
+                # all mode: include both airport and visitor items if present
+                visitor = flight_tracker.get_visitor_object()
+                if visitor:
+                    all_games.append(visitor)
+                airport_data = flight_tracker.get_airport_objects()
+                all_games.extend(airport_data)
 
         # 2. SPORTS (Parallelized & Smart)
         if conf['mode'] in ['sports', 'live', 'my_teams', 'all', 'music']:
@@ -2899,9 +2895,9 @@ class SportsFetcher:
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
-            4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "canceled", "suspended", "ppd"]) else
+            5 if (x.get('is_shown') is False) or any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "canceled", "suspended", "ppd"]) else
             3 if "FINAL" in str(x.get('status', '')).upper() or "FIN" == str(x.get('status', '')) else
-            2, # Active
+            2, # Active/Upcoming
             x.get('startTimeUTC', '9999'),
             x.get('sport', ''),
             x.get('home_abbr', ''), # Alphabetical Tie-Breaker (Fixes Jumping)
