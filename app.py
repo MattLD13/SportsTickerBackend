@@ -3381,6 +3381,35 @@ def pair_ticker_by_id():
         
     return jsonify({"success": False}), 404
 
+@app.route('/api/flight/debug', methods=['GET'])
+def debug_flight_tracking():
+    """Diagnostic endpoint to see what's happening with flight tracking"""
+    if not flight_tracker:
+        return jsonify({'error': 'Flight tracking not available'})
+    
+    # Force an immediate fetch
+    try:
+        flight_tracker.fetch_visitor_tracking()
+    except Exception as e:
+        return jsonify({'error': f'Fetch failed: {str(e)}'})
+    
+    # Get the current state
+    with flight_tracker.lock:
+        visitor_data = flight_tracker.visitor_flight.copy() if flight_tracker.visitor_flight else None
+    
+    return jsonify({
+        'config': {
+            'track_flight_id': flight_tracker.track_flight_id,
+            'track_guest_name': flight_tracker.track_guest_name,
+            'fr_api_available': flight_tracker.fr_api is not None
+        },
+        'visitor_flight': visitor_data,
+        'last_fetch': {
+            'visitor': flight_tracker.last_visitor_fetch,
+            'time_since': time.time() - flight_tracker.last_visitor_fetch
+        }
+    })
+
 @app.route('/register', methods=['POST'])
 def register_ticker():
     """Register a new ticker and auto-pair the requesting client."""
