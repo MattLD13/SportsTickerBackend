@@ -2734,11 +2734,12 @@ class SportsFetcher:
         if music_obj: all_games.append(music_obj)
 
         # --- FLIGHT TRACKING ---
+        # FIX: ONLY add flight items when in flights or all mode
         if flight_tracker and conf['mode'] in ['flights', 'all']:
-            in_flights_mode = (conf['mode'] == 'flights')
             flight_submode = conf.get('flight_submode', 'airport')
             
-            if in_flights_mode and flight_submode == 'track':
+            # In 'flights' mode with 'track' submode
+            if conf['mode'] == 'flights' and flight_submode == 'track':
                 if flight_tracker.track_flight_id:
                     visitor = flight_tracker.get_visitor_object()
                     if visitor:
@@ -2783,11 +2784,12 @@ class SportsFetcher:
                         'is_live': False,
                         'is_shown': True
                     })
-            elif in_flights_mode and flight_submode == 'airport':
+            # In 'flights' mode with 'airport' submode
+            elif conf['mode'] == 'flights' and flight_submode == 'airport':
                 airport_data = flight_tracker.get_airport_objects()
                 all_games.extend(airport_data)
+            # In 'all' mode - include everything
             elif conf['mode'] == 'all':
-                # all mode: include both airport and visitor items if present
                 visitor = flight_tracker.get_visitor_object()
                 if visitor:
                     all_games.append(visitor)
