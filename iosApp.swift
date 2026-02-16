@@ -1652,7 +1652,7 @@ struct ModesView: View {
         if utilities.contains(target) {
             vm.state.mode = target
         } else {
-            vm.state.mode = "all"
+            vm.state.mode = "sports"
         }
         vm.state.active_sports["weather"] = (target == "weather")
         vm.state.active_sports["clock"] = (target == "clock")
@@ -1717,7 +1717,7 @@ struct ModesView: View {
                     ModeTile(title: "Sports", icon: "sportscourt.fill", val: "sports", cur: activeCategory) { setCategory("sports") }
                     ModeTile(title: "Stocks", icon: "chart.line.uptrend.xyaxis", val: "stocks", cur: activeCategory) { setCategory("stocks") }
                     ModeTile(title: "Music", icon: "music.note", val: "music", cur: activeCategory) { setCategory("music") }
-                    ModeTile(title: "Airport", icon: "airplane.arrival", val: "flights", cur: activeCategory) { setCategory("flights") }
+                    ModeTile(title: "Flights", icon: "airplane.arrival", val: "flights", cur: activeCategory) { setCategory("flights") }
                     ModeTile(title: "Weather", icon: "cloud.sun.fill", val: "weather", cur: activeCategory) { setCategory("weather") }
                     ModeTile(title: "Clock", icon: "clock.fill", val: "clock", cur: activeCategory) { setCategory("clock") }
                 }
