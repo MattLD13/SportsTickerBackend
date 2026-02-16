@@ -2816,6 +2816,54 @@ class SportsFetcher:
                     if lk in self.league_last_data:
                         all_games.extend(self.league_last_data[lk])
 
+        # === FILTER OUT OLD GAMES (3AM CUTOFF) ===
+        # Remove completed games that started before the visibility window
+        filtered_games = []
+        for g in all_games:
+            # Always keep utilities (clock, weather, music, flights)
+            g_type = g.get('type', '')
+            g_sport = g.get('sport', '')
+            if g_type in ['clock', 'weather', 'music'] or g_sport in ['clock', 'weather', 'music', 'flight']:
+                filtered_games.append(g)
+                continue
+            
+            # For sports games, check if they're old finals
+            state_val = g.get('state', '')
+            status_val = str(g.get('status', '')).upper()
+            
+            # Keep in-progress games
+            if state_val in ['in', 'half', 'crit']:
+                filtered_games.append(g)
+                continue
+            
+            # Keep scheduled games
+            if state_val == 'pre':
+                filtered_games.append(g)
+                continue
+            
+            # For completed games, check if they're within the visibility window
+            if state_val == 'post' or 'FINAL' in status_val:
+                try:
+                    game_start_str = g.get('startTimeUTC', '')
+                    if game_start_str:
+                        game_dt = dt.fromisoformat(game_start_str.replace('Z', '+00:00'))
+                        # Only keep if the game started within the visibility window
+                        if visible_start_utc <= game_dt < visible_end_utc:
+                            filtered_games.append(g)
+                        # else: game is too old, don't include it
+                    else:
+                        # No timestamp, keep it to be safe
+                        filtered_games.append(g)
+                except:
+                    # Parse error, keep it to be safe
+                    filtered_games.append(g)
+                continue
+            
+            # Default: keep the game
+            filtered_games.append(g)
+        
+        all_games = filtered_games
+        # === END FILTER ===
         # Sorting & Buffering
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
