@@ -2805,12 +2805,18 @@ class SportsFetcher:
             if now_local.hour < 3:
                 visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
                 visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
+                fotmob_visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                fotmob_visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
             else:
                 visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
                 visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
+                fotmob_visible_start_local = visible_start_local
+                fotmob_visible_end_local = visible_end_local
             
             visible_start_utc = visible_start_local.astimezone(timezone.utc)
             visible_end_utc = visible_end_local.astimezone(timezone.utc)
+            fotmob_visible_start_utc = fotmob_visible_start_local.astimezone(timezone.utc)
+            fotmob_visible_end_utc = fotmob_visible_end_local.astimezone(timezone.utc)
             
             window_start_local = now_local - timedelta(hours=30)
             window_end_local = now_local + timedelta(hours=48)
@@ -2833,7 +2839,16 @@ class SportsFetcher:
             
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
-                    f = self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                    f = self.executor.submit(
+                        self._fetch_fotmob_league,
+                        fid,
+                        internal_id,
+                        conf,
+                        window_start_utc,
+                        window_end_utc,
+                        fotmob_visible_start_utc,
+                        fotmob_visible_end_utc
+                    )
                     futures[f] = internal_id
 
             # Standard ESPN fetchers
