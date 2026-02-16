@@ -1618,7 +1618,7 @@ struct ModesView: View {
     }
     
     func setCategory(_ target: String) {
-        let utilities = ["stocks", "weather", "clock", "music", "flights"]
+        let utilities = ["stocks", "weather", "clock", "music", "flights", "flight2"]
         if utilities.contains(target) {
             vm.state.mode = target
         } else {
@@ -1627,8 +1627,14 @@ struct ModesView: View {
         vm.state.active_sports["weather"] = (target == "weather")
         vm.state.active_sports["clock"] = (target == "clock")
         vm.state.active_sports["music"] = (target == "music")
-        vm.state.active_sports["flight_visitor"] = (target == "flights")
         vm.state.active_sports["flight_airport"] = (target == "flights")
+        vm.state.active_sports["flight_visitor"] = (target == "flight2")
+        
+        // When switching to airport mode, clear tracked flight
+        if target == "flights" {
+            vm.state.track_flight_id = ""
+            vm.state.track_guest_name = ""
+        }
         
         if target == "stocks" {
             let stockKeys = stockOptions.map { $0.id }
@@ -1650,13 +1656,14 @@ struct ModesView: View {
                 .padding(.horizontal).padding(.top, 80)
                 
                 LazyVGrid(columns: modeColumns, spacing: 15) {
-                    let utilities = ["stocks", "weather", "clock", "music", "flights"]
+                    let utilities = ["stocks", "weather", "clock", "music", "flights", "flight2"]
                     let activeCategory = utilities.contains(vm.state.mode) ? vm.state.mode : "sports"
                     
                     ModeTile(title: "Sports", icon: "sportscourt.fill", val: "sports", cur: activeCategory) { setCategory("sports") }
                     ModeTile(title: "Stocks", icon: "chart.line.uptrend.xyaxis", val: "stocks", cur: activeCategory) { setCategory("stocks") }
                     ModeTile(title: "Music", icon: "music.note", val: "music", cur: activeCategory) { setCategory("music") }
-                    ModeTile(title: "Flights", icon: "airplane", val: "flights", cur: activeCategory) { setCategory("flights") }
+                    ModeTile(title: "Airport", icon: "airplane.arrival", val: "flights", cur: activeCategory) { setCategory("flights") }
+                    ModeTile(title: "Track Flight", icon: "airplane", val: "flight2", cur: activeCategory) { setCategory("flight2") }
                     ModeTile(title: "Weather", icon: "cloud.sun.fill", val: "weather", cur: activeCategory) { setCategory("weather") }
                     ModeTile(title: "Clock", icon: "clock.fill", val: "clock", cur: activeCategory) { setCategory("clock") }
                 }
@@ -1664,130 +1671,110 @@ struct ModesView: View {
                 
                 VStack(alignment: .leading, spacing: 20) {
                     if vm.state.mode == "flights" {
+                        // === AIRPORT ACTIVITY MODE ===
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("FLIGHT TRACKING").font(.caption).bold().foregroundStyle(.secondary)
+                            Text("AIRPORT ACTIVITY").font(.caption).bold().foregroundStyle(.secondary)
                             
-                            // Sub-mode picker: Airport Activity vs Track Flight
-                            Picker("Flight Mode", selection: $flightSubMode) {
-                                Text("Airport Activity").tag(0)
-                                Text("Track Flight").tag(1)
-                            }
-                            .pickerStyle(.segmented)
-                            .onChange(of: flightSubMode) { _ in
-                                // LOCK POLLING: Prevent background fetch from overwriting state
-                                vm.isEditing = true
-                                // When switching sub-modes, clear the other mode's active data
-                                if flightSubMode == 0 {
-                                    // Airport mode - clear tracked flight
-                                    vm.state.track_flight_id = ""
-                                    vm.state.track_guest_name = ""
-                                    localFlightNumber = ""
-                                    localGuestName = ""
-                                } else {
-                                    // Track flight mode - keep airport as-is for reference
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Image(systemName: "building.2.fill").font(.title2).foregroundStyle(.cyan)
+                                    VStack(alignment: .leading) {
+                                        Text("Airport Activity").bold().foregroundStyle(.white)
+                                        if !vm.state.airport_name.isEmpty {
+                                            Text(vm.state.airport_name).font(.caption).foregroundStyle(.gray)
+                                        }
+                                    }
+                                    Spacer()
+                                }.padding().liquidGlass()
+                                
+                                HStack {
+                                    Text("Airport Code:")
+                                    Spacer()
+                                    TextField("IATA or ICAO (e.g. EWR, KJFK)", text: $localAirportCode)
+                                        .multilineTextAlignment(.trailing)
+                                        .foregroundColor(.white)
+                                        .autocapitalization(.allCharacters)
+                                        .disableAutocorrection(true)
+                                        .focused($isAirportFieldFocused)
+                                        .onSubmit {
+                                            let code = localAirportCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                                            if code.count >= 3 && code.count <= 4 {
+                                                vm.isEditing = true
+                                                vm.state.airport_code_iata = code
+                                                vm.saveSettings()
+                                            }
+                                            isAirportFieldFocused = false
+                                        }
                                 }
-                                vm.saveSettings()
+                                .padding().liquidGlass()
                             }
+                        }
+                    } else if vm.state.mode == "flight2" {
+                        // === TRACK SPECIFIC FLIGHT MODE ===
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("TRACK A FLIGHT").font(.caption).bold().foregroundStyle(.secondary)
                             
-                            if flightSubMode == 0 {
-                                // === AIRPORT ACTIVITY ===
-                                VStack(alignment: .leading, spacing: 10) {
-                                    HStack {
-                                        Image(systemName: "building.2.fill").font(.title2).foregroundStyle(.cyan)
-                                        VStack(alignment: .leading) {
-                                            Text("Airport Activity").bold().foregroundStyle(.white)
-                                            if !vm.state.airport_name.isEmpty {
-                                                Text(vm.state.airport_name).font(.caption).foregroundStyle(.gray)
-                                            }
-                                        }
-                                        Spacer()
-                                    }.padding().liquidGlass()
-                                    
-                                    HStack {
-                                        Text("Airport Code:")
-                                        Spacer()
-                                        TextField("IATA or ICAO (e.g. EWR, KJFK)", text: $localAirportCode)
-                                            .multilineTextAlignment(.trailing)
-                                            .foregroundColor(.white)
-                                            .autocapitalization(.allCharacters)
-                                            .disableAutocorrection(true)
-                                            .focused($isAirportFieldFocused)
-                                            .onSubmit {
-                                                let code = localAirportCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-                                                if code.count >= 3 && code.count <= 4 {
-                                                    vm.isEditing = true
-                                                    vm.state.airport_code_iata = code
-                                                    vm.saveSettings()
-                                                }
-                                                isAirportFieldFocused = false
-                                            }
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Image(systemName: "airplane.circle.fill").font(.title2).foregroundStyle(.orange)
+                                    VStack(alignment: .leading) {
+                                        Text("Track a Flight").bold().foregroundStyle(.white)
+                                        Text("Enter a flight number to track in real time.").font(.caption).foregroundStyle(.gray)
                                     }
-                                    .padding().liquidGlass()
+                                    Spacer()
+                                }.padding().liquidGlass()
+                                
+                                HStack {
+                                    Text("Flight #:")
+                                    Spacer()
+                                    TextField("e.g. UA123, DAL456", text: $localFlightNumber)
+                                        .multilineTextAlignment(.trailing)
+                                        .foregroundColor(.white)
+                                        .autocapitalization(.allCharacters)
+                                        .disableAutocorrection(true)
+                                        .focused($isFlightFieldFocused)
+                                        .onSubmit {
+                                            let flight = localFlightNumber.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                                            vm.isEditing = true
+                                            vm.state.track_flight_id = flight
+                                            vm.saveSettings()
+                                            isFlightFieldFocused = false
+                                        }
                                 }
-                            } else {
-                                // === TRACK FLIGHT ===
-                                VStack(alignment: .leading, spacing: 10) {
-                                    HStack {
-                                        Image(systemName: "airplane.circle.fill").font(.title2).foregroundStyle(.orange)
-                                        VStack(alignment: .leading) {
-                                            Text("Track a Flight").bold().foregroundStyle(.white)
-                                            Text("Enter a flight number to track in real time.").font(.caption).foregroundStyle(.gray)
+                                .padding().liquidGlass()
+                                
+                                HStack {
+                                    Text("Guest Name:")
+                                    Spacer()
+                                    TextField("Optional (e.g. Mom)", text: $localGuestName)
+                                        .multilineTextAlignment(.trailing)
+                                        .foregroundColor(.white)
+                                        .focused($isGuestFieldFocused)
+                                        .onSubmit {
+                                            vm.isEditing = true
+                                            vm.state.track_guest_name = localGuestName.trimmingCharacters(in: .whitespacesAndNewlines)
+                                            vm.saveSettings()
+                                            isGuestFieldFocused = false
                                         }
+                                }
+                                .padding().liquidGlass()
+                                
+                                if !vm.state.track_flight_id.isEmpty {
+                                    HStack {
+                                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                        Text("Tracking: \(vm.state.track_flight_id)").bold().foregroundStyle(.white)
                                         Spacer()
+                                        Button {
+                                            vm.isEditing = true
+                                            vm.state.track_flight_id = ""
+                                            vm.state.track_guest_name = ""
+                                            localFlightNumber = ""
+                                            localGuestName = ""
+                                            vm.saveSettings()
+                                        } label: {
+                                            Text("Clear").font(.caption).foregroundStyle(.red)
+                                        }
                                     }.padding().liquidGlass()
-                                    
-                                    HStack {
-                                        Text("Flight #:")
-                                        Spacer()
-                                        TextField("e.g. UA123, DAL456", text: $localFlightNumber)
-                                            .multilineTextAlignment(.trailing)
-                                            .foregroundColor(.white)
-                                            .autocapitalization(.allCharacters)
-                                            .disableAutocorrection(true)
-                                            .focused($isFlightFieldFocused)
-                                            .onSubmit {
-                                                let flight = localFlightNumber.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-                                                vm.isEditing = true
-                                                vm.state.track_flight_id = flight
-                                                vm.saveSettings()
-                                                isFlightFieldFocused = false
-                                            }
-                                    }
-                                    .padding().liquidGlass()
-                                    
-                                    HStack {
-                                        Text("Guest Name:")
-                                        Spacer()
-                                        TextField("Optional (e.g. Mom)", text: $localGuestName)
-                                            .multilineTextAlignment(.trailing)
-                                            .foregroundColor(.white)
-                                            .focused($isGuestFieldFocused)
-                                            .onSubmit {
-                                                vm.isEditing = true
-                                                vm.state.track_guest_name = localGuestName.trimmingCharacters(in: .whitespacesAndNewlines)
-                                                vm.saveSettings()
-                                                isGuestFieldFocused = false
-                                            }
-                                    }
-                                    .padding().liquidGlass()
-                                    
-                                    if !vm.state.track_flight_id.isEmpty {
-                                        HStack {
-                                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                                            Text("Tracking: \(vm.state.track_flight_id)").bold().foregroundStyle(.white)
-                                            Spacer()
-                                            Button {
-                                                vm.isEditing = true
-                                                vm.state.track_flight_id = ""
-                                                vm.state.track_guest_name = ""
-                                                localFlightNumber = ""
-                                                localGuestName = ""
-                                                vm.saveSettings()
-                                            } label: {
-                                                Text("Clear").font(.caption).foregroundStyle(.red)
-                                            }
-                                        }.padding().liquidGlass()
-                                    }
                                 }
                             }
                         }
@@ -1887,12 +1874,6 @@ struct ModesView: View {
             localAirportCode = vm.state.airport_code_iata
             localFlightNumber = vm.state.track_flight_id
             localGuestName = vm.state.track_guest_name
-            // Auto-detect sub-mode from server state
-            if !vm.state.track_flight_id.isEmpty {
-                flightSubMode = 1
-            } else {
-                flightSubMode = 0
-            }
         }
         .onChange(of: vm.state.weather_city) { newValue in
             if !isWeatherFieldFocused {
