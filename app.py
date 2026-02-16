@@ -3551,15 +3551,17 @@ def get_league_options():
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
     ticker_id = request.args.get('id')
+    
+    # 1. Resolve Ticker ID
     if not ticker_id and len(tickers) == 1: 
         ticker_id = list(tickers.keys())[0]
     
     if not ticker_id:
         return jsonify({"status": "ok", "content": {"sports": []}})
 
-    # Auto-create ticker if ID is unknown (hardware tickers self-register this way)
+    # Auto-create ticker if ID is unknown (hardware self-registration)
     if ticker_id not in tickers:
-        print(f"\U0001f195 Auto-creating ticker: {ticker_id}")
+        print(f"🆕 Auto-creating ticker: {ticker_id}")
         tickers[ticker_id] = {
             "name": "Ticker",
             "settings": DEFAULT_TICKER_SETTINGS.copy(),
@@ -3575,28 +3577,42 @@ def get_ticker_data():
     rec = tickers[ticker_id]
     rec['last_seen'] = time.time()
     
-    # Pairing Check
+    # 2. Pairing Check
     if not rec.get('clients') or not rec.get('paired'):
         if not rec.get('pairing_code'):
             rec['pairing_code'] = generate_pairing_code()
             save_specific_ticker(ticker_id)
         return jsonify({ "status": "pairing", "code": rec['pairing_code'], "ticker_id": ticker_id })
 
+    # 3. Settings & Mode Resolution
     t_settings = rec['settings']
     current_mode = MODE_MIGRATIONS.get(t_settings.get('mode', 'sports'), t_settings.get('mode', 'sports'))
     if current_mode not in VALID_MODES:
         current_mode = 'sports'
 
-    # Sleep Mode
+    # Sleep Mode (Brightness 0)
     if t_settings.get('brightness', 100) <= 0:
         return jsonify({ "status": "sleep", "content": { "sports": [] } })
 
+    # 4. Content Fetching (with Live Delay support)
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
     visible_items = []
 
-    # Buffer is already mode-specific — only post-processing needed for sub-filters
-    if current_mode == 'my_teams':
+    # 5. STRICT MODE FILTERING
+    # This prevents sports from leaking into Music mode or vice versa
+    if current_mode == 'music':
+        for g in raw_games:
+            if g.get('type') == 'music':
+                g['is_shown'] = True
+                visible_items.append(g)
+        
+        # Fallback: If Spotify isn't in the global buffer yet, fetch it manually
+        if not visible_items:
+            music_obj = fetcher.get_music_object()
+            if music_obj: visible_items.append(music_obj)
+
+    elif current_mode == 'my_teams':
         if 'my_teams_set' not in rec:
             saved_teams = rec.get('my_teams') or state.get('my_teams', [])
             rec['my_teams_set'] = set(saved_teams)
@@ -3611,25 +3627,45 @@ def get_ticker_data():
             if in_home or in_away:
                 g['is_shown'] = True
                 visible_items.append(g)
+
     elif current_mode == 'live':
         for g in raw_games:
             if g.get('state') in _ACTIVE_STATES:
                 g['is_shown'] = True
                 visible_items.append(g)
+
     elif current_mode == 'sports':
         for g in raw_games:
+            # Skip utilities when in standard sports mode
+            if g.get('type') in ['music', 'clock', 'weather', 'stock_ticker', 'flight_visitor']:
+                continue
+            
             status_lower = str(g.get('status', '')).lower()
             if any(k in status_lower for k in ("postponed", "suspended", "canceled", "ppd")):
                 continue
             g['is_shown'] = True
             visible_items.append(g)
+            
     else:
-        # stocks, weather, music, clock, flights, flight_tracker — buffer already correct
+        # For stocks, weather, clock, and flight modes
+        # We only show items that match the current mode type
         for g in raw_games:
-            g['is_shown'] = True
-            visible_items.append(g)
-    
-    # Final Response Construction
+            g_type = g.get('type', '')
+            g_sport = g.get('sport', '')
+            
+            # Map mode names to data types
+            match = False
+            if current_mode == 'stocks' and g_type == 'stock_ticker': match = True
+            elif current_mode == 'weather' and g_type == 'weather': match = True
+            elif current_mode == 'clock' and g_type == 'clock': match = True
+            elif current_mode == 'flights' and g_sport == 'flight': match = True
+            elif current_mode == 'flight_tracker' and g_type == 'flight_visitor': match = True
+            
+            if match:
+                g['is_shown'] = True
+                visible_items.append(g)
+
+    # 6. Final Response Construction
     g_config = { "mode": current_mode }
     if rec.get('reboot_requested'): g_config['reboot'] = True
     if rec.get('update_requested'): g_config['update'] = True
