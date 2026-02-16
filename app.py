@@ -1082,6 +1082,7 @@ class FlightTracker:
         if not self.track_flight_id: return
         
         try:
+            self.log("TRACKER", f"Fetching flight: {self.track_flight_id}")
             # 1. Try FlightRadar24 (Generic / All Airlines)
             fr24_data = self.fetch_fr24_flight(self.track_flight_id)
             
@@ -1141,6 +1142,8 @@ class FlightTracker:
                     }
                 self.log("TRACKER", f"{self.track_flight_id} (FR24) {status} | {fr24_data['altitude']}ft")
                 return
+            else:
+                self.log("TRACKER", f"No FR24 match for {self.track_flight_id}")
                 
             # If we reach here, no flight found
             self.log("WARNING", f"Flight {self.track_flight_id} not found.")
