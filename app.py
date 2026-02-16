@@ -2717,7 +2717,7 @@ class SportsFetcher:
         with data_lock: 
             conf = state.copy()
 
-        # 1. WEATHER & CLOCK (Simple, fast)
+        # 1. UTILITIES (Weather, Clock, Music)
         if conf['active_sports'].get('weather'):
             if (conf['weather_lat'] != self.weather.lat or 
                 conf['weather_lon'] != self.weather.lon or 
@@ -2729,141 +2729,78 @@ class SportsFetcher:
         if conf['active_sports'].get('clock'):
             all_games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
 
-        # --- MUSIC (NEW) ---
         music_obj = self.get_music_object()
         if music_obj: all_games.append(music_obj)
 
-        # --- FLIGHT TRACKING ---
-        # FIX: ONLY add flight items when in flights or all mode
-        if flight_tracker and conf['mode'] in ['flights', 'all']:
-            flight_submode = conf.get('flight_submode', 'airport')
-            
-            # In 'flights' mode with 'track' submode
-            if conf['mode'] == 'flights' and flight_submode == 'track':
-                if flight_tracker.track_flight_id:
-                    visitor = flight_tracker.get_visitor_object()
-                    if visitor:
-                        all_games.append(visitor)
-                    else:
-                        all_games.append({
-                            'type': 'flight_visitor',
-                            'sport': 'flight',
-                            'id': 'pending_flight',
-                            'guest_name': flight_tracker.track_flight_id,
-                            'route': 'LOOKUP PENDING',
-                            'origin_city': 'UNKNOWN',
-                            'dest_city': 'UNKNOWN',
-                            'alt': 0,
-                            'dist': 0,
-                            'eta_str': 'PENDING',
-                            'speed': 0,
-                            'progress': 0,
-                            'status': 'pending',
-                            'delay_min': None,
-                            'is_delayed': False,
-                            'is_live': False,
-                            'is_shown': True
-                        })
-                else:
-                    all_games.append({
-                        'type': 'flight_visitor',
-                        'sport': 'flight',
-                        'id': 'no_flight',
-                        'guest_name': 'No Flight Selected',
-                        'route': 'Enter a flight number',
-                        'origin_city': '---',
-                        'dest_city': '---',
-                        'alt': 0,
-                        'dist': 0,
-                        'eta_str': 'WAITING',
-                        'speed': 0,
-                        'progress': 0,
-                        'status': 'no flight',
-                        'delay_min': None,
-                        'is_delayed': False,
-                        'is_live': False,
-                        'is_shown': True
-                    })
-            # In 'flights' mode with 'airport' submode
-            elif conf['mode'] == 'flights' and flight_submode == 'airport':
-                airport_data = flight_tracker.get_airport_objects()
-                all_games.extend(airport_data)
-            # In 'all' mode - include everything
-            elif conf['mode'] == 'all':
+        # 2. FLIGHT TRACKING
+        if flight_tracker:
+            in_flights_mode = (conf['mode'] == 'flights')
+            visitor_added = False
+            if conf['active_sports'].get('flight_visitor', False) or in_flights_mode:
                 visitor = flight_tracker.get_visitor_object()
                 if visitor:
                     all_games.append(visitor)
+                    visitor_added = True
+            
+            if not visitor_added and (conf['active_sports'].get('flight_airport', False) or in_flights_mode):
                 airport_data = flight_tracker.get_airport_objects()
                 all_games.extend(airport_data)
 
-        # 2. SPORTS (Parallelized & Smart)
+        # 3. SPORTS (Parallel Fetching)
         if conf['mode'] in ['sports', 'live', 'my_teams', 'all', 'music']:
             utc_offset = conf.get('utc_offset', -5)
             now_utc = dt.now(timezone.utc)
             now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
             
+            # Visibility Windows
             if now_local.hour < 3:
                 visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
                 visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
-                fotmob_visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-                fotmob_visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
             else:
                 visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
                 visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
-                fotmob_visible_start_local = visible_start_local
-                fotmob_visible_end_local = visible_end_local
             
             visible_start_utc = visible_start_local.astimezone(timezone.utc)
             visible_end_utc = visible_end_local.astimezone(timezone.utc)
-            fotmob_visible_start_utc = fotmob_visible_start_local.astimezone(timezone.utc)
-            fotmob_visible_end_utc = fotmob_visible_end_local.astimezone(timezone.utc)
-            
-            window_start_local = now_local - timedelta(hours=30)
-            window_end_local = now_local + timedelta(hours=48)
-            
-            window_start_utc = window_start_local.astimezone(timezone.utc)
-            window_end_utc = window_end_local.astimezone(timezone.utc)
+            window_start_utc = (now_local - timedelta(hours=30)).astimezone(timezone.utc)
+            window_end_utc = (now_local + timedelta(hours=48)).astimezone(timezone.utc)
             
             futures = {}
 
-            # --- SIMPLE LOOP IMPLEMENTATION ---
-            
-            # Special fetchers
-            if conf['active_sports'].get('ahl', False):
-                f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
-                futures[f] = 'ahl'
-            
-            if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
-                f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
-                futures[f] = 'nhl_native'
-            
+            # --- RESTORED: EFL & SOCCER FETCHING ---
             for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
                 if conf['active_sports'].get(internal_id, False):
                     f = self.executor.submit(
-                        self._fetch_fotmob_league,
-                        fid,
-                        internal_id,
-                        conf,
-                        window_start_utc,
-                        window_end_utc,
-                        fotmob_visible_start_utc,
-                        fotmob_visible_end_utc
+                        self._fetch_fotmob_league, 
+                        fid, internal_id, conf, 
+                        window_start_utc, window_end_utc, 
+                        visible_start_utc, visible_end_utc
                     )
                     futures[f] = internal_id
 
-            # Standard ESPN fetchers
+            # NHL Native (Optimized)
+            if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
+                f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+                futures[f] = 'nhl_native'
+
+            # AHL
+            if conf['active_sports'].get('ahl', False):
+                f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
+                futures[f] = 'ahl'
+
+            # Standard ESPN Leagues (NFL, NBA, MLB, NCAA)
             for league_key, config in self.leagues.items():
-                if league_key == 'nhl' and not conf['debug_mode']: continue 
-                if league_key.startswith('soccer_'): continue
-                if league_key == 'ahl': continue
+                if league_key in ['nhl', 'ahl'] or league_key.startswith('soccer_'):
+                    continue # Already handled by specialized fetchers above
                 
                 f = self.executor.submit(
                     self.fetch_single_league, 
-                    league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc
+                    league_key, config, conf, window_start_utc, window_end_utc, 
+                    utc_offset, visible_start_utc, visible_end_utc
                 )
                 futures[f] = league_key
             
-            # HARD TIMEOUT: Wait max for threads
+            # Wait for all threads
             done, _ = concurrent.futures.wait(futures.keys(), timeout=API_TIMEOUT)
             
             for f in done:
@@ -2872,60 +2809,26 @@ class SportsFetcher:
                     res = f.result()
                     if res: 
                         all_games.extend(res)
-                        self.league_last_data[lk] = res # Save successful pull!
-                    else:
-                        # API returned empty, immediately fall back to cache
-                        if lk in self.league_last_data:
-                            all_games.extend(self.league_last_data[lk])
+                        self.league_last_data[lk] = res 
+                    elif lk in self.league_last_data:
+                        all_games.extend(self.league_last_data[lk])
                 except Exception as e: 
-                    print(f"Fetch error {lk}: {e}")
-                    # If request completely crashes, fall back to cache
                     if lk in self.league_last_data:
                         all_games.extend(self.league_last_data[lk])
 
-        sports_count = len([g for g in all_games if g.get('type') == 'scoreboard'])
-        
-        with data_lock:
-            prev_buffer = state.get('buffer_sports', [])
-            prev_sports_count = len([g for g in prev_buffer if g.get('type') == 'scoreboard'])
-
-        if sports_count == 0 and prev_sports_count > 0:
-            self.consecutive_empty_fetches += 1
-            if self.consecutive_empty_fetches < 3:
-                prev_pure_sports = [g for g in prev_buffer if g.get('type') == 'scoreboard']
-                utils = [g for g in all_games if g.get('type') != 'scoreboard']
-                all_games = prev_pure_sports + utils
-            else:
-                self.consecutive_empty_fetches = 0
-        else:
-            self.consecutive_empty_fetches = 0
-
-        for g in all_games:
-            ts = g.get('startTimeUTC')
-            if ts and isinstance(ts, str):
-                try:
-                    d = dt.fromisoformat(ts.replace('Z', '+00:00'))
-                    g['startTimeUTC'] = d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                except: pass
-
-        # STABILITY FIX: Sort by Abbreviation to prevent jumping
+        # Sorting & Buffering
         all_games.sort(key=lambda x: (
             0 if x.get('type') == 'clock' else
             1 if x.get('type') == 'weather' else
-            5 if (x.get('is_shown') is False) or any(k in str(x.get('status', '')).lower() for k in ["postponed", "cancelled", "canceled", "suspended", "ppd"]) else
+            4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "suspended", "canceled", "ppd"]) else
             3 if "FINAL" in str(x.get('status', '')).upper() or "FIN" == str(x.get('status', '')) else
-            2, # Active/Upcoming
+            2,
             x.get('startTimeUTC', '9999'),
             x.get('sport', ''),
-            x.get('home_abbr', ''), # Alphabetical Tie-Breaker (Fixes Jumping)
-            str(x.get('id', '0'))   # Final ID Tie-Breaker
+            x.get('home_abbr', ''),
+            str(x.get('id', '0'))
         ))
 
-        now_ts = time.time()
-        self.history_buffer.append((now_ts, all_games))
-        cutoff_time = now_ts - 120
-        self.history_buffer = [x for x in self.history_buffer if x[0] > cutoff_time]
-        
         with data_lock: 
             state['buffer_sports'] = all_games
             self.merge_buffers()
