@@ -3357,6 +3357,11 @@ def get_ticker_data():
             # STRICT FILTER: Never allow music objects in non-music modes
             if g.get('type') == 'music' or g.get('sport') == 'music': 
                 continue 
+
+            # Hide postponed/suspended/canceled games from the ticker feed.
+            status_lower = str(g.get('status', '')).lower()
+            if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
+                continue
             
             should_show = True
             if current_mode == 'my_teams':
@@ -3713,11 +3718,6 @@ def api_state():
         elif current_mode == 'weather' and game_copy.get('type') != 'weather':
             should_show = False
         elif current_mode == 'clock' and sport != 'clock':
-            should_show = False
-
-        # GLOBAL HIDE: Suspended or PPD games are usually hidden regardless of mode
-        status_lower = str(game_copy.get('status', '')).lower()
-        if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
             should_show = False
 
         # Apply calculated visibility to the master list
