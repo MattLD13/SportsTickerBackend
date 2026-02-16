@@ -1076,149 +1076,9 @@ struct GameRow: View {
             .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [Color.orange.opacity(0.4), Color.white.opacity(0.05)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
             .clipShape(shape).shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 5)
             
-        } else if game.type == "flight_weather" {
-            // MARK: - AIRPORT WEATHER HEADER CARD
-            HStack(spacing: 14) {
-                // Airport icon with glow
-                ZStack {
-                    Circle().fill(Color.cyan.opacity(0.15)).frame(width: 48, height: 48)
-                    Image(systemName: "airplane.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundStyle(.cyan)
-                }
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(game.safeHomeAbbr)
-                        .font(.system(size: 18, weight: .bold)).foregroundColor(.white)
-                    HStack(spacing: 6) {
-                        Image(systemName: weatherIcon(for: game.status))
-                            .font(.caption).foregroundStyle(.cyan.opacity(0.8))
-                        Text(game.status)
-                            .font(.system(size: 12, weight: .medium)).foregroundColor(.gray)
-                    }
-                }
-                
-                Spacer()
-                
-                // Temperature display
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(game.safeAwayAbbr)
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                    Text("AIRPORT")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundStyle(.cyan.opacity(0.6))
-                        .tracking(2)
-                }
-            }
-            .padding(16)
-            .background(
-                ZStack {
-                    LinearGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.12), Color(white: 0.08)]), startPoint: .topLeading, endPoint: .bottomTrailing)
-                    // Subtle runway pattern
-                    HStack {
-                        Spacer()
-                        Rectangle().fill(Color.cyan.opacity(0.03)).frame(width: 2).padding(.vertical, 8)
-                        Spacer().frame(width: 6)
-                        Rectangle().fill(Color.cyan.opacity(0.03)).frame(width: 2).padding(.vertical, 8)
-                        Spacer().frame(width: 20)
-                    }
-                }
-            )
-            .overlay(shape.strokeBorder(LinearGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.5), Color.cyan.opacity(0.1)]), startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
-            .clipShape(shape).shadow(color: Color.cyan.opacity(0.08), radius: 12, x: 0, y: 6)
-            
-        } else if game.type == "flight_arrival" {
-            // MARK: - ARRIVAL CARD
-            HStack(spacing: 12) {
-                // Green accent bar
-                RoundedRectangle(cornerRadius: 2).fill(Color.green).frame(width: 3, height: 50)
-                
-                // Airplane icon in circle
-                ZStack {
-                    Circle().fill(Color.green.opacity(0.12)).frame(width: 36, height: 36)
-                    Image(systemName: "airplane.arrival")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.green)
-                }
-                
-                // Flight info
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(game.safeAwayAbbr)
-                        .font(.system(size: 15, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                    HStack(spacing: 4) {
-                        Text("from")
-                            .font(.system(size: 11)).foregroundColor(.gray)
-                        Text(game.safeHomeAbbr)
-                            .font(.system(size: 11, weight: .semibold)).foregroundColor(.white.opacity(0.7))
-                    }
-                }
-                
-                Spacer()
-                
-                // Status badge
-                HStack(spacing: 4) {
-                    Circle().fill(Color.green).frame(width: 5, height: 5)
-                    Text("ARRIVING")
-                        .font(.system(size: 9, weight: .heavy, design: .rounded))
-                        .tracking(0.5)
-                }
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(Color.green.opacity(0.12))
-                .foregroundColor(.green)
-                .clipShape(Capsule())
-            }
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .background(Color(white: 0.10))
-            .overlay(shape.strokeBorder(Color.green.opacity(0.12), lineWidth: 1))
-            .clipShape(shape).shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
-            
-        } else if game.type == "flight_departure" {
-            // MARK: - DEPARTURE CARD
-            HStack(spacing: 12) {
-                // Blue accent bar
-                RoundedRectangle(cornerRadius: 2).fill(Color.blue).frame(width: 3, height: 50)
-                
-                // Airplane icon in circle
-                ZStack {
-                    Circle().fill(Color.blue.opacity(0.12)).frame(width: 36, height: 36)
-                    Image(systemName: "airplane.departure")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.blue)
-                }
-                
-                // Flight info
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(game.safeAwayAbbr)
-                        .font(.system(size: 15, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                    HStack(spacing: 4) {
-                        Text("to")
-                            .font(.system(size: 11)).foregroundColor(.gray)
-                        Text(game.safeHomeAbbr)
-                            .font(.system(size: 11, weight: .semibold)).foregroundColor(.white.opacity(0.7))
-                    }
-                }
-                
-                Spacer()
-                
-                // Status badge
-                HStack(spacing: 4) {
-                    Circle().fill(Color.blue).frame(width: 5, height: 5)
-                    Text("DEPARTING")
-                        .font(.system(size: 9, weight: .heavy, design: .rounded))
-                        .tracking(0.5)
-                }
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(Color.blue.opacity(0.12))
-                .foregroundColor(.blue)
-                .clipShape(Capsule())
-            }
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .background(Color(white: 0.10))
-            .overlay(shape.strokeBorder(Color.blue.opacity(0.12), lineWidth: 1))
-            .clipShape(shape).shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
+        } else if game.type == "flight_weather" || game.type == "flight_arrival" || game.type == "flight_departure" {
+            // Handled by AirportBoardView in HomeView — skip individual rendering
+            EmptyView()
             
         } else if game.type == "leaderboard" {
             // MARK: - LEADERBOARD CARD
@@ -1367,6 +1227,246 @@ struct GameRow: View {
 }
 
 // ==========================================
+// MARK: - AIRPORT BOARD VIEW
+// ==========================================
+struct AirportBoardView: View {
+    let flights: [Game]
+    
+    private var weatherItem: Game? { flights.first(where: { $0.type == "flight_weather" }) }
+    private var arrivals: [Game] { flights.filter { $0.type == "flight_arrival" } }
+    private var departures: [Game] { flights.filter { $0.type == "flight_departure" } }
+    
+    private func weatherIcon(for condition: String) -> String {
+        let c = condition.uppercased()
+        if c.contains("CLEAR") || c.contains("SUNNY") { return "sun.max.fill" }
+        if c.contains("PARTLY") { return "cloud.sun.fill" }
+        if c.contains("CLOUD") || c.contains("OVERCAST") { return "cloud.fill" }
+        if c.contains("RAIN") || c.contains("DRIZZLE") || c.contains("SHOWER") { return "cloud.rain.fill" }
+        if c.contains("SNOW") { return "cloud.snow.fill" }
+        if c.contains("THUNDER") { return "cloud.bolt.rain.fill" }
+        if c.contains("FOG") || c.contains("MIST") || c.contains("HAZE") { return "cloud.fog.fill" }
+        if c.contains("FREEZING") { return "thermometer.snowflake" }
+        return "cloud.fill"
+    }
+    
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+        
+        VStack(spacing: 12) {
+            // ====== CARD 1: AIRPORT INFO ======
+            if let wx = weatherItem {
+                VStack(spacing: 0) {
+                    // Top: Airport name banner
+                    HStack(spacing: 0) {
+                        HStack(spacing: 10) {
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        RadialGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.25), Color.cyan.opacity(0.05)]), center: .center, startRadius: 0, endRadius: 24)
+                                    )
+                                    .frame(width: 44, height: 44)
+                                Image(systemName: "airplane")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundStyle(.cyan)
+                                    .rotationEffect(.degrees(-45))
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(wx.safeHomeAbbr)
+                                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                Text("LIVE ACTIVITY")
+                                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                                    .tracking(2)
+                                    .foregroundStyle(.cyan.opacity(0.5))
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        // Weather block
+                        HStack(spacing: 10) {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(wx.status)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.gray)
+                                Text(wx.safeAwayAbbr)
+                                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                            }
+                            Image(systemName: weatherIcon(for: wx.status))
+                                .font(.system(size: 24))
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(.cyan)
+                        }
+                    }
+                    .padding(16)
+                }
+                .background(
+                    LinearGradient(gradient: Gradient(colors: [
+                        Color.cyan.opacity(0.10),
+                        Color(white: 0.07)
+                    ]), startPoint: .topLeading, endPoint: .bottomTrailing)
+                )
+                .overlay(
+                    shape.strokeBorder(
+                        LinearGradient(gradient: Gradient(colors: [Color.cyan.opacity(0.4), Color.cyan.opacity(0.08)]),
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        lineWidth: 1
+                    )
+                )
+                .clipShape(shape)
+                .shadow(color: Color.cyan.opacity(0.06), radius: 12, x: 0, y: 6)
+            }
+            
+            // ====== CARD 2: ARRIVALS ======
+            if !arrivals.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Header
+                    HStack(spacing: 8) {
+                        Image(systemName: "airplane.arrival")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.green)
+                        Text("ARRIVALS")
+                            .font(.system(size: 11, weight: .heavy, design: .rounded))
+                            .tracking(1.5)
+                            .foregroundStyle(.green.opacity(0.8))
+                        Spacer()
+                        Text("\(arrivals.count)")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(.green.opacity(0.5))
+                    }
+                    .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+                    
+                    // Divider
+                    Rectangle().fill(Color.green.opacity(0.1)).frame(height: 1)
+                    
+                    // Flight rows
+                    ForEach(Array(arrivals.enumerated()), id: \.element.id) { index, arr in
+                        HStack(spacing: 12) {
+                            // Flight number
+                            Text(arr.safeAwayAbbr)
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                                .frame(width: 80, alignment: .leading)
+                            
+                            // Route
+                            HStack(spacing: 6) {
+                                Text(arr.safeHomeAbbr)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.6))
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.green.opacity(0.4))
+                                Image(systemName: "mappin.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.green.opacity(0.6))
+                            }
+                            
+                            Spacer()
+                            
+                            // Status pill
+                            HStack(spacing: 4) {
+                                Circle().fill(Color.green).frame(width: 4, height: 4)
+                                Text("INBOUND")
+                                    .font(.system(size: 8, weight: .heavy, design: .rounded))
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.green.opacity(0.1))
+                            .foregroundColor(.green)
+                            .clipShape(Capsule())
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        
+                        if index < arrivals.count - 1 {
+                            Rectangle().fill(Color.white.opacity(0.04)).frame(height: 1).padding(.horizontal, 16)
+                        }
+                    }
+                    
+                    Spacer().frame(height: 6)
+                }
+                .background(Color(white: 0.08))
+                .overlay(shape.strokeBorder(Color.green.opacity(0.12), lineWidth: 1))
+                .clipShape(shape)
+                .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
+            }
+            
+            // ====== CARD 3: DEPARTURES ======
+            if !departures.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Header
+                    HStack(spacing: 8) {
+                        Image(systemName: "airplane.departure")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.blue)
+                        Text("DEPARTURES")
+                            .font(.system(size: 11, weight: .heavy, design: .rounded))
+                            .tracking(1.5)
+                            .foregroundStyle(.blue.opacity(0.8))
+                        Spacer()
+                        Text("\(departures.count)")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(.blue.opacity(0.5))
+                    }
+                    .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+                    
+                    // Divider
+                    Rectangle().fill(Color.blue.opacity(0.1)).frame(height: 1)
+                    
+                    // Flight rows
+                    ForEach(Array(departures.enumerated()), id: \.element.id) { index, dep in
+                        HStack(spacing: 12) {
+                            // Flight number
+                            Text(dep.safeAwayAbbr)
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundColor(.white)
+                                .frame(width: 80, alignment: .leading)
+                            
+                            // Route
+                            HStack(spacing: 6) {
+                                Image(systemName: "mappin.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.blue.opacity(0.6))
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.blue.opacity(0.4))
+                                Text(dep.safeHomeAbbr)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                            
+                            Spacer()
+                            
+                            // Status pill
+                            HStack(spacing: 4) {
+                                Circle().fill(Color.blue).frame(width: 4, height: 4)
+                                Text("OUTBOUND")
+                                    .font(.system(size: 8, weight: .heavy, design: .rounded))
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.blue.opacity(0.1))
+                            .foregroundColor(.blue)
+                            .clipShape(Capsule())
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        
+                        if index < departures.count - 1 {
+                            Rectangle().fill(Color.white.opacity(0.04)).frame(height: 1).padding(.horizontal, 16)
+                        }
+                    }
+                    
+                    Spacer().frame(height: 6)
+                }
+                .background(Color(white: 0.08))
+                .overlay(shape.strokeBorder(Color.blue.opacity(0.12), lineWidth: 1))
+                .clipShape(shape)
+                .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
+            }
+        }
+    }
+}
+
+// ==========================================
 // MARK: - 4. MAIN VIEW
 // ==========================================
 struct ContentView: View {
@@ -1432,9 +1532,19 @@ struct HomeView: View {
                     if vm.games.isEmpty {
                         Text("No active items found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     } else {
-                        ForEach(vm.games) { game in
+                        // Group airport flight items into a board view
+                        let airportItems = vm.games.filter { $0.sport == "flight" && ($0.type == "flight_weather" || $0.type == "flight_arrival" || $0.type == "flight_departure") }
+                        let otherItems = vm.games.filter { !($0.sport == "flight" && ($0.type == "flight_weather" || $0.type == "flight_arrival" || $0.type == "flight_departure")) }
+                        
+                        // Render visitor flight cards first (if any)
+                        ForEach(otherItems) { game in
                             let label = vm.leagueOptions.first(where: { $0.id == game.sport })?.label
                             GameRow(game: game, leagueLabel: label)
+                        }
+                        
+                        // Render grouped airport board
+                        if !airportItems.isEmpty {
+                            AirportBoardView(flights: airportItems)
                         }
                     }
                 }.padding(.horizontal)
