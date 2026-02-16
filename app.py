@@ -1009,6 +1009,45 @@ class FlightTracker:
         95: "THUNDERSTORM", 96: "THUNDERSTORM/HAIL", 99: "THUNDERSTORM/HAIL",
     }
 
+    def parse_flight_code(self, flight_code):
+        """
+        Parse flight code and return (icao_code, iata_code, flight_num)
+        Examples: 
+        B61004 -> ('JBU', 'B6', '1004')
+        JBU1004 -> ('JBU', 'B6', '1004')
+        """
+        # Mapping of 2-letter IATA codes to 3-letter ICAO codes
+        iata_to_icao = {
+            'DL': 'DAL', 'UA': 'UAL', 'AA': 'AAL', 'WN': 'SWA', 'B6': 'JBU',
+            'AS': 'ASA', 'NK': 'NKS', 'F9': 'FFT', 'G4': 'AAY', 'BA': 'BAW',
+            'LH': 'DLH', 'AF': 'AFR', 'KL': 'KLM', 'EK': 'UAE', 'QR': 'QTR',
+            'VS': 'VIR', 'FR': 'RYR', 'U2': 'EZY', 'AC': 'ACA', 'WS': 'WJA',
+        }
+        
+        flight_code = flight_code.replace(" ", "").upper()
+        
+        # Check if 3-letter code (ICAO)
+        if len(flight_code) > 3 and flight_code[:3].isalpha():
+            icao = flight_code[:3]
+            flight_num = flight_code[3:]
+            # Try to find corresponding IATA code
+            iata = None
+            for iata_code, icao_code in iata_to_icao.items():
+                if icao_code == icao:
+                    iata = iata_code
+                    break
+            return icao, iata or icao, flight_num
+        
+        # Check if 2-letter code (IATA)
+        elif len(flight_code) > 2 and flight_code[:2].isalpha():
+            iata = flight_code[:2]
+            flight_num = flight_code[2:]
+            icao = iata_to_icao.get(iata, iata)
+            return icao, iata, flight_num
+        
+        else:
+            raise ValueError(f"Invalid flight code format: {flight_code}")
+
     def fetch_airport_weather(self):
         if not self.airport_code_iata: return {"temp": "--", "cond": "UNKNOWN"}
         try:
@@ -1171,148 +1210,74 @@ class FlightTracker:
             self.log("ERROR", f"Visitor Tracking: {e}")
 
     def fetch_fr24_flight(self, flight_id):
-        """Fetch flight data using FlightRadarAPI SDK with smart airline filtering"""
+        """Fetch flight data using FlightRadarAPI SDK with smart airline code handling"""
         try:
-            flight_clean = flight_id.replace(" ", "").upper()
-            if not self.fr_api: return None
-
-            def normalize_flight_token(value):
-                return re.sub(r'[^A-Z0-9]', '', (value or '').upper())
-
-            def infer_iata_from_flights(flights, airline_filter, flight_num_part):
-                if not flights or not airline_filter:
-                    return ""
-                counts = {}
-                for fl in flights:
-                    f_num = (fl.number or "").upper()
-                    f_call = (fl.callsign or "").upper()
-                    if not f_num or len(f_num) < 2 or not f_num[:2].isalpha():
-                        continue
-                    prefix = f_num[:2]
-                    if f_call.startswith(airline_filter):
-                        counts[prefix] = counts.get(prefix, 0) + 1
-                        continue
-                    if flight_num_part:
-                        f_num_part = re.sub(r'^[A-Z]{2,3}', '', f_num)
-                        if f_num_part == flight_num_part:
-                            counts[prefix] = counts.get(prefix, 0) + 1
-                if not counts:
-                    return ""
-                return max(counts.items(), key=lambda x: x[1])[0]
-
-            # 1. SMART FILTER - Extract airline code (2 or 3 letters)
-            airline_filter = None
-            if len(flight_clean) >= 3:
-                # Check if first 2 chars are letters and 3rd is digit (e.g., LY26)
-                if flight_clean[:2].isalpha() and flight_clean[2].isdigit():
-                    airline_filter = flight_clean[:2]
-                # Check if first 3 chars are letters (e.g., ELY26, AAL123)
-                elif len(flight_clean) > 3 and flight_clean[:3].isalpha():
-                    airline_filter = flight_clean[:3]
-
-            # Extract numeric portion for flexible matching (e.g., "1965" from "UAL1965")
-            flight_clean_norm = normalize_flight_token(flight_clean)
-            flight_num_part = re.sub(r'^[A-Z]{2,3}', '', flight_clean_norm)
-            flight_num_part_norm = flight_num_part.lstrip('0') or flight_num_part
-            flight_variants = {flight_clean, flight_clean_norm}
-            if flight_num_part:
-                flight_variants.add(flight_num_part)
-                flight_variants.add(flight_num_part_norm)
-            
-            self.log("DEBUG", f"Searching for '{flight_clean}' with airline filter: {airline_filter}, num part: {flight_num_part}")
-            
-            try:
-                if airline_filter:
-                    flights = self.fr_api.get_flights(airline=airline_filter)
-                    self.log("DEBUG", f"Found {len(flights) if flights else 0} flights with filter '{airline_filter}'")
-                else:
-                    flights = self.fr_api.get_flights()
-            except Exception as e:
-                self.log("DEBUG", f"API call failed: {e}")
+            if not self.fr_api: 
                 return None
-
-            iata_override = infer_iata_from_flights(flights, airline_filter, flight_num_part)
-            if iata_override and flight_num_part:
-                flight_variants.add(f"{iata_override}{flight_num_part}")
-                flight_variants.add(f"{iata_override}{flight_num_part_norm}")
-            if iata_override:
-                self.log("DEBUG", f"Inferred IATA code for {airline_filter}: {iata_override}")
             
+            # Parse the flight code
+            icao, iata, flight_num = self.parse_flight_code(flight_id)
+            
+            self.log("DEBUG", f"Searching for {flight_id} (ICAO: {icao}, IATA: {iata}, NUM: {flight_num})")
+            
+            # Try ICAO first (more reliable)
+            try:
+                flights = self.fr_api.get_flights(airline=icao)
+                self.log("DEBUG", f"Found {len(flights) if flights else 0} flights for airline {icao}")
+            except Exception as e:
+                self.log("DEBUG", f"Airline-filtered search failed, trying all flights: {e}")
+                flights = self.fr_api.get_flights()
+            
+            if not flights:
+                self.log("DEBUG", "No flights found")
+                return None
+            
+            # Search for our specific flight
             target_flight = None
+            search_strings = [
+                f"{icao}{flight_num}",
+                f"{iata}{flight_num}",
+            ]
+            
             for flight in flights:
                 f_num = flight.number.upper() if flight.number else ""
                 f_call = flight.callsign.upper() if flight.callsign else ""
-                f_num_norm = normalize_flight_token(f_num)
-                f_call_norm = normalize_flight_token(f_call)
-                # Direct match on full flight number or callsign
-                if f_num in flight_variants or f_call in flight_variants or f_num_norm in flight_variants or f_call_norm in flight_variants:
-                    target_flight = flight
-                    self.log("DEBUG", f"✓ Match found: {f_num} / {f_call}")
-                    break
-                # Flexible match: compare numeric portion when airline filter is active
-                # This handles ICAO (UAL1965) vs IATA (UA1965) mismatches
-                if airline_filter and flight_num_part:
-                    f_num_part = re.sub(r'^[A-Z]{2,3}', '', f_num_norm)
-                    f_call_part = re.sub(r'^[A-Z]{2,3}', '', f_call_norm)
-                    f_num_part_norm = f_num_part.lstrip('0') or f_num_part
-                    f_call_part_norm = f_call_part.lstrip('0') or f_call_part
-                    if f_num_part_norm == flight_num_part_norm or f_call_part_norm == flight_num_part_norm:
-                        target_flight = flight
-                        self.log("DEBUG", f"✓ Match found (numeric): {f_num} / {f_call} [num={f_num_part_norm}]\n")
-                        break
-            
-            # Fallback: if not found with airline filter, try searching all flights
-            if not target_flight and airline_filter:
-                self.log("DEBUG", f"No match with filter, trying all flights...")
-                try:
-                    flights = self.fr_api.get_flights()
-                    self.log("DEBUG", f"Searching {len(flights) if flights else 0} total flights")
-                    iata_override = infer_iata_from_flights(flights, airline_filter, flight_num_part)
-                    if iata_override and flight_num_part:
-                        flight_variants.add(f"{iata_override}{flight_num_part}")
-                        flight_variants.add(f"{iata_override}{flight_num_part_norm}")
-                        self.log("DEBUG", f"Inferred IATA code in fallback: {iata_override}")
-                    for flight in flights:
-                        f_num = flight.number.upper() if flight.number else ""
-                        f_call = flight.callsign.upper() if flight.callsign else ""
-                        f_num_norm = normalize_flight_token(f_num)
-                        f_call_norm = normalize_flight_token(f_call)
-                        if f_num in flight_variants or f_call in flight_variants or f_num_norm in flight_variants or f_call_norm in flight_variants:
-                            target_flight = flight
-                            self.log("DEBUG", f"✓ Match found in fallback: {f_num} / {f_call}")
-                            break
-                        # Flexible numeric match in fallback too
-                        if flight_num_part:
-                            f_num_part = re.sub(r'^[A-Z]{2,3}', '', f_num_norm)
-                            f_call_part = re.sub(r'^[A-Z]{2,3}', '', f_call_norm)
-                            f_num_part_norm = f_num_part.lstrip('0') or f_num_part
-                            f_call_part_norm = f_call_part.lstrip('0') or f_call_part
-                            if f_num_part_norm == flight_num_part_norm or f_call_part_norm == flight_num_part_norm:
-                                target_flight = flight
-                                self.log("DEBUG", f"✓ Match found in fallback (numeric): {f_num} / {f_call}")
-                                break
-                except Exception as e:
-                    self.log("DEBUG", f"Fallback search failed: {e}")
-                    pass
-            
-            if target_flight:
-                try:
-                    details = self.fr_api.get_flight_details(target_flight)
-                    target_flight.set_flight_details(details)
-                except: pass 
                 
-                return {
-                    'flight_id': flight_id,
-                    'origin': target_flight.origin_airport_iata or 'UNK',
-                    'destination': target_flight.destination_airport_iata or 'UNK',
-                    'latitude': target_flight.latitude,
-                    'longitude': target_flight.longitude,
-                    'altitude': target_flight.altitude or 0,
-                    'speed_kts': target_flight.ground_speed or 0,
-                    'is_live': (target_flight.altitude or 0) > 0
-                }
-            return None
+                for search_str in search_strings:
+                    if f_num == search_str or f_call == search_str:
+                        target_flight = flight
+                        self.log("DEBUG", f"✓ Match found: {f_num} / {f_call}")
+                        break
+                
+                if target_flight:
+                    break
             
+            if not target_flight:
+                self.log("DEBUG", f"Flight '{flight_id}' not found in current flights")
+                return None
+            
+            # Get detailed information
+            try:
+                details = self.fr_api.get_flight_details(target_flight)
+                target_flight.set_flight_details(details)
+            except Exception as e:
+                self.log("DEBUG", f"Could not get detailed info: {e}")
+                pass  # Continue with basic data
+            
+            return {
+                'flight_id': flight_id,
+                'origin': target_flight.origin_airport_iata or 'UNK',
+                'destination': target_flight.destination_airport_iata or 'UNK',
+                'latitude': target_flight.latitude,
+                'longitude': target_flight.longitude,
+                'altitude': target_flight.altitude or 0,
+                'speed_kts': target_flight.ground_speed or 0,
+                'is_live': (target_flight.altitude or 0) > 0
+            }
+            
+        except ValueError as e:
+            self.log("ERROR", f"Invalid flight code: {e}")
+            return None
         except Exception as e:
             self.log("ERROR", f"SDK Error: {e}")
             return None
