@@ -1015,14 +1015,42 @@ class FlightTracker:
         Examples: 
         B61004 -> ('JBU', 'B6', '1004')
         JBU1004 -> ('JBU', 'B6', '1004')
+        NK1149 -> ('NKS', 'NK', '1149')
+        NKS1149 -> ('NKS', 'NK', '1149')
+        UA72 -> ('UAL', 'UA', '72')
         """
         # Mapping of 2-letter IATA codes to 3-letter ICAO codes
         iata_to_icao = {
-            'DL': 'DAL', 'UA': 'UAL', 'AA': 'AAL', 'WN': 'SWA', 'B6': 'JBU',
-            'AS': 'ASA', 'NK': 'NKS', 'F9': 'FFT', 'G4': 'AAY', 'BA': 'BAW',
-            'LH': 'DLH', 'AF': 'AFR', 'KL': 'KLM', 'EK': 'UAE', 'QR': 'QTR',
-            'VS': 'VIR', 'FR': 'RYR', 'U2': 'EZY', 'AC': 'ACA', 'WS': 'WJA',
+            # US Carriers
+            'DL': 'DAL',  # Delta
+            'UA': 'UAL',  # United
+            'AA': 'AAL',  # American
+            'WN': 'SWA',  # Southwest
+            'B6': 'JBU',  # JetBlue
+            'AS': 'ASA',  # Alaska
+            'NK': 'NKS',  # Spirit
+            'F9': 'FFT',  # Frontier
+            'G4': 'AAY',  # Allegiant
+            'SY': 'SCX',  # Sun Country
+            'HA': 'HAL',  # Hawaiian
+            # International Carriers
+            'BA': 'BAW',  # British Airways
+            'LH': 'DLH',  # Lufthansa
+            'AF': 'AFR',  # Air France
+            'KL': 'KLM',  # KLM
+            'EK': 'UAE',  # Emirates
+            'QR': 'QTR',  # Qatar
+            'VS': 'VIR',  # Virgin Atlantic
+            'FR': 'RYR',  # Ryanair
+            'U2': 'EZY',  # easyJet
+            'AC': 'ACA',  # Air Canada
+            'WS': 'WJA',  # WestJet
+            'EI': 'EIN',  # Aer Lingus
+            'LY': 'ELY',  # El Al
         }
+        
+        # Create reverse mapping (ICAO -> IATA)
+        icao_to_iata = {v: k for k, v in iata_to_icao.items()}
         
         flight_code = flight_code.replace(" ", "").upper()
         
@@ -1030,13 +1058,8 @@ class FlightTracker:
         if len(flight_code) > 3 and flight_code[:3].isalpha():
             icao = flight_code[:3]
             flight_num = flight_code[3:]
-            # Try to find corresponding IATA code
-            iata = None
-            for iata_code, icao_code in iata_to_icao.items():
-                if icao_code == icao:
-                    iata = iata_code
-                    break
-            return icao, iata or icao, flight_num
+            iata = icao_to_iata.get(icao, icao)
+            return icao, iata, flight_num
         
         # Check if 2-letter code (IATA)
         elif len(flight_code) > 2 and flight_code[:2].isalpha():
@@ -1210,7 +1233,7 @@ class FlightTracker:
             self.log("ERROR", f"Visitor Tracking: {e}")
 
     def fetch_fr24_flight(self, flight_id):
-        """Fetch flight data using FlightRadarAPI SDK with smart airline code handling"""
+        """Fetch flight data using FlightRadarAPI SDK with ENHANCED debugging"""
         try:
             if not self.fr_api: 
                 return None
@@ -1218,53 +1241,80 @@ class FlightTracker:
             # Parse the flight code
             icao, iata, flight_num = self.parse_flight_code(flight_id)
             
-            self.log("DEBUG", f"Searching for {flight_id} (ICAO: {icao}, IATA: {iata}, NUM: {flight_num})")
+            self.log("DEBUG", f"=== SEARCHING FOR FLIGHT ===")
+            self.log("DEBUG", f"Input: {flight_id}")
+            self.log("DEBUG", f"Parsed -> ICAO: {icao}, IATA: {iata}, Flight#: {flight_num}")
             
             # Try ICAO first (more reliable)
             try:
                 flights = self.fr_api.get_flights(airline=icao)
-                self.log("DEBUG", f"Found {len(flights) if flights else 0} flights for airline {icao}")
+                self.log("DEBUG", f"Airline filter '{icao}' returned {len(flights) if flights else 0} flights")
             except Exception as e:
-                self.log("DEBUG", f"Airline-filtered search failed, trying all flights: {e}")
+                self.log("DEBUG", f"Airline-filtered search failed: {e}")
+                self.log("DEBUG", f"Trying unfiltered search...")
                 flights = self.fr_api.get_flights()
+                self.log("DEBUG", f"Unfiltered search returned {len(flights) if flights else 0} flights")
             
             if not flights:
-                self.log("DEBUG", "No flights found")
+                self.log("DEBUG", "❌ No flights found from API")
                 return None
+            
+            # Build search variants
+            search_strings = [
+                f"{icao}{flight_num}",      # UAL72
+                f"{iata}{flight_num}",      # UA72
+            ]
+            
+            # Also try with leading zeros for short flight numbers
+            if len(flight_num) < 4:
+                search_strings.extend([
+                    f"{icao}{flight_num.zfill(4)}",  # UAL0072
+                    f"{iata}{flight_num.zfill(4)}",  # UA0072
+                ])
+            
+            self.log("DEBUG", f"Search variants: {search_strings}")
+            
+            # DEBUG: Show first 10 flights from API
+            self.log("DEBUG", "=== SAMPLE OF FLIGHTS FROM API ===")
+            for i, flight in enumerate(flights[:10]):
+                f_num = flight.number if flight.number else "NO_NUMBER"
+                f_call = flight.callsign if flight.callsign else "NO_CALLSIGN"
+                self.log("DEBUG", f"  [{i}] number='{f_num}' callsign='{f_call}'")
             
             # Search for our specific flight
             target_flight = None
-            search_strings = [
-                f"{icao}{flight_num}",
-                f"{iata}{flight_num}",
-            ]
             
             for flight in flights:
-                f_num = flight.number.upper() if flight.number else ""
-                f_call = flight.callsign.upper() if flight.callsign else ""
+                f_num = (flight.number or "").upper().replace(" ", "")
+                f_call = (flight.callsign or "").upper().replace(" ", "")
                 
                 for search_str in search_strings:
-                    if f_num == search_str or f_call == search_str:
+                    if search_str in [f_num, f_call]:
                         target_flight = flight
-                        self.log("DEBUG", f"✓ Match found: {f_num} / {f_call}")
+                        self.log("DEBUG", f"✓✓✓ MATCH FOUND ✓✓✓")
+                        self.log("DEBUG", f"  Matched: {search_str}")
+                        self.log("DEBUG", f"  Flight number: {f_num}")
+                        self.log("DEBUG", f"  Callsign: {f_call}")
                         break
                 
                 if target_flight:
                     break
             
             if not target_flight:
-                self.log("DEBUG", f"Flight '{flight_id}' not found in current flights")
+                self.log("DEBUG", f"❌ Flight '{flight_id}' not found in {len(flights)} flights")
+                self.log("DEBUG", f"   Searched for: {search_strings}")
                 return None
             
             # Get detailed information
             try:
                 details = self.fr_api.get_flight_details(target_flight)
                 target_flight.set_flight_details(details)
+                self.log("DEBUG", "✓ Got detailed flight info")
             except Exception as e:
-                self.log("DEBUG", f"Could not get detailed info: {e}")
-                pass  # Continue with basic data
+                self.log("DEBUG", f"⚠ Could not get detailed info: {e}")
+                pass
             
-            return {
+            result = {
                 'flight_id': flight_id,
                 'origin': target_flight.origin_airport_iata or 'UNK',
                 'destination': target_flight.destination_airport_iata or 'UNK',
@@ -1275,11 +1325,16 @@ class FlightTracker:
                 'is_live': (target_flight.altitude or 0) > 0
             }
             
+            self.log("DEBUG", f"✓ Returning: {result['origin']} → {result['destination']}")
+            return result
+            
         except ValueError as e:
             self.log("ERROR", f"Invalid flight code: {e}")
             return None
         except Exception as e:
             self.log("ERROR", f"SDK Error: {e}")
+            import traceback
+            self.log("ERROR", traceback.format_exc())
             return None
     
     def get_visitor_object(self):
