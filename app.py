@@ -3570,6 +3570,7 @@ def get_ticker_data():
             "pairing_code": generate_pairing_code(),
             "last_seen": time.time()
         }
+        # Sync new ticker to global state immediately
         tickers[ticker_id]['settings']['mode'] = state.get('mode', 'sports')
         save_specific_ticker(ticker_id)
 
@@ -3583,17 +3584,26 @@ def get_ticker_data():
             save_specific_ticker(ticker_id)
         return jsonify({ "status": "pairing", "code": rec['pairing_code'], "ticker_id": ticker_id })
 
-    # 3. Mode Resolution (Matches /api/state logic)
     t_settings = rec['settings']
-    current_mode = MODE_MIGRATIONS.get(t_settings.get('mode', 'sports'), t_settings.get('mode', 'sports'))
-    if current_mode not in VALID_MODES:
-        current_mode = 'sports'
 
-    # Sleep Mode check
+    # ==============================================================================
+    # CRITICAL FIX: FORCE SYNC WITH GLOBAL STATE
+    # This ignores the ticker's local 'mode' setting and uses the server's global mode.
+    # This ensures that when you change the mode in the dashboard, the ticker updates.
+    # ==============================================================================
+    current_mode = state.get('mode', 'sports')
+    
+    # Update local config to match global so the file stays mostly in sync
+    if t_settings.get('mode') != current_mode:
+        t_settings['mode'] = current_mode
+        # Optional: Save here if you want persistence, but might be too much disk I/O
+        # save_specific_ticker(ticker_id) 
+
+    # Sleep Mode Check
     if t_settings.get('brightness', 100) <= 0:
         return jsonify({ "status": "sleep", "content": { "sports": [] } })
 
-    # 4. Data Processing
+    # 4. Content Fetching
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
     raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
     visible_items = []
@@ -3604,6 +3614,8 @@ def get_ticker_data():
             if g.get('type') == 'music':
                 g['is_shown'] = True
                 visible_items.append(g)
+        
+        # Fallback: If buffer is empty, fetch immediately
         if not visible_items:
             music_obj = fetcher.get_music_object()
             if music_obj: visible_items.append(music_obj)
@@ -3651,7 +3663,7 @@ def get_ticker_data():
                 g['is_shown'] = True
                 visible_items.append(g)
 
-    # 6. Final Response - Global Config Mode set to the resolved ticker mode
+    # 6. Final Response
     g_config = { "mode": current_mode }
     if rec.get('reboot_requested'): g_config['reboot'] = True
     if rec.get('update_requested'): g_config['update'] = True
