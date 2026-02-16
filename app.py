@@ -1016,7 +1016,6 @@ class FlightTracker:
         B61004 -> ('JBU', 'B6', '1004')
         JBU1004 -> ('JBU', 'B6', '1004')
         NK1149 -> ('NKS', 'NK', '1149')
-        NKS1149 -> ('NKS', 'NK', '1149')
         UA72 -> ('UAL', 'UA', '72')
         """
         # Mapping of 2-letter IATA codes to 3-letter ICAO codes
@@ -1054,22 +1053,27 @@ class FlightTracker:
         
         flight_code = flight_code.replace(" ", "").upper()
         
-        # Check if 3-letter code (ICAO)
-        if len(flight_code) > 3 and flight_code[:3].isalpha():
-            icao = flight_code[:3]
-            flight_num = flight_code[3:]
-            iata = icao_to_iata.get(icao, icao)
-            return icao, iata, flight_num
+        # Try 3-letter ICAO code first (JBU1004, UAL72)
+        if len(flight_code) >= 4:
+            potential_icao = flight_code[:3]
+            # REMOVE .isalpha() check - just check if it's in our mapping
+            if potential_icao in icao_to_iata:
+                icao = potential_icao
+                flight_num = flight_code[3:]
+                iata = icao_to_iata[icao]
+                return icao, iata, flight_num
         
-        # Check if 2-letter code (IATA)
-        elif len(flight_code) > 2 and flight_code[:2].isalpha():
-            iata = flight_code[:2]
-            flight_num = flight_code[2:]
-            icao = iata_to_icao.get(iata, iata)
-            return icao, iata, flight_num
+        # Try 2-character IATA code (B61004, UA72, NK1149)
+        if len(flight_code) >= 3:
+            potential_iata = flight_code[:2]
+            if potential_iata in iata_to_icao:
+                iata = potential_iata
+                flight_num = flight_code[2:]
+                icao = iata_to_icao[iata]
+                return icao, iata, flight_num
         
-        else:
-            raise ValueError(f"Invalid flight code format: {flight_code}")
+        # Fallback: couldn't parse
+        raise ValueError(f"Invalid flight code format: {flight_code}")
 
     def fetch_airport_weather(self):
         if not self.airport_code_iata: return {"temp": "--", "cond": "UNKNOWN"}
@@ -1233,55 +1237,46 @@ class FlightTracker:
             self.log("ERROR", f"Visitor Tracking: {e}")
 
     def fetch_fr24_flight(self, flight_id):
-        """Fetch flight data using FlightRadarAPI SDK with ENHANCED debugging"""
+        """Fetch flight data using FlightRadarAPI SDK"""
         try:
             if not self.fr_api: 
+                self.log("ERROR", "FlightRadar24 API not initialized")
                 return None
             
             # Parse the flight code
             icao, iata, flight_num = self.parse_flight_code(flight_id)
             
-            self.log("DEBUG", f"=== SEARCHING FOR FLIGHT ===")
-            self.log("DEBUG", f"Input: {flight_id}")
-            self.log("DEBUG", f"Parsed -> ICAO: {icao}, IATA: {iata}, Flight#: {flight_num}")
+            self.log("INFO", f"Searching for flight {flight_id} (ICAO: {icao}, IATA: {iata}, #: {flight_num})")
             
-            # Try ICAO first (more reliable)
+            # Try airline-filtered search first
             try:
                 flights = self.fr_api.get_flights(airline=icao)
-                self.log("DEBUG", f"Airline filter '{icao}' returned {len(flights) if flights else 0} flights")
+                if flights:
+                    self.log("INFO", f"Got {len(flights)} {icao} flights from API")
             except Exception as e:
-                self.log("DEBUG", f"Airline-filtered search failed: {e}")
-                self.log("DEBUG", f"Trying unfiltered search...")
+                self.log("DEBUG", f"Airline filter failed, trying all flights: {e}")
                 flights = self.fr_api.get_flights()
-                self.log("DEBUG", f"Unfiltered search returned {len(flights) if flights else 0} flights")
+                if flights:
+                    self.log("INFO", f"Got {len(flights)} total flights from API")
             
             if not flights:
-                self.log("DEBUG", "❌ No flights found from API")
+                self.log("WARNING", f"No flights returned by API - service may be down")
                 return None
             
             # Build search variants
             search_strings = [
-                f"{icao}{flight_num}",      # UAL72
-                f"{iata}{flight_num}",      # UA72
+                f"{icao}{flight_num}",      # UAL72, JBU1004
+                f"{iata}{flight_num}",      # UA72, B61004
             ]
             
-            # Also try with leading zeros for short flight numbers
+            # Add zero-padded variants for short flight numbers
             if len(flight_num) < 4:
                 search_strings.extend([
                     f"{icao}{flight_num.zfill(4)}",  # UAL0072
                     f"{iata}{flight_num.zfill(4)}",  # UA0072
                 ])
             
-            self.log("DEBUG", f"Search variants: {search_strings}")
-            
-            # DEBUG: Show first 10 flights from API
-            self.log("DEBUG", "=== SAMPLE OF FLIGHTS FROM API ===")
-            for i, flight in enumerate(flights[:10]):
-                f_num = flight.number if flight.number else "NO_NUMBER"
-                f_call = flight.callsign if flight.callsign else "NO_CALLSIGN"
-                self.log("DEBUG", f"  [{i}] number='{f_num}' callsign='{f_call}'")
-            
-            # Search for our specific flight
+            # Search for the flight
             target_flight = None
             
             for flight in flights:
@@ -1291,30 +1286,25 @@ class FlightTracker:
                 for search_str in search_strings:
                     if search_str in [f_num, f_call]:
                         target_flight = flight
-                        self.log("DEBUG", f"✓✓✓ MATCH FOUND ✓✓✓")
-                        self.log("DEBUG", f"  Matched: {search_str}")
-                        self.log("DEBUG", f"  Flight number: {f_num}")
-                        self.log("DEBUG", f"  Callsign: {f_call}")
+                        self.log("INFO", f"✓ Found {flight_id}: {f_num} ({f_call})")
                         break
                 
                 if target_flight:
                     break
             
             if not target_flight:
-                self.log("DEBUG", f"❌ Flight '{flight_id}' not found in {len(flights)} flights")
-                self.log("DEBUG", f"   Searched for: {search_strings}")
+                self.log("WARNING", f"Flight {flight_id} not found - may not be airborne right now")
+                self.log("DEBUG", f"Searched for: {search_strings}")
                 return None
             
-            # Get detailed information
+            # Get detailed information if available
             try:
                 details = self.fr_api.get_flight_details(target_flight)
                 target_flight.set_flight_details(details)
-                self.log("DEBUG", "✓ Got detailed flight info")
             except Exception as e:
-                self.log("DEBUG", f"⚠ Could not get detailed info: {e}")
-                pass
+                self.log("DEBUG", f"Could not get detailed info: {e}")
             
-            result = {
+            return {
                 'flight_id': flight_id,
                 'origin': target_flight.origin_airport_iata or 'UNK',
                 'destination': target_flight.destination_airport_iata or 'UNK',
@@ -1325,16 +1315,11 @@ class FlightTracker:
                 'is_live': (target_flight.altitude or 0) > 0
             }
             
-            self.log("DEBUG", f"✓ Returning: {result['origin']} → {result['destination']}")
-            return result
-            
         except ValueError as e:
-            self.log("ERROR", f"Invalid flight code: {e}")
+            self.log("ERROR", f"Invalid flight code '{flight_id}': {e}")
             return None
         except Exception as e:
-            self.log("ERROR", f"SDK Error: {e}")
-            import traceback
-            self.log("ERROR", traceback.format_exc())
+            self.log("ERROR", f"Error fetching flight {flight_id}: {e}")
             return None
     
     def get_visitor_object(self):
