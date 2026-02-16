@@ -1,26 +1,30 @@
-import time
-import threading
-import json
-import os
-import sys
-import re
-import random
-import string
+# ── Standard library ──
+import csv
+import concurrent.futures
 import glob
+import io
+import json
+import math
+import os
+import random
+import re
+import string
+import sys
+import threading
+import time
 import uuid
 from datetime import datetime as dt, timezone, timedelta
+
+# ── Third-party ──
 import requests
 from requests.adapters import HTTPAdapter
-import concurrent.futures
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
-
-# --- MUSIC IMPORTS ---
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
-# --- FLIGHT TRACKING IMPORTS ---
+# ── Flight tracking (optional) ──
 try:
     import airportsdata
     AIRPORTS_DB = airportsdata.load('IATA')
@@ -29,23 +33,167 @@ except ImportError:
     AIRPORTS_DB = {}
     FLIGHT_TRACKING_AVAILABLE = False
 
+# Build reverse ICAO → IATA index once (replaces O(n) scan in lookup_and_auto_fill_airport)
+_ICAO_TO_IATA_INDEX = {
+    data.get('icao', '').upper(): iata
+    for iata, data in AIRPORTS_DB.items()
+    if data.get('icao')
+}
+
 try:
-    from FlightRadar24.api import FlightRadar24API  # ← CORRECT
+    from FlightRadar24.api import FlightRadar24API
     FR24_SDK_AVAILABLE = True
 except ImportError:
     FR24_SDK_AVAILABLE = False
 
-import math
-
 # Load environment variables
 load_dotenv()
 
+# ================= MODULE-LEVEL LOOKUP TABLES =================
+# Airline IATA <-> ICAO mapping
+# Hardcoded fallback in case OpenFlights fetch fails at startup
+_IATA_TO_ICAO_FALLBACK = {
+    'DL': 'DAL', 'UA': 'UAL', 'AA': 'AAL', 'WN': 'SWA', 'B6': 'JBU',
+    'AS': 'ASA', 'NK': 'NKS', 'F9': 'FFT', 'G4': 'AAY', 'SY': 'SCX',
+    'HA': 'HAL', 'BA': 'BAW', 'LH': 'DLH', 'AF': 'AFR', 'KL': 'KLM',
+    'EK': 'UAE', 'QR': 'QTR', 'VS': 'VIR', 'FR': 'RYR', 'U2': 'EZY',
+    'AC': 'ACA', 'WS': 'WJA', 'EI': 'EIN', 'LY': 'ELY',
+}
+
+def _build_airline_mappings():
+    """Fetch comprehensive airline IATA<->ICAO from OpenFlights data. Falls back to hardcoded."""
+    try:
+        resp = requests.get(
+            "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airlines.dat",
+            timeout=10
+        )
+        resp.raise_for_status()
+        reader = csv.reader(io.StringIO(resp.text))
+        iata_to_icao = {}
+        for row in reader:
+            if len(row) < 5:
+                continue
+            iata_code = row[3].strip()
+            icao_code = row[4].strip()
+            if (len(iata_code) == 2 and len(icao_code) == 3
+                    and iata_code not in ('\\N', '-', '')
+                    and icao_code not in ('\\N', '-', '')):
+                iata_to_icao[iata_code.upper()] = icao_code.upper()
+        if iata_to_icao:
+            merged = dict(_IATA_TO_ICAO_FALLBACK)
+            merged.update(iata_to_icao)
+            print(f"[AIRLINE-DB] Loaded {len(merged)} airline IATA<->ICAO mappings from OpenFlights")
+            return merged
+    except Exception as e:
+        print(f"[AIRLINE-DB] Could not fetch airline data ({e}), using {len(_IATA_TO_ICAO_FALLBACK)} hardcoded entries")
+    return dict(_IATA_TO_ICAO_FALLBACK)
+
+_IATA_TO_ICAO = _build_airline_mappings()
+_ICAO_TO_IATA = {v: k for k, v in _IATA_TO_ICAO.items()}
+
+# ── ICAO aircraft type code -> human-readable name normalization ──
+# Covers common commercial types; used as fallback when FR24 details aren't available
+_AIRCRAFT_TYPE_NAMES = {
+    # Boeing 737
+    'B731': 'Boeing 737-100', 'B732': 'Boeing 737-200', 'B733': 'Boeing 737-300',
+    'B734': 'Boeing 737-400', 'B735': 'Boeing 737-500', 'B736': 'Boeing 737-600',
+    'B737': 'Boeing 737-700', 'B738': 'Boeing 737-800', 'B739': 'Boeing 737-900',
+    'B37M': 'Boeing 737 MAX 7', 'B38M': 'Boeing 737 MAX 8', 'B39M': 'Boeing 737 MAX 9',
+    'B3XM': 'Boeing 737 MAX 10',
+    # Boeing 747
+    'B741': 'Boeing 747-100', 'B742': 'Boeing 747-200', 'B743': 'Boeing 747-300',
+    'B744': 'Boeing 747-400', 'B748': 'Boeing 747-8', 'B74S': 'Boeing 747SP',
+    # Boeing 757 / 767
+    'B752': 'Boeing 757-200', 'B753': 'Boeing 757-300',
+    'B762': 'Boeing 767-200', 'B763': 'Boeing 767-300', 'B764': 'Boeing 767-400',
+    # Boeing 777
+    'B772': 'Boeing 777-200', 'B77L': 'Boeing 777-200LR', 'B77W': 'Boeing 777-300ER',
+    'B773': 'Boeing 777-300', 'B778': 'Boeing 777-8', 'B779': 'Boeing 777-9',
+    # Boeing 787
+    'B788': 'Boeing 787-8', 'B789': 'Boeing 787-9', 'B78X': 'Boeing 787-10',
+    # Airbus A220
+    'BCS1': 'Airbus A220-100', 'BCS3': 'Airbus A220-300',
+    # Airbus A300 / A310
+    'A30B': 'Airbus A300', 'A306': 'Airbus A300-600', 'A310': 'Airbus A310',
+    # Airbus A318-A321
+    'A318': 'Airbus A318', 'A319': 'Airbus A319', 'A320': 'Airbus A320',
+    'A321': 'Airbus A321', 'A19N': 'Airbus A319neo', 'A20N': 'Airbus A320neo',
+    'A21N': 'Airbus A321neo',
+    # Airbus A330
+    'A332': 'Airbus A330-200', 'A333': 'Airbus A330-300',
+    'A338': 'Airbus A330-800neo', 'A339': 'Airbus A330-900neo',
+    # Airbus A340
+    'A342': 'Airbus A340-200', 'A343': 'Airbus A340-300',
+    'A345': 'Airbus A340-500', 'A346': 'Airbus A340-600',
+    # Airbus A350
+    'A359': 'Airbus A350-900', 'A35K': 'Airbus A350-1000',
+    # Airbus A380
+    'A388': 'Airbus A380',
+    # Embraer
+    'E170': 'Embraer 170', 'E75L': 'Embraer 175', 'E75S': 'Embraer 175',
+    'E190': 'Embraer 190', 'E195': 'Embraer 195',
+    'E290': 'Embraer E190-E2', 'E295': 'Embraer E195-E2',
+    # Bombardier / CRJ
+    'CRJ1': 'CRJ-100', 'CRJ2': 'CRJ-200', 'CRJ7': 'CRJ-700', 'CRJ9': 'CRJ-900',
+    'CRJX': 'CRJ-1000',
+    # ATR / Turboprops
+    'AT43': 'ATR 42-300', 'AT45': 'ATR 42-500', 'AT46': 'ATR 42-600',
+    'AT72': 'ATR 72', 'AT76': 'ATR 72-600',
+    'DH8A': 'Dash 8-100', 'DH8B': 'Dash 8-200', 'DH8C': 'Dash 8-300', 'DH8D': 'Dash 8-400',
+    # Other common types
+    'MD80': 'McDonnell Douglas MD-80', 'MD82': 'MD-82', 'MD83': 'MD-83',
+    'MD88': 'MD-88', 'MD90': 'MD-90', 'MD11': 'MD-11',
+    'DC10': 'DC-10', 'L101': 'Lockheed L-1011',
+    'A225': 'Antonov An-225', 'A124': 'Antonov An-124',
+    'C130': 'C-130 Hercules', 'C17': 'C-17 Globemaster',
+    'GLF5': 'Gulfstream V', 'GLF6': 'Gulfstream G650', 'GLEX': 'Global Express',
+    'LJ35': 'Learjet 35', 'LJ45': 'Learjet 45', 'LJ60': 'Learjet 60',
+    'C560': 'Citation V', 'C680': 'Citation Sovereign', 'C750': 'Citation X',
+    'E545': 'Embraer Legacy 450', 'E550': 'Embraer Praetor 600',
+    'PC12': 'Pilatus PC-12', 'PC24': 'Pilatus PC-24',
+    'BE20': 'Beechcraft King Air 200', 'BE30': 'Beechcraft King Air 350',
+}
+
+def normalize_aircraft_type(icao_code, fr24_model=None):
+    """Return human-readable aircraft name. Prefers FR24 detail model, falls back to local table."""
+    if fr24_model:
+        return fr24_model
+    if icao_code:
+        return _AIRCRAFT_TYPE_NAMES.get(icao_code.upper(), icao_code.upper())
+    return ''
+
+# Logo URL cache so validate_logo_url doesn't re-HEAD the same URL
+_logo_url_cache: dict = {}
+
+def validate_logo_url(base_id):
+    if base_id in _logo_url_cache:
+        return _logo_url_cache[base_id]
+    urls_to_try = [
+        f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png",
+        f"https://assets.leaguestat.com/ahl/logos/{base_id}_91.png",
+        f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}.png"
+    ]
+    for url in urls_to_try:
+        try:
+            r = requests.head(url, timeout=1)
+            if r.status_code == 200:
+                _logo_url_cache[base_id] = url
+                return url
+        except: pass
+    fallback = f"https://assets.leaguestat.com/ahl/logos/{base_id}.png"
+    _logo_url_cache[base_id] = fallback
+    return fallback
+
 # ================= SERVER VERSION TAG =================
 SERVER_VERSION = "v0.7-Flights"
-# ================= LOGGING SETUP =================
+
+# ── Section A: Logging ──
 class Tee(object):
+    # Set True to print [DEBUG] lines to console (mirrors state['debug_mode'])
+    verbose_debug: bool = False
+
     def __init__(self, name, mode):
-        self.file = open(name, mode, buffering=1)
+        self.file = open(name, mode, buffering=1, encoding='utf-8')
         self.original_stdout = sys.stdout
         self.original_stderr = sys.stderr
         self._lock = threading.Lock()
@@ -53,6 +201,13 @@ class Tee(object):
         self.stderr = self
 
     def write(self, data):
+        # Suppress [DEBUG] console spam unless debug_mode is on.
+        # Always write to the log file so post-mortem analysis still works.
+        if '[DEBUG]' in data and not Tee.verbose_debug:
+            with self._lock:
+                self.file.write(data)
+                self.file.flush()
+            return
         with self._lock:
             self.file.write(data)
             self.file.flush()
@@ -64,13 +219,17 @@ class Tee(object):
             self.file.flush()
             self.original_stdout.flush()
 
+tee_instance = None
 try:
     if not os.path.exists("ticker.log"):
         with open("ticker.log", "w") as f: f.write("--- Log Started ---\n")
-    Tee("ticker.log", "a")
+    tee_instance = Tee("ticker.log", "a")
+    sys.stdout = tee_instance
+    sys.stderr = tee_instance
 except Exception as e:
     print(f"Logging setup failed: {e}")
 
+# ── Section B: Network / Session ──
 def build_pooled_session(pool_size=20, retries=2):
     session = requests.Session()
     adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size, max_retries=retries, pool_block=True)
@@ -78,7 +237,7 @@ def build_pooled_session(pool_size=20, retries=2):
     session.mount("https://", adapter)
     return session
 
-# ================= CONFIGURATION =================
+# ── Section C: Constants / Timeouts ──
 TICKER_DATA_DIR = "ticker_data"
 if not os.path.exists(TICKER_DATA_DIR):
     os.makedirs(TICKER_DATA_DIR)
@@ -100,7 +259,6 @@ HEADERS = {
     "Referer": "https://www.fotmob.com/"
 }
 
-# ================= DATA CONSTANTS =================
 FOTMOB_LEAGUE_MAP = {
     'soccer_epl': 47, 'soccer_fa_cup': 132, 'soccer_champ': 48,
     'soccer_l1': 108, 'soccer_l2': 109, 'soccer_wc': 77,
@@ -114,27 +272,26 @@ TZ_OFFSETS = {
     "MST": -7, "MDT": -6, "PST": -8, "PDT": -7, "AST": -4, "ADT": -3
 }
 
+# ── Timeout constants (seconds) ──
+TIMEOUTS = {
+    'default': 7,   # general API calls (API_TIMEOUT)
+    'quick':   3,   # AHL scoring / NHL landing
+    'ahl':     4,   # AHL box score
+    'stock':   5,   # Finnhub
+    'slow':    10,  # FR24, open-meteo, FotMob
+}
+
+# ── Cache TTL constants (seconds) ──
+CACHE_TTL = {
+    'weather': 900,  # WeatherFetcher fresh threshold
+    'flight':  600,  # StockFetcher stale check
+    'stock':   30,   # STOCKS_UPDATE_INTERVAL
+}
+
 # ================= FLIGHT TRACKING CONSTANTS =================
 KNOTS_TO_MPH = 1.15078
 FLIGHTAWARE_API_KEY = os.getenv('FLIGHTAWARE_API_KEY', '')
 BLUEBOARD_BASE = "https://theblueboard.co"
-
-AIRCRAFT_TYPES = {
-    'B739': 'B737-900', 'B38M': 'B737 MAX 8', 'B39M': 'B737 MAX 9',
-    'B737': 'B737', 'B738': 'B737-800', 'B752': 'B757-200',
-    'B753': 'B757-300', 'B763': 'B767-300', 'B764': 'B767-400',
-    'B772': 'B777-200', 'B773': 'B777-300', 'B77W': 'B777-300ER',
-    'B788': 'B787-8', 'B789': 'B787-9', 'B78X': 'B787-10',
-    'A319': 'A319', 'A320': 'A320', 'A321': 'A321',
-    'A20N': 'A320neo', 'A21N': 'A321neo', 'A339': 'A330-900',
-    'A332': 'A330-200', 'A333': 'A330-300', 'A359': 'A350-900',
-    'E75L': 'E175', 'E170': 'E170', 'E190': 'E190',
-    'CRJ9': 'CRJ-900',
-}
-
-def get_aircraft_name(code):
-    if not code: return ''
-    return AIRCRAFT_TYPES.get(code.upper(), code)
 
 def get_city_name(iata_code):
     if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
@@ -161,13 +318,13 @@ def lookup_and_auto_fill_airport(airport_code_input):
         name = airport_data.get('name', airport_data.get('city', code))
         return {'iata': iata, 'icao': icao, 'name': name}
     
-    # Try ICAO lookup (4-character code)
+    # Try ICAO lookup via pre-built reverse index (O(1) instead of O(n))
     if len(code) == 4:
-        for iata_code, airport_data in AIRPORTS_DB.items():
-            if airport_data.get('icao', '').upper() == code:
-                icao = code
-                name = airport_data.get('name', airport_data.get('city', iata_code))
-                return {'iata': iata_code, 'icao': icao, 'name': name}
+        iata_code = _ICAO_TO_IATA_INDEX.get(code)
+        if iata_code and iata_code in AIRPORTS_DB:
+            airport_data = AIRPORTS_DB[iata_code]
+            name = airport_data.get('name', airport_data.get('city', iata_code))
+            return {'iata': iata_code, 'icao': code, 'name': name}
     
     # If not found, return empty
     return {'iata': '', 'icao': '', 'name': ''}
@@ -180,7 +337,7 @@ def haversine(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
     return R * c
 
-# ================= LARGE LISTS =================
+# ── Section D: Data Tables ──
 AHL_TEAMS = {
     "BRI": {"name": "Bridgeport Islanders", "color": "00539B", "id": "317"},
     "CLT": {"name": "Charlotte Checkers", "color": "C8102E", "id": "384"},
@@ -245,7 +402,7 @@ LEAGUE_OPTIONS = [
     {'id': 'weather', 'label': 'Weather', 'type': 'util', 'default': True},
     {'id': 'clock', 'label': 'Clock', 'type': 'util', 'default': True},
     {'id': 'music', 'label': 'Music', 'type': 'util', 'default': True},
-    {'id': 'flight_visitor', 'label': 'Flight Tracker', 'type': 'util', 'default': False},
+    {'id': 'flight_tracker', 'label': 'Flight Tracker', 'type': 'util', 'default': False},
     {'id': 'flight_airport', 'label': 'Airport Activity', 'type': 'util', 'default': False},
     {'id': 'stock_tech_ai', 'label': 'Tech / AI Stocks', 'type': 'stock', 'default': True, 'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
     {'id': 'stock_momentum', 'label': 'Momentum Stocks', 'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
@@ -254,8 +411,47 @@ LEAGUE_OPTIONS = [
     {'id': 'stock_consumer', 'label': 'Consumer Stocks', 'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
 ]
 
-FBS_TEAMS = ["AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"]
-FCS_TEAMS = ["ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"]
+# Pre-built label lookup from LEAGUE_OPTIONS (replaces next() linear scan in get_list)
+_LEAGUE_LABEL_MAP = {item['id']: item['label'] for item in LEAGUE_OPTIONS}
+# Pre-built stock list index — LEAGUE_OPTIONS is constant, no need to rebuild per StockFetcher init
+_STOCK_LISTS = {
+    item['id']: item['stock_list']
+    for item in LEAGUE_OPTIONS
+    if item['type'] == 'stock' and 'stock_list' in item
+}
+
+# Pre-compiled regex and frozensets for hot-path checks
+_TIME_RE = re.compile(r'\d+:\d+')
+_ACTIVE_STATES = frozenset({'in', 'half', 'crit'})
+_SUSP_KEYWORDS = frozenset(["postponed", "suspended", "canceled", "ppd"])
+
+
+def _game_sort_key(x):
+    t = x.get('type', '')
+    if t == 'clock':
+        prio = 0
+    elif t == 'weather':
+        prio = 1
+    else:
+        s = str(x.get('status', ''))
+        sl = s.lower()
+        if any(k in sl for k in _SUSP_KEYWORDS):
+            prio = 4
+        elif "FINAL" in s.upper() or sl == "fin":
+            prio = 3
+        else:
+            prio = 2
+    return (prio, x.get('startTimeUTC', '9999'), x.get('sport', ''), x.get('home_abbr', ''), str(x.get('id', '0')))
+
+
+# Valid mode set — no 'all', no 'flight2', no 'flight_submode'
+VALID_MODES = {'sports', 'live', 'my_teams', 'stocks', 'weather', 'music', 'clock', 'flights', 'flight_tracker'}
+
+# Legacy mode migration map applied at load time and on /api/config writes
+MODE_MIGRATIONS = {'all': 'sports', 'flight2': 'flight_tracker'}
+
+FBS_TEAMS = {"AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"}
+FCS_TEAMS = {"ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"}
 OLYMPIC_HOCKEY_TEAMS = [
     {"abbr": "CAN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/can.png", "color": "D52B1E", "alt_color": "FFFFFF"},
     {"abbr": "USA", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/usa.png", "color": "0A3161", "alt_color": "B31942"},
@@ -356,18 +552,37 @@ SPORT_DURATIONS = {
     'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
 }
 
-# ================= DEFAULT STATE =================
+# WMO weather condition codes → human-readable labels (used by FlightTracker.fetch_airport_weather)
+WMO_DESCRIPTIONS = {
+    0: "CLEAR SKY", 1: "MAINLY CLEAR", 2: "PARTLY CLOUDY", 3: "OVERCAST",
+    45: "FOG", 48: "RIME FOG",
+    51: "LIGHT DRIZZLE", 53: "DRIZZLE", 55: "HEAVY DRIZZLE",
+    56: "FREEZING DRIZZLE", 57: "FREEZING DRIZZLE",
+    61: "LIGHT RAIN", 63: "RAIN", 65: "HEAVY RAIN",
+    66: "FREEZING RAIN", 67: "FREEZING RAIN",
+    71: "LIGHT SNOW", 73: "SNOW", 75: "HEAVY SNOW",
+    77: "SNOW GRAINS",
+    80: "LIGHT SHOWERS", 81: "SHOWERS", 82: "HEAVY SHOWERS",
+    85: "SNOW SHOWERS", 86: "HEAVY SNOW SHOWERS",
+    95: "THUNDERSTORM", 96: "THUNDERSTORM/HAIL", 99: "THUNDERSTORM/HAIL",
+}
+
+# ── Section E: Default State ──
 default_state = {
     'active_sports': { item['id']: item['default'] for item in LEAGUE_OPTIONS },
     'mode': 'sports', 
     'layout_mode': 'schedule',
     'my_teams': [], 
-    'current_games': [],        
-    'buffer_sports': [],
-    'buffer_stocks': [],
-    'all_teams_data': {}, 
+    'current_games': [],
+    'all_teams_data': {},
     'debug_mode': False,
     'custom_date': None,
+    # Test mode — all off by default; toggled via /api/debug or /api/config
+    'test_mode':        False,   # master switch (enables all subsystems)
+    'test_spotify':     False,   # simulate Spotify playback
+    'test_stocks':      False,   # simulate stock prices
+    'test_sports_date': False,   # use custom_date for sports fetch
+    'test_flights':     False,   # verbose flight debug logging
     'weather_city': "New York",
     'weather_lat': 40.7128,
     'weather_lon': -74.0060,
@@ -379,7 +594,6 @@ default_state = {
     'airport_code_icao': 'KEWR',
     'airport_code_iata': 'EWR',
     'airport_name': 'Newark',
-    'flight_submode': 'airport',
     'airline_filter': ''
 }
 
@@ -393,46 +607,42 @@ DEFAULT_TICKER_SETTINGS = {
     "live_delay_seconds": 45
 }
 
-# ================= NEW LOAD LOGIC =================
+# ── Section F: Boot / Config Load ──
 state = default_state.copy()
 tickers = {} 
 
-# 1. Load Global Config (Defaults)
-if os.path.exists(GLOBAL_CONFIG_FILE):
-    try:
-        with open(GLOBAL_CONFIG_FILE, 'r') as f:
-            loaded = json.load(f)
-            for k, v in loaded.items():
-                if k in state:
-                    if isinstance(state[k], dict) and isinstance(v, dict):
-                        state[k].update(v)
-                    else:
-                        state[k] = v
-    except Exception as e:
-        print(f"⚠️ Error loading global config: {e}")
-
-# Normalize legacy flight2 mode and ensure submode exists
-if state.get('mode') == 'flight2':
-    state['mode'] = 'flights'
-    state['flight_submode'] = 'track'
-if 'flight_submode' not in state:
-    state['flight_submode'] = 'airport'
-
-# Force airline_filter to be empty (support all airlines)
-state['airline_filter'] = ''
-
-# Clean up saved config file to remove airline_filter
+# 1. Load Global Config — single pass with inline cleanup
 if os.path.exists(GLOBAL_CONFIG_FILE):
     try:
         with open(GLOBAL_CONFIG_FILE, 'r') as f:
             config_data = json.load(f)
-        if 'airline_filter' in config_data and config_data['airline_filter'] != '':
-            config_data['airline_filter'] = ''
-            with open(GLOBAL_CONFIG_FILE, 'w') as f:
-                json.dump(config_data, f, indent=4)
-            print("🧹 Cleared airline_filter from saved config")
+        # Migrate and clean legacy keys in-memory first
+        config_data['mode'] = MODE_MIGRATIONS.get(config_data.get('mode', 'sports'), config_data.get('mode', 'sports'))
+        # Handle old flights+track_submode combo
+        if config_data.get('mode') == 'flights' and config_data.get('flight_submode') == 'track':
+            config_data['mode'] = 'flight_tracker'
+        config_data.pop('flight_submode', None)
+        config_data['airline_filter'] = ''
+        # Apply to state
+        for k, v in config_data.items():
+            if k in state:
+                if isinstance(state[k], dict) and isinstance(v, dict):
+                    state[k].update(v)
+                else:
+                    state[k] = v
+        # If config had stale keys, persist the cleaned version
+        if 'flight_submode' in config_data or config_data.get('airline_filter', '') != '':
+            with open(GLOBAL_CONFIG_FILE, 'w') as _f:
+                json.dump(config_data, _f, indent=4)
+            print("🧹 Migrated legacy keys in global config")
     except Exception as e:
-        print(f"⚠️ Error cleaning config: {e}")
+        print(f"⚠️ Error loading global config: {e}")
+
+# Ensure mode is valid
+state['mode'] = MODE_MIGRATIONS.get(state.get('mode', 'sports'), state.get('mode', 'sports'))
+if state['mode'] not in VALID_MODES:
+    state['mode'] = 'sports'
+state['airline_filter'] = ''
 
 # 2. Load Individual Ticker Files (Robust)
 ticker_files = glob.glob(os.path.join(TICKER_DATA_DIR, "*.json"))
@@ -454,7 +664,7 @@ for t_file in ticker_files:
         print(f"❌ Failed to load ticker file {t_file}: {e}")
 
 
-# ================= NEW SAVE FUNCTIONS =================
+# ── Section G: Save Helpers ──
 def save_json_atomically(filepath, data):
     """Safe atomic write helper"""
     temp = f"{filepath}.tmp"
@@ -484,7 +694,6 @@ def save_global_config():
                 'airport_code_icao': state.get('airport_code_icao', 'KEWR'),
                 'airport_code_iata': state.get('airport_code_iata', 'EWR'),
                 'airport_name': state.get('airport_name', 'Newark'),
-                'flight_submode': state.get('flight_submode', 'airport'),
                 'airline_filter': ''  # Always empty - support all airlines
             }
         
@@ -511,8 +720,168 @@ def save_config_file():
 def generate_pairing_code():
     while True:
         code = ''.join(random.choices(string.digits, k=6))
-        active_codes = [t.get('pairing_code') for t in tickers.values() if not t.get('paired')]
+        active_codes = {t.get('pairing_code') for t in tickers.values() if not t.get('paired')}
         if code not in active_codes: return code
+
+# ================= UTILITIES =================
+
+def safe_get(obj, *keys, default=None):
+    """
+    Defensive nested dict traversal.
+    safe_get(d, 'a', 'b', 'c') is equivalent to the chain:
+        ((d.get('a') or {}).get('b') or {}).get('c')
+    Returns `default` if any level is missing, None, or not a dict.
+    """
+    cur = obj
+    for key in keys:
+        if not isinstance(cur, dict):
+            return default
+        cur = cur.get(key)
+        if cur is None:
+            return default
+    return cur if cur is not None else default
+
+
+def parse_iso(s: str) -> dt:
+    """
+    Parse an ISO 8601 datetime string, handling the trailing 'Z' that
+    Python < 3.11 fromisoformat() rejects.
+    """
+    if not s:
+        raise ValueError("Empty datetime string")
+    return dt.fromisoformat(s.replace('Z', '+00:00'))
+
+
+def fetch_json(session, url, *, timeout=None, params=None, headers=None):
+    """
+    Safe HTTP GET returning parsed JSON. Raises on non-2xx status.
+    Uses TIMEOUTS['default'] if timeout is not specified.
+    """
+    r = session.get(
+        url,
+        params=params or {},
+        headers=headers or {},
+        timeout=timeout or TIMEOUTS['default']
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+# ================= TEST MODE =================
+
+_SENTINEL = object()  # used to distinguish "not passed" from None in TestMode.configure
+
+class TestMode:
+    """
+    Centralized simulation / debug mode manager.
+
+    In production this class is completely inert (all flags False by default).
+
+    Usage examples:
+        TestMode.configure(enabled=True)              # turn on all subsystems
+        TestMode.configure(stocks=True)               # stocks-only test
+        TestMode.configure(enabled=False)             # turn everything off
+        TestMode.is_enabled('spotify')                # → bool
+        TestMode.get_custom_date()                    # → 'YYYYMMDD' or None
+        TestMode.get_fake_playlist()                  # → list of song dicts
+        TestMode.get_fake_stock_price('AAPL')         # → {base, change, pct}
+        TestMode.status()                             # → dict snapshot for /api/debug
+    """
+
+    _enabled: bool = False
+    _subsystems: dict = {
+        'spotify':     False,   # simulate Spotify playback
+        'stocks':      False,   # simulate stock prices
+        'sports_date': False,   # override sports date with custom_date
+        'flights':     False,   # verbose flight debug logging
+    }
+    _custom_date: str | None = None
+
+    # Simulation data lives here — not scattered in individual class constructors
+    _FAKE_PLAYLIST = [
+        {
+            "name": "Simulated Song", "artist": "The Test Band",
+            "cover": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/768px-Google_%22G%22_logo.svg.png",
+            "duration": 180.0
+        },
+        {
+            "name": "Coding All Night", "artist": "Dev Team",
+            "cover": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Unofficial_JavaScript_logo_2.svg/1024px-Unofficial_JavaScript_logo_2.svg.png",
+            "duration": 240.0
+        },
+        {
+            "name": "Offline Mode", "artist": "No Wifi",
+            "cover": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Visual_Editor_-_Icon_-_No-connection.svg/1024px-Visual_Editor_-_Icon_-_No-connection.svg.png",
+            "duration": 120.0
+        },
+    ]
+
+    @classmethod
+    def configure(cls, *, enabled=None, custom_date=_SENTINEL, **subsystems):
+        """
+        Update test mode settings.
+        - enabled=True  → flip all subsystems on at once
+        - enabled=False → turn all off
+        - Individual kwargs (spotify=True, stocks=False) control per-subsystem
+        - custom_date='YYYY-MM-DD' sets the sports date override string
+        """
+        if custom_date is not _SENTINEL:
+            cls._custom_date = custom_date
+
+        if enabled is True:
+            cls._enabled = True
+            for k in cls._subsystems:
+                cls._subsystems[k] = True
+        elif enabled is False:
+            cls._enabled = False
+            for k in cls._subsystems:
+                cls._subsystems[k] = False
+
+        for k, v in subsystems.items():
+            if k in cls._subsystems:
+                cls._subsystems[k] = bool(v)
+                if v:
+                    cls._enabled = True  # any subsystem on → globally enabled
+
+    @classmethod
+    def is_enabled(cls, subsystem: str) -> bool:
+        """Return True if the named subsystem simulation is active."""
+        return cls._subsystems.get(subsystem, False)
+
+    @classmethod
+    def get_custom_date(cls) -> str | None:
+        """Return the date override as a YYYYMMDD string, or None if not active."""
+        if cls._custom_date and cls.is_enabled('sports_date'):
+            return cls._custom_date.replace('-', '')
+        return None
+
+    @classmethod
+    def get_fake_playlist(cls):
+        """Return the simulated Spotify playlist."""
+        return cls._FAKE_PLAYLIST
+
+    @classmethod
+    def get_fake_stock_price(cls, symbol: str) -> dict:
+        """
+        Return deterministic, slowly-fluctuating fake price data for a symbol.
+        Logic originally lived in StockFetcher._fetch_single_stock.
+        """
+        base_price = sum(ord(c) for c in symbol) % 200 + 50
+        variation = (time.time() % 600) / 100.0
+        current_price = base_price + math.sin(variation + len(symbol)) * 5
+        change = math.sin(variation * 2) * 2.5
+        pct = (change / base_price) * 100
+        return {'base': current_price, 'change': change, 'pct': pct}
+
+    @classmethod
+    def status(cls) -> dict:
+        """Snapshot of current test mode state, exposed by /api/debug GET."""
+        return {
+            'enabled': cls._enabled,
+            'subsystems': dict(cls._subsystems),
+            'custom_date': cls._custom_date,
+        }
+
 
 class SpotifyFetcher(threading.Thread):
     def __init__(self):
@@ -533,9 +902,9 @@ class SpotifyFetcher(threading.Thread):
             "is_playing": False,
             "name": "Waiting for Music...",
             "artist": "",
-            "cover": "",         
-            "last_cover": "",    
-            "next_covers": [],   
+            "cover": "",          
+            "last_cover": "",     
+            "next_covers": [],    
             "duration": 0,
             "progress": 0,
             "last_fetch_ts": time.time()
@@ -545,9 +914,45 @@ class SpotifyFetcher(threading.Thread):
         with self._lock: 
             return self.state.copy()
 
+    def run_simulation(self):
+        """Runs a fake loop when no API keys are present or test_spotify is enabled."""
+        print("⚠️ Spotify: no API keys or test mode active — starting MUSIC SIMULATION.")
+        idx = 0
+        while True:
+            playlist = TestMode.get_fake_playlist()
+            song = playlist[idx]
+
+            next_1 = playlist[(idx + 1) % len(playlist)]
+            next_2 = playlist[(idx + 2) % len(playlist)]
+
+            start_time = time.time()
+
+            with self._lock:
+                self.state.update({
+                    "is_playing": True,
+                    "name": song['name'],
+                    "artist": song['artist'],
+                    "cover": song['cover'],
+                    "last_cover": playlist[(idx - 1) % len(playlist)]['cover'],
+                    "next_covers": [next_1['cover'], next_2['cover']],
+                    "duration": song['duration'],
+                    "progress": 0,
+                    "last_fetch_ts": start_time
+                })
+
+            # Simulate playback: update progress every second for 20s, then advance
+            for _ in range(20):
+                time.sleep(1)
+                with self._lock:
+                    self.state['progress'] = time.time() - start_time
+                    self.state['last_fetch_ts'] = time.time()
+
+            idx = (idx + 1) % len(playlist)
+
     def run(self):
-        if not self.client_id or not self.client_secret:
-            print("⚠️ SPOTIFY: Missing Client ID or Secret in .env")
+        # Run simulation if keys are missing OR test_spotify is explicitly enabled
+        if not self.client_id or not self.client_secret or TestMode.is_enabled('spotify'):
+            self.run_simulation()
             return
 
         print("✅ Spotify Adaptive Polling Started")
@@ -636,22 +1041,6 @@ class SpotifyFetcher(threading.Thread):
 
             time.sleep(current_delay)
 
-# ================= FETCHING LOGIC =================
-
-def validate_logo_url(base_id):
-    urls_to_try = [
-        f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}_90.png",
-        f"https://assets.leaguestat.com/ahl/logos/{base_id}_91.png",
-        f"https://assets.leaguestat.com/ahl/logos/50x50/{base_id}.png"
-    ]
-    for url in urls_to_try:
-        try:
-            r = requests.head(url, timeout=1)
-            if r.status_code == 200:
-                return url
-        except: pass
-    return f"https://assets.leaguestat.com/ahl/logos/{base_id}.png"
-
 class WeatherFetcher:
     def __init__(self, initial_lat=40.7128, initial_lon=-74.0060, city="New York"):
         self.lat = initial_lat
@@ -662,13 +1051,21 @@ class WeatherFetcher:
         self.session = build_pooled_session(pool_size=10)
 
     def update_config(self, city=None, lat=None, lon=None):
-        if lat is not None: self.lat = lat
-        if lon is not None: self.lon = lon
-        if city is not None: self.city_name = city
-        self.last_fetch = 0 
+        try:
+            if lat is not None: self.lat = float(lat)
+            if lon is not None: self.lon = float(lon)
+            if city is not None: self.city_name = str(city)
+            self.last_fetch = 0 # Force refresh
+            print(f"✅ Weather config updated: {self.city_name} ({self.lat}, {self.lon})")
+        except Exception as e:
+            print(f"⚠️ Error updating weather config: {e}")
 
     def get_weather_icon(self, wmo_code):
-        code = int(wmo_code)
+        try:
+            code = int(wmo_code)
+        except:
+            return 'cloud'
+            
         if code == 0: return 'sun'
         if code in [1, 2, 3, 45, 48]: return 'cloud'
         if code in [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82]: return 'rain'
@@ -683,39 +1080,78 @@ class WeatherFetcher:
         except: return "DAY"
 
     def get_weather(self):
-        if time.time() - self.last_fetch < 900 and self.cache: return self.cache
+        # 1. Return Cache if fresh (< 15 mins)
+        if time.time() - self.last_fetch < CACHE_TTL['weather'] and self.cache:
+            return self.cache
         
         try:
-            w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto"
-            w_res = self.session.get(w_url, timeout=5).json()
+            # 2. Validate coordinates
+            if self.lat is None or self.lon is None:
+                print("❌ Weather Error: Invalid Coordinates (None)")
+                return self.cache
 
-            a_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={self.lat}&longitude={self.lon}&current=us_aqi"
-            a_res = self.session.get(a_url, timeout=5).json()
+            # 3. Fetch Forecast (Independent Step)
+            w_data = {}
+            try:
+                w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto"
+                w_resp = self.session.get(w_url, timeout=TIMEOUTS['slow'])
+                if w_resp.status_code == 200:
+                    w_data = w_resp.json()
+                else:
+                    print(f"⚠️ Weather API Error: {w_resp.status_code} - {w_resp.text}")
+                    return self.cache # Keep showing old data if fetch fails
+            except Exception as e:
+                print(f"⚠️ Weather Connection Failed: {e}")
+                return self.cache
 
-            current_temp = int(round(w_res['current']['temperature_2m']))
-            current_code = w_res['current']['weather_code']
+            # 4. Fetch Air Quality (Separate Step - Fail Safe)
+            aqi = 0
+            try:
+                a_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={self.lat}&longitude={self.lon}&current=us_aqi"
+                a_resp = self.session.get(a_url, timeout=TIMEOUTS['stock'])
+                if a_resp.status_code == 200:
+                    a_data = a_resp.json()
+                    aqi = a_data.get('current', {}).get('us_aqi', 0)
+            except Exception:
+                pass # If AQI fails, just show 0, don't crash the widget
+
+            # 5. Parse Data
+            current = w_data.get('current', {})
+            daily = w_data.get('daily', {})
+
+            if not current:
+                print("⚠️ Weather Error: Missing 'current' data in response")
+                return self.cache
+
+            current_temp = int(round(current.get('temperature_2m', 0)))
+            current_code = current.get('weather_code', 0)
             current_icon = self.get_weather_icon(current_code)
             
-            aqi = a_res.get('current', {}).get('us_aqi', 0)
-            uv = w_res['daily']['uv_index_max'][0]
+            uv = 0
+            if 'uv_index_max' in daily and len(daily['uv_index_max']) > 0:
+                uv = daily['uv_index_max'][0]
 
             forecast_list = []
-            daily = w_res['daily']
-            
-            for i in range(0, 5): 
-                f_day = {
-                    "day": self.get_day_name(daily['time'][i]),
-                    "icon": self.get_weather_icon(daily['weather_code'][i]),
-                    "high": int(round(daily['temperature_2m_max'][i])),
-                    "low": int(round(daily['temperature_2m_min'][i]))
-                }
-                forecast_list.append(f_day)
+            if 'time' in daily:
+                days_count = len(daily['time'])
+                # Safe loop that won't crash if API returns fewer days than expected
+                for i in range(min(5, days_count)): 
+                    try:
+                        f_day = {
+                            "day": self.get_day_name(daily['time'][i]),
+                            "icon": self.get_weather_icon(daily['weather_code'][i]),
+                            "high": int(round(daily['temperature_2m_max'][i])),
+                            "low": int(round(daily['temperature_2m_min'][i]))
+                        }
+                        forecast_list.append(f_day)
+                    except: continue
 
+            # 6. Build Object
             self.cache = {
                 "type": "weather",
                 "sport": "weather",
                 "id": "weather_main",
-                "away_abbr": self.city_name.upper(), 
+                "away_abbr": str(self.city_name).upper(), 
                 "home_abbr": str(current_temp), 
                 "situation": {
                     "icon": current_icon,
@@ -734,8 +1170,8 @@ class WeatherFetcher:
             return self.cache
 
         except Exception as e:
-            print(f"Weather fetch failed: {e}")
-            return None
+            print(f"❌ Critical Weather Error: {e}")
+            return self.cache
 
 class StockFetcher:
     def __init__(self):
@@ -753,16 +1189,19 @@ class StockFetcher:
         ]
         self.api_keys = list(set([k for k in possible_keys if k and len(k) > 10]))
         
+        # --- SIMULATION MODE ---
+        self.simulated = False
         if not self.api_keys:
-            print("⚠️ FATAL: No Finnhub API keys found! Check .env file.")
-            self.safe_sleep_time = 60
+            print("⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.")
+            self.simulated = True
+            self.safe_sleep_time = 0.1
         else:
             self.safe_sleep_time = 1.1 / len(self.api_keys)
             print(f"✅ Loaded {len(self.api_keys)} API Keys. Stock Speed: {self.safe_sleep_time:.2f}s per request.")
 
         self.current_key_index = 0
-        self.session = requests.Session()
-        self.lists = { item['id']: item['stock_list'] for item in LEAGUE_OPTIONS if item['type'] == 'stock' and 'stock_list' in item }
+        self.session = build_pooled_session(pool_size=4, retries=1)
+        self.lists = _STOCK_LISTS
         self.ETF_DOMAINS = {"QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"}
         self.load_cache()
 
@@ -788,61 +1227,57 @@ class StockFetcher:
         self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
         return key
 
+    @staticmethod
+    def _make_stock_result(symbol, price, change_raw, change_pct):
+        return {
+            'symbol': symbol,
+            'price': f"{price:.2f}",
+            'change_amt': f"{'+' if change_raw >= 0 else ''}{change_raw:.2f}",
+            'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%"
+        }
+
     def _fetch_single_stock(self, symbol):
+        # Run simulation if keys are absent OR test_stocks is explicitly enabled
+        if self.simulated or TestMode.is_enabled('stocks'):
+            r = TestMode.get_fake_stock_price(symbol)
+            return self._make_stock_result(symbol, r['base'], r['change'], r['pct'])
+
         api_key = self._get_next_key()
         if not api_key: return None
-        
+
         try:
-            r = self.session.get("https://finnhub.io/api/v1/quote", params={'symbol': symbol, 'token': api_key}, timeout=5)
+            r = self.session.get("https://finnhub.io/api/v1/quote", params={'symbol': symbol, 'token': api_key}, timeout=TIMEOUTS['stock'])
             if r.status_code == 429: time.sleep(2); return None
             r.raise_for_status()
             data = r.json()
-            
+
             ts = data.get('t', 0)
             now_ts = time.time()
-            is_stale = (now_ts - ts) > 600
-            
+            is_stale = (now_ts - ts) > CACHE_TTL['stock']
+
             if not is_stale and data.get('c', 0) > 0:
-                price = data.get('c', 0); change_raw = data.get('d', 0); change_pct = data.get('dp', 0)
-                return {
-                    'symbol': symbol,
-                    'price': f"{price:.2f}",
-                    'change_amt': f"{'+' if change_raw >= 0 else ''}{change_raw:.2f}",
-                    'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%"
-                }
-            
+                return self._make_stock_result(symbol, data['c'], data.get('d', 0), data.get('dp', 0))
+
             if is_stale:
                 to_time = int(now_ts)
-                from_time = to_time - 1800 
-                c_url = "https://finnhub.io/api/v1/stock/candle"
-                c_params = {'symbol': symbol, 'resolution': '1', 'from': from_time, 'to': to_time, 'token': api_key}
-                
-                c_r = self.session.get(c_url, params=c_params, timeout=5)
+                from_time = to_time - 1800
+                c_r = self.session.get(
+                    "https://finnhub.io/api/v1/stock/candle",
+                    params={'symbol': symbol, 'resolution': '1', 'from': from_time, 'to': to_time, 'token': api_key},
+                    timeout=TIMEOUTS['stock']
+                )
                 c_data = c_r.json()
-                
                 if c_data.get('s') == 'ok' and c_data.get('c'):
                     latest_close = c_data['c'][-1]
                     prev_close = data.get('pc', latest_close)
                     change_raw = latest_close - prev_close
                     change_pct = (change_raw / prev_close) * 100
-                    
-                    return {
-                        'symbol': symbol,
-                        'price': f"{latest_close:.2f}",
-                        'change_amt': f"{'+' if change_raw >= 0 else ''}{change_raw:.2f}",
-                        'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%"
-                    }
-            
-            if data.get('c', 0) > 0:
-                price = data.get('c', 0); change_raw = data.get('d', 0); change_pct = data.get('dp', 0)
-                return {
-                    'symbol': symbol,
-                    'price': f"{price:.2f}",
-                    'change_amt': f"{'+' if change_raw >= 0 else ''}{change_raw:.2f}",
-                    'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%"
-                }
+                    return self._make_stock_result(symbol, latest_close, change_raw, change_pct)
 
-        except Exception as e:
+            if data.get('c', 0) > 0:
+                return self._make_stock_result(symbol, data['c'], data.get('d', 0), data.get('dp', 0))
+
+        except Exception:
             return None
         return None
 
@@ -859,7 +1294,8 @@ class StockFetcher:
             if res:
                 self.market_cache[res['symbol']] = {'price': res['price'], 'change_amt': res['change_amt'], 'change_pct': res['change_pct']}
                 updated_count += 1
-            time.sleep(self.safe_sleep_time) 
+            if not self.simulated:
+                time.sleep(self.safe_sleep_time) 
 
         if updated_count > 0:
             self.last_fetch = time.time()
@@ -878,8 +1314,7 @@ class StockFetcher:
 
     def get_list(self, list_key):
         res = []
-        label_item = next((item for item in LEAGUE_OPTIONS if item['id'] == list_key), None)
-        label = label_item['label'] if label_item else "MARKET"
+        label = _LEAGUE_LABEL_MAP.get(list_key, "MARKET")
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
@@ -914,6 +1349,9 @@ class FlightTracker:
         self.wake_event.set()
     
     def log(self, cat, msg):
+        # Suppress DEBUG-category output unless test_flights is on
+        if cat == 'DEBUG' and not TestMode.is_enabled('flights'):
+            return
         print(f"[{dt.now().strftime('%H:%M:%S')}] {cat:<12} | {msg}")
     
     def fetch_fr24_schedule(self, mode='arrivals'):
@@ -926,23 +1364,15 @@ class FlightTracker:
             url = f"https://api.flightradar24.com/common/v1/airport.json?code={self.airport_code_iata}&plugin[]=schedule&plugin-setting[schedule][mode]={mode}&plugin-setting[schedule][timestamp]={timestamp}&page=1&limit=100"
             headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
             self.log("DEBUG", f"Fetching {mode} for {self.airport_code_iata}")
-            res = self.session.get(url, headers=headers, timeout=10)
+            res = self.session.get(url, headers=headers, timeout=TIMEOUTS['slow'])
             if res.status_code != 200:
                 self.log("DEBUG", f"FR24 API returned status {res.status_code}")
                 return []
             
             data = res.json()
             
-            # --- FIX: ROBUST NAVIGATION (Prevents 'NoneType' has no attribute 'get') ---
-            # We use (dict.get(key) or {}) to ensure we always proceed with a dictionary, 
-            # even if the API returns null (None) for a specific key.
-            result = data.get('result') or {}
-            response = result.get('response') or {}
-            airport = response.get('airport') or {}
-            plugin_data = airport.get('pluginData') or {}
-            schedule_wrapper = plugin_data.get('schedule') or {}
-            schedule = schedule_wrapper.get(mode) or {}
-            # --------------------------------------------------------------------------
+            # Robust navigation — safe_get handles any None at any level
+            schedule = safe_get(data, 'result', 'response', 'airport', 'pluginData', 'schedule', mode, default={})
 
             if not schedule or 'data' not in schedule:
                 self.log("DEBUG", f"No schedule data for {mode}")
@@ -952,28 +1382,20 @@ class FlightTracker:
             flights = []
             for flight in schedule['data']:
                 try:
-                    f_data = flight.get('flight') or {}
-                    
-                    # --- Filter by flight status ---
-                    status_info = f_data.get('status') or {}
-                    generic = status_info.get('generic') or {}
-                    status_text = (generic.get('status') or {}).get('text', '').lower()
-                    
+                    f_data = safe_get(flight, 'flight', default={})
+
+                    # Filter by flight status
+                    status_text = safe_get(f_data, 'status', 'generic', 'status', 'text', default='').lower()
+
                     if mode == 'arrivals':
-                        # Only show flights on approach: estimated (in-air) or delayed (still coming)
-                        # Skip 'landed' (at gate) and 'scheduled' (not yet airborne)
                         if status_text == 'landed':
                             continue
                     else:
-                        # For departures, skip flights already gone
                         if status_text == 'departed':
                             continue
-                    
-                    ident = f_data.get('identification') or {}
-                    flight_num = ident.get('number', {}).get('default', '')
-                    
-                    airline = f_data.get('airline') or {}
-                    airline_code = (airline.get('code') or {}).get('iata', '').strip()
+
+                    flight_num = safe_get(f_data, 'identification', 'number', 'default', default='')
+                    airline_code = safe_get(f_data, 'airline', 'code', 'iata', default='').strip()
                     
                     if flight_num:
                         if flight_num.startswith(airline_code):
@@ -985,12 +1407,10 @@ class FlightTracker:
                         continue
                     
                     if mode == 'arrivals':
-                        airport_info = (f_data.get('airport') or {}).get('origin') or {}
-                        city_code = (airport_info.get('code') or {}).get('iata', '')
+                        city_code = safe_get(f_data, 'airport', 'origin', 'code', 'iata', default='')
                         flights.append({'id': display_id, 'from': get_city_name(city_code)})
                     else:
-                        airport_info = (f_data.get('airport') or {}).get('destination') or {}
-                        city_code = (airport_info.get('code') or {}).get('iata', '')
+                        city_code = safe_get(f_data, 'airport', 'destination', 'code', 'iata', default='')
                         flights.append({'id': display_id, 'to': get_city_name(city_code)})
                     
                     if len(flights) >= 3: break
@@ -1004,20 +1424,6 @@ class FlightTracker:
             self.log("ERROR", f"FR24 Schedule: {e}")
             return []
     
-    WMO_DESCRIPTIONS = {
-        0: "CLEAR SKY", 1: "MAINLY CLEAR", 2: "PARTLY CLOUDY", 3: "OVERCAST",
-        45: "FOG", 48: "RIME FOG",
-        51: "LIGHT DRIZZLE", 53: "DRIZZLE", 55: "HEAVY DRIZZLE",
-        56: "FREEZING DRIZZLE", 57: "FREEZING DRIZZLE",
-        61: "LIGHT RAIN", 63: "RAIN", 65: "HEAVY RAIN",
-        66: "FREEZING RAIN", 67: "FREEZING RAIN",
-        71: "LIGHT SNOW", 73: "SNOW", 75: "HEAVY SNOW",
-        77: "SNOW GRAINS",
-        80: "LIGHT SHOWERS", 81: "SHOWERS", 82: "HEAVY SHOWERS",
-        85: "SNOW SHOWERS", 86: "HEAVY SNOW SHOWERS",
-        95: "THUNDERSTORM", 96: "THUNDERSTORM/HAIL", 99: "THUNDERSTORM/HAIL",
-    }
-
     def parse_flight_code(self, flight_code):
         """
         Parse flight code and return (icao_code, iata_code, flight_num)
@@ -1027,61 +1433,20 @@ class FlightTracker:
         NK1149 -> ('NKS', 'NK', '1149')
         UA72 -> ('UAL', 'UA', '72')
         """
-        # Mapping of 2-letter IATA codes to 3-letter ICAO codes
-        iata_to_icao = {
-            # US Carriers
-            'DL': 'DAL',  # Delta
-            'UA': 'UAL',  # United
-            'AA': 'AAL',  # American
-            'WN': 'SWA',  # Southwest
-            'B6': 'JBU',  # JetBlue
-            'AS': 'ASA',  # Alaska
-            'NK': 'NKS',  # Spirit
-            'F9': 'FFT',  # Frontier
-            'G4': 'AAY',  # Allegiant
-            'SY': 'SCX',  # Sun Country
-            'HA': 'HAL',  # Hawaiian
-            # International Carriers
-            'BA': 'BAW',  # British Airways
-            'LH': 'DLH',  # Lufthansa
-            'AF': 'AFR',  # Air France
-            'KL': 'KLM',  # KLM
-            'EK': 'UAE',  # Emirates
-            'QR': 'QTR',  # Qatar
-            'VS': 'VIR',  # Virgin Atlantic
-            'FR': 'RYR',  # Ryanair
-            'U2': 'EZY',  # easyJet
-            'AC': 'ACA',  # Air Canada
-            'WS': 'WJA',  # WestJet
-            'EI': 'EIN',  # Aer Lingus
-            'LY': 'ELY',  # El Al
-        }
-        
-        # Create reverse mapping (ICAO -> IATA)
-        icao_to_iata = {v: k for k, v in iata_to_icao.items()}
-        
         flight_code = flight_code.replace(" ", "").upper()
-        
+
         # Try 3-letter ICAO code first (JBU1004, UAL72)
         if len(flight_code) >= 4:
             potential_icao = flight_code[:3]
-            # REMOVE .isalpha() check - just check if it's in our mapping
-            if potential_icao in icao_to_iata:
-                icao = potential_icao
-                flight_num = flight_code[3:]
-                iata = icao_to_iata[icao]
-                return icao, iata, flight_num
-        
+            if potential_icao in _ICAO_TO_IATA:
+                return potential_icao, _ICAO_TO_IATA[potential_icao], flight_code[3:]
+
         # Try 2-character IATA code (B61004, UA72, NK1149)
         if len(flight_code) >= 3:
             potential_iata = flight_code[:2]
-            if potential_iata in iata_to_icao:
-                iata = potential_iata
-                flight_num = flight_code[2:]
-                icao = iata_to_icao[iata]
-                return icao, iata, flight_num
-        
-        # Fallback: couldn't parse
+            if potential_iata in _IATA_TO_ICAO:
+                return _IATA_TO_ICAO[potential_iata], potential_iata, flight_code[2:]
+
         raise ValueError(f"Invalid flight code format: {flight_code}")
 
     def fetch_airport_weather(self):
@@ -1104,13 +1469,13 @@ class FlightTracker:
                    f"&temperature_unit=fahrenheit&timezone=auto")
             
             self.log("WEATHER", f"Fetching weather from Open-Meteo for {self.airport_code_iata} ({lat},{lon})")
-            res = self.session.get(url, timeout=10)
+            res = self.session.get(url, timeout=TIMEOUTS['slow'])
             if res.status_code == 200:
                 data = res.json()
                 current = data.get('current', {})
                 temp_f = current.get('temperature_2m')
                 wmo_code = current.get('weather_code', -1)
-                cond = self.WMO_DESCRIPTIONS.get(wmo_code, "UNKNOWN")
+                cond = WMO_DESCRIPTIONS.get(wmo_code, "UNKNOWN")
                 if temp_f is not None:
                     return {"temp": f"{int(round(temp_f))}F", "cond": cond}
         except Exception as e:
@@ -1119,32 +1484,25 @@ class FlightTracker:
     
     def fetch_airport_activity(self):
         try:
-            # Snapshot the airport code at the start of the fetch
             target_iata = self.airport_code_iata
             if not target_iata:
                 return
             self.log("DEBUG", f"Starting airport fetch for {target_iata}")
-            arrivals = self.fetch_fr24_schedule('arrivals')
-            
-            # If airport changed mid-fetch, discard stale results
+
+            # Fetch arrivals, departures, and weather in parallel
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+                f_arr = pool.submit(self.fetch_fr24_schedule, 'arrivals')
+                f_dep = pool.submit(self.fetch_fr24_schedule, 'departures')
+                f_wx  = pool.submit(self.fetch_airport_weather)
+                arrivals   = f_arr.result()
+                departures = f_dep.result()
+                weather    = f_wx.result()
+
+            # Single airport-change guard after all three complete
             if self.airport_code_iata != target_iata:
-                self.log("DEBUG", f"Airport changed from {target_iata} to {self.airport_code_iata} mid-fetch, discarding")
+                self.log("DEBUG", f"Airport changed mid-fetch, discarding results")
                 return
-            
-            departures = self.fetch_fr24_schedule('departures')
-            
-            # Check again after departures fetch
-            if self.airport_code_iata != target_iata:
-                self.log("DEBUG", f"Airport changed from {target_iata} to {self.airport_code_iata} mid-fetch, discarding")
-                return
-            
-            weather = self.fetch_airport_weather()
-            
-            # Final check before writing — only store if airport hasn't changed
-            if self.airport_code_iata != target_iata:
-                self.log("DEBUG", f"Airport changed from {target_iata} to {self.airport_code_iata} mid-fetch, discarding")
-                return
-            
+
             with self.lock:
                 self.airport_arrivals = arrivals
                 self.airport_departures = departures
@@ -1218,9 +1576,11 @@ class FlightTracker:
                         'delay_min': delay_min,
                         'is_delayed': is_delayed,
                         'is_live': is_live,
+                        'aircraft_type': fr24_data.get('aircraft_type', ''),
+                        'aircraft_code': fr24_data.get('aircraft_code', ''),
                         'is_shown': True
                     }
-                self.log("TRACKER", f"{self.track_flight_id} (FR24) {status} | {fr24_data['altitude']}ft")
+                self.log("TRACKER", f"{self.track_flight_id} (FR24) {status} | {fr24_data['altitude']}ft | {fr24_data.get('aircraft_type', '?')}")
                 return
             else:
                 self.log("TRACKER", f"No FR24 match for {self.track_flight_id}")
@@ -1246,6 +1606,8 @@ class FlightTracker:
                     'delay_min': None,
                     'is_delayed': False,
                     'is_live': False,
+                    'aircraft_type': '',
+                    'aircraft_code': '',
                     'is_shown': True
                 }
 
@@ -1365,7 +1727,14 @@ class FlightTracker:
                 self.log("DEBUG", f"Could not get detailed info: {e}")
 
             delay_min, status_text = _extract_delay_minutes(details)
-            
+
+            # Aircraft type: prefer detailed model from FR24, fall back to ICAO type code normalization
+            fr24_model = getattr(target_flight, 'aircraft_model', None) or ''
+            icao_type = getattr(target_flight, 'aircraft_code', None) or ''
+            aircraft_type = normalize_aircraft_type(icao_type, fr24_model if fr24_model else None)
+            if aircraft_type:
+                self.log("INFO", f"Aircraft type for {flight_id}: {aircraft_type} (code: {icao_type})")
+
             return {
                 'flight_id': flight_id,
                 'origin': target_flight.origin_airport_iata or 'UNK',
@@ -1376,7 +1745,9 @@ class FlightTracker:
                 'speed_kts': target_flight.ground_speed or 0,
                 'is_live': (target_flight.altitude or 0) > 0,
                 'delay_min': delay_min,
-                'status_text': status_text
+                'status_text': status_text,
+                'aircraft_type': aircraft_type,
+                'aircraft_code': icao_type
             }
             
         except ValueError as e:
@@ -1428,6 +1799,8 @@ class SportsFetcher:
         self.consecutive_empty_fetches = 0
         self.ahl_cached_key = None
         self.ahl_key_expiry = 0
+        # abbr-keyed index rebuilt in fetch_all_teams — O(1) team lookups
+        self._teams_abbr_index: dict = {}  # league -> {abbr -> team_entry}
         
         self.leagues = { 
             item['id']: item['fetch'] 
@@ -1448,7 +1821,7 @@ class SportsFetcher:
             # If SCHEDULED -> Track earliest start time
             if g['state'] == 'pre':
                 try:
-                    ts = dt.fromisoformat(g['startTimeUTC'].replace('Z', '+00:00')).timestamp()
+                    ts = parse_iso(g['startTimeUTC']).timestamp()
                     if earliest_start is None or ts < earliest_start: earliest_start = ts
                 except: pass
         
@@ -1466,32 +1839,32 @@ class SportsFetcher:
 
     def lookup_team_info_from_cache(self, league, abbr, name=None):
         search_abbr = ABBR_MAPPING.get(abbr, abbr)
-        
+
         if 'soccer' in league:
             name_check = name.lower() if name else ""
             abbr_check = search_abbr.lower()
             for k, v in SOCCER_COLOR_FALLBACK.items():
                 if k in name_check or k == abbr_check:
-                        return {'color': v, 'alt_color': '444444'}
+                    return {'color': v, 'alt_color': '444444'}
 
         try:
-            with data_lock:
-                teams = state['all_teams_data'].get(league, [])
-                
-                for t in teams:
-                    if t['abbr'] == search_abbr:
-                        return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
-                
-                if name:
-                    name_lower = name.lower()
-                    for t in teams:
-                        t_name = t.get('name', '').lower()
-                        t_short = t.get('shortName', '').lower()
-                        
-                        if (name_lower in t_name) or (t_name in name_lower) or \
-                           (name_lower in t_short) or (t_short in name_lower):
-                             return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
+            # O(1) abbr lookup via pre-built index
+            league_idx = self._teams_abbr_index.get(league, {})
+            t = league_idx.get(search_abbr)
+            if t:
+                return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
 
+            # Fallback: name-based scan (rare — only for teams without standard abbr)
+            if name:
+                name_lower = name.lower()
+                with data_lock:
+                    teams = state['all_teams_data'].get(league, [])
+                for t in teams:
+                    t_name = t.get('name', '').lower()
+                    t_short = t.get('shortName', '').lower()
+                    if (name_lower in t_name) or (t_name in name_lower) or \
+                       (name_lower in t_short) or (t_short in name_lower):
+                        return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
         except: pass
         return {'color': '000000', 'alt_color': '444444'}
 
@@ -1510,11 +1883,11 @@ class SportsFetcher:
                 ot_padding = (period - 9) * 20
         return duration + ot_padding
 
-    def _fetch_simple_league(self, league_key, catalog):
+    def _fetch_simple_league(self, league_key, catalog, seen_ids):
         config = self.leagues[league_key]
         if 'team_params' not in config: return
         try:
-            r = self.session.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=10)
+            r = self.session.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=TIMEOUTS['slow'])
             data = r.json()
             if 'sports' in data:
                 for sport in data['sports']:
@@ -1522,44 +1895,52 @@ class SportsFetcher:
                         for item in league.get('teams', []):
                             abbr = item['team'].get('abbreviation', 'unk')
                             scoped_id = f"{league_key}:{abbr}"
-                            
+                            if scoped_id in seen_ids[league_key]:
+                                continue
+                            seen_ids[league_key].add(scoped_id)
+
                             clr = item['team'].get('color', '000000')
                             alt = item['team'].get('alternateColor', '444444')
                             logo = item['team'].get('logos', [{}])[0].get('href', '')
                             logo = self.get_corrected_logo(league_key, abbr, logo)
-                            
                             name = item['team'].get('displayName', '')
                             short_name = item['team'].get('shortDisplayName', '')
 
-                            if not any(x.get('id') == scoped_id for x in catalog[league_key]):
-                                catalog[league_key].append({
-                                    'abbr': abbr, 
-                                    'id': scoped_id, 
-                                    'logo': logo, 
-                                    'color': clr, 
-                                    'alt_color': alt, 
-                                    'name': name,
-                                    'shortName': short_name
-                                })
+                            catalog[league_key].append({
+                                'abbr': abbr,
+                                'id': scoped_id,
+                                'logo': logo,
+                                'color': clr,
+                                'alt_color': alt,
+                                'name': name,
+                                'shortName': short_name
+                            })
         except Exception as e: print(f"Error fetching teams for {league_key}: {e}")
 
     def fetch_all_teams(self):
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
-            
+            # Per-league seen-ID sets for O(1) deduplication (replaces any() linear scan)
+            seen_ids: dict = {k: set() for k in self.leagues.keys()}
+
             self._fetch_ahl_teams_reference(teams_catalog)
 
             for t in OLYMPIC_HOCKEY_TEAMS:
-                teams_catalog['hockey_olympics'].append({
-                    'abbr': t['abbr'], 
-                    'id': f"hockey_olympics:{t['abbr']}",
-                    'logo': t['logo'], 
-                    'color': t.get('color', '000000'), 
-                    'alt_color': t.get('alt_color', '444444')
-                })
+                scoped_id = f"hockey_olympics:{t['abbr']}"
+                if scoped_id not in seen_ids.get('hockey_olympics', set()):
+                    seen_ids.setdefault('hockey_olympics', set()).add(scoped_id)
+                    teams_catalog['hockey_olympics'].append({
+                        'abbr': t['abbr'],
+                        'id': scoped_id,
+                        'logo': t['logo'],
+                        'color': t.get('color', '000000'),
+                        'alt_color': t.get('alt_color', '444444')
+                    })
 
+            # NCAA college teams — O(1) dedup via seen_ids sets
+            ncf_seen = {'ncf_fbs': set(), 'ncf_fcs': set()}
             url = f"{self.base_url}football/college-football/teams"
-            r = self.session.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=10) 
+            r = self.session.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=TIMEOUTS['slow'])
             data = r.json()
             if 'sports' in data:
                 for sport in data['sports']:
@@ -1569,31 +1950,40 @@ class SportsFetcher:
                             t_clr = item['team'].get('color', '000000')
                             t_alt = item['team'].get('alternateColor', '444444')
                             logos = item['team'].get('logos', [])
-                            t_logo = logos[0].get('href', '') if len(logos) > 0 else ''
-                            
+                            t_logo = logos[0].get('href', '') if logos else ''
+
                             if t_abbr in FBS_TEAMS:
-                                t_logo = self.get_corrected_logo('ncf_fbs', t_abbr, t_logo)
                                 scoped_id = f"ncf_fbs:{t_abbr}"
-                                if not any(x['id'] == scoped_id for x in teams_catalog['ncf_fbs']):
+                                if scoped_id not in ncf_seen['ncf_fbs']:
+                                    ncf_seen['ncf_fbs'].add(scoped_id)
+                                    t_logo = self.get_corrected_logo('ncf_fbs', t_abbr, t_logo)
                                     teams_catalog['ncf_fbs'].append({'abbr': t_abbr, 'id': scoped_id, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
-                            
                             elif t_abbr in FCS_TEAMS:
-                                t_logo = self.get_corrected_logo('ncf_fcs', t_abbr, t_logo)
                                 scoped_id = f"ncf_fcs:{t_abbr}"
-                                if not any(x['id'] == scoped_id for x in teams_catalog['ncf_fcs']):
+                                if scoped_id not in ncf_seen['ncf_fcs']:
+                                    ncf_seen['ncf_fcs'].add(scoped_id)
+                                    t_logo = self.get_corrected_logo('ncf_fcs', t_abbr, t_logo)
                                     teams_catalog['ncf_fcs'].append({'abbr': t_abbr, 'id': scoped_id, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
 
             futures = []
             leagues_to_fetch = [
                 'nfl', 'mlb', 'nhl', 'nba', 'march_madness',
-                'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_champions_league', 'soccer_europa_league','soccer_mls'
+                'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_champions_league', 'soccer_europa_league', 'soccer_mls'
             ]
             for lk in leagues_to_fetch:
                 if lk in self.leagues:
-                    futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog))
+                    futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog, seen_ids))
             concurrent.futures.wait(futures)
 
-            with data_lock: state['all_teams_data'] = teams_catalog
+            # Build abbr-keyed index for O(1) lookup in lookup_team_info_from_cache
+            new_index = {
+                league: {entry['abbr']: entry for entry in entries}
+                for league, entries in teams_catalog.items()
+            }
+
+            with data_lock:
+                state['all_teams_data'] = teams_catalog
+            self._teams_abbr_index = new_index
         except Exception as e: print(f"Global Team Fetch Error: {e}")
             
     def _get_ahl_key(self):
@@ -1603,7 +1993,7 @@ class SportsFetcher:
         for key in AHL_API_KEYS:
             try:
                 params = {"feed": "modulekit", "view": "seasons", "key": key, "client_code": "ahl", "lang": "en", "fmt": "json", "league_id": 4}
-                r = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=params, timeout=3)
+                r = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=params, timeout=TIMEOUTS['quick'])
                 if r.status_code == 200:
                     data = r.json()
                     if "SiteKit" in data or "Seasons" in data:
@@ -1615,26 +2005,32 @@ class SportsFetcher:
 
     def _fetch_ahl_teams_reference(self, catalog):
         if 'ahl' not in self.leagues: return
-        
+
         catalog['ahl'] = []
-        seen_ids = set() 
-        
+        seen_ids: set = set()
+
+        # Collect unique team IDs first, then validate logos in parallel
+        unique_teams = []
         for code, meta in AHL_TEAMS.items():
             t_id = meta.get('id')
             if t_id and t_id in seen_ids: continue
             if t_id: seen_ids.add(t_id)
+            unique_teams.append((code, meta, t_id))
 
-            logo_url = validate_logo_url(t_id) if t_id else ""
-            scoped_id = f"ahl:{code}"
-            
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+            logo_futures = {t_id: ex.submit(validate_logo_url, t_id) for _, _, t_id in unique_teams if t_id}
+        logo_results = {t_id: fut.result() for t_id, fut in logo_futures.items()}
+
+        for code, meta, t_id in unique_teams:
+            logo_url = logo_results.get(t_id, "") if t_id else ""
             catalog['ahl'].append({
-                'abbr': code, 
-                'id': scoped_id,
+                'abbr': code,
+                'id': f"ahl:{code}",
                 'real_id': t_id,
-                'logo': logo_url, 
-                'color': meta.get('color', '000000'), 
-                'alt_color': '444444', 
-                'name': meta.get('name', code), 
+                'logo': logo_url,
+                'color': meta.get('color', '000000'),
+                'alt_color': '444444',
+                'name': meta.get('name', code),
                 'shortName': meta.get('name', code).split(" ")[-1]
             })
 
@@ -1678,8 +2074,9 @@ class SportsFetcher:
 
         try:
             key = self._get_ahl_key()
+            _local_tz = timezone(timedelta(hours=conf.get('utc_offset', -5)))
             # Calculate req_date based on the configured timezone
-            req_date = visible_start_utc.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5)))).strftime("%Y-%m-%d")
+            req_date = visible_start_utc.astimezone(_local_tz).strftime("%Y-%m-%d")
 
             params = {
                 "feed": "modulekit", "view": "scorebar", "key": key,
@@ -1687,12 +2084,14 @@ class SportsFetcher:
                 "league_id": 4, "site_id": 0
             }
             
-            r = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=params, timeout=5)
+            r = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=params, timeout=TIMEOUTS['stock'])
             if r.status_code != 200: return []
             
             data = r.json()
             scorebar = data.get("SiteKit", {}).get("Scorebar", [])
             ahl_refs = state['all_teams_data'].get('ahl', [])
+            _ahl_by_abbr = {t['abbr']: t for t in ahl_refs}
+            _ahl_by_real_id = {t.get('real_id'): t for t in ahl_refs if t.get('real_id')}
 
             for g in scorebar:
                 g_date_str = g.get("Date", "")
@@ -1728,7 +2127,7 @@ class SportsFetcher:
                             hh, mm = map(int, sched.split(":"))
                             dt_obj = dt.strptime(f"{g_date_str} {hh}:{mm}", "%Y-%m-%d %H:%M")
                             # Assume configured offset since API lacks TZ
-                            dt_obj = dt_obj.replace(tzinfo=timezone(timedelta(hours=conf.get('utc_offset', -5))))
+                            dt_obj = dt_obj.replace(tzinfo=_local_tz)
                             parsed_utc = dt_obj.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                          except: pass
 
@@ -1770,7 +2169,7 @@ class SportsFetcher:
                             "feed": "statviewfeed", "view": "gameSummary", "key": key,
                             "client_code": "ahl", "lang": "en", "fmt": "json", "game_id": gid
                         }
-                        r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=4)
+                        r_sum = self.session.get("https://lscluster.hockeytech.com/feed/index.php", params=sum_params, timeout=TIMEOUTS['ahl'])
                         if r_sum.status_code == 200:
                             text = r_sum.text.strip()
                             if text.startswith("(") and text.endswith(")"): text = text[1:-1]
@@ -1787,11 +2186,11 @@ class SportsFetcher:
                         else:
                              disp = "FINAL"
 
-                elif "scheduled" in status_lower or "pre" in status_lower or (re.search(r'\d+:\d+', status_lower) and "1st" not in status_lower):
+                elif "scheduled" in status_lower or "pre" in status_lower or (_TIME_RE.search(status_lower) and "1st" not in status_lower):
                     gst = "pre"
                     try:
                          # Use our robust parsed_utc to generate the display time
-                         local_dt = dt.fromisoformat(parsed_utc.replace("Z", "+00:00")).astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
+                         local_dt = parse_iso(parsed_utc).astimezone(_local_tz)
                          disp = local_dt.strftime("%I:%M %p").lstrip('0')
                     except: disp = "Scheduled"
                 else:
@@ -1810,22 +2209,22 @@ class SportsFetcher:
                         else: disp = raw_status
 
                 is_shown = True
-                h_obj = next((t for t in ahl_refs if t['abbr'] == h_code), None)
-                a_obj = next((t for t in ahl_refs if t['abbr'] == a_code), None)
-                
+                h_obj = _ahl_by_abbr.get(h_code)
+                a_obj = _ahl_by_abbr.get(a_code)
+
                 if not h_obj:
                     h_meta_raw = AHL_TEAMS.get(h_code)
-                    if h_meta_raw: h_obj = next((t for t in ahl_refs if t.get('real_id') == h_meta_raw.get('id')), None)
+                    if h_meta_raw: h_obj = _ahl_by_real_id.get(h_meta_raw.get('id'))
                 if not a_obj:
                     a_meta_raw = AHL_TEAMS.get(a_code)
-                    if a_meta_raw: a_obj = next((t for t in ahl_refs if t.get('real_id') == a_meta_raw.get('id')), None)
+                    if a_meta_raw: a_obj = _ahl_by_real_id.get(a_meta_raw.get('id'))
                 
                 # --- FIX: DYNAMIC LOGOS FOR ALL-STAR/UNKNOWN TEAMS ---
                 h_id_raw = g.get("HomeID") or g.get("HomeTeamID")
                 a_id_raw = g.get("VisitorID") or g.get("VisitorTeamID")
 
-                h_logo = h_obj['logo'] if (h_obj and h_obj.get('logo')) else (f"https://assets.leaguestat.com/ahl/logos/{h_id_raw}_91.png" if h_id_raw else "")
-                a_logo = a_obj['logo'] if (a_obj and a_obj.get('logo')) else (f"https://assets.leaguestat.com/ahl/logos/{a_id_raw}_91.png" if a_id_raw else "")
+                h_logo = h_obj['logo'] if (h_obj and h_obj.get('logo')) else (validate_logo_url(h_id_raw) if h_id_raw else "")
+                a_logo = a_obj['logo'] if (a_obj and a_obj.get('logo')) else (validate_logo_url(a_id_raw) if a_id_raw else "")
                 
                 h_meta = AHL_TEAMS.get(h_code, {"color": "000000"})
                 a_meta = AHL_TEAMS.get(a_code, {"color": "000000"})
@@ -1847,7 +2246,7 @@ class SportsFetcher:
     def fetch_shootout_details(self, game_id, away_id, home_id):
         try:
             url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
-            r = self.session.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3)
+            r = self.session.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=TIMEOUTS['quick'])
             if r.status_code != 200: return None
             data = r.json(); plays = data.get("plays", [])
             native_away = data.get("awayTeam", {}).get("id")
@@ -1867,7 +2266,7 @@ class SportsFetcher:
 
     def _fetch_nhl_landing(self, gid):
         try:
-            r = self.session.get(f"https://api-web.nhle.com/v1/gamecenter/{gid}/landing", headers=HEADERS, timeout=2)
+            r = self.session.get(f"https://api-web.nhle.com/v1/gamecenter/{gid}/landing", headers=HEADERS, timeout=TIMEOUTS['quick'])
             if r.status_code == 200: return r.json()
         except: pass
         return None
@@ -1879,10 +2278,11 @@ class SportsFetcher:
         
         processed_ids = set()
         try:
-            r = self.session.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=5)
+            r = self.session.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=TIMEOUTS['stock'])
             if r.status_code != 200: return []
-            
-            landing_futures = {} 
+
+            landing_futures = {}
+            _local_tz = timezone(timedelta(hours=conf.get('utc_offset', -5)))
 
             for d in r.json().get('gameWeek', []):
                 for g in d.get('games', []):
@@ -1894,7 +2294,7 @@ class SportsFetcher:
 
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
-                        g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
+                        g_dt = parse_iso(g_utc)
                         if not (window_start_utc <= g_dt <= window_end_utc): continue
                     except: continue
 
@@ -1916,8 +2316,8 @@ class SportsFetcher:
 
                         g_utc = g.get('startTimeUTC')
                         if not g_utc: continue
-                        g_dt = dt.fromisoformat(g_utc.replace('Z', '+00:00'))
-                        
+                        g_dt = parse_iso(g_utc)
+
                         if g_dt < visible_start_utc or g_dt >= visible_end_utc:
                             st = g.get('gameState', 'OFF')
                             if st not in ['LIVE', 'CRIT']:
@@ -1950,7 +2350,7 @@ class SportsFetcher:
                     disp = "Scheduled"; pp = False; poss = ""; en = False; shootout_data = None 
                     dur = self.calculate_game_timing('nhl', g_utc, 1, st)
                     
-                    g_local = g_dt.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
+                    g_local = g_dt.astimezone(_local_tz)
 
                     if st in ['PRE', 'FUT']:
                            try: disp = g_local.strftime("%I:%M %p").lstrip('0')
@@ -2127,7 +2527,7 @@ class SportsFetcher:
     def _fetch_fotmob_details(self, match_id, home_id=None, away_id=None):
         try:
             url = f"https://www.fotmob.com/api/matchDetails?matchId={match_id}"
-            resp = self.session.get(url, headers=HEADERS, timeout=10)
+            resp = self.session.get(url, headers=HEADERS, timeout=TIMEOUTS['slow'])
             resp.raise_for_status()
             payload = resp.json()
             
@@ -2238,6 +2638,7 @@ class SportsFetcher:
 
     def _extract_matches(self, sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc):
         matches = []
+        _local_tz = timezone(timedelta(hours=conf.get('utc_offset', -5)))
         for section in sections:
             candidate_matches = section.get("matches") if isinstance(section, dict) else None
             if candidate_matches is None: candidate_matches = [section]
@@ -2250,7 +2651,7 @@ class SportsFetcher:
                 if not kickoff: continue
                 
                 try:
-                    match_dt = dt.fromisoformat(kickoff.replace('Z', '+00:00'))
+                    match_dt = parse_iso(kickoff)
                     if not (start_window <= match_dt <= end_window): continue
                 except: continue
 
@@ -2301,8 +2702,8 @@ class SportsFetcher:
                 gst = 'pre'
                 
                 try:
-                    k_dt = dt.fromisoformat(kickoff.replace('Z', '+00:00'))
-                    local_k = k_dt.astimezone(timezone(timedelta(hours=conf.get('utc_offset', -5))))
+                    k_dt = parse_iso(kickoff)
+                    local_k = k_dt.astimezone(_local_tz)
                     disp = local_k.strftime("%I:%M %p").lstrip('0')
                 except:
                     disp = kickoff.split("T")[1][:5]
@@ -2400,7 +2801,7 @@ class SportsFetcher:
                 params = {"id": league_id, "tab": "matches", "timeZone": "UTC", "type": l_type, "_": int(time.time())}
                 
                 try:
-                    resp = self.session.get(url, params=params, headers=HEADERS, timeout=10)
+                    resp = self.session.get(url, params=params, headers=HEADERS, timeout=TIMEOUTS['slow'])
                     resp.raise_for_status()
                     payload = resp.json()
                     
@@ -2433,11 +2834,11 @@ class SportsFetcher:
             # CHANGE B: DATE OPTIMIZATION
             now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
             
-            if conf['debug_mode'] and conf['custom_date']:
-                curr_p['dates'] = conf['custom_date'].replace('-', '')
+            custom = TestMode.get_custom_date()
+            if custom:
+                curr_p['dates'] = custom
             else:
-                # FIX: If before 3AM, fetch yesterday's games so finals persist
-                # otherwise, the API defaults to the new day (which has no games yet)
+                # If before 3AM, fetch yesterday's games so finals persist
                 if now_local.hour < 3:
                     fetch_date = now_local - timedelta(days=1)
                 else:
@@ -2448,8 +2849,7 @@ class SportsFetcher:
             # Forces ESPN's CDN to return live data instead of a stale cached file
             curr_p['_'] = int(time.time() * 1000)
             
-            # CHANGE: Use API_TIMEOUT
-            r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=API_TIMEOUT)
+            r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=TIMEOUTS['default'])
             data = r.json()
             
             events = data.get('events', [])
@@ -2465,7 +2865,7 @@ class SportsFetcher:
                 if gid in self.final_game_cache:
                     cached = self.final_game_cache[gid]
                     try:
-                        cached_dt = dt.fromisoformat(cached.get('startTimeUTC', '').replace('Z', '+00:00'))
+                        cached_dt = parse_iso(cached.get('startTimeUTC', ''))
                         if visible_start_utc <= cached_dt <= visible_end_utc:
                             local_games.append(cached)
                             continue
@@ -2539,7 +2939,7 @@ class SportsFetcher:
                 # --- FIX: ROBUST STATE INFERENCE ---
                 # ESPN sometimes fails to switch 'state' to 'in', leaving it stuck as 'pre'.
                 if gst == 'pre' and any(x in s_disp for x in ['1st', '2nd', '3rd', 'OT', 'Half', 'Qtr', 'Inning']):
-                    if "Final" not in s_disp and "FINAL" not in s_disp:
+                    if "FINAL" not in s_disp.upper():
                         gst = 'in'
 
                 is_suspended = False
@@ -2605,7 +3005,9 @@ class SportsFetcher:
                 
                 poss_raw = sit.get('possession')
                 if poss_raw: self.possession_cache[e['id']] = poss_raw
-                elif gst in ['in', 'half'] and e['id'] in self.possession_cache: poss_raw = self.possession_cache[e['id']]
+                elif gst in ('in', 'half'):
+                    _cached_poss = self.possession_cache.get(e['id'])
+                    if _cached_poss is not None: poss_raw = _cached_poss
                 
                 if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime' or is_suspended:
                     poss_raw = None
@@ -2712,109 +3114,82 @@ class SportsFetcher:
         
         return None
 
-    def update_buffer_sports(self):
+    # ── Per-mode buffer builders ────────────────────────────────────────────
+
+    def _build_sports_buffer(self):
+        """Fetch all active sports leagues and return sorted game list."""
+        with data_lock:
+            conf = {k: state[k] for k in (
+                'active_sports', 'mode', 'utc_offset', 'debug_mode', 'custom_date',
+            )}
         all_games = []
-        with data_lock: 
-            conf = state.copy()
+        utc_offset = conf.get('utc_offset', -5)
+        now_utc = dt.now(timezone.utc)
+        now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+        
+        # Visibility Windows
+        if now_local.hour < 3:
+            visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+            visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
+        else:
+            visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
+        
+        visible_start_utc = visible_start_local.astimezone(timezone.utc)
+        visible_end_utc = visible_end_local.astimezone(timezone.utc)
+        window_start_utc = (now_local - timedelta(hours=30)).astimezone(timezone.utc)
+        window_end_utc = (now_local + timedelta(hours=48)).astimezone(timezone.utc)
+        
+        futures = {}
 
-        # 1. UTILITIES (Weather, Clock, Music)
-        if conf['active_sports'].get('weather'):
-            if (conf['weather_lat'] != self.weather.lat or 
-                conf['weather_lon'] != self.weather.lon or 
-                conf['weather_city'] != self.weather.city_name):
-                self.weather.update_config(city=conf['weather_city'], lat=conf['weather_lat'], lon=conf['weather_lon'])
-            w = self.weather.get_weather()
-            if w: all_games.append(w)
-
-        if conf['active_sports'].get('clock'):
-            all_games.append({'type':'clock','sport':'clock','id':'clk','is_shown':True})
-
-        music_obj = self.get_music_object()
-        if music_obj: all_games.append(music_obj)
-
-        # 2. FLIGHT TRACKING
-        if flight_tracker:
-            in_flights_mode = (conf['mode'] == 'flights')
-            visitor_added = False
-            if conf['active_sports'].get('flight_visitor', False) or in_flights_mode:
-                visitor = flight_tracker.get_visitor_object()
-                if visitor:
-                    all_games.append(visitor)
-                    visitor_added = True
-            
-            if not visitor_added and (conf['active_sports'].get('flight_airport', False) or in_flights_mode):
-                airport_data = flight_tracker.get_airport_objects()
-                all_games.extend(airport_data)
-
-        # 3. SPORTS (Parallel Fetching)
-        if conf['mode'] in ['sports', 'live', 'my_teams', 'all', 'music']:
-            utc_offset = conf.get('utc_offset', -5)
-            now_utc = dt.now(timezone.utc)
-            now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-            
-            # Visibility Windows
-            if now_local.hour < 3:
-                visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
-                visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
-            else:
-                visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-                visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
-            
-            visible_start_utc = visible_start_local.astimezone(timezone.utc)
-            visible_end_utc = visible_end_local.astimezone(timezone.utc)
-            window_start_utc = (now_local - timedelta(hours=30)).astimezone(timezone.utc)
-            window_end_utc = (now_local + timedelta(hours=48)).astimezone(timezone.utc)
-            
-            futures = {}
-
-            # --- RESTORED: EFL & SOCCER FETCHING ---
-            for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
-                if conf['active_sports'].get(internal_id, False):
-                    f = self.executor.submit(
-                        self._fetch_fotmob_league, 
-                        fid, internal_id, conf, 
-                        window_start_utc, window_end_utc, 
-                        visible_start_utc, visible_end_utc
-                    )
-                    futures[f] = internal_id
-
-            # NHL Native (Optimized)
-            if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
-                f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
-                futures[f] = 'nhl_native'
-
-            # AHL
-            if conf['active_sports'].get('ahl', False):
-                f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
-                futures[f] = 'ahl'
-
-            # Standard ESPN Leagues (NFL, NBA, MLB, NCAA)
-            for league_key, config in self.leagues.items():
-                if league_key in ['nhl', 'ahl'] or league_key.startswith('soccer_'):
-                    continue # Already handled by specialized fetchers above
-                
+        # --- RESTORED: EFL & SOCCER FETCHING ---
+        for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
+            if conf['active_sports'].get(internal_id, False):
                 f = self.executor.submit(
-                    self.fetch_single_league, 
-                    league_key, config, conf, window_start_utc, window_end_utc, 
-                    utc_offset, visible_start_utc, visible_end_utc
+                    self._fetch_fotmob_league, 
+                    fid, internal_id, conf, 
+                    window_start_utc, window_end_utc, 
+                    visible_start_utc, visible_end_utc
                 )
-                futures[f] = league_key
+                futures[f] = internal_id
+
+        # NHL Native (Optimized)
+        if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
+            f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
+            futures[f] = 'nhl_native'
+
+        # AHL
+        if conf['active_sports'].get('ahl', False):
+            f = self.executor.submit(self._fetch_ahl, conf, visible_start_utc, visible_end_utc)
+            futures[f] = 'ahl'
+
+        # Standard ESPN Leagues (NFL, NBA, MLB, NCAA)
+        for league_key, config in self.leagues.items():
+            if league_key in ['nhl', 'ahl'] or league_key.startswith('soccer_'):
+                continue # Already handled by specialized fetchers above
             
-            # Wait for all threads
-            done, _ = concurrent.futures.wait(futures.keys(), timeout=API_TIMEOUT)
-            
-            for f in done:
-                lk = futures[f]
-                try: 
-                    res = f.result()
-                    if res: 
-                        all_games.extend(res)
-                        self.league_last_data[lk] = res 
-                    elif lk in self.league_last_data:
-                        all_games.extend(self.league_last_data[lk])
-                except Exception as e: 
-                    if lk in self.league_last_data:
-                        all_games.extend(self.league_last_data[lk])
+            f = self.executor.submit(
+                self.fetch_single_league, 
+                league_key, config, conf, window_start_utc, window_end_utc, 
+                utc_offset, visible_start_utc, visible_end_utc
+            )
+            futures[f] = league_key
+        
+        # Wait for all threads
+        done, _ = concurrent.futures.wait(futures.keys(), timeout=API_TIMEOUT)
+        
+        for f in done:
+            lk = futures[f]
+            try: 
+                res = f.result()
+                if res: 
+                    all_games.extend(res)
+                    self.league_last_data[lk] = res 
+                elif lk in self.league_last_data:
+                    all_games.extend(self.league_last_data[lk])
+            except Exception as e: 
+                if lk in self.league_last_data:
+                    all_games.extend(self.league_last_data[lk])
 
         # === FILTER OUT OLD GAMES (3AM CUTOFF) ===
         # Remove completed games that started before the visibility window
@@ -2846,7 +3221,7 @@ class SportsFetcher:
                 try:
                     game_start_str = g.get('startTimeUTC', '')
                     if game_start_str:
-                        game_dt = dt.fromisoformat(game_start_str.replace('Z', '+00:00'))
+                        game_dt = parse_iso(game_start_str)
                         # Only keep if the game started within the visibility window
                         if visible_start_utc <= game_dt < visible_end_utc:
                             filtered_games.append(g)
@@ -2865,90 +3240,97 @@ class SportsFetcher:
         all_games = filtered_games
         # === END FILTER ===
         # Sorting & Buffering
-        all_games.sort(key=lambda x: (
-            0 if x.get('type') == 'clock' else
-            1 if x.get('type') == 'weather' else
-            4 if any(k in str(x.get('status', '')).lower() for k in ["postponed", "suspended", "canceled", "ppd"]) else
-            3 if "FINAL" in str(x.get('status', '')).upper() or "FIN" == str(x.get('status', '')) else
-            2,
-            x.get('startTimeUTC', '9999'),
-            x.get('sport', ''),
-            x.get('home_abbr', ''),
-            str(x.get('id', '0'))
-        ))
+        all_games.sort(key=_game_sort_key)
 
-        with data_lock: 
-            state['buffer_sports'] = all_games
-            self.merge_buffers()
+        return all_games
 
-    def get_snapshot_for_delay(self, delay_seconds, requested_mode):
+    def _build_stocks_buffer(self):
+        with data_lock:
+            active_sports = dict(state['active_sports'])
+        games = []
+        for item in LEAGUE_OPTIONS:
+            if item['type'] == 'stock' and active_sports.get(item['id']):
+                games.extend(self.stocks.get_list(item['id']))
+        return games
+
+    def _build_weather_buffer(self):
+        with data_lock:
+            city = state['weather_city']
+            lat  = state['weather_lat']
+            lon  = state['weather_lon']
+        if lat != self.weather.lat or lon != self.weather.lon or city != self.weather.city_name:
+            self.weather.update_config(city=city, lat=lat, lon=lon)
+        w = self.weather.get_weather()
+        return [w] if w else []
+
+    def _build_music_buffer(self):
+        obj = self.get_music_object()
+        return [obj] if obj else []
+
+    def _build_clock_buffer(self):
+        return [{'type': 'clock', 'sport': 'clock', 'id': 'clk', 'is_shown': True}]
+
+    def _build_flights_buffer(self):
+        if not flight_tracker:
+            return []
+        return flight_tracker.get_airport_objects()
+
+    def _build_flight_tracker_buffer(self):
+        if not flight_tracker:
+            return []
+        obj = flight_tracker.get_visitor_object()
+        return [obj] if obj else []
+
+    # ── Central update dispatcher ──────────────────────────────────────────
+
+    def update_current_games(self):
+        with data_lock:
+            mode = state['mode']
+        _dispatch = {
+            'sports':         self._build_sports_buffer,
+            'live':           self._build_sports_buffer,
+            'my_teams':       self._build_sports_buffer,
+            'stocks':         self._build_stocks_buffer,
+            'weather':        self._build_weather_buffer,
+            'music':          self._build_music_buffer,
+            'clock':          self._build_clock_buffer,
+            'flights':        self._build_flights_buffer,
+            'flight_tracker': self._build_flight_tracker_buffer,
+        }
+        builder = _dispatch.get(mode, self._build_sports_buffer)
+        result = builder()
+
+        # Maintain history buffer for live-delay only in sports modes
+        if mode in ('sports', 'live', 'my_teams'):
+            snap = (time.time(), result[:])
+            self.history_buffer.append(snap)
+            if len(self.history_buffer) > 120:
+                self.history_buffer = self.history_buffer[-60:]
+
+        with data_lock:
+            state['current_games'] = result
+
+    def get_snapshot_for_delay(self, delay_seconds):
+        """Return current games, optionally from history buffer for live-delay."""
         if delay_seconds <= 0 or not self.history_buffer:
             with data_lock:
-                sports_snap = state.get('buffer_sports', [])
-        else:
-            target_time = time.time() - delay_seconds
-            closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
-            sports_snap = closest[1]
+                return list(state.get('current_games', []))
+        target_time = time.time() - delay_seconds
+        closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
+        return closest[1]
 
-        with data_lock:
-            stocks_snap = state.get('buffer_stocks', [])
-
-        utils = [g for g in sports_snap if g.get('type') == 'weather' or g.get('sport') == 'clock']
-        music_items = [g for g in sports_snap if g.get('sport') == 'music']
-        flight_items = [g for g in sports_snap if g.get('sport') == 'flight']
-        pure_sports = [g for g in sports_snap if g not in utils and g not in music_items and g not in flight_items]
-
-        if requested_mode == 'stocks': return stocks_snap
-        elif requested_mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
-        elif requested_mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
-        elif requested_mode == 'music': return music_items
-        elif requested_mode == 'flights': return flight_items
-        elif requested_mode == 'flight2': return [g for g in flight_items if g.get('type') == 'flight_visitor']
-        elif requested_mode == 'all': return sports_snap
-        else: return pure_sports
-
-    def update_buffer_stocks(self):
-        games = []
-        with data_lock: conf = state.copy()
-        
-        if conf['mode'] in ['stocks', 'all']:
-            cats = [item['id'] for item in LEAGUE_OPTIONS if item['type'] == 'stock']
-            
-            for cat in cats:
-                if conf['active_sports'].get(cat): games.extend(self.stocks.get_list(cat))
-        
-        with data_lock:
-            state['buffer_stocks'] = games
-            self.merge_buffers()
-
-    def merge_buffers(self):
-        mode = state['mode']
-        flight_submode = state.get('flight_submode', 'airport')
-        final_list = []
-        
-        sports_buffer = state.get('buffer_sports', [])
-        stocks_buffer = state.get('buffer_stocks', [])
-        
-        utils = [g for g in sports_buffer if g.get('type') == 'weather' or g.get('sport') == 'clock']
-        music_items = [g for g in sports_buffer if g.get('sport') == 'music']
-        flight_items = [g for g in sports_buffer if g.get('sport') == 'flight']
-        pure_sports = [g for g in sports_buffer if g not in utils and g not in music_items and g not in flight_items]
-
-        if mode == 'stocks': final_list = stocks_buffer
-        elif mode == 'weather': final_list = [g for g in utils if g.get('type') == 'weather']
-        elif mode == 'clock': final_list = [g for g in utils if g.get('sport') == 'clock']
-        elif mode == 'music': final_list = music_items
-        elif mode == 'flights' and flight_submode == 'track':
-            final_list = [g for g in flight_items if g.get('type') == 'flight_visitor']
-        elif mode == 'flights':
-            final_list = [g for g in flight_items if g.get('type') != 'flight_visitor']
-        elif mode == 'flight2':
-            final_list = [g for g in flight_items if g.get('type') == 'flight_visitor']
-        elif mode == 'all': final_list = sports_buffer
-        elif mode in ['sports', 'live', 'my_teams']: final_list = pure_sports
-        else: final_list = pure_sports
-
-        state['current_games'] = final_list
+# Restore TestMode from persisted state (only active when debug_mode is on)
+if state.get('debug_mode'):
+    TestMode.configure(
+        enabled=state.get('test_mode', False),
+        spotify=state.get('test_spotify', False),
+        stocks=state.get('test_stocks', False),
+        sports_date=state.get('test_sports_date', False),
+        flights=state.get('test_flights', False),
+        custom_date=state.get('custom_date'),
+    )
+    if tee_instance is not None:
+        Tee.verbose_debug = True
 
 # Initialize Global Fetcher
 fetcher = SportsFetcher(
@@ -2973,84 +3355,92 @@ if FLIGHT_TRACKING_AVAILABLE:
 else:
     flight_tracker = None
 
-# ========================================================
-# FIX #2: DRIFT CORRECTION LOOP
-# ========================================================
+# ── Section K: Worker Threads ──
 def sports_worker():
     try: fetcher.fetch_all_teams()
-    except: pass
-    
+    except Exception as e: print(f"Team fetch error: {e}")
+
     while True:
         start_time = time.time()
-        
-        try: 
-            fetcher.update_buffer_sports()
-        except Exception as e: 
-            print(f"Sports Worker Error: {e}")
-            
+        with data_lock:
+            mode = state['mode']
+        if mode in ('sports', 'live', 'my_teams'):
+            try:
+                fetcher.update_current_games()
+            except Exception as e:
+                print(f"Sports Worker Error: {e}")
         execution_time = time.time() - start_time
-        sleep_dur = max(0, SPORTS_UPDATE_INTERVAL - execution_time)
-        time.sleep(sleep_dur)
+        time.sleep(max(0, SPORTS_UPDATE_INTERVAL - execution_time))
 
 def stocks_worker():
+    _cached_active_key = None
     while True:
-        try: 
+        try:
             with data_lock:
-                active_cats = [k for k, v in state['active_sports'].items() if k.startswith('stock_') and v]
-            fetcher.stocks.update_market_data(active_cats)
-            fetcher.update_buffer_stocks()
-        except Exception as e: 
+                mode = state['mode']
+                active_sports = state['active_sports']
+            if mode == 'stocks':
+                active_key = frozenset(k for k, v in active_sports.items() if k.startswith('stock_') and v)
+                if active_key != _cached_active_key:
+                    _cached_active_key = active_key
+                fetcher.stocks.update_market_data(list(_cached_active_key))
+                fetcher.update_current_games()
+        except Exception as e:
             print(f"Stock worker error: {e}")
         time.sleep(1)
 
 def flights_worker():
     if not flight_tracker:
-        print("[DEBUG] flights_worker: No flight_tracker available")
+        if TestMode.is_enabled('flights'):
+            print("[DEBUG] flights_worker: No flight_tracker available")
         return
-    print("[DEBUG] flights_worker: Starting")
+    if TestMode.is_enabled('flights'):
+        print("[DEBUG] flights_worker: Starting")
     while True:
         start_time = time.time()
         try:
-            # Check if a config change forced an immediate refresh
             forced = getattr(flight_tracker, '_force_refresh', False)
             if forced:
                 flight_tracker._force_refresh = False
-                print(f"[DEBUG] flights_worker: Force refresh triggered")
-            
-            # Fetch airport activity only if airport code is set
-            if flight_tracker.airport_code_iata:
-                if forced or time.time() - flight_tracker.last_airport_fetch >= 30:
-                    print(f"[DEBUG] flights_worker: Fetching airport data for {flight_tracker.airport_code_iata}")
-                    flight_tracker.fetch_airport_activity()
-                    flight_tracker.last_airport_fetch = time.time()
-                    # Push new data into the buffer immediately
-                    try:
-                        fetcher.update_buffer_sports()
-                    except: pass
-            else:
-                # Only log once every 30 seconds to avoid spam
-                if time.time() - flight_tracker.last_airport_fetch >= 30:
-                    print("[DEBUG] flights_worker: No airport_code_iata set, skipping fetch")
-                    flight_tracker.last_airport_fetch = time.time()
-            
-            # Fetch visitor flight only if flight ID is set
-            if flight_tracker.track_flight_id and (forced or time.time() - flight_tracker.last_visitor_fetch >= 30):
-                flight_tracker.fetch_visitor_tracking()
-                flight_tracker.last_visitor_fetch = time.time()
-                # Push new data into the buffer immediately
-                try:
-                    fetcher.update_buffer_sports()
+                if TestMode.is_enabled('flights'):
+                    print("[DEBUG] flights_worker: Force refresh triggered")
+
+            with data_lock:
+                mode = state['mode']
+
+            did_fetch = False
+            if mode == 'flights' or forced:
+                if flight_tracker.airport_code_iata:
+                    if forced or time.time() - flight_tracker.last_airport_fetch >= 30:
+                        if TestMode.is_enabled('flights'):
+                            print(f"[DEBUG] flights_worker: Fetching airport data for {flight_tracker.airport_code_iata}")
+                        flight_tracker.fetch_airport_activity()
+                        flight_tracker.last_airport_fetch = time.time()
+                        did_fetch = True
+                else:
+                    if time.time() - flight_tracker.last_airport_fetch >= 30:
+                        if TestMode.is_enabled('flights'):
+                            print("[DEBUG] flights_worker: No airport_code_iata set, skipping fetch")
+                        flight_tracker.last_airport_fetch = time.time()
+
+            if mode == 'flight_tracker' or forced:
+                if flight_tracker.track_flight_id:
+                    if forced or time.time() - flight_tracker.last_visitor_fetch >= 30:
+                        flight_tracker.fetch_visitor_tracking()
+                        flight_tracker.last_visitor_fetch = time.time()
+                        did_fetch = True
+
+            if did_fetch or forced:
+                try: fetcher.update_current_games()
                 except: pass
         except Exception as e:
             print(f"Flight worker error: {e}")
-        
+
         execution_time = time.time() - start_time
-        # Use wake_event instead of sleep so config changes trigger instant fetch
-        sleep_dur = max(0, 5 - execution_time)
-        flight_tracker.wake_event.wait(timeout=sleep_dur)
+        flight_tracker.wake_event.wait(timeout=max(0, 5 - execution_time))
         flight_tracker.wake_event.clear()
 
-# ================= FLASK API =================
+# ── Section L: Flask Routes ──
 app = Flask(__name__)
 CORS(app) 
 
@@ -3060,14 +3450,17 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
 
-        # Normalize legacy flight2 mode into flights + submode
-        if new_data.get('mode') == 'flight2':
-            new_data['mode'] = 'flights'
-            new_data['flight_submode'] = 'track'
-        if new_data.get('mode') == 'flights' and 'flight_submode' not in new_data:
-            new_data['flight_submode'] = state.get('flight_submode', 'airport')
-        if 'flight_submode' in new_data and new_data['flight_submode'] not in ['airport', 'track']:
-            new_data['flight_submode'] = 'airport'
+        # Migrate legacy modes to new clean mode names
+        if 'mode' in new_data:
+            new_data['mode'] = MODE_MIGRATIONS.get(new_data['mode'], new_data['mode'])
+            # Old flights+track_submode combo → flight_tracker
+            if new_data['mode'] == 'flights' and new_data.get('flight_submode') == 'track':
+                new_data['mode'] = 'flight_tracker'
+            # Reject any mode that isn't valid; fall back to sports
+            if new_data['mode'] not in VALID_MODES:
+                new_data['mode'] = 'sports'
+        # Drop flight_submode — no longer a valid key
+        new_data.pop('flight_submode', None)
         
         # 1. Determine which ticker is being targeted
         target_id = new_data.get('ticker_id') or request.args.get('id')
@@ -3139,11 +3532,6 @@ def api_config():
                     flight_changed = True
                 if 'airport_name' in new_data:
                     flight_tracker.airport_name = new_data.get('airport_name', '')
-                # Airline filter disabled - always empty to support all airlines
-                # if 'airline_filter' in new_data:
-                #     flight_tracker.airline_filter = new_data.get('airline_filter', '')
-                #     flight_changed = True
-                
                 if flight_changed:
                     # Clear stale data immediately so old airport/flight info doesn't linger
                     with flight_tracker.lock:
@@ -3156,10 +3544,11 @@ def api_config():
                     flight_tracker.force_update()
             
             allowed_keys = {
-                'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date', 
+                'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date',
                 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset',
-                'track_flight_id', 'track_guest_name', 'airport_code_icao', 
-                'airport_code_iata', 'airport_name', 'flight_submode'
+                'track_flight_id', 'track_guest_name', 'airport_code_icao',
+                'airport_code_iata', 'airport_name',
+                'test_mode', 'test_spotify', 'test_stocks', 'test_sports_date', 'test_flights',
             }
             
             for k, v in new_data.items():
@@ -3179,8 +3568,10 @@ def api_config():
                     
                     if target_id and target_id in tickers:
                         tickers[target_id]['my_teams'] = cleaned
+                        tickers[target_id].pop('my_teams_set', None)
                     else:
                         state['my_teams'] = cleaned
+                        state.pop('my_teams_set', None)
                     continue
 
                 # HANDLE ACTIVE SPORTS
@@ -3204,8 +3595,7 @@ def api_config():
                 state['airport_name'] = flight_tracker.airport_name
                 state['track_flight_id'] = flight_tracker.track_flight_id
                 state['track_guest_name'] = flight_tracker.track_guest_name
-                state['flight_submode'] = state.get('flight_submode', 'airport')
-                
+
                 # Also sync to ticker-specific settings if a ticker is targeted
                 if target_id and target_id in tickers:
                     tickers[target_id]['settings']['airport_code_iata'] = flight_tracker.airport_code_iata
@@ -3213,13 +3603,29 @@ def api_config():
                     tickers[target_id]['settings']['airport_name'] = flight_tracker.airport_name
                     tickers[target_id]['settings']['track_flight_id'] = flight_tracker.track_flight_id
                     tickers[target_id]['settings']['track_guest_name'] = flight_tracker.track_guest_name
-                    tickers[target_id]['settings']['flight_submode'] = state.get('flight_submode', 'airport')
-            
+
             # Force airline_filter to always be empty (support all airlines)
             state['airline_filter'] = ''
-            
-            fetcher.merge_buffers()
-        
+
+        # Sync console verbosity with debug_mode
+        if tee_instance is not None:
+            Tee.verbose_debug = state.get('debug_mode', False)
+
+        # Sync TestMode whenever any test_* or debug key changes
+        if any(k.startswith('test_') or k in ('debug_mode', 'custom_date') for k in new_data):
+            TestMode.configure(
+                enabled=state.get('test_mode', False),
+                spotify=state.get('test_spotify', False),
+                stocks=state.get('test_stocks', False),
+                sports_date=state.get('test_sports_date', False),
+                flights=state.get('test_flights', False),
+                custom_date=state.get('custom_date'),
+            )
+
+        # Immediately rebuild the buffer for the new mode (fast for non-sports modes)
+        try: fetcher.update_current_games()
+        except: pass
+
         if target_id:
             save_specific_ticker(target_id)
             # Also persist global config for flight/weather settings that live globally
@@ -3286,80 +3692,51 @@ def get_ticker_data():
         return jsonify({ "status": "pairing", "code": rec['pairing_code'], "ticker_id": ticker_id })
 
     t_settings = rec['settings']
-    current_mode = t_settings.get('mode', 'all') 
-    flight_submode = t_settings.get('flight_submode', state.get('flight_submode', 'airport'))
-    
+    current_mode = MODE_MIGRATIONS.get(t_settings.get('mode', 'sports'), t_settings.get('mode', 'sports'))
+    if current_mode not in VALID_MODES:
+        current_mode = 'sports'
+
     # Sleep Mode
     if t_settings.get('brightness', 100) <= 0:
         return jsonify({ "status": "sleep", "content": { "sports": [] } })
 
-    # Get the base data
-    music_obj = fetcher.get_music_object()
     delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
-    # Update this line
-    raw_games = fetcher.get_snapshot_for_delay(delay_seconds, current_mode)
-    
+    raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
     visible_items = []
-    
-    # =================================================================
-    # FIX: STRICT MUSIC FILTERING
-    # Music data is ONLY shown if the mode is explicitly 'music'.
-    # It is excluded from 'all', 'sports', 'my_teams', etc.
-    # =================================================================
-    
-    # 1. Only add music object if we are strictly in Music mode
-    if current_mode == 'music' and music_obj:
-        visible_items.append(music_obj)
 
-    # 2. Process other items (Sports, Weather, Clock)
-    # Even in 'music' mode, we might want to skip this if you want ONLY music.
-    # But usually 'music' mode replaces the list. 
-    # If mode is NOT music, we process the list and strictly remove music items.
-    if current_mode != 'music':
-        saved_teams = rec.get('my_teams', []) 
-        COLLISION_ABBRS = {'LV'} 
-
+    # Buffer is already mode-specific — only post-processing needed for sub-filters
+    if current_mode == 'my_teams':
+        if 'my_teams_set' not in rec:
+            saved_teams = rec.get('my_teams') or state.get('my_teams', [])
+            rec['my_teams_set'] = set(saved_teams)
+        saved_set = rec['my_teams_set']
+        COLLISION_ABBRS = {'LV'}
         for g in raw_games:
-            # STRICT FILTER: Never allow music objects in non-music modes
-            if g.get('type') == 'music' or g.get('sport') == 'music': 
-                continue 
-
-            # Hide postponed/suspended/canceled games from the ticker feed.
-            status_lower = str(g.get('status', '')).lower()
-            if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
-                continue
-            
-            should_show = True
-            if current_mode == 'my_teams':
-                sport = g.get('sport')
-                if sport in ['weather', 'clock']:
-                    should_show = True
-                else:
-                    h_ab = str(g.get('home_abbr', '')).upper()
-                    a_ab = str(g.get('away_abbr', '')).upper()
-                    h_scoped, a_scoped = f"{sport}:{h_ab}", f"{sport}:{a_ab}"
-                    in_home = h_scoped in saved_teams or (h_ab in saved_teams and h_ab not in COLLISION_ABBRS)
-                    in_away = a_scoped in saved_teams or (a_ab in saved_teams and a_ab not in COLLISION_ABBRS)
-                    if not (in_home or in_away): should_show = False
-            
-            elif current_mode == 'live' and g.get('state') not in ['in', 'half']: 
-                should_show = False
-            elif current_mode == 'weather' and g.get('type') != 'weather':
-                should_show = False
-            elif current_mode == 'clock' and g.get('sport') != 'clock':
-                should_show = False
-            elif current_mode == 'flights' and g.get('sport') != 'flight':
-                should_show = False
-            elif current_mode == 'flights' and flight_submode == 'track' and g.get('type') != 'flight_visitor':
-                should_show = False
-            elif current_mode == 'flights' and flight_submode == 'airport' and g.get('type') not in ['flight_weather', 'flight_arrival', 'flight_departure']:
-                should_show = False
-            elif current_mode == 'flight2' and g.get('type') != 'flight_visitor':
-                should_show = False
-
-            if should_show:
+            sport = g.get('sport', '')
+            h_ab = str(g.get('home_abbr', '')).upper()
+            a_ab = str(g.get('away_abbr', '')).upper()
+            in_home = f"{sport}:{h_ab}" in saved_set or (h_ab in saved_set and h_ab not in COLLISION_ABBRS)
+            in_away = f"{sport}:{a_ab}" in saved_set or (a_ab in saved_set and a_ab not in COLLISION_ABBRS)
+            if in_home or in_away:
                 g['is_shown'] = True
                 visible_items.append(g)
+    elif current_mode == 'live':
+        for g in raw_games:
+            if g.get('state') in _ACTIVE_STATES:
+                g['is_shown'] = True
+                visible_items.append(g)
+    elif current_mode == 'sports':
+        for g in raw_games:
+            status_lower = str(g.get('status', '')).lower()
+            if any(k in status_lower for k in ("postponed", "suspended", "canceled", "ppd")):
+                continue
+            g['is_shown'] = True
+            visible_items.append(g)
+    else:
+        # stocks, weather, music, clock, flights, flight_tracker — buffer already correct
+        for g in raw_games:
+            g['is_shown'] = True
+            visible_items.append(g)
     
     # Final Response Construction
     g_config = { "mode": current_mode }
@@ -3568,19 +3945,45 @@ def list_tickers():
 def update_settings(tid):
     if tid not in tickers: return jsonify({"error":"404"}), 404
 
-    # ================= SECURITY CHECK =================
     cid = request.headers.get('X-Client-ID')
     rec = tickers[tid]
     
     if not cid or cid not in rec.get('clients', []):
         print(f"⛔ Blocked unauthorized settings change from {cid}")
         return jsonify({"error": "Unauthorized: Device not paired"}), 403
-    # ==================================================
 
-    rec['settings'].update(request.json)
-    save_specific_ticker(tid)
+    data = request.json
+    rec['settings'].update(data)
     
-    print(f"✅ Updated Settings for {tid}: {request.json}") 
+    # --- FIX: Sync Mode & CLEANUP Active Sports ---
+    if 'mode' in data:
+        new_mode = data['mode']
+        new_mode = MODE_MIGRATIONS.get(new_mode, new_mode)
+        
+        with data_lock:
+            state['mode'] = new_mode
+            rec['settings']['mode'] = new_mode
+            
+            # CRITICAL FIX: If switching AWAY from flights, kill the flight flags
+            if new_mode not in ['flights', 'flight_tracker', 'flight2']:
+                state['active_sports']['flight_visitor'] = False
+                state['active_sports']['flight_tracker'] = False
+                state['active_sports']['flight_airport'] = False
+                # Also clean the track ID so it doesn't linger
+                state['track_flight_id'] = ""
+                # Force clear current games to remove stale flight data instantly
+                state['current_games'] = []
+
+        # Trigger immediate refresh
+        try:
+            fetcher.update_current_games()
+        except Exception as e:
+            print(f"Error triggering update: {e}")
+
+    save_specific_ticker(tid)
+    save_global_config()
+    
+    print(f"✅ Updated Settings for {tid}: {data}") 
     return jsonify({"success": True})
 
 @app.route('/api/state', methods=['GET'])
@@ -3600,98 +4003,43 @@ def api_state():
         ticker_id = list(tickers.keys())[0]
 
     # Initialize with global state, then override with ticker-specific settings if found
-    response_settings = state.copy()
+    with data_lock:
+        response_settings = dict(state)
     if ticker_id and ticker_id in tickers:
-        local_settings = tickers[ticker_id]['settings']
-        response_settings.update(local_settings)
+        response_settings.update(tickers[ticker_id]['settings'])
         response_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
-        response_settings['ticker_id'] = ticker_id 
-    
-    # 1. MOVE THIS UP: Define current_mode first
-    current_mode = response_settings.get('mode', 'all')
-    flight_submode = response_settings.get('flight_submode', state.get('flight_submode', 'airport'))
-    
-    # 2. NOW call the fetcher with the mode
-    raw_games = fetcher.get_snapshot_for_delay(0, current_mode)
-    processed_games = []
+        response_settings['ticker_id'] = ticker_id
+    response_settings.pop('flight_submode', None)
 
-    # 3. Continue as normal
-    saved_teams = response_settings.get('my_teams', [])
+    current_mode = MODE_MIGRATIONS.get(response_settings.get('mode', 'sports'), response_settings.get('mode', 'sports'))
+    if current_mode not in VALID_MODES:
+        current_mode = 'sports'
+
+    raw_games = fetcher.get_snapshot_for_delay(0)
+    processed_games = []
+    saved_teams = set(response_settings.get('my_teams', []))
     COLLISION_ABBRS = {'LV'}
 
     for g in raw_games:
         game_copy = g.copy()
-        should_show = True # We start as True and try to disqualify
-        
-        sport = game_copy.get('sport')
-        is_music_item = (game_copy.get('type') == 'music' or sport == 'music')
+        sport = game_copy.get('sport', '')
+        should_show = True
 
-        # --- MODE-BASED FILTERING (Synchronized with /data) ---
-        
-        # MUSIC FILTER: Only shown if mode is strictly 'music'
-        if is_music_item:
-            if current_mode != 'music':
+        if current_mode == 'my_teams':
+            h_ab = str(game_copy.get('home_abbr', '')).upper()
+            a_ab = str(game_copy.get('away_abbr', '')).upper()
+            in_home = f"{sport}:{h_ab}" in saved_teams or (h_ab in saved_teams and h_ab not in COLLISION_ABBRS)
+            in_away = f"{sport}:{a_ab}" in saved_teams or (a_ab in saved_teams and a_ab not in COLLISION_ABBRS)
+            if not (in_home or in_away):
                 should_show = False
-        
-        # If in 'music' mode, only show the music item
-        elif current_mode == 'music' and not is_music_item:
-            should_show = False
-
-        # FLIGHTS FILTER: flight items only in 'flights' or 'flight2' modes
-        is_flight_item = (game_copy.get('sport') == 'flight')
-        is_visitor_item = (game_copy.get('type') == 'flight_visitor')
-        
-        if is_flight_item:
-            if current_mode == 'flight2':
-                # flight2 mode: only show visitor (tracked) flights
-                if not is_visitor_item:
-                    should_show = False
-            elif current_mode != 'flights':
+        elif current_mode == 'live':
+            if game_copy.get('state') not in ('in', 'half', 'crit'):
                 should_show = False
-        
-        # If in 'flights' mode, only show flight items (airport)
-        elif current_mode == 'flights' and not is_flight_item:
-            should_show = False
-        
-        # If in 'flight2' mode, only show flight visitor items
-        elif current_mode == 'flights' and flight_submode == 'track' and game_copy.get('type') != 'flight_visitor':
-            should_show = False
-        elif current_mode == 'flights' and flight_submode == 'airport' and game_copy.get('type') not in ['flight_weather', 'flight_arrival', 'flight_departure']:
-            should_show = False
-        elif current_mode == 'flights' and not is_flight_item:
-            should_show = False
+        elif current_mode == 'sports':
+            status_lower = str(game_copy.get('status', '')).lower()
+            if any(k in status_lower for k in ("postponed", "suspended", "canceled", "ppd")):
+                should_show = False
 
-        # LIVE FILTER
-        elif current_mode == 'live' and game_copy.get('state') not in ['in', 'half']: 
-            should_show = False
-            
-        # MY TEAMS FILTER
-        elif current_mode == 'my_teams':
-            # Utils (Weather/Clock) usually pass through in My Teams
-            if sport not in ['weather', 'clock']:
-                h_abbr = str(game_copy.get('home_abbr', '')).upper()
-                a_abbr = str(game_copy.get('away_abbr', '')).upper()
-                h_scoped = f"{sport}:{h_abbr}"
-                a_scoped = f"{sport}:{a_abbr}"
-                
-                in_home = h_scoped in saved_teams or (h_abbr in saved_teams and h_abbr not in COLLISION_ABBRS)
-                in_away = a_scoped in saved_teams or (a_abbr in saved_teams and a_abbr not in COLLISION_ABBRS)
-                
-                if not (in_home or in_away): 
-                    should_show = False
-
-        # UTILITY FILTERS
-        elif current_mode == 'weather' and game_copy.get('type') != 'weather':
-            should_show = False
-        elif current_mode == 'clock' and sport != 'clock':
-            should_show = False
-
-        # Mark postponed/suspended/canceled games as not shown in /api/state.
-        status_lower = str(game_copy.get('status', '')).lower()
-        if any(k in status_lower for k in ["postponed", "suspended", "canceled", "ppd"]):
-            should_show = False
-
-        # Apply calculated visibility to the master list
         game_copy['is_shown'] = should_show
         processed_games.append(game_copy)
 
@@ -3740,10 +4088,37 @@ def api_hardware():
         print(f"Hardware API Error: {e}")
         return jsonify({"status": "error"}), 500
 
-@app.route('/api/debug', methods=['POST'])
+@app.route('/api/debug', methods=['GET', 'POST'])
 def api_debug():
-    with data_lock: state.update(request.json)
-    return jsonify({"status": "ok"})
+    if request.method == 'POST':
+        payload = request.json or {}
+        with data_lock:
+            state.update(payload)
+        # Sync TestMode whenever any relevant key was sent
+        if any(k.startswith('test_') or k in ('debug_mode', 'custom_date') for k in payload):
+            TestMode.configure(
+                enabled=state.get('test_mode', False),
+                spotify=state.get('test_spotify', False),
+                stocks=state.get('test_stocks', False),
+                sports_date=state.get('test_sports_date', False),
+                flights=state.get('test_flights', False),
+                custom_date=state.get('custom_date'),
+            )
+        if tee_instance is not None:
+            Tee.verbose_debug = state.get('debug_mode', False)
+        return jsonify({"status": "ok"})
+    else:
+        # GET: return current debug / test mode snapshot
+        with data_lock:
+            debug_snap = {
+                'debug_mode': state.get('debug_mode'),
+                'custom_date': state.get('custom_date'),
+                'show_debug_options': state.get('show_debug_options'),
+            }
+        return jsonify({
+            "state_debug": debug_snap,
+            "test_mode": TestMode.status(),
+        })
 
 @app.route('/errors', methods=['GET'])
 def get_logs():
@@ -3812,40 +4187,6 @@ def get_airports():
     ]
     return jsonify(airports)
 
-@app.route('/api/airport_lookup', methods=['GET'])
-def airport_lookup():
-    """Look up airport by IATA or ICAO code using airportsdata library"""
-    code = request.args.get('code', '').strip().upper()
-    if not code:
-        return jsonify({"error": "No code provided"}), 400
-    
-    try:
-        # Try IATA lookup first
-        if len(code) == 3:
-            airport = airports.load('IATA').get(code)
-            if airport:
-                return jsonify({
-                    "iata": code,
-                    "icao": airport.get('icao', ''),
-                    "name": airport.get('city', ''),
-                    "country": airport.get('country', '')
-                })
-        
-        # Try ICAO lookup
-        if len(code) == 4:
-            airport = airports.load('ICAO').get(code)
-            if airport:
-                return jsonify({
-                    "iata": airport.get('iata', ''),
-                    "icao": code,
-                    "name": airport.get('city', ''),
-                    "country": airport.get('country', '')
-                })
-        
-        return jsonify({"error": "Airport not found"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 @app.route('/api/airlines', methods=['GET'])
 def get_airlines():
     airlines = [
@@ -3873,9 +4214,8 @@ def get_flight_status():
     with data_lock:
         return jsonify({
             'available': True,
-            'visitor_enabled': state['active_sports'].get('flight_visitor', False),
+            'visitor_enabled': state['active_sports'].get('flight_tracker', False),
             'airport_enabled': state['active_sports'].get('flight_airport', False),
-            'visitor_enabled': state['active_sports'].get('flight_visitor', False),
             'tracking': {
                 'flight_id': state.get('track_flight_id', ''),
                 'guest_name': state.get('track_guest_name', ''),
