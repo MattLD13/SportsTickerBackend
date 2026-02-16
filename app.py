@@ -1158,6 +1158,9 @@ class FlightTracker:
             flight_clean = flight_id.replace(" ", "").upper()
             if not self.fr_api: return None
 
+            def normalize_flight_token(value):
+                return re.sub(r'[^A-Z0-9]', '', (value or '').upper())
+
             def infer_iata_from_flights(flights, airline_filter, flight_num_part):
                 if not flights or not airline_filter:
                     return ""
@@ -1190,10 +1193,13 @@ class FlightTracker:
                     airline_filter = flight_clean[:3]
 
             # Extract numeric portion for flexible matching (e.g., "1965" from "UAL1965")
-            flight_num_part = re.sub(r'^[A-Z]{2,3}', '', flight_clean)
-            flight_variants = {flight_clean}
+            flight_clean_norm = normalize_flight_token(flight_clean)
+            flight_num_part = re.sub(r'^[A-Z]{2,3}', '', flight_clean_norm)
+            flight_num_part_norm = flight_num_part.lstrip('0') or flight_num_part
+            flight_variants = {flight_clean, flight_clean_norm}
             if flight_num_part:
                 flight_variants.add(flight_num_part)
+                flight_variants.add(flight_num_part_norm)
             
             self.log("DEBUG", f"Searching for '{flight_clean}' with airline filter: {airline_filter}, num part: {flight_num_part}")
             
@@ -1210,6 +1216,7 @@ class FlightTracker:
             iata_override = infer_iata_from_flights(flights, airline_filter, flight_num_part)
             if iata_override and flight_num_part:
                 flight_variants.add(f"{iata_override}{flight_num_part}")
+                flight_variants.add(f"{iata_override}{flight_num_part_norm}")
             if iata_override:
                 self.log("DEBUG", f"Inferred IATA code for {airline_filter}: {iata_override}")
             
@@ -1217,18 +1224,23 @@ class FlightTracker:
             for flight in flights:
                 f_num = flight.number.upper() if flight.number else ""
                 f_call = flight.callsign.upper() if flight.callsign else ""
+                f_num_norm = normalize_flight_token(f_num)
+                f_call_norm = normalize_flight_token(f_call)
                 # Direct match on full flight number or callsign
-                if f_num in flight_variants or f_call in flight_variants:
+                if f_num in flight_variants or f_call in flight_variants or f_num_norm in flight_variants or f_call_norm in flight_variants:
                     target_flight = flight
                     self.log("DEBUG", f"✓ Match found: {f_num} / {f_call}")
                     break
                 # Flexible match: compare numeric portion when airline filter is active
                 # This handles ICAO (UAL1965) vs IATA (UA1965) mismatches
                 if airline_filter and flight_num_part:
-                    f_num_part = re.sub(r'^[A-Z]{2,3}', '', f_num)
-                    if f_num_part == flight_num_part:
+                    f_num_part = re.sub(r'^[A-Z]{2,3}', '', f_num_norm)
+                    f_call_part = re.sub(r'^[A-Z]{2,3}', '', f_call_norm)
+                    f_num_part_norm = f_num_part.lstrip('0') or f_num_part
+                    f_call_part_norm = f_call_part.lstrip('0') or f_call_part
+                    if f_num_part_norm == flight_num_part_norm or f_call_part_norm == flight_num_part_norm:
                         target_flight = flight
-                        self.log("DEBUG", f"✓ Match found (numeric): {f_num} / {f_call} [num={f_num_part}]")
+                        self.log("DEBUG", f"✓ Match found (numeric): {f_num} / {f_call} [num={f_num_part_norm}]\n")
                         break
             
             # Fallback: if not found with airline filter, try searching all flights
@@ -1240,18 +1252,24 @@ class FlightTracker:
                     iata_override = infer_iata_from_flights(flights, airline_filter, flight_num_part)
                     if iata_override and flight_num_part:
                         flight_variants.add(f"{iata_override}{flight_num_part}")
+                        flight_variants.add(f"{iata_override}{flight_num_part_norm}")
                         self.log("DEBUG", f"Inferred IATA code in fallback: {iata_override}")
                     for flight in flights:
                         f_num = flight.number.upper() if flight.number else ""
                         f_call = flight.callsign.upper() if flight.callsign else ""
-                        if f_num in flight_variants or f_call in flight_variants:
+                        f_num_norm = normalize_flight_token(f_num)
+                        f_call_norm = normalize_flight_token(f_call)
+                        if f_num in flight_variants or f_call in flight_variants or f_num_norm in flight_variants or f_call_norm in flight_variants:
                             target_flight = flight
                             self.log("DEBUG", f"✓ Match found in fallback: {f_num} / {f_call}")
                             break
                         # Flexible numeric match in fallback too
                         if flight_num_part:
-                            f_num_part = re.sub(r'^[A-Z]{2,3}', '', f_num)
-                            if f_num_part == flight_num_part:
+                            f_num_part = re.sub(r'^[A-Z]{2,3}', '', f_num_norm)
+                            f_call_part = re.sub(r'^[A-Z]{2,3}', '', f_call_norm)
+                            f_num_part_norm = f_num_part.lstrip('0') or f_num_part
+                            f_call_part_norm = f_call_part.lstrip('0') or f_call_part
+                            if f_num_part_norm == flight_num_part_norm or f_call_part_norm == flight_num_part_norm:
                                 target_flight = flight
                                 self.log("DEBUG", f"✓ Match found in fallback (numeric): {f_num} / {f_call}")
                                 break
