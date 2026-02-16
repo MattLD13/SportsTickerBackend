@@ -7,6 +7,7 @@ import re
 import random
 import string
 import glob
+import uuid
 from datetime import datetime as dt, timezone, timedelta
 import requests
 from requests.adapters import HTTPAdapter
@@ -3060,8 +3061,23 @@ def get_ticker_data():
     if not ticker_id and len(tickers) == 1: 
         ticker_id = list(tickers.keys())[0]
     
-    if not ticker_id or ticker_id not in tickers:
+    if not ticker_id:
         return jsonify({"status": "ok", "content": {"sports": []}})
+
+    # Auto-create ticker if ID is unknown (hardware tickers self-register this way)
+    if ticker_id not in tickers:
+        print(f"\U0001f195 Auto-creating ticker: {ticker_id}")
+        tickers[ticker_id] = {
+            "name": "Ticker",
+            "settings": DEFAULT_TICKER_SETTINGS.copy(),
+            "my_teams": [],
+            "clients": [],
+            "paired": False,
+            "pairing_code": generate_pairing_code(),
+            "last_seen": time.time()
+        }
+        tickers[ticker_id]['settings']['mode'] = state.get('mode', 'sports')
+        save_specific_ticker(ticker_id)
 
     rec = tickers[ticker_id]
     rec['last_seen'] = time.time()
@@ -3071,7 +3087,7 @@ def get_ticker_data():
         if not rec.get('pairing_code'):
             rec['pairing_code'] = generate_pairing_code()
             save_specific_ticker(ticker_id)
-        return jsonify({ "status": "pairing", "code": rec['pairing_code'] })
+        return jsonify({ "status": "pairing", "code": rec['pairing_code'], "ticker_id": ticker_id })
 
     t_settings = rec['settings']
     current_mode = t_settings.get('mode', 'all') 
@@ -3145,6 +3161,7 @@ def get_ticker_data():
     return jsonify({ 
         "status": "ok", 
         "version": SERVER_VERSION,
+        "ticker_id": ticker_id,
         "global_config": g_config, 
         "local_config": t_settings, 
         "content": { "sports": visible_items } 
@@ -3248,6 +3265,49 @@ def pair_ticker_by_id():
         return jsonify({"success": True, "ticker_id": tid})
         
     return jsonify({"success": False}), 404
+
+@app.route('/register', methods=['POST'])
+def register_ticker():
+    """Register a new ticker and auto-pair the requesting client."""
+    try:
+        cid = request.headers.get('X-Client-ID')
+        json_body = request.json or {}
+        friendly_name = json_body.get('name', 'My Ticker')
+
+        if not cid:
+            return jsonify({"success": False, "message": "Missing X-Client-ID header"}), 400
+
+        # Check if this client already owns a ticker — return it instead of creating a duplicate
+        for tid, rec in tickers.items():
+            if cid in rec.get('clients', []):
+                print(f"🔁 Client {cid} already owns ticker {tid}, returning existing")
+                return jsonify({"success": True, "ticker_id": tid})
+
+        # Generate a unique ticker ID
+        new_tid = str(uuid.uuid4())
+
+        # Create the ticker record
+        new_ticker = {
+            "name": friendly_name,
+            "settings": DEFAULT_TICKER_SETTINGS.copy(),
+            "my_teams": [],
+            "clients": [cid],
+            "paired": True,
+            "pairing_code": generate_pairing_code(),
+            "last_seen": time.time()
+        }
+        # Copy default mode into settings
+        new_ticker['settings']['mode'] = state.get('mode', 'sports')
+
+        tickers[new_tid] = new_ticker
+        save_specific_ticker(new_tid)
+
+        print(f"✅ Registered new ticker: {new_tid} (client: {cid})")
+        return jsonify({"success": True, "ticker_id": new_tid})
+
+    except Exception as e:
+        print(f"🔥 Register Error: {e}")
+        return jsonify({"success": False, "message": "Server error"}), 500
 
 @app.route('/ticker/<tid>/unpair', methods=['POST'])
 def unpair(tid):
