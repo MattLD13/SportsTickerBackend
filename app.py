@@ -19,11 +19,28 @@ from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
+# --- FLIGHT TRACKING IMPORTS ---
+try:
+    import airportsdata
+    AIRPORTS_DB = airportsdata.load('IATA')
+    FLIGHT_TRACKING_AVAILABLE = True
+except ImportError:
+    AIRPORTS_DB = {}
+    FLIGHT_TRACKING_AVAILABLE = False
+
+try:
+    from FlightRadar24 import FlightRadar24API
+    FR24_SDK_AVAILABLE = True
+except ImportError:
+    FR24_SDK_AVAILABLE = False
+
+import math
+
 # Load environment variables
 load_dotenv()
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v0.6-Stable"
+SERVER_VERSION = "v0.7-Flights"
 # ================= LOGGING SETUP =================
 class Tee(object):
     def __init__(self, name, mode):
@@ -52,12 +69,6 @@ try:
     Tee("ticker.log", "a")
 except Exception as e:
     print(f"Logging setup failed: {e}")
-
-# ================= CACHE CLEANUP =================
-if os.path.exists("stock_cache.json"):
-    try:
-        os.remove("stock_cache.json")
-    except: pass
 
 def build_pooled_session(pool_size=20, retries=2):
     session = requests.Session()
@@ -101,6 +112,72 @@ TZ_OFFSETS = {
     "EST": -5, "EDT": -4, "CST": -6, "CDT": -5,
     "MST": -7, "MDT": -6, "PST": -8, "PDT": -7, "AST": -4, "ADT": -3
 }
+
+# ================= FLIGHT TRACKING CONSTANTS =================
+KNOTS_TO_MPH = 1.15078
+FLIGHTAWARE_API_KEY = os.getenv('FLIGHTAWARE_API_KEY', '')
+BLUEBOARD_BASE = "https://theblueboard.co"
+
+AIRCRAFT_TYPES = {
+    'B739': 'B737-900', 'B38M': 'B737 MAX 8', 'B39M': 'B737 MAX 9',
+    'B737': 'B737', 'B738': 'B737-800', 'B752': 'B757-200',
+    'B753': 'B757-300', 'B763': 'B767-300', 'B764': 'B767-400',
+    'B772': 'B777-200', 'B773': 'B777-300', 'B77W': 'B777-300ER',
+    'B788': 'B787-8', 'B789': 'B787-9', 'B78X': 'B787-10',
+    'A319': 'A319', 'A320': 'A320', 'A321': 'A321',
+    'A20N': 'A320neo', 'A21N': 'A321neo', 'A339': 'A330-900',
+    'A332': 'A330-200', 'A333': 'A330-300', 'A359': 'A350-900',
+    'E75L': 'E175', 'E170': 'E170', 'E190': 'E190',
+    'CRJ9': 'CRJ-900',
+}
+
+def get_aircraft_name(code):
+    if not code: return ''
+    return AIRCRAFT_TYPES.get(code.upper(), code)
+
+def get_city_name(iata_code):
+    if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
+    code = iata_code.strip().upper()
+    if code in AIRPORTS_DB:
+        return AIRPORTS_DB[code].get('city', code)
+    return code
+
+def lookup_and_auto_fill_airport(airport_code_input):
+    """
+    Takes either IATA (3-char) or ICAO (4-char) airport code and returns complete airport info.
+    Returns: {'iata': 'ABE', 'icao': 'KABE', 'name': 'Lehigh Valley International Airport'}
+    """
+    if not airport_code_input or not AIRPORTS_DB:
+        return {'iata': '', 'icao': '', 'name': ''}
+    
+    code = airport_code_input.strip().upper()
+    
+    # Try direct IATA lookup (most common case)
+    if code in AIRPORTS_DB:
+        airport_data = AIRPORTS_DB[code]
+        iata = code
+        icao = airport_data.get('icao', f'K{code}' if len(code) == 3 else '')
+        name = airport_data.get('name', airport_data.get('city', code))
+        return {'iata': iata, 'icao': icao, 'name': name}
+    
+    # Try ICAO lookup (4-character code)
+    if len(code) == 4:
+        for iata_code, airport_data in AIRPORTS_DB.items():
+            if airport_data.get('icao', '').upper() == code:
+                icao = code
+                name = airport_data.get('name', airport_data.get('city', iata_code))
+                return {'iata': iata_code, 'icao': icao, 'name': name}
+    
+    # If not found, return empty
+    return {'iata': '', 'icao': '', 'name': ''}
+
+def haversine(lat1, lon1, lat2, lon2):
+    R = 3440.065
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R * c
 
 # ================= LARGE LISTS =================
 AHL_TEAMS = {
@@ -167,6 +244,8 @@ LEAGUE_OPTIONS = [
     {'id': 'weather', 'label': 'Weather', 'type': 'util', 'default': True},
     {'id': 'clock', 'label': 'Clock', 'type': 'util', 'default': True},
     {'id': 'music', 'label': 'Music', 'type': 'util', 'default': True},
+    {'id': 'flight_visitor', 'label': 'Flight Tracker', 'type': 'util', 'default': False},
+    {'id': 'flight_airport', 'label': 'Airport Activity', 'type': 'util', 'default': False},
     {'id': 'stock_tech_ai', 'label': 'Tech / AI Stocks', 'type': 'stock', 'default': True, 'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
     {'id': 'stock_momentum', 'label': 'Momentum Stocks', 'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
     {'id': 'stock_energy', 'label': 'Energy Stocks', 'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
@@ -279,7 +358,7 @@ SPORT_DURATIONS = {
 # ================= DEFAULT STATE =================
 default_state = {
     'active_sports': { item['id']: item['default'] for item in LEAGUE_OPTIONS },
-    'mode': 'all', 
+    'mode': 'sports', 
     'layout_mode': 'schedule',
     'my_teams': [], 
     'current_games': [],        
@@ -292,7 +371,14 @@ default_state = {
     'weather_lat': 40.7128,
     'weather_lon': -74.0060,
     'utc_offset': -5,
-    'show_debug_options': False 
+    'show_debug_options': False,
+    # Flight tracking
+    'track_flight_id': '',
+    'track_guest_name': '',
+    'airport_code_icao': 'KEWR',
+    'airport_code_iata': 'EWR',
+    'airport_name': 'Newark',
+    'airline_filter': ''
 }
 
 DEFAULT_TICKER_SETTINGS = {
@@ -322,6 +408,22 @@ if os.path.exists(GLOBAL_CONFIG_FILE):
                         state[k] = v
     except Exception as e:
         print(f"⚠️ Error loading global config: {e}")
+
+# Force airline_filter to be empty (support all airlines)
+state['airline_filter'] = ''
+
+# Clean up saved config file to remove airline_filter
+if os.path.exists(GLOBAL_CONFIG_FILE):
+    try:
+        with open(GLOBAL_CONFIG_FILE, 'r') as f:
+            config_data = json.load(f)
+        if 'airline_filter' in config_data and config_data['airline_filter'] != '':
+            config_data['airline_filter'] = ''
+            with open(GLOBAL_CONFIG_FILE, 'w') as f:
+                json.dump(config_data, f, indent=4)
+            print("🧹 Cleared airline_filter from saved config")
+    except Exception as e:
+        print(f"⚠️ Error cleaning config: {e}")
 
 # 2. Load Individual Ticker Files (Robust)
 ticker_files = glob.glob(os.path.join(TICKER_DATA_DIR, "*.json"))
@@ -362,11 +464,18 @@ def save_global_config():
             export_data = {
                 'active_sports': state['active_sports'],
                 'mode': state['mode'],
-                'my_teams': state['my_teams'], # Global default teams
+                'my_teams': state['my_teams'],
                 'weather_city': state['weather_city'],
                 'weather_lat': state['weather_lat'],
                 'weather_lon': state['weather_lon'],
-                'utc_offset': state['utc_offset']
+                'utc_offset': state['utc_offset'],
+                # Flight tracking
+                'track_flight_id': state.get('track_flight_id', ''),
+                'track_guest_name': state.get('track_guest_name', ''),
+                'airport_code_icao': state.get('airport_code_icao', 'KEWR'),
+                'airport_code_iata': state.get('airport_code_iata', 'EWR'),
+                'airport_name': state.get('airport_name', 'Newark'),
+                'airline_filter': ''  # Always empty - support all airlines
             }
         
         # Atomic Write
@@ -765,6 +874,375 @@ class StockFetcher:
             obj = self.get_stock_obj(sym, label)
             if obj: res.append(obj)
         return res
+
+class FlightTracker:
+    def __init__(self):
+        self.session = build_pooled_session(pool_size=10)
+        self.lock = threading.Lock()
+        self.visitor_flight = None
+        self.airport_arrivals = []
+        self.airport_departures = []
+        self.airport_weather = {"temp": "--", "cond": "LOADING"}
+        self.track_flight_id = ""
+        self.track_guest_name = ""
+        self.airport_code_icao = ""
+        self.airport_code_iata = ""
+        self.airport_name = ""
+        self.airline_filter = ""
+        self.last_visitor_fetch = 0
+        self.last_airport_fetch = 0
+        self.running = True
+        self._force_refresh = False
+        # Event to force immediate fetch when config changes
+        self.wake_event = threading.Event()
+        # Initialize FlightRadarAPI SDK if available
+        self.fr_api = FlightRadar24API() if FR24_SDK_AVAILABLE else None
+    
+    def force_update(self):
+        """Signal the flights_worker to immediately fetch new data."""
+        self._force_refresh = True
+        self.wake_event.set()
+    
+    def log(self, cat, msg):
+        print(f"[{dt.now().strftime('%H:%M:%S')}] {cat:<12} | {msg}")
+    
+    def fetch_fr24_schedule(self, mode='arrivals'):
+        """Robust fetcher that handles NoneTypes in the API response"""
+        if not self.airport_code_iata:
+            self.log("DEBUG", f"No airport IATA code set, skipping {mode}")
+            return []
+        try:
+            timestamp = int(time.time())
+            url = f"https://api.flightradar24.com/common/v1/airport.json?code={self.airport_code_iata}&plugin[]=schedule&plugin-setting[schedule][mode]={mode}&plugin-setting[schedule][timestamp]={timestamp}&page=1&limit=100"
+            headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
+            self.log("DEBUG", f"Fetching {mode} for {self.airport_code_iata}")
+            res = self.session.get(url, headers=headers, timeout=10)
+            if res.status_code != 200:
+                self.log("DEBUG", f"FR24 API returned status {res.status_code}")
+                return []
+            
+            data = res.json()
+            
+            # --- FIX: ROBUST NAVIGATION (Prevents 'NoneType' has no attribute 'get') ---
+            # We use (dict.get(key) or {}) to ensure we always proceed with a dictionary, 
+            # even if the API returns null (None) for a specific key.
+            result = data.get('result') or {}
+            response = result.get('response') or {}
+            airport = response.get('airport') or {}
+            plugin_data = airport.get('pluginData') or {}
+            schedule_wrapper = plugin_data.get('schedule') or {}
+            schedule = schedule_wrapper.get(mode) or {}
+            # --------------------------------------------------------------------------
+
+            if not schedule or 'data' not in schedule:
+                self.log("DEBUG", f"No schedule data for {mode}")
+                return []
+            
+            self.log("DEBUG", f"Processing {len(schedule['data'])} {mode} flights")
+            flights = []
+            for flight in schedule['data']:
+                try:
+                    f_data = flight.get('flight') or {}
+                    
+                    # --- Filter by flight status ---
+                    status_info = f_data.get('status') or {}
+                    generic = status_info.get('generic') or {}
+                    status_text = (generic.get('status') or {}).get('text', '').lower()
+                    
+                    if mode == 'arrivals':
+                        # Only show flights on approach: estimated (in-air) or delayed (still coming)
+                        # Skip 'landed' (at gate) and 'scheduled' (not yet airborne)
+                        if status_text == 'landed':
+                            continue
+                    else:
+                        # For departures, skip flights already gone
+                        if status_text == 'departed':
+                            continue
+                    
+                    ident = f_data.get('identification') or {}
+                    flight_num = ident.get('number', {}).get('default', '')
+                    
+                    airline = f_data.get('airline') or {}
+                    airline_code = (airline.get('code') or {}).get('iata', '').strip()
+                    
+                    if flight_num:
+                        if flight_num.startswith(airline_code):
+                            display_id = flight_num[:2] + ' ' + flight_num[2:]
+                        else:
+                            display_id = f"{airline_code} {flight_num}"
+                    else:
+                        # Skip flights with missing flight numbers
+                        continue
+                    
+                    if mode == 'arrivals':
+                        airport_info = (f_data.get('airport') or {}).get('origin') or {}
+                        city_code = (airport_info.get('code') or {}).get('iata', '')
+                        flights.append({'id': display_id, 'from': get_city_name(city_code)})
+                    else:
+                        airport_info = (f_data.get('airport') or {}).get('destination') or {}
+                        city_code = (airport_info.get('code') or {}).get('iata', '')
+                        flights.append({'id': display_id, 'to': get_city_name(city_code)})
+                    
+                    if len(flights) >= 3: break
+                except Exception as e:
+                    self.log("DEBUG", f"Error processing flight: {e}")
+                    continue
+                
+            self.log("DEBUG", f"Found {len(flights)} {mode} flights (filtered by status)")
+            return flights
+        except Exception as e:
+            self.log("ERROR", f"FR24 Schedule: {e}")
+            return []
+    
+    WMO_DESCRIPTIONS = {
+        0: "CLEAR SKY", 1: "MAINLY CLEAR", 2: "PARTLY CLOUDY", 3: "OVERCAST",
+        45: "FOG", 48: "RIME FOG",
+        51: "LIGHT DRIZZLE", 53: "DRIZZLE", 55: "HEAVY DRIZZLE",
+        56: "FREEZING DRIZZLE", 57: "FREEZING DRIZZLE",
+        61: "LIGHT RAIN", 63: "RAIN", 65: "HEAVY RAIN",
+        66: "FREEZING RAIN", 67: "FREEZING RAIN",
+        71: "LIGHT SNOW", 73: "SNOW", 75: "HEAVY SNOW",
+        77: "SNOW GRAINS",
+        80: "LIGHT SHOWERS", 81: "SHOWERS", 82: "HEAVY SHOWERS",
+        85: "SNOW SHOWERS", 86: "HEAVY SNOW SHOWERS",
+        95: "THUNDERSTORM", 96: "THUNDERSTORM/HAIL", 99: "THUNDERSTORM/HAIL",
+    }
+
+    def fetch_airport_weather(self):
+        if not self.airport_code_iata: return {"temp": "--", "cond": "UNKNOWN"}
+        try:
+            # Use airport lat/lon from airportsdata for accurate weather
+            lat, lon = None, None
+            if AIRPORTS_DB and self.airport_code_iata in AIRPORTS_DB:
+                ap = AIRPORTS_DB[self.airport_code_iata]
+                lat, lon = ap.get('lat'), ap.get('lon')
+            
+            if lat is None or lon is None:
+                self.log("WEATHER", f"No coordinates for {self.airport_code_iata}")
+                return {"temp": "--", "cond": "UNKNOWN"}
+            
+            # Use Open-Meteo (same API as main weather widget) — free, no key, reliable
+            url = (f"https://api.open-meteo.com/v1/forecast?"
+                   f"latitude={lat}&longitude={lon}"
+                   f"&current=temperature_2m,weather_code"
+                   f"&temperature_unit=fahrenheit&timezone=auto")
+            
+            self.log("WEATHER", f"Fetching weather from Open-Meteo for {self.airport_code_iata} ({lat},{lon})")
+            res = self.session.get(url, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                current = data.get('current', {})
+                temp_f = current.get('temperature_2m')
+                wmo_code = current.get('weather_code', -1)
+                cond = self.WMO_DESCRIPTIONS.get(wmo_code, "UNKNOWN")
+                if temp_f is not None:
+                    return {"temp": f"{int(round(temp_f))}F", "cond": cond}
+        except Exception as e:
+            self.log("ERROR", f"Airport weather fetch failed: {e}")
+        return {"temp": "--", "cond": "UNKNOWN"}
+    
+    def fetch_airport_activity(self):
+        try:
+            # Snapshot the airport code at the start of the fetch
+            target_iata = self.airport_code_iata
+            if not target_iata:
+                return
+            self.log("DEBUG", f"Starting airport fetch for {target_iata}")
+            arrivals = self.fetch_fr24_schedule('arrivals')
+            
+            # If airport changed mid-fetch, discard stale results
+            if self.airport_code_iata != target_iata:
+                self.log("DEBUG", f"Airport changed from {target_iata} to {self.airport_code_iata} mid-fetch, discarding")
+                return
+            
+            departures = self.fetch_fr24_schedule('departures')
+            
+            # Check again after departures fetch
+            if self.airport_code_iata != target_iata:
+                self.log("DEBUG", f"Airport changed from {target_iata} to {self.airport_code_iata} mid-fetch, discarding")
+                return
+            
+            weather = self.fetch_airport_weather()
+            
+            # Final check before writing — only store if airport hasn't changed
+            if self.airport_code_iata != target_iata:
+                self.log("DEBUG", f"Airport changed from {target_iata} to {self.airport_code_iata} mid-fetch, discarding")
+                return
+            
+            with self.lock:
+                self.airport_arrivals = arrivals
+                self.airport_departures = departures
+                self.airport_weather = weather
+            self.log("AIRPORT", f"{target_iata}: {len(arrivals)} arr, {len(departures)} dep | Weather: {weather['temp']}")
+        except Exception as e:
+            self.log("ERROR", f"Airport Loop: {e}")
+    
+    def fetch_visitor_tracking(self):
+        if not self.track_flight_id: return
+        
+        try:
+            # 1. Try FlightRadar24 (Generic / All Airlines)
+            fr24_data = self.fetch_fr24_flight(self.track_flight_id)
+            
+            if fr24_data:
+                # Calculate simple ETA/Status logic
+                dest = fr24_data['destination']
+                origin = fr24_data['origin']
+                
+                speed_mph = int(fr24_data['speed_kts'] * 1.15078)
+                is_live = fr24_data['is_live']
+                status = 'en-route' if is_live else 'scheduled'
+                eta_str = "EN ROUTE" if is_live else "SCHEDULED"
+                
+                # Basic Distance Calc
+                dist = 0
+                progress = 0
+                
+                if is_live and dest in AIRPORTS_DB:
+                    to_airport = AIRPORTS_DB[dest]
+                    lat, lon = fr24_data['latitude'], fr24_data['longitude']
+                    
+                    if lat and lon:
+                        dist_nm = haversine(lat, lon, to_airport['lat'], to_airport['lon'])
+                        dist = int(dist_nm * 1.15078)
+                        
+                        if origin in AIRPORTS_DB:
+                            from_airport = AIRPORTS_DB[origin]
+                            total_dist = haversine(from_airport['lat'], from_airport['lon'], 
+                                                   to_airport['lat'], to_airport['lon'])
+                            dist_from = haversine(from_airport['lat'], from_airport['lon'], lat, lon)
+                            
+                            if total_dist > 0:
+                                progress = max(0, min(100, int((dist_from / total_dist) * 100)))
+                        
+                        if speed_mph > 0:
+                            mins = int((dist / speed_mph) * 60)
+                            h, m = divmod(mins, 60)
+                            eta_str = f"{h}H {m}M" if h > 0 else f"{m} MIN"
+
+                with self.lock:
+                    self.visitor_flight = {
+                        'type': 'flight_visitor',
+                        'sport': 'flight',
+                        'id': self.track_flight_id,
+                        'guest_name': self.track_guest_name or self.track_flight_id,
+                        'route': f"{origin} > {dest}",
+                        'origin_city': get_city_name(origin),
+                        'dest_city': get_city_name(dest),
+                        'alt': fr24_data['altitude'],
+                        'dist': dist,
+                        'eta_str': eta_str,
+                        'speed': speed_mph,
+                        'progress': progress,
+                        'status': status,
+                        'is_live': is_live,
+                        'is_shown': True
+                    }
+                self.log("TRACKER", f"{self.track_flight_id} (FR24) {status} | {fr24_data['altitude']}ft")
+                return
+                
+            # If we reach here, no flight found
+            self.log("WARNING", f"Flight {self.track_flight_id} not found.")
+            with self.lock: self.visitor_flight = None
+
+        except Exception as e:
+            self.log("ERROR", f"Visitor Tracking: {e}")
+
+    def fetch_fr24_flight(self, flight_id):
+        """Fetch flight data using FlightRadarAPI SDK with smart airline filtering"""
+        try:
+            flight_clean = flight_id.replace(" ", "").upper()
+            if not self.fr_api: return None
+
+            # 1. SMART FILTER - Extract airline code (2 or 3 letters)
+            airline_filter = None
+            if len(flight_clean) >= 3:
+                # Check if first 2 chars are letters and 3rd is digit (e.g., LY26)
+                if flight_clean[:2].isalpha() and flight_clean[2].isdigit():
+                    airline_filter = flight_clean[:2]
+                # Check if first 3 chars are letters (e.g., ELY26, AAL123)
+                elif len(flight_clean) > 3 and flight_clean[:3].isalpha():
+                    airline_filter = flight_clean[:3]
+            
+            self.log("DEBUG", f"Searching for '{flight_clean}' with airline filter: {airline_filter}")
+            
+            try:
+                if airline_filter:
+                    flights = self.fr_api.get_flights(airline=airline_filter)
+                    self.log("DEBUG", f"Found {len(flights) if flights else 0} flights with filter '{airline_filter}'")
+                else:
+                    flights = self.fr_api.get_flights()
+            except Exception as e:
+                self.log("DEBUG", f"API call failed: {e}")
+                return None
+            
+            target_flight = None
+            for flight in flights:
+                f_num = flight.number.upper() if flight.number else ""
+                f_call = flight.callsign.upper() if flight.callsign else ""
+                if f_num == flight_clean or f_call == flight_clean:
+                    target_flight = flight
+                    self.log("DEBUG", f"✓ Match found: {f_num} / {f_call}")
+                    break
+            
+            # Fallback: if not found with airline filter, try searching all flights
+            if not target_flight and airline_filter:
+                self.log("DEBUG", f"No match with filter, trying all flights...")
+                try:
+                    flights = self.fr_api.get_flights()
+                    self.log("DEBUG", f"Searching {len(flights) if flights else 0} total flights")
+                    for flight in flights:
+                        f_num = flight.number.upper() if flight.number else ""
+                        f_call = flight.callsign.upper() if flight.callsign else ""
+                        if f_num == flight_clean or f_call == flight_clean:
+                            target_flight = flight
+                            self.log("DEBUG", f"✓ Match found in fallback: {f_num} / {f_call}")
+                            break
+                except Exception as e:
+                    self.log("DEBUG", f"Fallback search failed: {e}")
+                    pass
+            
+            if target_flight:
+                try:
+                    details = self.fr_api.get_flight_details(target_flight)
+                    target_flight.set_flight_details(details)
+                except: pass 
+                
+                return {
+                    'flight_id': flight_id,
+                    'origin': target_flight.origin_airport_iata or 'UNK',
+                    'destination': target_flight.destination_airport_iata or 'UNK',
+                    'latitude': target_flight.latitude,
+                    'longitude': target_flight.longitude,
+                    'altitude': target_flight.altitude or 0,
+                    'speed_kts': target_flight.ground_speed or 0,
+                    'is_live': (target_flight.altitude or 0) > 0
+                }
+            return None
+            
+        except Exception as e:
+            self.log("ERROR", f"SDK Error: {e}")
+            return None
+    
+    def get_visitor_object(self):
+        with self.lock:
+            return self.visitor_flight.copy() if self.visitor_flight else None
+    
+    def get_airport_objects(self):
+        with self.lock:
+            result = []
+            self.log("DEBUG", f"get_airport_objects called - arrivals: {self.airport_arrivals}, departures: {self.airport_departures}")
+            result.append({
+                'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx',
+                'home_abbr': self.airport_name or self.airport_code_icao,
+                'away_abbr': self.airport_weather['temp'], 'status': self.airport_weather['cond'], 'is_shown': True
+            })
+            for i, arr in enumerate(self.airport_arrivals[:2]):
+                result.append({'type': 'flight_arrival', 'sport': 'flight', 'id': f"arr_{i}", 'status': 'ARRIVING', 'home_abbr': arr['from'], 'away_abbr': arr['id'], 'is_shown': True})
+            for i, dep in enumerate(self.airport_departures[:2]):
+                result.append({'type': 'flight_departure', 'sport': 'flight', 'id': f"dep_{i}", 'status': 'DEPARTING', 'home_abbr': dep['to'], 'away_abbr': dep['id'], 'is_shown': True})
+            self.log("DEBUG", f"get_airport_objects returning {len(result)} items: {len(self.airport_arrivals)} arr, {len(self.airport_departures)} dep")
+            return result
 
 class SportsFetcher:
     def __init__(self, initial_city, initial_lat, initial_lon):
@@ -2093,6 +2571,24 @@ class SportsFetcher:
         music_obj = self.get_music_object()
         if music_obj: all_games.append(music_obj)
 
+        # --- FLIGHT TRACKING ---
+        if flight_tracker:
+            # In flights mode, show tracked flight OR airport (not both - mutually exclusive)
+            in_flights_mode = (conf['mode'] == 'flights')
+            
+            # Priority 1: Visitor flight (if enabled)
+            visitor_added = False
+            if conf['active_sports'].get('flight_visitor', False) or in_flights_mode:
+                visitor = flight_tracker.get_visitor_object()
+                if visitor:
+                    all_games.append(visitor)
+                    visitor_added = True
+            
+            # Priority 2: Airport data (only if no visitor flight was added)
+            if not visitor_added and (conf['active_sports'].get('flight_airport', False) or in_flights_mode):
+                airport_data = flight_tracker.get_airport_objects()
+                all_games.extend(airport_data)
+
         # 2. SPORTS (Parallelized & Smart)
         if conf['mode'] in ['sports', 'live', 'my_teams', 'all', 'music']:
             utc_offset = conf.get('utc_offset', -5)
@@ -2226,12 +2722,14 @@ class SportsFetcher:
 
         utils = [g for g in sports_snap if g.get('type') == 'weather' or g.get('sport') == 'clock']
         music_items = [g for g in sports_snap if g.get('sport') == 'music']
-        pure_sports = [g for g in sports_snap if g not in utils and g not in music_items]
+        flight_items = [g for g in sports_snap if g.get('sport') == 'flight']
+        pure_sports = [g for g in sports_snap if g not in utils and g not in music_items and g not in flight_items]
 
         if requested_mode == 'stocks': return stocks_snap
         elif requested_mode == 'weather': return [g for g in utils if g.get('type') == 'weather']
         elif requested_mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
         elif requested_mode == 'music': return music_items
+        elif requested_mode == 'flights': return flight_items
         elif requested_mode == 'all': return sports_snap
         else: return pure_sports
 
@@ -2258,12 +2756,14 @@ class SportsFetcher:
         
         utils = [g for g in sports_buffer if g.get('type') == 'weather' or g.get('sport') == 'clock']
         music_items = [g for g in sports_buffer if g.get('sport') == 'music']
-        pure_sports = [g for g in sports_buffer if g not in utils and g not in music_items]
+        flight_items = [g for g in sports_buffer if g.get('sport') == 'flight']
+        pure_sports = [g for g in sports_buffer if g not in utils and g not in music_items and g not in flight_items]
 
         if mode == 'stocks': final_list = stocks_buffer
         elif mode == 'weather': final_list = [g for g in utils if g.get('type') == 'weather']
         elif mode == 'clock': final_list = [g for g in utils if g.get('sport') == 'clock']
         elif mode == 'music': final_list = music_items
+        elif mode == 'flights': final_list = flight_items
         elif mode == 'all': final_list = sports_buffer
         elif mode in ['sports', 'live', 'my_teams']: final_list = pure_sports
         else: final_list = pure_sports
@@ -2280,6 +2780,18 @@ fetcher = SportsFetcher(
 # Initialize Spotify Fetcher
 spotify_fetcher = SpotifyFetcher()
 spotify_fetcher.start()
+
+# Initialize Flight Tracker
+if FLIGHT_TRACKING_AVAILABLE:
+    flight_tracker = FlightTracker()
+    flight_tracker.track_flight_id = state.get('track_flight_id', '')
+    flight_tracker.track_guest_name = state.get('track_guest_name', '')
+    flight_tracker.airport_code_icao = state.get('airport_code_icao', 'KEWR')
+    flight_tracker.airport_code_iata = state.get('airport_code_iata', 'EWR')
+    flight_tracker.airport_name = state.get('airport_name', 'Newark')
+    flight_tracker.airline_filter = ''  # Force empty - support all airlines
+else:
+    flight_tracker = None
 
 # ========================================================
 # FIX #2: DRIFT CORRECTION LOOP
@@ -2310,6 +2822,53 @@ def stocks_worker():
         except Exception as e: 
             print(f"Stock worker error: {e}")
         time.sleep(1)
+
+def flights_worker():
+    if not flight_tracker:
+        print("[DEBUG] flights_worker: No flight_tracker available")
+        return
+    print("[DEBUG] flights_worker: Starting")
+    while True:
+        start_time = time.time()
+        try:
+            # Check if a config change forced an immediate refresh
+            forced = getattr(flight_tracker, '_force_refresh', False)
+            if forced:
+                flight_tracker._force_refresh = False
+                print(f"[DEBUG] flights_worker: Force refresh triggered")
+            
+            # Fetch airport activity only if airport code is set
+            if flight_tracker.airport_code_iata:
+                if forced or time.time() - flight_tracker.last_airport_fetch >= 30:
+                    print(f"[DEBUG] flights_worker: Fetching airport data for {flight_tracker.airport_code_iata}")
+                    flight_tracker.fetch_airport_activity()
+                    flight_tracker.last_airport_fetch = time.time()
+                    # Push new data into the buffer immediately
+                    try:
+                        fetcher.update_buffer_sports()
+                    except: pass
+            else:
+                # Only log once every 30 seconds to avoid spam
+                if time.time() - flight_tracker.last_airport_fetch >= 30:
+                    print("[DEBUG] flights_worker: No airport_code_iata set, skipping fetch")
+                    flight_tracker.last_airport_fetch = time.time()
+            
+            # Fetch visitor flight only if flight ID is set
+            if flight_tracker.track_flight_id and (forced or time.time() - flight_tracker.last_visitor_fetch >= 30):
+                flight_tracker.fetch_visitor_tracking()
+                flight_tracker.last_visitor_fetch = time.time()
+                # Push new data into the buffer immediately
+                try:
+                    fetcher.update_buffer_sports()
+                except: pass
+        except Exception as e:
+            print(f"Flight worker error: {e}")
+        
+        execution_time = time.time() - start_time
+        # Use wake_event instead of sleep so config changes trigger instant fetch
+        sleep_dur = max(0, 5 - execution_time)
+        flight_tracker.wake_event.wait(timeout=sleep_dur)
+        flight_tracker.wake_event.clear()
 
 # ================= FLASK API =================
 app = Flask(__name__)
@@ -2352,8 +2911,67 @@ def api_config():
             new_city = new_data.get('weather_city')
             if new_city: 
                 fetcher.weather.update_config(city=new_city, lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
+
+            # Update Flight Tracker (Global)
+            if flight_tracker:
+                flight_changed = False
+                if 'track_flight_id' in new_data:
+                    flight_tracker.track_flight_id = new_data.get('track_flight_id', '')
+                    flight_changed = True
+                if 'track_guest_name' in new_data:
+                    flight_tracker.track_guest_name = new_data.get('track_guest_name', '')
+                
+                # Auto-fill airport information when any airport code is provided
+                airport_code_input = None
+                if 'airport_code_iata' in new_data:
+                    airport_code_input = new_data.get('airport_code_iata', '').strip()
+                elif 'airport_code_icao' in new_data:
+                    airport_code_input = new_data.get('airport_code_icao', '').strip()
+                
+                if airport_code_input:
+                    # Perform airport lookup
+                    airport_info = lookup_and_auto_fill_airport(airport_code_input)
+                    
+                    if airport_info['iata']:  # Only update if airport was found
+                        flight_tracker.airport_code_iata = airport_info['iata']
+                        flight_tracker.airport_code_icao = airport_info['icao']
+                        flight_tracker.airport_name = airport_info['name']
+                        print(f"✅ Airport auto-fill: {airport_info['iata']} ({airport_info['icao']}) - {airport_info['name']}")
+                        flight_changed = True
+                    else:
+                        print(f"⚠️ Airport code '{airport_code_input}' not found in database")
+                        # Clear airport info if code is invalid
+                        flight_tracker.airport_code_iata = ''
+                        flight_tracker.airport_code_icao = ''
+                        flight_tracker.airport_name = ''
+                        flight_changed = True
+                elif 'airport_code_icao' in new_data:
+                    flight_tracker.airport_code_icao = new_data.get('airport_code_icao', '')
+                    flight_changed = True
+                if 'airport_name' in new_data:
+                    flight_tracker.airport_name = new_data.get('airport_name', '')
+                # Airline filter disabled - always empty to support all airlines
+                # if 'airline_filter' in new_data:
+                #     flight_tracker.airline_filter = new_data.get('airline_filter', '')
+                #     flight_changed = True
+                
+                if flight_changed:
+                    # Clear stale data immediately so old airport/flight info doesn't linger
+                    with flight_tracker.lock:
+                        flight_tracker.airport_arrivals = []
+                        flight_tracker.airport_departures = []
+                        flight_tracker.airport_weather = {"temp": "--", "cond": "LOADING"}
+                        if not flight_tracker.track_flight_id:
+                            flight_tracker.visitor_flight = None
+                    # Signal the flights_worker to fetch immediately (no 30s wait)
+                    flight_tracker.force_update()
             
-            allowed_keys = {'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date', 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset'}
+            allowed_keys = {
+                'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date', 
+                'weather_city', 'weather_lat', 'weather_lon', 'utc_offset',
+                'track_flight_id', 'track_guest_name', 'airport_code_icao', 
+                'airport_code_iata', 'airport_name'
+            }
             
             for k, v in new_data.items():
                 if k not in allowed_keys: continue
@@ -2388,6 +3006,22 @@ def api_config():
                 if target_id and target_id in tickers:
                     if k in tickers[target_id]['settings'] or k == 'mode':
                         tickers[target_id]['settings'][k] = v
+            
+            # Sync auto-filled airport info back to state dictionary
+            # (This ensures /api/state returns the validated airport data)
+            if flight_tracker:
+                state['airport_code_iata'] = flight_tracker.airport_code_iata
+                state['airport_code_icao'] = flight_tracker.airport_code_icao
+                state['airport_name'] = flight_tracker.airport_name
+                
+                # Also sync to ticker-specific settings if a ticker is targeted
+                if target_id and target_id in tickers:
+                    tickers[target_id]['settings']['airport_code_iata'] = flight_tracker.airport_code_iata
+                    tickers[target_id]['settings']['airport_code_icao'] = flight_tracker.airport_code_icao
+                    tickers[target_id]['settings']['airport_name'] = flight_tracker.airport_name
+            
+            # Force airline_filter to always be empty (support all airlines)
+            state['airline_filter'] = ''
             
             fetcher.merge_buffers()
         
@@ -2496,6 +3130,8 @@ def get_ticker_data():
                 should_show = False
             elif current_mode == 'clock' and g.get('sport') != 'clock':
                 should_show = False
+            elif current_mode == 'flights' and g.get('sport') != 'flight':
+                should_show = False
 
             if should_show:
                 g['is_shown'] = True
@@ -2529,6 +3165,35 @@ def api_spotify():
             data['progress'] = data['duration']
             
     return jsonify(data)
+
+@app.route('/api/airport/lookup', methods=['GET'])
+def api_airport_lookup():
+    """
+    Lookup airport information by IATA or ICAO code.
+    Query params: code=ABE or code=KABE
+    Returns: {iata, icao, name}
+    """
+    try:
+        code = request.args.get('code', '').strip()
+        if not code:
+            return jsonify({"error": "Please provide an airport code"}), 400
+        
+        airport_info = lookup_and_auto_fill_airport(code)
+        
+        if airport_info['iata']:
+            return jsonify({
+                "status": "found",
+                "iata": airport_info['iata'],
+                "icao": airport_info['icao'],
+                "name": airport_info['name']
+            })
+        else:
+            return jsonify({
+                "status": "not_found",
+                "message": f"Airport code '{code}' not found"
+            }), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/pair', methods=['POST'])
 def pair_ticker():
@@ -2638,7 +3303,6 @@ def api_state():
         ticker_id = list(tickers.keys())[0]
 
     # Initialize with global state, then override with ticker-specific settings if found
-    # Initialize with global state, then override with ticker-specific settings if found
     response_settings = state.copy()
     if ticker_id and ticker_id in tickers:
         local_settings = tickers[ticker_id]['settings']
@@ -2673,6 +3337,17 @@ def api_state():
         
         # If in 'music' mode, only show the music item
         elif current_mode == 'music' and not is_music_item:
+            should_show = False
+
+        # FLIGHTS FILTER: Only shown if mode is strictly 'flights'
+        is_flight_item = (game_copy.get('sport') == 'flight')
+        
+        if is_flight_item:
+            if current_mode != 'flights':
+                should_show = False
+        
+        # If in 'flights' mode, only show flight items
+        elif current_mode == 'flights' and not is_flight_item:
             should_show = False
 
         # LIVE FILTER
@@ -2808,10 +3483,102 @@ def check_my_teams():
         
         return jsonify({"error": "Ticker ID not found"}), 404
 
+@app.route('/api/airports', methods=['GET'])
+def get_airports():
+    airports = [
+        {'icao': 'KEWR', 'iata': 'EWR', 'name': 'Newark', 'city': 'New York'},
+        {'icao': 'KJFK', 'iata': 'JFK', 'name': 'JFK', 'city': 'New York'},
+        {'icao': 'KLGA', 'iata': 'LGA', 'name': 'LaGuardia', 'city': 'New York'},
+        {'icao': 'KORD', 'iata': 'ORD', 'name': "O'Hare", 'city': 'Chicago'},
+        {'icao': 'KLAX', 'iata': 'LAX', 'name': 'LAX', 'city': 'Los Angeles'},
+        {'icao': 'KSFO', 'iata': 'SFO', 'name': 'San Francisco', 'city': 'San Francisco'},
+        {'icao': 'KATL', 'iata': 'ATL', 'name': 'Hartsfield', 'city': 'Atlanta'},
+        {'icao': 'KDEN', 'iata': 'DEN', 'name': 'Denver Intl', 'city': 'Denver'},
+        {'icao': 'KDFW', 'iata': 'DFW', 'name': 'Dallas/Fort Worth', 'city': 'Dallas'},
+        {'icao': 'KBOS', 'iata': 'BOS', 'name': 'Logan', 'city': 'Boston'},
+        {'icao': 'KSEA', 'iata': 'SEA', 'name': 'SeaTac', 'city': 'Seattle'},
+        {'icao': 'KMIA', 'iata': 'MIA', 'name': 'Miami Intl', 'city': 'Miami'},
+    ]
+    return jsonify(airports)
+
+@app.route('/api/airport_lookup', methods=['GET'])
+def airport_lookup():
+    """Look up airport by IATA or ICAO code using airportsdata library"""
+    code = request.args.get('code', '').strip().upper()
+    if not code:
+        return jsonify({"error": "No code provided"}), 400
+    
+    try:
+        # Try IATA lookup first
+        if len(code) == 3:
+            airport = airports.load('IATA').get(code)
+            if airport:
+                return jsonify({
+                    "iata": code,
+                    "icao": airport.get('icao', ''),
+                    "name": airport.get('city', ''),
+                    "country": airport.get('country', '')
+                })
+        
+        # Try ICAO lookup
+        if len(code) == 4:
+            airport = airports.load('ICAO').get(code)
+            if airport:
+                return jsonify({
+                    "iata": airport.get('iata', ''),
+                    "icao": code,
+                    "name": airport.get('city', ''),
+                    "country": airport.get('country', '')
+                })
+        
+        return jsonify({"error": "Airport not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/airlines', methods=['GET'])
+def get_airlines():
+    airlines = [
+        {'code': '', 'name': 'All Airlines'},
+        {'code': 'UA', 'name': 'United Airlines'},
+        {'code': 'DL', 'name': 'Delta'},
+        {'code': 'AA', 'name': 'American'},
+        {'code': 'WN', 'name': 'Southwest'},
+        {'code': 'B6', 'name': 'JetBlue'},
+        {'code': 'AS', 'name': 'Alaska'},
+    ]
+    return jsonify(airlines)
+
+@app.route('/api/flight/status', methods=['GET'])
+def get_flight_status():
+    if not flight_tracker:
+        return jsonify({'available': False})
+    with data_lock:
+        return jsonify({
+            'available': True,
+            'visitor_enabled': state['active_sports'].get('flight_visitor', False),
+            'airport_enabled': state['active_sports'].get('flight_airport', False),
+            'visitor_enabled': state['active_sports'].get('flight_visitor', False),
+            'tracking': {
+                'flight_id': state.get('track_flight_id', ''),
+                'guest_name': state.get('track_guest_name', ''),
+                'airport': {
+                    'icao': state.get('airport_code_icao', ''),
+                    'iata': state.get('airport_code_iata', ''),
+                    'name': state.get('airport_name', ''),
+                    'airline': ''  # Always empty - support all airlines
+                }
+            }
+        })
+
 @app.route('/')
-def root(): return "Ticker Server v6 Running"
+def root(): return "Ticker Server v7 Running"
 
 if __name__ == "__main__":
+    print("🚀 Starting Ticker Server...")
     threading.Thread(target=sports_worker, daemon=True).start()
     threading.Thread(target=stocks_worker, daemon=True).start()
+    if FLIGHT_TRACKING_AVAILABLE:
+        threading.Thread(target=flights_worker, daemon=True).start()
+    print("✅ Worker threads started")
+    print("🌐 Starting Flask on port 5000...")
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
