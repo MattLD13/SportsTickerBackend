@@ -2574,21 +2574,29 @@ class SportsFetcher:
 
         # --- FLIGHT TRACKING ---
         if flight_tracker:
-            # In flights mode, show tracked flight OR airport (not both - mutually exclusive)
-            in_flights_mode = (conf['mode'] == 'flights')
+            in_flights_mode = (conf['mode'] == 'flights')   # Airport activity mode
+            in_flight2_mode = (conf['mode'] == 'flight2')   # Track specific flight mode
             
-            # Priority 1: Visitor flight (if enabled)
-            visitor_added = False
-            if conf['active_sports'].get('flight_visitor', False) or in_flights_mode:
+            # flight2 mode: ONLY show the tracked visitor flight
+            if in_flight2_mode:
                 visitor = flight_tracker.get_visitor_object()
                 if visitor:
                     all_games.append(visitor)
-                    visitor_added = True
-            
-            # Priority 2: Airport data (only if no visitor flight was added)
-            if not visitor_added and (conf['active_sports'].get('flight_airport', False) or in_flights_mode):
+            # flights mode: ONLY show airport activity
+            elif in_flights_mode:
                 airport_data = flight_tracker.get_airport_objects()
                 all_games.extend(airport_data)
+            else:
+                # Other modes: respect active_sports flags
+                visitor_added = False
+                if conf['active_sports'].get('flight_visitor', False):
+                    visitor = flight_tracker.get_visitor_object()
+                    if visitor:
+                        all_games.append(visitor)
+                        visitor_added = True
+                if not visitor_added and conf['active_sports'].get('flight_airport', False):
+                    airport_data = flight_tracker.get_airport_objects()
+                    all_games.extend(airport_data)
 
         # 2. SPORTS (Parallelized & Smart)
         if conf['mode'] in ['sports', 'live', 'my_teams', 'all', 'music']:
@@ -2731,6 +2739,7 @@ class SportsFetcher:
         elif requested_mode == 'clock': return [g for g in utils if g.get('sport') == 'clock']
         elif requested_mode == 'music': return music_items
         elif requested_mode == 'flights': return flight_items
+        elif requested_mode == 'flight2': return [g for g in flight_items if g.get('type') == 'flight_visitor']
         elif requested_mode == 'all': return sports_snap
         else: return pure_sports
 
@@ -2765,6 +2774,7 @@ class SportsFetcher:
         elif mode == 'clock': final_list = [g for g in utils if g.get('sport') == 'clock']
         elif mode == 'music': final_list = music_items
         elif mode == 'flights': final_list = flight_items
+        elif mode == 'flight2': final_list = [g for g in flight_items if g.get('type') == 'flight_visitor']
         elif mode == 'all': final_list = sports_buffer
         elif mode in ['sports', 'live', 'my_teams']: final_list = pure_sports
         else: final_list = pure_sports
@@ -3154,6 +3164,8 @@ def get_ticker_data():
                 should_show = False
             elif current_mode == 'flights' and g.get('sport') != 'flight':
                 should_show = False
+            elif current_mode == 'flight2' and g.get('type') != 'flight_visitor':
+                should_show = False
 
             if should_show:
                 g['is_shown'] = True
@@ -3405,15 +3417,24 @@ def api_state():
         elif current_mode == 'music' and not is_music_item:
             should_show = False
 
-        # FLIGHTS FILTER: Only shown if mode is strictly 'flights'
+        # FLIGHTS FILTER: flight items only in 'flights' or 'flight2' modes
         is_flight_item = (game_copy.get('sport') == 'flight')
+        is_visitor_item = (game_copy.get('type') == 'flight_visitor')
         
         if is_flight_item:
-            if current_mode != 'flights':
+            if current_mode == 'flight2':
+                # flight2 mode: only show visitor (tracked) flights
+                if not is_visitor_item:
+                    should_show = False
+            elif current_mode != 'flights':
                 should_show = False
         
-        # If in 'flights' mode, only show flight items
+        # If in 'flights' mode, only show flight items (airport)
         elif current_mode == 'flights' and not is_flight_item:
+            should_show = False
+        
+        # If in 'flight2' mode, only show flight visitor items
+        elif current_mode == 'flight2' and not is_flight_item:
             should_show = False
 
         # LIVE FILTER
