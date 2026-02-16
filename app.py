@@ -1165,7 +1165,10 @@ class FlightTracker:
                 elif len(flight_clean) > 3 and flight_clean[:3].isalpha():
                     airline_filter = flight_clean[:3]
             
-            self.log("DEBUG", f"Searching for '{flight_clean}' with airline filter: {airline_filter}")
+            # Extract numeric portion for flexible matching (e.g., "1965" from "UAL1965")
+            flight_num_part = re.sub(r'^[A-Z]{2,3}', '', flight_clean)
+            
+            self.log("DEBUG", f"Searching for '{flight_clean}' with airline filter: {airline_filter}, num part: {flight_num_part}")
             
             try:
                 if airline_filter:
@@ -1181,10 +1184,19 @@ class FlightTracker:
             for flight in flights:
                 f_num = flight.number.upper() if flight.number else ""
                 f_call = flight.callsign.upper() if flight.callsign else ""
+                # Direct match on full flight number or callsign
                 if f_num == flight_clean or f_call == flight_clean:
                     target_flight = flight
                     self.log("DEBUG", f"✓ Match found: {f_num} / {f_call}")
                     break
+                # Flexible match: compare numeric portion when airline filter is active
+                # This handles ICAO (UAL1965) vs IATA (UA1965) mismatches
+                if airline_filter and flight_num_part:
+                    f_num_part = re.sub(r'^[A-Z]{2,3}', '', f_num)
+                    if f_num_part == flight_num_part:
+                        target_flight = flight
+                        self.log("DEBUG", f"✓ Match found (numeric): {f_num} / {f_call} [num={f_num_part}]")
+                        break
             
             # Fallback: if not found with airline filter, try searching all flights
             if not target_flight and airline_filter:
@@ -1199,6 +1211,13 @@ class FlightTracker:
                             target_flight = flight
                             self.log("DEBUG", f"✓ Match found in fallback: {f_num} / {f_call}")
                             break
+                        # Flexible numeric match in fallback too
+                        if flight_num_part:
+                            f_num_part = re.sub(r'^[A-Z]{2,3}', '', f_num)
+                            if f_num_part == flight_num_part:
+                                target_flight = flight
+                                self.log("DEBUG", f"✓ Match found in fallback (numeric): {f_num} / {f_call}")
+                                break
                 except Exception as e:
                     self.log("DEBUG", f"Fallback search failed: {e}")
                     pass
