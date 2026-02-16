@@ -2965,25 +2965,44 @@ class SportsFetcher:
     def get_music_object(self):
         if not state['active_sports'].get('music', False): return None
         s_data = spotify_fetcher.get_cached_state()
-        if not s_data: return None
+        
+        # If no data or explicit "Waiting for Music" state, return placeholder
+        if not s_data or s_data.get('name') == "Waiting for Music...":
+            return None
 
-        # Interpolate progress so the ticker updates every second
         is_playing = s_data.get('is_playing', False)
-        elapsed = time.time() - s_data.get('last_fetch_ts', time.time())
-        prog = min(s_data['progress'] + (elapsed if is_playing else 0), s_data['duration'])
+        
+        # INTERPOLATION: Only add elapsed time if Spotify says it is currently playing
+        elapsed = 0
+        if is_playing:
+            elapsed = time.time() - s_data.get('last_fetch_ts', time.time())
+        
+        prog = min(s_data['progress'] + elapsed, s_data['duration'])
         
         cur_m, cur_s = divmod(int(prog), 60)
         tot_m, tot_s = divmod(int(s_data['duration']), 60)
-        status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
-        if not is_playing: status_str = "PAUSED " + status_str
+        
+        # Clearer status string for the ticker
+        if is_playing:
+            status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
+        else:
+            status_str = f"PAUSED {cur_m}:{cur_s:02d}"
 
         return {
-            'type': 'music', 'sport': 'music', 'id': 'spotify_now',
-            'status': status_str, 'state': 'in' if is_playing else 'paused',
-            'is_shown': True, 'home_abbr': s_data.get('artist', 'Unknown'),
+            'type': 'music', 
+            'sport': 'music', 
+            'id': 'spotify_now',
+            'status': status_str, 
+            'state': 'in' if is_playing else 'paused',
+            'is_shown': True, 
+            'home_abbr': s_data.get('artist', 'Unknown'),
             'away_abbr': s_data.get('name', 'Unknown'),
             'home_logo': s_data.get('cover', ''),
-            'situation': {'progress': prog, 'duration': s_data['duration'], 'is_playing': is_playing}
+            'situation': {
+                'progress': prog, 
+                'duration': s_data['duration'], 
+                'is_playing': is_playing
+            }
         }
 
     # ── Per-mode buffer builders ────────────────────────────────────────────
