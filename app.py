@@ -1147,7 +1147,25 @@ class FlightTracker:
                 
             # If we reach here, no flight found
             self.log("WARNING", f"Flight {self.track_flight_id} not found.")
-            with self.lock: self.visitor_flight = None
+            # Always provide a placeholder so flight2 mode shows something
+            with self.lock:
+                self.visitor_flight = {
+                    'type': 'flight_visitor',
+                    'sport': 'flight',
+                    'id': self.track_flight_id,
+                    'guest_name': self.track_guest_name or self.track_flight_id,
+                    'route': "UNK > UNK",
+                    'origin_city': "UNKNOWN",
+                    'dest_city': "UNKNOWN",
+                    'alt': 0,
+                    'dist': 0,
+                    'eta_str': "PENDING",
+                    'speed': 0,
+                    'progress': 0,
+                    'status': "pending",
+                    'is_live': False,
+                    'is_shown': True
+                }
 
         except Exception as e:
             self.log("ERROR", f"Visitor Tracking: {e}")
