@@ -7,6 +7,7 @@ import CoreLocation
 // ==========================================
 // MARK: - 0. EXTENSIONS
 // ==========================================
+
 extension Color {
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
