@@ -308,6 +308,19 @@ def get_city_name(iata_code):
         return AIRPORTS_DB[code].get('city', code)
     return code
 
+def get_airport_display_name(iata_code):
+    """Returns shortened airport name (e.g. 'Washington Dulles' instead of 'Washington Dulles International Airport')"""
+    if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
+    code = iata_code.strip().upper()
+    if code in AIRPORTS_DB:
+        name = AIRPORTS_DB[code].get('name', code)
+        # Strip common suffixes to shorten the name
+        name = name.replace(" International Airport", "").replace(" International", "")
+        name = name.replace(" Intercontinental Airport", "").replace(" Intercontinental", "")
+        name = name.replace(" Airport", "").replace(" Intl", "").replace(" Apt", "")
+        return name
+    return code
+
 def lookup_and_auto_fill_airport(airport_code_input):
     """
     Takes either IATA (3-char) or ICAO (4-char) airport code and returns complete airport info.
@@ -1394,6 +1407,7 @@ class FlightTracker:
             return []
         try:
             timestamp = int(time.time())
+            # Fetch generic schedule
             url = f"https://api.flightradar24.com/common/v1/airport.json?code={self.airport_code_iata}&plugin[]=schedule&plugin-setting[schedule][mode]={mode}&plugin-setting[schedule][timestamp]={timestamp}&page=1&limit=100"
             headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
             self.log("DEBUG", f"Fetching {mode} for {self.airport_code_iata}")
@@ -1403,8 +1417,6 @@ class FlightTracker:
                 return []
             
             data = res.json()
-            
-            # Robust navigation — safe_get handles any None at any level
             schedule = safe_get(data, 'result', 'response', 'airport', 'pluginData', 'schedule', mode, default={})
 
             if not schedule or 'data' not in schedule:
@@ -1419,13 +1431,12 @@ class FlightTracker:
 
                     # Filter by flight status
                     status_text = safe_get(f_data, 'status', 'generic', 'status', 'text', default='').lower()
-
+                    
+                    # Logic: Include delayed flights, exclude only completely finished ones if necessary
                     if mode == 'arrivals':
-                        if status_text == 'landed':
-                            continue
+                        if status_text == 'landed': continue
                     else:
-                        if status_text == 'departed':
-                            continue
+                        if status_text == 'departed': continue
 
                     flight_num = safe_get(f_data, 'identification', 'number', 'default', default='')
                     airline_code = safe_get(f_data, 'airline', 'code', 'iata', default='').strip()
@@ -1436,22 +1447,32 @@ class FlightTracker:
                         else:
                             display_id = f"{airline_code} {flight_num}"
                     else:
-                        # Skip flights with missing flight numbers
                         continue
                     
+                    # Determine display status
+                    display_status = "DELAYED" if "delay" in status_text else ("ARRIVING" if mode == 'arrivals' else "DEPARTING")
+
                     if mode == 'arrivals':
                         city_code = safe_get(f_data, 'airport', 'origin', 'code', 'iata', default='')
-                        flights.append({'id': display_id, 'from': get_city_name(city_code)})
+                        flights.append({
+                            'id': display_id, 
+                            'from': get_airport_display_name(city_code), 
+                            'status_label': display_status
+                        })
                     else:
                         city_code = safe_get(f_data, 'airport', 'destination', 'code', 'iata', default='')
-                        flights.append({'id': display_id, 'to': get_city_name(city_code)})
+                        flights.append({
+                            'id': display_id, 
+                            'to': get_airport_display_name(city_code),
+                            'status_label': display_status
+                        })
                     
                     if len(flights) >= 3: break
                 except Exception as e:
                     self.log("DEBUG", f"Error processing flight: {e}")
                     continue
                 
-            self.log("DEBUG", f"Found {len(flights)} {mode} flights (filtered by status)")
+            self.log("DEBUG", f"Found {len(flights)} {mode} flights")
             return flights
         except Exception as e:
             self.log("ERROR", f"FR24 Schedule: {e}")
@@ -1549,11 +1570,9 @@ class FlightTracker:
         
         try:
             self.log("TRACKER", f"Fetching flight: {self.track_flight_id}")
-            # 1. Try FlightRadar24 (Generic / All Airlines)
             fr24_data = self.fetch_fr24_flight(self.track_flight_id)
             
             if fr24_data:
-                # Calculate simple ETA/Status logic
                 dest = fr24_data['destination']
                 origin = fr24_data['origin']
                 
@@ -1565,7 +1584,6 @@ class FlightTracker:
                 status = 'delayed' if is_delayed else ('en-route' if is_live else 'scheduled')
                 eta_str = "DELAYED" if is_delayed else ("EN ROUTE" if is_live else "SCHEDULED")
                 
-                # Basic Distance Calc
                 dist = 0
                 progress = 0
                 
@@ -1598,8 +1616,8 @@ class FlightTracker:
                         'id': self.track_flight_id,
                         'guest_name': self.track_guest_name or self.track_flight_id,
                         'route': f"{origin} > {dest}",
-                        'origin_city': get_city_name(origin),
-                        'dest_city': get_city_name(dest),
+                        'origin_city': get_airport_display_name(origin), # Shortened Name
+                        'dest_city': get_airport_display_name(dest),     # Shortened Name
                         'alt': fr24_data['altitude'],
                         'dist': dist,
                         'eta_str': eta_str,
@@ -1613,14 +1631,12 @@ class FlightTracker:
                         'aircraft_code': fr24_data.get('aircraft_code', ''),
                         'is_shown': True
                     }
-                self.log("TRACKER", f"{self.track_flight_id} (FR24) {status} | {fr24_data['altitude']}ft | {fr24_data.get('aircraft_type', '?')}")
+                self.log("TRACKER", f"{self.track_flight_id} (FR24) {status} | {fr24_data['altitude']}ft")
                 return
             else:
                 self.log("TRACKER", f"No FR24 match for {self.track_flight_id}")
                 
-            # If we reach here, no flight found
-            self.log("WARNING", f"Flight {self.track_flight_id} not found.")
-            # Always provide a placeholder so flight2 mode shows something
+            # Fallback
             with self.lock:
                 self.visitor_flight = {
                     'type': 'flight_visitor',
@@ -1630,18 +1646,8 @@ class FlightTracker:
                     'route': "UNK > UNK",
                     'origin_city': "UNKNOWN",
                     'dest_city': "UNKNOWN",
-                    'alt': 0,
-                    'dist': 0,
-                    'eta_str': "PENDING",
-                    'speed': 0,
-                    'progress': 0,
-                    'status': "pending",
-                    'delay_min': None,
-                    'is_delayed': False,
-                    'is_live': False,
-                    'aircraft_type': '',
-                    'aircraft_code': '',
-                    'is_shown': True
+                    'alt': 0, 'dist': 0, 'eta_str': "PENDING", 'speed': 0, 'progress': 0,
+                    'status': "pending", 'is_shown': True
                 }
 
         except Exception as e:
@@ -1797,17 +1803,19 @@ class FlightTracker:
     def get_airport_objects(self):
         with self.lock:
             result = []
-            self.log("DEBUG", f"get_airport_objects called - arrivals: {self.airport_arrivals}, departures: {self.airport_departures}")
+            self.log("DEBUG", f"get_airport_objects called - arrivals: {len(self.airport_arrivals)}, departures: {len(self.airport_departures)}")
             result.append({
                 'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx',
                 'home_abbr': self.airport_name or self.airport_code_icao,
                 'away_abbr': self.airport_weather['temp'], 'status': self.airport_weather['cond'], 'is_shown': True
             })
             for i, arr in enumerate(self.airport_arrivals[:2]):
-                result.append({'type': 'flight_arrival', 'sport': 'flight', 'id': f"arr_{i}", 'status': 'ARRIVING', 'home_abbr': arr['from'], 'away_abbr': arr['id'], 'is_shown': True})
+                # Use specific status if available, else fallback
+                st = arr.get('status_label', 'ARRIVING')
+                result.append({'type': 'flight_arrival', 'sport': 'flight', 'id': f"arr_{i}", 'status': st, 'home_abbr': arr['from'], 'away_abbr': arr['id'], 'is_shown': True})
             for i, dep in enumerate(self.airport_departures[:2]):
-                result.append({'type': 'flight_departure', 'sport': 'flight', 'id': f"dep_{i}", 'status': 'DEPARTING', 'home_abbr': dep['to'], 'away_abbr': dep['id'], 'is_shown': True})
-            self.log("DEBUG", f"get_airport_objects returning {len(result)} items: {len(self.airport_arrivals)} arr, {len(self.airport_departures)} dep")
+                st = dep.get('status_label', 'DEPARTING')
+                result.append({'type': 'flight_departure', 'sport': 'flight', 'id': f"dep_{i}", 'status': st, 'home_abbr': dep['to'], 'away_abbr': dep['id'], 'is_shown': True})
             return result
 
 class SportsFetcher:
@@ -3363,26 +3371,22 @@ def flights_worker():
                 mode = state['mode']
 
             did_fetch = False
+            
+            # 1. Airport Data: Fetch if in flights mode or forced
             if mode == 'flights' or forced:
                 if flight_tracker.airport_code_iata:
                     if forced or time.time() - flight_tracker.last_airport_fetch >= 30:
-                        if TestMode.is_enabled('flights'):
-                            print(f"[DEBUG] flights_worker: Fetching airport data for {flight_tracker.airport_code_iata}")
                         flight_tracker.fetch_airport_activity()
                         flight_tracker.last_airport_fetch = time.time()
                         did_fetch = True
-                else:
-                    if time.time() - flight_tracker.last_airport_fetch >= 30:
-                        if TestMode.is_enabled('flights'):
-                            print("[DEBUG] flights_worker: No airport_code_iata set, skipping fetch")
-                        flight_tracker.last_airport_fetch = time.time()
 
-            if mode == 'flight_tracker' or forced:
-                if flight_tracker.track_flight_id:
-                    if forced or time.time() - flight_tracker.last_visitor_fetch >= 30:
-                        flight_tracker.fetch_visitor_tracking()
-                        flight_tracker.last_visitor_fetch = time.time()
-                        did_fetch = True
+            # 2. Visitor Tracking: Fetch if ID exists (Persistent) or mode is explicitly flight_tracker
+            # This ensures we keep repolling even if mode is turned 'off' (switched to sports)
+            if flight_tracker.track_flight_id:
+                if forced or time.time() - flight_tracker.last_visitor_fetch >= 30:
+                    flight_tracker.fetch_visitor_tracking()
+                    flight_tracker.last_visitor_fetch = time.time()
+                    did_fetch = True
 
             if did_fetch or forced:
                 try: fetcher.update_current_games()
@@ -3943,7 +3947,7 @@ def update_settings(tid):
     data = request.json
     rec['settings'].update(data)
     
-    # --- FIX: Sync Mode & CLEANUP Active Sports ---
+    # --- FIX: Sync Mode ---
     if 'mode' in data:
         new_mode = data['mode']
         new_mode = MODE_MIGRATIONS.get(new_mode, new_mode)
@@ -3952,15 +3956,9 @@ def update_settings(tid):
             state['mode'] = new_mode
             rec['settings']['mode'] = new_mode
             
-            # CRITICAL FIX: If switching AWAY from flights, kill the flight flags
-            if new_mode not in ['flights', 'flight_tracker', 'flight2']:
-                state['active_sports']['flight_visitor'] = False
-                state['active_sports']['flight_tracker'] = False
-                state['active_sports']['flight_airport'] = False
-                # Also clean the track ID so it doesn't linger
-                state['track_flight_id'] = ""
-                # Force clear current games to remove stale flight data instantly
-                state['current_games'] = []
+            # NOTE: Removed the logic that cleared flight_id and flags here.
+            # This ensures that flight tracking continues in the background 
+            # if a flight ID was previously set.
 
         # Trigger immediate refresh
         try:
