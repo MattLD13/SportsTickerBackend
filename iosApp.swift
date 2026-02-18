@@ -570,6 +570,22 @@ class TickerViewModel: ObservableObject {
                 }
                 // =============================
 
+                // Apply auto-filled airport info immediately from response
+                if let data = data,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    DispatchQueue.main.async {
+                        if let iata = json["airport_code_iata"] as? String, !iata.isEmpty {
+                            self.state.airport_code_iata = iata
+                        }
+                        if let icao = json["airport_code_icao"] as? String, !icao.isEmpty {
+                            self.state.airport_code_icao = icao
+                        }
+                        if let name = json["airport_name"] as? String, !name.isEmpty {
+                            self.state.airport_name = name
+                        }
+                    }
+                }
+
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                     if self.saveDebounceTimer?.isValid == true { return }
                     self.isEditing = false
@@ -1819,6 +1835,19 @@ struct ModesView: View {
                                             }
                                     }
                                     .padding().liquidGlass()
+
+                                    if !vm.state.airport_code_iata.isEmpty {
+                                        HStack {
+                                            Text("Resolved:")
+                                                .foregroundStyle(.gray)
+                                            Spacer()
+                                            Text("\(vm.state.airport_code_iata)  ·  \(vm.state.airport_code_icao)")
+                                                .foregroundStyle(.cyan)
+                                                .font(.caption)
+                                                .monospaced()
+                                        }
+                                        .padding().liquidGlass()
+                                    }
                                 }
                             } else {
                                 VStack(alignment: .leading, spacing: 10) {
