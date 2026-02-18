@@ -1794,7 +1794,7 @@ struct ModesView: View {
                 .padding(.horizontal)
                 
                 VStack(alignment: .leading, spacing: 20) {
-                    if vm.state.mode == "flights" {
+                    if vm.state.mode == "flights" || vm.state.mode == "flight_tracker" {
                         VStack(alignment: .leading, spacing: 16) {
                             Text("FLIGHTS MODE").font(.caption).bold().foregroundStyle(.secondary)
 
