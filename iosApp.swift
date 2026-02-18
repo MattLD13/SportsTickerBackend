@@ -383,6 +383,9 @@ class TickerViewModel: ObservableObject {
     private var devicesTimer: Timer?
     private var saveDebounceTimer: Timer?
     private var lastFetchTime: Date = .distantPast
+    // After a mode switch, poll every 1s for 30s so the UI and hardware
+    // board confirm the new state almost immediately.
+    private var burstPollUntil: Date = .distantPast
     
     private var clientID: String {
         if let saved = UserDefaults.standard.string(forKey: "clientID") { return saved }
@@ -408,11 +411,13 @@ class TickerViewModel: ObservableObject {
         fetchAllTeams()
         fetchDevices()
         
-        // Adaptive poll: rate determined by current mode each tick
+        // Adaptive poll: 1 s during the 30-s burst window after a mode switch,
+        // otherwise the normal per-mode interval.
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             Task { @MainActor in
                 guard !self.isEditing else { return }
-                let interval = self.pollInterval(for: self.state.mode)
+                let inBurst = Date() < self.burstPollUntil
+                let interval = inBurst ? 1.0 : self.pollInterval(for: self.state.mode)
                 if Date().timeIntervalSince(self.lastFetchTime) >= interval {
                     self.lastFetchTime = Date()
                     self.fetchData()
@@ -438,6 +443,12 @@ class TickerViewModel: ObservableObject {
         case "weather", "clock":           return 600.0
         default:                           return 5.0
         }
+    }
+
+    /// Call this whenever the user switches modes. The timer will poll every 1 s
+    /// for the next 30 s, giving the app (and the hardware board) fast feedback.
+    func startBurstPolling() {
+        burstPollUntil = Date().addingTimeInterval(30)
     }
     
     func getBaseURL() -> String {
@@ -586,7 +597,11 @@ class TickerViewModel: ObservableObject {
                     }
                 }
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                // During a burst poll window (mode just switched) unlock isEditing quickly
+                // so the 1-s burst polls can start immediately. Outside burst, keep the
+                // 2.5-s delay so team-toggle debounce timers have time to settle.
+                let unlockDelay: TimeInterval = Date() < self.burstPollUntil ? 0.3 : 2.5
+                DispatchQueue.main.asyncAfter(deadline: .now() + unlockDelay) {
                     if self.saveDebounceTimer?.isValid == true { return }
                     self.isEditing = false
                     self.fetchData()
@@ -1595,9 +1610,9 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("DISPLAY FILTER").font(.caption).bold().foregroundStyle(.secondary)
                     HStack(spacing: 12) {
-                        FilterBtn(title: "Show All", val: "sports", cur: vm.state.mode) { vm.state.mode = "sports"; vm.saveSettings() }
-                        FilterBtn(title: "Live Only", val: "live", cur: vm.state.mode) { vm.state.mode = "live"; vm.saveSettings() }
-                        FilterBtn(title: "My Teams", val: "my_teams", cur: vm.state.mode) { vm.state.mode = "my_teams"; vm.saveSettings() }
+                        FilterBtn(title: "Show All", val: "sports", cur: vm.state.mode) { vm.state.mode = "sports"; vm.startBurstPolling(); vm.saveSettings() }
+                        FilterBtn(title: "Live Only", val: "live", cur: vm.state.mode) { vm.state.mode = "live"; vm.startBurstPolling(); vm.saveSettings() }
+                        FilterBtn(title: "My Teams", val: "my_teams", cur: vm.state.mode) { vm.state.mode = "my_teams"; vm.startBurstPolling(); vm.saveSettings() }
                     }
                     .disabled(!isSportsMode)
                     .opacity(isSportsMode ? 1.0 : 0.4)
@@ -1704,9 +1719,14 @@ struct ModesView: View {
         vm.state.active_sports["clock"] = (target == "clock")
         vm.state.active_sports["music"] = (target == "music")
         if target == "flights" {
-            vm.state.flight_submode = vm.state.flight_submode.isEmpty ? "airport" : vm.state.flight_submode
-            vm.state.active_sports["flight_airport"] = (vm.state.flight_submode == "airport")
-            vm.state.active_sports["flight_visitor"] = (vm.state.flight_submode == "track")
+            // Always reset to airport mode when tapping the Flights category tile.
+            // If flight_submode were kept as "track", the server would silently
+            // convert mode:"flights" + flight_submode:"track" back to "flight_tracker",
+            // requiring a second tap. The sub-mode buttons inside the flights section
+            // are the correct place to switch to track mode.
+            vm.state.flight_submode = "airport"
+            vm.state.active_sports["flight_airport"] = true
+            vm.state.active_sports["flight_visitor"] = false
         }
         
         if target == "stocks" {
@@ -1716,6 +1736,7 @@ struct ModesView: View {
                 vm.state.active_sports[first] = true
             }
         }
+        vm.startBurstPolling()
         vm.saveSettings()
     }
 
@@ -1723,6 +1744,7 @@ struct ModesView: View {
         vm.state.flight_submode = submode
         vm.state.active_sports["flight_airport"] = (submode == "airport")
         vm.state.active_sports["flight_visitor"] = (submode == "track")
+        vm.startBurstPolling()
         vm.saveSettings()
     }
 
@@ -1758,7 +1780,9 @@ struct ModesView: View {
                 
                 LazyVGrid(columns: modeColumns, spacing: 15) {
                     let utilities = ["stocks", "weather", "clock", "music", "flights"]
-                    let activeCategory = utilities.contains(vm.state.mode) ? vm.state.mode : "sports"
+                    // flight_tracker is a sub-variant of flights; show Flights tile as selected.
+                    let displayMode = vm.state.mode == "flight_tracker" ? "flights" : vm.state.mode
+                    let activeCategory = utilities.contains(displayMode) ? displayMode : "sports"
                     
                     ModeTile(title: "Sports", icon: "sportscourt.fill", val: "sports", cur: activeCategory) { setCategory("sports") }
                     ModeTile(title: "Stocks", icon: "chart.line.uptrend.xyaxis", val: "stocks", cur: activeCategory) { setCategory("stocks") }
