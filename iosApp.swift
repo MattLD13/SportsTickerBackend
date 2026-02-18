@@ -7,7 +7,6 @@ import CoreLocation
 // ==========================================
 // MARK: - 0. EXTENSIONS
 // ==========================================
-
 extension Color {
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
@@ -383,6 +382,7 @@ class TickerViewModel: ObservableObject {
     private var timer: Timer?
     private var devicesTimer: Timer?
     private var saveDebounceTimer: Timer?
+    private var currentSaveTask: URLSessionDataTask?
     private var lastFetchTime: Date = .distantPast
     // After a mode switch, poll every 1s for 30s so the UI and hardware
     // board confirm the new state almost immediately.
@@ -540,12 +540,18 @@ class TickerViewModel: ObservableObject {
         self.isEditing = true   // LOCK: block polling while save is in-flight
         let targetID = self.devices.first?.id ?? self.savedTickerID
         
-        guard let validID = targetID else { return }
-        
+        guard let validID = targetID else {
+            self.isEditing = false
+            return
+        }
+
         let base = getBaseURL()
         var urlString = "\(base)/api/config"
         urlString += "?id=\(validID)"
-        guard let url = URL(string: urlString) else { return }
+        guard let url = URL(string: urlString) else {
+            self.isEditing = false
+            return
+        }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -559,8 +565,11 @@ class TickerViewModel: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
             
             print("📤 Saving settings to \(urlString)")
-            URLSession.shared.dataTask(with: request) { data, response, error in
+            currentSaveTask?.cancel()
+            currentSaveTask = URLSession.shared.dataTask(with: request) { data, response, error in
                 if let error = error {
+                    // Ignore cancellation errors — they mean a newer save superseded this one.
+                    if (error as NSError).code == NSURLErrorCancelled { return }
                     print("❌ Save failed: \(error.localizedDescription)")
                 }
                 
@@ -569,7 +578,7 @@ class TickerViewModel: ObservableObject {
                     if httpResponse.statusCode == 403 {
                         DispatchQueue.main.async {
                             print("⛔ Access Denied. Unpairing local app.")
-                            // Server rejected us, so we shouldn't be controlling this ticker.
+                            self.isEditing = false
                             self.savedTickerID = nil
                             self.devices.removeAll()
                             self.updateOverallStatus()
@@ -607,7 +616,8 @@ class TickerViewModel: ObservableObject {
                     self.isEditing = false
                     self.fetchData()
                 }
-            }.resume()
+            }
+            currentSaveTask?.resume()
         } catch { print("Save Error") }
     }
     
