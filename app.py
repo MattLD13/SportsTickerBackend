@@ -23,7 +23,8 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # ── Flight tracking (optional) ──
 try:
@@ -60,17 +61,16 @@ load_dotenv()
 
 # ── Configure AI Service (Add near top of script) ──
 GEMINI_KEY = os.getenv('GEMINI_API_KEY')
+AI_CLIENT = None
+AI_AVAILABLE = False
+
 if GEMINI_KEY:
     try:
-        genai.configure(api_key=GEMINI_KEY)
+        # The new SDK uses a Client object
+        AI_CLIENT = genai.Client(api_key=GEMINI_KEY)
         AI_AVAILABLE = True
     except:
         AI_AVAILABLE = False
-else:
-    AI_AVAILABLE = False
-
-# ── Dynamic Cache (Prevents hitting API limit) ──
-_ai_airport_cache = {}
 
 # ================= MODULE-LEVEL LOOKUP TABLES =================
 # Airline IATA <-> ICAO mapping
@@ -208,7 +208,7 @@ def validate_logo_url(base_id):
     return fallback
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v0.7-Flights"
+SERVER_VERSION = "v0.8-AIFlights"
 
 # ── Section A: Logging ──
 class Tee(object):
@@ -267,6 +267,7 @@ if not os.path.exists(TICKER_DATA_DIR):
 
 GLOBAL_CONFIG_FILE = "global_config.json"
 STOCK_CACHE_FILE = "stock_cache.json"
+AIRPORT_CACHE_FILE = "airport_name_cache.json"
 
 SPORTS_UPDATE_INTERVAL = 5.0    
 STOCKS_UPDATE_INTERVAL = 30     
@@ -323,10 +324,36 @@ def get_city_name(iata_code):
         return AIRPORTS_DB[code].get('city', code)
     return code
 
+# Initialize cache
+_ai_airport_cache = {}
+
+def load_airport_cache():
+    global _ai_airport_cache
+    if os.path.exists(AIRPORT_CACHE_FILE):
+        try:
+            with open(AIRPORT_CACHE_FILE, 'r') as f:
+                _ai_airport_cache = json.load(f)
+            print(f"📖 Loaded {len(_ai_airport_cache)} shortened airport names from cache.")
+        except Exception as e:
+            print(f"⚠️ Error loading airport cache: {e}")
+
+def save_airport_cache():
+    try:
+        # Atomic save to prevent corruption
+        temp_file = f"{AIRPORT_CACHE_FILE}.tmp"
+        with open(temp_file, 'w') as f:
+            json.dump(_ai_airport_cache, f, indent=4)
+        os.replace(temp_file, AIRPORT_CACHE_FILE)
+    except Exception as e:
+        print(f"⚠️ Error saving airport cache: {e}")
+
+# Load the cache immediately upon script start
+load_airport_cache()
+
 def get_airport_display_name(iata_code):
     """
-    Uses AI to intelligently shorten airport names (e.g. 'Washington Dulles' -> 'Dulles').
-    Falls back to algorithmic cleaning if AI fails or no key is provided.
+    Uses AI to intelligently shorten airport names with persistent file caching.
+    Saves results to airport_name_cache.json to avoid Gemini API quota limits.
     """
     if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
     code = iata_code.strip().upper()
@@ -337,47 +364,53 @@ def get_airport_display_name(iata_code):
     raw_name = data.get('name', code)
     city = data.get('city', '')
     
-    # 1. Check Memory Cache First (Instant)
+    # 1. Check Persistent Memory Cache
     cache_key = f"{code}_{raw_name}"
     if cache_key in _ai_airport_cache:
         return _ai_airport_cache[cache_key]
 
-    # 2. Try AI Service
-    if AI_AVAILABLE:
+    # 2. Try AI Service (Gemini 2.0 Flash)
+    if AI_AVAILABLE and AI_CLIENT:
         try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
             prompt = (
-                f"Shorten the airport name '{raw_name}' (City: {city}). "
-                "Remove the city name if it is redundant. "
-                "Remove words like 'International', 'Airport', 'Field', 'Intercontinental'. "
-                "Return ONLY the single shortest common name. "
-                "Examples: 'Washington Dulles' -> 'Dulles', 'Harry Reid International' -> 'Harry Reid', 'San Francisco International' -> 'San Francisco'. "
-                f"Input: {raw_name}"
+                f"Convert the airport name '{raw_name}' (City: {city}) into its common display name. \n"
+                "Rules:\n"
+                "1. STRIP: Remove words like 'International', 'Airport', 'Field', 'Intercontinental', 'Municipal'.\n"
+                "2. REDUNDANCY: Remove the city name if it is just a descriptor (e.g. 'Denver Intl' -> 'Denver').\n"
+                "3. PERSON NAMES: Always use the Full Name (First + Last). Do not shorten to surname only. \n"
+                "   - CORRECT: 'George Bush', 'Harry Reid', 'Gerald Ford'\n"
+                "   - INCORRECT: 'Bush', 'Reid', 'Ford'\n"
+                "4. COLLOQUIAL: If the airport has a famous acronym or nickname, use that instead.\n"
+                "   - Example: 'John F. Kennedy' -> 'JFK'\n"
+                "   - Example: 'London Heathrow' -> 'Heathrow'\n"
+                f"Input to process: {raw_name}"
             )
             
-            # Generate with low temperature for consistency
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
+            response = AI_CLIENT.models.generate_content(
+                model='gemini-2.0-flash', 
+                contents=prompt,
+                config=types.GenerateContentConfig(
                     candidate_count=1,
-                    max_output_tokens=10,
+                    max_output_tokens=15,
                     temperature=0.1
                 )
             )
             
-            short_name = response.text.strip()
-            
-            # Basic validation: If AI returns something valid, cache and return it
-            if short_name and len(short_name) < len(raw_name) + 5:
-                # print(f"[AI] Shortened '{raw_name}' -> '{short_name}'") # Uncomment to debug
-                _ai_airport_cache[cache_key] = short_name
-                return short_name
+            if response.text:
+                short_name = response.text.strip()
+                # Validation: ensure AI didn't return something bizarrely long
+                if len(short_name) < len(raw_name) + 5: 
+                    _ai_airport_cache[cache_key] = short_name
+                    save_airport_cache()
+                    return short_name
                 
         except Exception as e:
-            print(f"[AI] Failed to shorten {code}: {e}")
-            # Proceed to fallback below if AI fails
+            if "429" in str(e):
+                print(f"[AI] Quota hit (429) for {code}, using algorithmic fallback.")
+            else:
+                print(f"[AI] Failed to shorten {code}: {e}")
 
-    # 3. Fallback: Algorithmic Cleaning (if no AI or API error)
+    # 3. Fallback: Algorithmic Cleaning (Used if AI is unavailable or fails)
     replacements = [
         " International Airport", " Intercontinental Airport", " Regional Airport",
         " International", " Intercontinental", " Municipal", 
@@ -391,14 +424,15 @@ def get_airport_display_name(iata_code):
         
     clean_name = clean_name.strip()
     
-    # Remove city prefix if present (e.g. "Washington Dulles" -> "Dulles")
+    # If the clean name starts with the city name, remove the redundancy
     if city and clean_name.lower().startswith(city.lower()):
         candidate = clean_name[len(city):].strip()
         if len(candidate) > 2:
             clean_name = candidate
 
-    # Cache the fallback result too so we don't re-process
+    # Cache the algorithmic result too so we don't try AI again for this airport
     _ai_airport_cache[cache_key] = clean_name
+    save_airport_cache()
     return clean_name
 
 def lookup_and_auto_fill_airport(airport_code_input):
@@ -1481,79 +1515,76 @@ class FlightTracker:
         print(f"[{dt.now().strftime('%H:%M:%S')}] {cat:<12} | {msg}")
     
     def fetch_fr24_schedule(self, mode='arrivals'):
-        """Robust fetcher that handles NoneTypes in the API response"""
+        """Includes delayed flights and sorts by closest arrival/departure time."""
         if not self.airport_code_iata:
-            self.log("DEBUG", f"No airport IATA code set, skipping {mode}")
             return []
         try:
             timestamp = int(time.time())
-            # Fetch generic schedule
             url = f"https://api.flightradar24.com/common/v1/airport.json?code={self.airport_code_iata}&plugin[]=schedule&plugin-setting[schedule][mode]={mode}&plugin-setting[schedule][timestamp]={timestamp}&page=1&limit=100"
             headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
-            self.log("DEBUG", f"Fetching {mode} for {self.airport_code_iata}")
+            
             res = self.session.get(url, headers=headers, timeout=TIMEOUTS['slow'])
             if res.status_code != 200:
-                self.log("DEBUG", f"FR24 API returned status {res.status_code}")
                 return []
             
             data = res.json()
             schedule = safe_get(data, 'result', 'response', 'airport', 'pluginData', 'schedule', mode, default={})
 
             if not schedule or 'data' not in schedule:
-                self.log("DEBUG", f"No schedule data for {mode}")
                 return []
             
-            self.log("DEBUG", f"Processing {len(schedule['data'])} {mode} flights")
-            flights = []
+            processed_list = []
             for flight in schedule['data']:
                 try:
                     f_data = safe_get(flight, 'flight', default={})
-
-                    # Filter by flight status
                     status_text = safe_get(f_data, 'status', 'generic', 'status', 'text', default='').lower()
                     
-                    # Logic: Include delayed flights, exclude only completely finished ones if necessary
-                    if mode == 'arrivals':
-                        if status_text == 'landed': continue
-                    else:
-                        if status_text == 'departed': continue
+                    # 1. Filter: Only exclude finished flights
+                    if mode == 'arrivals' and status_text == 'landed': continue
+                    if mode == 'departures' and status_text == 'departed': continue
 
+                    # 2. Get the closest time for sorting (Estimated > Real > Scheduled)
+                    time_info = safe_get(f_data, 'time', default={})
+                    t_bucket = 'arrival' if mode == 'arrivals' else 'departure'
+                    
+                    sched_ts = safe_get(time_info, 'scheduled', t_bucket) or 0
+                    est_ts = safe_get(time_info, 'estimated', t_bucket) or safe_get(time_info, 'real', t_bucket)
+                    
+                    # This is the time used for sorting and delay checking
+                    sort_ts = est_ts if est_ts else sched_ts
+                    if sort_ts == 0: continue # Skip if no time data exists
+
+                    # 3. Build the flight record
                     flight_num = safe_get(f_data, 'identification', 'number', 'default', default='')
                     airline_code = safe_get(f_data, 'airline', 'code', 'iata', default='').strip()
+                    display_id = flight_num if flight_num.startswith(airline_code) else f"{airline_code} {flight_num}"
                     
-                    if flight_num:
-                        if flight_num.startswith(airline_code):
-                            display_id = flight_num[:2] + ' ' + flight_num[2:]
-                        else:
-                            display_id = f"{airline_code} {flight_num}"
-                    else:
-                        continue
-                    
-                    # Determine display status
-                    display_status = "DELAYED" if "delay" in status_text else ("ARRIVING" if mode == 'arrivals' else "DEPARTING")
+                    # Original label format
+                    display_status = "DELAYED" if (est_ts and sched_ts and (est_ts - sched_ts) > 60) else \
+                                     ("ARRIVING" if mode == 'arrivals' else "DEPARTING")
 
-                    if mode == 'arrivals':
-                        city_code = safe_get(f_data, 'airport', 'origin', 'code', 'iata', default='')
-                        flights.append({
-                            'id': display_id, 
-                            'from': get_airport_display_name(city_code), 
-                            'status_label': display_status
-                        })
-                    else:
-                        city_code = safe_get(f_data, 'airport', 'destination', 'code', 'iata', default='')
-                        flights.append({
-                            'id': display_id, 
-                            'to': get_airport_display_name(city_code),
-                            'status_label': display_status
-                        })
+                    city_key = 'origin' if mode == 'arrivals' else 'destination'
+                    city_code = safe_get(f_data, 'airport', city_key, 'code', 'iata', default='')
                     
-                    if len(flights) >= 3: break
-                except Exception as e:
-                    self.log("DEBUG", f"Error processing flight: {e}")
+                    entry = {
+                        'id': display_id,
+                        'status_label': display_status,
+                        'sort_time': sort_ts
+                    }
+                    if mode == 'arrivals':
+                        entry['from'] = get_airport_display_name(city_code)
+                    else:
+                        entry['to'] = get_airport_display_name(city_code)
+                        
+                    processed_list.append(entry)
+                except:
                     continue
-                
-            self.log("DEBUG", f"Found {len(flights)} {mode} flights")
-            return flights
+            
+            # Sort by time so the closest 2 flights are selected
+            processed_list.sort(key=lambda x: x['sort_time'])
+            
+            return processed_list[:2] # Return only the 2 closest flights
+            
         except Exception as e:
             self.log("ERROR", f"FR24 Schedule: {e}")
             return []
