@@ -1715,7 +1715,16 @@ class FlightTracker:
                             if total_dist > 0:
                                 progress = max(0, min(100, int((dist_from / total_dist) * 100)))
                         
-                        if speed_mph > 0:
+                        est_arr = fr24_data.get('est_arr')
+                        if est_arr:
+                            remaining_secs = est_arr - int(time.time())
+                            if remaining_secs > 0:
+                                mins = int(remaining_secs / 60)
+                                h, m = divmod(mins, 60)
+                                eta_str = f"{h}H {m}M" if h > 0 else f"{m} MIN"
+                            else:
+                                eta_str = "LANDING"
+                        elif speed_mph > 0:
                             mins = int((dist / speed_mph) * 60)
                             h, m = divmod(mins, 60)
                             eta_str = f"{h}H {m}M" if h > 0 else f"{m} MIN"
@@ -1789,7 +1798,7 @@ class FlightTracker:
 
             def _extract_delay_minutes(details):
                 if not details:
-                    return None, ""
+                    return None, "", None
                 time_info = details.get('time') or {}
                 sched_arr = _get_time(time_info, 'scheduled', 'arrival')
                 est_arr = (_get_time(time_info, 'estimated', 'arrival') or
@@ -1812,7 +1821,7 @@ class FlightTracker:
                     status_block.get('status') or
                     details.get('statusText') or ''
                 )
-                return delay_min, status_text
+                return delay_min, status_text, est_arr
             
             # Parse the flight code
             icao, iata, flight_num = self.parse_flight_code(flight_id)
@@ -1876,7 +1885,7 @@ class FlightTracker:
             except Exception as e:
                 self.log("DEBUG", f"Could not get detailed info: {e}")
 
-            delay_min, status_text = _extract_delay_minutes(details)
+            delay_min, status_text, est_arr = _extract_delay_minutes(details)
 
             # Aircraft type: prefer detailed model from FR24, fall back to ICAO type code normalization
             fr24_model = getattr(target_flight, 'aircraft_model', None) or ''
@@ -1896,6 +1905,7 @@ class FlightTracker:
                 'is_live': (target_flight.altitude or 0) > 0,
                 'delay_min': delay_min,
                 'status_text': status_text,
+                'est_arr': est_arr,
                 'aircraft_type': aircraft_type,
                 'aircraft_code': icao_type
             }
@@ -4348,7 +4358,7 @@ def get_flight_status():
         })
 
 @app.route('/')
-def root(): return "Ticker Server v0.8 Running"
+def root(): return "Ticker Server v7 Running"
 
 if __name__ == "__main__":
     print("🚀 Starting Ticker Server...")
