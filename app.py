@@ -3385,10 +3385,13 @@ class SportsFetcher:
                 self.history_buffer = self.history_buffer[-60:]
 
         with data_lock:
-            # Only replace the buffer when we have content, or when the buffer is
-            # already empty. This prevents a brief clock fallback on the hardware
-            # when switching modes before the background worker has fetched new data.
-            if result or not state.get('current_games'):
+            # For sports modes, keep the previous buffer if the new result is empty
+            # (avoids a brief clock fallback when the sports data refresh cycle
+            # temporarily produces no results). For all other modes (flights, weather,
+            # clock, etc.) always replace, so stale sports data never leaks into the
+            # flights/weather filter and permanently blocks content from showing.
+            is_sports_mode = mode in ('sports', 'live', 'my_teams')
+            if result or not is_sports_mode or not state.get('current_games'):
                 state['current_games'] = result
 
     def get_snapshot_for_delay(self, delay_seconds):
@@ -3425,7 +3428,10 @@ spotify_fetcher = SpotifyFetcher()
 spotify_fetcher.start()
 
 # Initialize Flight Tracker
-if FLIGHT_TRACKING_AVAILABLE:
+# FlightTracker itself has no dependency on airportsdata — that package is only
+# used by lookup_and_auto_fill_airport() for code validation. Always create the
+# tracker so that flights/flight_tracker modes work even without airportsdata.
+try:
     flight_tracker = FlightTracker()
     flight_tracker.track_flight_id = state.get('track_flight_id', '')
     flight_tracker.track_guest_name = state.get('track_guest_name', '')
@@ -3433,7 +3439,8 @@ if FLIGHT_TRACKING_AVAILABLE:
     flight_tracker.airport_code_iata = state.get('airport_code_iata', 'EWR')
     flight_tracker.airport_name = state.get('airport_name', 'Newark')
     flight_tracker.airline_filter = ''  # Force empty - support all airlines
-else:
+except Exception as e:
+    print(f"⚠️ FlightTracker init failed: {e}")
     flight_tracker = None
 
 # ── Section K: Worker Threads ──
@@ -4341,13 +4348,13 @@ def get_flight_status():
         })
 
 @app.route('/')
-def root(): return "Ticker Server v7 Running"
+def root(): return "Ticker Server v0.8 Running"
 
 if __name__ == "__main__":
     print("🚀 Starting Ticker Server...")
     threading.Thread(target=sports_worker, daemon=True).start()
     threading.Thread(target=stocks_worker, daemon=True).start()
-    if FLIGHT_TRACKING_AVAILABLE:
+    if flight_tracker:
         threading.Thread(target=flights_worker, daemon=True).start()
     print("✅ Worker threads started")
     print("🌐 Starting Flask on port 5000...")
