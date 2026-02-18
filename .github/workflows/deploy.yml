@@ -57,6 +57,9 @@ jobs:
             # 2. New Librespot Keys (For Instant Trigger)
             echo "SPOTIFY_USERNAME=${{ secrets.SPOTIFY_USERNAME }}" >> .env
             echo "SPOTIFY_PASSWORD=${{ secrets.SPOTIFY_PASSWORD }}" >> .env
+
+            # 3. AI API Key
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
             
             chmod 600 .env
 
@@ -67,11 +70,11 @@ jobs:
                 # Install standard requirements
                 pip3 install -r requirements.txt --break-system-packages || pip3 install -r requirements.txt
                 
-                # Install Librespot Dependencies
-                pip3 install librespot protobuf --break-system-packages
+                # Install Librespot Dependencies & AI Library
+                pip3 install librespot protobuf google-generativeai --break-system-packages
             else
                 pip install -r requirements.txt
-                pip install librespot protobuf
+                pip install librespot protobuf google-generativeai
             fi
 
             echo "Restarting ticker service..."
