@@ -380,7 +380,9 @@ class TickerViewModel: ObservableObject {
     
     private var isServerReachable = false
     private var timer: Timer?
+    private var devicesTimer: Timer?
     private var saveDebounceTimer: Timer?
+    private var lastFetchTime: Date = .distantPast
     
     private var clientID: String {
         if let saved = UserDefaults.standard.string(forKey: "clientID") { return saved }
@@ -406,16 +408,35 @@ class TickerViewModel: ObservableObject {
         fetchAllTeams()
         fetchDevices()
         
-        // Background Polling (Every 5s)
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+        // Adaptive poll: rate determined by current mode each tick
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             Task { @MainActor in
-                // Only fetch if user is NOT editing to prevent overwrites
-                if !self.isEditing {
+                guard !self.isEditing else { return }
+                let interval = self.pollInterval(for: self.state.mode)
+                if Date().timeIntervalSince(self.lastFetchTime) >= interval {
+                    self.lastFetchTime = Date()
                     self.fetchData()
-                    self.fetchDevices()
                     if self.leagueOptions.isEmpty { self.fetchLeagueOptions() }
                 }
             }
+        }
+
+        // Slow poll: device list only changes on pair/unpair
+        devicesTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
+            Task { @MainActor in
+                if !self.isEditing { self.fetchDevices() }
+            }
+        }
+    }
+
+    private func pollInterval(for mode: String) -> TimeInterval {
+        switch mode {
+        case "music":                      return 1.0
+        case "sports", "live", "my_teams": return 5.0
+        case "flights", "flight_tracker":  return 60.0
+        case "stocks":                     return 30.0
+        case "weather", "clock":           return 600.0
+        default:                           return 5.0
         }
     }
     
@@ -504,6 +525,7 @@ class TickerViewModel: ObservableObject {
     
     // === 3. SAVE SETTINGS (Write) ===
     func saveSettings() {
+        self.isEditing = true   // LOCK: block polling while save is in-flight
         let targetID = self.devices.first?.id ?? self.savedTickerID
         
         guard let validID = targetID else { return }
@@ -1537,6 +1559,12 @@ struct ContentView: View {
 
 struct HomeView: View {
     @ObservedObject var vm: TickerViewModel
+
+    private var isSportsMode: Bool {
+        let nonSportsModes = ["stocks", "weather", "clock", "music", "flights", "flight_tracker"]
+        return !nonSportsModes.contains(vm.state.mode)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -1551,10 +1579,12 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("DISPLAY FILTER").font(.caption).bold().foregroundStyle(.secondary)
                     HStack(spacing: 12) {
-                        FilterBtn(title: "Show All", val: "all", cur: vm.state.mode) { vm.state.mode = "all"; vm.saveSettings() }
+                        FilterBtn(title: "Show All", val: "sports", cur: vm.state.mode) { vm.state.mode = "sports"; vm.saveSettings() }
                         FilterBtn(title: "Live Only", val: "live", cur: vm.state.mode) { vm.state.mode = "live"; vm.saveSettings() }
                         FilterBtn(title: "My Teams", val: "my_teams", cur: vm.state.mode) { vm.state.mode = "my_teams"; vm.saveSettings() }
                     }
+                    .disabled(!isSportsMode)
+                    .opacity(isSportsMode ? 1.0 : 0.4)
                 }.padding(.horizontal)
                 
                 VStack(alignment: .leading, spacing: 12) {
