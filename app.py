@@ -309,16 +309,49 @@ def get_city_name(iata_code):
     return code
 
 def get_airport_display_name(iata_code):
-    """Returns shortened airport name (e.g. 'Washington Dulles' instead of 'Washington Dulles International Airport')"""
+    """
+    Algorithmically shortens airport names for ANY airport.
+    E.g., "Washington Dulles International Airport" -> "Dulles"
+          "San Francisco International Airport" -> "San Francisco"
+    """
     if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
     code = iata_code.strip().upper()
+    
     if code in AIRPORTS_DB:
-        name = AIRPORTS_DB[code].get('name', code)
-        # Strip common suffixes to shorten the name
-        name = name.replace(" International Airport", "").replace(" International", "")
-        name = name.replace(" Intercontinental Airport", "").replace(" Intercontinental", "")
-        name = name.replace(" Airport", "").replace(" Intl", "").replace(" Apt", "")
-        return name
+        data = AIRPORTS_DB[code]
+        raw_name = data.get('name', code)
+        city = data.get('city', '').strip()
+        
+        # 1. Clean common suffixes to get the core name
+        # Order matters: remove longer phrases first
+        replacements = [
+            " International Airport", " Intercontinental Airport", " Regional Airport",
+            " International", " Intercontinental", " Municipal", 
+            " Airport", " Intl", " Apt", " Field", " Air Force Base", " AFB"
+        ]
+        
+        clean_name = raw_name
+        for phrase in replacements:
+            # Case-insensitive replacement
+            pattern = re.compile(re.escape(phrase), re.IGNORECASE)
+            clean_name = pattern.sub("", clean_name)
+            
+        clean_name = clean_name.strip()
+        
+        # 2. Smart City Removal
+        # If the name starts with the city (e.g. "Washington Dulles"), strip the city.
+        # But ONLY if there is text left over (e.g. don't strip "San Francisco" from "San Francisco").
+        if city and clean_name.lower().startswith(city.lower()):
+            # Get the remaining part after the city
+            candidate = clean_name[len(city):].strip()
+            
+            # If we have a substantial name left (e.g. "Dulles", "O'Hare"), use it.
+            # If the result is empty or too short (e.g. just punctuation), keep the city name.
+            if len(candidate) > 2:
+                return candidate
+        
+        return clean_name
+        
     return code
 
 def lookup_and_auto_fill_airport(airport_code_input):
