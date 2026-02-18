@@ -23,6 +23,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+import google.generativeai as genai
 
 # ── Flight tracking (optional) ──
 try:
@@ -56,6 +57,20 @@ except ImportError:
 
 # Load environment variables
 load_dotenv()
+
+# ── Configure AI Service (Add near top of script) ──
+GEMINI_KEY = os.getenv('GEMINI_API_KEY')
+if GEMINI_KEY:
+    try:
+        genai.configure(api_key=GEMINI_KEY)
+        AI_AVAILABLE = True
+    except:
+        AI_AVAILABLE = False
+else:
+    AI_AVAILABLE = False
+
+# ── Dynamic Cache (Prevents hitting API limit) ──
+_ai_airport_cache = {}
 
 # ================= MODULE-LEVEL LOOKUP TABLES =================
 # Airline IATA <-> ICAO mapping
@@ -310,49 +325,81 @@ def get_city_name(iata_code):
 
 def get_airport_display_name(iata_code):
     """
-    Algorithmically shortens airport names for ANY airport.
-    E.g., "Washington Dulles International Airport" -> "Dulles"
-          "San Francisco International Airport" -> "San Francisco"
+    Uses AI to intelligently shorten airport names (e.g. 'Washington Dulles' -> 'Dulles').
+    Falls back to algorithmic cleaning if AI fails or no key is provided.
     """
     if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
     code = iata_code.strip().upper()
     
-    if code in AIRPORTS_DB:
-        data = AIRPORTS_DB[code]
-        raw_name = data.get('name', code)
-        city = data.get('city', '').strip()
-        
-        # 1. Clean common suffixes to get the core name
-        # Order matters: remove longer phrases first
-        replacements = [
-            " International Airport", " Intercontinental Airport", " Regional Airport",
-            " International", " Intercontinental", " Municipal", 
-            " Airport", " Intl", " Apt", " Field", " Air Force Base", " AFB"
-        ]
-        
-        clean_name = raw_name
-        for phrase in replacements:
-            # Case-insensitive replacement
-            pattern = re.compile(re.escape(phrase), re.IGNORECASE)
-            clean_name = pattern.sub("", clean_name)
+    if code not in AIRPORTS_DB: return code
+
+    data = AIRPORTS_DB[code]
+    raw_name = data.get('name', code)
+    city = data.get('city', '')
+    
+    # 1. Check Memory Cache First (Instant)
+    cache_key = f"{code}_{raw_name}"
+    if cache_key in _ai_airport_cache:
+        return _ai_airport_cache[cache_key]
+
+    # 2. Try AI Service
+    if AI_AVAILABLE:
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            prompt = (
+                f"Shorten the airport name '{raw_name}' (City: {city}). "
+                "Remove the city name if it is redundant. "
+                "Remove words like 'International', 'Airport', 'Field', 'Intercontinental'. "
+                "Return ONLY the single shortest common name. "
+                "Examples: 'Washington Dulles' -> 'Dulles', 'Harry Reid International' -> 'Harry Reid', 'San Francisco International' -> 'San Francisco'. "
+                f"Input: {raw_name}"
+            )
             
-        clean_name = clean_name.strip()
-        
-        # 2. Smart City Removal
-        # If the name starts with the city (e.g. "Washington Dulles"), strip the city.
-        # But ONLY if there is text left over (e.g. don't strip "San Francisco" from "San Francisco").
-        if city and clean_name.lower().startswith(city.lower()):
-            # Get the remaining part after the city
-            candidate = clean_name[len(city):].strip()
+            # Generate with low temperature for consistency
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    candidate_count=1,
+                    max_output_tokens=10,
+                    temperature=0.1
+                )
+            )
             
-            # If we have a substantial name left (e.g. "Dulles", "O'Hare"), use it.
-            # If the result is empty or too short (e.g. just punctuation), keep the city name.
-            if len(candidate) > 2:
-                return candidate
+            short_name = response.text.strip()
+            
+            # Basic validation: If AI returns something valid, cache and return it
+            if short_name and len(short_name) < len(raw_name) + 5:
+                # print(f"[AI] Shortened '{raw_name}' -> '{short_name}'") # Uncomment to debug
+                _ai_airport_cache[cache_key] = short_name
+                return short_name
+                
+        except Exception as e:
+            print(f"[AI] Failed to shorten {code}: {e}")
+            # Proceed to fallback below if AI fails
+
+    # 3. Fallback: Algorithmic Cleaning (if no AI or API error)
+    replacements = [
+        " International Airport", " Intercontinental Airport", " Regional Airport",
+        " International", " Intercontinental", " Municipal", 
+        " Airport", " Intl", " Apt", " Field", " Air Force Base", " AFB"
+    ]
+    
+    clean_name = raw_name
+    for phrase in replacements:
+        pattern = re.compile(re.escape(phrase), re.IGNORECASE)
+        clean_name = pattern.sub("", clean_name)
         
-        return clean_name
-        
-    return code
+    clean_name = clean_name.strip()
+    
+    # Remove city prefix if present (e.g. "Washington Dulles" -> "Dulles")
+    if city and clean_name.lower().startswith(city.lower()):
+        candidate = clean_name[len(city):].strip()
+        if len(candidate) > 2:
+            clean_name = candidate
+
+    # Cache the fallback result too so we don't re-process
+    _ai_airport_cache[cache_key] = clean_name
+    return clean_name
 
 def lookup_and_auto_fill_airport(airport_code_input):
     """
