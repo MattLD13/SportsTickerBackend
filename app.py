@@ -3334,7 +3334,11 @@ class SportsFetcher:
         if lat != self.weather.lat or lon != self.weather.lon or city != self.weather.city_name:
             self.weather.update_config(city=city, lat=lat, lon=lon)
         w = self.weather.get_weather()
-        return [w] if w else []
+        if w:
+            return [w]
+        # No weather data yet — show the clock while the fetcher loads, so the
+        # hardware doesn't fall through to its own raw clock fallback.
+        return [{'type': 'clock', 'sport': 'clock', 'id': 'weather_loading', 'is_shown': True}]
 
     def _build_music_buffer(self):
         obj = self.get_music_object()
@@ -3381,7 +3385,11 @@ class SportsFetcher:
                 self.history_buffer = self.history_buffer[-60:]
 
         with data_lock:
-            state['current_games'] = result
+            # Only replace the buffer when we have content, or when the buffer is
+            # already empty. This prevents a brief clock fallback on the hardware
+            # when switching modes before the background worker has fetched new data.
+            if result or not state.get('current_games'):
+                state['current_games'] = result
 
     def get_snapshot_for_delay(self, delay_seconds):
         """Return current games, optionally from history buffer for live-delay."""
@@ -3690,6 +3698,12 @@ def api_config():
                 flights=state.get('test_flights', False),
                 custom_date=state.get('custom_date'),
             )
+
+        # For flights modes, wake the background worker immediately so data is
+        # ready as soon as possible (otherwise it can take up to 30 s to fetch).
+        new_mode = state.get('mode', '')
+        if new_mode in ('flights', 'flight_tracker') and flight_tracker:
+            flight_tracker.force_update()
 
         # Immediately rebuild the buffer for the new mode (fast for non-sports modes)
         try: fetcher.update_current_games()
