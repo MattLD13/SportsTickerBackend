@@ -80,7 +80,7 @@ _IATA_TO_ICAO_FALLBACK = {
     'AS': 'ASA', 'NK': 'NKS', 'F9': 'FFT', 'G4': 'AAY', 'SY': 'SCX',
     'HA': 'HAL', 'BA': 'BAW', 'LH': 'DLH', 'AF': 'AFR', 'KL': 'KLM',
     'EK': 'UAE', 'QR': 'QTR', 'VS': 'VIR', 'FR': 'RYR', 'U2': 'EZY',
-    'AC': 'ACA', 'WS': 'WJA', 'EI': 'EIN', 'LY': 'ELY',
+    'AC': 'ACA', 'WS': 'WJA', 'EI': 'EIN', 'LY': 'ELY','SQ':'SIA;,
 }
 
 def _build_airline_mappings():
