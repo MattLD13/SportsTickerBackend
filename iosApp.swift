@@ -1460,14 +1460,15 @@ struct AirportBoardView: View {
                             Spacer()
                             
                             // Status pill
+                            let arrDelayed = arr.status.uppercased() == "DELAYED"
                             HStack(spacing: 4) {
-                                Circle().fill(Color.green).frame(width: 4, height: 4)
-                                Text("INBOUND")
+                                Circle().fill(arrDelayed ? Color.orange : Color.green).frame(width: 4, height: 4)
+                                Text(arrDelayed ? "DELAYED" : "INBOUND")
                                     .font(.system(size: 8, weight: .heavy, design: .rounded))
                             }
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color.green.opacity(0.1))
-                            .foregroundColor(.green)
+                            .background((arrDelayed ? Color.orange : Color.green).opacity(0.1))
+                            .foregroundColor(arrDelayed ? .orange : .green)
                             .clipShape(Capsule())
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
@@ -1532,14 +1533,15 @@ struct AirportBoardView: View {
                             Spacer()
                             
                             // Status pill
+                            let depDelayed = dep.status.uppercased() == "DELAYED"
                             HStack(spacing: 4) {
-                                Circle().fill(Color.blue).frame(width: 4, height: 4)
-                                Text("OUTBOUND")
+                                Circle().fill(depDelayed ? Color.orange : Color.blue).frame(width: 4, height: 4)
+                                Text(depDelayed ? "DELAYED" : "OUTBOUND")
                                     .font(.system(size: 8, weight: .heavy, design: .rounded))
                             }
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color.blue.opacity(0.1))
-                            .foregroundColor(.blue)
+                            .background((depDelayed ? Color.orange : Color.blue).opacity(0.1))
+                            .foregroundColor(depDelayed ? .orange : .blue)
                             .clipShape(Capsule())
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
