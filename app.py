@@ -1628,19 +1628,42 @@ class FlightTracker:
                          (est_ts - sched_ts) >= 900)
                     )
 
-                    # 2. Filter finished flights — delayed flights always pass through
+                    # 2. Validate the flight actually operates at this airport
+                    # FR24 occasionally returns flights that route through but don't originate/terminate here
+                    if mode == 'arrivals':
+                        dest_iata = safe_get(f_data, 'airport', 'destination', 'code', 'iata', default='')
+                        if dest_iata and dest_iata.upper() != self.airport_code_iata.upper():
+                            continue
+                    else:
+                        origin_iata = safe_get(f_data, 'airport', 'origin', 'code', 'iata', default='')
+                        if origin_iata and origin_iata.upper() != self.airport_code_iata.upper():
+                            continue
+
+                    # 3. Filter finished flights — delayed flights always pass through
                     if not is_delayed:
                         if mode == 'arrivals' and status_text == 'landed': continue
                         if mode == 'departures' and status_text == 'departed': continue
 
-                    # 3. Build the flight record — try multiple identification fields
-                    flight_num = (
-                        safe_get(f_data, 'identification', 'number', 'default', default='') or
-                        safe_get(f_data, 'identification', 'callsign', default='') or
-                        safe_get(f_data, 'identification', 'number', 'alternative', default='')
-                    )
-                    airline_code = safe_get(f_data, 'airline', 'code', 'iata', default='').strip()
-                    display_id = flight_num if flight_num.startswith(airline_code) else f"{airline_code} {flight_num}"
+                    # 4. Build display identifier — prefer ICAO callsign (3-letter) over IATA flight number
+                    callsign   = safe_get(f_data, 'identification', 'callsign', default='').strip()
+                    iata_num   = safe_get(f_data, 'identification', 'number', 'default', default='').strip()
+                    alt_num    = safe_get(f_data, 'identification', 'number', 'alternative', default='').strip()
+                    airline_icao = safe_get(f_data, 'airline', 'code', 'icao', default='').strip()
+                    airline_iata = safe_get(f_data, 'airline', 'code', 'iata', default='').strip()
+
+                    if callsign:
+                        # e.g. "UAE210", "UAL264" — already in 3-letter ICAO format
+                        display_id = callsign
+                    elif iata_num and airline_icao:
+                        # Strip IATA prefix and replace with ICAO: "EK210" → "UAE210"
+                        num_only = iata_num[len(airline_iata):] if (airline_iata and iata_num.startswith(airline_iata)) else iata_num
+                        display_id = f"{airline_icao}{num_only}"
+                    elif iata_num:
+                        display_id = iata_num
+                    elif alt_num:
+                        display_id = alt_num
+                    else:
+                        continue  # no usable identifier
 
                     display_status = "DELAYED" if is_delayed else ("ARRIVING" if mode == 'arrivals' else "DEPARTING")
 
