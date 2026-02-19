@@ -1684,9 +1684,22 @@ class FlightTracker:
                 except:
                     continue
             
+            # Deduplicate: same airline + same city + same departure minute = same flight
+            # (EK210 and UAE36K are identical — one is the IATA number, the other the ICAO callsign)
+            seen_keys = set()
+            deduped = []
+            for entry in processed_list:
+                city = entry.get('to') or entry.get('from') or ''
+                time_bucket = round(entry['sort_time'] / 60)  # bucket by minute
+                key = (time_bucket, city)
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    deduped.append(entry)
+            processed_list = deduped
+
             # Sort by time so the closest 2 flights are selected
             processed_list.sort(key=lambda x: x['sort_time'])
-            
+
             return processed_list[:2] # Return only the 2 closest flights
             
         except Exception as e:
