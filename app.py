@@ -268,6 +268,7 @@ if not os.path.exists(TICKER_DATA_DIR):
 GLOBAL_CONFIG_FILE = "global_config.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 AIRPORT_CACHE_FILE = "airport_name_cache.json"
+AIRLINE_CACHE_FILE = "airline_code_cache.json"
 
 SPORTS_UPDATE_INTERVAL = 5.0    
 STOCKS_UPDATE_INTERVAL = 30     
@@ -349,6 +350,75 @@ def save_airport_cache():
 
 # Load the cache immediately upon script start
 load_airport_cache()
+
+# ── Airline code cache (IATA ↔ ICAO, AI-resolved, persisted to disk) ──
+_ai_airline_cache: dict = {}   # bidirectional: "UA"→"UAL" and "UAL"→"UA"
+
+def load_airline_cache():
+    global _ai_airline_cache
+    if os.path.exists(AIRLINE_CACHE_FILE):
+        try:
+            with open(AIRLINE_CACHE_FILE, 'r') as f:
+                _ai_airline_cache = json.load(f)
+            print(f"📖 Loaded {len(_ai_airline_cache)} airline codes from cache.")
+        except Exception as e:
+            print(f"⚠️ Error loading airline cache: {e}")
+
+def save_airline_cache():
+    try:
+        temp_file = f"{AIRLINE_CACHE_FILE}.tmp"
+        with open(temp_file, 'w') as f:
+            json.dump(_ai_airline_cache, f, indent=4)
+        os.replace(temp_file, AIRLINE_CACHE_FILE)
+    except Exception as e:
+        print(f"⚠️ Error saving airline cache: {e}")
+
+load_airline_cache()
+
+def ai_lookup_airline_codes(query_code: str):
+    """
+    Resolve an unknown airline code (2-letter IATA or 3-letter ICAO) via Gemini AI.
+    Stores the result bidirectionally in AIRLINE_CACHE_FILE so AI is only called once per airline.
+    Returns (icao_3, iata_2) or (None, None).
+    """
+    global _ai_airline_cache
+    query_code = query_code.upper().strip()
+
+    # Check persistent cache first (loaded from disk at startup)
+    if query_code in _ai_airline_cache:
+        partner = _ai_airline_cache[query_code]
+        return (partner, query_code) if len(query_code) == 2 else (query_code, partner)
+
+    if not AI_AVAILABLE or not AI_CLIENT:
+        return None, None
+
+    try:
+        prompt = (
+            f"What are the IATA (2-letter) and ICAO (3-letter) codes for the airline "
+            f"identified by code '{query_code}'?\n"
+            "Reply with ONLY: IATA ICAO (e.g. 'UA UAL'). If unknown, reply 'UNKNOWN'."
+        )
+        response = AI_CLIENT.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                candidate_count=1, max_output_tokens=10, temperature=0.0
+            )
+        )
+        text = (response.text or '').strip().upper()
+        if text == 'UNKNOWN' or not text:
+            return None, None
+        parts = text.split()
+        if len(parts) == 2 and len(parts[0]) == 2 and len(parts[1]) == 3:
+            iata, icao = parts[0], parts[1]
+            _ai_airline_cache[iata] = icao   # bidirectional
+            _ai_airline_cache[icao] = iata
+            save_airline_cache()
+            print(f"[AIRLINE-AI] Resolved '{query_code}' → IATA={iata}, ICAO={icao}")
+            return icao, iata
+    except Exception as e:
+        print(f"[AIRLINE-AI] Lookup failed for '{query_code}': {e}")
+    return None, None
 
 def get_airport_display_name(iata_code):
     """
@@ -1538,30 +1608,41 @@ class FlightTracker:
                 try:
                     f_data = safe_get(flight, 'flight', default={})
                     status_text = safe_get(f_data, 'status', 'generic', 'status', 'text', default='').lower()
-                    
-                    # 1. Filter: Only exclude finished flights
-                    if mode == 'arrivals' and status_text == 'landed': continue
-                    if mode == 'departures' and status_text == 'departed': continue
 
-                    # 2. Get the closest time for sorting (Estimated > Real > Scheduled)
+                    # 1. Extract timestamps first so delay can gate the filter
                     time_info = safe_get(f_data, 'time', default={})
                     t_bucket = 'arrival' if mode == 'arrivals' else 'departure'
-                    
-                    sched_ts = safe_get(time_info, 'scheduled', t_bucket) or 0
-                    est_ts = safe_get(time_info, 'estimated', t_bucket) or safe_get(time_info, 'real', t_bucket)
-                    
-                    # This is the time used for sorting and delay checking
-                    sort_ts = est_ts if est_ts else sched_ts
-                    if sort_ts == 0: continue # Skip if no time data exists
 
-                    # 3. Build the flight record
-                    flight_num = safe_get(f_data, 'identification', 'number', 'default', default='')
+                    sched_ts = safe_get(time_info, 'scheduled', t_bucket) or 0
+                    est_ts   = (safe_get(time_info, 'estimated', t_bucket)
+                                or safe_get(time_info, 'other', t_bucket))
+
+                    sort_ts = est_ts if est_ts else sched_ts
+                    if sort_ts == 0: continue  # skip if absolutely no time data
+
+                    # Detect delay: status text OR estimated 15+ min later than scheduled
+                    is_delayed = (
+                        'delay' in status_text or
+                        (sched_ts and est_ts and
+                         isinstance(sched_ts, (int, float)) and isinstance(est_ts, (int, float)) and
+                         (est_ts - sched_ts) >= 900)
+                    )
+
+                    # 2. Filter finished flights — delayed flights always pass through
+                    if not is_delayed:
+                        if mode == 'arrivals' and status_text == 'landed': continue
+                        if mode == 'departures' and status_text == 'departed': continue
+
+                    # 3. Build the flight record — try multiple identification fields
+                    flight_num = (
+                        safe_get(f_data, 'identification', 'number', 'default', default='') or
+                        safe_get(f_data, 'identification', 'callsign', default='') or
+                        safe_get(f_data, 'identification', 'number', 'alternative', default='')
+                    )
                     airline_code = safe_get(f_data, 'airline', 'code', 'iata', default='').strip()
                     display_id = flight_num if flight_num.startswith(airline_code) else f"{airline_code} {flight_num}"
-                    
-                    # Original label format
-                    display_status = "DELAYED" if (est_ts and sched_ts and (est_ts - sched_ts) > 60) else \
-                                     ("ARRIVING" if mode == 'arrivals' else "DEPARTING")
+
+                    display_status = "DELAYED" if is_delayed else ("ARRIVING" if mode == 'arrivals' else "DEPARTING")
 
                     city_key = 'origin' if mode == 'arrivals' else 'destination'
                     city_code = safe_get(f_data, 'airport', city_key, 'code', 'iata', default='')
@@ -1611,6 +1692,14 @@ class FlightTracker:
             potential_iata = flight_code[:2]
             if potential_iata in _IATA_TO_ICAO:
                 return _IATA_TO_ICAO[potential_iata], potential_iata, flight_code[2:]
+
+        # AI fallback — try both prefix lengths (3-letter ICAO first, then 2-letter IATA)
+        for prefix_len in (3, 2):
+            if len(flight_code) > prefix_len:
+                prefix = flight_code[:prefix_len]
+                icao, iata = ai_lookup_airline_codes(prefix)
+                if icao and iata:
+                    return icao, iata, flight_code[prefix_len:]
 
         raise ValueError(f"Invalid flight code format: {flight_code}")
 
