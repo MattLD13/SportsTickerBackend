@@ -3095,9 +3095,10 @@ class SportsFetcher:
             'away_abbr': s_data.get('name', 'Unknown'),
             'home_logo': s_data.get('cover', ''),
             'situation': {
-                'progress': prog, 
-                'duration': s_data['duration'], 
-                'is_playing': is_playing
+                'progress': prog,
+                'duration': s_data['duration'],
+                'is_playing': is_playing,
+                'fetch_ts': time.time()
             }
         }
 
@@ -3384,6 +3385,20 @@ def stocks_worker():
                 fetcher.update_current_games()
         except Exception as e:
             print(f"Stock worker error: {e}")
+        time.sleep(1)
+
+def music_worker():
+    while True:
+        try:
+            with data_lock:
+                mode = state['mode']
+            if mode == 'music':
+                try:
+                    fetcher.update_current_games()
+                except Exception as e:
+                    print(f"Music Worker Error: {e}")
+        except Exception as e:
+            print(f"Music worker error: {e}")
         time.sleep(1)
 
 def flights_worker():
@@ -4262,6 +4277,7 @@ if __name__ == "__main__":
     print("🚀 Starting Ticker Server...")
     threading.Thread(target=sports_worker, daemon=True).start()
     threading.Thread(target=stocks_worker, daemon=True).start()
+    threading.Thread(target=music_worker, daemon=True).start()
     if flight_tracker:
         threading.Thread(target=flights_worker, daemon=True).start()
     print("✅ Worker threads started")
