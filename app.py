@@ -245,6 +245,7 @@ if not os.path.exists(TICKER_DATA_DIR):
 
 GLOBAL_CONFIG_FILE = "global_config.json"
 STOCK_CACHE_FILE = "stock_cache.json"
+GAME_CACHE_FILE = "game_cache.json"
 AIRPORT_CACHE_FILE = "airport_name_cache.json"
 AIRLINE_CACHE_FILE = "airline_code_cache.json"
 
@@ -795,12 +796,24 @@ for t_file in ticker_files:
             
             # Repair missing keys on load
             if 'settings' not in t_data: t_data['settings'] = DEFAULT_TICKER_SETTINGS.copy()
-            if 'my_teams' not in t_data: t_data['my_teams'] = []
+            if 'my_teams' not in t_data: t_data['my_teams'] = None
+            elif t_data.get('my_teams') == []: t_data['my_teams'] = None  # migrate old unconfigured tickers
             if 'clients' not in t_data: t_data['clients'] = []
             
             tickers[tid] = t_data
     except Exception as e:
         print(f"❌ Failed to load ticker file {t_file}: {e}")
+
+# Pre-populate current_games from cache so display works immediately on restart
+if os.path.exists(GAME_CACHE_FILE):
+    try:
+        with open(GAME_CACHE_FILE, 'r') as _gcf:
+            _cached = json.load(_gcf)
+        if isinstance(_cached, list) and _cached:
+            state['current_games'] = _cached
+            print(f"📦 Loaded {len(_cached)} cached games from {GAME_CACHE_FILE}")
+    except Exception as _e:
+        print(f"⚠️ Could not load game cache: {_e}")
 
 
 # ── Section G: Save Helpers ──
@@ -1997,6 +2010,10 @@ class SportsFetcher:
         self.consecutive_empty_fetches = 0
         # abbr-keyed index rebuilt in fetch_all_teams — O(1) team lookups
         self._teams_abbr_index: dict = {}  # league -> {abbr -> team_entry}
+        # Per-mode content buffers: mode_name → list[game_obj]
+        # Sports/live/my_teams share the same raw buffer; filtering happens in /data.
+        self._mode_buffers: dict = {}
+        self._mode_buffer_lock = threading.Lock()
         
         self.leagues = { 
             item['id']: item['fetch'] 
@@ -3104,6 +3121,35 @@ class SportsFetcher:
 
     # ── Per-mode buffer builders ────────────────────────────────────────────
 
+    def _filter_and_sort_games(self, all_games, visible_start_utc, visible_end_utc):
+        """Apply 3AM cutoff window filter and sort by priority."""
+        filtered = []
+        for g in all_games:
+            g_type = g.get('type', '')
+            g_sport = g.get('sport', '')
+            if g_type in ['clock', 'weather', 'music'] or g_sport in ['clock', 'weather', 'music', 'flight']:
+                filtered.append(g)
+                continue
+            state_val = g.get('state', '')
+            status_val = str(g.get('status', '')).upper()
+            if state_val in ['in', 'half', 'crit']:
+                filtered.append(g)
+                continue
+            if state_val == 'pre':
+                filtered.append(g)
+                continue
+            if state_val == 'post' or 'FINAL' in status_val:
+                try:
+                    game_dt = parse_iso(g.get('startTimeUTC', ''))
+                    if visible_start_utc <= game_dt < visible_end_utc:
+                        filtered.append(g)
+                except Exception:
+                    filtered.append(g)
+                continue
+            filtered.append(g)
+        filtered.sort(key=_game_sort_key)
+        return filtered
+
     def _build_sports_buffer(self):
         """Fetch all active sports leagues and return sorted game list."""
         with data_lock:
@@ -3158,72 +3204,37 @@ class SportsFetcher:
             )
             futures[f] = league_key
         
-        # Wait for all threads
-        done, _ = concurrent.futures.wait(futures.keys(), timeout=API_TIMEOUT)
-        
-        for f in done:
-            lk = futures[f]
-            try: 
-                res = f.result()
-                if res: 
-                    all_games.extend(res)
-                    self.league_last_data[lk] = res 
-                elif lk in self.league_last_data:
-                    all_games.extend(self.league_last_data[lk])
-            except Exception as e: 
-                if lk in self.league_last_data:
-                    all_games.extend(self.league_last_data[lk])
+        # Seed partial cache with last-known data so interim results are meaningful
+        partial = {lk: self.league_last_data.get(lk, []) for lk in futures.values()}
+        deadline = time.time() + API_TIMEOUT
 
-        # === FILTER OUT OLD GAMES (3AM CUTOFF) ===
-        # Remove completed games that started before the visibility window
-        filtered_games = []
-        for g in all_games:
-            # Always keep utilities (clock, weather, music, flights)
-            g_type = g.get('type', '')
-            g_sport = g.get('sport', '')
-            if g_type in ['clock', 'weather', 'music'] or g_sport in ['clock', 'weather', 'music', 'flight']:
-                filtered_games.append(g)
-                continue
-            
-            # For sports games, check if they're old finals
-            state_val = g.get('state', '')
-            status_val = str(g.get('status', '')).upper()
-            
-            # Keep in-progress games
-            if state_val in ['in', 'half', 'crit']:
-                filtered_games.append(g)
-                continue
-            
-            # Keep scheduled games
-            if state_val == 'pre':
-                filtered_games.append(g)
-                continue
-            
-            # For completed games, check if they're within the visibility window
-            if state_val == 'post' or 'FINAL' in status_val:
-                try:
-                    game_start_str = g.get('startTimeUTC', '')
-                    if game_start_str:
-                        game_dt = parse_iso(game_start_str)
-                        # Only keep if the game started within the visibility window
-                        if visible_start_utc <= game_dt < visible_end_utc:
-                            filtered_games.append(g)
-                        # else: game is too old, don't include it
-                    else:
-                        # No timestamp, keep it to be safe
-                        filtered_games.append(g)
-                except:
-                    # Parse error, keep it to be safe
-                    filtered_games.append(g)
-                continue
-            
-            # Default: keep the game
-            filtered_games.append(g)
-        
-        all_games = filtered_games
-        # === END FILTER ===
-        # Sorting & Buffering
-        all_games.sort(key=_game_sort_key)
+        for future in concurrent.futures.as_completed(list(futures.keys())):
+            lk = futures[future]
+            try:
+                res = future.result(timeout=0)
+                if res:
+                    partial[lk] = res
+                    self.league_last_data[lk] = res
+            except Exception:
+                pass  # keep cached data in partial
+
+            # Write interim result after each league arrives
+            interim_all = []
+            for games in partial.values():
+                interim_all.extend(games)
+            interim = self._filter_and_sort_games(interim_all, visible_start_utc, visible_end_utc)
+            with data_lock:
+                if interim or not state.get('current_games'):
+                    state['current_games'] = interim
+
+            if time.time() >= deadline:
+                break
+
+        # Final pass: collect complete result from all partial data
+        all_games = []
+        for games in partial.values():
+            all_games.extend(games)
+        all_games = self._filter_and_sort_games(all_games, visible_start_utc, visible_end_utc)
 
         return all_games
 
@@ -3271,8 +3282,16 @@ class SportsFetcher:
     # ── Central update dispatcher ──────────────────────────────────────────
 
     def update_current_games(self):
+        """Build and cache content buffers for every mode currently needed by any ticker."""
         with data_lock:
-            mode = state['mode']
+            global_mode = state.get('mode', 'sports')
+            # Collect all modes currently in use across all tickers
+            needed: set = {global_mode}
+            for t in tickers.values():
+                m = t.get('settings', {}).get('mode')
+                if m and m in VALID_MODES:
+                    needed.add(m)
+
         _dispatch = {
             'sports':         self._build_sports_buffer,
             'live':           self._build_sports_buffer,
@@ -3284,25 +3303,47 @@ class SportsFetcher:
             'flights':        self._build_flights_buffer,
             'flight_tracker': self._build_flight_tracker_buffer,
         }
-        builder = _dispatch.get(mode, self._build_sports_buffer)
-        result = builder()
 
-        # Maintain history buffer for live-delay only in sports modes
-        if mode in ('sports', 'live', 'my_teams'):
-            snap = (time.time(), result[:])
-            self.history_buffer.append(snap)
-            if len(self.history_buffer) > 120:
-                self.history_buffer = self.history_buffer[-60:]
+        sports_built = False
+        for mode in needed:
+            is_sports = mode in ('sports', 'live', 'my_teams')
 
+            if is_sports and sports_built:
+                # All three sports-like modes share the same raw buffer; already built.
+                continue
+
+            builder = _dispatch.get(mode, self._build_sports_buffer)
+            result = builder()
+
+            if is_sports:
+                sports_built = True
+                # Store under all three sports-like keys (filtering is done in /data)
+                for sm in ('sports', 'live', 'my_teams'):
+                    self._set_mode_buffer(sm, result)
+
+                # Maintain history buffer for live-delay
+                snap = (time.time(), result[:])
+                self.history_buffer.append(snap)
+                if len(self.history_buffer) > 120:
+                    self.history_buffer = self.history_buffer[-60:]
+
+                # Persist non-empty sports games so they survive server restarts
+                if result:
+                    try:
+                        save_json_atomically(GAME_CACHE_FILE, result)
+                    except Exception:
+                        pass
+            else:
+                self._set_mode_buffer(mode, result)
+
+        # Keep global state['current_games'] in sync with the global mode
+        # (for backward compat with any code that reads it directly)
+        with self._mode_buffer_lock:
+            global_result = self._mode_buffers.get(global_mode, [])
+        is_global_sports = global_mode in ('sports', 'live', 'my_teams')
         with data_lock:
-            # For sports modes, keep the previous buffer if the new result is empty
-            # (avoids a brief clock fallback when the sports data refresh cycle
-            # temporarily produces no results). For all other modes (flights, weather,
-            # clock, etc.) always replace, so stale sports data never leaks into the
-            # flights/weather filter and permanently blocks content from showing.
-            is_sports_mode = mode in ('sports', 'live', 'my_teams')
-            if result or not is_sports_mode or not state.get('current_games'):
-                state['current_games'] = result
+            if global_result or not is_global_sports or not state.get('current_games'):
+                state['current_games'] = global_result
 
     def get_snapshot_for_delay(self, delay_seconds):
         """Return current games, optionally from history buffer for live-delay."""
@@ -3312,6 +3353,26 @@ class SportsFetcher:
         target_time = time.time() - delay_seconds
         closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
         return closest[1]
+
+    def _set_mode_buffer(self, mode: str, result: list):
+        """Store result in per-mode buffer. Also syncs global buffer when mode matches global."""
+        with self._mode_buffer_lock:
+            self._mode_buffers[mode] = result
+        # Keep global state['current_games'] in sync for backward compat
+        with data_lock:
+            if state.get('mode') == mode:
+                if result or not state.get('current_games'):
+                    state['current_games'] = result
+
+    def get_mode_snapshot(self, mode: str, delay_seconds: float = 0) -> list:
+        """Return buffered content for the given mode.
+        Sports modes with delay use the history buffer for live-delay support.
+        All other modes always return current data (delay is ignored).
+        """
+        if mode in ('sports', 'live', 'my_teams'):
+            return self.get_snapshot_for_delay(delay_seconds)
+        with self._mode_buffer_lock:
+            return list(self._mode_buffers.get(mode, []))
 
 # Restore TestMode from persisted state (only active when debug_mode is on)
 if state.get('debug_mode'):
@@ -3354,15 +3415,24 @@ except Exception as e:
     flight_tracker = None
 
 # ── Section K: Worker Threads ──
+def _any_ticker_needs(*modes):
+    """Return True if the global state or any paired ticker is in one of the given modes."""
+    mode_set = set(modes)
+    with data_lock:
+        if state.get('mode') in mode_set:
+            return True
+        for t in tickers.values():
+            if t.get('paired') and t.get('settings', {}).get('mode') in mode_set:
+                return True
+    return False
+
 def sports_worker():
     try: fetcher.fetch_all_teams()
     except Exception as e: print(f"Team fetch error: {e}")
 
     while True:
         start_time = time.time()
-        with data_lock:
-            mode = state['mode']
-        if mode in ('sports', 'live', 'my_teams'):
+        if _any_ticker_needs('sports', 'live', 'my_teams'):
             try:
                 fetcher.update_current_games()
             except Exception as e:
@@ -3374,10 +3444,9 @@ def stocks_worker():
     _cached_active_key = None
     while True:
         try:
-            with data_lock:
-                mode = state['mode']
-                active_sports = state['active_sports']
-            if mode == 'stocks':
+            if _any_ticker_needs('stocks'):
+                with data_lock:
+                    active_sports = state['active_sports']
                 active_key = frozenset(k for k, v in active_sports.items() if k.startswith('stock_') and v)
                 if active_key != _cached_active_key:
                     _cached_active_key = active_key
@@ -3390,9 +3459,7 @@ def stocks_worker():
 def music_worker():
     while True:
         try:
-            with data_lock:
-                mode = state['mode']
-            if mode == 'music':
+            if _any_ticker_needs('music'):
                 try:
                     fetcher.update_current_games()
                 except Exception as e:
@@ -3563,35 +3630,51 @@ def api_config():
                 if k not in allowed_keys: continue
                 
                 # HANDLE TEAMS
-                if k == 'my_teams' and isinstance(v, list):
-                    cleaned = []
-                    seen = set()
-                    for e in v:
-                        if e:
-                            k_str = str(e).strip()
-                            if k_str not in seen:
-                                seen.add(k_str)
-                                cleaned.append(k_str)
-                    
-                    if target_id and target_id in tickers:
-                        tickers[target_id]['my_teams'] = cleaned
-                        tickers[target_id].pop('my_teams_set', None)
-                    else:
-                        state['my_teams'] = cleaned
-                        state.pop('my_teams_set', None)
-                    continue
+                if k == 'my_teams':
+                    if v is None:
+                        # null = reset ticker to "use global fallback"
+                        if target_id and target_id in tickers:
+                            tickers[target_id]['my_teams'] = None
+                            tickers[target_id].pop('my_teams_set', None)
+                        continue
+                    elif isinstance(v, list):
+                        cleaned = []
+                        seen = set()
+                        for e in v:
+                            if e:
+                                k_str = str(e).strip()
+                                if k_str not in seen:
+                                    seen.add(k_str)
+                                    cleaned.append(k_str)
+                        if target_id and target_id in tickers:
+                            tickers[target_id]['my_teams'] = cleaned
+                            tickers[target_id].pop('my_teams_set', None)
+                        else:
+                            state['my_teams'] = cleaned
+                            state.pop('my_teams_set', None)
+                        continue
 
                 # HANDLE ACTIVE SPORTS
                 if k == 'active_sports' and isinstance(v, dict): 
                     state['active_sports'].update(v)
                     continue
                 
-                # HANDLE MODES & SETTINGS
+                # HANDLE MODE — per-ticker isolation
+                if k == 'mode':
+                    if target_id and target_id in tickers:
+                        # Targeted request: only update this ticker's mode
+                        tickers[target_id]['settings']['mode'] = v
+                    else:
+                        # No specific target: update the global default
+                        state['mode'] = v
+                    continue
+
+                # HANDLE ALL OTHER SETTINGS
                 if v is not None: state[k] = v
-                
-                # SYNC TO TICKER SETTINGS
+
+                # SYNC TO TICKER SETTINGS (non-mode keys only)
                 if target_id and target_id in tickers:
-                    if k in tickers[target_id]['settings'] or k == 'mode':
+                    if k in tickers[target_id]['settings']:
                         tickers[target_id]['settings'][k] = v
             
             # Sync auto-filled airport info back to state dictionary
@@ -3631,7 +3714,9 @@ def api_config():
 
         # For flights modes, wake the background worker immediately so data is
         # ready as soon as possible (otherwise it can take up to 30 s to fetch).
-        new_mode = state.get('mode', '')
+        # Check effective mode: use targeted ticker's mode if set, else global.
+        new_mode = (tickers[target_id]['settings'].get('mode') if (target_id and target_id in tickers)
+                    else None) or state.get('mode', '')
         if new_mode in ('flights', 'flight_tracker') and flight_tracker:
             flight_tracker.force_update()
 
@@ -3693,9 +3778,11 @@ def get_ticker_data():
         tickers[ticker_id] = {
             "name": "Ticker",
             "settings": DEFAULT_TICKER_SETTINGS.copy(),
-            "my_teams": [],
-            "clients": [],
-            "paired": False,
+            "my_teams": None,
+            # Hardware device self-authorizes: its device_id is both the ticker key
+            # and its client identity, so add it to clients automatically.
+            "clients": [ticker_id],
+            "paired": True,
             "pairing_code": generate_pairing_code(),
             "last_seen": time.time()
         }
@@ -3715,26 +3802,23 @@ def get_ticker_data():
 
     t_settings = rec['settings']
 
-    # ==============================================================================
-    # CRITICAL FIX: FORCE SYNC WITH GLOBAL STATE
-    # This ignores the ticker's local 'mode' setting and uses the server's global mode.
-    # This ensures that when you change the mode in the dashboard, the ticker updates.
-    # ==============================================================================
-    current_mode = state.get('mode', 'sports')
-    
-    # Update local config to match global so the file stays mostly in sync
-    if t_settings.get('mode') != current_mode:
-        t_settings['mode'] = current_mode
-        # Optional: Save here if you want persistence, but might be too much disk I/O
-        # save_specific_ticker(ticker_id) 
+    # Per-ticker mode: use the ticker's own mode setting, fall back to global
+    current_mode = t_settings.get('mode') or state.get('mode', 'sports')
+    current_mode = MODE_MIGRATIONS.get(current_mode, current_mode)
+    if current_mode not in VALID_MODES:
+        current_mode = state.get('mode', 'sports')
 
     # Sleep Mode Check
     if t_settings.get('brightness', 100) <= 0:
         return jsonify({ "status": "sleep", "content": { "sports": [] } })
 
     # 4. Content Fetching
-    delay_seconds = t_settings.get('live_delay_seconds', 0) if t_settings.get('live_delay_mode') else 0
-    raw_games = fetcher.get_snapshot_for_delay(delay_seconds)
+    # Live delay only applies to sports content (history buffer only exists for sports)
+    is_sports_mode = current_mode in ('sports', 'live', 'my_teams')
+    delay_seconds = (t_settings.get('live_delay_seconds', 0)
+                     if (is_sports_mode and t_settings.get('live_delay_mode'))
+                     else 0)
+    raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
     visible_items = []
 
     # 5. Filter Buffer based on current_mode
@@ -3750,7 +3834,8 @@ def get_ticker_data():
             if music_obj: visible_items.append(music_obj)
 
     elif current_mode == 'my_teams':
-        saved_teams = set(rec.get('my_teams') or state.get('my_teams', []))
+        _ticker_teams = rec.get('my_teams')
+        saved_teams = set(state.get('my_teams', []) if _ticker_teams is None else _ticker_teams)
         COLLISION_ABBRS = {'LV'}
         for g in raw_games:
             sport = g.get('sport', '')
@@ -3951,7 +4036,7 @@ def register_ticker():
         new_ticker = {
             "name": friendly_name,
             "settings": DEFAULT_TICKER_SETTINGS.copy(),
-            "my_teams": [],
+            "my_teams": None,
             "clients": [cid],
             "paired": True,
             "pairing_code": generate_pairing_code(),
@@ -4002,20 +4087,18 @@ def update_settings(tid):
     data = request.json
     rec['settings'].update(data)
     
-    # --- FIX: Sync Mode ---
+    # --- FIX: Sync Mode (per-ticker only — do NOT touch global state['mode']) ---
     if 'mode' in data:
         new_mode = data['mode']
         new_mode = MODE_MIGRATIONS.get(new_mode, new_mode)
-        
-        with data_lock:
-            state['mode'] = new_mode
-            rec['settings']['mode'] = new_mode
-            
-            # NOTE: Removed the logic that cleared flight_id and flags here.
-            # This ensures that flight tracking continues in the background 
-            # if a flight ID was previously set.
+        if new_mode not in VALID_MODES:
+            new_mode = 'sports'
 
-        # Trigger immediate refresh
+        with data_lock:
+            # Only update this ticker's mode setting; other tickers keep theirs
+            rec['settings']['mode'] = new_mode
+
+        # Trigger immediate buffer rebuild for the new mode
         try:
             fetcher.update_current_games()
         except Exception as e:
@@ -4048,7 +4131,9 @@ def api_state():
         response_settings = dict(state)
     if ticker_id and ticker_id in tickers:
         response_settings.update(tickers[ticker_id]['settings'])
-        response_settings['my_teams'] = tickers[ticker_id].get('my_teams', [])
+        _t_teams = tickers[ticker_id].get('my_teams')
+        # None = use global fallback; [] = intentionally no teams
+        response_settings['my_teams'] = list(state.get('my_teams', [])) if _t_teams is None else _t_teams
         response_settings['ticker_id'] = ticker_id
     response_settings.pop('flight_submode', None)
 
@@ -4199,8 +4284,8 @@ def check_my_teams():
 
         if ticker_id in tickers:
             rec = tickers[ticker_id]
-            specific_teams = rec.get('my_teams', [])
-            using_fallback = len(specific_teams) == 0
+            specific_teams = rec.get('my_teams')
+            using_fallback = specific_teams is None
             effective = global_teams if using_fallback else specific_teams
             return jsonify({ 
                 "status": "ok", "scope": "Ticker Specific", 
