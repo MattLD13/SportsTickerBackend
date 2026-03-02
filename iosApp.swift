@@ -427,8 +427,8 @@ class TickerViewModel: ObservableObject {
             }
         }
 
-        // Slow poll: device list only changes on pair/unpair
-        devicesTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
+        // Poll device list every 5s to keep last_seen / online beacon fresh.
+        devicesTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             Task { @MainActor in
                 if !self.isEditing { self.fetchDevices() }
             }
@@ -653,10 +653,15 @@ class TickerViewModel: ObservableObject {
         
         URLSession.shared.dataTask(with: request) { data, _, _ in
             if let d = data, let decoded = try? JSONDecoder().decode([TickerDevice].self, from: d) {
-                
+
                 DispatchQueue.main.async {
+                    // A valid /tickers response proves the server is reachable.
+                    // Without this, a race where fetchDevices() finishes before
+                    // fetchData() would call updateOverallStatus() while
+                    // isServerReachable is still false, showing "Server Offline".
+                    self.isServerReachable = true
                     self.devices = decoded
-                    
+
                     // === FIX: AUTO-LOGOUT LOGIC ===
                     // If the server says we have NO paired devices, we must forget the saved ID.
                     if self.devices.isEmpty {
@@ -666,7 +671,7 @@ class TickerViewModel: ObservableObject {
                         }
                     }
                     // ==============================
-                    
+
                     self.updateOverallStatus()
                 }
             }
@@ -853,6 +858,9 @@ class TickerViewModel: ObservableObject {
             if let httpResponse = response as? HTTPURLResponse {
                 if httpResponse.statusCode == 200 {
                     print("✅ Settings Saved Successfully")
+                    // Refresh device list so toggles (inverted, live delay, etc.)
+                    // reflect the confirmed server state immediately.
+                    DispatchQueue.main.async { self.fetchDevices() }
                 } else {
                     print("⛔ Server Rejected Request. Status: \(httpResponse.statusCode). Did you Pair?")
                 }
