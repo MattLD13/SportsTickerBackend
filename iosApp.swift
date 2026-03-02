@@ -485,7 +485,7 @@ class TickerViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.isServerReachable = true
                     
-                    self.games = decoded.games.sorted { g1, g2 in
+                    self.games = decoded.games.filter { $0.is_shown }.sorted { g1, g2 in
                         if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
                         if g1.state == "in" && g2.state != "in" { return true }
                         return false
