@@ -4149,6 +4149,7 @@ def api_state():
     for g in raw_games:
         game_copy = g.copy()
         sport = game_copy.get('sport', '')
+        g_type = game_copy.get('type', '')
         should_show = True
 
         if current_mode == 'my_teams':
@@ -4162,8 +4163,29 @@ def api_state():
             if game_copy.get('state') not in ('in', 'half', 'crit'):
                 should_show = False
         elif current_mode == 'sports':
-            status_lower = str(game_copy.get('status', '')).lower()
-            if any(k in status_lower for k in ("postponed", "suspended", "canceled", "ppd")):
+            if g_type in ('music', 'clock', 'weather', 'stock_ticker', 'flight_visitor'):
+                should_show = False
+            else:
+                status_lower = str(game_copy.get('status', '')).lower()
+                if any(k in status_lower for k in ("postponed", "suspended", "canceled", "ppd")):
+                    should_show = False
+        elif current_mode == 'music':
+            if g_type != 'music':
+                should_show = False
+        elif current_mode == 'stocks':
+            if g_type != 'stock_ticker':
+                should_show = False
+        elif current_mode == 'weather':
+            if g_type != 'weather':
+                should_show = False
+        elif current_mode == 'clock':
+            if g_type != 'clock':
+                should_show = False
+        elif current_mode == 'flights':
+            if sport != 'flight':
+                should_show = False
+        elif current_mode == 'flight_tracker':
+            if g_type != 'flight_visitor':
                 should_show = False
 
         game_copy['is_shown'] = should_show
