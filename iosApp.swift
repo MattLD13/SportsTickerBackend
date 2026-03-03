@@ -484,11 +484,17 @@ class TickerViewModel: ObservableObject {
                 DispatchQueue.main.async {
                     self.isServerReachable = true
                     
-                    self.games = decoded.games.filter { $0.is_shown }.sorted { g1, g2 in
-                        if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
-                        if g1.state == "in" && g2.state != "in" { return true }
-                        return false
-                    }
+                    // Sports filter modes: keep all games (dim non-matching ones).
+                    // Other modes: strict filter so only the relevant content shows.
+                    let isSportsFilterMode = ["sports", "live", "my_teams"].contains(self.state.mode)
+                    self.games = decoded.games
+                        .filter { $0.is_shown || isSportsFilterMode }
+                        .sorted { g1, g2 in
+                            if g1.is_shown != g2.is_shown { return g1.is_shown }
+                            if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
+                            if g1.state == "in" && g2.state != "in" { return true }
+                            return false
+                        }
                     
                     if !self.isEditing {
                         self.state = decoded.settings
