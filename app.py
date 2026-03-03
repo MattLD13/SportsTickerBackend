@@ -797,6 +797,7 @@ for t_file in ticker_files:
             
             # Repair missing keys on load
             if 'settings' not in t_data: t_data['settings'] = DEFAULT_TICKER_SETTINGS.copy()
+            t_data['settings'].pop('active_sports', None)  # active_sports is global-only; strip stale per-ticker copy
             if 'my_teams' not in t_data: t_data['my_teams'] = None
             elif t_data.get('my_teams') == []: t_data['my_teams'] = None  # migrate old unconfigured tickers
             if 'clients' not in t_data: t_data['clients'] = []
@@ -4131,6 +4132,7 @@ def api_state():
         response_settings = dict(state)
     if ticker_id and ticker_id in tickers:
         response_settings.update(tickers[ticker_id]['settings'])
+        response_settings['active_sports'] = dict(state['active_sports'])  # global always wins
         _t_teams = tickers[ticker_id].get('my_teams')
         # None = use global fallback (always []); non-empty list = ticker's saved teams
         response_settings['my_teams'] = list(state.get('my_teams', [])) if _t_teams is None else _t_teams
