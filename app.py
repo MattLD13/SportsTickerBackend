@@ -746,9 +746,11 @@ if os.path.exists(GLOBAL_CONFIG_FILE):
             config_data = json.load(f)
         # Migrate and clean legacy keys in-memory first
         config_data['mode'] = MODE_MIGRATIONS.get(config_data.get('mode', 'sports'), config_data.get('mode', 'sports'))
-        # Handle old flights+track_submode combo
-        if config_data.get('mode') == 'flights' and config_data.get('flight_submode') == 'track':
+        # Handle legacy flights+submode combos bidirectionally
+        if config_data.get('flight_submode') == 'track':
             config_data['mode'] = 'flight_tracker'
+        elif config_data.get('flight_submode') == 'airport' and config_data.get('mode') == 'flight_tracker':
+            config_data['mode'] = 'flights'
         config_data.pop('flight_submode', None)
         config_data['airline_filter'] = ''
         # Apply to state
@@ -3526,15 +3528,20 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
 
-        # Migrate legacy modes to new clean mode names
+        # Migrate legacy modes to canonical mode names
+        incoming_submode = new_data.get('flight_submode')
         if 'mode' in new_data:
             new_data['mode'] = MODE_MIGRATIONS.get(new_data['mode'], new_data['mode'])
-            # Old flights+track_submode combo → flight_tracker
-            if new_data['mode'] == 'flights' and new_data.get('flight_submode') == 'track':
+            # Submode compatibility: allow both directions
+            if incoming_submode == 'track':
                 new_data['mode'] = 'flight_tracker'
+            elif incoming_submode == 'airport' and new_data['mode'] == 'flight_tracker':
+                new_data['mode'] = 'flights'
             # Reject any mode that isn't valid; fall back to sports
             if new_data['mode'] not in VALID_MODES:
                 new_data['mode'] = 'sports'
+        elif incoming_submode in ('track', 'airport'):
+            new_data['mode'] = 'flight_tracker' if incoming_submode == 'track' else 'flights'
         # Drop flight_submode — no longer a valid key
         new_data.pop('flight_submode', None)
         
