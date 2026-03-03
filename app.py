@@ -553,6 +553,8 @@ LEAGUE_OPTIONS = [
 
 # Pre-built label lookup from LEAGUE_OPTIONS (replaces next() linear scan in get_list)
 _LEAGUE_LABEL_MAP = {item['id']: item['label'] for item in LEAGUE_OPTIONS}
+# Authoritative set of valid league IDs — used to reject stale keys from clients/config
+_VALID_LEAGUE_IDS = frozenset(item['id'] for item in LEAGUE_OPTIONS)
 # Pre-built stock list index — LEAGUE_OPTIONS is constant, no need to rebuild per StockFetcher init
 _STOCK_LISTS = {
     item['id']: item['stock_list']
@@ -3646,9 +3648,11 @@ def api_config():
                         # else: global my_teams always stays [] — ignore untargeted team updates
                         continue
 
-                # HANDLE ACTIVE SPORTS
-                if k == 'active_sports' and isinstance(v, dict): 
-                    state['active_sports'].update(v)
+                # HANDLE ACTIVE SPORTS — only accept keys that exist in LEAGUE_OPTIONS
+                if k == 'active_sports' and isinstance(v, dict):
+                    for ak, av in v.items():
+                        if ak in _VALID_LEAGUE_IDS:
+                            state['active_sports'][ak] = av
                     continue
                 
                 # HANDLE MODE — per-ticker isolation
