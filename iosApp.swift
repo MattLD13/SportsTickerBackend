@@ -294,17 +294,8 @@ struct TickerState: Codable, Sendable {
         self.flight_submode = flight_submode
     }
     
-    // Helper: The "Safety Net" List
-    static var defaultActiveSports: [String: Bool] {
-        return [
-            "nfl": true, "nhl": true, "mlb": true, "nba": true,
-            "ncf_fbs": true, "ncf_fcs": true, "ahl": true,
-            "soccer_epl": true, "soccer_champ": true, "soccer_champions_league": true,
-            "soccer_europa_league": true, "soccer_fa_cup": true, "soccer_l1": true, "soccer_l2": true, "soccer_wc": true,
-            "f1": true, "nascar": true, "hockey_olympics": true,
-            "weather": true, "clock": true
-        ]
-    }
+    // Empty — league defaults are filled dynamically from /api/leagues once connected
+    static var defaultActiveSports: [String: Bool] { [:] }
 }
 
 struct APIResponse: Decodable, Sendable {
@@ -634,7 +625,13 @@ class TickerViewModel: ObservableObject {
         guard let url = URL(string: "\(base)/leagues") else { return }
         URLSession.shared.dataTask(with: url) { data, _, _ in
             if let d = data, let decoded = try? JSONDecoder().decode([LeagueOption].self, from: d) {
-                DispatchQueue.main.async { self.leagueOptions = decoded }
+                DispatchQueue.main.async {
+                    self.leagueOptions = decoded
+                    // Backfill any league keys missing from active_sports using the server's default
+                    for opt in decoded where self.state.active_sports[opt.id] == nil {
+                        self.state.active_sports[opt.id] = opt.enabled ?? true
+                    }
+                }
             }
         }.resume()
     }
