@@ -767,6 +767,16 @@ if os.path.exists(GLOBAL_CONFIG_FILE):
 # Global teams are always empty; teams are stored per-ticker only
 state['my_teams'] = []
 
+# Reconcile active_sports against current LEAGUE_OPTIONS:
+# remove deprecated keys, add any new ones with their defaults
+_valid_league_ids = {item['id'] for item in LEAGUE_OPTIONS}
+for _k in list(state['active_sports'].keys()):
+    if _k not in _valid_league_ids:
+        del state['active_sports'][_k]
+for _item in LEAGUE_OPTIONS:
+    if _item['id'] not in state['active_sports']:
+        state['active_sports'][_item['id']] = _item['default']
+
 # Ensure mode is valid
 state['mode'] = MODE_MIGRATIONS.get(state.get('mode', 'sports'), state.get('mode', 'sports'))
 if state['mode'] not in VALID_MODES:
