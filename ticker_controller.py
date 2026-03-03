@@ -554,24 +554,43 @@ class TickerStreamer:
 
     def draw_weather_pixel_art(self, d, icon_name, x, y):
         icon = str(icon_name).lower()
-        SUN_Y = (255, 200, 0); CLOUD_W = (200, 200, 200); RAIN_B = (60, 100, 255); SNOW_W = (255, 255, 255)
+        SUN_Y = (255, 200, 0); CLOUD_W = (205, 210, 220); RAIN_B = (60, 130, 255); SNOW_W = (210, 235, 255)
         if 'sun' in icon or 'clear' in icon:
-            d.ellipse((x+2, y+2, x+12, y+12), fill=SUN_Y)
-            for rx, ry in [(x+7, y), (x+7, y+14), (x, y+7), (x+14, y+7), (x+2, y+2), (x+12, y+2), (x+2, y+12), (x+12, y+12)]:
+            d.ellipse((x+3, y+3, x+11, y+11), fill=SUN_Y)
+            # cardinal rays
+            for rx, ry in [(x+7, y), (x+7, y+14), (x, y+7), (x+14, y+7)]:
+                d.line([(rx, ry), (rx, ry+1)], fill=SUN_Y)
+            # diagonal rays
+            for rx, ry in [(x+2, y+2), (x+12, y+2), (x+2, y+12), (x+12, y+12)]:
                 d.point((rx, ry), fill=SUN_Y)
-        elif 'rain' in icon or 'drizzle' in icon:
-            d.ellipse((x+2, y+2, x+14, y+10), fill=CLOUD_W)
-            d.line((x+4, y+11, x+3, y+14), fill=RAIN_B); d.line((x+8, y+11, x+7, y+14), fill=RAIN_B); d.line((x+12, y+11, x+11, y+14), fill=RAIN_B)
-        elif 'snow' in icon:
-            d.ellipse((x+2, y+2, x+14, y+10), fill=CLOUD_W)
-            d.point((x+4, y+12), fill=SNOW_W); d.point((x+8, y+14), fill=SNOW_W); d.point((x+12, y+12), fill=SNOW_W); d.point((x+6, y+15), fill=SNOW_W)
-        elif 'storm' in icon or 'thunder' in icon:
-            d.ellipse((x+2, y+2, x+14, y+10), fill=(100, 100, 100))
-            d.line([(x+8, y+10), (x+6, y+13), (x+9, y+13), (x+7, y+16)], fill=SUN_Y, width=1)
+        elif 'fog' in icon or 'mist' in icon or 'haze' in icon:
+            for fy in [y+3, y+6, y+9, y+12]:
+                d.line([(x+2, fy), (x+13, fy)], fill=(170, 175, 195))
+        elif 'rain' in icon or 'drizzle' in icon or 'shower' in icon:
+            d.ellipse((x+1, y+1, x+14, y+9), fill=CLOUD_W)
+            for rx, ry in [(x+3, y+11), (x+7, y+12), (x+11, y+11), (x+5, y+14), (x+9, y+13)]:
+                d.line([(rx, ry), (rx-1, ry+2)], fill=RAIN_B)
+        elif 'snow' in icon or 'blizzard' in icon:
+            d.ellipse((x+1, y+1, x+14, y+9), fill=(185, 195, 210))
+            for rx, ry in [(x+3, y+12), (x+7, y+11), (x+11, y+12), (x+5, y+15), (x+9, y+14)]:
+                d.point((rx, ry), fill=SNOW_W)
+                d.point((rx, ry+1), fill=SNOW_W)
+        elif 'storm' in icon or 'thunder' in icon or 'lightning' in icon:
+            d.ellipse((x+1, y+1, x+14, y+9), fill=(75, 80, 100))
+            # lightning bolt: two line segments
+            d.line([(x+8, y+9), (x+6, y+13)], fill=(255, 220, 0), width=1)
+            d.line([(x+6, y+13), (x+9, y+13)], fill=(255, 220, 0), width=1)
+            d.line([(x+9, y+13), (x+7, y+16)], fill=(255, 220, 0), width=1)
         elif 'cloud' in icon or 'overcast' in icon:
-            d.ellipse((x+4, y+4, x+16, y+12), fill=CLOUD_W); d.ellipse((x, y+6, x+10, y+12), fill=(180,180,180))
+            d.ellipse((x+5, y+3, x+15, y+11), fill=CLOUD_W)
+            d.ellipse((x+0, y+6, x+11, y+13), fill=(175, 180, 192))
+            d.ellipse((x+7, y+5, x+16, y+13), fill=(198, 202, 212))
         else:
-            d.ellipse((x+6, y+2, x+12, y+8), fill=SUN_Y); d.ellipse((x+2, y+6, x+14, y+14), fill=CLOUD_W)
+            # partly cloudy
+            d.ellipse((x+5, y+1, x+12, y+8), fill=SUN_Y)
+            d.point((x+11, y+1), fill=SUN_Y)
+            d.ellipse((x+1, y+5, x+12, y+13), fill=(190, 195, 208))
+            d.ellipse((x+7, y+4, x+16, y+12), fill=CLOUD_W)
 
     def get_aqi_color(self, aqi):
         try:
@@ -727,42 +746,117 @@ class TickerStreamer:
         return img
 
     def draw_weather_detailed(self, game):
-        img = Image.new("RGBA", (384, 32), (0, 0, 0, 255))
+        img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
-        sit = game.get('situation', {})
-        stats = sit.get('stats', {})
-        forecast = sit.get('forecast', [])
+        sit = game.get('situation', {}) or {}
+        stats = sit.get('stats', {}) or {}
+        forecast = sit.get('forecast', []) or []
         cur_icon = sit.get('icon', 'cloud')
-        self.draw_weather_pixel_art(d, cur_icon, 4, 8)
-        location_name = str(game.get('away_abbr', 'CITY')).upper()
-        d.text((28, -2), location_name, font=self.tiny, fill=(255, 255, 255))
-        temp_f = str(game.get('home_abbr', '00')).replace('°', '')
-        d.text((28, 8), f"{temp_f}°F", font=self.big_font, fill=(255, 255, 255))
-        aqi_val = stats.get('aqi', '0')
+
+        # Temperature color based on value
+        temp_f = str(game.get('home_abbr', '--')).replace('°', '').strip()
+        try:
+            tv = int(float(temp_f))
+            if tv >= 90:   temp_color = (255, 90, 35)
+            elif tv >= 75: temp_color = (255, 185, 40)
+            elif tv >= 55: temp_color = (95, 225, 105)
+            elif tv >= 35: temp_color = (95, 190, 255)
+            else:          temp_color = (190, 230, 255)
+        except:
+            temp_color = (240, 240, 245)
+
+        # Background + subtle top scanline for depth
+        d.rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), fill=(4, 7, 15))
+        d.line((0, 0, PANEL_W - 1, 0), fill=(30, 52, 84))
+
+        # ---------- LEFT PANEL: current conditions ----------
+        left_w = 124
+        d.rectangle((0, 0, left_w, 31), fill=(8, 14, 30))
+        d.line((left_w, 0, left_w, 31), fill=(28, 52, 88))
+
+        location_name = normalize_special_chars(str(game.get('away_abbr', 'CITY')).upper()).strip()
+        if len(location_name) > 15:
+            location_name = location_name[:15]
+        draw_tiny_text(d, 4, 2, location_name, (125, 170, 230))
+
+        self.draw_weather_pixel_art(d, cur_icon, 3, 11)
+
+        temp_disp = "--" if not temp_f else temp_f
+        d.text((24, 10), f"{temp_disp}\u00b0F", font=self.big_font, fill=temp_color)
+
+        cond = normalize_special_chars(str(game.get('status', '')).upper()).strip()
+        replacements = {
+            'PARTLY CLOUDY': 'PARTLY CLDY',
+            'MOSTLY CLOUDY': 'MOSTLY CLDY',
+            'SCATTERED SHOWERS': 'SCT SHOWERS',
+            'THUNDERSTORMS': 'T-STORMS',
+            'THUNDERSTORM': 'T-STORM',
+            'LIGHT RAIN': 'LGT RAIN'
+        }
+        cond = replacements.get(cond, cond)
+        if len(cond) > 19:
+            cond = cond[:19]
+        if cond:
+            draw_tiny_text(d, 24, 25, cond, (105, 145, 190))
+
+        aqi_val = str(stats.get('aqi', '--')).strip() or '--'
+        uv_val = str(stats.get('uv', '--')).strip() or '--'
         aqi_col = self.get_aqi_color(aqi_val)
-        uv_val = str(stats.get('uv', '0'))
-        d.rectangle((28, 20, 70, 27), fill=aqi_col)
-        d.text((30, 19), f"AQI:{aqi_val}", font=self.micro, fill=(0,0,0))
-        d.text((75, 19), f"UV:{uv_val}", font=self.micro, fill=(255, 100, 255))
-        d.line((115, 2, 115, 30), fill=(50, 50, 50))
+
+        # Compact metric chips
+        d.rectangle((74, 3, 121, 10), fill=(16, 25, 46))
+        draw_tiny_text(d, 76, 4, "AQI", (95, 120, 160))
+        draw_tiny_text(d, 96, 4, aqi_val[:4], aqi_col)
+
+        d.rectangle((74, 13, 121, 20), fill=(16, 25, 46))
+        draw_tiny_text(d, 76, 14, "UV", (95, 120, 160))
+        draw_tiny_text(d, 96, 14, uv_val[:4], (210, 155, 255))
+
+        # ---------- RIGHT PANEL: 5-day forecast ----------
         if not forecast:
             forecast = [
-                {'day': 'MON', 'icon': 'sun', 'high': 80, 'low': 70},
-                {'day': 'TUE', 'icon': 'rain', 'high': 75, 'low': 65},
+                {'day': 'MON', 'icon': 'sun',   'high': 80, 'low': 70},
+                {'day': 'TUE', 'icon': 'rain',  'high': 75, 'low': 65},
                 {'day': 'WED', 'icon': 'cloud', 'high': 78, 'low': 68},
                 {'day': 'THU', 'icon': 'storm', 'high': 72, 'low': 60},
-                {'day': 'FRI', 'icon': 'sun', 'high': 82, 'low': 72}
+                {'day': 'FRI', 'icon': 'sun',   'high': 82, 'low': 72},
             ]
-        x_cursor = 125
-        for day in forecast[:5]:
-            d.text((x_cursor, 0), day.get('day', 'UNK')[:3], font=self.micro, fill=(150, 150, 150))
-            self.draw_weather_pixel_art(d, day.get('icon', 'cloud'), x_cursor, 11)
-            hi = day.get('high', '--')
-            lo = day.get('low', '--')
-            d.text((x_cursor, 22), f"{hi}", font=self.nano, fill=(255, 100, 100))
-            d.text((x_cursor + 14, 22), "/", font=self.nano, fill=(100, 100, 100))
-            d.text((x_cursor + 20, 22), f"{lo}", font=self.nano, fill=(100, 100, 255))
-            x_cursor += 50
+
+        right_start = left_w + 1
+        right_w = PANEL_W - right_start
+        col_w = right_w // 5
+
+        for i, day in enumerate(forecast[:5]):
+            cx = right_start + (i * col_w)
+            col_right = cx + col_w - 1
+            if i == 4:
+                col_right = PANEL_W - 1
+
+            # Column background and separator
+            bg = (8, 14, 28) if i % 2 == 0 else (6, 11, 23)
+            d.rectangle((cx, 0, col_right, 31), fill=bg)
+            if i < 4:
+                d.line((col_right, 3, col_right, 29), fill=(24, 44, 72))
+
+            day_str = normalize_special_chars(str(day.get('day', '???'))[:3].upper())
+            day_w = len(day_str) * 5
+            day_x = cx + max(0, ((col_right - cx + 1) - day_w) // 2)
+            draw_tiny_text(d, day_x, 2, day_str, (110, 160, 220))
+            d.line((cx + 4, 8, col_right - 4, 8), fill=(26, 48, 78))
+
+            icon_x = cx + max(0, ((col_right - cx + 1) - 16) // 2)
+            self.draw_weather_pixel_art(d, day.get('icon', 'cloud'), icon_x, 9)
+
+            hi = str(day.get('high', '--')).replace('°', '')
+            lo = str(day.get('low', '--')).replace('°', '')
+            hi_w = len(hi) * 5
+            lo_w = len(lo) * 5
+            total_w = hi_w + 5 + lo_w
+            tx = cx + max(0, ((col_right - cx + 1) - total_w) // 2)
+            draw_tiny_text(d, tx, 25, hi, (255, 115, 75))
+            draw_tiny_text(d, tx + hi_w, 25, "/", (70, 88, 120))
+            draw_tiny_text(d, tx + hi_w + 5, 25, lo, (90, 165, 255))
+
         return img
 
     def draw_clock_modern(self):
