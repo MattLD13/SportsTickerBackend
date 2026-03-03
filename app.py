@@ -4149,11 +4149,11 @@ def api_state():
         # None = use global fallback (always []); non-empty list = ticker's saved teams
         response_settings['my_teams'] = list(state.get('my_teams', [])) if _t_teams is None else _t_teams
         response_settings['ticker_id'] = ticker_id
-    response_settings.pop('flight_submode', None)
 
     current_mode = MODE_MIGRATIONS.get(response_settings.get('mode', 'sports'), response_settings.get('mode', 'sports'))
     if current_mode not in VALID_MODES:
         current_mode = 'sports'
+    response_settings['flight_submode'] = 'track' if current_mode == 'flight_tracker' else 'airport'
 
     raw_games = fetcher.get_mode_snapshot(current_mode, 0)
     processed_games = []
