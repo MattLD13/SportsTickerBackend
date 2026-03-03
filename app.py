@@ -592,20 +592,6 @@ MODE_MIGRATIONS = {'all': 'sports', 'flight2': 'flight_tracker'}
 
 FBS_TEAMS = {"AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"}
 FCS_TEAMS = {"ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"}
-OLYMPIC_HOCKEY_TEAMS = [
-    {"abbr": "CAN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/can.png", "color": "D52B1E", "alt_color": "FFFFFF"},
-    {"abbr": "USA", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/usa.png", "color": "0A3161", "alt_color": "B31942"},
-    {"abbr": "SWE", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/swe.png", "color": "FECC02", "alt_color": "004B87"},
-    {"abbr": "FIN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/fin.png", "color": "002F6C", "alt_color": "FFFFFF"},
-    {"abbr": "RUS", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/rus.png", "color": "D52B1E", "alt_color": "0039A6"},
-    {"abbr": "CZE", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/cze.png", "color": "D7141A", "alt_color": "11457E"},
-    {"abbr": "GER", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/ger.png", "color": "000000", "alt_color": "FFCE00"},
-    {"abbr": "SUI", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/sui.png", "color": "FF0000", "alt_color": "FFFFFF"},
-    {"abbr": "SVK", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/svk.png", "color": "0B4EA2", "alt_color": "EE1C25"},
-    {"abbr": "LAT", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/lat.png", "color": "9E3039", "alt_color": "FFFFFF"},
-    {"abbr": "DEN", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/den.png", "color": "C60C30", "alt_color": "FFFFFF"},
-    {"abbr": "ITA", "logo": "https://a.espncdn.com/i/teamlogos/countries/500/ita.png", "color": "0064A8", "alt_color": "FFFFFF"}
-]
 
 SOCCER_ABBR_OVERRIDES = {
     "Arsenal": "ARS", "Aston Villa": "AVL", "Bournemouth": "BOU", "Brentford": "BRE",
@@ -2164,18 +2150,6 @@ class SportsFetcher:
             # Per-league seen-ID sets for O(1) deduplication (replaces any() linear scan)
             seen_ids: dict = {k: set() for k in self.leagues.keys()}
 
-            for t in OLYMPIC_HOCKEY_TEAMS:
-                scoped_id = f"hockey_olympics:{t['abbr']}"
-                if scoped_id not in seen_ids.get('hockey_olympics', set()):
-                    seen_ids.setdefault('hockey_olympics', set()).add(scoped_id)
-                    teams_catalog['hockey_olympics'].append({
-                        'abbr': t['abbr'],
-                        'id': scoped_id,
-                        'logo': t['logo'],
-                        'color': t.get('color', '000000'),
-                        'alt_color': t.get('alt_color', '444444')
-                    })
-
             # NCAA college teams — O(1) dedup via seen_ids sets
             ncf_seen = {'ncf_fbs': set(), 'ncf_fcs': set()}
             url = f"{self.base_url}football/college-football/teams"
@@ -2930,8 +2904,8 @@ class SportsFetcher:
                 h_alt = h['team'].get('alternateColor')
                 a_alt = a['team'].get('alternateColor')
 
-                # Force fallback to our hardcoded colors for international teams or missing ESPN data
-                if league_key == 'hockey_olympics' or not h_clr or h_clr == '000000' or not a_clr or a_clr == '000000':
+                # Force fallback to our hardcoded colors for missing ESPN data
+                if not h_clr or h_clr == '000000' or not a_clr or a_clr == '000000':
                     h_info = self.lookup_team_info_from_cache(league_key, h_ab, logo=h_lg)
                     a_info = self.lookup_team_info_from_cache(league_key, a_ab, logo=a_lg)
                     h_clr = h_clr if h_clr and h_clr != '000000' else h_info.get('color', '000000')
