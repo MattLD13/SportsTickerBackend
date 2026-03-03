@@ -3704,9 +3704,8 @@ def api_config():
         if new_mode in ('flights', 'flight_tracker') and flight_tracker:
             flight_tracker.force_update()
 
-        # Immediately rebuild the buffer for the new mode (fast for non-sports modes)
-        try: fetcher.update_current_games()
-        except: pass
+        # Rebuild buffer in background — sports fetches can take 30 s+, don't block the response
+        threading.Thread(target=fetcher.update_current_games, daemon=True).start()
 
         if target_id:
             save_specific_ticker(target_id)
