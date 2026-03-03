@@ -752,6 +752,7 @@ class TickerStreamer:
         stats = sit.get('stats', {}) or {}
         forecast = sit.get('forecast', []) or []
         cur_icon = sit.get('icon', 'cloud')
+        DEEP_BLUE = (18, 45, 95)
 
         # Temperature color based on value
         temp_f = str(game.get('home_abbr', '--')).replace('°', '').strip()
@@ -766,13 +767,13 @@ class TickerStreamer:
             temp_color = (240, 240, 245)
 
         # Background + subtle top scanline for depth
-        d.rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), fill=(4, 7, 15))
-        d.line((0, 0, PANEL_W - 1, 0), fill=(30, 52, 84))
+        d.rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), fill=(0, 0, 0))
+        d.line((0, 0, PANEL_W - 1, 0), fill=DEEP_BLUE)
 
         # ---------- LEFT PANEL: current conditions ----------
         left_w = 124
-        d.rectangle((0, 0, left_w, 31), fill=(8, 14, 30))
-        d.line((left_w, 0, left_w, 31), fill=(28, 52, 88))
+        d.rectangle((0, 0, left_w, 31), fill=(0, 0, 0))
+        d.line((left_w, 0, left_w, 31), fill=DEEP_BLUE)
 
         location_name = normalize_special_chars(str(game.get('away_abbr', 'CITY')).upper()).strip()
         if len(location_name) > 15:
@@ -804,13 +805,34 @@ class TickerStreamer:
         aqi_col = self.get_aqi_color(aqi_val)
 
         # Compact metric chips
-        d.rectangle((74, 3, 121, 10), fill=(16, 25, 46))
-        draw_tiny_text(d, 76, 4, "AQI", (95, 120, 160))
-        draw_tiny_text(d, 96, 4, aqi_val[:4], aqi_col)
+        aqi_box = (74, 3, 121, 11)
+        uv_box = (74, 13, 121, 21)
+        d.rectangle(aqi_box, fill=(2, 6, 14), outline=DEEP_BLUE)
+        d.rectangle(uv_box, fill=(2, 6, 14), outline=DEEP_BLUE)
 
-        d.rectangle((74, 13, 121, 20), fill=(16, 25, 46))
-        draw_tiny_text(d, 76, 14, "UV", (95, 120, 160))
-        draw_tiny_text(d, 96, 14, uv_val[:4], (210, 155, 255))
+        aqi_label = "AQI"
+        aqi_value = aqi_val[:4]
+        uv_label = "UV"
+        uv_value = uv_val[:4]
+        tiny_h = 5
+
+        aqi_mid = (aqi_box[0] + aqi_box[2]) // 2
+        aqi_label_w = len(aqi_label) * 5
+        aqi_value_w = len(aqi_value) * 5
+        aqi_label_x = aqi_box[0] + ((aqi_mid - aqi_box[0]) - aqi_label_w) // 2
+        aqi_value_x = aqi_mid + ((aqi_box[2] - aqi_mid + 1) - aqi_value_w) // 2
+        aqi_y = aqi_box[1] + ((aqi_box[3] - aqi_box[1] + 1) - tiny_h) // 2
+        draw_tiny_text(d, aqi_label_x, aqi_y, aqi_label, (95, 120, 160))
+        draw_tiny_text(d, aqi_value_x, aqi_y, aqi_value, aqi_col)
+
+        uv_mid = (uv_box[0] + uv_box[2]) // 2
+        uv_label_w = len(uv_label) * 5
+        uv_value_w = len(uv_value) * 5
+        uv_label_x = uv_box[0] + ((uv_mid - uv_box[0]) - uv_label_w) // 2
+        uv_value_x = uv_mid + ((uv_box[2] - uv_mid + 1) - uv_value_w) // 2
+        uv_y = uv_box[1] + ((uv_box[3] - uv_box[1] + 1) - tiny_h) // 2
+        draw_tiny_text(d, uv_label_x, uv_y, uv_label, (95, 120, 160))
+        draw_tiny_text(d, uv_value_x, uv_y, uv_value, (210, 155, 255))
 
         # ---------- RIGHT PANEL: 5-day forecast ----------
         if not forecast:
@@ -833,16 +855,16 @@ class TickerStreamer:
                 col_right = PANEL_W - 1
 
             # Column background and separator
-            bg = (8, 14, 28) if i % 2 == 0 else (6, 11, 23)
+            bg = (0, 0, 0) if i % 2 == 0 else (1, 3, 8)
             d.rectangle((cx, 0, col_right, 31), fill=bg)
             if i < 4:
-                d.line((col_right, 3, col_right, 29), fill=(24, 44, 72))
+                d.line((col_right, 3, col_right, 29), fill=DEEP_BLUE)
 
             day_str = normalize_special_chars(str(day.get('day', '???'))[:3].upper())
             day_w = len(day_str) * 5
             day_x = cx + max(0, ((col_right - cx + 1) - day_w) // 2)
             draw_tiny_text(d, day_x, 2, day_str, (110, 160, 220))
-            d.line((cx + 4, 8, col_right - 4, 8), fill=(26, 48, 78))
+            d.line((cx + 4, 8, col_right - 4, 8), fill=DEEP_BLUE)
 
             icon_x = cx + max(0, ((col_right - cx + 1) - 16) // 2)
             self.draw_weather_pixel_art(d, day.get('icon', 'cloud'), icon_x, 9)
@@ -853,9 +875,10 @@ class TickerStreamer:
             lo_w = len(lo) * 5
             total_w = hi_w + 5 + lo_w
             tx = cx + max(0, ((col_right - cx + 1) - total_w) // 2)
-            draw_tiny_text(d, tx, 25, hi, (255, 115, 75))
-            draw_tiny_text(d, tx + hi_w, 25, "/", (70, 88, 120))
-            draw_tiny_text(d, tx + hi_w + 5, 25, lo, (90, 165, 255))
+            temp_y = 26
+            draw_tiny_text(d, tx, temp_y, hi, (255, 115, 75))
+            draw_tiny_text(d, tx + hi_w, temp_y, "/", (70, 88, 120))
+            draw_tiny_text(d, tx + hi_w + 5, temp_y, lo, (90, 165, 255))
 
         return img
 
