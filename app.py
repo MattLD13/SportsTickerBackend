@@ -3245,9 +3245,22 @@ class SportsFetcher:
         w = self.weather.get_weather()
         if w:
             return [w]
-        # No weather data yet — show the clock while the fetcher loads, so the
-        # hardware doesn't fall through to its own raw clock fallback.
-        return [{'type': 'clock', 'sport': 'clock', 'id': 'weather_loading', 'is_shown': True}]
+        return [{
+            'type': 'weather',
+            'sport': 'weather',
+            'id': 'weather_loading',
+            'away_abbr': str(city or 'WEATHER').upper(),
+            'home_abbr': '--',
+            'situation': {
+                'icon': 'cloud',
+                'stats': {'aqi': '--', 'uv': '--'},
+                'forecast': []
+            },
+            'home_score': '--',
+            'away_score': '0',
+            'status': 'LOADING',
+            'is_shown': True
+        }]
 
     def _build_music_buffer(self):
         obj = self.get_music_object()
@@ -3866,7 +3879,6 @@ def get_ticker_data():
         # Stocks, Weather, Clock, Flights
         for g in raw_games:
             g_type, g_sport = g.get('type', ''), g.get('sport', '')
-            if not active_sports.get(g_sport, True): continue
             match = False
             if current_mode == 'stocks' and g_type == 'stock_ticker': match = True
             elif current_mode == 'weather' and g_type == 'weather': match = True
@@ -4153,7 +4165,10 @@ def api_state():
         game_copy = g.copy()
         sport = game_copy.get('sport', '')
         g_type = game_copy.get('type', '')
-        should_show = _active_sports.get(sport, True)
+        if current_mode in ('sports', 'live', 'my_teams'):
+            should_show = _active_sports.get(sport, True)
+        else:
+            should_show = True
 
         if current_mode == 'my_teams':
             h_ab = str(game_copy.get('home_abbr', '')).upper()
