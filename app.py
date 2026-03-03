@@ -785,7 +785,8 @@ for t_file in ticker_files:
             
             # Repair missing keys on load
             if 'settings' not in t_data: t_data['settings'] = DEFAULT_TICKER_SETTINGS.copy()
-            t_data['my_teams'] = None  # always reset on load; client re-sends its teams
+            if 'my_teams' not in t_data: t_data['my_teams'] = None
+            elif t_data.get('my_teams') == []: t_data['my_teams'] = None  # migrate old unconfigured tickers
             if 'clients' not in t_data: t_data['clients'] = []
             
             tickers[tid] = t_data
@@ -3618,11 +3619,16 @@ def api_config():
                         seen = set()
                         for e in v:
                             if e:
-                                raw = str(e).strip().upper()
-                                if ':' not in raw:
-                                    # Normalize plain abbr to league:ABBR if unambiguous
-                                    matches = [lg for lg, idx in fetcher._teams_abbr_index.items() if raw in idx]
-                                    raw = f"{matches[0]}:{raw}" if len(matches) == 1 else raw
+                                entry = str(e).strip()
+                                if ':' in entry:
+                                    # Already prefixed: normalize to lowercase_league:UPPER_ABBR
+                                    lg, ab = entry.split(':', 1)
+                                    raw = f"{lg.lower()}:{ab.upper()}"
+                                else:
+                                    # Plain abbr: look up league and normalize
+                                    ab = entry.upper()
+                                    matches = [lg for lg, idx in fetcher._teams_abbr_index.items() if ab in idx]
+                                    raw = f"{matches[0]}:{ab}" if len(matches) == 1 else ab
                                 if raw not in seen:
                                     seen.add(raw)
                                     cleaned.append(raw)
