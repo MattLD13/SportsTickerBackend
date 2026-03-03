@@ -2818,7 +2818,6 @@ class SportsFetcher:
 
     def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc):
         local_games = []
-        if not conf['active_sports'].get(league_key, False): return []
 
         if config.get('type') == 'leaderboard':
             return local_games
@@ -3155,17 +3154,16 @@ class SportsFetcher:
 
         # --- RESTORED: EFL & SOCCER FETCHING ---
         for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
-            if conf['active_sports'].get(internal_id, False):
-                f = self.executor.submit(
-                    self._fetch_fotmob_league, 
-                    fid, internal_id, conf, 
-                    window_start_utc, window_end_utc, 
-                    visible_start_utc, visible_end_utc
-                )
-                futures[f] = internal_id
+            f = self.executor.submit(
+                self._fetch_fotmob_league,
+                fid, internal_id, conf,
+                window_start_utc, window_end_utc,
+                visible_start_utc, visible_end_utc
+            )
+            futures[f] = internal_id
 
         # NHL Native (Optimized)
-        if conf['active_sports'].get('nhl', False) and not conf['debug_mode']:
+        if not conf['debug_mode']:
             f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
             futures[f] = 'nhl_native'
 
@@ -3220,7 +3218,7 @@ class SportsFetcher:
             active_sports = dict(state['active_sports'])
         games = []
         for item in LEAGUE_OPTIONS:
-            if item['type'] == 'stock' and active_sports.get(item['id']):
+            if item['type'] == 'stock':
                 games.extend(self.stocks.get_list(item['id']))
         return games
 
@@ -3802,6 +3800,7 @@ def get_ticker_data():
                      if (is_sports_mode and t_settings.get('live_delay_mode'))
                      else 0)
     raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
+    active_sports = state.get('active_sports', {})
     visible_items = []
 
     # 5. Filter Buffer based on current_mode
@@ -3822,6 +3821,7 @@ def get_ticker_data():
         COLLISION_ABBRS = {'LV'}
         for g in raw_games:
             sport = g.get('sport', '')
+            if not active_sports.get(sport, True): continue
             h_ab, a_ab = str(g.get('home_abbr', '')).upper(), str(g.get('away_abbr', '')).upper()
             in_home = f"{sport}:{h_ab}" in saved_teams or (h_ab in saved_teams and h_ab not in COLLISION_ABBRS)
             in_away = f"{sport}:{a_ab}" in saved_teams or (a_ab in saved_teams and a_ab not in COLLISION_ABBRS)
@@ -3831,12 +3831,14 @@ def get_ticker_data():
 
     elif current_mode == 'live':
         for g in raw_games:
+            if not active_sports.get(g.get('sport', ''), True): continue
             if g.get('state') in _ACTIVE_STATES:
                 g['is_shown'] = True
                 visible_items.append(g)
 
     elif current_mode == 'sports':
         for g in raw_games:
+            if not active_sports.get(g.get('sport', ''), True): continue
             if g.get('type') in ['music', 'clock', 'weather', 'stock_ticker', 'flight_visitor']:
                 continue
             status_lower = str(g.get('status', '')).lower()
@@ -3844,18 +3846,19 @@ def get_ticker_data():
                 continue
             g['is_shown'] = True
             visible_items.append(g)
-            
+
     else:
         # Stocks, Weather, Clock, Flights
         for g in raw_games:
             g_type, g_sport = g.get('type', ''), g.get('sport', '')
+            if not active_sports.get(g_sport, True): continue
             match = False
             if current_mode == 'stocks' and g_type == 'stock_ticker': match = True
             elif current_mode == 'weather' and g_type == 'weather': match = True
             elif current_mode == 'clock' and g_type == 'clock': match = True
             elif current_mode == 'flights' and g_sport == 'flight': match = True
             elif current_mode == 'flight_tracker' and g_type == 'flight_visitor': match = True
-            
+
             if match:
                 g['is_shown'] = True
                 visible_items.append(g)
@@ -4128,12 +4131,13 @@ def api_state():
     processed_games = []
     saved_teams = set(response_settings.get('my_teams', []))
     COLLISION_ABBRS = {'LV'}
+    _active_sports = state.get('active_sports', {})
 
     for g in raw_games:
         game_copy = g.copy()
         sport = game_copy.get('sport', '')
         g_type = game_copy.get('type', '')
-        should_show = True
+        should_show = _active_sports.get(sport, True)
 
         if current_mode == 'my_teams':
             h_ab = str(game_copy.get('home_abbr', '')).upper()
