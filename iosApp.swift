@@ -412,13 +412,12 @@ class TickerViewModel: ObservableObject {
         fetchAllTeams()
         fetchDevices()
         
-        // Adaptive poll: 1 s during the 30-s burst window after a mode switch,
-        // otherwise the normal per-mode interval.
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        // Adaptive poll: 0.5 s hyper-poll during burst window, 1 s otherwise.
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
             Task { @MainActor in
                 guard !self.isEditing else { return }
                 let inBurst = Date() < self.burstPollUntil
-                let interval = inBurst ? 1.0 : self.pollInterval(for: self.state.mode)
+                let interval = inBurst ? 0.5 : self.pollInterval(for: self.state.mode)
                 if Date().timeIntervalSince(self.lastFetchTime) >= interval {
                     self.lastFetchTime = Date()
                     self.fetchData()
@@ -438,7 +437,7 @@ class TickerViewModel: ObservableObject {
     private func pollInterval(for mode: String) -> TimeInterval {
         switch mode {
         case "music":                      return 1.0
-        case "sports", "live", "my_teams": return 5.0
+        case "sports", "live", "my_teams": return 1.0
         case "flights", "flight_tracker":  return 60.0
         case "stocks":                     return 30.0
         case "weather", "clock":           return 600.0
@@ -528,7 +527,8 @@ class TickerViewModel: ObservableObject {
             state.my_teams.append(teamID)
         }
         
-        // C. DEBOUNCE SAVE (Wait 1.5s after last tap)
+        // C. DEBOUNCE SAVE (Wait 1.5s after last tap) + start hyper polling
+        startBurstPolling()
         saveDebounceTimer?.invalidate()
         saveDebounceTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
             self?.saveSettings()
@@ -2161,10 +2161,9 @@ struct TeamsView: View {
                                 // 2. Construct the "Smart ID" (e.g. nfl:NYG)
                                 let smartID = "\(cleanLeague):\(cleanAbbr)"
                                 
-                                // 3. Check against saved list (handle exact match OR smart match)
+                                // 3. Check against saved list using scoped ID (e.g. "mlb:ATL")
                                 let isSelected = vm.state.my_teams.contains(team.id) ||
-                                                 vm.state.my_teams.contains(smartID) ||
-                                                 vm.state.my_teams.contains(cleanAbbr)
+                                                 vm.state.my_teams.contains(smartID)
                                 
                                 Button {
                                     print("🔵 Toggling Team: \(smartID)") // DEBUG PRINT
