@@ -764,6 +764,9 @@ if os.path.exists(GLOBAL_CONFIG_FILE):
     except Exception as e:
         print(f"⚠️ Error loading global config: {e}")
 
+# Global teams are always empty; teams are stored per-ticker only
+state['my_teams'] = []
+
 # Ensure mode is valid
 state['mode'] = MODE_MIGRATIONS.get(state.get('mode', 'sports'), state.get('mode', 'sports'))
 if state['mode'] not in VALID_MODES:
@@ -782,8 +785,7 @@ for t_file in ticker_files:
             
             # Repair missing keys on load
             if 'settings' not in t_data: t_data['settings'] = DEFAULT_TICKER_SETTINGS.copy()
-            if 'my_teams' not in t_data: t_data['my_teams'] = None
-            elif t_data.get('my_teams') == []: t_data['my_teams'] = None  # migrate old unconfigured tickers
+            t_data['my_teams'] = None  # always reset on load; client re-sends its teams
             if 'clients' not in t_data: t_data['clients'] = []
             
             tickers[tid] = t_data
@@ -821,7 +823,7 @@ def save_global_config():
             export_data = {
                 'active_sports': state['active_sports'],
                 'mode': state['mode'],
-                'my_teams': state['my_teams'],
+                # my_teams intentionally omitted — always [] globally; stored per-ticker only
                 'weather_city': state['weather_city'],
                 'weather_lat': state['weather_lat'],
                 'weather_lon': state['weather_lon'],
@@ -3605,8 +3607,8 @@ def api_config():
                 
                 # HANDLE TEAMS
                 if k == 'my_teams':
-                    if v is None:
-                        # null = reset ticker to "use global fallback"
+                    if v is None or (isinstance(v, list) and not v):
+                        # null or empty list = reset ticker to use global fallback (always [])
                         if target_id and target_id in tickers:
                             tickers[target_id]['my_teams'] = None
                             tickers[target_id].pop('my_teams_set', None)
@@ -3616,16 +3618,18 @@ def api_config():
                         seen = set()
                         for e in v:
                             if e:
-                                k_str = str(e).strip()
-                                if k_str not in seen:
-                                    seen.add(k_str)
-                                    cleaned.append(k_str)
+                                raw = str(e).strip().upper()
+                                if ':' not in raw:
+                                    # Normalize plain abbr to league:ABBR if unambiguous
+                                    matches = [lg for lg, idx in fetcher._teams_abbr_index.items() if raw in idx]
+                                    raw = f"{matches[0]}:{raw}" if len(matches) == 1 else raw
+                                if raw not in seen:
+                                    seen.add(raw)
+                                    cleaned.append(raw)
                         if target_id and target_id in tickers:
-                            tickers[target_id]['my_teams'] = cleaned
+                            tickers[target_id]['my_teams'] = cleaned if cleaned else None
                             tickers[target_id].pop('my_teams_set', None)
-                        else:
-                            state['my_teams'] = cleaned
-                            state.pop('my_teams_set', None)
+                        # else: global my_teams always stays [] — ignore untargeted team updates
                         continue
 
                 # HANDLE ACTIVE SPORTS
@@ -4106,7 +4110,7 @@ def api_state():
     if ticker_id and ticker_id in tickers:
         response_settings.update(tickers[ticker_id]['settings'])
         _t_teams = tickers[ticker_id].get('my_teams')
-        # None = use global fallback; [] = intentionally no teams
+        # None = use global fallback (always []); non-empty list = ticker's saved teams
         response_settings['my_teams'] = list(state.get('my_teams', [])) if _t_teams is None else _t_teams
         response_settings['ticker_id'] = ticker_id
     response_settings.pop('flight_submode', None)
