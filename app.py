@@ -737,6 +737,7 @@ DEFAULT_TICKER_SETTINGS = {
 
 # ── Section F: Boot / Config Load ──
 state = default_state.copy()
+
 tickers = {} 
 
 # 1. Load Global Config — single pass with inline cleanup
