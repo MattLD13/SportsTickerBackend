@@ -3602,7 +3602,7 @@ class SportsFetcher:
                 snap = (time.time(), result[:])
                 self.history_buffer.append(snap)
                 if len(self.history_buffer) > 120:
-                    self.history_buffer = self.history_buffer[-60:]
+                    self.history_buffer = self.history_buffer[-120:]
 
                 # Persist non-empty sports games so they survive server restarts
                 if result:
@@ -3624,12 +3624,35 @@ class SportsFetcher:
 
     def get_snapshot_for_delay(self, delay_seconds):
         """Return current games, optionally from history buffer for live-delay."""
-        if delay_seconds <= 0 or not self.history_buffer:
+        with self._mode_buffer_lock:
+            latest_sports = list(self._mode_buffers.get('sports', []))
+
+        if delay_seconds <= 0:
+            if latest_sports:
+                return latest_sports
             with data_lock:
                 return list(state.get('current_games', []))
+
+        if not self.history_buffer:
+            if latest_sports:
+                return latest_sports
+            with data_lock:
+                return list(state.get('current_games', []))
+
         target_time = time.time() - delay_seconds
-        closest = min(self.history_buffer, key=lambda x: abs(x[0] - target_time))
-        return closest[1]
+        chosen = None
+        for ts, snapshot in reversed(self.history_buffer):
+            if ts <= target_time:
+                chosen = snapshot
+                break
+
+        if chosen is None and self.history_buffer:
+            chosen = self.history_buffer[0][1]
+
+        if chosen is None:
+            return latest_sports
+
+        return chosen
 
     def _set_mode_buffer(self, mode: str, result: list):
         """Store result in per-mode buffer. Also syncs global buffer when mode matches global."""
@@ -3646,7 +3669,7 @@ class SportsFetcher:
         Sports modes with delay use the history buffer for live-delay support.
         All other modes always return current data (delay is ignored).
         """
-        if mode in ('sports', 'live', 'my_teams'):
+        if mode in ('sports', 'live', 'my_teams', 'sports_full'):
             return self.get_snapshot_for_delay(delay_seconds)
         with self._mode_buffer_lock:
             return list(self._mode_buffers.get(mode, []))
@@ -4192,6 +4215,10 @@ def get_ticker_data():
     active_sports = state.get('active_sports', {})
     visible_items = []
 
+    def _sport_for_data_mode(sport_name: str) -> str:
+        sport_norm = str(sport_name or '').lower()
+        return 'mlb' if sport_norm == 'wbc' else sport_norm
+
     # 5. Filter Buffer based on current_mode
     if current_mode == 'music':
         for g in raw_games:
@@ -4209,38 +4236,49 @@ def get_ticker_data():
         saved_teams = set(state.get('my_teams', []) if _ticker_teams is None else _ticker_teams)
         COLLISION_ABBRS = {'LV'}
         for g in raw_games:
-            sport = g.get('sport', '')
+            sport = _sport_for_data_mode(g.get('sport', ''))
             if not active_sports.get(sport, True): continue
             h_ab, a_ab = str(g.get('home_abbr', '')).upper(), str(g.get('away_abbr', '')).upper()
             in_home = f"{sport}:{h_ab}" in saved_teams or (h_ab in saved_teams and h_ab not in COLLISION_ABBRS)
             in_away = f"{sport}:{a_ab}" in saved_teams or (a_ab in saved_teams and a_ab not in COLLISION_ABBRS)
             if in_home or in_away:
-                g['is_shown'] = True
-                visible_items.append(g)
+                g_copy = g.copy()
+                g_copy['sport'] = sport
+                g_copy['is_shown'] = True
+                visible_items.append(g_copy)
 
     elif current_mode == 'live':
         for g in raw_games:
-            if not active_sports.get(g.get('sport', ''), True): continue
+            sport = _sport_for_data_mode(g.get('sport', ''))
+            if not active_sports.get(sport, True): continue
             if g.get('state') in _ACTIVE_STATES:
-                g['is_shown'] = True
-                visible_items.append(g)
+                g_copy = g.copy()
+                g_copy['sport'] = sport
+                g_copy['is_shown'] = True
+                visible_items.append(g_copy)
 
     elif current_mode == 'sports_full':
         # Pinned game override — show everything without active_sports filtering
         for g in raw_games:
-            g['is_shown'] = True
-            visible_items.append(g)
+            sport = _sport_for_data_mode(g.get('sport', ''))
+            g_copy = g.copy()
+            g_copy['sport'] = sport
+            g_copy['is_shown'] = True
+            visible_items.append(g_copy)
 
     elif current_mode == 'sports':
         for g in raw_games:
-            if not active_sports.get(g.get('sport', ''), True): continue
+            sport = _sport_for_data_mode(g.get('sport', ''))
+            if not active_sports.get(sport, True): continue
             if g.get('type') in ['music', 'clock', 'weather', 'stock_ticker', 'flight_visitor']:
                 continue
             status_lower = str(g.get('status', '')).lower()
             if any(k in status_lower for k in ("postponed", "suspended", "canceled", "ppd")):
                 continue
-            g['is_shown'] = True
-            visible_items.append(g)
+            g_copy = g.copy()
+            g_copy['sport'] = sport
+            g_copy['is_shown'] = True
+            visible_items.append(g_copy)
 
     else:
         # Stocks, Weather, Clock, Flights
@@ -4543,7 +4581,11 @@ def api_state():
         
     response_settings['flight_submode'] = 'track' if current_mode == 'flight_tracker' else 'airport'
 
-    raw_games = fetcher.get_mode_snapshot(current_mode, 0)
+    is_sports_mode = current_mode in ('sports', 'live', 'my_teams', 'sports_full')
+    delay_seconds = (response_settings.get('live_delay_seconds', 0)
+                     if (is_sports_mode and response_settings.get('live_delay_mode'))
+                     else 0)
+    raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
     processed_games = []
     saved_teams = set(response_settings.get('my_teams', []))
     COLLISION_ABBRS = {'LV'}
