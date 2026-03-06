@@ -3446,6 +3446,22 @@ class SportsFetcher:
                 'debug_mode': state.get('debug_mode', False),
                 'custom_date': state.get('custom_date'),
             }
+
+            # Special pinned-game poller inputs (sports_full): collect active pins
+            # and merge fresh pinned objects into the normal sports snapshot.
+            active_pins = []
+            seen_pins = set()
+            for _t in tickers.values():
+                _s = _t.get('settings', {})
+                single_pin, pin_list = _normalize_single_pin(
+                    pinned_game=_s.get('pinned_game'),
+                    pinned_games=_s.get('pinned_games', [])
+                )
+                for _p in pin_list:
+                    _pn = str(_p).strip().lower()
+                    if _pn and _pn not in seen_pins:
+                        seen_pins.add(_pn)
+                        active_pins.append(_p)
             
         all_games = []
         utc_offset = conf.get('utc_offset', -5)
@@ -3499,6 +3515,29 @@ class SportsFetcher:
 
         all_games = []
         for games in partial.values(): all_games.extend(games)
+
+        # Pinned refresh merge: poll only pinned games and merge them into the
+        # normal sports feed so sports_full gets a fresh focused game while
+        # retaining all other scores from the standard poller.
+        if active_pins:
+            pinned_futures = {
+                self.executor.submit(self.fetch_pinned_game, p, conf, visible_start_utc, visible_end_utc): p
+                for p in active_pins
+            }
+            merged_index = {(str(g.get('sport', '')), str(g.get('id', ''))): i for i, g in enumerate(all_games)}
+            for pf in concurrent.futures.as_completed(list(pinned_futures.keys())):
+                try:
+                    pin_games = pf.result(timeout=0)
+                except Exception:
+                    pin_games = []
+                for pg in pin_games or []:
+                    key = (str(pg.get('sport', '')), str(pg.get('id', '')))
+                    if key in merged_index:
+                        all_games[merged_index[key]] = pg
+                    else:
+                        merged_index[key] = len(all_games)
+                        all_games.append(pg)
+
         return self._filter_and_sort_games(all_games, visible_start_utc, visible_end_utc)
 
     def _build_stocks_buffer(self):
@@ -3583,7 +3622,7 @@ class SportsFetcher:
 
         sports_built = False
         for mode in needed:
-            is_sports = mode in ('sports', 'live', 'my_teams')
+            is_sports = mode in ('sports', 'live', 'my_teams', 'sports_full')
 
             if is_sports and sports_built:
                 # All three sports-like modes share the same raw buffer; already built.
@@ -3617,7 +3656,7 @@ class SportsFetcher:
         # (for backward compat with any code that reads it directly)
         with self._mode_buffer_lock:
             global_result = self._mode_buffers.get(global_mode, [])
-        is_global_sports = global_mode in ('sports', 'live', 'my_teams')
+        is_global_sports = global_mode in ('sports', 'live', 'my_teams', 'sports_full')
         with data_lock:
             if global_result or not is_global_sports or not state.get('current_games'):
                 state['current_games'] = global_result
