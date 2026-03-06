@@ -4204,19 +4204,9 @@ def get_ticker_data():
                      if (is_sports_mode and t_settings.get('live_delay_mode'))
                      else 0)
     if effective_pin:
-        if delay_seconds > 0:
-            delayed_games = fetcher.get_mode_snapshot('sports_full', delay_seconds)
-            pin_id = str(effective_pin).split(':', 1)[-1]
-            raw_games = [g for g in delayed_games if str(g.get('id', '')) == pin_id]
-            if not raw_games:
-                raw_games = delayed_games
-        else:
-            pin_conf = {
-                'active_sports': state.get('active_sports', {}),
-                'utc_offset': state.get('utc_offset', -5)
-            }
-            _now = dt.now(timezone.utc)
-            raw_games = fetcher.fetch_pinned_game(effective_pin, pin_conf, _now - timedelta(days=1), _now + timedelta(days=2))
+        raw_games = fetcher.get_mode_snapshot('sports_full', delay_seconds)
+        pin_id = str(effective_pin).split(':', 1)[-1]
+        raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
     else:
         raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
     active_sports = state.get('active_sports', {})
@@ -4569,21 +4559,27 @@ def api_state():
         response_settings['my_teams'] = list(state.get('my_teams', [])) if _t_teams is None else _t_teams
         response_settings['ticker_id'] = ticker_id
 
-    current_mode = MODE_MIGRATIONS.get(response_settings.get('mode', 'sports'), response_settings.get('mode', 'sports'))
-    
-    # --- REFLECT PINNED OVERRIDE TO THE APP/UI (ticker-scoped only) ---
-    has_pinned_game = False
+    pinned_game = ''
+    pinned_games = []
     if ticker_id and ticker_id in tickers:
         _settings = tickers[ticker_id].get('settings', {})
-        has_pinned_game = bool(_settings.get('pinned_game'))
-        if not has_pinned_game:
-            _pins = _settings.get('pinned_games', [])
-            has_pinned_game = isinstance(_pins, list) and any(str(p).strip() for p in _pins)
+        pinned_game, pinned_games = _normalize_single_pin(
+            pinned_game=_settings.get('pinned_game'),
+            pinned_games=_settings.get('pinned_games', [])
+        )
+    response_settings['pinned_game'] = pinned_game
+    response_settings['pinned_games'] = pinned_games
+    response_settings['is_pinned'] = bool(pinned_game)
 
-    if has_pinned_game:
+    current_mode = MODE_MIGRATIONS.get(response_settings.get('mode', 'sports'), response_settings.get('mode', 'sports'))
+
+    # Legacy app behavior: reflect pin by forcing sports_full mode in /api/state.
+    # This keeps pinned detection compatible with clients that key off mode.
+    if pinned_game:
         current_mode = 'sports_full'
         response_settings['mode'] = current_mode
-    elif current_mode not in VALID_MODES:
+    
+    if current_mode not in VALID_MODES:
         current_mode = 'sports'
         
     response_settings['flight_submode'] = 'track' if current_mode == 'flight_tracker' else 'airport'
@@ -4649,7 +4645,10 @@ def api_state():
     return jsonify({
         "status": "ok",
         "settings": response_settings,
-        "games": processed_games 
+        "games": processed_games,
+        "is_pinned": bool(pinned_game),
+        "pinned_game": pinned_game,
+        "pinned_games": pinned_games
     })
 
 @app.route('/api/pin_games', methods=['POST'])
