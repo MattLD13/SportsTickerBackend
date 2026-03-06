@@ -4078,7 +4078,6 @@ def api_config():
                     if target_id and target_id in tickers:
                         tickers[target_id]['settings']['pinned_game'] = normalized_pin or ''
                         tickers[target_id]['settings']['pinned_games'] = list(normalized_pin_list or [])
-                        tickers[target_id]['settings']['mode'] = 'sports_full' if normalized_pin else 'sports'
                     continue
 
                 # HANDLE ALL OTHER SETTINGS
@@ -4719,7 +4718,6 @@ def api_pin_games():
             if ticker_id and ticker_id in tickers:
                 tickers[ticker_id]['settings']['pinned_game'] = single_pin
                 tickers[ticker_id]['settings']['pinned_games'] = pin_list
-                tickers[ticker_id]['settings']['mode'] = 'sports_full' if single_pin else 'sports'
 
         if ticker_id and ticker_id in tickers:
             save_specific_ticker(ticker_id)
