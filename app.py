@@ -4216,6 +4216,7 @@ def get_ticker_data():
     # Per-ticker mode: use the ticker's own mode setting, fall back to global
     current_mode = t_settings.get('mode') or state.get('mode', 'sports')
     current_mode = MODE_MIGRATIONS.get(current_mode, current_mode)
+    sports_mode_family = ('sports', 'live', 'my_teams', 'sports_full')
     
     # --- FORCE SPORTS_FULL IF TICKER HAS A PIN ---
     t_pinned_game = str(rec.get('settings', {}).get('pinned_game', '')).strip()
@@ -4227,7 +4228,7 @@ def get_ticker_data():
         if non_empty:
             effective_pin = non_empty[0]
 
-    if has_pinned_game:
+    if has_pinned_game and current_mode in sports_mode_family:
         current_mode = 'sports_full'
     elif current_mode not in VALID_MODES:
         current_mode = state.get('mode', 'sports')
@@ -4238,11 +4239,11 @@ def get_ticker_data():
 
     # 4. Content Fetching
     # Live delay only applies to sports content (history buffer only exists for sports)
-    is_sports_mode = current_mode in ('sports', 'live', 'my_teams', 'sports_full')
+    is_sports_mode = current_mode in sports_mode_family
     delay_seconds = (t_settings.get('live_delay_seconds', 0)
                      if (is_sports_mode and t_settings.get('live_delay_mode'))
                      else 0)
-    if effective_pin:
+    if effective_pin and current_mode == 'sports_full':
         raw_games = fetcher.get_mode_snapshot('sports_full', delay_seconds)
         pin_id = str(effective_pin).split(':', 1)[-1]
         raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
@@ -4611,10 +4612,11 @@ def api_state():
     response_settings['is_pinned'] = bool(pinned_game)
 
     current_mode = MODE_MIGRATIONS.get(response_settings.get('mode', 'sports'), response_settings.get('mode', 'sports'))
+    sports_mode_family = ('sports', 'live', 'my_teams', 'sports_full')
 
     # Legacy app behavior: reflect pin by forcing sports_full mode in /api/state.
     # This keeps pinned detection compatible with clients that key off mode.
-    if pinned_game:
+    if pinned_game and current_mode in sports_mode_family:
         current_mode = 'sports_full'
         response_settings['mode'] = current_mode
     
@@ -4623,7 +4625,7 @@ def api_state():
         
     response_settings['flight_submode'] = 'track' if current_mode == 'flight_tracker' else 'airport'
 
-    is_sports_mode = current_mode in ('sports', 'live', 'my_teams', 'sports_full')
+    is_sports_mode = current_mode in sports_mode_family
     delay_seconds = (response_settings.get('live_delay_seconds', 0)
                      if (is_sports_mode and response_settings.get('live_delay_mode'))
                      else 0)
