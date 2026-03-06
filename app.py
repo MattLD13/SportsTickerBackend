@@ -4204,12 +4204,19 @@ def get_ticker_data():
                      if (is_sports_mode and t_settings.get('live_delay_mode'))
                      else 0)
     if effective_pin:
-        pin_conf = {
-            'active_sports': state.get('active_sports', {}),
-            'utc_offset': state.get('utc_offset', -5)
-        }
-        _now = dt.now(timezone.utc)
-        raw_games = fetcher.fetch_pinned_game(effective_pin, pin_conf, _now - timedelta(days=1), _now + timedelta(days=2))
+        if delay_seconds > 0:
+            delayed_games = fetcher.get_mode_snapshot('sports_full', delay_seconds)
+            pin_id = str(effective_pin).split(':', 1)[-1]
+            raw_games = [g for g in delayed_games if str(g.get('id', '')) == pin_id]
+            if not raw_games:
+                raw_games = delayed_games
+        else:
+            pin_conf = {
+                'active_sports': state.get('active_sports', {}),
+                'utc_offset': state.get('utc_offset', -5)
+            }
+            _now = dt.now(timezone.utc)
+            raw_games = fetcher.fetch_pinned_game(effective_pin, pin_conf, _now - timedelta(days=1), _now + timedelta(days=2))
     else:
         raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
     active_sports = state.get('active_sports', {})
