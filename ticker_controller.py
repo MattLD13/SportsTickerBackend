@@ -20,7 +20,7 @@ from rgbmatrix import RGBMatrix, RGBMatrixOptions
 from flask import Flask, request, render_template_string
 
 # ================= CONFIGURATION =================
-BACKEND_URL = "https://ticker.mattdicks.org"
+BACKEND_URL = "http://localhost:5000"
 
 PANEL_W = 384
 PANEL_H = 32
@@ -42,7 +42,7 @@ HTML_TEMPLATE = """
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { background-color: #121212; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        body { background-color: #121212; color: #e0e0e0; font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .card { background-color: #1e1e1e; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); width: 100%; max-width: 350px; }
         h2 { text-align: center; color: #ffffff; margin-top: 0; margin-bottom: 0.5rem; }
         p.desc { text-align: center; color: #888; font-size: 0.9rem; margin-bottom: 1.5rem; }
@@ -235,6 +235,16 @@ def draw_hybrid_text(draw, x, y, text_str, color):
         x_cursor += 5
     return x_cursor
 
+
+def load_monospace_font(size, bold=False):
+    font_candidates = ["DejaVuSansMono-Bold.ttf", "DejaVuSansMono.ttf"] if bold else ["DejaVuSansMono.ttf"]
+    for font_name in font_candidates:
+        try:
+            return ImageFont.truetype(font_name, size)
+        except:
+            continue
+    return ImageFont.load_default()
+
 # ================= DEVICE ID =================
 def get_device_id():
     path_to_use = ID_FILE_PATH
@@ -305,22 +315,15 @@ class TickerStreamer:
         options.drop_privileges = False
         self.matrix = RGBMatrix(options=options)
 
-        try: self.font = ImageFont.truetype("DejaVuSans-Bold.ttf", 10)
-        except: self.font = ImageFont.load_default()
-        try: self.medium_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 12)
-        except: self.medium_font = ImageFont.load_default()
-        try: self.big_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
-        except: self.big_font = ImageFont.load_default()
-        try: self.huge_font = ImageFont.truetype("DejaVuSans-Bold.ttf", 20)
-        except: self.huge_font = ImageFont.load_default()
-        try: self.clock_giant = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
-        except: self.clock_giant = ImageFont.load_default()
-        try: self.tiny = ImageFont.truetype("DejaVuSans.ttf", 9)
-        except: self.tiny = ImageFont.load_default()
-        try: self.micro = ImageFont.truetype("DejaVuSans.ttf", 7)
-        except: self.micro = ImageFont.load_default()
-        try: self.nano = ImageFont.truetype("DejaVuSans.ttf", 5)
-        except: self.nano = ImageFont.load_default()
+        self.font = load_monospace_font(10, bold=True)
+        self.medium_font = load_monospace_font(12, bold=True)
+        self.big_font = load_monospace_font(14, bold=True)
+        self.huge_font = load_monospace_font(20, bold=True)
+        self.clock_giant = load_monospace_font(28, bold=True)
+        self.tiny = load_monospace_font(9)
+        self.micro = load_monospace_font(7)
+        self.nano = load_monospace_font(5)
+        self.score_default_font = ImageFont.load_default()
 
         self.portal = WifiPortal(self.matrix, self.font)
         threading.Thread(target=self.portal.run, daemon=True).start()
@@ -475,8 +478,6 @@ class TickerStreamer:
             r = requests.get(url, timeout=5)
             if r.status_code == 200:
                 img = Image.open(io.BytesIO(r.content)).convert("RGBA")
-                # Resize in premultiplied alpha mode to prevent LANCZOS from blending
-                # colored pixels with transparent-black pixels (causes desaturation)
                 img = img.convert("RGBa")
                 img.thumbnail(size, Image.Resampling.LANCZOS)
                 img = img.convert("RGBA")
@@ -496,6 +497,45 @@ class TickerStreamer:
             d.polygon([(x+2, y), (x, y+4), (x+4, y+4)], fill=color)
         else:
             d.polygon([(x, y), (x+4, y), (x+2, y+4)], fill=color)
+            
+    def draw_side_arrow(self, draw, x, y, is_left, color):
+        if is_left:
+            draw.polygon([(x+4, y), (x, y+3), (x+4, y+6)], fill=color)
+        else:
+            draw.polygon([(x, y), (x+4, y+3), (x, y+6)], fill=color)
+
+    def draw_bat(self, draw, cx, by):
+        """
+        Baseball bat icon. cx = horizontal center, by = top y.
+        4px wide (cx-2..cx+1), 18px tall. Barrel at top, knob at bottom.
+        """
+        bc = (220, 180, 120)   # barrel wood
+        hc = (180, 135,  65)   # handle
+        kc = (150, 105,  40)   # knob
+        draw.rectangle([cx-2, by+0,  cx+1, by+7],  fill=bc)   # barrel
+        draw.rectangle([cx-1, by+8,  cx+0, by+9],  fill=bc)   # taper
+        draw.rectangle([cx-1, by+10, cx+0, by+15], fill=hc)   # handle
+        draw.rectangle([cx-2, by+16, cx+1, by+17], fill=kc)   # knob
+
+    def draw_outlined_text(self, d, x, y, text, font, fill, outline, anchor="mm"):
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                if dx == 0 and dy == 0: continue
+                d.text((x+dx, y+dy), text, font=font, fill=outline, anchor=anchor)
+        d.text((x, y), text, font=font, fill=fill, anchor=anchor)
+
+    def get_team_color(self, game, side='home'):
+        c = game.get(f'{side}_color')
+        if c:
+            try:
+                c = c.lstrip('#')
+                return tuple(int(c[i:i+2], 16) for i in (0, 2, 4))
+            except: pass
+        logo = self.get_logo(game.get(f'{side}_logo'), (24, 24))
+        if logo:
+            stat = ImageStat.Stat(logo)
+            return tuple(int(x) for x in stat.mean[:3])
+        return (60, 60, 60)
 
     def draw_hockey_stick(self, draw, cx, cy, size):
         WOOD = (150, 75, 0); TAPE = (255, 255, 255)
@@ -534,16 +574,16 @@ class TickerStreamer:
     def shorten_status(self, status, sport=''):
         if not status: return ""
         sp = str(sport).lower()
-        # Baseball: ^/V arrows for top/bottom, ordinal suffix preserved, no other munging
-        if 'baseball' in sp or 'mlb' in sp:
+        if 'baseball' in sp or 'mlb' in sp or 'wbc' in sp:
             su = str(status).upper()
             for old, new in [("TOP ", "^"), ("BOTTOM ", "V"), ("BOT ", "V")]:
                 su = su.replace(old, new)
             return su
-        # All other sports: original logic unchanged
         s = str(status).upper().replace(" - ", " ").replace("FINAL", "FINAL").replace("/OT", " OT").replace("HALFTIME", "HALF")
         for old, new in [("TOP ", "^"), ("BOTTOM ", "V"), ("BOT ", "V")]:
             s = s.replace(old, new)
+        if s.startswith("END "):
+            return s
         for num in ["10", "11", "12", "1", "2", "3", "4", "5", "6", "7", "8", "9"]:
             for suf in ["TH", "ST", "ND", "RD"]:
                 s = s.replace(f"{num}{suf}", num)
@@ -557,10 +597,8 @@ class TickerStreamer:
         SUN_Y = (255, 200, 0); CLOUD_W = (205, 210, 220); RAIN_B = (60, 130, 255); SNOW_W = (210, 235, 255)
         if 'sun' in icon or 'clear' in icon:
             d.ellipse((x+3, y+3, x+11, y+11), fill=SUN_Y)
-            # cardinal rays
             for rx, ry in [(x+7, y), (x+7, y+14), (x, y+7), (x+14, y+7)]:
                 d.line([(rx, ry), (rx, ry+1)], fill=SUN_Y)
-            # diagonal rays
             for rx, ry in [(x+2, y+2), (x+12, y+2), (x+2, y+12), (x+12, y+12)]:
                 d.point((rx, ry), fill=SUN_Y)
         elif 'fog' in icon or 'mist' in icon or 'haze' in icon:
@@ -577,7 +615,6 @@ class TickerStreamer:
                 d.point((rx, ry+1), fill=SNOW_W)
         elif 'storm' in icon or 'thunder' in icon or 'lightning' in icon:
             d.ellipse((x+1, y+1, x+14, y+9), fill=(75, 80, 100))
-            # lightning bolt: two line segments
             d.line([(x+8, y+9), (x+6, y+13)], fill=(255, 220, 0), width=1)
             d.line([(x+6, y+13), (x+9, y+13)], fill=(255, 220, 0), width=1)
             d.line([(x+9, y+13), (x+7, y+16)], fill=(255, 220, 0), width=1)
@@ -586,7 +623,6 @@ class TickerStreamer:
             d.ellipse((x+0, y+6, x+11, y+13), fill=(175, 180, 192))
             d.ellipse((x+7, y+5, x+16, y+13), fill=(198, 202, 212))
         else:
-            # partly cloudy
             d.ellipse((x+5, y+1, x+12, y+8), fill=SUN_Y)
             d.point((x+11, y+1), fill=SUN_Y)
             d.ellipse((x+1, y+5, x+12, y+13), fill=(190, 195, 208))
@@ -673,8 +709,675 @@ class TickerStreamer:
         for px, py in pts:
             self._pixel(draw, px, py, color)
 
-    # ================= CARD RENDERERS =================
 
+    # ================= FULL BLEED SPORTS RENDERER =================
+    def draw_sport_full_bleed(self, game):
+        W = PANEL_W; H = PANEL_H
+        img = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img, "RGBA")
+
+        sport    = str(game.get('sport', '')).lower()
+        is_nfl   = 'football' in sport or 'nfl' in sport or 'ncf' in sport
+        is_nhl   = 'hockey' in sport or 'nhl' in sport
+        is_mlb   = 'baseball' in sport or 'mlb' in sport
+        sit      = game.get('situation', {}) or {}
+        home_clr = self.get_team_color(game, 'home')
+        away_clr = self.get_team_color(game, 'away')
+        h_score  = str(game.get('home_score', ''))
+        a_score  = str(game.get('away_score', ''))
+        home_ab  = str(game.get('home_abbr', '')).upper()
+        away_ab  = str(game.get('away_abbr', '')).upper()
+        poss_ab  = str(sit.get('possession', '')).upper()
+
+        # ── FOOTBALL: full field matching HTML footballField() ───────────────
+        if is_nfl:
+            def _parse_hex_color(value):
+                try:
+                    c = str(value or '').strip().lstrip('#')
+                    if len(c) == 6:
+                        return tuple(int(c[i:i+2], 16) for i in (0, 2, 4))
+                except Exception:
+                    pass
+                return None
+
+            # Prefer explicit team colors; if missing, fall back to a readable
+            # default palette (instead of logo-average grays).
+            home_ez = _parse_hex_color(game.get('home_color')) or home_clr
+            away_ez = _parse_hex_color(game.get('away_color')) or away_clr
+
+            def _is_dull(c):
+                return max(c) - min(c) < 25
+
+            if _is_dull(home_ez):
+                home_ez = (155, 32, 32)
+            if _is_dull(away_ez):
+                away_ez = (32, 62, 155)
+
+            EZ_RATIO = 30 / 360
+            ezW    = W * EZ_RATIO          # ~32 px
+            playW  = W * (300 / 360)       # ~320 px
+            hT     = H * (70.75 / 160)     # upper hash row
+            hB     = H * (89.25 / 160)     # lower hash row
+
+            # 1 · Grass bands (10 alternating strips)
+            for i in range(10):
+                bx = ezW + i * playW / 10
+                d.rectangle([bx, 0, bx + playW / 10, H],
+                            fill=(22, 52, 18) if i % 2 == 0 else (27, 64, 24))
+
+            # 2 · End zones  HOME=left  AWAY=right
+            d.rectangle([0, 0, ezW, H], fill=home_ez)
+            d.rectangle([W - ezW, 0, W, H], fill=away_ez)
+            d.line([(ezW, 0), (ezW, H)],         fill=(255, 255, 255, 230))
+            d.line([(W - ezW, 0), (W - ezW, H)], fill=(255, 255, 255, 230))
+
+            # 3 · 10-yard stripe lines
+            for i in range(11):
+                lx = ezW + i * playW / 10
+                op = 115 if i == 5 else 64
+                d.line([(lx, 0), (lx, H)], fill=(255, 255, 255, op))
+
+            # 4 · Hash marks
+            for y in range(1, 100):
+                hx = ezW + y / 100 * playW
+                is5 = (y % 5 == 0)
+                hl  = H * 0.042 if is5 else H * 0.022
+                op  = 128 if is5 else 66
+                d.line([(hx, hT - hl), (hx, hT + hl)], fill=(255, 255, 255, op))
+                d.line([(hx, hB - hl), (hx, hB + hl)], fill=(255, 255, 255, op))
+
+            # 5 · Parse LOS and yards-to-go from situation
+            los, ytg = -1, 10
+            dd_text  = sit.get('downDist', '')
+            at_team = ''
+            is_goal_to_go = False
+            drive_to_right = None  # True => offense driving toward right endzone
+            parsed_yard = None
+            if ' at ' in dd_text:
+                after = dd_text.split(' at ', 1)[1].strip().split()
+                if len(after) >= 2:
+                    team, yard_s = after[0].upper(), after[1]
+                    at_team = team
+                    try:
+                        yard = int(yard_s)
+                        parsed_yard = yard
+                        los = yard if team == home_ab else (100 - yard if team == away_ab else 50)
+                    except ValueError:
+                        pass
+            if '&' in dd_text and los >= 0:
+                ytg_raw = dd_text.split('&', 1)[1].strip().split()[0].lower()
+                if ytg_raw in ('goal', 'gl'):
+                    is_goal_to_go = True
+                else:
+                    try: ytg = int(ytg_raw)
+                    except ValueError: ytg = 10
+
+            # Infer drive direction once and use it everywhere (FD line + red-zone).
+            if poss_ab == home_ab:
+                drive_to_right = True
+            elif poss_ab == away_ab:
+                drive_to_right = False
+
+            # Goal-to-go marker is most reliable for direction when possession is noisy.
+            if is_goal_to_go and at_team:
+                if poss_ab in (home_ab, away_ab):
+                    if at_team == poss_ab:
+                        # Offense on its own side: attacking opposite endzone.
+                        drive_to_right = (poss_ab == home_ab)
+                    else:
+                        # Offense in opponent territory: attacking that side's endzone.
+                        drive_to_right = (at_team == away_ab)
+                elif at_team == home_ab:
+                    drive_to_right = False
+                elif at_team == away_ab:
+                    drive_to_right = True
+
+            if drive_to_right is None:
+                drive_to_right = True
+
+            if is_goal_to_go and los >= 0:
+                if parsed_yard is not None:
+                    ytg = max(1, parsed_yard)
+                    los = max(0, min(100, 100 - parsed_yard if drive_to_right else parsed_yard))
+                else:
+                    goal_line = 100 if drive_to_right else 0
+                    ytg = max(1, abs(goal_line - los))
+                    # For goal-to-go visuals, place LOS near the attacking goal line
+                    # so the ball/FD/red-zone all live on the scoring side.
+                    los = max(0, min(100, 100 - ytg if drive_to_right else ytg))
+
+            # 6 · Red zone tint
+            is_rz = sit.get('isRedZone', False)
+            if is_rz:
+                rz_overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                rz_d = ImageDraw.Draw(rz_overlay, "RGBA")
+                if drive_to_right:
+                    rz_d.rectangle([ezW + int(0.8 * playW), 0, W - ezW, H], fill=(220, 0, 0, 128))
+                    d.line([(ezW + 0.8 * playW, 0), (ezW + 0.8 * playW, H)], fill=(255, 34, 34, 200), width=2)
+                else:
+                    rz_d.rectangle([ezW, 0, ezW + int(0.2 * playW), H], fill=(220, 0, 0, 128))
+                    d.line([(ezW + 0.2 * playW, 0), (ezW + 0.2 * playW, H)], fill=(255, 34, 34, 200), width=2)
+                img.alpha_composite(rz_overlay)
+
+            # 7 · Center text overlay (period + context, matching HTML getBgText)
+            prd     = self.shorten_status(game.get('status', ''), sport)
+            ctx     = dd_text.split(' at ')[0].strip() if ' at ' in dd_text else dd_text
+            ctx_clr = (255, 136, 0) if is_rz else (240, 216, 0)
+            cx_mid  = W // 2
+            if prd or ctx:
+                y_prd = int(H * 0.32) if ctx else int(H * 0.5)
+                self.draw_outlined_text(d, cx_mid, y_prd, prd, self.big_font, (255, 255, 255), (0, 0, 0, 200))
+                if ctx:
+                    self.draw_outlined_text(d, cx_mid, int(H * 0.72), ctx, self.font, ctx_clr, (0, 0, 0, 200))
+
+            # 8 · Logos in end zones
+            LOGO_SZ  = min(int(ezW * 0.85), int(H * 0.65))
+            logo_top = max(0, int(H * 0.30) - LOGO_SZ // 2)
+            h_logo_cx = int(ezW / 2)
+            a_logo_cx = W - int(ezW / 2)
+            hl = self.get_logo(game.get('home_logo'), (24, 24))
+            al = self.get_logo(game.get('away_logo'), (24, 24))
+            if hl:
+                ls = hl.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
+                img.paste(ls, (h_logo_cx - LOGO_SZ // 2, logo_top), ls)
+            if al:
+                ls = al.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
+                img.paste(ls, (a_logo_cx - LOGO_SZ // 2, logo_top), ls)
+
+            # 9 · Score badges
+            score_y   = int(H * 0.82)
+            slot_cx   = int(ezW + playW * 0.05)
+            aslot_cx  = int(W - ezW - playW * 0.05)
+            # Default: keep scores outside endzones
+            h_sc_cx   = slot_cx
+            a_sc_cx   = aslot_cx
+            if is_rz:
+                if poss_ab == home_ab:
+                    h_sc_cx = slot_cx
+                    a_sc_cx = a_logo_cx
+                elif poss_ab == away_ab:
+                    h_sc_cx = h_logo_cx
+                    a_sc_cx = aslot_cx
+            for scx, sc in [(h_sc_cx, h_score), (a_sc_cx, a_score)]:
+                if not sc: continue
+                sw = (len(str(sc)) * 5) + 6
+                sh = 11
+                box_left = scx - (sw // 2)
+                box_top = score_y - (sh // 2)
+                box_right = box_left + sw - 1
+                box_bottom = box_top + sh - 1
+                d.rectangle([box_left, box_top, box_right, box_bottom], fill=(0, 0, 0, 218))
+                text_w = len(str(sc)) * 5
+                text_h = 6
+                text_x = box_left + ((sw - text_w) // 2)
+                text_y = box_top + ((sh - text_h + 1) // 2)
+                draw_hybrid_text(d, text_x, text_y, str(sc), (255, 255, 255))
+
+            # 10 · First-down line + LOS line + football
+            if 0 <= los <= 100:
+                los_px = ezW + los * playW / 100
+                fd_pct = min(100, los + ytg) if drive_to_right else max(0, los - ytg)
+                fd_px  = ezW + fd_pct * playW / 100
+                d.line([(fd_px, 0), (fd_px, H)],   fill=(240, 216, 0, 245), width=2)
+                d.line([(los_px, 0), (los_px, H)],  fill=(200, 200, 200, 240), width=2)
+                brx = max(4, int(H * 0.13))
+                bry = max(2, int(H * 0.08))
+                by  = H // 2
+                d.ellipse([los_px - brx, by - bry, los_px + brx, by + bry], fill=(139, 69, 19), outline=(61, 26, 6))
+                d.line([(los_px - int(brx * 0.7), by), (los_px + int(brx * 0.7), by)], fill=(255, 255, 255, 165))
+
+            # 11 · Possession ▼ indicator
+            pcx = None
+            if poss_ab == home_ab: pcx = int(ezW / 2)
+            elif poss_ab == away_ab: pcx = W - int(ezW / 2)
+            if pcx:
+                d.polygon([(pcx - 3, H - 4), (pcx + 3, H - 4), (pcx, H - 1)], fill=(255, 255, 255))
+
+            return img
+
+        # ── NON-FOOTBALL: sport background + side scrims ────────────────────
+        if is_nhl:
+            self._draw_hockey_rink(d, W, H)
+        elif is_mlb:
+            self._draw_baseball_diamond(d, W, H, sit)
+        else:
+            self._draw_basketball_court(d, W, H)
+
+        # ── MLB: special full-width layout matching HTML L1 getBgText() ──────
+        if is_mlb:
+            # Parse inning from status string  e.g. "Top 7th" / "Bottom 3rd" / "Mid 8th"
+            status_raw = str(game.get('status', '')).upper()
+            is_top_inn = 'TOP' in status_raw
+            is_bot_inn = 'BOT' in status_raw or 'BOTTOM' in status_raw
+            is_mid_inn = not is_top_inn and not is_bot_inn  # MID / END
+
+            # Extract inning number
+            inn_num = ''
+            for word in status_raw.split():
+                clean = word.replace('TH','').replace('ST','').replace('ND','').replace('RD','')
+                if clean.isdigit():
+                    inn_num = clean
+                    break
+
+            def _ordinal(n):
+                n = int(n)
+                if 10 <= n % 100 <= 19: return f"{n}th"
+                return f"{n}" + {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+
+            inn_ordinal = _ordinal(inn_num) if inn_num else ''  # e.g. "9th"
+
+            balls   = sit.get('balls',   0)
+            strikes = sit.get('strikes', 0)
+            outs    = sit.get('outs',    0)
+
+            # ── Step 1: side scrims via alpha_composite (correct blending) ──
+            # Drawing alpha lines directly on RGBA replaces pixels instead of blending.
+            # Use a separate overlay and alpha_composite onto the base image.
+            scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            sd = ImageDraw.Draw(scrim)
+            SOLID, FADE = 45, 80
+            for x in range(SOLID + FADE):
+                a = 250 if x < SOLID else max(0, int(250 * (SOLID + FADE - x) / FADE))
+                sd.line([(x, 0),         (x, H)],         fill=(0, 0, 0, a))
+                sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
+            img.alpha_composite(scrim)
+            d.rectangle([0, 0, 2, H],     fill=home_clr)
+            d.rectangle([W - 3, 0, W, H], fill=away_clr)
+
+            # ── Step 3: logos ────────────────────────────────────────────────
+            LOGO_SZ  = 24
+            logo_y   = (H - LOGO_SZ) // 2
+            h_logo_x = 6
+            a_logo_x = W - 3 - LOGO_SZ - 5
+            hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ))
+            al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ))
+            if hl: img.paste(hl, (h_logo_x, logo_y), hl)
+            if al: img.paste(al, (a_logo_x, logo_y), al)
+
+            # ── Step 4: scores ───────────────────────────────────────────────
+            h_sc_x = h_logo_x + LOGO_SZ + 4
+            a_sc_x = a_logo_x - 4
+            self.draw_outlined_text(d, h_sc_x, H // 2, h_score,
+                                    self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='lm')
+            h_sc_w = d.textlength(h_score, font=self.clock_giant)
+            self.draw_outlined_text(d, a_sc_x, H // 2, a_score,
+                                    self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
+            a_sc_w = d.textlength(a_score, font=self.clock_giant)
+
+            # ── Step 5: inning text + BSO (drawn AFTER scrim so they're on top) ──
+            # HTML: spread=75, leftX=W/2-75=117, rightX=W/2+75=267
+            left_txt_x  = W // 2 - 75   # 117
+            right_txt_x = W // 2 + 75   # 267
+
+            bso_rows = [
+                ('B', str(balls),   (74,  175, 255)),
+                ('S', str(strikes), (255, 136,   0)),
+                ('O', str(outs),    (224,  48,  48)),
+            ]
+
+            if not is_mid_inn:
+                inn_cx  = left_txt_x  if is_top_inn else right_txt_x
+                bso_cx  = right_txt_x if is_top_inn else left_txt_x
+            else:
+                inn_cx  = left_txt_x
+                bso_cx  = right_txt_x
+
+            def draw_inning_indicator(cx, cy, is_top, is_bot, ordinal_str):
+                """Draw inning indicator: [▲/▼ arrow] [bold number] [suffix], all inline and centered."""
+                if not ordinal_str:
+                    return
+                f_num = self.big_font   # 14pt bold
+                f_sup = self.micro      # 7pt small suffix
+
+                num_part = ''.join(c for c in ordinal_str if c.isdigit())
+                suf_part = ''.join(c for c in ordinal_str if not c.isdigit())
+
+                num_w = d.textlength(num_part, font=f_num)
+                suf_w = d.textlength(suf_part, font=f_sup)
+                arrow_w = 8
+                gap     = 2
+                total_w = arrow_w + gap + num_w + suf_w
+                x = int(cx - total_w / 2)
+
+                # Arrow — vertically centered at cy with ±5px half-height
+                ah    = 4
+                mid_x = x + arrow_w // 2
+                if is_top:
+                    d.polygon([(x-1, cy+ah+1), (x+arrow_w+1, cy+ah+1), (mid_x, cy-ah-1)], fill=(0, 0, 0))
+                    d.polygon([(x,   cy+ah),   (x+arrow_w,   cy+ah),   (mid_x, cy-ah)],   fill=(255, 255, 255))
+                elif is_bot:
+                    d.polygon([(x-1, cy-ah-1), (x+arrow_w+1, cy-ah-1), (mid_x, cy+ah+1)], fill=(0, 0, 0))
+                    d.polygon([(x,   cy-ah),   (x+arrow_w,   cy-ah),   (mid_x, cy+ah)],   fill=(255, 255, 255))
+                else:
+                    d.rectangle([x, cy-1, x+arrow_w, cy+1], fill=(180, 180, 180))
+                x += arrow_w + gap
+
+                # Number — anchor='mm' truly centers it on cy
+                nx = x + int(num_w / 2)
+                for dx in [-1, 0, 1]:
+                    for dy in [-1, 0, 1]:
+                        if dx == 0 and dy == 0: continue
+                        d.text((nx+dx, cy+dy), num_part, font=f_num, fill=(0, 0, 0, 200), anchor='mm')
+                d.text((nx, cy), num_part, font=f_num, fill=(255, 255, 255), anchor='mm')
+                x += int(num_w)
+
+                # Suffix — inline with inning number (no superscript raise)
+                d.text((x, cy), suf_part, font=f_sup, fill=(190, 190, 190), anchor='lm')
+
+            draw_inning_indicator(inn_cx, H // 2, is_top_inn, is_bot_inn, inn_ordinal)
+            y_start = 4
+            for (lbl, val, col) in bso_rows:
+                draw_tiny_text(d, bso_cx - 8, y_start, lbl, (180, 180, 180))
+                draw_tiny_text(d, bso_cx,     y_start, val, col)
+                y_start += 8
+
+            # ── Step 6: bat icon ─────────────────────────────────────────────
+            if is_top_inn:
+                self.draw_bat(d, int(a_sc_x - a_sc_w - 8), 7)   # cx between score and logo
+            elif is_bot_inn:
+                self.draw_bat(d, int(h_sc_x + h_sc_w + 8), 7)
+
+            return img
+
+        # ── NHL / NBA: side scrims (alpha_composite) then text on top ────────
+
+        # Hockey PP / EN badges
+        h_badge = a_badge = ''
+        if is_nhl and sit.get('powerPlay'):
+            if poss_ab == home_ab:   h_badge = 'PP'
+            elif poss_ab == away_ab: a_badge = 'PP'
+        elif is_nhl and sit.get('emptyNet'):
+            en_side = str(sit.get('emptyNetSide', '')).upper()
+            if en_side in ('HOME', home_ab):
+                h_badge = 'EN'
+            elif en_side in ('AWAY', away_ab):
+                a_badge = 'EN'
+            elif poss_ab == home_ab:
+                a_badge = 'EN'
+            elif poss_ab == away_ab:
+                h_badge = 'EN'
+
+        # Side scrims via alpha_composite (correct blending)
+        scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(scrim)
+        SOLID, FADE = 45, 80
+        for x in range(SOLID + FADE):
+            a = 250 if x < SOLID else max(0, int(250 * (SOLID + FADE - x) / FADE))
+            sd.line([(x, 0), (x, H)],             fill=(0, 0, 0, a))
+            sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
+        img.alpha_composite(scrim)
+
+        # Centre text (period + context) — drawn AFTER scrim so it's visible
+        prd = self.shorten_status(game.get('status', ''), sport)
+        cx  = W // 2
+        if prd:
+            self.draw_outlined_text(d, cx, H // 2, prd,
+                                    self.big_font, (255, 255, 255), (0, 0, 0, 200))
+
+        # Team-color borders
+        d.rectangle([0, 0, 2, H],     fill=home_clr)
+        d.rectangle([W - 3, 0, W, H], fill=away_clr)
+
+        # Hockey badges: compact text-only labels (avoid full-height side blocks)
+        l_used = 3; r_used = 3
+
+        # Logos
+        LOGO_SZ  = 24
+        h_logo_x = l_used + 5
+        a_logo_x = W - r_used - LOGO_SZ - 5
+        logo_y   = (H - LOGO_SZ) // 2
+        hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ))
+        al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ))
+        if hl: img.paste(hl, (h_logo_x, logo_y), hl)
+        if al: img.paste(al, (a_logo_x, logo_y), al)
+
+        # Scores
+        h_sc_x = h_logo_x + LOGO_SZ + 4
+        a_sc_x = a_logo_x - 4
+        self.draw_outlined_text(d, h_sc_x, H // 2, h_score,
+                                self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='lm')
+        h_sc_w = d.textlength(h_score, font=self.clock_giant)
+        self.draw_outlined_text(d, a_sc_x, H // 2, a_score,
+                                self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
+        a_sc_w = d.textlength(a_score, font=self.clock_giant)
+
+        if h_badge:
+            h_col = (255, 204, 0) if h_badge == 'PP' else (255, 90, 90)
+            h_badge_x = int(h_sc_x + h_sc_w + 9)
+            self.draw_outlined_text(d, h_badge_x, H // 2, h_badge,
+                                    self.tiny, h_col, (0, 0, 0, 220), anchor='mm')
+        if a_badge:
+            a_col = (255, 204, 0) if a_badge == 'PP' else (255, 90, 90)
+            a_badge_x = int(a_sc_x - a_sc_w - 9)
+            self.draw_outlined_text(d, a_badge_x, H // 2, a_badge,
+                                    self.tiny, a_col, (0, 0, 0, 220), anchor='mm')
+
+        # No possession arrow for hockey/basketball full-bleed mode.
+
+        return img
+
+    # ── Sport background helpers — exact ports of the HTML JS functions ──────
+
+    def _draw_hockey_rink(self, d, W, H):
+        """
+        Port of HTML hockeyRink() — ice blue surface, blue lines, red lines,
+        face-off circles, goal creases, and nets.
+        HTML uses rounded clipPath corners; we approximate with a rounded rectangle
+        drawn on top at the end.
+        """
+        bl1 = W * 0.28
+        bl2 = W * 0.72
+        gl1 = W * 0.085
+        gl2 = W * 0.915
+
+        # Ice surface + lighter zone tints
+        d.rectangle([0, 0, W, H], fill=(205, 228, 248))
+        d.rectangle([0, 0, bl1, H],    fill=(196, 219, 244))
+        d.rectangle([bl2, 0, W, H],    fill=(196, 219, 244))
+
+        # Removed horizontal texture lines to avoid stray white-line artifacts
+        # on the LED matrix/emulator rendering.
+
+        # Blue lines (2.5px wide each)
+        d.rectangle([bl1 - 1, 0, bl1 + 1.5, H], fill=(34, 85, 204))
+        d.rectangle([bl2 - 1, 0, bl2 + 1.5, H], fill=(34, 85, 204))
+
+        # Neutral-zone faceoff dots just inside the neutral zone near each blue line
+        neutral_dot_r = 2
+        neutral_dot_fill = (204, 26, 26, 210)
+        neutral_dot_outline = (140, 12, 12, 220)
+        neutral_x_off = max(4, int(W * 0.02))
+        for fx, fy in [
+            (bl1 + neutral_x_off, H * 0.28),
+            (bl1 + neutral_x_off, H * 0.72),
+            (bl2 - neutral_x_off, H * 0.28),
+            (bl2 - neutral_x_off, H * 0.72),
+        ]:
+            d.ellipse([fx - neutral_dot_r, fy - neutral_dot_r, fx + neutral_dot_r, fy + neutral_dot_r],
+                      fill=neutral_dot_fill, outline=neutral_dot_outline)
+
+        # Center red line — dashed (6 segments)
+        dash_h = int(H / 6 * 0.7)
+        for i in range(6):
+            ry = int(i * H / 6)
+            d.rectangle([W / 2 - 0.6, ry, W / 2 + 0.6, ry + dash_h], fill=(204, 26, 26))
+
+        # Goal lines
+        d.line([(gl1, 0), (gl1, H)], fill=(204, 26, 26), width=1)
+        d.line([(gl2, 0), (gl2, H)], fill=(204, 26, 26), width=1)
+
+        # Center circle + dot
+        cr = H * 0.40
+        d.ellipse([W/2 - cr, H/2 - cr, W/2 + cr, H/2 + cr],
+                  outline=(204, 26, 26, 128), width=1)
+        d.ellipse([W/2 - 2, H/2 - 2, W/2 + 2, H/2 + 2], fill=(204, 26, 26, 179))
+
+        # Zone face-off dots + circles
+        fo_r = H * 0.25
+        fo_dot = 2.5
+        for fx, fy in [
+            (bl1 * 0.5,            H * 0.28),
+            (bl1 * 0.5,            H * 0.72),
+            (bl2 + (W - bl2) * 0.5, H * 0.28),
+            (bl2 + (W - bl2) * 0.5, H * 0.72),
+        ]:
+            d.ellipse([fx - fo_dot, fy - fo_dot, fx + fo_dot, fy + fo_dot],
+                      fill=(204, 26, 26, 179))
+            d.ellipse([fx - fo_r, fy - fo_r, fx + fo_r, fy + fo_r],
+                      outline=(204, 26, 26, 89), width=1)
+
+        # Goal creases — arcs opening inward from each goal line
+        cr2 = H * 0.32
+        # Left crease opens rightward (arc from 270° to 90°, i.e. right half of circle)
+        d.arc([gl1 - cr2, H/2 - cr2, gl1 + cr2, H/2 + cr2],
+              start=270, end=90, fill=(68, 136, 238), width=1)
+        # Right crease opens leftward
+        d.arc([gl2 - cr2, H/2 - cr2, gl2 + cr2, H/2 + cr2],
+              start=90, end=270, fill=(68, 136, 238), width=1)
+
+        # Goalie nets (small rectangles just outside goal lines)
+        nh = int(H * 0.28)
+        ny = (H - nh) // 2
+        d.rectangle([gl1,     ny, gl1 + 4, ny + nh], fill=(221, 221, 221), outline=(153, 153, 153))
+        d.rectangle([gl2 - 4, ny, gl2,     ny + nh], fill=(221, 221, 221), outline=(153, 153, 153))
+
+        # Rounded corner overlay (simulate HTML clipPath rx)
+        cr_r = H * 0.45
+        d.rounded_rectangle([0, 0, W - 1, H - 1], radius=int(cr_r),
+                             outline=(122, 173, 206), width=1)
+
+    def _draw_baseball_diamond(self, d, W, H, sit):
+        """
+        Port of HTML baseballDiamond().
+        cx=W/2, cy=H*0.55, r=H*0.42, bs=H*0.16 (half-diagonal of rotated base).
+        Base positions:  home=(cx,cy+r)  1B=(cx+r,cy)  2B=(cx,cy-r)  3B=(cx-r,cy)
+
+        Key fix: the HTML dirt is an SVG arc path that bows UPWARD from below the canvas.
+        Best PIL approximation is a filled ellipse centered at (cx, cy+r*0.1) with
+        rx=r*1.4, ry=r*1.1 — this produces the correct kidney/infield-skin shape.
+        """
+        cx = W / 2
+        cy = H * 0.55
+        r  = H * 0.42
+        bs = H * 0.16     # half-diagonal — bases are rotated squares drawn as diamonds
+
+        home  = (cx,     cy + r)
+        first = (cx + r, cy)
+        sec   = (cx,     cy - r)
+        third = (cx - r, cy)
+
+        # 1 · Alternating grass bands (full width)
+        for i in range(10):
+            bx = i * W / 10
+            d.rectangle([bx, 0, bx + W / 10, H],
+                        fill=(17, 41, 17) if i % 2 == 0 else (21, 50, 21))
+
+        # 2 · Dirt infield — ellipse centered just below diamond midpoint.
+        #     The HTML uses an SVG arc path whose bottom goes off-canvas (y=home+3=~34)
+        #     and whose curve bows upward; this ellipse replicates that visible shape.
+        dc   = cy + r * 0.1     # ellipse centre y  (~19.0 for H=32)
+        drx  = r * 1.4          # horizontal radius (~18.8)
+        dry  = r * 1.1          # vertical radius   (~14.8)
+        d.ellipse([cx - drx, dc - dry, cx + drx, dc + dry], fill=(158, 105, 68))
+
+        # 3 · Inner grass diamond  (HTML: polygon with 2-px inset at each vertex)
+        # The top vertex (2nd base) needs a larger inset so the grass doesn't
+        # overlap the base: sec_y=4.2, bs=5.1, so base bottom=9.3 — inset by bs+1
+        d.polygon([
+            (cx,           home[1]  - 2),
+            (first[0] - 2, first[1]),
+            (cx,           sec[1]   + bs + 1),   # clear the base footprint
+            (third[0] + 2, third[1]),
+        ], fill=(17, 41, 17), outline=(158, 105, 68))
+
+        # 4 · Pitcher's mound + rubber
+        pr = r * 0.22
+        d.ellipse([cx - pr, cy - pr, cx + pr, cy + pr], fill=(158, 105, 68))
+        d.rectangle([cx - 1.5, cy - 0.5, cx + 1.5, cy + 0.5], fill=(255, 255, 255))
+
+        # 5 · Home-plate dirt circle
+        hpr = r * 0.28
+        d.ellipse([home[0] - hpr, home[1] - hpr,
+                   home[0] + hpr, home[1] + hpr], fill=(158, 105, 68))
+
+        # 6 · Base lines
+        for p1, p2 in [(home, first), (first, sec), (sec, third), (third, home)]:
+            d.line([p1, p2], fill=(255, 255, 255, 204), width=1)
+
+        # 7 · Bases — rotated squares (diamond polygons)
+        # Note: 2nd base (sec) is at y=cy-r = H*0.13 ≈ 4px from top.
+        # With bs=H*0.16≈5px the top point goes to y≈-1 (off screen).
+        # Clip the top point of 2nd base to y=1 so it stays visible.
+        def draw_base(pt, on):
+            x, y = pt
+            c = (255, 204, 0) if on else (255, 255, 255)
+            top_y = max(1, y - bs)   # clamp top so it never goes off-canvas
+            d.polygon([
+                (x,      top_y),    # top  (clamped)
+                (x + bs, y),        # right
+                (x,      y + bs),   # bottom
+                (x - bs, y),        # left
+            ], fill=c, outline=(0, 0, 0))
+
+        draw_base(third, sit.get('onThird',  False))
+        draw_base(first, sit.get('onFirst',  False))
+        draw_base(sec,   sit.get('onSecond', False))   # draw 2nd last — it's closest to top edge
+
+        # 8 · Home plate — pentagon
+        hp_s = r * 0.12
+        d.polygon([
+            (home[0],         home[1] + hp_s),
+            (home[0] + hp_s,  home[1]),
+            (home[0] + hp_s,  home[1] - hp_s),
+            (home[0] - hp_s,  home[1] - hp_s),
+            (home[0] - hp_s,  home[1]),
+        ], fill=(255, 255, 255), outline=(0, 0, 0))
+
+    def _draw_basketball_court(self, d, W, H):
+        """
+        Exact port of HTML basketballCourt().
+        lW=W*0.18  lH=H*0.62  lY=(H-lH)/2  thR=H*0.54
+        """
+        lW  = W * 0.18
+        lH  = H * 0.62
+        lY  = (H - lH) / 2
+        thR = H * 0.54
+
+        # 1 · Floor (hardwood orange)
+        d.rectangle([0, 0, W, H], fill=(200, 120, 58))
+
+          # 2 · Court boundary
+        d.rectangle([1, 1, W - 2, H - 2], outline=(255, 255, 255, 128))
+
+          # 3 · Half-court line + centre circle
+        d.line([(W / 2, 0), (W / 2, H)], fill=(255, 255, 255, 115))
+        cr = H * 0.33
+        d.ellipse([W/2 - cr, H/2 - cr, W/2 + cr, H/2 + cr], outline=(255, 255, 255, 97))
+
+          # 4 · Paint lanes (left and right)
+        d.rectangle([0,      lY, lW,     lY + lH], fill=(160, 80, 32), outline=(255, 255, 255, 140))
+        d.rectangle([W - lW, lY, W,      lY + lH], fill=(160, 80, 32), outline=(255, 255, 255, 140))
+
+          # 5 · Free-throw circles
+        ftc_r = lH * 0.26
+        d.ellipse([lW - ftc_r, H/2 - ftc_r, lW + ftc_r, H/2 + ftc_r],
+                  outline=(255, 255, 255, 97))
+        d.ellipse([W - lW - ftc_r, H/2 - ftc_r, W - lW + ftc_r, H/2 + ftc_r],
+                  outline=(255, 255, 255, 97))
+
+          # 6 · Three-point arcs
+        d.arc([0 - thR, lY - 4, thR,     lY + lH + 4], start=270, end=90,
+              fill=(255, 255, 255, 97))
+        d.arc([W - thR, lY - 4, W + thR, lY + lH + 4], start=90,  end=270,
+              fill=(255, 255, 255, 97))
+
+          # 7 · Basket posts (vertical lines at ~45% of lane width from edge)
+        px_l = lW * 0.45
+        px_r = W - px_l
+        d.line([(px_l, H * 0.33), (px_l, H * 0.67)], fill=(220, 220, 220, 165), width=1)
+        d.line([(px_r, H * 0.33), (px_r, H * 0.67)], fill=(220, 220, 220, 165), width=1)
+
+    # ================= GENERIC CARD RENDERERS =================
     def draw_stock_card(self, game):
         img = Image.new("RGBA", (128, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
@@ -754,7 +1457,6 @@ class TickerStreamer:
         cur_icon = sit.get('icon', 'cloud')
         DEEP_BLUE = (18, 45, 95)
 
-        # Temperature color based on value
         temp_f = str(game.get('home_abbr', '--')).replace('°', '').strip()
         try:
             tv = int(float(temp_f))
@@ -766,11 +1468,9 @@ class TickerStreamer:
         except:
             temp_color = (240, 240, 245)
 
-        # Background + subtle top scanline for depth
         d.rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), fill=(0, 0, 0))
         d.line((0, 0, PANEL_W - 1, 0), fill=DEEP_BLUE)
 
-        # ---------- LEFT PANEL: current conditions ----------
         left_w = 124
         d.rectangle((0, 0, left_w, 31), fill=(0, 0, 0))
         d.line((left_w, 0, left_w, 31), fill=DEEP_BLUE)
@@ -804,21 +1504,17 @@ class TickerStreamer:
         uv_val = str(stats.get('uv', '--')).strip() or '--'
         aqi_col = self.get_aqi_color(aqi_val)
 
-        # Compact metric chips
         aqi_box = (74, 3, 121, 11)
         uv_box = (74, 13, 121, 21)
         d.rectangle(aqi_box, fill=(2, 6, 14), outline=DEEP_BLUE)
         d.rectangle(uv_box, fill=(2, 6, 14), outline=DEEP_BLUE)
 
-        aqi_label = "AQI"
-        aqi_value = aqi_val[:4]
-        uv_label = "UV"
-        uv_value = uv_val[:4]
+        aqi_label = "AQI"; aqi_value = aqi_val[:4]
+        uv_label = "UV";   uv_value  = uv_val[:4]
         tiny_h = 5
 
         aqi_mid = (aqi_box[0] + aqi_box[2]) // 2
-        aqi_label_w = len(aqi_label) * 5
-        aqi_value_w = len(aqi_value) * 5
+        aqi_label_w = len(aqi_label) * 5; aqi_value_w = len(aqi_value) * 5
         aqi_label_x = aqi_box[0] + ((aqi_mid - aqi_box[0]) - aqi_label_w) // 2
         aqi_value_x = aqi_mid + ((aqi_box[2] - aqi_mid + 1) - aqi_value_w) // 2
         aqi_y = aqi_box[1] + ((aqi_box[3] - aqi_box[1] + 1) - tiny_h) // 2
@@ -826,15 +1522,13 @@ class TickerStreamer:
         draw_tiny_text(d, aqi_value_x, aqi_y, aqi_value, aqi_col)
 
         uv_mid = (uv_box[0] + uv_box[2]) // 2
-        uv_label_w = len(uv_label) * 5
-        uv_value_w = len(uv_value) * 5
+        uv_label_w = len(uv_label) * 5; uv_value_w = len(uv_value) * 5
         uv_label_x = uv_box[0] + ((uv_mid - uv_box[0]) - uv_label_w) // 2
         uv_value_x = uv_mid + ((uv_box[2] - uv_mid + 1) - uv_value_w) // 2
         uv_y = uv_box[1] + ((uv_box[3] - uv_box[1] + 1) - tiny_h) // 2
         draw_tiny_text(d, uv_label_x, uv_y, uv_label, (95, 120, 160))
         draw_tiny_text(d, uv_value_x, uv_y, uv_value, (210, 155, 255))
 
-        # ---------- RIGHT PANEL: 5-day forecast ----------
         if not forecast:
             forecast = [
                 {'day': 'MON', 'icon': 'sun',   'high': 80, 'low': 70},
@@ -851,14 +1545,11 @@ class TickerStreamer:
         for i, day in enumerate(forecast[:5]):
             cx = right_start + (i * col_w)
             col_right = cx + col_w - 1
-            if i == 4:
-                col_right = PANEL_W - 1
+            if i == 4: col_right = PANEL_W - 1
 
-            # Column background and separator
             bg = (0, 0, 0) if i % 2 == 0 else (1, 3, 8)
             d.rectangle((cx, 0, col_right, 31), fill=bg)
-            if i < 4:
-                d.line((col_right, 3, col_right, 29), fill=DEEP_BLUE)
+            if i < 4: d.line((col_right, 3, col_right, 29), fill=DEEP_BLUE)
 
             day_str = normalize_special_chars(str(day.get('day', '???'))[:3].upper())
             day_w = len(day_str) * 5
@@ -871,13 +1562,12 @@ class TickerStreamer:
 
             hi = str(day.get('high', '--')).replace('°', '')
             lo = str(day.get('low', '--')).replace('°', '')
-            hi_w = len(hi) * 5
-            lo_w = len(lo) * 5
+            hi_w = len(hi) * 5; lo_w = len(lo) * 5
             total_w = hi_w + 5 + lo_w
             tx = cx + max(0, ((col_right - cx + 1) - total_w) // 2)
             temp_y = 26
-            draw_tiny_text(d, tx, temp_y, hi, (255, 115, 75))
-            draw_tiny_text(d, tx + hi_w, temp_y, "/", (70, 88, 120))
+            draw_tiny_text(d, tx,           temp_y, hi,  (255, 115, 75))
+            draw_tiny_text(d, tx + hi_w,    temp_y, "/", (70, 88, 120))
             draw_tiny_text(d, tx + hi_w + 5, temp_y, lo, (90, 165, 255))
 
         return img
@@ -888,10 +1578,10 @@ class TickerStreamer:
         now = datetime.now()
         date_str = now.strftime("%A %B %d").upper()
         w_date = d.textlength(date_str, font=self.tiny)
-        d.text(((PANEL_W - w_date)/2, 0), date_str, font=self.tiny, fill=(200, 200, 200))
+        d.text(((PANEL_W - w_date)/2, -1), date_str, font=self.tiny, fill=(200, 200, 200))
         time_str = now.strftime("%I:%M:%S").lstrip('0')
         w_time = d.textlength(time_str, font=self.clock_giant)
-        d.text(((PANEL_W - w_time)/2, 14), time_str, font=self.clock_giant, fill=(255, 255, 255))
+        d.text(((PANEL_W - w_time)/2, 4), time_str, font=self.clock_giant, fill=(255, 255, 255))
         sec_val = now.second
         ms_val = now.microsecond
         total_seconds = sec_val + (ms_val / 1000000.0)
@@ -1009,13 +1699,10 @@ class TickerStreamer:
             m, s = divmod(int(max(0, seconds)), 60)
             return f"{m}:{s:02d}"
         rem_str = f"-{fmt_time(total_dur - local_progress)}"
-        d.text((PANEL_W - d.textlength(rem_str, font=self.micro) - 5, 10), rem_str, font=self.micro, fill="white")
+        d.text((PANEL_W - d.textlength(rem_str, font=self.tiny) - 5, 10), rem_str, font=self.tiny, fill="white")
         return img
 
-    # ================= FLIGHT RENDERERS =================
-
     def draw_flight_visitor(self, game):
-        """Full-width (384x32) visitor tracking display — amber themed."""
         img = Image.new("RGBA", (PANEL_W, PANEL_H), self.C_BG + (255,))
         d = ImageDraw.Draw(img)
 
@@ -1074,7 +1761,6 @@ class TickerStreamer:
         return img
 
     def draw_flight_airport(self, weather_item, arrivals, departures):
-        """Full-width (384x32) airport HUD — composites weather + arrivals + departures."""
         img = Image.new("RGBA", (PANEL_W, PANEL_H), self.C_BG + (255,))
         d = ImageDraw.Draw(img)
 
@@ -1112,15 +1798,14 @@ class TickerStreamer:
 
         return img
 
-    # ================= SPORTS CARD RENDERER =================
     def draw_single_game(self, game):
         game_hash = self.get_game_hash(game)
+        
+        if game.get('sport') == 'clock':
+            return self.draw_clock_modern()
 
         if game.get('type') == 'music' or game.get('sport') == 'music':
             return self.draw_music_card(game)
-
-        if game.get('sport') == 'clock':
-            return self.draw_clock_modern()
 
         if game.get('type') != 'weather':
             if game_hash in self.game_render_cache:
@@ -1128,6 +1813,11 @@ class TickerStreamer:
 
         if game.get('type') == 'weather':
             img = self.draw_weather_detailed(game)
+            self.game_render_cache[game_hash] = img
+            return img
+
+        if self.mode == 'sports_full' and game.get('type') not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(game.get('type','')):
+            img = self.draw_sport_full_bleed(game)
             self.game_render_cache[game_hash] = img
             return img
 
@@ -1155,7 +1845,7 @@ class TickerStreamer:
             self.game_render_cache[game_hash] = img
             return img
 
-        # --- SPORTS SCOREBOARD ---
+        # --- DEFAULT SCROLLING SPORTS SCOREBOARD ---
         img = Image.new("RGBA", (64, 32), (0, 0, 0, 0))
         if not isinstance(game, dict):
             return img
@@ -1164,7 +1854,7 @@ class TickerStreamer:
             sport = str(game.get('sport', '')).lower()
             is_football = 'football' in sport or 'nfl' in sport or 'ncf' in sport
             is_hockey = 'hockey' in sport or 'nhl' in sport
-            is_baseball = 'baseball' in sport or 'mlb' in sport
+            is_baseball = 'baseball' in sport or 'mlb' in sport or 'wbc' in sport
             is_soccer = 'soccer' in sport
             is_march_madness = 'march_madness' in sport
             is_active = (game.get('state') == 'in')
@@ -1196,8 +1886,8 @@ class TickerStreamer:
             else: d.text(l2_pos, str(game.get('home_abbr','UNK'))[:3], font=self.micro, fill=(150,150,150))
 
             score = f"{a_score}-{h_score}"
-            w_sc = d.textlength(score, font=self.font)
-            d.text(((64-w_sc)/2, score_y), score, font=self.font, fill=(255,255,255), stroke_width=1, stroke_fill=(0,0,0))
+            w_sc = d.textlength(score, font=self.score_default_font)
+            d.text(((64-w_sc)/2, score_y), score, font=self.score_default_font, fill=(255,255,255))
 
             status = self.shorten_status(game.get('status', ''), game.get('sport', ''))
             st_x = (64 - len(status.replace('~', ''))*5) // 2
@@ -1253,11 +1943,11 @@ class TickerStreamer:
 
                 if is_hockey:
                     if sit.get('emptyNet'):
-                        w = d.textlength("EN", font=self.micro)
-                        d.text(((64-w)/2, -1), "EN", font=self.micro, fill=(255,255,0))
+                        w = d.textlength("EN", font=self.tiny)
+                        d.text(((64-w)/2, -1), "EN", font=self.tiny, fill=(255,255,0))
                     elif sit.get('powerPlay'):
-                        w = d.textlength("PP", font=self.micro)
-                        d.text(((64-w)/2, -1), "PP", font=self.micro, fill=(255,255,0))
+                        w = d.textlength("PP", font=self.tiny)
+                        d.text(((64-w)/2, -1), "PP", font=self.tiny, fill=(255,255,0))
                 elif is_baseball:
                     bases = [(31,2), (27,6), (35,6)]
                     active_bases = [sit.get('onSecond'), sit.get('onThird'), sit.get('onFirst')]
@@ -1268,15 +1958,13 @@ class TickerStreamer:
                     raw_st = str(game.get('status', '')).upper()
                     is_mid = any(x in raw_st for x in ['MID', 'MIDDLE', 'END'])
                     if not is_mid:
-                        # Outs: 3 orange dots centered (between score and status)
                         o_x = (64 - 10) // 2
                         self.draw_baseball_hud(d, o_x, 23, o_count)
-                        # S-B count on the side: strikes (orange) dash (grey) balls (green)
                         is_bot = 'BOT' in raw_st or 'BOTTOM' in raw_st
                         sb_x = 44 if is_bot else 5
-                        draw_tiny_text(d, sb_x,      26, str(s_count), (255, 100,   0))
+                        draw_tiny_text(d, sb_x,      26, str(b_count), (  0, 200,   0))
                         draw_tiny_text(d, sb_x +  5, 26, '-',          (100, 100, 100))
-                        draw_tiny_text(d, sb_x + 10, 26, str(b_count), (  0, 200,   0))
+                        draw_tiny_text(d, sb_x + 10, 26, str(s_count), (255, 100,   0))
                 elif is_football:
                     dd = sit.get('downDist', '')
                     if dd:
@@ -1292,12 +1980,18 @@ class TickerStreamer:
         return img
 
     def get_game_hash(self, game):
-        s = f"{game.get('id')}_{game.get('home_score')}_{game.get('away_score')}_{game.get('situation', {}).get('change')}_{game.get('status')}"
+        s = (
+            f"{self.mode}_"
+            f"{game.get('id')}_{game.get('home_score')}_{game.get('away_score')}_"
+            f"{game.get('situation', {}).get('change')}_{game.get('status')}"
+        )
         return hashlib.md5(s.encode()).hexdigest()
 
     def get_item_width(self, game):
         t = game.get('type')
         s = game.get('sport', '')
+        if self.mode == 'sports_full' and t not in ['music', 'weather', 'leaderboard', 'stock_ticker'] and 'flight' not in str(t):
+            return PANEL_W
         if t == 'music' or s == 'music': return PANEL_W
         if t == 'stock_ticker' or (s and str(s).startswith('stock')): return 128
         if t == 'weather': return PANEL_W
@@ -1343,20 +2037,17 @@ class TickerStreamer:
 
         while self.running:
             try:
-                # Pairing screen
                 if self.is_pairing:
                     frame = self.draw_pairing_screen()
                     self.update_display(frame)
                     time.sleep(0.1)
                     continue
 
-                # Brightness zero = black screen
                 if self.brightness <= 0.001:
                     self.matrix.Fill(0, 0, 0)
                     time.sleep(0.5)
                     continue
 
-                # Detect music in static items
                 spotify_data = next((g for g in self.static_items if g.get('id') == 'spotify_now'), None)
                 music_is_playing = False
                 if spotify_data:
@@ -1364,11 +2055,7 @@ class TickerStreamer:
                 if self.mode != 'music':
                     music_is_playing = False
 
-                # PATH A: Static display (weather, clock, music, flights)
                 if self.showing_static:
-                    # If the server has sent new content (mode changed), exit immediately
-                    # so PATH B can apply it on the next iteration instead of waiting
-                    # for the PAGE_HOLD_TIME timer to expire.
                     if self.bg_strip_ready and self.current_data_hash != self.last_applied_hash:
                         self.showing_static = False
                         time.sleep(0.033)
@@ -1399,7 +2086,6 @@ class TickerStreamer:
                     time.sleep(0.033)
                     continue
 
-                # PATH B: Scrolling strip
                 if self.bg_strip_ready:
                     new_hash = self.current_data_hash
                     if new_hash != self.last_applied_hash:
@@ -1473,7 +2159,6 @@ class TickerStreamer:
                     strip_offset += 1
                     if self.scroll_sleep > 0:
                         time.sleep(self.scroll_sleep)
-                    # REFRESH_RATE = 0: tight loop for maximum speed
                 else:
                     if self.static_items and self.start_static_display():
                         continue
@@ -1504,7 +2189,6 @@ class TickerStreamer:
                 data = r.json()
                 server_status = data.get('status', 'active')
 
-                # Auto-pairing
                 if server_status == 'pairing':
                     print(f"Server requests pairing. Auto-pairing as {self.device_id}...")
                     try:
@@ -1532,7 +2216,6 @@ class TickerStreamer:
                         print("Paired successfully!")
                     self.is_pairing = False
 
-                # Configuration
                 local_conf = data.get('local_config') or {}
                 if self.mode_override:
                     server_mode = local_conf.get('mode', 'sports')
@@ -1550,7 +2233,6 @@ class TickerStreamer:
                 self.scroll_sleep = local_conf.get('scroll_speed', 0.05)
                 self.inverted = local_conf.get('inverted', False)
 
-                # Content processing
                 content = data.get('content', {})
                 new_games = content.get('sports', [])
 
@@ -1563,7 +2245,6 @@ class TickerStreamer:
                     scrolling_items = []
                     logos_to_fetch = []
 
-                    # Composite flight airport items
                     flight_weather = None
                     flight_arrivals = []
                     flight_departures = []
@@ -1610,6 +2291,8 @@ class TickerStreamer:
                                 logos_to_fetch.append((g.get('away_logo'), (16, 16)))
 
                         if g_type == 'weather' or sport.startswith('clock') or is_music or g_type == 'flight_visitor' or g_type == 'flight_airport_hud':
+                            static_items.append(g)
+                        elif self.mode == 'sports_full' and g_type not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(g_type):
                             static_items.append(g)
                         else:
                             scrolling_items.append(g)
