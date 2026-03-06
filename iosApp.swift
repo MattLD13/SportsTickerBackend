@@ -3,7 +3,6 @@ import Foundation
 import Combine
 import UIKit
 import CoreLocation
-
 // ==========================================
 // MARK: - 0. EXTENSIONS
 // ==========================================
@@ -32,23 +31,26 @@ extension Color {
         return brightness < 0.1 || saturation < 0.15
     }
 }
-
+// Global helper visible to all views
+func prioritizeVibrantColor(primary: String?, alternate: String?) -> Color {
+    let pColor = Color(hex: primary ?? "#000000")
+    let aColor = Color(hex: alternate ?? "#000000")
+    if pColor.isGrayscaleOrBlack && !aColor.isGrayscaleOrBlack { return aColor }
+    return pColor
+}
 // ==========================================
 // MARK: - 1. DATA MODELS
 // ==========================================
-
 struct LeagueOption: Decodable, Identifiable, Hashable, Sendable {
     let id: String
     let label: String
     let type: String
     let enabled: Bool?
 }
-
 struct ShootoutData: Decodable, Hashable, Sendable {
     let away: [String]?
     let home: [String]?
 }
-
 struct Situation: Decodable, Hashable, Sendable {
     let possession: String?
     let downDist: String?
@@ -90,7 +92,6 @@ struct Situation: Decodable, Hashable, Sendable {
         shootout = try? container.decode(ShootoutData.self, forKey: .shootout)
     }
 }
-
 struct Game: Identifiable, Decodable, Hashable, Sendable {
     let id: String
     let sport: String
@@ -192,13 +193,11 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
         else { away_score = "0" }
     }
 }
-
 struct TeamData: Decodable, Identifiable, Hashable, Sendable {
     let id: String // Proper Smart ID (e.g. nfl:NYG)
     let abbr: String
     let logo: String?
 }
-
 struct TickerState: Codable, Sendable {
     var active_sports: [String: Bool]
     var mode: String
@@ -220,9 +219,10 @@ struct TickerState: Codable, Sendable {
     var airport_code_icao: String
     var airport_name: String
     var flight_submode: String
-    
+    var pinned_game: String?
+    var pinned_games: [String]
     enum CodingKeys: String, CodingKey {
-        case active_sports, mode, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id, track_flight_id, track_guest_name, airport_code_iata, airport_code_icao, airport_name, flight_submode
+        case active_sports, mode, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id, track_flight_id, track_guest_name, airport_code_iata, airport_code_icao, airport_name, flight_submode, pinned_game, pinned_games
     }
     
     // === 1. ROBUST DECODER ===
@@ -266,10 +266,19 @@ struct TickerState: Codable, Sendable {
         airport_code_iata = (try? container.decode(String.self, forKey: .airport_code_iata)) ?? "EWR"
         airport_code_icao = (try? container.decode(String.self, forKey: .airport_code_icao)) ?? "KEWR"
         airport_name = (try? container.decode(String.self, forKey: .airport_name)) ?? "Newark"
+        pinned_game = try? container.decodeIfPresent(String.self, forKey: .pinned_game)
+        let decodedPins = (try? container.decode([String].self, forKey: .pinned_games)) ?? []
+        if !decodedPins.isEmpty {
+            pinned_games = decodedPins
+        } else if let single = pinned_game?.trimmingCharacters(in: .whitespacesAndNewlines), !single.isEmpty {
+            pinned_games = [single]
+        } else {
+            pinned_games = []
+        }
     }
     
     // === 2. BETTER DEFAULTS (Fixes "NFL Only" bug) ===
-    init(active_sports: [String: Bool]? = nil, mode: String = "all", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil, track_flight_id: String = "", track_guest_name: String = "", airport_code_iata: String = "EWR", airport_code_icao: String = "KEWR", airport_name: String = "Newark", flight_submode: String = "airport") {
+    init(active_sports: [String: Bool]? = nil, mode: String = "all", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil, track_flight_id: String = "", track_guest_name: String = "", airport_code_iata: String = "EWR", airport_code_icao: String = "KEWR", airport_name: String = "Newark", flight_submode: String = "airport", pinned_game: String? = nil, pinned_games: [String] = []) {
         
         // Default to ALL sports if none provided
         self.active_sports = active_sports ?? TickerState.defaultActiveSports
@@ -292,17 +301,16 @@ struct TickerState: Codable, Sendable {
         self.airport_code_icao = airport_code_icao
         self.airport_name = airport_name
         self.flight_submode = flight_submode
+        self.pinned_game = pinned_game
+        self.pinned_games = pinned_games
     }
-    
     // Empty — league defaults are filled dynamically from /api/leagues once connected
     static var defaultActiveSports: [String: Bool] { [:] }
 }
-
 struct APIResponse: Decodable, Sendable {
     let settings: TickerState
     let games: [Game]
 }
-
 struct DeviceSettings: Codable, Sendable {
     var brightness: Int
     var scroll_speed: Double
@@ -311,20 +319,17 @@ struct DeviceSettings: Codable, Sendable {
     var live_delay_mode: Bool?
     var live_delay_seconds: Int?
 }
-
 struct TickerDevice: Identifiable, Decodable, Sendable {
     let id: String
     let name: String
     var settings: DeviceSettings
     let last_seen: Double?
 }
-
 struct PairResponse: Decodable, Sendable {
     let success: Bool
     let message: String?
     let ticker_id: String?
 }
-
 // ==========================================
 // MARK: - 2. VIEW MODEL
 // ==========================================
@@ -333,7 +338,6 @@ import Foundation
 import Combine
 import UIKit
 import CoreLocation
-
 @MainActor
 class TickerViewModel: ObservableObject {
     @Published var games: [Game] = []
@@ -355,6 +359,7 @@ class TickerViewModel: ObservableObject {
             weather_lon: -74.0060
         )
     
+    @Published var pinnedGameIDs: [String] = []
     @Published var devices: [TickerDevice] = []
     @Published var pairCode: String = ""
     @Published var pairName: String = ""
@@ -378,6 +383,17 @@ class TickerViewModel: ObservableObject {
     // After a mode switch, poll every 1s for 30s so the UI and hardware
     // board confirm the new state almost immediately.
     private var burstPollUntil: Date = .distantPast
+    private func normalizedPin(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+    func pinID(for game: Game) -> String {
+        let gid = game.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        if gid.contains(":") { return normalizedPin(gid) }
+        return normalizedPin("\(game.sport):\(gid)")
+    }
+    func isPinned(_ game: Game) -> Bool {
+        pinnedGameIDs.contains(pinID(for: game))
+    }
     
     private var clientID: String {
         if let saved = UserDefaults.standard.string(forKey: "clientID") { return saved }
@@ -416,7 +432,6 @@ class TickerViewModel: ObservableObject {
                 }
             }
         }
-
         // Poll device list every 5s to keep last_seen / online beacon fresh.
         devicesTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             Task { @MainActor in
@@ -424,18 +439,16 @@ class TickerViewModel: ObservableObject {
             }
         }
     }
-
     private func pollInterval(for mode: String) -> TimeInterval {
         switch mode {
         case "music":                      return 1.0
-        case "sports", "live", "my_teams": return 1.0
+        case "sports", "sports_full", "live", "my_teams": return 1.0
         case "flights", "flight_tracker":  return 60.0
         case "stocks":                     return 30.0
         case "weather", "clock":           return 600.0
         default:                           return 5.0
         }
     }
-
     /// Call this whenever the user switches modes. The timer will poll every 1 s
     /// for the next 30 s, giving the app (and the hardware board) fast feedback.
     func startBurstPolling() {
@@ -455,7 +468,6 @@ class TickerViewModel: ObservableObject {
         if let targetID = self.devices.first?.id ?? self.savedTickerID {
             urlString += "?id=\(targetID)"
         }
-
         guard let url = URL(string: urlString) else { return }
         
         URLSession.shared.dataTask(with: url) { data, _, error in
@@ -477,16 +489,22 @@ class TickerViewModel: ObservableObject {
                     
                     // Sports filter modes: keep all games (dim non-matching ones).
                     // Other modes: strict filter so only the relevant content shows.
-                    let isSportsFilterMode = ["sports", "live", "my_teams"].contains(self.state.mode)
+                    let effectiveMode = (self.state.mode == "sports_full") ? "sports" : self.state.mode
+                    let isSportsFilterMode = ["sports", "live", "my_teams"].contains(effectiveMode)
                     self.games = decoded.games
                         .filter { $0.is_shown || isSportsFilterMode }
                         .sorted { g1, g2 in
+                            let p1 = self.isPinned(g1)
+                            let p2 = self.isPinned(g2)
+                            if p1 != p2 { return p1 }
                             if g1.is_shown != g2.is_shown { return g1.is_shown }
                             if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
                             if g1.state == "in" && g2.state != "in" { return true }
                             return false
                         }
                     
+                    let decodedPins = decoded.settings.pinned_games.map { self.normalizedPin($0) }
+                    self.pinnedGameIDs = Array(Set(decodedPins)).sorted()
                     if !self.isEditing {
                         self.state = decoded.settings
                         if !self.state.my_teams.isEmpty {
@@ -532,7 +550,41 @@ class TickerViewModel: ObservableObject {
         }
     }
     
-    // === 3. SAVE SETTINGS (Write) ===
+    // === 3. TOGGLE PIN ===
+    func togglePin(_ game: Game) {
+        let scoped = pinID(for: game)
+        if pinnedGameIDs.first == scoped {
+            pinnedGameIDs.removeAll()
+            state.pinned_games = []
+            state.pinned_game = nil
+            state.mode = "sports"
+            saveSettings()
+        } else {
+            pinnedGameIDs = [scoped]
+            state.pinned_games = [scoped]
+            state.pinned_game = scoped
+            if ["stocks", "weather", "clock", "music", "flights", "flight_tracker"].contains(state.mode) {
+                state.mode = "sports"
+                saveSettings()
+            }
+        }
+        startBurstPolling()
+        sendPinnedGames()
+    }
+    func sendPinnedGames() {
+        let targetID = devices.first?.id ?? savedTickerID
+        guard let tickerID = targetID,
+              let url = URL(string: "\(getBaseURL())/api/pin_games") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let singlePin = pinnedGameIDs.first ?? ""
+        let payloadPins: [String] = singlePin.isEmpty ? [] : [singlePin]
+        let body: [String: Any] = ["ticker_id": tickerID, "game_ids": payloadPins]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: request).resume()
+    }
+    // === 4. SAVE SETTINGS (Write) ===
     func saveSettings() {
         self.isEditing = true   // LOCK: block polling while save is in-flight
         let targetID = self.devices.first?.id ?? self.savedTickerID
@@ -541,7 +593,6 @@ class TickerViewModel: ObservableObject {
             self.isEditing = false
             return
         }
-
         let base = getBaseURL()
         var urlString = "\(base)/api/config"
         urlString += "?id=\(validID)"
@@ -587,7 +638,6 @@ class TickerViewModel: ObservableObject {
                     }
                 }
                 // =============================
-
                 // Apply auto-filled airport info immediately from response
                 if let data = data,
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -603,7 +653,6 @@ class TickerViewModel: ObservableObject {
                         }
                     }
                 }
-
                 // During a burst poll window (mode just switched) unlock isEditing quickly
                 // so the 1-s burst polls can start immediately. Outside burst, keep the
                 // 2.5-s delay so team-toggle debounce timers have time to settle.
@@ -656,7 +705,6 @@ class TickerViewModel: ObservableObject {
         
         URLSession.shared.dataTask(with: request) { data, _, _ in
             if let d = data, let decoded = try? JSONDecoder().decode([TickerDevice].self, from: d) {
-
                 DispatchQueue.main.async {
                     // A valid /tickers response proves the server is reachable.
                     // Without this, a race where fetchDevices() finishes before
@@ -664,7 +712,6 @@ class TickerViewModel: ObservableObject {
                     // isServerReachable is still false, showing "Server Offline".
                     self.isServerReachable = true
                     self.devices = decoded
-
                     // === FIX: AUTO-LOGOUT LOGIC ===
                     // If the server says we have NO paired devices, we must forget the saved ID.
                     if self.devices.isEmpty {
@@ -674,13 +721,11 @@ class TickerViewModel: ObservableObject {
                         }
                     }
                     // ==============================
-
                     self.updateOverallStatus()
                 }
             }
         }.resume()
     }
-
     func updateOverallStatus() {
         if !isServerReachable { self.connectionStatus = "Server Offline"; self.statusColor = .red; return }
         // If we have devices OR a latched ID, we are effectively connected
@@ -907,7 +952,6 @@ class TickerViewModel: ObservableObject {
         URLSession.shared.dataTask(with: req).resume()
     }
 }
-
 // ==========================================
 // MARK: - 3. UI COMPONENTS
 // ==========================================
@@ -921,7 +965,6 @@ struct NativeLiquidGlass: ViewModifier {
     }
 }
 extension View { func liquidGlass() -> some View { modifier(NativeLiquidGlass()) } }
-
 struct SituationPill: View {
     let text: String; let color: Color
     var body: some View {
@@ -930,7 +973,6 @@ struct SituationPill: View {
             .cornerRadius(4).overlay(RoundedRectangle(cornerRadius: 4).stroke(color.opacity(0.3), lineWidth: 1))
     }
 }
-
 struct ShootoutBubbles: View {
     let results: [String]
     let maxDots: Int
@@ -953,34 +995,29 @@ struct ShootoutBubbles: View {
         }
     }
 }
-
 struct TabButton: View {
     let icon: String; let label: String; let idx: Int; @Binding var sel: Int
     var body: some View { Button { sel = idx } label: { VStack(spacing: 4) { Image(systemName: icon).font(.system(size: 20)); Text(label).font(.caption2) }.frame(maxWidth: .infinity).foregroundColor(sel == idx ? .white : .gray).padding(.vertical, 8).background(sel == idx ? Color.white.opacity(0.15) : Color.clear).cornerRadius(12) } }
 }
-
 struct FilterBtn: View {
     let title: String; let val: String; let cur: String; let act: () -> Void
     var body: some View { Button(action: act) { Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12).background(cur == val ? Color(red: 0.0, green: 0.47, blue: 1.0) : Color.white.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(cur == val ? Color.blue : Color.white.opacity(0.1), lineWidth: 1)).foregroundColor(.white) } }
 }
-
 struct ScrollBtn: View {
     let title: String; let val: Bool; let cur: Bool; let act: () -> Void
     var body: some View { Button(action: act) { Text(title).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12).background(cur == val ? Color(red: 0.0, green: 0.47, blue: 1.0) : Color.white.opacity(0.05)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(cur == val ? Color.blue : Color.white.opacity(0.1), lineWidth: 1)).foregroundColor(.white) } }
 }
-
 struct TeamLogoView: View {
     let url: String?; let abbr: String; let size: CGFloat
     var body: some View { AsyncImage(url: URL(string: url ?? "")) { phase in if let image = phase.image { image.resizable().scaledToFit() } else { Text(abbr).font(.system(size: size * 0.4, weight: .bold)).foregroundColor(.white.opacity(0.8)) } }.frame(width: size, height: size) }
 }
-
 struct GameRow: View {
     let game: Game
     let leagueLabel: String?
+    var isPinned: Bool = false
     
     // Drives the continuous animation for the music waveform
     @State private var waveformActive = false
-
     var activeSituation: String {
         guard let s = game.situation else { return "" }
         if let en = s.emptyNet, en { return "EMPTY NET" }
@@ -1188,7 +1225,7 @@ struct GameRow: View {
         } else if game.type == "leaderboard" {
             // MARK: - LEADERBOARD CARD
             HStack(spacing: 12) {
-                Capsule().fill(game.is_shown ? Color.green : Color.red).frame(width: 4, height: 55)
+                Capsule().fill(isPinned ? Color.yellow : (game.is_shown ? Color.green : Color.red)).frame(width: 4, height: 55)
                 VStack(alignment: .leading) {
                     Text(game.tourney_name ?? "Event").font(.headline).bold().foregroundColor(.white)
                     Text(game.status).font(.caption).foregroundColor(.gray)
@@ -1270,9 +1307,8 @@ struct GameRow: View {
             let homeColor = prioritizeVibrantColor(primary: game.home_color, alternate: game.home_alt_color)
             let awayColor = prioritizeVibrantColor(primary: game.away_color, alternate: game.away_alt_color)
             let bg = LinearGradient(gradient: Gradient(colors: [awayColor.opacity(0.3), homeColor.opacity(0.3)]), startPoint: .leading, endPoint: .trailing)
-            
             HStack(spacing: 12) {
-                Capsule().fill(game.is_shown ? Color.green : Color.red).frame(width: 4, height: 55)
+                Capsule().fill(isPinned ? Color.yellow : (game.is_shown ? Color.green : Color.red)).frame(width: 4, height: 55)
                 if game.sport == "weather" {
                     HStack {
                         Image(systemName: game.situation?.icon == "sun" ? "sun.max.fill" : "cloud.fill").font(.title).foregroundColor(.yellow)
@@ -1330,7 +1366,6 @@ struct GameRow: View {
         }
     }
 }
-
 // ==========================================
 // MARK: - AIRPORT BOARD VIEW
 // ==========================================
@@ -1572,7 +1607,6 @@ struct AirportBoardView: View {
         }
     }
 }
-
 // ==========================================
 // MARK: - 4. MAIN VIEW
 // ==========================================
@@ -1611,15 +1645,12 @@ struct ContentView: View {
         }.preferredColorScheme(.dark)
     }
 }
-
 struct HomeView: View {
     @ObservedObject var vm: TickerViewModel
-
     private var isSportsMode: Bool {
         let nonSportsModes = ["stocks", "weather", "clock", "music", "flights", "flight_tracker"]
         return !nonSportsModes.contains(vm.state.mode)
     }
-
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -1633,10 +1664,11 @@ struct HomeView: View {
                 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("DISPLAY FILTER").font(.caption).bold().foregroundStyle(.secondary)
+                    let filterMode = vm.state.mode == "sports_full" ? "sports" : vm.state.mode
                     HStack(spacing: 12) {
-                        FilterBtn(title: "Show All", val: "sports", cur: vm.state.mode) { vm.state.mode = "sports"; vm.startBurstPolling(); vm.saveSettings() }
-                        FilterBtn(title: "Live Only", val: "live", cur: vm.state.mode) { vm.state.mode = "live"; vm.startBurstPolling(); vm.saveSettings() }
-                        FilterBtn(title: "My Teams", val: "my_teams", cur: vm.state.mode) { vm.state.mode = "my_teams"; vm.startBurstPolling(); vm.saveSettings() }
+                        FilterBtn(title: "Show All", val: "sports", cur: filterMode) { vm.state.mode = "sports"; vm.startBurstPolling(); vm.saveSettings() }
+                        FilterBtn(title: "Live Only", val: "live", cur: filterMode) { vm.state.mode = "live"; vm.startBurstPolling(); vm.saveSettings() }
+                        FilterBtn(title: "My Teams", val: "my_teams", cur: filterMode) { vm.state.mode = "my_teams"; vm.startBurstPolling(); vm.saveSettings() }
                     }
                     .disabled(!isSportsMode)
                     .opacity(isSportsMode ? 1.0 : 0.4)
@@ -1650,13 +1682,12 @@ struct HomeView: View {
                         // Group airport flight items into a board view
                         let airportItems = vm.games.filter { $0.sport == "flight" && ($0.type == "flight_weather" || $0.type == "flight_arrival" || $0.type == "flight_departure") }
                         let otherItems = vm.games.filter { !($0.sport == "flight" && ($0.type == "flight_weather" || $0.type == "flight_arrival" || $0.type == "flight_departure")) }
-                        
                         // Render visitor flight cards first (if any)
                         ForEach(otherItems) { game in
                             let label = vm.leagueOptions.first(where: { $0.id == game.sport })?.label
-                            GameRow(game: game, leagueLabel: label)
+                            GameRow(game: game, leagueLabel: label, isPinned: vm.isPinned(game))
+                                .onTapGesture { vm.togglePin(game) }
                         }
-                        
                         // Render grouped airport board
                         if !airportItems.isEmpty {
                             AirportBoardView(flights: airportItems)
@@ -1668,7 +1699,6 @@ struct HomeView: View {
         }
     }
 }
-
 struct ModeTile: View {
     let title: String
     let icon: String
@@ -1700,7 +1730,6 @@ struct ModeTile: View {
         }
     }
 }
-
 struct ModesView: View {
     @ObservedObject var vm: TickerViewModel
     
@@ -1763,7 +1792,6 @@ struct ModesView: View {
         vm.startBurstPolling()
         vm.saveSettings()
     }
-
     private func setFlightSubmode(_ submode: String) {
         vm.state.flight_submode = submode
         vm.state.active_sports["flight_airport"] = (submode == "airport")
@@ -1771,7 +1799,6 @@ struct ModesView: View {
         vm.startBurstPolling()
         vm.saveSettings()
     }
-
     private func commitFlightNumber() {
         let flight = localFlightNumber.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         if flight != vm.state.track_flight_id {
@@ -1783,7 +1810,6 @@ struct ModesView: View {
             vm.saveSettings()
         }
     }
-
     private func commitGuestName() {
         let guest = localGuestName.trimmingCharacters(in: .whitespacesAndNewlines)
         if guest != vm.state.track_guest_name {
@@ -1821,7 +1847,6 @@ struct ModesView: View {
                     if vm.state.mode == "flights" || vm.state.mode == "flight_tracker" {
                         VStack(alignment: .leading, spacing: 16) {
                             Text("FLIGHTS MODE").font(.caption).bold().foregroundStyle(.secondary)
-
                             HStack(spacing: 10) {
                                 Button {
                                     setFlightSubmode("airport")
@@ -1849,7 +1874,6 @@ struct ModesView: View {
                                 }
                             }
                             .padding().liquidGlass()
-
                             if vm.state.flight_submode == "airport" {
                                 VStack(alignment: .leading, spacing: 10) {
                                     HStack {
@@ -1883,7 +1907,6 @@ struct ModesView: View {
                                             }
                                     }
                                     .padding().liquidGlass()
-
                                     if !vm.state.airport_code_iata.isEmpty {
                                         HStack {
                                             Text("Resolved:")
@@ -1959,7 +1982,6 @@ struct ModesView: View {
                                         }
                                         .padding().liquidGlass()
                                     }
-
                                     if !vm.state.track_flight_id.isEmpty {
                                         HStack {
                                             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
@@ -2093,7 +2115,6 @@ struct ModesView: View {
         }
     }
 }
-
 struct TeamsView: View {
     @ObservedObject var vm: TickerViewModel
     @State private var selectedLeague = ""
@@ -2199,7 +2220,6 @@ struct TeamsView: View {
         }
     }
 }
-
 struct SettingsView: View {
     @ObservedObject var vm: TickerViewModel
     @State private var showPairing = false
@@ -2293,7 +2313,6 @@ struct SettingsView: View {
         }
     }
 }
-
 struct DeviceRow: View {
     let device: TickerDevice
     @ObservedObject var vm: TickerViewModel
@@ -2426,7 +2445,6 @@ struct DeviceRow: View {
         }.padding().liquidGlass()
     }
 }
-
 struct PairingView: View {
     @ObservedObject var vm: TickerViewModel
     @Binding var isPresented: Bool
@@ -2448,3 +2466,5 @@ struct PairingView: View {
         }
     }
 }
+
+
