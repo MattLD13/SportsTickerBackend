@@ -587,7 +587,7 @@ def _game_sort_key(x):
 
 
 # Valid mode set — no 'all', no 'flight2', no 'flight_submode'
-VALID_MODES = {'sports', 'live', 'my_teams', 'stocks', 'weather', 'music', 'clock', 'flights', 'flight_tracker'}
+VALID_MODES = {'sports', 'sports_full', 'live', 'my_teams', 'stocks', 'weather', 'music', 'clock', 'flights', 'flight_tracker'}
 
 # Legacy mode migration map applied at load time and on /api/config writes
 MODE_MIGRATIONS = {'all': 'sports', 'flight2': 'flight_tracker'}
@@ -851,7 +851,7 @@ def save_global_config():
                 'airport_code_icao': state.get('airport_code_icao', 'KEWR'),
                 'airport_code_iata': state.get('airport_code_iata', 'EWR'),
                 'airport_name': state.get('airport_name', 'Newark'),
-                'airline_filter': ''  # Always empty - support all airlines
+                'airline_filter': '',  # Always empty - support all airlines
             }
         
         # Atomic Write
@@ -1169,8 +1169,8 @@ class SpotifyFetcher(threading.Thread):
                                 self.cached_queue_covers = new_queue
                             except: pass # Queue fetch failures shouldn't crash the loop
 
-                            self.cached_current_id = current_id
-                            self.cached_current_cover = current_cover
+                        self.cached_current_id = current_id
+                        self.cached_current_cover = current_cover
 
                         with self._lock:
                             self.state.update({
@@ -3067,6 +3067,300 @@ class SportsFetcher:
         except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games
 
+    def fetch_pinned_game(self, pinned_str, conf, visible_start_utc, visible_end_utc):
+        """
+        Fetches ONLY the pinned game, bypassing all other league fetches.
+        pinned_str format: "league:game_id" (e.g., "nfl:401547378" or "soccer_epl:423141")
+        """
+        try:
+            league_key, game_id = pinned_str.split(':', 1)
+            league_key = league_key.lower()
+        except ValueError:
+            print("Invalid pinned game format. Use 'league:game_id'")
+            return []
+
+        utc_offset = conf.get('utc_offset', -5)
+
+        # 0. NHL Native Pinned Game (handles NHL gamecenter IDs like 2025020978)
+        if league_key == 'nhl':
+            try:
+                native = self._fetch_nhl_landing(game_id)
+                if native:
+                    st = str(native.get('gameState', 'OFF')).upper()
+                    map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
+
+                    g_utc = native.get('startTimeUTC', '')
+                    raw_h = native.get('homeTeam', {}).get('abbrev', 'UNK')
+                    raw_a = native.get('awayTeam', {}).get('abbrev', 'UNK')
+                    h_ab = ABBR_MAPPING.get(raw_h, raw_h)
+                    a_ab = ABBR_MAPPING.get(raw_a, raw_a)
+
+                    h_sc = str(native.get('homeTeam', {}).get('score', 0))
+                    a_sc = str(native.get('awayTeam', {}).get('score', 0))
+
+                    h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
+                    a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
+                    h_info = self.lookup_team_info_from_cache('nhl', h_ab, logo=h_lg)
+                    a_info = self.lookup_team_info_from_cache('nhl', a_ab, logo=a_lg)
+
+                    disp = "Scheduled"
+                    pp = False
+                    poss = ""
+                    en = False
+                    shootout_data = None
+
+                    pd = native.get('periodDescriptor', {})
+                    clk = native.get('clock', {})
+                    p_num = int(pd.get('number', 1) or 1)
+                    p_type = str(pd.get('periodType', '')).upper()
+                    time_rem = clk.get('timeRemaining', '00:00')
+
+                    if map_st == 'pre':
+                        try:
+                            g_dt = parse_iso(g_utc)
+                            disp = g_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
+                        except:
+                            pass
+                    elif map_st == 'post':
+                        disp = "FINAL"
+                        if p_type == 'SHOOTOUT' or p_num >= 5:
+                            disp = "FINAL S/O"
+                        elif p_type == 'OT' or p_num == 4:
+                            disp = "FINAL OT"
+                    else:
+                        if p_type == 'SHOOTOUT' or p_num >= 5:
+                            disp = "S/O"
+                            shootout_data = self.fetch_shootout_details(game_id, 0, 0)
+                        elif clk.get('inIntermission', False) or time_rem == "00:00":
+                            if p_num == 1:
+                                disp = "End 1st"
+                            elif p_num == 2:
+                                disp = "End 2nd"
+                            elif p_num == 3:
+                                disp = "End 3rd"
+                            else:
+                                disp = "End OT"
+                        else:
+                            p_lbl = "OT" if p_num == 4 else f"P{p_num}"
+                            disp = f"{p_lbl} {time_rem}"
+
+                    sit_obj = native.get('situation', {})
+                    if sit_obj:
+                        sit = sit_obj.get('situationCode', '1551')
+                        if len(sit) >= 4 and sit.isdigit():
+                            ag = int(sit[0])
+                            as_ = int(sit[1])
+                            hs = int(sit[2])
+                            hg = int(sit[3])
+                            if as_ > hs:
+                                pp = True
+                                poss = a_ab
+                            elif hs > as_:
+                                pp = True
+                                poss = h_ab
+                            en = (ag == 0 or hg == 0)
+
+                    if "FINAL" in disp:
+                        shootout_data = None
+
+                    return [{
+                        'type': 'scoreboard',
+                        'sport': 'nhl', 'id': str(game_id), 'status': disp, 'state': map_st, 'is_shown': True,
+                        'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
+                        'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
+                        'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
+                        'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
+                        'startTimeUTC': g_utc,
+                        'estimated_duration': self.calculate_game_timing('nhl', g_utc, p_num, disp),
+                        'situation': {
+                            'powerPlay': pp,
+                            'possession': poss,
+                            'emptyNet': en,
+                            'shootout': shootout_data
+                        }
+                    }]
+            except Exception as e:
+                print(f"NHL Pinned Game Error: {e}")
+
+        # 1. FotMob (Soccer) Pinned Game
+        if league_key in FOTMOB_LEAGUE_MAP:
+            try:
+                url = f"https://www.fotmob.com/api/matchDetails?matchId={game_id}"
+                resp = self.session.get(url, headers=HEADERS, timeout=TIMEOUTS['slow'])
+                if resp.status_code == 200:
+                    payload = resp.json()
+                    general = payload.get("general", {})
+                    header = payload.get("header", {})
+                    status_obj = header.get("status", {})
+                    
+                    # Convert matchDetails into the standard FotMob 'matches' array format 
+                    mock_match = {
+                        "id": game_id,
+                        "home": {"id": general.get("homeTeam", {}).get("id"), "name": general.get("homeTeam", {}).get("name")},
+                        "away": {"id": general.get("awayTeam", {}).get("id"), "name": general.get("awayTeam", {}).get("name")},
+                        "status": {
+                            "utcTime": general.get("matchTimeUTC"),
+                            "finished": status_obj.get("finished"),
+                            "started": status_obj.get("started"),
+                            "cancelled": status_obj.get("cancelled"),
+                            "scoreStr": status_obj.get("scoreStr"),
+                            "reason": status_obj.get("reason"),
+                            "liveTime": status_obj.get("liveTime")
+                        }
+                    }
+                    
+                    # Pass a massive time window so it passes normal time filters
+                    huge_start = dt(1970, 1, 1, tzinfo=timezone.utc)
+                    huge_end = dt(2099, 1, 1, tzinfo=timezone.utc)
+                    return self._extract_matches([mock_match], league_key, conf, huge_start, huge_end, huge_start, huge_end)
+            except Exception as e:
+                print(f"FotMob Pinned Game Error: {e}")
+                return []
+
+        # 2. ESPN Pinned Game (NFL, NBA, MLB, NHL, NCAA)
+        config = self.leagues.get(league_key)
+        path = config.get('path') if config else None
+        if not path:
+            paths = {
+                'nfl': 'football/nfl', 'mlb': 'baseball/mlb', 'nhl': 'hockey/nhl', 'nba': 'basketball/nba',
+                'ncf_fbs': 'football/college-football', 'ncf_fcs': 'football/college-football',
+                'march_madness': 'basketball/mens-college-basketball'
+            }
+            path = paths.get(league_key)
+
+        if not path:
+            print(f"Unsupported pinned game league: {league_key}")
+            return []
+
+        try:
+            url = f"{self.base_url}{path}/summary?event={game_id}"
+            r = self.session.get(url, headers=HEADERS, timeout=TIMEOUTS['default'])
+            if r.status_code != 200:
+                return []
+            
+            data = r.json()
+            header = data.get('header', {})
+            comp = header.get('competitions', [{}])[0]
+            
+            e_date = comp.get('date', '')
+            st = comp.get('status', {})
+            tp = st.get('type', {})
+            gst = tp.get('state', 'pre')
+
+            # Extract competitors
+            competitors = comp.get('competitors', [])
+            h = next((c for c in competitors if c.get('homeAway') == 'home'), competitors[0] if competitors else {})
+            a = next((c for c in competitors if c.get('homeAway') == 'away'), competitors[1] if len(competitors) > 1 else {})
+
+            h_ab = h.get('team', {}).get('abbreviation', 'UNK')
+            a_ab = a.get('team', {}).get('abbreviation', 'UNK')
+
+            h_lg = self.get_corrected_logo(league_key, h_ab, h.get('team', {}).get('logos', [{}])[0].get('href', ''))
+            a_lg = self.get_corrected_logo(league_key, a_ab, a.get('team', {}).get('logos', [{}])[0].get('href', ''))
+
+            h_clr = h.get('team', {}).get('color', '000000')
+            a_clr = a.get('team', {}).get('color', '000000')
+            h_alt = h.get('team', {}).get('alternateColor', 'ffffff')
+            a_alt = a.get('team', {}).get('alternateColor', 'ffffff')
+
+            if not h_clr or h_clr == '000000' or not a_clr or a_clr == '000000':
+                h_info = self.lookup_team_info_from_cache(league_key, h_ab, logo=h_lg)
+                a_info = self.lookup_team_info_from_cache(league_key, a_ab, logo=a_lg)
+                h_clr = h_clr if h_clr and h_clr != '000000' else h_info.get('color', '000000')
+                a_clr = a_clr if a_clr and a_clr != '000000' else a_info.get('color', '000000')
+                h_alt = h_alt if h_alt else h_info.get('alt_color', 'ffffff')
+                a_alt = a_alt if a_alt else a_info.get('alt_color', 'ffffff')
+
+            h_score = h.get('score', '0')
+            a_score = a.get('score', '0')
+
+            s_disp = tp.get('shortDetail', 'TBD')
+            p = st.get('period', 1)
+
+            # State Inference
+            if gst == 'pre' and any(x in s_disp for x in ['1st', '2nd', '3rd', 'OT', 'Half', 'Qtr', 'Inning']):
+                if "FINAL" not in s_disp.upper():
+                    gst = 'in'
+
+            is_suspended = any(kw in s_disp for kw in ["Suspended", "Postponed", "Canceled", "Delayed", "PPD"])
+
+            if not is_suspended:
+                if gst == 'pre':
+                    try: 
+                        game_dt = parse_iso(e_date)
+                        s_disp = game_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
+                    except: pass
+                elif gst in ['in', 'half']:
+                    clk = st.get('displayClock', '0:00').replace("'", "")
+                    if (not clk or clk == '0:00') and ':' in s_disp:
+                        m = re.search(r'(\d{1,2}:\d{2})', s_disp)
+                        if m: clk = m.group(1)
+
+                    if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in path): s_disp = "Halftime"
+                    elif 'hockey' in path and clk == '0:00':
+                        s_disp = "End 1st" if p == 1 else "End 2nd" if p == 2 else "End 3rd" if p == 3 else "Intermission"
+                    else:
+                        if 'basketball' in path:
+                            s_disp = f"OT{p-4 if p-4>1 else ''} {clk}" if p > 4 else f"Q{p} {clk}"
+                        elif 'football' in path:
+                            s_disp = f"OT{p-4 if p-4>1 else ''} {clk}" if p > 4 else f"Q{p} {clk}"
+                        elif 'hockey' in path:
+                            s_disp = f"OT{p-3 if p-3>1 else ''} {clk}" if p > 3 else f"P{p} {clk}"
+                        elif 'baseball' in path:
+                            s_disp = tp.get('shortDetail', s_disp).replace(" - ", " ").replace("Inning", "In")
+                        else: s_disp = f"P{p} {clk}"
+
+            s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
+            s_disp = s_disp.replace("End of ", "End ").replace(" Quarter", "").replace(" Inning", "").replace(" Period", "")
+
+            # Possessions & Situations
+            sit_data = data.get('drives', {}).get('current', {}) if 'football' in path else {}
+            poss_raw = sit_data.get('team', {}).get('id') if sit_data else None
+            
+            balls, strikes, outs, onFirst, onSecond, onThird = 0, 0, 0, False, False, False
+            if 'baseball' in path and data.get('situation'):
+                bsit = data['situation']
+                balls = bsit.get('balls', 0)
+                strikes = bsit.get('strikes', 0)
+                outs = bsit.get('outs', 0)
+                onFirst = bsit.get('onFirst', False)
+                onSecond = bsit.get('onSecond', False)
+                onThird = bsit.get('onThird', False)
+                poss_raw = bsit.get('batter', {}).get('team', {}).get('id')
+
+            poss_abbr = ""
+            if str(poss_raw) == str(h.get('team', {}).get('id')): poss_abbr = h_ab
+            elif str(poss_raw) == str(a.get('team', {}).get('id')): poss_abbr = a_ab
+
+            down_text = sit_data.get('shortDownDistanceText') or sit_data.get('description') or ''
+            if s_disp == "Halftime": down_text = ''
+
+            game_obj = {
+                'type': 'scoreboard', 'sport': league_key, 'id': game_id, 'status': s_disp, 'state': gst, 'is_shown': not is_suspended,
+                'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg, 'home_id': h.get('team', {}).get('id'),
+                'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg, 'away_id': a.get('team', {}).get('id'),
+                'home_color': f"#{h_clr}", 'home_alt_color': f"#{h_alt}",
+                'away_color': f"#{a_clr}", 'away_alt_color': f"#{a_alt}",
+                'startTimeUTC': e_date,
+                'estimated_duration': 180,
+                'situation': { 
+                    'possession': poss_abbr, 
+                    'isRedZone': sit_data.get('isRedZone', False), 
+                    'downDist': down_text, 
+                    'shootout': None,
+                    'powerPlay': False, 
+                    'emptyNet': False,
+                    'balls': balls, 'strikes': strikes, 'outs': outs,
+                    'onFirst': onFirst, 'onSecond': onSecond, 'onThird': onThird
+                }
+            }
+            
+            return [game_obj]
+
+        except Exception as e:
+            print(f"ESPN Pinned Game Error: {e}")
+            return []
+
     def get_music_object(self):
         if not state['active_sports'].get('music', False): return None
         s_data = spotify_fetcher.get_cached_state()
@@ -3145,9 +3439,14 @@ class SportsFetcher:
     def _build_sports_buffer(self):
         """Fetch all active sports leagues and return sorted game list."""
         with data_lock:
-            conf = {k: state[k] for k in (
-                'active_sports', 'mode', 'utc_offset', 'debug_mode', 'custom_date',
-            )}
+            conf = {
+                'active_sports': state.get('active_sports', {}),
+                'mode': state.get('mode', 'sports'),
+                'utc_offset': state.get('utc_offset', -5),
+                'debug_mode': state.get('debug_mode', False),
+                'custom_date': state.get('custom_date'),
+            }
+            
         all_games = []
         utc_offset = conf.get('utc_offset', -5)
         now_utc = dt.now(timezone.utc)
@@ -3165,37 +3464,21 @@ class SportsFetcher:
         visible_end_utc = visible_end_local.astimezone(timezone.utc)
         window_start_utc = (now_local - timedelta(hours=30)).astimezone(timezone.utc)
         window_end_utc = (now_local + timedelta(hours=48)).astimezone(timezone.utc)
-        
-        futures = {}
 
-        # --- RESTORED: EFL & SOCCER FETCHING ---
+        futures = {}
         for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
-            f = self.executor.submit(
-                self._fetch_fotmob_league,
-                fid, internal_id, conf,
-                window_start_utc, window_end_utc,
-                visible_start_utc, visible_end_utc
-            )
+            f = self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
             futures[f] = internal_id
 
-        # NHL Native (Optimized)
         if not conf['debug_mode']:
             f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
             futures[f] = 'nhl_native'
 
-        # Standard ESPN Leagues (NFL, NBA, MLB, NCAA)
         for league_key, config in self.leagues.items():
-            if league_key == 'nhl' or league_key.startswith('soccer_'):
-                continue # Already handled by specialized fetchers above
-            
-            f = self.executor.submit(
-                self.fetch_single_league, 
-                league_key, config, conf, window_start_utc, window_end_utc, 
-                utc_offset, visible_start_utc, visible_end_utc
-            )
+            if league_key == 'nhl' or league_key.startswith('soccer_'): continue
+            f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
             futures[f] = league_key
         
-        # Seed partial cache with last-known data so interim results are meaningful
         partial = {lk: self.league_last_data.get(lk, []) for lk in futures.values()}
         deadline = time.time() + API_TIMEOUT
 
@@ -3206,28 +3489,17 @@ class SportsFetcher:
                 if res:
                     partial[lk] = res
                     self.league_last_data[lk] = res
-            except Exception:
-                pass  # keep cached data in partial
-
-            # Write interim result after each league arrives
+            except Exception: pass
             interim_all = []
-            for games in partial.values():
-                interim_all.extend(games)
+            for games in partial.values(): interim_all.extend(games)
             interim = self._filter_and_sort_games(interim_all, visible_start_utc, visible_end_utc)
             with data_lock:
-                if interim or not state.get('current_games'):
-                    state['current_games'] = interim
+                if interim or not state.get('current_games'): state['current_games'] = interim
+            if time.time() >= deadline: break
 
-            if time.time() >= deadline:
-                break
-
-        # Final pass: collect complete result from all partial data
         all_games = []
-        for games in partial.values():
-            all_games.extend(games)
-        all_games = self._filter_and_sort_games(all_games, visible_start_utc, visible_end_utc)
-
-        return all_games
+        for games in partial.values(): all_games.extend(games)
+        return self._filter_and_sort_games(all_games, visible_start_utc, visible_end_utc)
 
     def _build_stocks_buffer(self):
         with data_lock:
@@ -3295,6 +3567,7 @@ class SportsFetcher:
                 m = t.get('settings', {}).get('mode')
                 if m and m in VALID_MODES:
                     needed.add(m)
+            
 
         _dispatch = {
             'sports':         self._build_sports_buffer,
@@ -3321,8 +3594,8 @@ class SportsFetcher:
 
             if is_sports:
                 sports_built = True
-                # Store under all three sports-like keys (filtering is done in /data)
-                for sm in ('sports', 'live', 'my_teams'):
+                # Store under all sports-like keys (filtering is done in /data)
+                for sm in ('sports', 'live', 'my_teams', 'sports_full'):
                     self._set_mode_buffer(sm, result)
 
                 # Maintain history buffer for live-delay
@@ -3423,6 +3696,16 @@ def _any_ticker_needs(*modes):
     """Return True if the global state or any paired ticker is in one of the given modes."""
     mode_set = set(modes)
     with data_lock:
+        # Pinned game override: force sports_full behavior whenever any pin exists.
+        if 'sports_full' in mode_set:
+            for t in tickers.values():
+                s = t.get('settings', {})
+                if s.get('pinned_game'):
+                    return True
+                t_pins = s.get('pinned_games', [])
+                if isinstance(t_pins, list) and any(str(p).strip() for p in t_pins):
+                    return True
+
         if state.get('mode') in mode_set:
             return True
         for t in tickers.values():
@@ -3430,13 +3713,26 @@ def _any_ticker_needs(*modes):
                 return True
     return False
 
+def _normalize_single_pin(pinned_game=None, pinned_games=None):
+    single = ''
+
+    if isinstance(pinned_games, list):
+        cleaned = [str(x).strip() for x in pinned_games if str(x).strip()]
+        if cleaned:
+            single = cleaned[-1]
+
+    if not single and pinned_game is not None:
+        single = str(pinned_game).strip()
+
+    return single, ([single] if single else [])
+
 def sports_worker():
     try: fetcher.fetch_all_teams()
     except Exception as e: print(f"Team fetch error: {e}")
 
     while True:
         start_time = time.time()
-        if _any_ticker_needs('sports', 'live', 'my_teams'):
+        if _any_ticker_needs('sports', 'live', 'my_teams', 'sports_full'):
             try:
                 fetcher.update_current_games()
             except Exception as e:
@@ -3531,6 +3827,16 @@ def api_config():
 
         # Migrate legacy modes to canonical mode names
         incoming_submode = new_data.get('flight_submode')
+
+        # Pin normalization (ticker-scoped): always keep a single pinned game.
+        normalized_pin = None
+        normalized_pin_list = None
+        if 'pinned_game' in new_data or 'pinned_games' in new_data:
+            normalized_pin, normalized_pin_list = _normalize_single_pin(
+                pinned_game=new_data.get('pinned_game'),
+                pinned_games=new_data.get('pinned_games')
+            )
+
         if 'mode' in new_data:
             new_data['mode'] = MODE_MIGRATIONS.get(new_data['mode'], new_data['mode'])
             # Submode compatibility: allow both directions
@@ -3561,6 +3867,23 @@ def api_config():
         # Fallback for single-ticker setups
         if not target_id and len(tickers) == 1: 
             target_id = list(tickers.keys())[0]
+
+        # If a specific ticker is targeted but doesn't exist yet, create it so
+        # mode and other settings are applied locally instead of falling back to
+        # global state.
+        if target_id and target_id not in tickers:
+            seed_client = cid or target_id
+            tickers[target_id] = {
+                "name": "Ticker",
+                "settings": DEFAULT_TICKER_SETTINGS.copy(),
+                "my_teams": None,
+                "clients": [seed_client],
+                "paired": True,
+                "pairing_code": generate_pairing_code(),
+                "last_seen": time.time()
+            }
+            tickers[target_id]['settings']['mode'] = state.get('mode', 'sports')
+            save_specific_ticker(target_id)
 
         # ================= SECURITY CHECK START =================
         if target_id and target_id in tickers:
@@ -3633,6 +3956,7 @@ def api_config():
                 'track_flight_id', 'track_guest_name', 'airport_code_icao',
                 'airport_code_iata', 'airport_name',
                 'test_mode', 'test_spotify', 'test_stocks', 'test_sports_date', 'test_flights',
+                'pinned_game', 'pinned_games'
             }
             
             for k, v in new_data.items():
@@ -3685,6 +4009,14 @@ def api_config():
                     else:
                         # No specific target: update the global default
                         state['mode'] = v
+                    continue
+
+                # HANDLE PINS — already normalized above; skip raw assignment
+                if k in ('pinned_game', 'pinned_games'):
+                    if target_id and target_id in tickers:
+                        tickers[target_id]['settings']['pinned_game'] = normalized_pin or ''
+                        tickers[target_id]['settings']['pinned_games'] = list(normalized_pin_list or [])
+                        tickers[target_id]['settings']['mode'] = 'sports_full' if normalized_pin else 'sports'
                     continue
 
                 # HANDLE ALL OTHER SETTINGS
@@ -3822,7 +4154,20 @@ def get_ticker_data():
     # Per-ticker mode: use the ticker's own mode setting, fall back to global
     current_mode = t_settings.get('mode') or state.get('mode', 'sports')
     current_mode = MODE_MIGRATIONS.get(current_mode, current_mode)
-    if current_mode not in VALID_MODES:
+    
+    # --- FORCE SPORTS_FULL IF TICKER HAS A PIN ---
+    t_pinned_game = str(rec.get('settings', {}).get('pinned_game', '')).strip()
+    t_pins = rec.get('settings', {}).get('pinned_games', [])
+    has_pinned_game = bool(t_pinned_game) or (isinstance(t_pins, list) and any(str(p).strip() for p in t_pins))
+    effective_pin = t_pinned_game if t_pinned_game else ''
+    if not effective_pin and isinstance(t_pins, list):
+        non_empty = [str(p).strip() for p in t_pins if str(p).strip()]
+        if non_empty:
+            effective_pin = non_empty[0]
+
+    if has_pinned_game:
+        current_mode = 'sports_full'
+    elif current_mode not in VALID_MODES:
         current_mode = state.get('mode', 'sports')
 
     # Sleep Mode Check
@@ -3831,11 +4176,19 @@ def get_ticker_data():
 
     # 4. Content Fetching
     # Live delay only applies to sports content (history buffer only exists for sports)
-    is_sports_mode = current_mode in ('sports', 'live', 'my_teams')
+    is_sports_mode = current_mode in ('sports', 'live', 'my_teams', 'sports_full')
     delay_seconds = (t_settings.get('live_delay_seconds', 0)
                      if (is_sports_mode and t_settings.get('live_delay_mode'))
                      else 0)
-    raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
+    if effective_pin:
+        pin_conf = {
+            'active_sports': state.get('active_sports', {}),
+            'utc_offset': state.get('utc_offset', -5)
+        }
+        _now = dt.now(timezone.utc)
+        raw_games = fetcher.fetch_pinned_game(effective_pin, pin_conf, _now - timedelta(days=1), _now + timedelta(days=2))
+    else:
+        raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
     active_sports = state.get('active_sports', {})
     visible_items = []
 
@@ -3872,6 +4225,12 @@ def get_ticker_data():
                 g['is_shown'] = True
                 visible_items.append(g)
 
+    elif current_mode == 'sports_full':
+        # Pinned game override — show everything without active_sports filtering
+        for g in raw_games:
+            g['is_shown'] = True
+            visible_items.append(g)
+
     elif current_mode == 'sports':
         for g in raw_games:
             if not active_sports.get(g.get('sport', ''), True): continue
@@ -3899,7 +4258,17 @@ def get_ticker_data():
                 visible_items.append(g)
 
     # 6. Final Response
-    g_config = { "mode": current_mode }
+    # Display-only override: if normal sports mode has exactly one item,
+    # render it as full-bleed without persisting ticker/global mode changes.
+    response_local_config = dict(t_settings)
+    effective_mode_for_response = current_mode
+    if current_mode == 'sports' and len(visible_items) == 1:
+        effective_mode_for_response = 'sports_full'
+    response_local_config['mode'] = effective_mode_for_response
+
+    # Report global config from global state only. Do not reflect per-ticker
+    # pin overrides here, otherwise global_config.mode appears to change.
+    g_config = { "mode": state.get('mode', 'sports') }
     if rec.get('reboot_requested'): g_config['reboot'] = True
     if rec.get('update_requested'): g_config['update'] = True
         
@@ -3908,7 +4277,7 @@ def get_ticker_data():
         "version": SERVER_VERSION,
         "ticker_id": ticker_id,
         "global_config": g_config, 
-        "local_config": t_settings, 
+        "local_config": response_local_config,
         "content": { "sports": visible_items } 
     })
 
@@ -4119,14 +4488,11 @@ def update_settings(tid):
             # Only update this ticker's mode setting; other tickers keep theirs
             rec['settings']['mode'] = new_mode
 
-        # Trigger immediate buffer rebuild for the new mode
-        try:
-            fetcher.update_current_games()
-        except Exception as e:
-            print(f"Error triggering update: {e}")
+        # Trigger immediate buffer rebuild in the background so this request
+        # returns quickly (sports refresh can take >5s).
+        threading.Thread(target=fetcher.update_current_games, daemon=True).start()
 
     save_specific_ticker(tid)
-    save_global_config()
     
     print(f"✅ Updated Settings for {tid}: {data}") 
     return jsonify({"success": True})
@@ -4159,8 +4525,22 @@ def api_state():
         response_settings['ticker_id'] = ticker_id
 
     current_mode = MODE_MIGRATIONS.get(response_settings.get('mode', 'sports'), response_settings.get('mode', 'sports'))
-    if current_mode not in VALID_MODES:
+    
+    # --- REFLECT PINNED OVERRIDE TO THE APP/UI (ticker-scoped only) ---
+    has_pinned_game = False
+    if ticker_id and ticker_id in tickers:
+        _settings = tickers[ticker_id].get('settings', {})
+        has_pinned_game = bool(_settings.get('pinned_game'))
+        if not has_pinned_game:
+            _pins = _settings.get('pinned_games', [])
+            has_pinned_game = isinstance(_pins, list) and any(str(p).strip() for p in _pins)
+
+    if has_pinned_game:
+        current_mode = 'sports_full'
+        response_settings['mode'] = current_mode
+    elif current_mode not in VALID_MODES:
         current_mode = 'sports'
+        
     response_settings['flight_submode'] = 'track' if current_mode == 'flight_tracker' else 'airport'
 
     raw_games = fetcher.get_mode_snapshot(current_mode, 0)
@@ -4222,6 +4602,50 @@ def api_state():
         "settings": response_settings,
         "games": processed_games 
     })
+
+@app.route('/api/pin_games', methods=['POST'])
+def api_pin_games():
+    try:
+        payload = request.json or {}
+        ticker_id = payload.get('ticker_id') or request.args.get('id')
+        cid = request.headers.get('X-Client-ID')
+
+        if not ticker_id and cid:
+            for tid, rec in tickers.items():
+                if cid in rec.get('clients', []):
+                    ticker_id = tid
+                    break
+        if not ticker_id and len(tickers) == 1:
+            ticker_id = list(tickers.keys())[0]
+
+        if ticker_id and ticker_id in tickers:
+            rec = tickers[ticker_id]
+            if cid and cid not in rec.get('clients', []):
+                print(f"⛔ Blocked unauthorized pin change from {cid}")
+                return jsonify({"error": "Unauthorized: Device not paired"}), 403
+
+        single_pin, pin_list = _normalize_single_pin(pinned_games=payload.get('game_ids', []))
+
+        with data_lock:
+            if ticker_id and ticker_id in tickers:
+                tickers[ticker_id]['settings']['pinned_game'] = single_pin
+                tickers[ticker_id]['settings']['pinned_games'] = pin_list
+                tickers[ticker_id]['settings']['mode'] = 'sports_full' if single_pin else 'sports'
+
+        if ticker_id and ticker_id in tickers:
+            save_specific_ticker(ticker_id)
+
+        threading.Thread(target=fetcher.update_current_games, daemon=True).start()
+
+        return jsonify({
+            "status": "ok",
+            "ticker_id": ticker_id,
+            "pinned_game": single_pin,
+            "pinned_games": pin_list
+        })
+    except Exception as e:
+        print(f"Pin API Error: {e}")
+        return jsonify({"error": "Failed to save pinned games"}), 500
     
 @app.route('/api/teams')
 def api_teams():
