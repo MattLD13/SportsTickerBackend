@@ -1331,6 +1331,72 @@ class WeatherFetcher:
         except Exception as e:
             print(f"❌ Critical Weather Error: {e}")
             return self.cache
+            
+class UnitedSeatsFetcher:
+    def __init__(self):
+        self.session = build_pooled_session(pool_size=5)
+        self.routes = [("FLL", "EWR"), ("PBI", "EWR")]
+        self.target_classes = ["J", "Y", "T"]
+        self.min_seats = 3
+        self.check_interval = 900  # 15 minutes
+        self.alerts = []
+        self.lock = threading.Lock()
+        self.last_fetch = 0
+
+    def parse_united_inventory(self, flight_data, origin, destination):
+        """Parses the raw JSON from the scraper/API."""
+        for fare_class in self.target_classes:
+            available_seats = flight_data.get("availability", {}).get(fare_class, 0)
+            if available_seats >= self.min_seats:
+                alert_msg = f"Found {available_seats} seats in class {fare_class} for {origin}-{destination}!"
+                print(f"[UnitedSeats] ✅ MATCH: {alert_msg}")
+                return alert_msg
+        return None
+
+    def fetch_seats(self):
+        # Throttle checking to exactly 15 minutes to avoid IP bans
+        if time.time() - self.last_fetch < self.check_interval:
+            return
+
+        new_alerts = []
+        for origin, destination in self.routes:
+            try:
+                print(f"[UnitedSeats] Checking {origin} to {destination}...")
+                
+                # NOTE: Replace this mock_raw_data with your actual scraper logic later
+                # r = self.session.get(f"http://YOUR_SCRAPER_URL?origin={origin}&dest={destination}")
+                # raw_data = r.json()
+                
+                # Simulated response data for testing
+                mock_raw_data = {
+                    "flight_number": "UA1234",
+                    "availability": {
+                        "J": 1,
+                        "Y": 4,  # This will trigger an alert!
+                        "T": 0
+                    }
+                }
+                
+                match_alert = self.parse_united_inventory(mock_raw_data, origin, destination)
+                if match_alert:
+                    new_alerts.append(match_alert)
+                    
+            except Exception as e:
+                print(f"[UnitedSeats] Error fetching {origin}-{destination}: {e}")
+        
+        with self.lock:
+            self.alerts = new_alerts
+        
+        self.last_fetch = time.time()
+
+    def get_alerts(self):
+        """Safely returns current alerts for the API endpoint."""
+        with self.lock:
+            return self.alerts.copy()
+
+# Initialize it globally alongside your other fetchers
+united_seats_tracker = UnitedSeatsFetcher()
+
 
 class StockFetcher:
     def __init__(self):
@@ -3829,6 +3895,18 @@ def music_worker():
         except Exception as e:
             print(f"Music worker error: {e}")
         time.sleep(1)
+        
+def united_seats_worker():
+    if TestMode.is_enabled('flights'):
+        print("[DEBUG] united_seats_worker: Starting")
+    while True:
+        try:
+            united_seats_tracker.fetch_seats()
+        except Exception as e:
+            print(f"United seats worker error: {e}")
+        # The thread wakes up every 60s, but the fetch_seats() method 
+        # internally forces the 15-minute delay before doing actual network calls.
+        time.sleep(60) 
 
 def flights_worker():
     if not flight_tracker:
@@ -4738,6 +4816,17 @@ def api_pin_games():
 def api_teams():
     with data_lock: return jsonify(state['all_teams_data'])
 
+@app.route('/flights', methods=['GET'])
+def get_united_flights():
+    """
+    Your iOS Shortcut hits this endpoint via:
+    http://YOUR_SERVER_IP:5000/flights
+    """
+    return jsonify({
+        "status": "ok",
+        "alerts": united_seats_tracker.get_alerts()
+    })
+
 @app.route('/api/hardware', methods=['POST'])
 def api_hardware():
     try:
@@ -4922,6 +5011,7 @@ if __name__ == "__main__":
     threading.Thread(target=sports_worker, daemon=True).start()
     threading.Thread(target=stocks_worker, daemon=True).start()
     threading.Thread(target=music_worker, daemon=True).start()
+    threading.Thread(target=united_seats_worker, daemon=True).start()
     if flight_tracker:
         threading.Thread(target=flights_worker, daemon=True).start()
     print("✅ Worker threads started")
