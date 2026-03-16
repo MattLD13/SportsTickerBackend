@@ -1179,39 +1179,39 @@ def _maybe_update_ticker_timezone_from_request(ticker_id: str, req):
             off_txt = f"UTC{hdr_offset:+}" if isinstance(hdr_offset, (int, float)) else "UTC?"
             print(f"[TZ] Ticker {ticker_id} timezone set from ticker headers: {hdr_tz or 'unknown'} ({off_txt})")
             save_specific_ticker(ticker_id)
-        return
+        # If only offset was provided (no timezone name), continue to fallbacks
+        # so we can still resolve and persist a canonical timezone_name.
+        if hdr_tz:
+            return
 
     ip_addr = _extract_client_ip(req)
 
     # If request appears local/private, fall back to current public egress IP.
     if not ip_addr:
         tz_name, offset, query_ip = _lookup_timezone_for_current_connection()
-        if not tz_name:
-            return
+        if tz_name:
+            if offset is None:
+                offset = _utc_offset_hours_for_timezone(tz_name)
 
-        if offset is None:
-            offset = _utc_offset_hours_for_timezone(tz_name)
+            changed = False
+            settings = rec.setdefault('settings', {})
+            if settings.get('timezone_name') != tz_name:
+                settings['timezone_name'] = tz_name
+                changed = True
+            if offset is not None and settings.get('utc_offset') != offset:
+                settings['utc_offset'] = offset
+                changed = True
+            if rec.get('timezone_name') != tz_name:
+                rec['timezone_name'] = tz_name
+                changed = True
+            if query_ip and rec.get('last_ip') != query_ip:
+                rec['last_ip'] = query_ip
+                changed = True
 
-        changed = False
-        settings = rec.setdefault('settings', {})
-        if settings.get('timezone_name') != tz_name:
-            settings['timezone_name'] = tz_name
-            changed = True
-        if offset is not None and settings.get('utc_offset') != offset:
-            settings['utc_offset'] = offset
-            changed = True
-        if rec.get('timezone_name') != tz_name:
-            rec['timezone_name'] = tz_name
-            changed = True
-        if query_ip and rec.get('last_ip') != query_ip:
-            rec['last_ip'] = query_ip
-            changed = True
-
-        if changed:
-            off_txt = f"UTC{offset:+}" if isinstance(offset, (int, float)) else "UTC?"
-            print(f"[TZ] Ticker {ticker_id} timezone set to {tz_name} ({off_txt}) from fallback IP {query_ip or 'unknown'}")
-            save_specific_ticker(ticker_id)
-        return
+            if changed:
+                off_txt = f"UTC{offset:+}" if isinstance(offset, (int, float)) else "UTC?"
+                print(f"[TZ] Ticker {ticker_id} timezone set to {tz_name} ({off_txt}) from fallback IP {query_ip or 'unknown'}")
+                save_specific_ticker(ticker_id)
 
     prev_ip = str(rec.get('last_ip', '')).strip()
     prev_tz = str(rec.get('settings', {}).get('timezone_name', '')).strip()
@@ -1225,32 +1225,31 @@ def _maybe_update_ticker_timezone_from_request(ticker_id: str, req):
             save_specific_ticker(ticker_id)
         return
 
-    tz_name, offset = _lookup_timezone_for_ip(ip_addr)
-    if not tz_name:
-        return
+    if ip_addr:
+        tz_name, offset = _lookup_timezone_for_ip(ip_addr)
+        if tz_name:
+            if offset is None:
+                offset = _utc_offset_hours_for_timezone(tz_name)
 
-    if offset is None:
-        offset = _utc_offset_hours_for_timezone(tz_name)
+            changed = False
+            settings = rec.setdefault('settings', {})
+            if settings.get('timezone_name') != tz_name:
+                settings['timezone_name'] = tz_name
+                changed = True
+            if offset is not None and settings.get('utc_offset') != offset:
+                settings['utc_offset'] = offset
+                changed = True
+            if rec.get('timezone_name') != tz_name:
+                rec['timezone_name'] = tz_name
+                changed = True
+            if rec.get('last_ip') != ip_addr:
+                rec['last_ip'] = ip_addr
+                changed = True
 
-    changed = False
-    settings = rec.setdefault('settings', {})
-    if settings.get('timezone_name') != tz_name:
-        settings['timezone_name'] = tz_name
-        changed = True
-    if offset is not None and settings.get('utc_offset') != offset:
-        settings['utc_offset'] = offset
-        changed = True
-    if rec.get('timezone_name') != tz_name:
-        rec['timezone_name'] = tz_name
-        changed = True
-    if rec.get('last_ip') != ip_addr:
-        rec['last_ip'] = ip_addr
-        changed = True
-
-    if changed:
-        off_txt = f"UTC{offset:+}" if isinstance(offset, (int, float)) else "UTC?"
-        print(f"[TZ] Ticker {ticker_id} timezone set to {tz_name} ({off_txt}) from IP {ip_addr}")
-        save_specific_ticker(ticker_id)
+            if changed:
+                off_txt = f"UTC{offset:+}" if isinstance(offset, (int, float)) else "UTC?"
+                print(f"[TZ] Ticker {ticker_id} timezone set to {tz_name} ({off_txt}) from IP {ip_addr}")
+                save_specific_ticker(ticker_id)
 
     # Final fallback: derive timezone from configured weather coordinates.
     settings = rec.setdefault('settings', {})
@@ -5109,6 +5108,116 @@ def api_state():
         "is_pinned": bool(pinned_game),
         "pinned_game": pinned_game,
         "pinned_games": pinned_games
+    })
+
+
+@app.route('/api/timezone', methods=['GET'])
+def api_timezone_debug():
+    """
+    Debug endpoint for ticker timezone resolution.
+    Query params:
+      - id: ticker id (optional; inferred from X-Client-ID or single-ticker fallback)
+      - refresh: 1/true to force running timezone update pipeline for this request
+    """
+    ticker_id = request.args.get('id')
+    if not ticker_id:
+        cid = request.headers.get('X-Client-ID')
+        if cid:
+            for tid, t_data in tickers.items():
+                if cid in t_data.get('clients', []):
+                    ticker_id = tid
+                    break
+    if not ticker_id and len(tickers) == 1:
+        ticker_id = list(tickers.keys())[0]
+
+    if not ticker_id or ticker_id not in tickers:
+        return jsonify({
+            "status": "error",
+            "message": "Ticker not found. Provide ?id=<ticker_id>",
+            "known_tickers": list(tickers.keys())[:20]
+        }), 404
+
+    refresh_raw = str(request.args.get('refresh', '')).strip().lower()
+    do_refresh = refresh_raw in ('1', 'true', 'yes', 'y', 'on')
+
+    if do_refresh:
+        _maybe_update_ticker_timezone_from_request(ticker_id, request)
+
+    rec = tickers[ticker_id]
+    settings = rec.get('settings', {}) if isinstance(rec, dict) else {}
+
+    hdr_tz, hdr_offset = _extract_timezone_from_request_headers(request)
+    client_ip = _extract_client_ip(request)
+
+    ip_lookup = None
+    if client_ip:
+        ip_tz, ip_off = _lookup_timezone_for_ip(client_ip)
+        ip_lookup = {
+            "ip": client_ip,
+            "timezone": ip_tz,
+            "utc_offset": ip_off,
+        }
+
+    self_tz, self_off, self_ip = _lookup_timezone_for_current_connection()
+
+    lat = settings.get('weather_lat', state.get('weather_lat'))
+    lon = settings.get('weather_lon', state.get('weather_lon'))
+    ll_tz, ll_off = _lookup_timezone_for_latlon(lat, lon)
+
+    effective_tz, effective_off = _get_ticker_timezone_context(rec)
+
+    return jsonify({
+        "status": "ok",
+        "ticker_id": ticker_id,
+        "refresh_applied": do_refresh,
+        "request_inputs": {
+            "query": {
+                "timezone_name": request.args.get('timezone_name'),
+                "utc_offset": request.args.get('utc_offset'),
+                "tz": request.args.get('tz'),
+                "offset": request.args.get('offset'),
+            },
+            "headers": {
+                "X-Client-ID": request.headers.get('X-Client-ID'),
+                "X-Ticker-Timezone": request.headers.get('X-Ticker-Timezone'),
+                "X-Ticker-Utc-Offset": request.headers.get('X-Ticker-Utc-Offset'),
+                "X-Timezone": request.headers.get('X-Timezone'),
+                "X-UTC-Offset": request.headers.get('X-UTC-Offset'),
+                "X-Forwarded-For": request.headers.get('X-Forwarded-For'),
+                "X-Real-IP": request.headers.get('X-Real-IP'),
+                "CF-Connecting-IP": request.headers.get('CF-Connecting-IP'),
+            },
+            "resolved_from_request": {
+                "header_timezone": hdr_tz,
+                "header_utc_offset": hdr_offset,
+                "client_ip": client_ip,
+                "remote_addr": request.remote_addr,
+            }
+        },
+        "stored": {
+            "settings.timezone_name": settings.get('timezone_name'),
+            "settings.utc_offset": settings.get('utc_offset'),
+            "rec.timezone_name": rec.get('timezone_name'),
+            "rec.last_ip": rec.get('last_ip'),
+            "weather_lat": lat,
+            "weather_lon": lon,
+        },
+        "lookups": {
+            "ip_lookup": ip_lookup,
+            "current_connection_lookup": {
+                "ip": self_ip,
+                "timezone": self_tz,
+                "utc_offset": self_off,
+            },
+            "latlon_lookup": {
+                "timezone": ll_tz,
+                "utc_offset": ll_off,
+            }
+        },
+        "effective": {
+            "timezone_name": effective_tz,
+            "utc_offset": effective_off,
+        }
     })
 
 @app.route('/api/pin_games', methods=['POST'])
