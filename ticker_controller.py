@@ -1089,6 +1089,49 @@ def _lookup_timezone_for_current_connection() -> tuple[str | None, float | None,
     return None, None, None
 
 
+def _lookup_timezone_for_latlon(lat: float, lon: float) -> tuple[str | None, float | None]:
+    """
+    Fallback resolver using open-meteo timezone=auto from lat/lon.
+    Useful when client IP/header timezone is unavailable.
+    """
+    try:
+        lat_f = float(lat)
+        lon_f = float(lon)
+    except Exception:
+        return None, None
+
+    cache_key = f"__latlon__:{round(lat_f, 3)},{round(lon_f, 3)}"
+    now_ts = time.time()
+    cached = _IP_TZ_CACHE.get(cache_key)
+    if cached and (now_ts - cached.get('ts', 0) < _IP_TZ_CACHE_TTL):
+        return cached.get('timezone'), cached.get('offset')
+
+    try:
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": lat_f,
+            "longitude": lon_f,
+            "current": "temperature_2m",
+            "timezone": "auto",
+        }
+        resp = requests.get(url, params=params, timeout=TIMEOUTS.get('quick', 3))
+        data = resp.json() if resp.ok else {}
+        tz_name = str(data.get('timezone') or '').strip()
+        if not tz_name:
+            return None, None
+
+        off = _utc_offset_hours_for_timezone(tz_name)
+        _IP_TZ_CACHE[cache_key] = {
+            'timezone': tz_name,
+            'offset': off,
+            'ts': now_ts,
+        }
+        return tz_name, off
+    except Exception as e:
+        print(f"[TZ] lat/lon timezone lookup failed ({lat_f},{lon_f}): {e}")
+        return None, None
+
+
 def _get_ticker_timezone_context(rec: dict) -> tuple[str, float]:
     settings = rec.get('settings', {}) if isinstance(rec, dict) else {}
     tz_name = str(settings.get('timezone_name') or rec.get('timezone_name') or '').strip()
@@ -1207,6 +1250,30 @@ def _maybe_update_ticker_timezone_from_request(ticker_id: str, req):
     if changed:
         off_txt = f"UTC{offset:+}" if isinstance(offset, (int, float)) else "UTC?"
         print(f"[TZ] Ticker {ticker_id} timezone set to {tz_name} ({off_txt}) from IP {ip_addr}")
+        save_specific_ticker(ticker_id)
+
+    # Final fallback: derive timezone from configured weather coordinates.
+    settings = rec.setdefault('settings', {})
+    lat = settings.get('weather_lat', state.get('weather_lat'))
+    lon = settings.get('weather_lon', state.get('weather_lon'))
+    ll_tz, ll_off = _lookup_timezone_for_latlon(lat, lon)
+    if not ll_tz:
+        return
+
+    ll_changed = False
+    if settings.get('timezone_name') != ll_tz:
+        settings['timezone_name'] = ll_tz
+        ll_changed = True
+    if ll_off is not None and settings.get('utc_offset') != ll_off:
+        settings['utc_offset'] = ll_off
+        ll_changed = True
+    if rec.get('timezone_name') != ll_tz:
+        rec['timezone_name'] = ll_tz
+        ll_changed = True
+
+    if ll_changed:
+        off_txt = f"UTC{ll_off:+}" if isinstance(ll_off, (int, float)) else "UTC?"
+        print(f"[TZ] Ticker {ticker_id} timezone set from weather coords ({lat},{lon}): {ll_tz} ({off_txt})")
         save_specific_ticker(ticker_id)
 
 
