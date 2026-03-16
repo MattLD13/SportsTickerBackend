@@ -1015,8 +1015,12 @@ def _get_ticker_timezone_context(rec: dict) -> tuple[str, float]:
     except Exception:
         offset = None
 
-    if offset is None and tz_name:
-        offset = _utc_offset_hours_for_timezone(tz_name)
+    # Prefer live offset from IANA timezone so DST changes (e.g. -5 -> -4)
+    # apply immediately without waiting for an IP change.
+    if tz_name:
+        live_offset = _utc_offset_hours_for_timezone(tz_name)
+        if live_offset is not None:
+            offset = live_offset
     if offset is None:
         offset = float(state.get('utc_offset', -5))
 
@@ -1036,12 +1040,12 @@ def _maybe_update_ticker_timezone_from_request(ticker_id: str, req):
     prev_tz = str(rec.get('settings', {}).get('timezone_name', '')).strip()
 
     if ip_addr == prev_ip and prev_tz:
-        # Keep current tz; ensure utc_offset exists.
-        if rec.get('settings', {}).get('utc_offset') is None:
-            off = _utc_offset_hours_for_timezone(prev_tz)
-            if off is not None:
-                rec['settings']['utc_offset'] = off
-                save_specific_ticker(ticker_id)
+        # IP unchanged: still refresh offset from timezone to follow DST.
+        off = _utc_offset_hours_for_timezone(prev_tz)
+        if off is not None and rec.get('settings', {}).get('utc_offset') != off:
+            rec['settings']['utc_offset'] = off
+            print(f"[TZ] Ticker {ticker_id} offset refreshed from timezone {prev_tz}: UTC{off:+}")
+            save_specific_ticker(ticker_id)
         return
 
     tz_name, offset = _lookup_timezone_for_ip(ip_addr)
