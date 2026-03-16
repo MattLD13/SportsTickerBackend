@@ -2,6 +2,7 @@
 import csv
 import concurrent.futures
 import glob
+import ipaddress
 import io
 import json
 import math
@@ -14,6 +15,11 @@ import threading
 import time
 import uuid
 from datetime import datetime as dt, timezone, timedelta
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
 
 # ── Third-party ──
 import requests
@@ -732,7 +738,9 @@ DEFAULT_TICKER_SETTINGS = {
     "inverted": False,
     "panel_count": 2,
     "live_delay_mode": False,
-    "live_delay_seconds": 45
+    "live_delay_seconds": 45,
+    "utc_offset": -5,
+    "timezone_name": ""
 }
 
 # ── Section F: Boot / Config Load ──
@@ -800,6 +808,8 @@ for t_file in ticker_files:
             
             # Repair missing keys on load
             if 'settings' not in t_data: t_data['settings'] = DEFAULT_TICKER_SETTINGS.copy()
+            for _sk, _sv in DEFAULT_TICKER_SETTINGS.items():
+                t_data['settings'].setdefault(_sk, _sv)
             t_data['settings'].pop('active_sports', None)  # active_sports is global-only; strip stale per-ticker copy
             if 'my_teams' not in t_data: t_data['my_teams'] = None
             elif t_data.get('my_teams') == []: t_data['my_teams'] = None  # migrate old unconfigured tickers
@@ -907,6 +917,192 @@ def parse_iso(s: str) -> dt:
     if not s:
         raise ValueError("Empty datetime string")
     return dt.fromisoformat(s.replace('Z', '+00:00'))
+
+
+_IP_TZ_CACHE = {}
+_IP_TZ_CACHE_TTL = 12 * 3600
+
+
+def _extract_client_ip(req) -> str | None:
+    header_candidates = [
+        'CF-Connecting-IP',
+        'X-Forwarded-For',
+        'X-Real-IP',
+    ]
+    raw_ip = ''
+    for h in header_candidates:
+        v = (req.headers.get(h) or '').strip()
+        if v:
+            raw_ip = v.split(',')[0].strip()
+            break
+    if not raw_ip:
+        raw_ip = (req.remote_addr or '').strip()
+    if not raw_ip:
+        return None
+
+    # IPv4-mapped IPv6 format: ::ffff:1.2.3.4
+    if raw_ip.lower().startswith('::ffff:'):
+        raw_ip = raw_ip[7:]
+    # Strip zone index from IPv6 if present
+    if '%' in raw_ip:
+        raw_ip = raw_ip.split('%', 1)[0]
+
+    try:
+        ip_obj = ipaddress.ip_address(raw_ip)
+        if any([
+            ip_obj.is_private,
+            ip_obj.is_loopback,
+            ip_obj.is_link_local,
+            ip_obj.is_reserved,
+            ip_obj.is_multicast,
+            ip_obj.is_unspecified,
+        ]):
+            return None
+        return str(ip_obj)
+    except Exception:
+        return None
+
+
+def _utc_offset_hours_for_timezone(tz_name: str | None) -> float | None:
+    if not tz_name or not ZoneInfo:
+        return None
+    try:
+        now_local = dt.now(ZoneInfo(tz_name))
+        off = now_local.utcoffset()
+        if off is None:
+            return None
+        return round(off.total_seconds() / 3600.0, 2)
+    except Exception:
+        return None
+
+
+def _lookup_timezone_for_ip(ip_addr: str) -> tuple[str | None, float | None]:
+    now_ts = time.time()
+    cached = _IP_TZ_CACHE.get(ip_addr)
+    if cached and (now_ts - cached.get('ts', 0) < _IP_TZ_CACHE_TTL):
+        return cached.get('timezone'), cached.get('offset')
+
+    try:
+        url = f"https://ip-api.com/json/{ip_addr}"
+        params = {"fields": "status,timezone,offset,message,query"}
+        resp = requests.get(url, params=params, timeout=TIMEOUTS.get('quick', 3))
+        data = resp.json() if resp.ok else {}
+        if data.get('status') == 'success' and data.get('timezone'):
+            tz_name = str(data.get('timezone')).strip()
+            offset_raw = data.get('offset')
+            offset_hours = round(float(offset_raw) / 3600.0, 2) if isinstance(offset_raw, (int, float)) else None
+            if offset_hours is None:
+                offset_hours = _utc_offset_hours_for_timezone(tz_name)
+            _IP_TZ_CACHE[ip_addr] = {
+                'timezone': tz_name,
+                'offset': offset_hours,
+                'ts': now_ts,
+            }
+            return tz_name, offset_hours
+    except Exception as e:
+        print(f"[TZ] ip-api lookup failed for {ip_addr}: {e}")
+
+    return None, None
+
+
+def _get_ticker_timezone_context(rec: dict) -> tuple[str, float]:
+    settings = rec.get('settings', {}) if isinstance(rec, dict) else {}
+    tz_name = str(settings.get('timezone_name') or rec.get('timezone_name') or '').strip()
+
+    offset = settings.get('utc_offset', None)
+    try:
+        offset = float(offset)
+    except Exception:
+        offset = None
+
+    if offset is None and tz_name:
+        offset = _utc_offset_hours_for_timezone(tz_name)
+    if offset is None:
+        offset = float(state.get('utc_offset', -5))
+
+    return tz_name, offset
+
+
+def _maybe_update_ticker_timezone_from_request(ticker_id: str, req):
+    if not ticker_id or ticker_id not in tickers:
+        return
+
+    rec = tickers[ticker_id]
+    ip_addr = _extract_client_ip(req)
+    if not ip_addr:
+        return
+
+    prev_ip = str(rec.get('last_ip', '')).strip()
+    prev_tz = str(rec.get('settings', {}).get('timezone_name', '')).strip()
+
+    if ip_addr == prev_ip and prev_tz:
+        # Keep current tz; ensure utc_offset exists.
+        if rec.get('settings', {}).get('utc_offset') is None:
+            off = _utc_offset_hours_for_timezone(prev_tz)
+            if off is not None:
+                rec['settings']['utc_offset'] = off
+                save_specific_ticker(ticker_id)
+        return
+
+    tz_name, offset = _lookup_timezone_for_ip(ip_addr)
+    if not tz_name:
+        return
+
+    if offset is None:
+        offset = _utc_offset_hours_for_timezone(tz_name)
+
+    changed = False
+    settings = rec.setdefault('settings', {})
+    if settings.get('timezone_name') != tz_name:
+        settings['timezone_name'] = tz_name
+        changed = True
+    if offset is not None and settings.get('utc_offset') != offset:
+        settings['utc_offset'] = offset
+        changed = True
+    if rec.get('timezone_name') != tz_name:
+        rec['timezone_name'] = tz_name
+        changed = True
+    if rec.get('last_ip') != ip_addr:
+        rec['last_ip'] = ip_addr
+        changed = True
+
+    if changed:
+        print(f"[TZ] Ticker {ticker_id} timezone set to {tz_name} (UTC{offset:+}) from IP {ip_addr}")
+        save_specific_ticker(ticker_id)
+
+
+def _apply_timezone_to_game_times(games: list, tz_name: str = '', utc_offset: float = -5.0):
+    if not isinstance(games, list):
+        return
+
+    tz_obj = None
+    if tz_name and ZoneInfo:
+        try:
+            tz_obj = ZoneInfo(tz_name)
+        except Exception:
+            tz_obj = None
+
+    try:
+        offset_hours = float(utc_offset)
+    except Exception:
+        offset_hours = -5.0
+
+    fallback_tz = timezone(timedelta(hours=offset_hours))
+
+    for g in games:
+        if not isinstance(g, dict):
+            continue
+        if g.get('state') != 'pre':
+            continue
+        start_utc = g.get('startTimeUTC')
+        if not start_utc:
+            continue
+        try:
+            game_dt = parse_iso(start_utc)
+            local_dt = game_dt.astimezone(tz_obj) if tz_obj else game_dt.astimezone(fallback_tz)
+            g['status'] = local_dt.strftime("%I:%M %p").lstrip('0')
+        except Exception:
+            continue
 
 
 def fetch_json(session, url, *, timeout=None, params=None, headers=None):
@@ -1331,72 +1527,6 @@ class WeatherFetcher:
         except Exception as e:
             print(f"❌ Critical Weather Error: {e}")
             return self.cache
-            
-class UnitedSeatsFetcher:
-    def __init__(self):
-        self.session = build_pooled_session(pool_size=5)
-        self.routes = [("FLL", "EWR"), ("PBI", "EWR")]
-        self.target_classes = ["J", "Y", "T"]
-        self.min_seats = 3
-        self.check_interval = 900  # 15 minutes
-        self.alerts = []
-        self.lock = threading.Lock()
-        self.last_fetch = 0
-
-    def parse_united_inventory(self, flight_data, origin, destination):
-        """Parses the raw JSON from the scraper/API."""
-        for fare_class in self.target_classes:
-            available_seats = flight_data.get("availability", {}).get(fare_class, 0)
-            if available_seats >= self.min_seats:
-                alert_msg = f"Found {available_seats} seats in class {fare_class} for {origin}-{destination}!"
-                print(f"[UnitedSeats] ✅ MATCH: {alert_msg}")
-                return alert_msg
-        return None
-
-    def fetch_seats(self):
-        # Throttle checking to exactly 15 minutes to avoid IP bans
-        if time.time() - self.last_fetch < self.check_interval:
-            return
-
-        new_alerts = []
-        for origin, destination in self.routes:
-            try:
-                print(f"[UnitedSeats] Checking {origin} to {destination}...")
-                
-                # NOTE: Replace this mock_raw_data with your actual scraper logic later
-                # r = self.session.get(f"http://YOUR_SCRAPER_URL?origin={origin}&dest={destination}")
-                # raw_data = r.json()
-                
-                # Simulated response data for testing
-                mock_raw_data = {
-                    "flight_number": "UA1234",
-                    "availability": {
-                        "J": 1,
-                        "Y": 4,  # This will trigger an alert!
-                        "T": 0
-                    }
-                }
-                
-                match_alert = self.parse_united_inventory(mock_raw_data, origin, destination)
-                if match_alert:
-                    new_alerts.append(match_alert)
-                    
-            except Exception as e:
-                print(f"[UnitedSeats] Error fetching {origin}-{destination}: {e}")
-        
-        with self.lock:
-            self.alerts = new_alerts
-        
-        self.last_fetch = time.time()
-
-    def get_alerts(self):
-        """Safely returns current alerts for the API endpoint."""
-        with self.lock:
-            return self.alerts.copy()
-
-# Initialize it globally alongside your other fetchers
-united_seats_tracker = UnitedSeatsFetcher()
-
 
 class StockFetcher:
     def __init__(self):
@@ -3895,18 +4025,6 @@ def music_worker():
         except Exception as e:
             print(f"Music worker error: {e}")
         time.sleep(1)
-        
-def united_seats_worker():
-    if TestMode.is_enabled('flights'):
-        print("[DEBUG] united_seats_worker: Starting")
-    while True:
-        try:
-            united_seats_tracker.fetch_seats()
-        except Exception as e:
-            print(f"United seats worker error: {e}")
-        # The thread wakes up every 60s, but the fetch_seats() method 
-        # internally forces the 15-minute delay before doing actual network calls.
-        time.sleep(60) 
 
 def flights_worker():
     if not flight_tracker:
@@ -4093,6 +4211,7 @@ def api_config():
             allowed_keys = {
                 'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date',
                 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset',
+                'timezone_name',
                 'track_flight_id', 'track_guest_name', 'airport_code_icao',
                 'airport_code_iata', 'airport_name',
                 'test_mode', 'test_spotify', 'test_stocks', 'test_sports_date', 'test_flights',
@@ -4280,6 +4399,9 @@ def get_ticker_data():
 
     rec = tickers[ticker_id]
     rec['last_seen'] = time.time()
+
+    # Auto-detect ticker timezone from its public IP (ip-api.com) and persist.
+    _maybe_update_ticker_timezone_from_request(ticker_id, request)
     
     # 2. Pairing Check
     if not rec.get('clients') or not rec.get('paired'):
@@ -4408,6 +4530,9 @@ def get_ticker_data():
             if match:
                 g['is_shown'] = True
                 visible_items.append(g)
+
+    tz_name, tz_offset = _get_ticker_timezone_context(rec)
+    _apply_timezone_to_game_times(visible_items, tz_name=tz_name, utc_offset=tz_offset)
 
     # 6. Final Response
     # Display-only override: if normal sports mode has exactly one item,
@@ -4676,6 +4801,11 @@ def api_state():
         response_settings['my_teams'] = list(state.get('my_teams', [])) if _t_teams is None else _t_teams
         response_settings['ticker_id'] = ticker_id
 
+        # Include stored timezone context (learned from /data ticker requests).
+        _tz_name, _tz_offset = _get_ticker_timezone_context(tickers[ticker_id])
+        response_settings['timezone_name'] = _tz_name
+        response_settings['utc_offset'] = _tz_offset
+
     pinned_game = ''
     pinned_games = []
     if ticker_id and ticker_id in tickers:
@@ -4760,6 +4890,10 @@ def api_state():
         game_copy['is_shown'] = should_show
         processed_games.append(game_copy)
 
+    tz_name = str(response_settings.get('timezone_name', '')).strip()
+    tz_offset = response_settings.get('utc_offset', state.get('utc_offset', -5))
+    _apply_timezone_to_game_times(processed_games, tz_name=tz_name, utc_offset=tz_offset)
+
     return jsonify({
         "status": "ok",
         "settings": response_settings,
@@ -4815,17 +4949,6 @@ def api_pin_games():
 @app.route('/api/teams')
 def api_teams():
     with data_lock: return jsonify(state['all_teams_data'])
-
-@app.route('/flights', methods=['GET'])
-def get_united_flights():
-    """
-    Your iOS Shortcut hits this endpoint via:
-    http://YOUR_SERVER_IP:5000/flights
-    """
-    return jsonify({
-        "status": "ok",
-        "alerts": united_seats_tracker.get_alerts()
-    })
 
 @app.route('/api/hardware', methods=['POST'])
 def api_hardware():
@@ -5011,7 +5134,6 @@ if __name__ == "__main__":
     threading.Thread(target=sports_worker, daemon=True).start()
     threading.Thread(target=stocks_worker, daemon=True).start()
     threading.Thread(target=music_worker, daemon=True).start()
-    threading.Thread(target=united_seats_worker, daemon=True).start()
     if flight_tracker:
         threading.Thread(target=flights_worker, daemon=True).start()
     print("✅ Worker threads started")
