@@ -985,9 +985,16 @@ def _extract_timezone_from_request_headers(req) -> tuple[str | None, float | Non
     tz_raw = str(
         req.headers.get('X-Ticker-Timezone')
         or req.headers.get('X-Timezone')
+        or req.args.get('timezone_name')
+        or req.args.get('tz')
         or ''
     ).strip()
-    off_raw = req.headers.get('X-Ticker-Utc-Offset') or req.headers.get('X-UTC-Offset')
+    off_raw = (
+        req.headers.get('X-Ticker-Utc-Offset')
+        or req.headers.get('X-UTC-Offset')
+        or req.args.get('utc_offset')
+        or req.args.get('offset')
+    )
 
     tz_name = None
     if tz_raw:
