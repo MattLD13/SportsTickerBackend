@@ -192,7 +192,7 @@ def normalize_aircraft_type(icao_code, fr24_model=None):
     return ''
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v0.8-AIFlights"
+SERVER_VERSION = "v0.9-Timezones"
 
 # ── Section A: Logging ──
 class Tee(object):
@@ -924,43 +924,48 @@ _IP_TZ_CACHE_TTL = 12 * 3600
 
 
 def _extract_client_ip(req) -> str | None:
+    def _normalize_public_ip(raw: str) -> str | None:
+        raw_ip = (raw or '').strip()
+        if not raw_ip:
+            return None
+
+        # IPv4-mapped IPv6 format: ::ffff:1.2.3.4
+        if raw_ip.lower().startswith('::ffff:'):
+            raw_ip = raw_ip[7:]
+        # Strip zone index from IPv6 if present
+        if '%' in raw_ip:
+            raw_ip = raw_ip.split('%', 1)[0]
+
+        try:
+            ip_obj = ipaddress.ip_address(raw_ip)
+            if any([
+                ip_obj.is_private,
+                ip_obj.is_loopback,
+                ip_obj.is_link_local,
+                ip_obj.is_reserved,
+                ip_obj.is_multicast,
+                ip_obj.is_unspecified,
+            ]):
+                return None
+            return str(ip_obj)
+        except Exception:
+            return None
+
     header_candidates = [
         'CF-Connecting-IP',
         'X-Forwarded-For',
         'X-Real-IP',
     ]
-    raw_ip = ''
     for h in header_candidates:
         v = (req.headers.get(h) or '').strip()
         if v:
-            raw_ip = v.split(',')[0].strip()
-            break
-    if not raw_ip:
-        raw_ip = (req.remote_addr or '').strip()
-    if not raw_ip:
-        return None
+            # Prefer first public IP in the chain.
+            for part in v.split(','):
+                pub = _normalize_public_ip(part)
+                if pub:
+                    return pub
 
-    # IPv4-mapped IPv6 format: ::ffff:1.2.3.4
-    if raw_ip.lower().startswith('::ffff:'):
-        raw_ip = raw_ip[7:]
-    # Strip zone index from IPv6 if present
-    if '%' in raw_ip:
-        raw_ip = raw_ip.split('%', 1)[0]
-
-    try:
-        ip_obj = ipaddress.ip_address(raw_ip)
-        if any([
-            ip_obj.is_private,
-            ip_obj.is_loopback,
-            ip_obj.is_link_local,
-            ip_obj.is_reserved,
-            ip_obj.is_multicast,
-            ip_obj.is_unspecified,
-        ]):
-            return None
-        return str(ip_obj)
-    except Exception:
-        return None
+    return _normalize_public_ip(req.remote_addr or '')
 
 
 def _utc_offset_hours_for_timezone(tz_name: str | None) -> float | None:
@@ -1005,6 +1010,43 @@ def _lookup_timezone_for_ip(ip_addr: str) -> tuple[str | None, float | None]:
     return None, None
 
 
+def _lookup_timezone_for_current_connection() -> tuple[str | None, float | None, str | None]:
+    """
+    Fallback when request IP appears private/local (e.g. LAN app usage).
+    ip-api resolves timezone for the current outbound connection IP.
+    """
+    cache_key = '__self__'
+    now_ts = time.time()
+    cached = _IP_TZ_CACHE.get(cache_key)
+    if cached and (now_ts - cached.get('ts', 0) < _IP_TZ_CACHE_TTL):
+        return cached.get('timezone'), cached.get('offset'), cached.get('query')
+
+    try:
+        url = "https://ip-api.com/json/"
+        params = {"fields": "status,query,timezone,offset,message"}
+        resp = requests.get(url, params=params, timeout=TIMEOUTS.get('quick', 3))
+        data = resp.json() if resp.ok else {}
+        if data.get('status') == 'success' and data.get('timezone'):
+            tz_name = str(data.get('timezone')).strip()
+            query_ip = str(data.get('query') or '').strip() or None
+            offset_raw = data.get('offset')
+            offset_hours = round(float(offset_raw) / 3600.0, 2) if isinstance(offset_raw, (int, float)) else None
+            if offset_hours is None:
+                offset_hours = _utc_offset_hours_for_timezone(tz_name)
+
+            _IP_TZ_CACHE[cache_key] = {
+                'timezone': tz_name,
+                'offset': offset_hours,
+                'query': query_ip,
+                'ts': now_ts,
+            }
+            return tz_name, offset_hours, query_ip
+    except Exception as e:
+        print(f"[TZ] ip-api self lookup failed: {e}")
+
+    return None, None, None
+
+
 def _get_ticker_timezone_context(rec: dict) -> tuple[str, float]:
     settings = rec.get('settings', {}) if isinstance(rec, dict) else {}
     tz_name = str(settings.get('timezone_name') or rec.get('timezone_name') or '').strip()
@@ -1033,7 +1075,35 @@ def _maybe_update_ticker_timezone_from_request(ticker_id: str, req):
 
     rec = tickers[ticker_id]
     ip_addr = _extract_client_ip(req)
+
+    # If request appears local/private, fall back to current public egress IP.
     if not ip_addr:
+        tz_name, offset, query_ip = _lookup_timezone_for_current_connection()
+        if not tz_name:
+            return
+
+        if offset is None:
+            offset = _utc_offset_hours_for_timezone(tz_name)
+
+        changed = False
+        settings = rec.setdefault('settings', {})
+        if settings.get('timezone_name') != tz_name:
+            settings['timezone_name'] = tz_name
+            changed = True
+        if offset is not None and settings.get('utc_offset') != offset:
+            settings['utc_offset'] = offset
+            changed = True
+        if rec.get('timezone_name') != tz_name:
+            rec['timezone_name'] = tz_name
+            changed = True
+        if query_ip and rec.get('last_ip') != query_ip:
+            rec['last_ip'] = query_ip
+            changed = True
+
+        if changed:
+            off_txt = f"UTC{offset:+}" if isinstance(offset, (int, float)) else "UTC?"
+            print(f"[TZ] Ticker {ticker_id} timezone set to {tz_name} ({off_txt}) from fallback IP {query_ip or 'unknown'}")
+            save_specific_ticker(ticker_id)
         return
 
     prev_ip = str(rec.get('last_ip', '')).strip()
@@ -1071,7 +1141,8 @@ def _maybe_update_ticker_timezone_from_request(ticker_id: str, req):
         changed = True
 
     if changed:
-        print(f"[TZ] Ticker {ticker_id} timezone set to {tz_name} (UTC{offset:+}) from IP {ip_addr}")
+        off_txt = f"UTC{offset:+}" if isinstance(offset, (int, float)) else "UTC?"
+        print(f"[TZ] Ticker {ticker_id} timezone set to {tz_name} ({off_txt}) from IP {ip_addr}")
         save_specific_ticker(ticker_id)
 
 
@@ -4542,6 +4613,8 @@ def get_ticker_data():
     # Display-only override: if normal sports mode has exactly one item,
     # render it as full-bleed without persisting ticker/global mode changes.
     response_local_config = dict(t_settings)
+    response_local_config['timezone_name'] = tz_name
+    response_local_config['utc_offset'] = tz_offset
     effective_mode_for_response = current_mode
     if current_mode == 'sports' and len(visible_items) == 1:
         effective_mode_for_response = 'sports_full'
@@ -5131,7 +5204,7 @@ def get_flight_status():
         })
 
 @app.route('/')
-def root(): return "Ticker Server v7 Running"
+def root(): return "Ticker Server v9 Running"
 
 if __name__ == "__main__":
     print("🚀 Starting Ticker Server...")
