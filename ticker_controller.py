@@ -1,5458 +1,2386 @@
-# ── Standard library ──
-import csv
-import concurrent.futures
-import glob
-import ipaddress
-import io
-import json
-import math
-import os
-import random
-import re
-import string
-import sys
-import threading
 import time
-import uuid
-from datetime import datetime as dt, timezone, timedelta
-
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    ZoneInfo = None
-
-# ── Third-party ──
+import threading
+import io
 import requests
-from requests.adapters import HTTPAdapter
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-from dotenv import load_dotenv
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
-from google import genai
-from google.genai import types
+import requests.adapters
+import os
+import uuid
+import subprocess
+import socket
+import json
+import concurrent.futures
+import hashlib
+import math
+import random
+import colorsys
+import unicodedata
+from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
+from rgbmatrix import RGBMatrix, RGBMatrixOptions
+from flask import Flask, request, render_template_string
 
-# ── Flight tracking (optional) ──
-try:
-    import airportsdata
-    AIRPORTS_DB = airportsdata.load('IATA')
-    FLIGHT_TRACKING_AVAILABLE = True
-except ImportError:
-    AIRPORTS_DB = {}
-    FLIGHT_TRACKING_AVAILABLE = False
+# ================= CONFIGURATION =================
+BACKEND_URL = "https://ticker.mattdicks.org"
 
-# ── Logo color extraction (optional) ──
-try:
-    from PIL import Image as _PIL_Image
-    PIL_AVAILABLE = True
-except ImportError:
-    _PIL_Image = None
-    PIL_AVAILABLE = False
+PANEL_W = 384
+PANEL_H = 32
+SETUP_SSID = "SportsTicker_Setup"
+SETUP_PASS = "setup1234"
+PAGE_HOLD_TIME = 8.0
+REFRESH_RATE = 0
+ID_FILE_PATH = "/boot/ticker_id.txt"
+ID_FILE_FALLBACK = "ticker_id.txt"
+ASSETS_DIR = os.path.expanduser("~/ticker/assets")
 
-# Build reverse ICAO → IATA index once (replaces O(n) scan in lookup_and_auto_fill_airport)
-_ICAO_TO_IATA_INDEX = {
-    data.get('icao', '').upper(): iata
-    for iata, data in AIRPORTS_DB.items()
-    if data.get('icao')
+requests.packages.urllib3.disable_warnings()
+
+
+# --- UI TEMPLATE ---
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { background-color: #121212; color: #e0e0e0; font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background-color: #1e1e1e; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); width: 100%; max-width: 350px; }
+        h2 { text-align: center; color: #ffffff; margin-top: 0; margin-bottom: 0.5rem; }
+        p.desc { text-align: center; color: #888; font-size: 0.9rem; margin-bottom: 1.5rem; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: #aaa; font-weight: 500; }
+        select, input { width: 100%; padding: 12px; margin-bottom: 15px; background: #2c2c2c; border: 1px solid #333; border-radius: 8px; color: white; font-size: 16px; box-sizing: border-box; appearance: none; -webkit-appearance: none; }
+        .select-wrapper { position: relative; }
+        .select-wrapper::after { content: '▼'; position: absolute; top: 18px; right: 15px; color: #888; font-size: 12px; pointer-events: none; }
+        input:focus, select:focus { outline: none; border-color: #4a90e2; background: #333; }
+        button { width: 100%; padding: 14px; background-color: #4a90e2; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; margin-top: 10px; }
+        button:hover { background-color: #357abd; }
+        .hidden { display: none; }
+    </style>
+    <script>
+        function checkManual() {
+            var val = document.getElementById("net_select").value;
+            var manualInput = document.getElementById("manual_ssid");
+            if (val === "__manual__") {
+                manualInput.classList.remove("hidden");
+                manualInput.required = true;
+                manualInput.focus();
+            } else {
+                manualInput.classList.add("hidden");
+                manualInput.required = false;
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="card">
+        <h2>Setup Wi-Fi</h2>
+        <p class="desc">Select your network to get started.</p>
+        <form action="/connect" method="POST">
+            <label for="net_select">Network</label>
+            <div class="select-wrapper">
+                <select id="net_select" name="ssid_select" onchange="checkManual()" required>
+                    <option value="" disabled selected>Choose a Network...</option>
+                    {% for net in networks %}
+                    <option value="{{ net }}">{{ net }}</option>
+                    {% endfor %}
+                    <option value="__manual__">Enter Manually...</option>
+                </select>
+            </div>
+            <input type="text" name="ssid_manual" id="manual_ssid" class="hidden" placeholder="Type Network Name">
+            <label for="password">Password</label>
+            <input type="password" name="password" placeholder="Enter password" required>
+            <button type="submit">Connect</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
+
+# ================= FONT MAPS =================
+TINY_FONT_MAP = {
+    'A': [0x6, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x9, 0x6],
+    'D': [0xE, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8],
+    'G': [0x6, 0x9, 0xB, 0x9, 0x6], 'H': [0x9, 0x9, 0xF, 0x9, 0x9], 'I': [0xE, 0x4, 0x4, 0x4, 0xE],
+    'J': [0x7, 0x2, 0x2, 0xA, 0x4], 'K': [0x9, 0xA, 0xC, 0xA, 0x9], 'L': [0x8, 0x8, 0x8, 0x8, 0xF],
+    'M': [0x9, 0xF, 0xF, 0x9, 0x9], 'N': [0x9, 0xD, 0xF, 0xB, 0x9], 'O': [0x6, 0x9, 0x9, 0x9, 0x6],
+    'P': [0xE, 0x9, 0xE, 0x8, 0x8], 'Q': [0x6, 0x9, 0x9, 0xA, 0x5], 'R': [0xE, 0x9, 0xE, 0xA, 0x9],
+    'S': [0x7, 0x8, 0x6, 0x1, 0xE], 'T': [0xF, 0x4, 0x4, 0x4, 0x4], 'U': [0x9, 0x9, 0x9, 0x9, 0x6],
+    'V': [0x9, 0x9, 0x9, 0xA, 0x4], 'W': [0x9, 0x9, 0xF, 0xF, 0x9], 'X': [0x9, 0x9, 0x6, 0x9, 0x9],
+    'Y': [0x9, 0x9, 0x6, 0x2, 0x2], 'Z': [0xF, 0x1, 0x6, 0x8, 0xF],
+    '0': [0x6, 0x9, 0x9, 0x9, 0x6], '1': [0x4, 0xC, 0x4, 0x4, 0xE], '2': [0xE, 0x1, 0x6, 0x8, 0xF],
+    '3': [0xE, 0x1, 0x6, 0x1, 0xE], '4': [0x9, 0x9, 0xF, 0x1, 0x1], '5': [0xF, 0x8, 0xE, 0x1, 0xE],
+    '6': [0x6, 0x8, 0xE, 0x9, 0x6], '7': [0xF, 0x1, 0x2, 0x4, 0x4], '8': [0x6, 0x9, 0x6, 0x9, 0x6],
+    '9': [0x6, 0x9, 0x7, 0x1, 0x6], '+': [0x0, 0x4, 0xE, 0x4, 0x0], '-': [0x0, 0x0, 0xE, 0x0, 0x0],
+    '.': [0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x4, 0x8, 0x0],
+    "'": [0x4, 0x4, 0x0, 0x0, 0x0], '$': [0x4, 0xF, 0x5, 0xF, 0x4], '%': [0x9, 0x2, 0x4, 0x8, 0x12],
+    '^': [0x4, 0xA, 0x0, 0x0, 0x0], ':': [0x0, 0x4, 0x0, 0x4, 0x0], ',': [0x0, 0x0, 0x0, 0x4, 0x8],
+    '!': [0x4, 0x4, 0x4, 0x0, 0x4], '?': [0x6, 0x1, 0x2, 0x0, 0x2], '@': [0x6, 0xB, 0xB, 0x8, 0x6],
+    '#': [0xA, 0xF, 0xA, 0xF, 0xA], '&': [0x4, 0xA, 0x5, 0xA, 0x5], '*': [0x0, 0xA, 0x4, 0xA, 0x0],
+    '=': [0x0, 0xF, 0x0, 0xF, 0x0], '_': [0x0, 0x0, 0x0, 0x0, 0xF], '<': [0x1, 0x2, 0x4, 0x2, 0x1],
+    '>': [0x4, 0x2, 0x1, 0x2, 0x4], '[': [0x6, 0x4, 0x4, 0x4, 0x6], ']': [0x6, 0x2, 0x2, 0x2, 0x6],
+    '"': [0xA, 0xA, 0x0, 0x0, 0x0], ';': [0x0, 0x4, 0x0, 0x4, 0x8], '~': [0x0, 0x0, 0x0, 0x0, 0x0],
+    '(': [0x2, 0x4, 0x4, 0x4, 0x2], ')': [0x4, 0x2, 0x2, 0x2, 0x4],
+    '▲': [0x4, 0xE, 0x1F, 0x0, 0x0], '▼': [0x1F, 0xE, 0x4, 0x0, 0x0],
 }
 
-try:
-    from FlightRadar24.api import FlightRadar24API
-    FR24_SDK_AVAILABLE = True
-except ImportError:
-    FR24_SDK_AVAILABLE = False
-
-# Load environment variables
-load_dotenv()
-
-# ── Configure AI Service (Add near top of script) ──
-GEMINI_KEY = os.getenv('GEMINI_API_KEY')
-AI_CLIENT = None
-AI_AVAILABLE = False
-
-if GEMINI_KEY:
-    try:
-        # The new SDK uses a Client object
-        AI_CLIENT = genai.Client(api_key=GEMINI_KEY)
-        AI_AVAILABLE = True
-    except:
-        AI_AVAILABLE = False
-
-# ================= MODULE-LEVEL LOOKUP TABLES =================
-# Airline IATA <-> ICAO mapping
-# Hardcoded fallback in case OpenFlights fetch fails at startup
-_IATA_TO_ICAO_FALLBACK = {
-    'DL': 'DAL', 'UA': 'UAL', 'AA': 'AAL', 'WN': 'SWA', 'B6': 'JBU',
-    'AS': 'ASA', 'NK': 'NKS', 'F9': 'FFT', 'G4': 'AAY', 'SY': 'SCX',
-    'HA': 'HAL', 'BA': 'BAW', 'LH': 'DLH', 'AF': 'AFR', 'KL': 'KLM',
-    'EK': 'UAE', 'QR': 'QTR', 'VS': 'VIR', 'FR': 'RYR', 'U2': 'EZY',
-    'AC': 'ACA', 'WS': 'WJA', 'EI': 'EIN', 'LY': 'ELY',
+HYBRID_FONT_MAP = {
+    'A': [0x6, 0x9, 0x9, 0xF, 0x9, 0x9], 'B': [0xE, 0x9, 0xE, 0x9, 0x9, 0xE], 'C': [0x6, 0x9, 0x8, 0x8, 0x9, 0x6],
+    'D': [0xE, 0x9, 0x9, 0x9, 0x9, 0xE], 'E': [0xF, 0x8, 0xE, 0x8, 0x8, 0xF], 'F': [0xF, 0x8, 0xE, 0x8, 0x8, 0x8],
+    'G': [0x6, 0x9, 0x8, 0xB, 0x9, 0x6], 'H': [0x9, 0x9, 0x9, 0xF, 0x9, 0x9], 'I': [0xE, 0x4, 0x4, 0x4, 0x4, 0xE],
+    'J': [0x7, 0x2, 0x2, 0x2, 0xA, 0x4], 'K': [0x9, 0xA, 0xC, 0xC, 0xA, 0x9], 'L': [0x8, 0x8, 0x8, 0x8, 0x8, 0xF],
+    'M': [0x9, 0xF, 0xF, 0x9, 0x9, 0x9], 'N': [0x9, 0xD, 0xF, 0xB, 0x9, 0x9], 'O': [0x6, 0x9, 0x9, 0x9, 0x9, 0x6],
+    'P': [0xE, 0x9, 0x9, 0xE, 0x8, 0x8], 'Q': [0x6, 0x9, 0x9, 0x9, 0xA, 0x5], 'R': [0xE, 0x9, 0x9, 0xE, 0xA, 0x9],
+    'S': [0x7, 0x8, 0x6, 0x1, 0x1, 0xE], 'T': [0xF, 0x4, 0x4, 0x4, 0x4, 0x4], 'U': [0x9, 0x9, 0x9, 0x9, 0x9, 0x6],
+    'V': [0x0, 0x0, 0xA, 0x4, 0x0, 0x0], 'W': [0x9, 0x9, 0x9, 0xF, 0xF, 0x9], 'X': [0x9, 0x9, 0x6, 0x6, 0x9, 0x9],
+    'Y': [0x9, 0x9, 0x9, 0x6, 0x2, 0x2], 'Z': [0xF, 0x1, 0x2, 0x4, 0x8, 0xF],
+    '0': [0x6, 0x9, 0x9, 0x9, 0x9, 0x6], '1': [0x4, 0xC, 0x4, 0x4, 0x4, 0xE], '2': [0xE, 0x9, 0x2, 0x4, 0x8, 0xF],
+    '3': [0xE, 0x9, 0x2, 0x1, 0x9, 0xE], '4': [0x9, 0x9, 0xF, 0x1, 0x1, 0x1], '5': [0xF, 0x8, 0xE, 0x1, 0x9, 0xE],
+    '6': [0x6, 0x8, 0xE, 0x9, 0x9, 0x6], '7': [0xF, 0x1, 0x2, 0x4, 0x8, 0x8], '8': [0x6, 0x9, 0x6, 0x9, 0x9, 0x6],
+    '9': [0x6, 0x9, 0x9, 0x7, 0x1, 0x6], '+': [0x0, 0x0, 0x4, 0xE, 0x4, 0x0], '-': [0x0, 0x0, 0x0, 0xE, 0x0, 0x0],
+    '.': [0x0, 0x0, 0x0, 0x0, 0x0, 0x4], ' ': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], ':': [0x0, 0x6, 0x6, 0x0, 0x6, 0x6],
+    '~': [0x0, 0x0, 0x0, 0x0, 0x0, 0x0], '/': [0x1, 0x2, 0x2, 0x4, 0x4, 0x8], "'": [0x4, 0x4, 0x0, 0x0, 0x0, 0x0],
+    ',': [0x0, 0x0, 0x0, 0x0, 0x4, 0x8], '!': [0x4, 0x4, 0x4, 0x4, 0x0, 0x4], '?': [0x6, 0x9, 0x2, 0x4, 0x0, 0x4],
+    '@': [0x6, 0x9, 0xB, 0xB, 0x8, 0x6], '#': [0xA, 0xF, 0xA, 0xA, 0xF, 0xA], '&': [0x4, 0xA, 0x4, 0xA, 0x9, 0x6],
+    '*': [0x0, 0xA, 0x4, 0xA, 0x0, 0x0], '=': [0x0, 0xF, 0x0, 0x0, 0xF, 0x0], '_': [0x0, 0x0, 0x0, 0x0, 0x0, 0xF],
+    '<': [0x1, 0x2, 0x4, 0x4, 0x2, 0x1], '>': [0x4, 0x2, 0x1, 0x1, 0x2, 0x4], '[': [0x6, 0x4, 0x4, 0x4, 0x4, 0x6],
+    ']': [0x6, 0x2, 0x2, 0x2, 0x2, 0x6], '"': [0xA, 0xA, 0x0, 0x0, 0x0, 0x0], ';': [0x0, 0x4, 0x0, 0x0, 0x4, 0x8],
+    '$': [0x4, 0xF, 0xC, 0x6, 0xF, 0x4], '%': [0x9, 0x2, 0x2, 0x4, 0x4, 0x9], '(': [0x2, 0x4, 0x4, 0x4, 0x4, 0x2],
+    ')': [0x4, 0x2, 0x2, 0x2, 0x2, 0x4], '^': [0x0, 0x0, 0x4, 0xA, 0x0, 0x0],
 }
 
-def _build_airline_mappings():
-    """Fetch comprehensive airline IATA<->ICAO from OpenFlights data. Falls back to hardcoded."""
-    try:
-        resp = requests.get(
-            "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airlines.dat",
-            timeout=10
-        )
-        resp.raise_for_status()
-        reader = csv.reader(io.StringIO(resp.text))
-        iata_to_icao = {}
-        for row in reader:
-            if len(row) < 5:
-                continue
-            iata_code = row[3].strip()
-            icao_code = row[4].strip()
-            if (len(iata_code) == 2 and len(icao_code) == 3
-                    and iata_code not in ('\\N', '-', '')
-                    and icao_code not in ('\\N', '-', '')):
-                iata_to_icao[iata_code.upper()] = icao_code.upper()
-        if iata_to_icao:
-            merged = dict(_IATA_TO_ICAO_FALLBACK)
-            merged.update(iata_to_icao)
-            print(f"[AIRLINE-DB] Loaded {len(merged)} airline IATA<->ICAO mappings from OpenFlights")
-            return merged
-    except Exception as e:
-        print(f"[AIRLINE-DB] Could not fetch airline data ({e}), using {len(_IATA_TO_ICAO_FALLBACK)} hardcoded entries")
-    return dict(_IATA_TO_ICAO_FALLBACK)
-
-_IATA_TO_ICAO = _build_airline_mappings()
-_ICAO_TO_IATA = {v: k for k, v in _IATA_TO_ICAO.items()}
-
-# ── ICAO aircraft type code -> human-readable name normalization ──
-# Covers common commercial types; used as fallback when FR24 details aren't available
-_AIRCRAFT_TYPE_NAMES = {
-    # Boeing 737
-    'B731': 'Boeing 737-100', 'B732': 'Boeing 737-200', 'B733': 'Boeing 737-300',
-    'B734': 'Boeing 737-400', 'B735': 'Boeing 737-500', 'B736': 'Boeing 737-600',
-    'B737': 'Boeing 737-700', 'B738': 'Boeing 737-800', 'B739': 'Boeing 737-900',
-    'B37M': 'Boeing 737 MAX 7', 'B38M': 'Boeing 737 MAX 8', 'B39M': 'Boeing 737 MAX 9',
-    'B3XM': 'Boeing 737 MAX 10',
-    # Boeing 747
-    'B741': 'Boeing 747-100', 'B742': 'Boeing 747-200', 'B743': 'Boeing 747-300',
-    'B744': 'Boeing 747-400', 'B748': 'Boeing 747-8', 'B74S': 'Boeing 747SP',
-    # Boeing 757 / 767
-    'B752': 'Boeing 757-200', 'B753': 'Boeing 757-300',
-    'B762': 'Boeing 767-200', 'B763': 'Boeing 767-300', 'B764': 'Boeing 767-400',
-    # Boeing 777
-    'B772': 'Boeing 777-200', 'B77L': 'Boeing 777-200LR', 'B77W': 'Boeing 777-300ER',
-    'B773': 'Boeing 777-300', 'B778': 'Boeing 777-8', 'B779': 'Boeing 777-9',
-    # Boeing 787
-    'B788': 'Boeing 787-8', 'B789': 'Boeing 787-9', 'B78X': 'Boeing 787-10',
-    # Airbus A220
-    'BCS1': 'Airbus A220-100', 'BCS3': 'Airbus A220-300',
-    # Airbus A300 / A310
-    'A30B': 'Airbus A300', 'A306': 'Airbus A300-600', 'A310': 'Airbus A310',
-    # Airbus A318-A321
-    'A318': 'Airbus A318', 'A319': 'Airbus A319', 'A320': 'Airbus A320',
-    'A321': 'Airbus A321', 'A19N': 'Airbus A319neo', 'A20N': 'Airbus A320neo',
-    'A21N': 'Airbus A321neo',
-    # Airbus A330
-    'A332': 'Airbus A330-200', 'A333': 'Airbus A330-300',
-    'A338': 'Airbus A330-800neo', 'A339': 'Airbus A330-900neo',
-    # Airbus A340
-    'A342': 'Airbus A340-200', 'A343': 'Airbus A340-300',
-    'A345': 'Airbus A340-500', 'A346': 'Airbus A340-600',
-    # Airbus A350
-    'A359': 'Airbus A350-900', 'A35K': 'Airbus A350-1000',
-    # Airbus A380
-    'A388': 'Airbus A380',
-    # Embraer
-    'E170': 'Embraer 170', 'E75L': 'Embraer 175', 'E75S': 'Embraer 175',
-    'E190': 'Embraer 190', 'E195': 'Embraer 195',
-    'E290': 'Embraer E190-E2', 'E295': 'Embraer E195-E2',
-    # Bombardier / CRJ
-    'CRJ1': 'CRJ-100', 'CRJ2': 'CRJ-200', 'CRJ7': 'CRJ-700', 'CRJ9': 'CRJ-900',
-    'CRJX': 'CRJ-1000',
-    # ATR / Turboprops
-    'AT43': 'ATR 42-300', 'AT45': 'ATR 42-500', 'AT46': 'ATR 42-600',
-    'AT72': 'ATR 72', 'AT76': 'ATR 72-600',
-    'DH8A': 'Dash 8-100', 'DH8B': 'Dash 8-200', 'DH8C': 'Dash 8-300', 'DH8D': 'Dash 8-400',
-    # Other common types
-    'MD80': 'McDonnell Douglas MD-80', 'MD82': 'MD-82', 'MD83': 'MD-83',
-    'MD88': 'MD-88', 'MD90': 'MD-90', 'MD11': 'MD-11',
-    'DC10': 'DC-10', 'L101': 'Lockheed L-1011',
-    'A225': 'Antonov An-225', 'A124': 'Antonov An-124',
-    'C130': 'C-130 Hercules', 'C17': 'C-17 Globemaster',
-    'GLF5': 'Gulfstream V', 'GLF6': 'Gulfstream G650', 'GLEX': 'Global Express',
-    'LJ35': 'Learjet 35', 'LJ45': 'Learjet 45', 'LJ60': 'Learjet 60',
-    'C560': 'Citation V', 'C680': 'Citation Sovereign', 'C750': 'Citation X',
-    'E545': 'Embraer Legacy 450', 'E550': 'Embraer Praetor 600',
-    'PC12': 'Pilatus PC-12', 'PC24': 'Pilatus PC-24',
-    'BE20': 'Beechcraft King Air 200', 'BE30': 'Beechcraft King Air 350',
+# ================= SPECIAL CHARACTER HANDLING =================
+SPECIAL_CHAR_MAP = {
+    'Ä': 'A', 'ä': 'a', 'Ö': 'O', 'ö': 'o', 'Ü': 'U', 'ü': 'u', 'ß': 'ss',
+    'À': 'A', 'à': 'a', 'Â': 'A', 'â': 'a', 'Ç': 'C', 'ç': 'c',
+    'È': 'E', 'è': 'e', 'É': 'E', 'é': 'e', 'Ê': 'E', 'ê': 'e', 'Ë': 'E', 'ë': 'e',
+    'Î': 'I', 'î': 'i', 'Ï': 'I', 'ï': 'i',
+    'Ô': 'O', 'ô': 'o', 'Ù': 'U', 'ù': 'u', 'Û': 'U', 'û': 'u',
+    'Œ': 'O', 'œ': 'o',
+    'Á': 'A', 'á': 'a', 'Í': 'I', 'í': 'i', 'Ñ': 'N', 'ñ': 'n',
+    'Ó': 'O', 'ó': 'o', 'Ú': 'U', 'ú': 'u',
+    'Ã': 'A', 'ã': 'a', 'Õ': 'O', 'õ': 'o',
+    'Å': 'A', 'å': 'a', 'Æ': 'A', 'æ': 'a', 'Ø': 'O', 'ø': 'o',
+    'Ł': 'L', 'ł': 'l', 'Ś': 'S', 'ś': 's', 'Ź': 'Z', 'ź': 'z', 'Ż': 'Z', 'ż': 'z',
+    'Č': 'C', 'č': 'c', 'Ř': 'R', 'ř': 'r', 'Š': 'S', 'š': 's', 'Ž': 'Z', 'ž': 'z',
+    'Ć': 'C', 'ć': 'c', 'Đ': 'D', 'đ': 'd',
+    'Ğ': 'G', 'ğ': 'g', 'İ': 'I', 'ı': 'i', 'Ş': 'S', 'ş': 's',
+    'Ð': 'D', 'ð': 'd', 'Þ': 'T', 'þ': 't',
+    '\u2018': "'", '\u2019': "'", '\u201c': '"', '\u201d': '"', '\u201e': '"',
+    '\u2013': '-', '\u2014': '-', '\u2026': '...',
+    '\u00d7': 'x', '\u00f7': '/', '\u00b1': '+/-',
+    '\u00b0': 'o', '\u00a9': '(c)', '\u00ae': '(r)', '\u2122': 'tm',
+    '\u20ac': 'E', '\u00a3': 'L', '\u00a5': 'Y', '\u00a2': 'c',
+    '\u00bd': '1/2', '\u00bc': '1/4', '\u00be': '3/4',
+    '\u00b2': '2', '\u00b3': '3', '\u00b9': '1',
+    '\u00a1': '!', '\u00bf': '?', '\u00ab': '<<', '\u00bb': '>>', '\u00b7': '.', '\u2022': '*',
 }
 
-def normalize_aircraft_type(icao_code, fr24_model=None):
-    """Return human-readable aircraft name. Prefers FR24 detail model, falls back to local table."""
-    if fr24_model:
-        return fr24_model
-    if icao_code:
-        return _AIRCRAFT_TYPE_NAMES.get(icao_code.upper(), icao_code.upper())
-    return ''
-
-# ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v0.8-AIFlights"
-
-# ── Section A: Logging ──
-class Tee(object):
-    # Set True to print [DEBUG] lines to console (mirrors state['debug_mode'])
-    verbose_debug: bool = False
-
-    def __init__(self, name, mode):
-        self.file = open(name, mode, buffering=1, encoding='utf-8')
-        self.original_stdout = sys.stdout
-        self.original_stderr = sys.stderr
-        self._lock = threading.Lock()
-        self.stdout = self
-        self.stderr = self
-
-    def write(self, data):
-        # Suppress [DEBUG] console spam unless debug_mode is on.
-        # Always write to the log file so post-mortem analysis still works.
-        if '[DEBUG]' in data and not Tee.verbose_debug:
-            with self._lock:
-                self.file.write(data)
-                self.file.flush()
-            return
-        with self._lock:
-            self.file.write(data)
-            self.file.flush()
-            self.original_stdout.write(data)
-            self.original_stdout.flush()
-
-    def flush(self):
-        with self._lock:
-            self.file.flush()
-            self.original_stdout.flush()
-
-tee_instance = None
-try:
-    if not os.path.exists("ticker.log"):
-        with open("ticker.log", "w") as f: f.write("--- Log Started ---\n")
-    tee_instance = Tee("ticker.log", "a")
-    sys.stdout = tee_instance
-    sys.stderr = tee_instance
-except Exception as e:
-    print(f"Logging setup failed: {e}")
-
-# ── Section B: Network / Session ──
-def build_pooled_session(pool_size=20, retries=2):
-    session = requests.Session()
-    adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size, max_retries=retries, pool_block=True)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
-    return session
-
-# ── Section C: Constants / Timeouts ──
-TICKER_DATA_DIR = "ticker_data"
-if not os.path.exists(TICKER_DATA_DIR):
-    os.makedirs(TICKER_DATA_DIR)
-
-GLOBAL_CONFIG_FILE = "global_config.json"
-STOCK_CACHE_FILE = "stock_cache.json"
-GAME_CACHE_FILE = "game_cache.json"
-AIRPORT_CACHE_FILE = "airport_name_cache.json"
-AIRLINE_CACHE_FILE = "airline_code_cache.json"
-
-SPORTS_UPDATE_INTERVAL = 5.0    
-STOCKS_UPDATE_INTERVAL = 30     
-WORKER_THREAD_COUNT = 10        
-API_TIMEOUT = 7.0            
-
-data_lock = threading.Lock()
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json",
-    "Accept-Language": "en",
-    "Referer": "https://www.fotmob.com/"
-}
-
-FOTMOB_LEAGUE_MAP = {
-    'soccer_epl': 47, 'soccer_fa_cup': 132, 'soccer_champ': 48,
-    'soccer_l1': 108, 'soccer_l2': 109, 'soccer_wc': 77,
-    'soccer_champions_league': 42, 'soccer_europa_league': 73, 'soccer_mls': 130
-}
-
-TZ_OFFSETS = {
-    "EST": -5, "EDT": -4, "CST": -6, "CDT": -5,
-    "MST": -7, "MDT": -6, "PST": -8, "PDT": -7, "AST": -4, "ADT": -3
-}
-
-# ── Timeout constants (seconds) ──
-TIMEOUTS = {
-    'default': 7,   # general API calls (API_TIMEOUT)
-    'quick':   3,   # NHL landing
-    'stock':   5,   # Finnhub
-    'slow':    10,  # FR24, open-meteo, FotMob
-}
-
-# ── Cache TTL constants (seconds) ──
-CACHE_TTL = {
-    'weather': 900,  # WeatherFetcher fresh threshold
-    'flight':  600,  # StockFetcher stale check
-    'stock':   30,   # STOCKS_UPDATE_INTERVAL
-}
-
-# ================= FLIGHT TRACKING CONSTANTS =================
-KNOTS_TO_MPH = 1.15078
-FLIGHTAWARE_API_KEY = os.getenv('FLIGHTAWARE_API_KEY', '')
-BLUEBOARD_BASE = "https://theblueboard.co"
-
-def get_city_name(iata_code):
-    if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
-    code = iata_code.strip().upper()
-    if code in AIRPORTS_DB:
-        return AIRPORTS_DB[code].get('city', code)
-    return code
-
-# Initialize cache
-_ai_airport_cache = {}
-
-def load_airport_cache():
-    global _ai_airport_cache
-    if os.path.exists(AIRPORT_CACHE_FILE):
-        try:
-            with open(AIRPORT_CACHE_FILE, 'r') as f:
-                _ai_airport_cache = json.load(f)
-            print(f"📖 Loaded {len(_ai_airport_cache)} shortened airport names from cache.")
-        except Exception as e:
-            print(f"⚠️ Error loading airport cache: {e}")
-
-def save_airport_cache():
-    try:
-        # Atomic save to prevent corruption
-        temp_file = f"{AIRPORT_CACHE_FILE}.tmp"
-        with open(temp_file, 'w') as f:
-            json.dump(_ai_airport_cache, f, indent=4)
-        os.replace(temp_file, AIRPORT_CACHE_FILE)
-    except Exception as e:
-        print(f"⚠️ Error saving airport cache: {e}")
-
-# Load the cache immediately upon script start
-load_airport_cache()
-
-# ── Airline code cache (IATA ↔ ICAO, AI-resolved, persisted to disk) ──
-_ai_airline_cache: dict = {}   # bidirectional: "UA"→"UAL" and "UAL"→"UA"
-
-def load_airline_cache():
-    global _ai_airline_cache
-    if os.path.exists(AIRLINE_CACHE_FILE):
-        try:
-            with open(AIRLINE_CACHE_FILE, 'r') as f:
-                _ai_airline_cache = json.load(f)
-            print(f"📖 Loaded {len(_ai_airline_cache)} airline codes from cache.")
-        except Exception as e:
-            print(f"⚠️ Error loading airline cache: {e}")
-
-def save_airline_cache():
-    try:
-        temp_file = f"{AIRLINE_CACHE_FILE}.tmp"
-        with open(temp_file, 'w') as f:
-            json.dump(_ai_airline_cache, f, indent=4)
-        os.replace(temp_file, AIRLINE_CACHE_FILE)
-    except Exception as e:
-        print(f"⚠️ Error saving airline cache: {e}")
-
-load_airline_cache()
-
-def ai_lookup_airline_codes(query_code: str):
-    """
-    Resolve an unknown airline code (2-letter IATA or 3-letter ICAO) via Gemini AI.
-    Stores the result bidirectionally in AIRLINE_CACHE_FILE so AI is only called once per airline.
-    Returns (icao_3, iata_2) or (None, None).
-    """
-    global _ai_airline_cache
-    query_code = query_code.upper().strip()
-
-    # Check persistent cache first (loaded from disk at startup)
-    if query_code in _ai_airline_cache:
-        partner = _ai_airline_cache[query_code]
-        return (partner, query_code) if len(query_code) == 2 else (query_code, partner)
-
-    if not AI_AVAILABLE or not AI_CLIENT:
-        return None, None
-
-    try:
-        prompt = (
-            f"What are the IATA (2-letter) and ICAO (3-letter) codes for the airline "
-            f"identified by code '{query_code}'?\n"
-            "Reply with ONLY: IATA ICAO (e.g. 'UA UAL'). If unknown, reply 'UNKNOWN'."
-        )
-        response = AI_CLIENT.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                candidate_count=1, max_output_tokens=10, temperature=0.0
-            )
-        )
-        text = (response.text or '').strip().upper()
-        if text == 'UNKNOWN' or not text:
-            return None, None
-        parts = text.split()
-        if len(parts) == 2 and len(parts[0]) == 2 and len(parts[1]) == 3:
-            iata, icao = parts[0], parts[1]
-            _ai_airline_cache[iata] = icao   # bidirectional
-            _ai_airline_cache[icao] = iata
-            save_airline_cache()
-            print(f"[AIRLINE-AI] Resolved '{query_code}' → IATA={iata}, ICAO={icao}")
-            return icao, iata
-    except Exception as e:
-        print(f"[AIRLINE-AI] Lookup failed for '{query_code}': {e}")
-    return None, None
-
-def get_airport_display_name(iata_code):
-    """
-    Uses AI to intelligently shorten airport names with persistent file caching.
-    Saves results to airport_name_cache.json to avoid Gemini API quota limits.
-    """
-    if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
-    code = iata_code.strip().upper()
-    
-    if code not in AIRPORTS_DB: return code
-
-    data = AIRPORTS_DB[code]
-    raw_name = data.get('name', code)
-    city = data.get('city', '')
-    
-    # 1. Check Persistent Memory Cache
-    cache_key = f"{code}_{raw_name}"
-    if cache_key in _ai_airport_cache:
-        return _ai_airport_cache[cache_key]
-
-    # 2. Try AI Service (Gemini 2.0 Flash)
-    if AI_AVAILABLE and AI_CLIENT:
-        try:
-            prompt = (
-                f"Convert the airport name '{raw_name}' (City: {city}) into its common display name. \n"
-                "Rules:\n"
-                "1. STRIP: Remove words like 'International', 'Airport', 'Field', 'Intercontinental', 'Municipal'.\n"
-                "2. REDUNDANCY: Remove the city name if it is just a descriptor (e.g. 'Denver Intl' -> 'Denver').\n"
-                "3. PERSON NAMES: Always use the Full Name (First + Last). Do not shorten to surname only. \n"
-                "   - CORRECT: 'George Bush', 'Harry Reid', 'Gerald Ford'\n"
-                "   - INCORRECT: 'Bush', 'Reid', 'Ford'\n"
-                "4. COLLOQUIAL: If the airport has a famous acronym or nickname, use that instead.\n"
-                "   - Example: 'John F. Kennedy' -> 'JFK'\n"
-                "   - Example: 'London Heathrow' -> 'Heathrow'\n"
-                f"Input to process: {raw_name}"
-            )
-            
-            response = AI_CLIENT.models.generate_content(
-                model='gemini-2.0-flash', 
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    candidate_count=1,
-                    max_output_tokens=15,
-                    temperature=0.1
-                )
-            )
-            
-            if response.text:
-                short_name = response.text.strip()
-                # Validation: ensure AI didn't return something bizarrely long
-                if len(short_name) < len(raw_name) + 5: 
-                    _ai_airport_cache[cache_key] = short_name
-                    save_airport_cache()
-                    return short_name
-                
-        except Exception as e:
-            if "429" in str(e):
-                print(f"[AI] Quota hit (429) for {code}, using algorithmic fallback.")
-            else:
-                print(f"[AI] Failed to shorten {code}: {e}")
-
-    # 3. Fallback: Algorithmic Cleaning (Used if AI is unavailable or fails)
-    replacements = [
-        " International Airport", " Intercontinental Airport", " Regional Airport",
-        " International", " Intercontinental", " Municipal", 
-        " Airport", " Intl", " Apt", " Field", " Air Force Base", " AFB"
-    ]
-    
-    clean_name = raw_name
-    for phrase in replacements:
-        pattern = re.compile(re.escape(phrase), re.IGNORECASE)
-        clean_name = pattern.sub("", clean_name)
-        
-    clean_name = clean_name.strip()
-    
-    # If the clean name starts with the city name, remove the redundancy
-    if city and clean_name.lower().startswith(city.lower()):
-        candidate = clean_name[len(city):].strip()
-        if len(candidate) > 2:
-            clean_name = candidate
-
-    # Cache the algorithmic result too so we don't try AI again for this airport
-    _ai_airport_cache[cache_key] = clean_name
-    save_airport_cache()
-    return clean_name
-
-def lookup_and_auto_fill_airport(airport_code_input):
-    """
-    Takes either IATA (3-char) or ICAO (4-char) airport code and returns complete airport info.
-    Returns: {'iata': 'ABE', 'icao': 'KABE', 'name': 'Lehigh Valley International Airport'}
-    """
-    if not airport_code_input or not AIRPORTS_DB:
-        return {'iata': '', 'icao': '', 'name': ''}
-    
-    code = airport_code_input.strip().upper()
-    
-    # Try direct IATA lookup (most common case)
-    if code in AIRPORTS_DB:
-        airport_data = AIRPORTS_DB[code]
-        iata = code
-        icao = airport_data.get('icao', f'K{code}' if len(code) == 3 else '')
-        name = airport_data.get('name', airport_data.get('city', code))
-        return {'iata': iata, 'icao': icao, 'name': name}
-    
-    # Try ICAO lookup via pre-built reverse index (O(1) instead of O(n))
-    if len(code) == 4:
-        iata_code = _ICAO_TO_IATA_INDEX.get(code)
-        if iata_code and iata_code in AIRPORTS_DB:
-            airport_data = AIRPORTS_DB[iata_code]
-            name = airport_data.get('name', airport_data.get('city', iata_code))
-            return {'iata': iata_code, 'icao': code, 'name': name}
-    
-    # If not found, return empty
-    return {'iata': '', 'icao': '', 'name': ''}
-
-def haversine(lat1, lon1, lat2, lon2):
-    R = 3440.065
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    return R * c
-
-# ── Section D: Data Tables ──
-LEAGUE_OPTIONS = [
-    {'id': 'nfl', 'label': 'NFL', 'type': 'sport', 'default': True, 'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'mlb', 'label': 'MLB', 'type': 'sport', 'default': True, 'fetch': {'path': 'baseball/mlb', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'nhl', 'label': 'NHL', 'type': 'sport', 'default': True, 'fetch': {'path': 'hockey/nhl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'nba', 'label': 'NBA', 'type': 'sport', 'default': True, 'fetch': {'path': 'basketball/nba', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'ncf_fbs', 'label': 'NCAA (FBS)', 'type': 'sport', 'default': True, 'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
-    {'id': 'ncf_fcs', 'label': 'NCAA (FCS)', 'type': 'sport', 'default': True, 'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
-    {'id': 'march_madness', 'label': 'March Madness', 'type': 'sport', 'default': True, 'fetch': {'path': 'basketball/mens-college-basketball', 'scoreboard_params': {'groups': '100', 'limit': '100'}, 'type': 'scoreboard'}},
-    {'id': 'soccer_epl', 'label': 'Premier League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_fa_cup','label': 'FA Cup', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
-    {'id': 'soccer_champ', 'label': 'Championship', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l1', 'label': 'League One', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_l2', 'label': 'League Two', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_wc', 'label': 'FIFA World Cup', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    {'id': 'soccer_europa_league', 'label': 'Europa League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 200}, 'type': 'scoreboard'}},
-    {'id': 'soccer_mls', 'label': 'MLS', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/usa.1', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
-    {'id': 'wbc', 'label': 'WBC', 'type': 'sport', 'default': True, 'fetch': {'path': 'baseball/world-baseball-classic', 'type': 'scoreboard'}},
-    #{'id': 'f1', 'label': 'Formula 1', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
-    #{'id': 'nascar', 'label': 'NASCAR', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
-    {'id': 'weather', 'label': 'Weather', 'type': 'util', 'default': True},
-    {'id': 'clock', 'label': 'Clock', 'type': 'util', 'default': True},
-    {'id': 'music', 'label': 'Music', 'type': 'util', 'default': True},
-    {'id': 'flight_tracker', 'label': 'Flight Tracker', 'type': 'util', 'default': False},
-    {'id': 'flight_airport', 'label': 'Airport Activity', 'type': 'util', 'default': False},
-    {'id': 'stock_tech_ai', 'label': 'Tech / AI Stocks', 'type': 'stock', 'default': True, 'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
-    {'id': 'stock_momentum', 'label': 'Momentum Stocks', 'type': 'stock', 'default': False, 'stock_list': ["COIN", "HOOD", "DKNG", "RBLX", "GME", "AMC", "MARA", "RIOT", "CLSK", "SOFI", "OPEN", "UBER", "DASH", "SHOP", "NET", "SQ", "PYPL", "AFRM", "UPST", "CVNA"]},
-    {'id': 'stock_energy', 'label': 'Energy Stocks', 'type': 'stock', 'default': False, 'stock_list': ["XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "KMI", "HAL", "BKR", "HES", "DVN", "OKE", "WMB", "CTRA", "FANG", "TTE", "BP"]},
-    {'id': 'stock_finance', 'label': 'Financial Stocks', 'type': 'stock', 'default': False, 'stock_list': ["JPM", "BAC", "WFC", "C", "GS", "MS", "BLK", "AXP", "V", "MA", "SCHW", "USB", "PNC", "TFC", "BK", "COF", "SPGI", "MCO", "CB", "PGR"]},
-    {'id': 'stock_consumer', 'label': 'Consumer Stocks', 'type': 'stock', 'default': False, 'stock_list': ["WMT", "COST", "TGT", "HD", "LOW", "MCD", "SBUX", "CMG", "NKE", "LULU", "KO", "PEP", "PG", "CL", "KMB", "DIS", "NFLX", "CMCSA", "HLT", "MAR"]},
-]
-
-# Pre-built label lookup from LEAGUE_OPTIONS (replaces next() linear scan in get_list)
-_LEAGUE_LABEL_MAP = {item['id']: item['label'] for item in LEAGUE_OPTIONS}
-# Authoritative set of valid league IDs — used to reject stale keys from clients/config
-_VALID_LEAGUE_IDS = frozenset(item['id'] for item in LEAGUE_OPTIONS)
-# Pre-built stock list index — LEAGUE_OPTIONS is constant, no need to rebuild per StockFetcher init
-_STOCK_LISTS = {
-    item['id']: item['stock_list']
-    for item in LEAGUE_OPTIONS
-    if item['type'] == 'stock' and 'stock_list' in item
-}
-
-# Pre-compiled regex and frozensets for hot-path checks
-_TIME_RE = re.compile(r'\d+:\d+')
-_ACTIVE_STATES = frozenset({'in', 'half', 'crit'})
-_SUSP_KEYWORDS = frozenset(["postponed", "suspended", "canceled", "ppd"])
-
-
-def _game_sort_key(x):
-    t = x.get('type', '')
-    if t == 'clock':
-        prio = 0
-    elif t == 'weather':
-        prio = 1
-    else:
-        s = str(x.get('status', ''))
-        sl = s.lower()
-        if any(k in sl for k in _SUSP_KEYWORDS):
-            prio = 4
-        elif "FINAL" in s.upper() or sl == "fin":
-            prio = 3
+def normalize_special_chars(text):
+    if not text:
+        return text
+    result = []
+    for char in str(text):
+        if char in SPECIAL_CHAR_MAP:
+            result.append(SPECIAL_CHAR_MAP[char])
+        elif char.upper() in SPECIAL_CHAR_MAP:
+            result.append(SPECIAL_CHAR_MAP[char.upper()])
         else:
-            prio = 2
-    return (prio, x.get('startTimeUTC') or '9999', x.get('sport', ''), x.get('home_abbr', ''), x.get('away_abbr', ''), str(x.get('id') or '0'))
-
-
-# Valid mode set — no 'all', no 'flight2', no 'flight_submode'
-VALID_MODES = {'sports', 'sports_full', 'live', 'my_teams', 'stocks', 'weather', 'music', 'clock', 'flights', 'flight_tracker'}
-
-# Legacy mode migration map applied at load time and on /api/config writes
-MODE_MIGRATIONS = {'all': 'sports', 'flight2': 'flight_tracker'}
-
-FBS_TEAMS = {"AF", "AKR", "ALA", "APP", "ARIZ", "ASU", "ARK", "ARST", "ARMY", "AUB", "BALL", "BAY", "BOIS", "BC", "BGSU", "BUF", "BYU", "CAL", "CMU", "CLT", "CIN", "CLEM", "CCU", "COLO", "CSU", "CONN", "DEL", "DUKE", "ECU", "EMU", "FAU", "FIU", "FLA", "FSU", "FRES", "GASO", "GAST", "GT", "UGA", "HAW", "HOU", "ILL", "IND", "IOWA", "ISU", "JXST", "JMU", "KAN", "KSU", "KENN", "KENT", "UK", "LIB", "ULL", "LT", "LOU", "LSU", "MAR", "MD", "MASS", "MEM", "MIA", "M-OH", "MICH", "MSU", "MTSU", "MINN", "MSST", "MIZ", "MOST", "NAVY", "NCST", "NEB", "NEV", "UNM", "NMSU", "UNC", "UNT", "NIU", "NU", "ND", "OHIO", "OSU", "OU", "OKST", "ODU", "MISS", "ORE", "ORST", "PSU", "PITT", "PUR", "RICE", "RUTG", "SAM", "SDSU", "SJSU", "SMU", "USA", "SC", "USF", "USM", "STAN", "SYR", "TCU", "TEM", "TENN", "TEX", "TA&M", "TXST", "TTU", "TOL", "TROY", "TULN", "TLSA", "UAB", "UCF", "UCLA", "ULM", "UMASS", "UNLV", "USC", "UTAH", "USU", "UTEP", "UTSA", "VAN", "UVA", "VT", "WAKE", "WASH", "WSU", "WVU", "WKU", "WMU", "WIS", "WYO"}
-FCS_TEAMS = {"ACU", "AAMU", "ALST", "UALB", "ALCN", "UAPB", "APSU", "BCU", "BRWN", "BRY", "BUCK", "BUT", "CP", "CAM", "CARK", "CCSU", "CHSO", "UTC", "CIT", "COLG", "COLU", "COR", "DART", "DAV", "DAY", "DSU", "DRKE", "DUQ", "EIU", "EKU", "ETAM", "EWU", "ETSU", "ELON", "FAMU", "FOR", "FUR", "GWEB", "GTWN", "GRAM", "HAMP", "HARV", "HC", "HCU", "HOW", "IDHO", "IDST", "ILST", "UIW", "INST", "JKST", "LAF", "LAM", "LEH", "LIN", "LIU", "ME", "MRST", "MCN", "MER", "MERC", "MRMK", "MVSU", "MONM", "MONT", "MTST", "MORE", "MORG", "MUR", "UNH", "NHVN", "NICH", "NORF", "UNA", "NCAT", "NCCU", "UND", "NDSU", "NAU", "UNCO", "UNI", "NWST", "PENN", "PRST", "PV", "PRES", "PRIN", "URI", "RICH", "RMU", "SAC", "SHU", "SFPA", "SAM", "USD", "SELA", "SEMO", "SDAK", "SDST", "SCST", "SOU", "SIU", "SUU", "STMN", "SFA", "STET", "STO", "STBK", "TAR", "TNST", "TNTC", "TXSO", "TOW", "UCD", "UTM", "UTM", "UTRGV", "VAL", "VILL", "VMI", "WAG", "WEB", "WGA", "WCU", "WIU", "W&M", "WOF", "YALE", "YSU"}
-
-SOCCER_ABBR_OVERRIDES = {
-    "Arsenal": "ARS", "Aston Villa": "AVL", "Bournemouth": "BOU", "Brentford": "BRE",
-    "Brighton": "BHA", "Brighton & Hove Albion": "BHA", "Burnley": "BUR", "Chelsea": "CHE",
-    "Crystal Palace": "CRY", "Everton": "EVE", "Fulham": "FUL", "Ipswich": "IPS", "Ipswich Town": "IPS",
-    "Leeds": "LEE", "Leeds United": "LEE", "Leicester": "LEI", "Leicester City": "LEI",
-    "Liverpool": "LIV", "Luton": "LUT", "Luton Town": "LUT", "Man City": "MCI", "Manchester City": "MCI",
-    "Man Utd": "MUN", "Manchester United": "MUN", "Newcastle": "NEW", "Newcastle United": "NEW",
-    "Nottm Forest": "NFO", "Nottingham Forest": "NFO", "Sheffield Utd": "SHU", "Sheffield United": "SHU",
-    "Southampton": "SOU", "Spurs": "TOT", "Tottenham": "TOT", "Tottenham Hotspur": "TOT",
-    "West Ham": "WHU", "West Ham United": "WHU", "Wolves": "WOL", "Wolverhampton": "WOL",
-    "Blackburn": "BLA", "Blackburn Rovers": "BLA", "Bristol City": "BRC", "Cardiff": "CAR", "Cardiff City": "CAR",
-    "Coventry": "COV", "Coventry City": "COV", "Derby": "DER", "Derby County": "DER",
-    "Hull": "HUL", "Hull City": "HUL", "Middlesbrough": "MID", "Millwall": "MIL",
-    "Norwich": "NOR", "Norwich City": "NOR", "Oxford": "OXF", "Oxford United": "OXF",
-    "Plymouth": "PLY", "Plymouth Argyle": "PLY", "Portsmouth": "POR", "Preston": "PNE", "Preston North End": "PNE",
-    "QPR": "QPR", "Queens Park Rangers": "QPR", "Sheffield Wed": "SHW", "Sheffield Wednesday": "SHW",
-    "Stoke": "STK", "Stoke City": "STK", "Sunderland": "SUN", "Swansea": "SWA", "Swansea City": "SWA",
-    "Watford": "WAT", "West Brom": "WBA", "West Bromwich Albion": "WBA",
-    "Barnsley": "BAR", "Birmingham": "BIR", "Birmingham City": "BIR", "Blackpool": "BPL",
-    "Bolton": "BOL", "Bolton Wanderers": "BOL", "Bristol Rovers": "BRR", "Burton": "BRT", "Burton Albion": "BRT",
-    "Cambridge": "CAM", "Cambridge United": "CAM", "Charlton": "CHA", "Charlton Athletic": "CHA",
-    "Crawley": "CRA", "Crawley Town": "CRA", "Exeter": "EXE", "Exeter City": "EXE",
-    "Huddersfield": "HUD", "Huddersfield Town": "HUD", "Leyton Orient": "LEY", "Lincoln": "LIN", "Lincoln City": "LIN",
-    "Mansfield": "MAN", "Mansfield Town": "MAN", "Northampton": "NOR", "Northampton Town": "NOR",
-    "Peterborough": "PET", "Peterborough United": "PET", "Reading": "REA", "Rotherham": "ROT", "Rotherham United": "ROT",
-    "Shrewsbury": "SHR", "Shrewsbury Town": "SHR", "Stevenage": "STE", "Stockport": "STO", "Stockport County": "STO",
-    "Wigan": "WIG", "Wigan Athletic": "WIG", "Wrexham": "WRE", "Wycombe": "WYC", "Wycombe Wanderers": "WYC",
-    "Accrington": "ACC", "Accrington Stanley": "ACC", "AFC Wimbledon": "WIM", "Barrow": "BRW",
-    "Bradford": "BRA", "Bradford City": "BRA", "Bromley": "BRO", "Carlisle": "CAR", "Carlisle United": "CAR",
-    "Cheltenham": "CHE", "Cheltenham Town": "CHE", "Chesterfield": "CHF", "Colchester": "COL", "Colchester United": "COL",
-    "Crewe": "CRE", "Crewe Alexandra": "CRE", "Doncaster": "DON", "Doncaster Rovers": "DON",
-    "Fleetwood": "FLE", "Fleetwood Town": "FLE", "Gillingham": "GIL", "Grimsby": "GRI", "Grimsby Town": "GRI",
-    "Harrogate": "HAR", "Harrogate Town": "HAR", "MK Dons": "MKD", "Morecambe": "MOR",
-    "Newport": "NEW", "Newport County": "NEW", "Notts Co": "NCO", "Notts County": "NCO",
-    "Port Vale": "POR", "Salford": "SAL", "Salford City": "SAL", "Swindon": "SWI", "Swindon Town": "SWI",
-    "Tranmere": "TRA", "Tranmere Rovers": "TRA", "Walsall": "WAL"
-}
-
-LOGO_OVERRIDES = {
-    "NFL:HOU": "https://a.espncdn.com/i/teamlogos/nfl/500/hou.png", "NBA:HOU": "https://a.espncdn.com/i/teamlogos/nba/500/hou.png", "MLB:HOU": "https://a.espncdn.com/i/teamlogos/mlb/500/hou.png", "NCF_FBS:HOU": "https://a.espncdn.com/i/teamlogos/ncaa/500/248.png",
-    "NFL:MIA": "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png", "NBA:MIA": "https://a.espncdn.com/i/teamlogos/nba/500/mia.png", "MLB:MIA": "https://a.espncdn.com/i/teamlogos/mlb/500/mia.png", "NCF_FBS:MIA": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png", "NCF_FBS:MIAMI": "https://a.espncdn.com/i/teamlogos/ncaa/500/2390.png",
-    "NFL:IND": "https://a.espncdn.com/i/teamlogos/nfl/500/ind.png", "NBA:IND": "https://a.espncdn.com/i/teamlogos/nba/500/ind.png", "NCF_FBS:IND": "https://a.espncdn.com/i/teamlogos/ncaa/500/84.png",
-    "NHL:WSH": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png", "NHL:WAS": "https://a.espncdn.com/guid/cbe677ee-361e-91b4-5cae-6c4c30044743/logos/secondary_logo_on_black_color.png",
-    "NFL:WSH": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NFL:WAS": "https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png", "NBA:WSH": "https://a.espncdn.com/i/teamlogos/nba/500/was.png", "NBA:WAS": "https://a.espncdn.com/i/teamlogos/nba/500/was.png",
-    "MLB:WSH": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "MLB:WAS": "https://a.espncdn.com/i/teamlogos/mlb/500/wsh.png", "NCF_FBS:WASH": "https://a.espncdn.com/i/teamlogos/ncaa/500/264.png",
-    "NHL:SJS": "https://a.espncdn.com/i/teamlogos/nhl/500/sj.png", "NHL:NJD": "https://a.espncdn.com/i/teamlogos/nhl/500/nj.png", "NHL:TBL": "https://a.espncdn.com/i/teamlogos/nhl/500/tb.png", "NHL:LAK": "https://a.espncdn.com/i/teamlogos/nhl/500/la.png",
-    "NHL:VGK": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:VEG": "https://a.espncdn.com/i/teamlogos/nhl/500/vgs.png", "NHL:UTA": "https://a.espncdn.com/i/teamlogos/nhl/500/utah.png",
-    "NCF_FBS:CAL": "https://a.espncdn.com/i/teamlogos/ncaa/500/25.png", "NCF_FBS:OSU": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png", "NCF_FBS:ORST": "https://a.espncdn.com/i/teamlogos/ncaa/500/204.png", "NCF_FCS:LIN": "https://a.espncdn.com/i/teamlogos/ncaa/500/2815.png", "NCF_FCS:LEH": "https://a.espncdn.com/i/teamlogos/ncaa/500/2329.png"
-}
-ABBR_MAPPING = {
-    'SJS': 'SJ', 'TBL': 'TB', 'LAK': 'LA', 'NJD': 'NJ', 'VGK': 'VEG', 'UTA': 'UTAH', 'WSH': 'WSH', 'MTL': 'MTL', 'CHI': 'CHI',
-    'NY': 'NYK', 'NO': 'NOP', 'GS': 'GSW', 'SA': 'SAS'
-}
-
-SOCCER_COLOR_FALLBACK = {
-    "arsenal": "EF0107", "aston villa": "95BFE5", "bournemouth": "DA291C", "brentford": "E30613", "brighton": "0057B8",
-    "chelsea": "034694", "crystal palace": "1B458F", "everton": "003399", "fulham": "FFFFFF", "ipswich": "3A64A3",
-    "leicester": "0053A0", "liverpool": "C8102E", "manchester city": "6CABDD", "man city": "6CABDD",
-    "manchester united": "DA291C", "man utd": "DA291C", "newcastle": "FFFFFF", "nottingham": "DD0000",
-    "southampton": "D71920", "tottenham": "FFFFFF", "west ham": "7A263A", "whu": "7A263A", "wes": "7A263A", "wolves": "FDB913",
-    "sunderland": "FF0000", "sheffield united": "EE2737", "burnley": "6C1D45", "luton": "F78F1E", 
-    "leeds": "FFCD00", "west brom": "122F67", "wba": "122F67", "watford": "FBEE23", "norwich": "FFF200", "hull": "F5A91D",
-    "stoke": "E03A3E", "middlesbrough": "E03A3E", "coventry": "00AEEF", "preston": "FFFFFF", "bristol city": "E03A3E",
-    "portsmouth": "001489", "derby": "FFFFFF", "blackburn": "009EE0", "sheffield wed": "0E00F0", "oxford": "F1C40F",
-    "qpr": "0053A0", "swansea": "FFFFFF", "cardiff": "0070B5", "millwall": "001E4D", "plymouth": "003A26",
-    "grimsby": "FFFFFF", "gri": "FFFFFF", "wrexham": "D71920", "birmingham": "0000FF", "huddersfield": "0072CE", "stockport": "005DA4", 
-    "lincoln": "D71920", "reading": "004494", "blackpool": "F68712", "peterborough": "005090",
-    "charlton": "Dadd22", "bristol rovers": "003399", "shrewsbury": "0066CC", "leyton orient": "C70000",
-    "mansfield": "F5A91D", "wycombe": "88D1F1", "bolton": "FFFFFF", "barnsley": "D71920", "rotherham": "D71920",
-    "wigan": "0000FF", "exeter": "D71920", "crawley": "D71920", "northampton": "800000", "cambridge": "FDB913",
-    "burton": "FDB913", "port vale": "FFFFFF", "walsall": "D71920", "doncaster": "D71920", "notts county": "FFFFFF",
-    "gillingham": "0000FF", "mk dons": "FFFFFF", "chesterfield": "0000FF", "barrow": "FFFFFF", "bradford": "F5A91D",
-    "afc wimbledon": "0000FF", "bromley": "000000", "colchester": "0000FF", "crewe": "D71920", "harrogate": "FDB913",
-    "morecambe": "D71920", "newport": "F5A91D", "salford": "D71920", "swindon": "D71920", "tranmere": "FFFFFF",
-    "barcelona": "A50044", "real madrid": "FEBE10", "atlético": "CB3524", "bayern": "DC052D", "dortmund": "FDE100",
-    "psg": "004170", "juventus": "FFFFFF", "milan": "FB090B", "inter": "010E80", "napoli": "003B94",
-    "ajax": "D2122E", "feyenoord": "FF0000", "psv": "FF0000", "benfica": "FF0000", "porto": "00529F", 
-    "sporting": "008000", "celtic": "008000", "rangers": "0000FF", "braga": "E03A3E", "sc braga": "E03A3E"
-}
-
-SPORT_DURATIONS = {
-    'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
-    'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115
-}
-
-# WMO weather condition codes → human-readable labels (used by FlightTracker.fetch_airport_weather)
-WMO_DESCRIPTIONS = {
-    0: "CLEAR SKY", 1: "MAINLY CLEAR", 2: "PARTLY CLOUDY", 3: "OVERCAST",
-    45: "FOG", 48: "RIME FOG",
-    51: "LIGHT DRIZZLE", 53: "DRIZZLE", 55: "HEAVY DRIZZLE",
-    56: "FREEZING DRIZZLE", 57: "FREEZING DRIZZLE",
-    61: "LIGHT RAIN", 63: "RAIN", 65: "HEAVY RAIN",
-    66: "FREEZING RAIN", 67: "FREEZING RAIN",
-    71: "LIGHT SNOW", 73: "SNOW", 75: "HEAVY SNOW",
-    77: "SNOW GRAINS",
-    80: "LIGHT SHOWERS", 81: "SHOWERS", 82: "HEAVY SHOWERS",
-    85: "SNOW SHOWERS", 86: "HEAVY SNOW SHOWERS",
-    95: "THUNDERSTORM", 96: "THUNDERSTORM/HAIL", 99: "THUNDERSTORM/HAIL",
-}
-
-# ── Section E: Default State ──
-default_state = {
-    'active_sports': { item['id']: item['default'] for item in LEAGUE_OPTIONS },
-    'mode': 'sports', 
-    'layout_mode': 'schedule',
-    'my_teams': [], 
-    'current_games': [],
-    'all_teams_data': {},
-    'debug_mode': False,
-    'custom_date': None,
-    # Test mode — all off by default; toggled via /api/debug or /api/config
-    'test_mode':        False,   # master switch (enables all subsystems)
-    'test_spotify':     False,   # simulate Spotify playback
-    'test_stocks':      False,   # simulate stock prices
-    'test_sports_date': False,   # use custom_date for sports fetch
-    'test_flights':     False,   # verbose flight debug logging
-    'weather_city': "New York",
-    'weather_lat': 40.7128,
-    'weather_lon': -74.0060,
-    'utc_offset': -5,
-    'show_debug_options': False,
-    # Flight tracking
-    'track_flight_id': '',
-    'track_guest_name': '',
-    'airport_code_icao': 'KEWR',
-    'airport_code_iata': 'EWR',
-    'airport_name': 'Newark',
-    'airline_filter': ''
-}
-
-DEFAULT_TICKER_SETTINGS = {
-    "brightness": 100,
-    "scroll_speed": 0.03,
-    "scroll_seamless": True,
-    "inverted": False,
-    "panel_count": 2,
-    "live_delay_mode": False,
-    "live_delay_seconds": 45,
-    "utc_offset": -5,
-    "timezone_name": ""
-}
-
-# ── Section F: Boot / Config Load ──
-state = default_state.copy()
-
-tickers = {} 
-
-# 1. Load Global Config — single pass with inline cleanup
-if os.path.exists(GLOBAL_CONFIG_FILE):
-    try:
-        with open(GLOBAL_CONFIG_FILE, 'r') as f:
-            config_data = json.load(f)
-        # Migrate and clean legacy keys in-memory first
-        config_data['mode'] = MODE_MIGRATIONS.get(config_data.get('mode', 'sports'), config_data.get('mode', 'sports'))
-        # Handle legacy flights+submode combos bidirectionally
-        if config_data.get('flight_submode') == 'track':
-            config_data['mode'] = 'flight_tracker'
-        elif config_data.get('flight_submode') == 'airport' and config_data.get('mode') == 'flight_tracker':
-            config_data['mode'] = 'flights'
-        config_data.pop('flight_submode', None)
-        config_data['airline_filter'] = ''
-        # Apply to state
-        for k, v in config_data.items():
-            if k in state:
-                if isinstance(state[k], dict) and isinstance(v, dict):
-                    state[k].update(v)
+            try:
+                normalized = unicodedata.normalize('NFD', char)
+                ascii_char = ''.join(c for c in normalized if not unicodedata.combining(c))
+                if ascii_char and all(ord(c) < 128 for c in ascii_char):
+                    result.append(ascii_char)
+                elif ord(char) < 128:
+                    result.append(char)
                 else:
-                    state[k] = v
-        # If config had stale keys, persist the cleaned version
-        if 'flight_submode' in config_data or config_data.get('airline_filter', '') != '':
-            with open(GLOBAL_CONFIG_FILE, 'w') as _f:
-                json.dump(config_data, _f, indent=4)
-            print("🧹 Migrated legacy keys in global config")
-    except Exception as e:
-        print(f"⚠️ Error loading global config: {e}")
-
-# Global teams are always empty; teams are stored per-ticker only
-state['my_teams'] = []
-
-# Reconcile active_sports against current LEAGUE_OPTIONS:
-# remove deprecated keys, add any new ones with their defaults
-_valid_league_ids = {item['id'] for item in LEAGUE_OPTIONS}
-for _k in list(state['active_sports'].keys()):
-    if _k not in _valid_league_ids:
-        del state['active_sports'][_k]
-for _item in LEAGUE_OPTIONS:
-    if _item['id'] not in state['active_sports']:
-        state['active_sports'][_item['id']] = _item['default']
-
-# Ensure mode is valid
-state['mode'] = MODE_MIGRATIONS.get(state.get('mode', 'sports'), state.get('mode', 'sports'))
-if state['mode'] not in VALID_MODES:
-    state['mode'] = 'sports'
-state['airline_filter'] = ''
-
-# 2. Load Individual Ticker Files (Robust)
-ticker_files = glob.glob(os.path.join(TICKER_DATA_DIR, "*.json"))
-print(f"📂 Found {len(ticker_files)} saved tickers in '{TICKER_DATA_DIR}'")
-
-for t_file in ticker_files:
-    try:
-        with open(t_file, 'r') as f:
-            t_data = json.load(f)
-            tid = os.path.splitext(os.path.basename(t_file))[0]
-            
-            # Repair missing keys on load
-            if 'settings' not in t_data: t_data['settings'] = DEFAULT_TICKER_SETTINGS.copy()
-            for _sk, _sv in DEFAULT_TICKER_SETTINGS.items():
-                t_data['settings'].setdefault(_sk, _sv)
-            t_data['settings'].pop('active_sports', None)  # active_sports is global-only; strip stale per-ticker copy
-            if 'my_teams' not in t_data: t_data['my_teams'] = None
-            elif t_data.get('my_teams') == []: t_data['my_teams'] = None  # migrate old unconfigured tickers
-            if 'clients' not in t_data: t_data['clients'] = []
-            
-            tickers[tid] = t_data
-    except Exception as e:
-        print(f"❌ Failed to load ticker file {t_file}: {e}")
-
-# Pre-populate current_games from cache so display works immediately on restart
-if os.path.exists(GAME_CACHE_FILE):
-    try:
-        with open(GAME_CACHE_FILE, 'r') as _gcf:
-            _cached = json.load(_gcf)
-        if isinstance(_cached, list) and _cached:
-            state['current_games'] = _cached
-            print(f"📦 Loaded {len(_cached)} cached games from {GAME_CACHE_FILE}")
-    except Exception as _e:
-        print(f"⚠️ Could not load game cache: {_e}")
-
-
-# ── Section G: Save Helpers ──
-def save_json_atomically(filepath, data):
-    """Safe atomic write helper"""
-    temp = f"{filepath}.tmp"
-    try:
-        with open(temp, 'w') as f:
-            json.dump(data, f, indent=4)
-        os.replace(temp, filepath)
-    except Exception as e:
-        print(f"Write error for {filepath}: {e}")
-
-def save_global_config():
-    """Saves only the global server settings (weather, sports mode, etc)"""
-    try:
-        with data_lock:
-            # Create a clean copy of state to save
-            export_data = {
-                'active_sports': state['active_sports'],
-                'mode': state['mode'],
-                # my_teams intentionally omitted — always [] globally; stored per-ticker only
-                'weather_city': state['weather_city'],
-                'weather_lat': state['weather_lat'],
-                'weather_lon': state['weather_lon'],
-                'utc_offset': state['utc_offset'],
-                # Flight tracking
-                'track_flight_id': state.get('track_flight_id', ''),
-                'track_guest_name': state.get('track_guest_name', ''),
-                'airport_code_icao': state.get('airport_code_icao', 'KEWR'),
-                'airport_code_iata': state.get('airport_code_iata', 'EWR'),
-                'airport_name': state.get('airport_name', 'Newark'),
-                'airline_filter': '',  # Always empty - support all airlines
-            }
-        
-        # Atomic Write
-        save_json_atomically(GLOBAL_CONFIG_FILE, export_data)
-    except Exception as e:
-        print(f"Error saving global config: {e}")
-
-def save_specific_ticker(tid):
-    """Saves ONLY the specified ticker to its own file"""
-    if tid not in tickers: return
-    try:
-        data = tickers[tid]
-        filepath = os.path.join(TICKER_DATA_DIR, f"{tid}.json")
-        save_json_atomically(filepath, data)
-        print(f"💾 Saved Ticker: {tid}")
-    except Exception as e:
-        print(f"Error saving ticker {tid}: {e}")
-
-def save_config_file():
-    """Legacy wrapper: saves global config"""
-    save_global_config()
-
-def generate_pairing_code():
-    while True:
-        code = ''.join(random.choices(string.digits, k=6))
-        active_codes = {t.get('pairing_code') for t in tickers.values() if not t.get('paired')}
-        if code not in active_codes: return code
-
-# ================= UTILITIES =================
-
-def safe_get(obj, *keys, default=None):
-    """
-    Defensive nested dict traversal.
-    safe_get(d, 'a', 'b', 'c') is equivalent to the chain:
-        ((d.get('a') or {}).get('b') or {}).get('c')
-    Returns `default` if any level is missing, None, or not a dict.
-    """
-    cur = obj
-    for key in keys:
-        if not isinstance(cur, dict):
-            return default
-        cur = cur.get(key)
-        if cur is None:
-            return default
-    return cur if cur is not None else default
-
-
-def parse_iso(s: str) -> dt:
-    """
-    Parse an ISO 8601 datetime string, handling the trailing 'Z' that
-    Python < 3.11 fromisoformat() rejects.
-    """
-    if not s:
-        raise ValueError("Empty datetime string")
-    return dt.fromisoformat(s.replace('Z', '+00:00'))
-
-
-_IP_TZ_CACHE = {}
-_IP_TZ_CACHE_TTL = 12 * 3600
-
-
-def _extract_client_ip(req) -> str | None:
-    def _normalize_public_ip(raw: str) -> str | None:
-        raw_ip = (raw or '').strip()
-        if not raw_ip:
-            return None
-
-        # IPv4-mapped IPv6 format: ::ffff:1.2.3.4
-        if raw_ip.lower().startswith('::ffff:'):
-            raw_ip = raw_ip[7:]
-        # Strip zone index from IPv6 if present
-        if '%' in raw_ip:
-            raw_ip = raw_ip.split('%', 1)[0]
-
-        try:
-            ip_obj = ipaddress.ip_address(raw_ip)
-            if any([
-                ip_obj.is_private,
-                ip_obj.is_loopback,
-                ip_obj.is_link_local,
-                ip_obj.is_reserved,
-                ip_obj.is_multicast,
-                ip_obj.is_unspecified,
-            ]):
-                return None
-            return str(ip_obj)
-        except Exception:
-            return None
-
-    header_candidates = [
-        'CF-Connecting-IP',
-        'X-Forwarded-For',
-        'X-Real-IP',
-    ]
-    for h in header_candidates:
-        v = (req.headers.get(h) or '').strip()
-        if v:
-            # Prefer first public IP in the chain.
-            for part in v.split(','):
-                pub = _normalize_public_ip(part)
-                if pub:
-                    return pub
-
-    return _normalize_public_ip(req.remote_addr or '')
-
-
-def _utc_offset_hours_for_timezone(tz_name: str | None) -> float | None:
-    if not tz_name or not ZoneInfo:
-        return None
-    try:
-        now_local = dt.now(ZoneInfo(tz_name))
-        off = now_local.utcoffset()
-        if off is None:
-            return None
-        return round(off.total_seconds() / 3600.0, 2)
-    except Exception:
-        return None
-
-
-def _extract_timezone_from_request_headers(req) -> tuple[str | None, float | None]:
-    tz_raw = str(
-        req.headers.get('X-Ticker-Timezone')
-        or req.headers.get('X-Timezone')
-        or req.args.get('timezone_name')
-        or req.args.get('tz')
-        or ''
-    ).strip()
-    off_raw = (
-        req.headers.get('X-Ticker-Utc-Offset')
-        or req.headers.get('X-UTC-Offset')
-        or req.args.get('utc_offset')
-        or req.args.get('offset')
-    )
-
-    tz_name = None
-    if tz_raw:
-        if ZoneInfo:
-            try:
-                ZoneInfo(tz_raw)
-                tz_name = tz_raw
-            except Exception:
-                tz_name = None
-        # Allow non-IANA fallback (e.g. EDT) if no ZoneInfo validation possible.
-        if tz_name is None and len(tz_raw) <= 64:
-            tz_name = tz_raw
-
-    offset = None
-    if off_raw is not None:
-        try:
-            offset = round(float(off_raw), 2)
-            if offset < -14 or offset > 14:
-                offset = None
-        except Exception:
-            offset = None
-
-    if offset is None and tz_name:
-        offset = _utc_offset_hours_for_timezone(tz_name)
-
-    return tz_name, offset
-
-
-def _lookup_timezone_for_ip(ip_addr: str) -> tuple[str | None, float | None]:
-    now_ts = time.time()
-    cached = _IP_TZ_CACHE.get(ip_addr)
-    if cached and (now_ts - cached.get('ts', 0) < _IP_TZ_CACHE_TTL):
-        return cached.get('timezone'), cached.get('offset')
-
-    try:
-        url = f"https://ip-api.com/json/{ip_addr}"
-        params = {"fields": "status,timezone,offset,message,query"}
-        resp = requests.get(url, params=params, timeout=TIMEOUTS.get('quick', 3))
-        data = resp.json() if resp.ok else {}
-        if data.get('status') == 'success' and data.get('timezone'):
-            tz_name = str(data.get('timezone')).strip()
-            offset_raw = data.get('offset')
-            offset_hours = round(float(offset_raw) / 3600.0, 2) if isinstance(offset_raw, (int, float)) else None
-            if offset_hours is None:
-                offset_hours = _utc_offset_hours_for_timezone(tz_name)
-            _IP_TZ_CACHE[ip_addr] = {
-                'timezone': tz_name,
-                'offset': offset_hours,
-                'ts': now_ts,
-            }
-            return tz_name, offset_hours
-    except Exception as e:
-        print(f"[TZ] ip-api lookup failed for {ip_addr}: {e}")
-
-    return None, None
-
-
-def _lookup_timezone_for_current_connection() -> tuple[str | None, float | None, str | None]:
-    """
-    Fallback when request IP appears private/local (e.g. LAN app usage).
-    ip-api resolves timezone for the current outbound connection IP.
-    """
-    cache_key = '__self__'
-    now_ts = time.time()
-    cached = _IP_TZ_CACHE.get(cache_key)
-    if cached and (now_ts - cached.get('ts', 0) < _IP_TZ_CACHE_TTL):
-        return cached.get('timezone'), cached.get('offset'), cached.get('query')
-
-    try:
-        url = "https://ip-api.com/json/"
-        params = {"fields": "status,query,timezone,offset,message"}
-        resp = requests.get(url, params=params, timeout=TIMEOUTS.get('quick', 3))
-        data = resp.json() if resp.ok else {}
-        if data.get('status') == 'success' and data.get('timezone'):
-            tz_name = str(data.get('timezone')).strip()
-            query_ip = str(data.get('query') or '').strip() or None
-            offset_raw = data.get('offset')
-            offset_hours = round(float(offset_raw) / 3600.0, 2) if isinstance(offset_raw, (int, float)) else None
-            if offset_hours is None:
-                offset_hours = _utc_offset_hours_for_timezone(tz_name)
-
-            _IP_TZ_CACHE[cache_key] = {
-                'timezone': tz_name,
-                'offset': offset_hours,
-                'query': query_ip,
-                'ts': now_ts,
-            }
-            return tz_name, offset_hours, query_ip
-    except Exception as e:
-        print(f"[TZ] ip-api self lookup failed: {e}")
-
-    return None, None, None
-
-
-def _lookup_timezone_for_latlon(lat: float, lon: float) -> tuple[str | None, float | None]:
-    """
-    Fallback resolver using open-meteo timezone=auto from lat/lon.
-    Useful when client IP/header timezone is unavailable.
-    """
-    try:
-        lat_f = float(lat)
-        lon_f = float(lon)
-    except Exception:
-        return None, None
-
-    cache_key = f"__latlon__:{round(lat_f, 3)},{round(lon_f, 3)}"
-    now_ts = time.time()
-    cached = _IP_TZ_CACHE.get(cache_key)
-    if cached and (now_ts - cached.get('ts', 0) < _IP_TZ_CACHE_TTL):
-        return cached.get('timezone'), cached.get('offset')
-
-    try:
-        url = "https://api.open-meteo.com/v1/forecast"
-        params = {
-            "latitude": lat_f,
-            "longitude": lon_f,
-            "current": "temperature_2m",
-            "timezone": "auto",
-        }
-        resp = requests.get(url, params=params, timeout=TIMEOUTS.get('quick', 3))
-        data = resp.json() if resp.ok else {}
-        tz_name = str(data.get('timezone') or '').strip()
-        if not tz_name:
-            return None, None
-
-        off = _utc_offset_hours_for_timezone(tz_name)
-        _IP_TZ_CACHE[cache_key] = {
-            'timezone': tz_name,
-            'offset': off,
-            'ts': now_ts,
-        }
-        return tz_name, off
-    except Exception as e:
-        print(f"[TZ] lat/lon timezone lookup failed ({lat_f},{lon_f}): {e}")
-        return None, None
-
-
-def _get_ticker_timezone_context(rec: dict) -> tuple[str, float]:
-    settings = rec.get('settings', {}) if isinstance(rec, dict) else {}
-    tz_name = str(settings.get('timezone_name') or rec.get('timezone_name') or '').strip()
-
-    offset = settings.get('utc_offset', None)
-    try:
-        offset = float(offset)
-    except Exception:
-        offset = None
-
-    # Prefer live offset from IANA timezone so DST changes (e.g. -5 -> -4)
-    # apply immediately without waiting for an IP change.
-    if tz_name:
-        live_offset = _utc_offset_hours_for_timezone(tz_name)
-        if live_offset is not None:
-            offset = live_offset
-    if offset is None:
-        offset = float(state.get('utc_offset', -5))
-
-    return tz_name, offset
-
-
-def _maybe_update_ticker_timezone_from_request(ticker_id: str, req):
-    if not ticker_id or ticker_id not in tickers:
-        return
-
-    rec = tickers[ticker_id]
-
-    # Prefer timezone provided by the ticker device itself.
-    hdr_tz, hdr_offset = _extract_timezone_from_request_headers(req)
-    if hdr_tz or hdr_offset is not None:
-        changed = False
-        settings = rec.setdefault('settings', {})
-        if hdr_tz and settings.get('timezone_name') != hdr_tz:
-            settings['timezone_name'] = hdr_tz
-            changed = True
-        if hdr_offset is not None and settings.get('utc_offset') != hdr_offset:
-            settings['utc_offset'] = hdr_offset
-            changed = True
-        if hdr_tz and rec.get('timezone_name') != hdr_tz:
-            rec['timezone_name'] = hdr_tz
-            changed = True
-
-        if changed:
-            off_txt = f"UTC{hdr_offset:+}" if isinstance(hdr_offset, (int, float)) else "UTC?"
-            print(f"[TZ] Ticker {ticker_id} timezone set from ticker headers: {hdr_tz or 'unknown'} ({off_txt})")
-            save_specific_ticker(ticker_id)
-        # If only offset was provided (no timezone name), continue to fallbacks
-        # so we can still resolve and persist a canonical timezone_name.
-        if hdr_tz:
-            return
-
-    ip_addr = _extract_client_ip(req)
-
-    # If request appears local/private, fall back to current public egress IP.
-    if not ip_addr:
-        tz_name, offset, query_ip = _lookup_timezone_for_current_connection()
-        if tz_name:
-            if offset is None:
-                offset = _utc_offset_hours_for_timezone(tz_name)
-
-            changed = False
-            settings = rec.setdefault('settings', {})
-            if settings.get('timezone_name') != tz_name:
-                settings['timezone_name'] = tz_name
-                changed = True
-            if offset is not None and settings.get('utc_offset') != offset:
-                settings['utc_offset'] = offset
-                changed = True
-            if rec.get('timezone_name') != tz_name:
-                rec['timezone_name'] = tz_name
-                changed = True
-            if query_ip and rec.get('last_ip') != query_ip:
-                rec['last_ip'] = query_ip
-                changed = True
-
-            if changed:
-                off_txt = f"UTC{offset:+}" if isinstance(offset, (int, float)) else "UTC?"
-                print(f"[TZ] Ticker {ticker_id} timezone set to {tz_name} ({off_txt}) from fallback IP {query_ip or 'unknown'}")
-                save_specific_ticker(ticker_id)
-
-    prev_ip = str(rec.get('last_ip', '')).strip()
-    prev_tz = str(rec.get('settings', {}).get('timezone_name', '')).strip()
-
-    if ip_addr == prev_ip and prev_tz:
-        # IP unchanged: still refresh offset from timezone to follow DST.
-        off = _utc_offset_hours_for_timezone(prev_tz)
-        if off is not None and rec.get('settings', {}).get('utc_offset') != off:
-            rec['settings']['utc_offset'] = off
-            print(f"[TZ] Ticker {ticker_id} offset refreshed from timezone {prev_tz}: UTC{off:+}")
-            save_specific_ticker(ticker_id)
-        return
-
-    if ip_addr:
-        tz_name, offset = _lookup_timezone_for_ip(ip_addr)
-        if tz_name:
-            if offset is None:
-                offset = _utc_offset_hours_for_timezone(tz_name)
-
-            changed = False
-            settings = rec.setdefault('settings', {})
-            if settings.get('timezone_name') != tz_name:
-                settings['timezone_name'] = tz_name
-                changed = True
-            if offset is not None and settings.get('utc_offset') != offset:
-                settings['utc_offset'] = offset
-                changed = True
-            if rec.get('timezone_name') != tz_name:
-                rec['timezone_name'] = tz_name
-                changed = True
-            if rec.get('last_ip') != ip_addr:
-                rec['last_ip'] = ip_addr
-                changed = True
-
-            if changed:
-                off_txt = f"UTC{offset:+}" if isinstance(offset, (int, float)) else "UTC?"
-                print(f"[TZ] Ticker {ticker_id} timezone set to {tz_name} ({off_txt}) from IP {ip_addr}")
-                save_specific_ticker(ticker_id)
-
-    # Final fallback: derive timezone from configured weather coordinates.
-    settings = rec.setdefault('settings', {})
-    lat = settings.get('weather_lat', state.get('weather_lat'))
-    lon = settings.get('weather_lon', state.get('weather_lon'))
-    ll_tz, ll_off = _lookup_timezone_for_latlon(lat, lon)
-    if not ll_tz:
-        return
-
-    ll_changed = False
-    if settings.get('timezone_name') != ll_tz:
-        settings['timezone_name'] = ll_tz
-        ll_changed = True
-    if ll_off is not None and settings.get('utc_offset') != ll_off:
-        settings['utc_offset'] = ll_off
-        ll_changed = True
-    if rec.get('timezone_name') != ll_tz:
-        rec['timezone_name'] = ll_tz
-        ll_changed = True
-
-    if ll_changed:
-        off_txt = f"UTC{ll_off:+}" if isinstance(ll_off, (int, float)) else "UTC?"
-        print(f"[TZ] Ticker {ticker_id} timezone set from weather coords ({lat},{lon}): {ll_tz} ({off_txt})")
-        save_specific_ticker(ticker_id)
-
-
-def _apply_timezone_to_game_times(games: list, tz_name: str = '', utc_offset: float = -5.0):
-    if not isinstance(games, list):
-        return
-
-    tz_obj = None
-    if tz_name and ZoneInfo:
-        try:
-            tz_obj = ZoneInfo(tz_name)
-        except Exception:
-            tz_obj = None
-
-    try:
-        offset_hours = float(utc_offset)
-    except Exception:
-        offset_hours = -5.0
-
-    fallback_tz = timezone(timedelta(hours=offset_hours))
-
-    for g in games:
-        if not isinstance(g, dict):
+                    try:
+                        ascii_repr = char.encode('ascii', 'ignore').decode('ascii')
+                        result.append(ascii_repr if ascii_repr else '?')
+                    except:
+                        result.append('?')
+            except:
+                result.append('?' if ord(char) >= 128 else char)
+    return ''.join(result)
+
+# ================= PIL TEXT HELPERS =================
+def draw_tiny_text(draw, x, y, text_str, color):
+    text_str = normalize_special_chars(str(text_str)).upper()
+    x_cursor = x
+    for char in text_str:
+        if char == '~':
+            x_cursor += 2
             continue
-        if g.get('state') != 'pre':
+        bitmap = TINY_FONT_MAP.get(char, TINY_FONT_MAP.get(' ', [0x0]*5))
+        for r, row_byte in enumerate(bitmap):
+            if row_byte & 0x8: draw.point((x_cursor+0, y+r), fill=color)
+            if row_byte & 0x4: draw.point((x_cursor+1, y+r), fill=color)
+            if row_byte & 0x2: draw.point((x_cursor+2, y+r), fill=color)
+            if row_byte & 0x1: draw.point((x_cursor+3, y+r), fill=color)
+            if len(bitmap) > 4 and (row_byte & 0x10): draw.point((x_cursor+4, y+r), fill=color)
+        x_cursor += 5
+    return x_cursor - x
+
+def draw_hybrid_text(draw, x, y, text_str, color):
+    text_str = normalize_special_chars(str(text_str)).upper()
+    x_cursor = x
+    for char in text_str:
+        if char == '~':
+            x_cursor += 2
             continue
-        start_utc = g.get('startTimeUTC')
-        if not start_utc:
-            continue
+        bitmap = HYBRID_FONT_MAP.get(char, HYBRID_FONT_MAP.get(' ', [0x0]*6))
+        for r, row_byte in enumerate(bitmap):
+            if row_byte & 0x8: draw.point((x_cursor+0, y+r), fill=color)
+            if row_byte & 0x4: draw.point((x_cursor+1, y+r), fill=color)
+            if row_byte & 0x2: draw.point((x_cursor+2, y+r), fill=color)
+            if row_byte & 0x1: draw.point((x_cursor+3, y+r), fill=color)
+        x_cursor += 5
+    return x_cursor
+
+
+def load_monospace_font(size, bold=False):
+    font_candidates = ["DejaVuSansMono-Bold.ttf", "DejaVuSansMono.ttf"] if bold else ["DejaVuSansMono.ttf"]
+    for font_name in font_candidates:
         try:
-            game_dt = parse_iso(start_utc)
-            local_dt = game_dt.astimezone(tz_obj) if tz_obj else game_dt.astimezone(fallback_tz)
-            g['status'] = local_dt.strftime("%I:%M %p").lstrip('0')
-        except Exception:
-            continue
-
-
-def fetch_json(session, url, *, timeout=None, params=None, headers=None):
-    """
-    Safe HTTP GET returning parsed JSON. Raises on non-2xx status.
-    Uses TIMEOUTS['default'] if timeout is not specified.
-    """
-    r = session.get(
-        url,
-        params=params or {},
-        headers=headers or {},
-        timeout=timeout or TIMEOUTS['default']
-    )
-    r.raise_for_status()
-    return r.json()
-
-
-# ================= TEST MODE =================
-
-_SENTINEL = object()  # used to distinguish "not passed" from None in TestMode.configure
-
-class TestMode:
-    """
-    Centralized simulation / debug mode manager.
-
-    In production this class is completely inert (all flags False by default).
-
-    Usage examples:
-        TestMode.configure(enabled=True)              # turn on all subsystems
-        TestMode.configure(stocks=True)               # stocks-only test
-        TestMode.configure(enabled=False)             # turn everything off
-        TestMode.is_enabled('spotify')                # → bool
-        TestMode.get_custom_date()                    # → 'YYYYMMDD' or None
-        TestMode.get_fake_playlist()                  # → list of song dicts
-        TestMode.get_fake_stock_price('AAPL')         # → {base, change, pct}
-        TestMode.status()                             # → dict snapshot for /api/debug
-    """
-
-    _enabled: bool = False
-    _subsystems: dict = {
-        'spotify':     False,   # simulate Spotify playback
-        'stocks':      False,   # simulate stock prices
-        'sports_date': False,   # override sports date with custom_date
-        'flights':     False,   # verbose flight debug logging
-    }
-    _custom_date: str | None = None
-
-    # Simulation data lives here — not scattered in individual class constructors
-    _FAKE_PLAYLIST = [
-        {
-            "name": "Simulated Song", "artist": "The Test Band",
-            "cover": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/768px-Google_%22G%22_logo.svg.png",
-            "duration": 180.0
-        },
-        {
-            "name": "Coding All Night", "artist": "Dev Team",
-            "cover": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Unofficial_JavaScript_logo_2.svg/1024px-Unofficial_JavaScript_logo_2.svg.png",
-            "duration": 240.0
-        },
-        {
-            "name": "Offline Mode", "artist": "No Wifi",
-            "cover": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Visual_Editor_-_Icon_-_No-connection.svg/1024px-Visual_Editor_-_Icon_-_No-connection.svg.png",
-            "duration": 120.0
-        },
-    ]
-
-    @classmethod
-    def configure(cls, *, enabled=None, custom_date=_SENTINEL, **subsystems):
-        """
-        Update test mode settings.
-        - enabled=True  → flip all subsystems on at once
-        - enabled=False → turn all off
-        - Individual kwargs (spotify=True, stocks=False) control per-subsystem
-        - custom_date='YYYY-MM-DD' sets the sports date override string
-        """
-        if custom_date is not _SENTINEL:
-            cls._custom_date = custom_date
-
-        if enabled is True:
-            cls._enabled = True
-            for k in cls._subsystems:
-                cls._subsystems[k] = True
-        elif enabled is False:
-            cls._enabled = False
-            for k in cls._subsystems:
-                cls._subsystems[k] = False
-
-        for k, v in subsystems.items():
-            if k in cls._subsystems:
-                cls._subsystems[k] = bool(v)
-                if v:
-                    cls._enabled = True  # any subsystem on → globally enabled
-
-    @classmethod
-    def is_enabled(cls, subsystem: str) -> bool:
-        """Return True if the named subsystem simulation is active."""
-        return cls._subsystems.get(subsystem, False)
-
-    @classmethod
-    def get_custom_date(cls) -> str | None:
-        """Return the date override as a YYYYMMDD string, or None if not active."""
-        if cls._custom_date and cls.is_enabled('sports_date'):
-            return cls._custom_date.replace('-', '')
-        return None
-
-    @classmethod
-    def get_fake_playlist(cls):
-        """Return the simulated Spotify playlist."""
-        return cls._FAKE_PLAYLIST
-
-    @classmethod
-    def get_fake_stock_price(cls, symbol: str) -> dict:
-        """
-        Return deterministic, slowly-fluctuating fake price data for a symbol.
-        Logic originally lived in StockFetcher._fetch_single_stock.
-        """
-        base_price = sum(ord(c) for c in symbol) % 200 + 50
-        variation = (time.time() % 600) / 100.0
-        current_price = base_price + math.sin(variation + len(symbol)) * 5
-        change = math.sin(variation * 2) * 2.5
-        pct = (change / base_price) * 100
-        return {'base': current_price, 'change': change, 'pct': pct}
-
-    @classmethod
-    def status(cls) -> dict:
-        """Snapshot of current test mode state, exposed by /api/debug GET."""
-        return {
-            'enabled': cls._enabled,
-            'subsystems': dict(cls._subsystems),
-            'custom_date': cls._custom_date,
-        }
-
-
-class SpotifyFetcher(threading.Thread):
-    def __init__(self):
-        super().__init__()
-        self.daemon = True
-        self._lock = threading.Lock()
-        
-        self.client_id = os.getenv('SPOTIFY_CLIENT_ID')
-        self.client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
-
-        # --- INTERNAL CACHE ---
-        self.cached_current_id = None
-        self.cached_current_cover = ""
-        self.cached_queue_covers = [] 
-
-        # --- STATE ---
-        self.state = {
-            "is_playing": False,
-            "name": "Waiting for Music...",
-            "artist": "",
-            "cover": "",          
-            "last_cover": "",     
-            "next_covers": [],    
-            "duration": 0,
-            "progress": 0,
-            "last_fetch_ts": time.time()
-        }
-
-    def get_cached_state(self):
-        with self._lock: 
-            return self.state.copy()
-
-    def run_simulation(self):
-        """Runs a fake loop when no API keys are present or test_spotify is enabled."""
-        print("⚠️ Spotify: no API keys or test mode active — starting MUSIC SIMULATION.")
-        idx = 0
-        while True:
-            playlist = TestMode.get_fake_playlist()
-            song = playlist[idx]
-
-            next_1 = playlist[(idx + 1) % len(playlist)]
-            next_2 = playlist[(idx + 2) % len(playlist)]
-
-            start_time = time.time()
-
-            with self._lock:
-                self.state.update({
-                    "is_playing": True,
-                    "name": song['name'],
-                    "artist": song['artist'],
-                    "cover": song['cover'],
-                    "last_cover": playlist[(idx - 1) % len(playlist)]['cover'],
-                    "next_covers": [next_1['cover'], next_2['cover']],
-                    "duration": song['duration'],
-                    "progress": 0,
-                    "last_fetch_ts": start_time
-                })
-
-            # Simulate playback: update progress every second for 20s, then advance
-            for _ in range(20):
-                time.sleep(1)
-                with self._lock:
-                    self.state['progress'] = time.time() - start_time
-                    self.state['last_fetch_ts'] = time.time()
-
-            idx = (idx + 1) % len(playlist)
-
-    def run(self):
-        # Run simulation if keys are missing OR test_spotify is explicitly enabled
-        if not self.client_id or not self.client_secret or TestMode.is_enabled('spotify'):
-            self.run_simulation()
-            return
-
-        print("✅ Spotify Adaptive Polling Started")
-
-        sp = None
-        while not sp:
-            try:
-                auth_manager = SpotifyOAuth(
-                    client_id=self.client_id,
-                    client_secret=self.client_secret,
-                    redirect_uri="http://127.0.0.1:8888/callback",
-                    scope="user-read-playback-state user-read-currently-playing",
-                    open_browser=False,
-                    cache_path=".spotify_token"
-                )
-                sp = spotipy.Spotify(auth_manager=auth_manager)
-            except Exception as e:
-                print(f"Spotify Init Failed (Retrying in 5s): {e}")
-                time.sleep(5)
-        
-        current_delay = 1.0
-
-        while True:
-            try:
-                current = None
-                fetch_success = False
-
-                try:
-                    current = sp.current_user_playing_track()
-                    fetch_success = True
-                except Exception as e:
-                    # STAGE 3: Error/Long Polling (>5s)
-                    print(f"Spotify API Error: {e}")
-                    current_delay = 5.0
-
-                if fetch_success:
-                    if current and current.get('item'):
-                        item = current['item']
-                        is_playing = current.get('is_playing', False)
-                        progress_ms = current.get('progress_ms', 0)
-
-                        current_id = item.get('id')
-                        current_cover = item['album']['images'][0]['url'] if item.get('album',{}).get('images') else ""
-
-                        # Only fetch heavy queue data if the song changed
-                        if self.cached_current_id != current_id:
-                            self.state['last_cover'] = self.cached_current_cover
-                            try:
-                                queue_data = sp.queue()
-                                new_queue = []
-                                if queue_data and 'queue' in queue_data:
-                                    for q_track in queue_data['queue'][:3]:
-                                        if q_track.get('album') and q_track['album'].get('images'):
-                                            new_queue.append(q_track['album']['images'][0]['url'])
-                                        else:
-                                            new_queue.append("")
-                                self.cached_queue_covers = new_queue
-                            except: pass # Queue fetch failures shouldn't crash the loop
-
-                        self.cached_current_id = current_id
-                        self.cached_current_cover = current_cover
-
-                        with self._lock:
-                            self.state.update({
-                                "is_playing": is_playing,
-                                "name": item.get('name', 'Unknown'),
-                                "artist": ", ".join(a['name'] for a in item.get('artists', [])),
-                                "cover": current_cover,
-                                "next_covers": self.cached_queue_covers,
-                                "duration": item.get('duration_ms', 0) / 1000.0,
-                                "progress": progress_ms / 1000.0,
-                                "last_fetch_ts": time.time()
-                            })
-
-                        # STAGE 1 vs STAGE 2
-                        # Quick Polling (0.6s) if playing, Medium (1.5s) if paused
-                        current_delay = 0.6 if is_playing else 1.5
-
-                    elif current is None:
-                        # STAGE 2: No Content / Idle (3s)
-                        with self._lock:
-                            self.state['is_playing'] = False
-                        current_delay = 3.0
-
-            except Exception as e:
-                print(f"Spotify Critical Loop Error: {e}")
-                current_delay = 10.0 # Long backoff for critical failures
-
-            time.sleep(current_delay)
-
-class WeatherFetcher:
-    def __init__(self, initial_lat=40.7128, initial_lon=-74.0060, city="New York"):
-        self.lat = initial_lat
-        self.lon = initial_lon
-        self.city_name = city
-        self.last_fetch = 0
-        self.cache = None
-        self.session = build_pooled_session(pool_size=10)
-
-    def update_config(self, city=None, lat=None, lon=None):
-        try:
-            if lat is not None: self.lat = float(lat)
-            if lon is not None: self.lon = float(lon)
-            if city is not None: self.city_name = str(city)
-            self.last_fetch = 0 # Force refresh
-            print(f"✅ Weather config updated: {self.city_name} ({self.lat}, {self.lon})")
-        except Exception as e:
-            print(f"⚠️ Error updating weather config: {e}")
-
-    def get_weather_icon(self, wmo_code):
-        try:
-            code = int(wmo_code)
+            return ImageFont.truetype(font_name, size)
         except:
-            return 'cloud'
-            
-        if code == 0: return 'sun'
-        if code in [1, 2, 3, 45, 48]: return 'cloud'
-        if code in [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82]: return 'rain'
-        if code in [71, 73, 75, 77, 85, 86]: return 'snow'
-        if code in [95, 96, 99]: return 'storm'
-        return 'cloud'
+            continue
+    return ImageFont.load_default()
 
-    def get_day_name(self, date_str):
+# ================= DEVICE ID =================
+def get_device_id():
+    path_to_use = ID_FILE_PATH
+    if not os.path.isfile(ID_FILE_PATH):
         try:
-            date_obj = dt.strptime(date_str, '%Y-%m-%d')
-            return date_obj.strftime('%a').upper()
-        except: return "DAY"
+            test_uuid = str(uuid.uuid4())
+            with open(ID_FILE_PATH, 'w') as f: f.write(test_uuid)
+        except:
+            path_to_use = ID_FILE_FALLBACK
+    if os.path.exists(path_to_use):
+        with open(path_to_use, 'r') as f: return f.read().strip()
+    return str(uuid.uuid4())
 
-    def get_weather(self):
-        # 1. Return Cache if fresh (< 15 mins)
-        if time.time() - self.last_fetch < CACHE_TTL['weather'] and self.cache:
-            return self.cache
-        
-        try:
-            # 2. Validate coordinates
-            if self.lat is None or self.lon is None:
-                print("❌ Weather Error: Invalid Coordinates (None)")
-                return self.cache
-
-            # 3. Fetch Forecast (Independent Step)
-            w_data = {}
-            try:
-                w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto"
-                w_resp = self.session.get(w_url, timeout=TIMEOUTS['slow'])
-                if w_resp.status_code == 200:
-                    w_data = w_resp.json()
-                else:
-                    print(f"⚠️ Weather API Error: {w_resp.status_code} - {w_resp.text}")
-                    return self.cache # Keep showing old data if fetch fails
-            except Exception as e:
-                print(f"⚠️ Weather Connection Failed: {e}")
-                return self.cache
-
-            # 4. Fetch Air Quality (Separate Step - Fail Safe)
-            aqi = 0
-            try:
-                a_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={self.lat}&longitude={self.lon}&current=us_aqi"
-                a_resp = self.session.get(a_url, timeout=TIMEOUTS['stock'])
-                if a_resp.status_code == 200:
-                    a_data = a_resp.json()
-                    aqi = a_data.get('current', {}).get('us_aqi', 0)
-            except Exception:
-                pass # If AQI fails, just show 0, don't crash the widget
-
-            # 5. Parse Data
-            current = w_data.get('current', {})
-            daily = w_data.get('daily', {})
-
-            if not current:
-                print("⚠️ Weather Error: Missing 'current' data in response")
-                return self.cache
-
-            current_temp = int(round(current.get('temperature_2m', 0)))
-            current_code = current.get('weather_code', 0)
-            current_icon = self.get_weather_icon(current_code)
-            
-            uv = 0
-            if 'uv_index_max' in daily and len(daily['uv_index_max']) > 0:
-                uv = daily['uv_index_max'][0]
-
-            forecast_list = []
-            if 'time' in daily:
-                days_count = len(daily['time'])
-                # Safe loop that won't crash if API returns fewer days than expected
-                for i in range(min(5, days_count)): 
-                    try:
-                        f_day = {
-                            "day": self.get_day_name(daily['time'][i]),
-                            "icon": self.get_weather_icon(daily['weather_code'][i]),
-                            "high": int(round(daily['temperature_2m_max'][i])),
-                            "low": int(round(daily['temperature_2m_min'][i]))
-                        }
-                        forecast_list.append(f_day)
-                    except: continue
-
-            # 6. Build Object
-            self.cache = {
-                "type": "weather",
-                "sport": "weather",
-                "id": "weather_main",
-                "away_abbr": str(self.city_name).upper(), 
-                "home_abbr": str(current_temp), 
-                "situation": {
-                    "icon": current_icon,
-                    "stats": {
-                        "aqi": str(aqi),
-                        "uv": str(uv)
-                    },
-                    "forecast": forecast_list
-                },
-                "home_score": str(current_temp),
-                "away_score": "0",
-                "status": "Active",
-                "is_shown": True
-            }
-            self.last_fetch = time.time()
-            return self.cache
-
-        except Exception as e:
-            print(f"❌ Critical Weather Error: {e}")
-            return self.cache
-
-class StockFetcher:
-    def __init__(self):
-        self.market_cache = {}
-        self.last_fetch = 0
-        self.update_interval = STOCKS_UPDATE_INTERVAL
-        
-        possible_keys = [
-            os.getenv('FINNHUB_API_KEY'), 
-            os.getenv('FINNHUB_KEY_1'),
-            os.getenv('FINNHUB_KEY_2'),
-            os.getenv('FINNHUB_KEY_3'),
-            os.getenv('FINNHUB_KEY_4'),
-            os.getenv('FINNHUB_KEY_5')
-        ]
-        self.api_keys = list(set([k for k in possible_keys if k and len(k) > 10]))
-        
-        # --- SIMULATION MODE ---
-        self.simulated = False
-        if not self.api_keys:
-            print("⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.")
-            self.simulated = True
-            self.safe_sleep_time = 0.1
-        else:
-            self.safe_sleep_time = 1.1 / len(self.api_keys)
-            print(f"✅ Loaded {len(self.api_keys)} API Keys. Stock Speed: {self.safe_sleep_time:.2f}s per request.")
-
-        self.current_key_index = 0
-        self.session = build_pooled_session(pool_size=4, retries=1)
-        self.lists = _STOCK_LISTS
-        self.ETF_DOMAINS = {"QQQ": "invesco.com", "SPY": "spdrs.com", "IWM": "ishares.com", "DIA": "statestreet.com"}
-        self.load_cache()
-
-    def load_cache(self):
-        if os.path.exists(STOCK_CACHE_FILE):
-            try:
-                with open(STOCK_CACHE_FILE, 'r') as f: self.market_cache = json.load(f)
-            except: pass
-
-    def save_cache(self):
-        try: save_json_atomically(STOCK_CACHE_FILE, self.market_cache)
+# --- WIFI PORTAL ---
+class WifiPortal:
+    def __init__(self, matrix, font):
+        self.matrix = matrix; self.font = font; self.app = Flask(__name__)
+        @self.app.route('/')
+        def home(): return render_template_string(HTML_TEMPLATE, networks=self.get_available_networks())
+        @self.app.route('/connect', methods=['POST'])
+        def connect():
+            ssid = request.form.get('ssid_manual') if request.form.get('ssid_select') == "__manual__" else request.form.get('ssid_select')
+            threading.Thread(target=self.apply_and_reboot, args=(ssid, request.form['password'])).start()
+            return "<html><body><h2>Settings Saved. Rebooting...</h2></body></html>"
+    def apply_and_reboot(self, s, p):
+        try: subprocess.run(['nmcli', 'dev', 'wifi', 'connect', s, 'password', p])
         except: pass
-
-    def get_logo_url(self, symbol):
-        sym = symbol.upper()
-        if sym in self.ETF_DOMAINS: return f"https://logo.clearbit.com/{self.ETF_DOMAINS[sym]}"
-        clean_sym = sym.replace('.', '-')
-        return f"https://financialmodelingprep.com/image-stock/{clean_sym}.png"
-
-    def _get_next_key(self):
-        if not self.api_keys: return None
-        key = self.api_keys[self.current_key_index]
-        self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
-        return key
-
-    @staticmethod
-    def _make_stock_result(symbol, price, change_raw, change_pct):
-        return {
-            'symbol': symbol,
-            'price': f"{price:.2f}",
-            'change_amt': f"{'+' if change_raw >= 0 else ''}{change_raw:.2f}",
-            'change_pct': f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%"
-        }
-
-    def _fetch_single_stock(self, symbol):
-        # Run simulation if keys are absent OR test_stocks is explicitly enabled
-        if self.simulated or TestMode.is_enabled('stocks'):
-            r = TestMode.get_fake_stock_price(symbol)
-            return self._make_stock_result(symbol, r['base'], r['change'], r['pct'])
-
-        api_key = self._get_next_key()
-        if not api_key: return None
-
+        time.sleep(3); subprocess.run(['reboot'])
+    def get_available_networks(self):
         try:
-            r = self.session.get("https://finnhub.io/api/v1/quote", params={'symbol': symbol, 'token': api_key}, timeout=TIMEOUTS['stock'])
-            if r.status_code == 429: time.sleep(2); return None
-            r.raise_for_status()
-            data = r.json()
-
-            ts = data.get('t', 0)
-            now_ts = time.time()
-            is_stale = (now_ts - ts) > CACHE_TTL['stock']
-
-            if not is_stale and data.get('c', 0) > 0:
-                return self._make_stock_result(symbol, data['c'], data.get('d', 0), data.get('dp', 0))
-
-            if is_stale:
-                to_time = int(now_ts)
-                from_time = to_time - 1800
-                c_r = self.session.get(
-                    "https://finnhub.io/api/v1/stock/candle",
-                    params={'symbol': symbol, 'resolution': '1', 'from': from_time, 'to': to_time, 'token': api_key},
-                    timeout=TIMEOUTS['stock']
-                )
-                c_data = c_r.json()
-                if c_data.get('s') == 'ok' and c_data.get('c'):
-                    latest_close = c_data['c'][-1]
-                    prev_close = data.get('pc', latest_close)
-                    change_raw = latest_close - prev_close
-                    change_pct = (change_raw / prev_close) * 100
-                    return self._make_stock_result(symbol, latest_close, change_raw, change_pct)
-
-            if data.get('c', 0) > 0:
-                return self._make_stock_result(symbol, data['c'], data.get('d', 0), data.get('dp', 0))
-
-        except Exception:
-            return None
-        return None
-
-    def update_market_data(self, active_lists):
-        if time.time() - self.last_fetch < self.update_interval: return
-        target_symbols = set()
-        for list_key in active_lists:
-            if list_key in self.lists: target_symbols.update(self.lists[list_key])
-        if not target_symbols: return
-        
-        updated_count = 0
-        for symbol in list(target_symbols):
-            res = self._fetch_single_stock(symbol)
-            if res:
-                self.market_cache[res['symbol']] = {'price': res['price'], 'change_amt': res['change_amt'], 'change_pct': res['change_pct']}
-                updated_count += 1
-            if not self.simulated:
-                time.sleep(self.safe_sleep_time) 
-
-        if updated_count > 0:
-            self.last_fetch = time.time()
-            self.save_cache()
-
-    def get_stock_obj(self, symbol, label):
-        data = self.market_cache.get(symbol)
-        if not data: return None
-        return {
-            'type': 'stock_ticker', 'sport': 'stock', 'id': f"stk_{symbol}", 'status': label, 'tourney_name': label,
-            'state': 'in', 'is_shown': True, 'home_abbr': symbol, 
-            'home_score': data['price'], 'away_score': data['change_pct'],
-            'home_logo': self.get_logo_url(symbol), 'situation': {'change': data['change_amt']}, 
-            'home_color': '#FFFFFF', 'away_color': '#FFFFFF'
-        }
-
-    def get_list(self, list_key):
-        res = []
-        label = _LEAGUE_LABEL_MAP.get(list_key, "MARKET")
-        for sym in self.lists.get(list_key, []):
-            obj = self.get_stock_obj(sym, label)
-            if obj: res.append(obj)
-        return res
-
-class FlightTracker:
-    def __init__(self):
-        self.session = build_pooled_session(pool_size=10)
-        self.lock = threading.Lock()
-        self.visitor_flight = None
-        self.airport_arrivals = []
-        self.airport_departures = []
-        self.airport_weather = {"temp": "--", "cond": "LOADING"}
-        self.track_flight_id = ""
-        self.track_guest_name = ""
-        self.airport_code_icao = ""
-        self.airport_code_iata = ""
-        self.airport_name = ""
-        self.airline_filter = ""
-        self.last_visitor_fetch = 0
-        self.last_airport_fetch = 0
-        self.running = True
-        self._force_refresh = False
-        # Event to force immediate fetch when config changes
-        self.wake_event = threading.Event()
-        # Initialize FlightRadarAPI SDK if available
-        self.fr_api = FlightRadar24API() if FR24_SDK_AVAILABLE else None
-    
-    def force_update(self):
-        """Signal the flights_worker to immediately fetch new data."""
-        self._force_refresh = True
-        self.wake_event.set()
-    
-    def log(self, cat, msg):
-        # Suppress DEBUG-category output unless test_flights is on
-        if cat == 'DEBUG' and not TestMode.is_enabled('flights'):
-            return
-        print(f"[{dt.now().strftime('%H:%M:%S')}] {cat:<12} | {msg}")
-    
-    def fetch_fr24_schedule(self, mode='arrivals'):
-        """Includes delayed flights and sorts by closest arrival/departure time."""
-        if not self.airport_code_iata:
-            return []
-        try:
-            timestamp = int(time.time())
-            url = f"https://api.flightradar24.com/common/v1/airport.json?code={self.airport_code_iata}&plugin[]=schedule&plugin-setting[schedule][mode]={mode}&plugin-setting[schedule][timestamp]={timestamp}&page=1&limit=100"
-            headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
-            
-            res = self.session.get(url, headers=headers, timeout=TIMEOUTS['slow'])
-            if res.status_code != 200:
-                return []
-            
-            data = res.json()
-            schedule = safe_get(data, 'result', 'response', 'airport', 'pluginData', 'schedule', mode, default={})
-
-            if not schedule or 'data' not in schedule:
-                return []
-            
-            processed_list = []
-            for flight in schedule['data']:
-                try:
-                    f_data = safe_get(flight, 'flight', default={})
-                    status_text = safe_get(f_data, 'status', 'generic', 'status', 'text', default='').lower()
-
-                    # 1. Extract timestamps first so delay can gate the filter
-                    time_info = safe_get(f_data, 'time', default={})
-                    t_bucket = 'arrival' if mode == 'arrivals' else 'departure'
-
-                    sched_ts = safe_get(time_info, 'scheduled', t_bucket) or 0
-                    est_ts   = (safe_get(time_info, 'estimated', t_bucket)
-                                or safe_get(time_info, 'other', t_bucket))
-
-                    sort_ts = est_ts if est_ts else sched_ts
-                    if sort_ts == 0: continue  # skip if absolutely no time data
-
-                    # Detect delay: status text OR estimated 15+ min later than scheduled
-                    is_delayed = (
-                        'delay' in status_text or
-                        (sched_ts and est_ts and
-                         isinstance(sched_ts, (int, float)) and isinstance(est_ts, (int, float)) and
-                         (est_ts - sched_ts) >= 900)
-                    )
-
-                    # 2. Validate the flight actually operates at this airport
-                    # FR24 occasionally returns flights that route through but don't originate/terminate here
-                    if mode == 'arrivals':
-                        dest_iata = safe_get(f_data, 'airport', 'destination', 'code', 'iata', default='')
-                        if dest_iata and dest_iata.upper() != self.airport_code_iata.upper():
-                            continue
-                    else:
-                        origin_iata = safe_get(f_data, 'airport', 'origin', 'code', 'iata', default='')
-                        if origin_iata and origin_iata.upper() != self.airport_code_iata.upper():
-                            continue
-
-                    # 3. Filter finished flights — delayed flights always pass through
-                    if not is_delayed:
-                        if mode == 'arrivals' and status_text == 'landed': continue
-                        if mode == 'departures' and status_text == 'departed': continue
-
-                    # 4. Build display identifier — prefer ICAO callsign (3-letter) over IATA flight number
-                    callsign   = safe_get(f_data, 'identification', 'callsign', default='').strip()
-                    iata_num   = safe_get(f_data, 'identification', 'number', 'default', default='').strip()
-                    alt_num    = safe_get(f_data, 'identification', 'number', 'alternative', default='').strip()
-                    airline_icao = safe_get(f_data, 'airline', 'code', 'icao', default='').strip()
-                    airline_iata = safe_get(f_data, 'airline', 'code', 'iata', default='').strip()
-
-                    if callsign:
-                        # e.g. "UAE210", "UAL264" — already in 3-letter ICAO format
-                        display_id = callsign
-                    elif iata_num and airline_icao:
-                        # Strip IATA prefix and replace with ICAO: "EK210" → "UAE210"
-                        num_only = iata_num[len(airline_iata):] if (airline_iata and iata_num.startswith(airline_iata)) else iata_num
-                        display_id = f"{airline_icao}{num_only}"
-                    elif iata_num:
-                        display_id = iata_num
-                    elif alt_num:
-                        display_id = alt_num
-                    else:
-                        continue  # no usable identifier
-
-                    display_status = "DELAYED" if is_delayed else ("ARRIVING" if mode == 'arrivals' else "DEPARTING")
-
-                    city_key = 'origin' if mode == 'arrivals' else 'destination'
-                    city_code = safe_get(f_data, 'airport', city_key, 'code', 'iata', default='')
-                    
-                    entry = {
-                        'id': display_id,
-                        'status_label': display_status,
-                        'sort_time': sort_ts
-                    }
-                    if mode == 'arrivals':
-                        entry['from'] = get_airport_display_name(city_code)
-                    else:
-                        entry['to'] = get_airport_display_name(city_code)
-                        
-                    processed_list.append(entry)
-                except:
-                    continue
-            
-            # Deduplicate: same airline + same city + same departure minute = same flight
-            # (EK210 and UAE36K are identical — one is the IATA number, the other the ICAO callsign)
-            seen_keys = set()
-            deduped = []
-            for entry in processed_list:
-                city = entry.get('to') or entry.get('from') or ''
-                time_bucket = round(entry['sort_time'] / 60)  # bucket by minute
-                key = (time_bucket, city)
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    deduped.append(entry)
-            processed_list = deduped
-
-            # Sort by time so the closest 2 flights are selected
-            processed_list.sort(key=lambda x: x['sort_time'])
-
-            return processed_list[:2] # Return only the 2 closest flights
-            
-        except Exception as e:
-            self.log("ERROR", f"FR24 Schedule: {e}")
-            return []
-    
-    def parse_flight_code(self, flight_code):
-        """
-        Parse flight code and return (icao_code, iata_code, flight_num)
-        Examples: 
-        B61004 -> ('JBU', 'B6', '1004')
-        JBU1004 -> ('JBU', 'B6', '1004')
-        NK1149 -> ('NKS', 'NK', '1149')
-        UA72 -> ('UAL', 'UA', '72')
-        """
-        flight_code = flight_code.replace(" ", "").upper()
-
-        # Try 3-letter ICAO code first (JBU1004, UAL72)
-        if len(flight_code) >= 4:
-            potential_icao = flight_code[:3]
-            if potential_icao in _ICAO_TO_IATA:
-                return potential_icao, _ICAO_TO_IATA[potential_icao], flight_code[3:]
-
-        # Try 2-character IATA code (B61004, UA72, NK1149)
-        if len(flight_code) >= 3:
-            potential_iata = flight_code[:2]
-            if potential_iata in _IATA_TO_ICAO:
-                return _IATA_TO_ICAO[potential_iata], potential_iata, flight_code[2:]
-
-        # AI fallback — try both prefix lengths (3-letter ICAO first, then 2-letter IATA)
-        for prefix_len in (3, 2):
-            if len(flight_code) > prefix_len:
-                prefix = flight_code[:prefix_len]
-                icao, iata = ai_lookup_airline_codes(prefix)
-                if icao and iata:
-                    return icao, iata, flight_code[prefix_len:]
-
-        raise ValueError(f"Invalid flight code format: {flight_code}")
-
-    def fetch_airport_weather(self):
-        if not self.airport_code_iata: return {"temp": "--", "cond": "UNKNOWN"}
-        try:
-            # Use airport lat/lon from airportsdata for accurate weather
-            lat, lon = None, None
-            if AIRPORTS_DB and self.airport_code_iata in AIRPORTS_DB:
-                ap = AIRPORTS_DB[self.airport_code_iata]
-                lat, lon = ap.get('lat'), ap.get('lon')
-            
-            if lat is None or lon is None:
-                self.log("WEATHER", f"No coordinates for {self.airport_code_iata}")
-                return {"temp": "--", "cond": "UNKNOWN"}
-            
-            # Use Open-Meteo (same API as main weather widget) — free, no key, reliable
-            url = (f"https://api.open-meteo.com/v1/forecast?"
-                   f"latitude={lat}&longitude={lon}"
-                   f"&current=temperature_2m,weather_code"
-                   f"&temperature_unit=fahrenheit&timezone=auto")
-            
-            self.log("WEATHER", f"Fetching weather from Open-Meteo for {self.airport_code_iata} ({lat},{lon})")
-            res = self.session.get(url, timeout=TIMEOUTS['slow'])
-            if res.status_code == 200:
-                data = res.json()
-                current = data.get('current', {})
-                temp_f = current.get('temperature_2m')
-                wmo_code = current.get('weather_code', -1)
-                cond = WMO_DESCRIPTIONS.get(wmo_code, "UNKNOWN")
-                if temp_f is not None:
-                    return {"temp": f"{int(round(temp_f))}F", "cond": cond}
-        except Exception as e:
-            self.log("ERROR", f"Airport weather fetch failed: {e}")
-        return {"temp": "--", "cond": "UNKNOWN"}
-    
-    def fetch_airport_activity(self):
-        try:
-            target_iata = self.airport_code_iata
-            if not target_iata:
-                return
-            self.log("DEBUG", f"Starting airport fetch for {target_iata}")
-
-            # Fetch arrivals, departures, and weather in parallel
-            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-                f_arr = pool.submit(self.fetch_fr24_schedule, 'arrivals')
-                f_dep = pool.submit(self.fetch_fr24_schedule, 'departures')
-                f_wx  = pool.submit(self.fetch_airport_weather)
-                arrivals   = f_arr.result()
-                departures = f_dep.result()
-                weather    = f_wx.result()
-
-            # Single airport-change guard after all three complete
-            if self.airport_code_iata != target_iata:
-                self.log("DEBUG", f"Airport changed mid-fetch, discarding results")
-                return
-
-            with self.lock:
-                self.airport_arrivals = arrivals
-                self.airport_departures = departures
-                self.airport_weather = weather
-            self.log("AIRPORT", f"{target_iata}: {len(arrivals)} arr, {len(departures)} dep | Weather: {weather['temp']}")
-        except Exception as e:
-            self.log("ERROR", f"Airport Loop: {e}")
-    
-    def fetch_visitor_tracking(self):
-        if not self.track_flight_id: return
-        
-        try:
-            self.log("TRACKER", f"Fetching flight: {self.track_flight_id}")
-            fr24_data = self.fetch_fr24_flight(self.track_flight_id)
-            
-            if fr24_data:
-                dest = fr24_data['destination']
-                origin = fr24_data['origin']
-                
-                speed_mph = int(fr24_data['speed_kts'] * 1.15078)
-                is_live = fr24_data['is_live']
-                delay_min = fr24_data.get('delay_min')
-                status_text = (fr24_data.get('status_text') or '').lower()
-                is_delayed = (delay_min is not None and delay_min >= 15) or ('delay' in status_text)
-                status = 'delayed' if is_delayed else ('en-route' if is_live else 'scheduled')
-                eta_str = "DELAYED" if is_delayed else ("EN ROUTE" if is_live else "SCHEDULED")
-                
-                dist = 0
-                progress = 0
-                
-                if is_live and dest in AIRPORTS_DB:
-                    to_airport = AIRPORTS_DB[dest]
-                    lat, lon = fr24_data['latitude'], fr24_data['longitude']
-                    
-                    if lat and lon:
-                        dist_nm = haversine(lat, lon, to_airport['lat'], to_airport['lon'])
-                        dist = int(dist_nm * 1.15078)
-                        
-                        if origin in AIRPORTS_DB:
-                            from_airport = AIRPORTS_DB[origin]
-                            total_dist = haversine(from_airport['lat'], from_airport['lon'], 
-                                                   to_airport['lat'], to_airport['lon'])
-                            dist_from = haversine(from_airport['lat'], from_airport['lon'], lat, lon)
-                            
-                            if total_dist > 0:
-                                progress = max(0, min(100, int((dist_from / total_dist) * 100)))
-                        
-                        est_arr = fr24_data.get('est_arr')
-                        if est_arr:
-                            remaining_secs = est_arr - int(time.time())
-                            if remaining_secs > 0:
-                                mins = int(remaining_secs / 60)
-                                h, m = divmod(mins, 60)
-                                eta_str = f"{h}H {m}M" if h > 0 else f"{m} MIN"
-                            else:
-                                eta_str = "LANDING"
-                        elif speed_mph > 0:
-                            mins = int((dist / speed_mph) * 60)
-                            h, m = divmod(mins, 60)
-                            eta_str = f"{h}H {m}M" if h > 0 else f"{m} MIN"
-
-                with self.lock:
-                    self.visitor_flight = {
-                        'type': 'flight_visitor',
-                        'sport': 'flight',
-                        'id': self.track_flight_id,
-                        'guest_name': self.track_guest_name or self.track_flight_id,
-                        'route': f"{origin} > {dest}",
-                        'origin_city': get_airport_display_name(origin), # Shortened Name
-                        'dest_city': get_airport_display_name(dest),     # Shortened Name
-                        'alt': fr24_data['altitude'],
-                        'dist': dist,
-                        'eta_str': eta_str,
-                        'speed': speed_mph,
-                        'progress': progress,
-                        'status': status,
-                        'delay_min': delay_min,
-                        'is_delayed': is_delayed,
-                        'is_live': is_live,
-                        'aircraft_type': fr24_data.get('aircraft_type', ''),
-                        'aircraft_code': fr24_data.get('aircraft_code', ''),
-                        'is_shown': True
-                    }
-                self.log("TRACKER", f"{self.track_flight_id} (FR24) {status} | {fr24_data['altitude']}ft")
-                return
-            else:
-                self.log("TRACKER", f"No FR24 match for {self.track_flight_id}")
-                
-            # Fallback
-            with self.lock:
-                self.visitor_flight = {
-                    'type': 'flight_visitor',
-                    'sport': 'flight',
-                    'id': self.track_flight_id,
-                    'guest_name': self.track_guest_name or self.track_flight_id,
-                    'route': "UNK > UNK",
-                    'origin_city': "UNKNOWN",
-                    'dest_city': "UNKNOWN",
-                    'alt': 0, 'dist': 0, 'eta_str': "PENDING", 'speed': 0, 'progress': 0,
-                    'status': "pending", 'is_shown': True
-                }
-
-        except Exception as e:
-            self.log("ERROR", f"Visitor Tracking: {e}")
-
-    def fetch_fr24_flight(self, flight_id):
-        """Fetch flight data using FlightRadarAPI SDK"""
-        try:
-            if not self.fr_api: 
-                self.log("ERROR", "FlightRadar24 API not initialized")
-                return None
-
-            def _parse_ts(value):
-                if isinstance(value, dict):
-                    for key in ['utc', 'unix', 'time', 'timestamp']:
-                        if key in value:
-                            value = value.get(key)
-                            break
-                try:
-                    return int(value)
-                except Exception:
-                    return None
-
-            def _get_time(time_info, bucket, point):
-                block = time_info.get(bucket) or {}
-                raw = block.get(point)
-                return _parse_ts(raw)
-
-            def _extract_delay_minutes(details):
-                if not details:
-                    return None, "", None
-                time_info = details.get('time') or {}
-                sched_arr = _get_time(time_info, 'scheduled', 'arrival')
-                est_arr = (_get_time(time_info, 'estimated', 'arrival') or
-                           _get_time(time_info, 'real', 'arrival') or
-                           _get_time(time_info, 'actual', 'arrival'))
-                sched_dep = _get_time(time_info, 'scheduled', 'departure')
-                est_dep = (_get_time(time_info, 'estimated', 'departure') or
-                           _get_time(time_info, 'real', 'departure') or
-                           _get_time(time_info, 'actual', 'departure'))
-                delay_min = None
-                if sched_arr and est_arr:
-                    delay_min = max(0, int((est_arr - sched_arr) / 60))
-                elif sched_dep and est_dep:
-                    delay_min = max(0, int((est_dep - sched_dep) / 60))
-
-                status_block = details.get('status') or {}
-                status_text = str(
-                    status_block.get('text') or
-                    status_block.get('description') or
-                    status_block.get('status') or
-                    details.get('statusText') or ''
-                )
-                return delay_min, status_text, est_arr
-            
-            # Parse the flight code
-            icao, iata, flight_num = self.parse_flight_code(flight_id)
-            
-            self.log("INFO", f"Searching for flight {flight_id} (ICAO: {icao}, IATA: {iata}, #: {flight_num})")
-            
-            # Try airline-filtered search first
-            try:
-                flights = self.fr_api.get_flights(airline=icao)
-                if flights:
-                    self.log("INFO", f"Got {len(flights)} {icao} flights from API")
-            except Exception as e:
-                self.log("DEBUG", f"Airline filter failed, trying all flights: {e}")
-                flights = self.fr_api.get_flights()
-                if flights:
-                    self.log("INFO", f"Got {len(flights)} total flights from API")
-            
-            if not flights:
-                self.log("WARNING", f"No flights returned by API - service may be down")
-                return None
-            
-            # Build search variants
-            search_strings = [
-                f"{icao}{flight_num}",      # UAL72, JBU1004
-                f"{iata}{flight_num}",      # UA72, B61004
-            ]
-            
-            # Add zero-padded variants for short flight numbers
-            if len(flight_num) < 4:
-                search_strings.extend([
-                    f"{icao}{flight_num.zfill(4)}",  # UAL0072
-                    f"{iata}{flight_num.zfill(4)}",  # UA0072
-                ])
-            
-            # Search for the flight
-            target_flight = None
-            
-            for flight in flights:
-                f_num = (flight.number or "").upper().replace(" ", "")
-                f_call = (flight.callsign or "").upper().replace(" ", "")
-                
-                for search_str in search_strings:
-                    if search_str in [f_num, f_call]:
-                        target_flight = flight
-                        self.log("INFO", f"✓ Found {flight_id}: {f_num} ({f_call})")
-                        break
-                
-                if target_flight:
-                    break
-            
-            if not target_flight:
-                self.log("WARNING", f"Flight {flight_id} not found - may not be airborne right now")
-                self.log("DEBUG", f"Searched for: {search_strings}")
-                return None
-            
-            # Get detailed information if available
-            details = None
-            try:
-                details = self.fr_api.get_flight_details(target_flight)
-                target_flight.set_flight_details(details)
-            except Exception as e:
-                self.log("DEBUG", f"Could not get detailed info: {e}")
-
-            delay_min, status_text, est_arr = _extract_delay_minutes(details)
-
-            # Aircraft type: prefer detailed model from FR24, fall back to ICAO type code normalization
-            fr24_model = getattr(target_flight, 'aircraft_model', None) or ''
-            icao_type = getattr(target_flight, 'aircraft_code', None) or ''
-            aircraft_type = normalize_aircraft_type(icao_type, fr24_model if fr24_model else None)
-            if aircraft_type:
-                self.log("INFO", f"Aircraft type for {flight_id}: {aircraft_type} (code: {icao_type})")
-
-            return {
-                'flight_id': flight_id,
-                'origin': target_flight.origin_airport_iata or 'UNK',
-                'destination': target_flight.destination_airport_iata or 'UNK',
-                'latitude': target_flight.latitude,
-                'longitude': target_flight.longitude,
-                'altitude': target_flight.altitude or 0,
-                'speed_kts': target_flight.ground_speed or 0,
-                'is_live': (target_flight.altitude or 0) > 0,
-                'delay_min': delay_min,
-                'status_text': status_text,
-                'est_arr': est_arr,
-                'aircraft_type': aircraft_type,
-                'aircraft_code': icao_type
-            }
-            
-        except ValueError as e:
-            self.log("ERROR", f"Invalid flight code '{flight_id}': {e}")
-            return None
-        except Exception as e:
-            self.log("ERROR", f"Error fetching flight {flight_id}: {e}")
-            return None
-    
-    def get_visitor_object(self):
-        with self.lock:
-            return self.visitor_flight.copy() if self.visitor_flight else None
-    
-    def get_airport_objects(self):
-        with self.lock:
-            result = []
-            self.log("DEBUG", f"get_airport_objects called - arrivals: {len(self.airport_arrivals)}, departures: {len(self.airport_departures)}")
-            result.append({
-                'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx',
-                'home_abbr': self.airport_name or self.airport_code_icao,
-                'away_abbr': self.airport_weather['temp'], 'status': self.airport_weather['cond'], 'is_shown': True
-            })
-            for i, arr in enumerate(self.airport_arrivals[:2]):
-                # Use specific status if available, else fallback
-                st = arr.get('status_label', 'ARRIVING')
-                result.append({'type': 'flight_arrival', 'sport': 'flight', 'id': f"arr_{i}", 'status': st, 'home_abbr': arr['from'], 'away_abbr': arr['id'], 'is_shown': True})
-            for i, dep in enumerate(self.airport_departures[:2]):
-                st = dep.get('status_label', 'DEPARTING')
-                result.append({'type': 'flight_departure', 'sport': 'flight', 'id': f"dep_{i}", 'status': st, 'home_abbr': dep['to'], 'away_abbr': dep['id'], 'is_shown': True})
-            return result
-
-class SportsFetcher:
-    def __init__(self, initial_city, initial_lat, initial_lon):
-        self.weather = WeatherFetcher(initial_lat=initial_lat, initial_lon=initial_lon, city=initial_city)
-        self.stocks = StockFetcher()
-        self.possession_cache = {} 
-        self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
-        
-        # CHANGE 1: Reduce Pool Size to 15 (Save RAM)
-        self.session = build_pooled_session(pool_size=15)
-        
-        # CHANGE 2: Use Configured Thread Count (10)
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=WORKER_THREAD_COUNT)
-        
-        # CHANGE 3: Add New Caches for Smart Sleep
-        self.history_buffer = [] 
-        self.final_game_cache = {}      # Stores finished games so we don't re-fetch
-        self.league_next_update = {}    # Stores "Wake Up" time for sleeping leagues
-        self.league_last_data = {}      # Stores last data for sleeping leagues
-        
-        self.consecutive_empty_fetches = 0
-        # abbr-keyed index rebuilt in fetch_all_teams — O(1) team lookups
-        self._teams_abbr_index: dict = {}  # league -> {abbr -> team_entry}
-        # Per-mode content buffers: mode_name → list[game_obj]
-        # Sports/live/my_teams share the same raw buffer; filtering happens in /data.
-        self._mode_buffers: dict = {}
-        self._mode_buffer_lock = threading.Lock()
-        
-        self.leagues = { 
-            item['id']: item['fetch'] 
-            for item in LEAGUE_OPTIONS 
-            if item['type'] == 'sport' and 'fetch' in item 
-        }
-
-    def _calculate_next_update(self, games):
-        """Returns TIMESTAMP when we should next fetch this league"""
-        if not games: return 0 
-        now = time.time()
-        earliest_start = None
-        
-        for g in games:
-            # If ACTIVE (In/Half/Crit) -> Fetch Immediately (0)
-            if g['state'] in ['in', 'half', 'crit']: return 0
-            
-            # If SCHEDULED -> Track earliest start time
-            if g['state'] == 'pre':
-                try:
-                    ts = parse_iso(g['startTimeUTC']).timestamp()
-                    if earliest_start is None or ts < earliest_start: earliest_start = ts
-                except: pass
-        
-        # If games are in future, sleep until 60s before start
-        if earliest_start:
-            wake_time = earliest_start - 60 
-            if wake_time > now: return wake_time
-            return 0
-            
-        # If all FINAL -> Sleep 60s
-        return now + 60
-
-    def get_corrected_logo(self, league_key, abbr, default_logo):
-        return LOGO_OVERRIDES.get(f"{league_key.upper()}:{abbr}", default_logo)
-
-    def _extract_color_from_logo(self, logo_url):
-        """Download the team logo and return the dominant non-white, non-transparent color as a hex string, or None on failure."""
-        if not logo_url or not PIL_AVAILABLE:
-            return None
-        try:
-            r = self.session.get(logo_url, timeout=5)
-            r.raise_for_status()
-            img = _PIL_Image.open(io.BytesIO(r.content)).convert('RGBA')
-            img = img.resize((64, 64))
-            freq = {}
-            for px in img.getdata():
-                r_val, g_val, b_val, a_val = px
-                if a_val < 128:
-                    continue
-                brightness = (r_val + g_val + b_val) / 3
-                if brightness > 240:
-                    continue
-                # Quantize to reduce noise
-                key = (r_val // 32 * 32, g_val // 32 * 32, b_val // 32 * 32)
-                freq[key] = freq.get(key, 0) + 1
-            if not freq:
-                return None
-            best = max(freq, key=freq.get)
-            return '{:02X}{:02X}{:02X}'.format(*best)
-        except Exception:
-            return None
-
-    def lookup_team_info_from_cache(self, league, abbr, name=None, logo=None):
-        search_abbr = ABBR_MAPPING.get(abbr, abbr)
-
-        if 'soccer' in league:
-            name_check = name.lower() if name else ""
-            abbr_check = search_abbr.lower()
-            for k, v in SOCCER_COLOR_FALLBACK.items():
-                if k in name_check or k == abbr_check:
-                    return {'color': v, 'alt_color': '444444'}
-
-        try:
-            # O(1) abbr lookup via pre-built index
-            league_idx = self._teams_abbr_index.get(league, {})
-            t = league_idx.get(search_abbr)
-            if t:
-                return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
-
-            # Fallback: name-based scan (rare — only for teams without standard abbr)
-            if name:
-                name_lower = name.lower()
-                with data_lock:
-                    teams = state['all_teams_data'].get(league, [])
-                for t in teams:
-                    t_name = t.get('name', '').lower()
-                    t_short = t.get('shortName', '').lower()
-                    if (name_lower in t_name) or (t_name in name_lower) or \
-                       (name_lower in t_short) or (t_short in name_lower):
-                        return {'color': t.get('color', '000000'), 'alt_color': t.get('alt_color', '444444')}
-        except: pass
-        logo_color = self._extract_color_from_logo(logo)
-        return {'color': logo_color or '000000', 'alt_color': '444444'}
-
-    def calculate_game_timing(self, sport, start_utc, period, status_detail):
-        duration = SPORT_DURATIONS.get(sport, 180) 
-        ot_padding = 0
-        if 'OT' in str(status_detail) or 'S/O' in str(status_detail):
-            if sport in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs']:
-                ot_count = 1
-                if '2OT' in status_detail: ot_count = 2
-                elif '3OT' in status_detail: ot_count = 3
-                ot_padding = ot_count * 20
-            elif sport == 'nhl':
-                ot_padding = 20
-            elif sport == 'mlb' and period > 9:
-                ot_padding = (period - 9) * 20
-        return duration + ot_padding
-
-    def _fetch_simple_league(self, league_key, catalog, seen_ids):
-        config = self.leagues[league_key]
-        if 'team_params' not in config: return
-        try:
-            r = self.session.get(f"{self.base_url}{config['path']}/teams", params=config['team_params'], headers=HEADERS, timeout=TIMEOUTS['slow'])
-            data = r.json()
-            if 'sports' in data:
-                for sport in data['sports']:
-                    for league in sport['leagues']:
-                        for item in league.get('teams', []):
-                            abbr = item['team'].get('abbreviation', 'unk')
-                            scoped_id = f"{league_key}:{abbr}"
-                            if scoped_id in seen_ids[league_key]:
-                                continue
-                            seen_ids[league_key].add(scoped_id)
-
-                            clr = item['team'].get('color', '000000')
-                            alt = item['team'].get('alternateColor', '444444')
-                            logo = item['team'].get('logos', [{}])[0].get('href', '')
-                            logo = self.get_corrected_logo(league_key, abbr, logo)
-                            name = item['team'].get('displayName', '')
-                            short_name = item['team'].get('shortDisplayName', '')
-
-                            catalog[league_key].append({
-                                'abbr': abbr,
-                                'id': scoped_id,
-                                'logo': logo,
-                                'color': clr,
-                                'alt_color': alt,
-                                'name': name,
-                                'shortName': short_name
-                            })
-        except Exception as e: print(f"Error fetching teams for {league_key}: {e}")
-
-    def fetch_all_teams(self):
-        try:
-            teams_catalog = {k: [] for k in self.leagues.keys()}
-            # Per-league seen-ID sets for O(1) deduplication (replaces any() linear scan)
-            seen_ids: dict = {k: set() for k in self.leagues.keys()}
-
-            # NCAA college teams — O(1) dedup via seen_ids sets
-            ncf_seen = {'ncf_fbs': set(), 'ncf_fcs': set()}
-            url = f"{self.base_url}football/college-football/teams"
-            r = self.session.get(url, params={'limit': 1000, 'groups': '80,81'}, headers=HEADERS, timeout=TIMEOUTS['slow'])
-            data = r.json()
-            if 'sports' in data:
-                for sport in data['sports']:
-                    for league in sport['leagues']:
-                        for item in league.get('teams', []):
-                            t_abbr = item['team'].get('abbreviation', 'unk')
-                            t_clr = item['team'].get('color', '000000')
-                            t_alt = item['team'].get('alternateColor', '444444')
-                            logos = item['team'].get('logos', [])
-                            t_logo = logos[0].get('href', '') if logos else ''
-
-                            if t_abbr in FBS_TEAMS:
-                                scoped_id = f"ncf_fbs:{t_abbr}"
-                                if scoped_id not in ncf_seen['ncf_fbs']:
-                                    ncf_seen['ncf_fbs'].add(scoped_id)
-                                    t_logo = self.get_corrected_logo('ncf_fbs', t_abbr, t_logo)
-                                    teams_catalog['ncf_fbs'].append({'abbr': t_abbr, 'id': scoped_id, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
-                            elif t_abbr in FCS_TEAMS:
-                                scoped_id = f"ncf_fcs:{t_abbr}"
-                                if scoped_id not in ncf_seen['ncf_fcs']:
-                                    ncf_seen['ncf_fcs'].add(scoped_id)
-                                    t_logo = self.get_corrected_logo('ncf_fcs', t_abbr, t_logo)
-                                    teams_catalog['ncf_fcs'].append({'abbr': t_abbr, 'id': scoped_id, 'logo': t_logo, 'color': t_clr, 'alt_color': t_alt})
-
-            futures = []
-            leagues_to_fetch = [
-                'nfl', 'mlb', 'nhl', 'nba', 'march_madness',
-                'soccer_epl', 'soccer_fa_cup', 'soccer_champ', 'soccer_l1', 'soccer_l2', 'soccer_wc', 'soccer_champions_league', 'soccer_europa_league', 'soccer_mls'
-            ]
-            for lk in leagues_to_fetch:
-                if lk in self.leagues:
-                    futures.append(self.executor.submit(self._fetch_simple_league, lk, teams_catalog, seen_ids))
-            concurrent.futures.wait(futures)
-
-            # Build abbr-keyed index for O(1) lookup in lookup_team_info_from_cache
-            new_index = {
-                league: {entry['abbr']: entry for entry in entries}
-                for league, entries in teams_catalog.items()
-            }
-
-            with data_lock:
-                state['all_teams_data'] = teams_catalog
-            self._teams_abbr_index = new_index
-        except Exception as e: print(f"Global Team Fetch Error: {e}")
-            
-    def check_shootout(self, game, summary=None):
-        if summary:
-            if summary.get("hasShootout"): return True
-            if summary.get("shootoutDetails"): return True
-            
-            so_section = (
-                summary.get("shootout") or summary.get("Shootout") or 
-                summary.get("shootOut") or summary.get("SO")
-            )
-            if so_section: return True
-            
-            summary_status = str(
-                summary.get("gameStatusString") or summary.get("gameStatus") or 
-                summary.get("status") or ""
-            ).lower()
-            if "so" in summary_status or "shootout" in summary_status or "s/o" in summary_status:
-                return True
-        
-        period = str(game.get("Period", "") or game.get("period", ""))
-        period_name = str(game.get("PeriodNameShort", "") or game.get("periodNameShort", "")).upper()
-        
-        if period == "5": return True
-        if period_name == "SO" or "SHOOTOUT" in period_name: return True
-        
-        status = str(
-            game.get("GameStatusString") or game.get("game_status") or 
-            game.get("GameStatusStringLong") or ""
-        ).lower()
-        
-        if "so" in status or "shootout" in status or "s/o" in status:
-            return True
-            
-        return False
-
-    def fetch_shootout_details(self, game_id, away_id, home_id):
-        try:
-            url = f"https://api-web.nhle.com/v1/gamecenter/{game_id}/play-by-play"
-            r = self.session.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=TIMEOUTS['quick'])
-            if r.status_code != 200: return None
-            data = r.json(); plays = data.get("plays", [])
-            native_away = data.get("awayTeam", {}).get("id")
-            native_home = data.get("homeTeam", {}).get("id")
-            results = {'away': [], 'home': []}
-            for play in plays:
-                if play.get("periodDescriptor", {}).get("periodType") != "SO": continue
-                type_key = play.get("typeDescKey")
-                if type_key not in {"goal", "shot-on-goal", "missed-shot"}: continue
-                details = play.get("details", {})
-                team_id = details.get("eventOwnerTeamId")
-                res_code = "goal" if type_key == "goal" else "miss"
-                if team_id == native_away: results['away'].append(res_code)
-                elif team_id == native_home: results['home'].append(res_code)
-            return results
-        except: return None
-
-    def _fetch_nhl_landing(self, gid):
-        try:
-            r = self.session.get(f"https://api-web.nhle.com/v1/gamecenter/{gid}/landing", headers=HEADERS, timeout=TIMEOUTS['quick'])
-            if r.status_code == 200: return r.json()
-        except: pass
-        return None
-
-    def _fetch_nhl_native(self, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc):
-        games_found = []
-        is_nhl = conf['active_sports'].get('nhl', False)
-        if not is_nhl: return []
-        
-        processed_ids = set()
-        try:
-            r = self.session.get("https://api-web.nhle.com/v1/schedule/now", headers=HEADERS, timeout=TIMEOUTS['stock'])
-            if r.status_code != 200: return []
-
-            landing_futures = {}
-            _local_tz = timezone(timedelta(hours=conf.get('utc_offset', -5)))
-
-            for d in r.json().get('gameWeek', []):
-                for g in d.get('games', []):
-                    try:
-                        # Filter out non-NHL events (e.g. 9 = Olympics, 6 = World Cup)
-                        # Keep 1 (Preseason), 2 (Regular Season), 3 (Playoffs), 4 (All-Star)
-                        if int(g.get('gameType', 2)) not in [1, 2, 3, 4]:
-                            continue
-
-                        g_utc = g.get('startTimeUTC')
-                        if not g_utc: continue
-                        g_dt = parse_iso(g_utc)
-                        if not (window_start_utc <= g_dt <= window_end_utc): continue
-                    except: continue
-
-                    gid = g['id']
-                    if gid in processed_ids: continue
-                    processed_ids.add(gid)
-                    
-                    st = g.get('gameState', 'OFF')
-                    if st in ['LIVE', 'CRIT', 'FINAL', 'OFF']:
-                        landing_futures[gid] = self.executor.submit(self._fetch_nhl_landing, gid)
-            
-            processed_ids.clear() 
-            for d in r.json().get('gameWeek', []):
-                for g in d.get('games', []):
-                    try:
-                        # Filter out non-NHL events here as well
-                        if int(g.get('gameType', 2)) not in [1, 2, 3, 4]:
-                            continue
-
-                        g_utc = g.get('startTimeUTC')
-                        if not g_utc: continue
-                        g_dt = parse_iso(g_utc)
-
-                        if g_dt < visible_start_utc or g_dt >= visible_end_utc:
-                            st = g.get('gameState', 'OFF')
-                            if st not in ['LIVE', 'CRIT']:
-                                continue
-                    except: continue
-
-                    gid = g['id']
-                    if gid in processed_ids: continue
-                    processed_ids.add(gid)
-
-                    st = g.get('gameState', 'OFF')
-                    map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
-
-                    # === FIX: NORMALIZE ABBREVIATIONS FOR MY TEAMS COMPATIBILITY ===
-                    raw_h = g['homeTeam']['abbrev']; raw_a = g['awayTeam']['abbrev']
-                    h_ab = ABBR_MAPPING.get(raw_h, raw_h) # Translates LAK -> LA
-                    a_ab = ABBR_MAPPING.get(raw_a, raw_a) # Translates TBL -> TB
-                    # === FIX END ===
-
-                    h_sc = str(g['homeTeam'].get('score', 0)); a_sc = str(g['awayTeam'].get('score', 0))
-                    
-                    h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
-                    a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
-                    h_info = self.lookup_team_info_from_cache('nhl', h_ab, logo=h_lg)
-                    a_info = self.lookup_team_info_from_cache('nhl', a_ab, logo=a_lg)
-                    
-                    if st in ['SUSP', 'SUSPENDED', 'PPD', 'POSTPONED']:
-                        map_st = 'post'
-
-                    disp = "Scheduled"; pp = False; poss = ""; en = False; shootout_data = None 
-                    dur = self.calculate_game_timing('nhl', g_utc, 1, st)
-                    
-                    g_local = g_dt.astimezone(_local_tz)
-
-                    if st in ['PRE', 'FUT']:
-                           try: disp = g_local.strftime("%I:%M %p").lstrip('0')
-                           except: pass
-                    elif st in ['FINAL', 'OFF']:
-                          disp = "FINAL"
-                          pd = g.get('periodDescriptor', {})
-                          if pd.get('periodType', '') == 'SHOOTOUT' or pd.get('number', 0) >= 5: disp = "FINAL S/O"
-                          elif pd.get('periodType', '') == 'OT' or pd.get('number', 0) == 4: disp = "FINAL OT"
-
-                    if gid in landing_futures:
-                        try:
-                            d2 = landing_futures[gid].result()
-                            if d2:
-                                h_sc = str(d2['homeTeam'].get('score', h_sc)); a_sc = str(d2['awayTeam'].get('score', a_sc))
-                                pd = d2.get('periodDescriptor', {})
-                                clk = d2.get('clock', {}); time_rem = clk.get('timeRemaining', '00:00')
-                                p_type = pd.get('periodType', '')
-                                
-                                if st in ['FINAL', 'OFF']:
-                                    p_num_final = pd.get('number', 3)
-                                    if p_type == 'SHOOTOUT' or p_num_final >= 5: disp = "FINAL S/O"
-                                    elif p_type == 'OT' or p_num_final == 4: disp = "FINAL OT"
-                                
-                                p_num = pd.get('number', 1)
-
-                                if p_type == 'SHOOTOUT' or p_num >= 5:
-                                    if map_st == 'in': disp = "S/O"
-                                    shootout_data = self.fetch_shootout_details(gid, 0, 0)
-                                else:
-                                    if map_st == 'in':
-                                        if clk.get('inIntermission', False) or time_rem == "00:00":
-                                            if p_num == 1: disp = "End 1st"
-                                            elif p_num == 2: disp = "End 2nd"
-                                            elif p_num == 3: disp = "End 3rd"
-                                            else: disp = "End OT"
-                                        else:
-                                            if p_num == 4:
-                                                p_lbl = "OT"
-                                            else:
-                                                p_lbl = f"P{p_num}"
-                                            
-                                            disp = f"{p_lbl} {time_rem}"
-                                    
-                                sit_obj = d2.get('situation', {})
-                                if sit_obj:
-                                    sit = sit_obj.get('situationCode', '1551')
-                                    ag = int(sit[0]); as_ = int(sit[1]); hs = int(sit[2]); hg = int(sit[3])
-                                    if as_ > hs: pp=True; poss=a_ab
-                                    elif hs > as_: pp=True; poss=h_ab
-                                    en = (ag==0 or hg==0)
-                        except: pass 
-
-                    if "FINAL" in disp:
-                        shootout_data = None
-
-                    games_found.append({
-                        'type': 'scoreboard',
-                        'sport': 'nhl', 'id': str(gid), 'status': disp, 'state': map_st, 'is_shown': True,
-                        'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
-                        'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
-                        'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
-                        'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
-                        'startTimeUTC': g_utc,
-                        'estimated_duration': dur,
-                        'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en, 'shootout': shootout_data }
-                    })
-            return games_found
+            r = subprocess.run(['nmcli', '-t', '-f', 'SSID', 'dev', 'wifi', 'list'], capture_output=True, text=True)
+            return sorted(list(set([n for n in r.stdout.split('\n') if n.strip()])))
         except: return []
+    def check_internet(self):
+        try: socket.create_connection(("8.8.8.8", 53), timeout=3); return True
+        except: return False
+    def run(self):
+        if self.check_internet(): return True
+        img = Image.new("RGB", (PANEL_W, PANEL_H), (0,0,0)); d = ImageDraw.Draw(img)
+        d.text((2, 2), "WIFI SETUP MODE", font=self.font, fill=(255, 255, 0))
+        d.text((2, 12), f"SSID: {SETUP_SSID}", font=self.font, fill=(255, 255, 255))
+        self.matrix.SetImage(img.convert("RGB"))
+        subprocess.run(['nmcli', 'dev', 'wifi', 'hotspot', 'ifname', 'wlan0', 'ssid', SETUP_SSID, 'password', SETUP_PASS])
+        try: self.app.run(host='0.0.0.0', port=80)
+        except: pass
 
-    def parse_side_list(self, side_list):
-        seq = []
-        for attempt in side_list or []:
-            if not isinstance(attempt, dict):
-                seq.append("pending")
-                continue
-            result = (attempt.get("result") or attempt.get("outcome") or "").lower()
-            if result in {"goal", "scored", "score", "converted"}:
-                seq.append("goal")
-                continue
-            if result in {"miss", "missed", "failed", "saved", "fail"}:
-                seq.append("miss")
-                continue
-            if attempt.get("scored") is True:
-                seq.append("goal")
-                continue
-            if attempt.get("scored") is False:
-                seq.append("miss")
-                continue
-            seq.append("pending")
-        return seq
+# ================= MAIN CONTROLLER =================
+class TickerStreamer:
+    def __init__(self):
+        print("Starting Ticker System...")
+        self.device_id = get_device_id()
+        print(f"  Device ID: {self.device_id}")
+        if not os.path.exists(ASSETS_DIR):
+            os.makedirs(ASSETS_DIR, exist_ok=True)
 
-    def parse_shootout(self, raw, home_id=None, away_id=None, general_home=None, general_away=None):
-        if not raw:
-            return [], [], None, None
+        self.mode = 'sports'
+        self.mode_override = None
+        self.running = True
 
-        pen_home_score = raw.get("homeScore") if isinstance(raw, dict) else None
-        pen_away_score = raw.get("awayScore") if isinstance(raw, dict) else None
+        options = RGBMatrixOptions()
+        options.rows = 32
+        options.cols = 64
+        options.chain_length = 6
+        options.parallel = 1
+        options.hardware_mapping = 'regular'
+        options.gpio_slowdown = 2
+        options.disable_hardware_pulsing = True
+        options.drop_privileges = False
+        self.matrix = RGBMatrix(options=options)
 
-        for hk, ak in (("home", "away"), ("homeTeam", "awayTeam"), ("homePenalties", "awayPenalties")):
-            if hk in raw or ak in raw:
-                return (
-                    self.parse_side_list(raw.get(hk) or []),
-                    self.parse_side_list(raw.get(ak) or []),
-                    pen_home_score,
-                    pen_away_score,
-                )
+        self.font = load_monospace_font(10, bold=True)
+        self.medium_font = load_monospace_font(12, bold=True)
+        self.big_font = load_monospace_font(14, bold=True)
+        self.huge_font = load_monospace_font(20, bold=True)
+        self.clock_giant = load_monospace_font(28, bold=True)
+        self.tiny = load_monospace_font(9)
+        self.micro = load_monospace_font(7)
+        self.nano = load_monospace_font(5)
+        self.score_default_font = ImageFont.load_default()
 
-        seq = raw.get("sequence") if isinstance(raw, dict) else raw if isinstance(raw, list) else []
-        home_seq, away_seq = [], []
-        for attempt in seq or []:
-            if not isinstance(attempt, dict):
-                continue
-            team_id = attempt.get("teamId") or attempt.get("team")
-            side = attempt.get("side") or attempt.get("teamSide")
-            is_home = False
-            if team_id is not None:
-                is_home = team_id in {home_id, general_home} if home_id or general_home else False
-                if not is_home:
-                    is_home = team_id not in {away_id, general_away} if (home_id or general_home) else False
-            elif isinstance(side, str):
-                is_home = side.lower() in {"home", "h"}
+        self.portal = WifiPortal(self.matrix, self.font)
+        threading.Thread(target=self.portal.run, daemon=True).start()
 
-            parsed = self.parse_side_list([attempt])[0]
-            (home_seq if is_home else away_seq).append(parsed)
+        self.games = []
+        self.brightness = 1.0
+        self.scroll_sleep = 0.05
+        self.inverted = False
+        self.is_pairing = False
+        self.pairing_code = ""
+        self.logo_cache = {}
+        self.game_render_cache = {}
+        self.anim_tick = 0
 
-        return home_seq, away_seq, pen_home_score, pen_away_score
+        # Active state management
+        self.active_strip = None
+        self.bg_strip = None
+        self.bg_strip_ready = False
+        self.new_games_list = []
+        self.static_items = []
+        self.static_index = 0
+        self.showing_static = False
+        self.static_until = 0.0
+        self.static_current_image = None
+        self.static_current_game = None
+        self.last_applied_hash = ""
+        self.current_data_hash = ""
 
-    def parse_shootout_events(self, events_container, home_id=None, away_id=None, general_home=None, general_away=None):
-        if not isinstance(events_container, dict):
-            return [], [], None, None
+        # Music state
+        self.VINYL_SIZE = 51
+        self.COVER_SIZE = 42
+        self.vinyl_mask = Image.new("L", (self.COVER_SIZE, self.COVER_SIZE), 0)
+        ImageDraw.Draw(self.vinyl_mask).ellipse((0, 0, self.COVER_SIZE, self.COVER_SIZE), fill=255)
+        self.scratch_layer = Image.new("RGBA", (self.VINYL_SIZE, self.VINYL_SIZE), (0,0,0,0))
+        self._init_vinyl_scratch()
+        self.vinyl_rotation = 0.0
+        self.text_scroll_pos = 0.0
+        self.last_frame_time = time.time()
+        self.dominant_color = (29, 185, 84)
+        self.spindle_color = "black"
+        self.last_cover_url = ""
+        self.vinyl_cache = None
+        self.prev_vinyl_cache = None
+        self.prev_dominant_color = (29, 185, 84)
+        self.fade_alpha = 1.0
+        self.transitioning_out = False
+        self.viz_heights = [2.0] * 16
+        self.viz_phase = [random.random() * 10 for _ in range(16)]
 
-        pen_events = events_container.get("penaltyShootoutEvents") or []
-        home_seq, away_seq = [], []
-        pen_home_score = pen_away_score = None
+        # Flight HUD colors
+        self.C_BG = (5, 5, 8)
+        self.C_AMBER = (255, 170, 0)
+        self.C_BLUE_TXT = (80, 180, 255)
+        self.C_WHT = (220, 220, 230)
+        self.C_GRN = (80, 255, 80)
+        self.C_RED = (255, 60, 60)
+        self.C_GRY = (120, 120, 130)
 
-        def classify(event):
-            text = (event.get("result") or event.get("outcome") or event.get("type") or "").lower()
-            if "goal" in text: return "goal"
-            if "miss" in text or "fail" in text or "save" in text: return "miss"
-            if event.get("scored") is True: return "goal"
-            if event.get("scored") is False: return "miss"
-            return "pending"
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
-        for ev in pen_events:
-            if not isinstance(ev, dict): continue
+        threading.Thread(target=self.poll_backend, daemon=True).start()
 
-            score = ev.get("penShootoutScore")
-            if isinstance(score, (list, tuple)) and len(score) >= 2:
-                pen_home_score, pen_away_score = score[0], score[1]
+    def _init_vinyl_scratch(self):
+        ds = ImageDraw.Draw(self.scratch_layer)
+        ds.ellipse((0, 0, self.VINYL_SIZE-1, self.VINYL_SIZE-1), fill=(20, 20, 20), outline=(50,50,50))
 
-            is_home = None
-            if ev.get("isHome") is not None:
-                is_home = bool(ev.get("isHome"))
-            if is_home is None:
-                team_id = ev.get("teamId") or (ev.get("shotmapEvent") or {}).get("teamId")
-                if team_id is not None:
-                    if home_id or general_home:
-                        is_home = team_id in {home_id, general_home}
-                    elif away_id or general_away:
-                        is_home = team_id not in {away_id, general_away}
-            if is_home is None:
-                side = ev.get("side")
-                if isinstance(side, str):
-                    is_home = side.lower().startswith("h")
-            if is_home is None:
-                is_home = True
+    # ================= DISPLAY =================
+    def update_display(self, pil_image):
+        img = pil_image.convert("RGB")
+        if self.inverted:
+            img = img.rotate(180)
+        target_b = int(max(0, min(100, self.brightness * 100)))
+        self.matrix.brightness = target_b
+        self.matrix.SetImage(img)
 
-            outcome = classify(ev)
-            (home_seq if is_home else away_seq).append(outcome)
+    # ================= MODE =================
+    def set_mode(self, new_mode):
+        self.mode = new_mode
+        self.mode_override = new_mode
+        print(f"  Mode -> {new_mode}")
+        self.push_setting_to_server('mode', new_mode)
+        self.last_applied_hash = ''
+        self.current_data_hash = ''
 
-        return home_seq, away_seq, pen_home_score, pen_away_score
+    # ================= SERVER COMMUNICATION =================
+    def _get_local_timezone_info(self):
+        tz_name = ""
+        utc_offset = None
 
-    def _fetch_fotmob_details(self, match_id, home_id=None, away_id=None):
+        # Prefer IANA zone name when available.
         try:
-            url = f"https://www.fotmob.com/api/matchDetails?matchId={match_id}"
-            resp = self.session.get(url, headers=HEADERS, timeout=TIMEOUTS['slow'])
-            resp.raise_for_status()
-            payload = resp.json()
-            
-            info = payload.get("general", {})
-            general_home = (info.get("homeTeam") or {}).get("id")
-            general_away = (info.get("awayTeam") or {}).get("id")
-
-            containers = [
-                payload.get("shootout"),
-                payload.get("content", {}).get("shootout"),
-                payload.get("content", {}).get("penaltyShootout"),
-            ]
-            
-            home_shootout, away_shootout = [], []
-            for raw in containers:
-                h, a, _, _ = self.parse_shootout(raw, home_id, away_id, general_home, general_away)
-                if h or a:
-                    home_shootout, away_shootout = h, a
-                    break
-            
-            if not home_shootout and not away_shootout and payload.get("content", {}).get("matchFacts"):
-                events_container = payload["content"].get("matchFacts", {}).get("events")
-                h, a, _, _ = self.parse_shootout_events(events_container, home_id, away_id, general_home, general_away)
-                if h or a:
-                    home_shootout, away_shootout = h, a
-                    
-            if home_shootout or away_shootout:
-                return {'home': home_shootout, 'away': away_shootout}
-            return None
-        except: return None
-
-    def _parse_score_str(self, score_str):
-        if not score_str or "-" not in str(score_str):
-            return None, None
-        try:
-            home_raw, away_raw = [part.strip() for part in str(score_str).split("-", 1)]
-            home_val = int(home_raw) if home_raw.isdigit() else None
-            away_val = int(away_raw) if away_raw.isdigit() else None
-            return home_val, away_val
+            if os.path.exists('/etc/timezone'):
+                with open('/etc/timezone', 'r', encoding='utf-8') as f:
+                    tz_name = (f.read() or '').strip()
         except Exception:
-            return None, None
+            pass
 
-    def _format_live_clock(self, status: dict, fallback_text: str = "") -> str | None:
-        def _render_clock(minutes: int, seconds: int, max_time: int | None) -> str:
-            if max_time is not None and minutes > max_time:
-                extra_total = minutes * 60 + seconds - max_time * 60
-                extra_min, extra_sec = divmod(extra_total, 60)
-                return f"{max_time}+{extra_min:02d}:{extra_sec:02d}'"
-            return f"{minutes:02d}:{seconds:02d}'"
+        if not tz_name:
+            try:
+                localtime_path = os.path.realpath('/etc/localtime')
+                marker = '/zoneinfo/'
+                if marker in localtime_path:
+                    tz_name = localtime_path.split(marker, 1)[1].strip()
+            except Exception:
+                pass
 
-        if not isinstance(status, dict):
-            return None
+        try:
+            now_local = datetime.now().astimezone()
+            if not tz_name:
+                tzinfo = now_local.tzinfo
+                if tzinfo is not None and hasattr(tzinfo, 'key'):
+                    tz_name = str(getattr(tzinfo, 'key') or '').strip()
+                if not tz_name:
+                    tz_name = str(now_local.tzname() or '').strip()
 
-        live_time = status.get("liveTime") or status.get("live_time") or {}
-        max_time = None
-        if isinstance(live_time, dict):
-            max_time_raw = live_time.get("maxTime") or live_time.get("max_time")
-            if isinstance(max_time_raw, (int, float)) or (isinstance(max_time_raw, str) and max_time_raw.isdigit()):
-                max_time = int(float(max_time_raw))
+            off = now_local.utcoffset()
+            if off is not None:
+                utc_offset = round(float(off.total_seconds()) / 3600.0, 2)
+        except Exception:
+            pass
 
-            long_val = live_time.get("long") or live_time.get("clock") or live_time.get("elapsed")
-            if long_val:
-                text = str(long_val)
-                plus_match = re.match(r"\s*(\d+)\+(\d+)(?::(\d{1,2}))?", text)
-                if plus_match:
-                    base = int(plus_match.group(1))
-                    extra_min = int(plus_match.group(2))
-                    extra_sec = int(plus_match.group(3) or 0)
-                    return f"{base}+{extra_min:02d}:{extra_sec:02d}'"
+        return tz_name, utc_offset
 
-                clock_match = re.match(r"\s*(\d+):(\d{1,2})", text)
-                if clock_match:
-                    minutes = int(clock_match.group(1))
-                    seconds = int(clock_match.group(2))
-                    return _render_clock(minutes, seconds, max_time)
+    def _request_headers(self):
+        headers = {"X-Client-ID": self.device_id}
+        tz_name, utc_offset = self._get_local_timezone_info()
+        if tz_name:
+            headers["X-Ticker-Timezone"] = tz_name
+        if isinstance(utc_offset, (int, float)):
+            headers["X-Ticker-Utc-Offset"] = str(utc_offset)
+        return headers
 
-            minute_val = live_time.get("minute")
-            second_val = live_time.get("second")
-            if minute_val is not None and second_val is not None:
+    def push_setting_to_server(self, key, value):
+        def _push():
+            try:
+                requests.post(
+                    f"{BACKEND_URL}/ticker/{self.device_id}",
+                    json={key: value},
+                    headers=self._request_headers(),
+                    timeout=3, verify=False
+                )
+            except Exception as ex:
+                print(f"  Setting push failed: {ex}")
+        threading.Thread(target=_push, daemon=True).start()
+
+    def push_flight_config(self, config_dict):
+        def _push():
+            try:
+                payload = dict(config_dict)
+                payload['ticker_id'] = self.device_id
+                has_flight = bool(config_dict.get('track_flight_id', '').strip())
+                has_airport = bool(config_dict.get('airport_code_iata', '').strip())
+                if has_flight:
+                    payload['mode'] = 'flight2'
+                    payload['active_sports'] = {'flight_visitor': True, 'flight_airport': False}
+                elif has_airport:
+                    payload['mode'] = 'flights'
+                    payload['active_sports'] = {'flight_visitor': False, 'flight_airport': True}
+                resp = requests.post(
+                    f"{BACKEND_URL}/api/config",
+                    json=payload,
+                    headers=self._request_headers(),
+                    timeout=5, verify=False
+                )
+                print(f"  Flight config pushed: {config_dict} -> {resp.status_code}")
+            except Exception as ex:
+                print(f"  Flight config push failed: {ex}")
+        threading.Thread(target=_push, daemon=True).start()
+
+    # ================= PAIRING SCREEN =================
+    def draw_pairing_screen(self):
+        img = Image.new("RGB", (PANEL_W, PANEL_H), (0, 0, 0))
+        d = ImageDraw.Draw(img)
+        code = self.pairing_code or "------"
+        spaced = "  ".join(code)
+        header = "PAIR CODE"
+        hw = d.textlength(header, font=self.font)
+        d.text(((PANEL_W - hw) / 2, 0), header, font=self.font, fill=(255, 200, 0))
+        cw = d.textlength(spaced, font=self.huge_font)
+        cx = (PANEL_W - cw) / 2
+        d.text((cx, 10), spaced, font=self.huge_font, fill=(255, 255, 255))
+        if int(time.time() * 2) % 2 == 0:
+            d.ellipse((PANEL_W - 8, 2, PANEL_W - 3, 7), fill=(0, 200, 255))
+        return img
+
+    # ================= LOGO MANAGEMENT =================
+    def download_and_process_logo(self, url, size=(24,24)):
+        if not url:
+            return
+        cache_key = f"{url}_{size}"
+        if cache_key in self.logo_cache:
+            return
+        try:
+            filename = f"{hashlib.md5(url.encode()).hexdigest()}_{size[0]}x{size[1]}.png"
+            local = os.path.join(ASSETS_DIR, filename)
+            if os.path.exists(local):
+                self.logo_cache[cache_key] = Image.open(local).convert("RGBA")
+                return
+            r = requests.get(url, timeout=5)
+            if r.status_code == 200:
+                img = Image.open(io.BytesIO(r.content)).convert("RGBA")
+                img = img.convert("RGBa")
+                img.thumbnail(size, Image.Resampling.LANCZOS)
+                img = img.convert("RGBA")
+                final = Image.new("RGBA", size, (0,0,0,0))
+                final.paste(img, ((size[0]-img.width)//2, (size[1]-img.height)//2))
+                final.save(local, "PNG")
+                self.logo_cache[cache_key] = final
+        except:
+            pass
+
+    def get_logo(self, url, size=(24,24)):
+        return self.logo_cache.get(f"{url}_{size}")
+
+    # ================= DRAWING HELPERS =================
+    def draw_arrow(self, d, x, y, is_up, color):
+        if is_up:
+            d.polygon([(x+2, y), (x, y+4), (x+4, y+4)], fill=color)
+        else:
+            d.polygon([(x, y), (x+4, y), (x+2, y+4)], fill=color)
+            
+    def draw_side_arrow(self, draw, x, y, is_left, color):
+        if is_left:
+            draw.polygon([(x+4, y), (x, y+3), (x+4, y+6)], fill=color)
+        else:
+            draw.polygon([(x, y), (x+4, y+3), (x, y+6)], fill=color)
+
+    def draw_bat(self, draw, cx, by):
+        """
+        Baseball bat icon. cx = horizontal center, by = top y.
+        4px wide (cx-2..cx+1), 18px tall. Barrel at top, knob at bottom.
+        """
+        bc = (220, 180, 120)   # barrel wood
+        hc = (180, 135,  65)   # handle
+        kc = (150, 105,  40)   # knob
+        draw.rectangle([cx-2, by+0,  cx+1, by+7],  fill=bc)   # barrel
+        draw.rectangle([cx-1, by+8,  cx+0, by+9],  fill=bc)   # taper
+        draw.rectangle([cx-1, by+10, cx+0, by+15], fill=hc)   # handle
+        draw.rectangle([cx-2, by+16, cx+1, by+17], fill=kc)   # knob
+
+    def draw_outlined_text(self, d, x, y, text, font, fill, outline, anchor="mm"):
+        for dx in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                if dx == 0 and dy == 0: continue
+                d.text((x+dx, y+dy), text, font=font, fill=outline, anchor=anchor)
+        d.text((x, y), text, font=font, fill=fill, anchor=anchor)
+
+    def get_team_color(self, game, side='home'):
+        c = game.get(f'{side}_color')
+        if c:
+            try:
+                c = c.lstrip('#')
+                return tuple(int(c[i:i+2], 16) for i in (0, 2, 4))
+            except: pass
+        logo = self.get_logo(game.get(f'{side}_logo'), (24, 24))
+        if logo:
+            stat = ImageStat.Stat(logo)
+            return tuple(int(x) for x in stat.mean[:3])
+        return (60, 60, 60)
+
+    def draw_hockey_stick(self, draw, cx, cy, size):
+        WOOD = (150, 75, 0); TAPE = (255, 255, 255)
+        pattern = [[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,1,1,1,0],
+                   [0,0,0,0,1,1,0,0],[1,2,2,1,1,1,0,0],[1,2,2,1,1,0,0,0],[0,0,0,0,0,0,0,0]]
+        sx, sy = cx - 4, cy - 4
+        for y in range(8):
+            for x in range(8):
+                if pattern[y][x] == 1: draw.point((sx+x, sy+y), fill=WOOD)
+                elif pattern[y][x] == 2: draw.point((sx+x, sy+y), fill=TAPE)
+
+    def draw_shootout_indicators(self, draw, results, start_x, y):
+        display_results = results[-3:]
+        while len(display_results) < 3: display_results.append('pending')
+        x_off = start_x
+        for res in display_results:
+            if res == 'pending': draw.rectangle((x_off, y, x_off+3, y+3), outline=(80,80,80))
+            elif res == 'miss': draw.line((x_off, y, x_off+3, y+3), fill=(255,0,0)); draw.line((x_off, y+3, x_off+3, y), fill=(255,0,0))
+            elif res == 'goal': draw.rectangle((x_off, y, x_off+3, y+3), fill=(0,255,0))
+            x_off += 6
+
+    def draw_soccer_shootout(self, draw, results, start_x, y):
+        display_results = results[-5:]
+        while len(display_results) < 5: display_results.append('pending')
+        x_off = start_x
+        if len(results) > 0: x_off -= 2
+        for res in display_results:
+            if res == 'pending': draw.rectangle((x_off, y, x_off+1, y+1), outline=(60,60,60))
+            elif res == 'miss': draw.point((x_off, y), fill=(255,0,0)); draw.point((x_off+1, y+1), fill=(255,0,0))
+            elif res == 'goal': draw.rectangle((x_off, y, x_off+1, y+1), fill=(0,255,0))
+            x_off += 4
+
+    def draw_baseball_hud(self, draw, x, y, o):
+        for i in range(3): draw.rectangle((x+(i*4), y, x+(i*4)+1, y+1), fill=((255, 0, 0) if i < o else (40, 40, 40)))
+
+    def shorten_status(self, status, sport=''):
+        if not status: return ""
+        sp = str(sport).lower()
+        if 'baseball' in sp or 'mlb' in sp or 'wbc' in sp:
+            su = str(status).upper()
+            for old, new in [("TOP ", "^"), ("BOTTOM ", "V"), ("BOT ", "V")]:
+                su = su.replace(old, new)
+            return su
+        s = str(status).upper().replace(" - ", " ").replace("FINAL", "FINAL").replace("/OT", " OT").replace("HALFTIME", "HALF")
+        for old, new in [("TOP ", "^"), ("BOTTOM ", "V"), ("BOT ", "V")]:
+            s = s.replace(old, new)
+        if s.startswith("END "):
+            return s
+        for num in ["10", "11", "12", "1", "2", "3", "4", "5", "6", "7", "8", "9"]:
+            for suf in ["TH", "ST", "ND", "RD"]:
+                s = s.replace(f"{num}{suf}", num)
+        s = s.replace("1ST", "P1").replace("2ND", "P2").replace("3RD", "P3").replace("4TH", "P4").replace("FULL TIME", "FT")
+        for r in ["P1", "P2", "P3", "P4", "Q1", "Q2", "Q3", "Q4", "OT"]:
+            s = s.replace(f"{r} ", f"{r}~")
+        return s
+
+    def draw_weather_pixel_art(self, d, icon_name, x, y):
+        icon = str(icon_name).lower()
+        SUN_Y = (255, 200, 0); CLOUD_W = (205, 210, 220); RAIN_B = (60, 130, 255); SNOW_W = (210, 235, 255)
+        if 'sun' in icon or 'clear' in icon:
+            d.ellipse((x+3, y+3, x+11, y+11), fill=SUN_Y)
+            for rx, ry in [(x+7, y), (x+7, y+14), (x, y+7), (x+14, y+7)]:
+                d.line([(rx, ry), (rx, ry+1)], fill=SUN_Y)
+            for rx, ry in [(x+2, y+2), (x+12, y+2), (x+2, y+12), (x+12, y+12)]:
+                d.point((rx, ry), fill=SUN_Y)
+        elif 'fog' in icon or 'mist' in icon or 'haze' in icon:
+            for fy in [y+3, y+6, y+9, y+12]:
+                d.line([(x+2, fy), (x+13, fy)], fill=(170, 175, 195))
+        elif 'rain' in icon or 'drizzle' in icon or 'shower' in icon:
+            d.ellipse((x+1, y+1, x+14, y+9), fill=CLOUD_W)
+            for rx, ry in [(x+3, y+11), (x+7, y+12), (x+11, y+11), (x+5, y+14), (x+9, y+13)]:
+                d.line([(rx, ry), (rx-1, ry+2)], fill=RAIN_B)
+        elif 'snow' in icon or 'blizzard' in icon:
+            d.ellipse((x+1, y+1, x+14, y+9), fill=(185, 195, 210))
+            for rx, ry in [(x+3, y+12), (x+7, y+11), (x+11, y+12), (x+5, y+15), (x+9, y+14)]:
+                d.point((rx, ry), fill=SNOW_W)
+                d.point((rx, ry+1), fill=SNOW_W)
+        elif 'storm' in icon or 'thunder' in icon or 'lightning' in icon:
+            d.ellipse((x+1, y+1, x+14, y+9), fill=(75, 80, 100))
+            d.line([(x+8, y+9), (x+6, y+13)], fill=(255, 220, 0), width=1)
+            d.line([(x+6, y+13), (x+9, y+13)], fill=(255, 220, 0), width=1)
+            d.line([(x+9, y+13), (x+7, y+16)], fill=(255, 220, 0), width=1)
+        elif 'cloud' in icon or 'overcast' in icon:
+            d.ellipse((x+5, y+3, x+15, y+11), fill=CLOUD_W)
+            d.ellipse((x+0, y+6, x+11, y+13), fill=(175, 180, 192))
+            d.ellipse((x+7, y+5, x+16, y+13), fill=(198, 202, 212))
+        else:
+            d.ellipse((x+5, y+1, x+12, y+8), fill=SUN_Y)
+            d.point((x+11, y+1), fill=SUN_Y)
+            d.ellipse((x+1, y+5, x+12, y+13), fill=(190, 195, 208))
+            d.ellipse((x+7, y+4, x+16, y+12), fill=CLOUD_W)
+
+    def get_aqi_color(self, aqi):
+        try:
+            val = int(aqi)
+            if val <= 50: return (0, 255, 0)
+            if val <= 100: return (255, 255, 0)
+            if val <= 150: return (255, 126, 0)
+            return (255, 0, 0)
+        except:
+            return (100, 100, 100)
+
+    # ================= MUSIC HELPERS =================
+    def extract_colors_and_spindle(self, pil_img):
+        stat = ImageStat.Stat(pil_img)
+        r, g, b = stat.mean[:3]
+        lum = (0.299*r + 0.587*g + 0.114*b)
+        self.spindle_color = "white" if lum < 140 else "black"
+        h, s, v = colorsys.rgb_to_hsv(r/255.0, g/255.0, b/255.0)
+        if s < 0.2: s = 0.0
+        elif s < 0.5: s = min(1.0, s * 1.5)
+        if v < 0.3: v = 0.5
+        elif v < 0.8: v = min(1.0, v * 1.3)
+        nr, ng, nb = colorsys.hsv_to_rgb(h, s, v)
+        self.dominant_color = (int(nr*255), int(ng*255), int(nb*255))
+
+    def render_visualizer(self, draw, x, y, width, height, is_playing=True):
+        bar_count = 16; bar_w = 2; gap = 3
+        center_y = y + (height // 2)
+        t = time.time()
+        base_r, base_g, base_b = self.dominant_color
+        grad_colors = []
+        for i in range(bar_count):
+            factor = i / (bar_count - 1) * 0.6
+            nr = int(base_r + (255 - base_r) * factor)
+            ng = int(base_g + (255 - base_g) * factor)
+            nb = int(base_b + (255 - base_b) * factor)
+            grad_colors.append((nr, ng, nb))
+        for i in range(bar_count):
+            if is_playing:
+                base = math.sin(t * 4 + self.viz_phase[i])
+                noise = math.sin(t * 12 + (i * 0.5)) * random.uniform(0.5, 1.2)
+                if i < 5: amp = 8.0 + (math.sin(t * 2) * 2)
+                elif i < 11: amp = 6.0
+                else: amp = 4.0 + (noise * 2)
+                target_h = max(2, min(height, abs(base + noise) * amp))
+            else:
+                target_h = 2.0
+            self.viz_heights[i] += (target_h - self.viz_heights[i]) * 0.25
+            h_int = int(self.viz_heights[i])
+            start_y = center_y - (h_int // 2)
+            bx = x + (i * (bar_w + gap))
+            draw.rectangle((bx, start_y, bx+bar_w-1, start_y + h_int), fill=grad_colors[i])
+
+    def draw_scrolling_text(self, canvas, text_str, font, x, y, max_width, scroll_pos, color="white"):
+        text_str = normalize_special_chars(str(text_str).strip())
+        temp_d = ImageDraw.Draw(canvas)
+        text_w = temp_d.textlength(text_str, font=font)
+        max_width = int(max_width); x = int(x); y = int(y)
+        if text_w <= (max_width - 2):
+            temp_d.text((x, y), text_str, font=font, fill=color)
+            return
+        GAP = 40
+        total_loop = text_w + GAP
+        current_offset = scroll_pos % total_loop
+        txt_img = Image.new("RGBA", (max_width, 32), (0,0,0,0))
+        d_txt = ImageDraw.Draw(txt_img)
+        d_txt.text((int(-current_offset), 0), text_str, font=font, fill=color)
+        if (-current_offset + text_w) < max_width:
+            d_txt.text((int(-current_offset + total_loop), 0), text_str, font=font, fill=color)
+        canvas.paste(txt_img, (x, y), txt_img)
+
+    # ================= FLIGHT PIXEL HELPERS =================
+    def _pixel(self, draw, x, y, color):
+        if 0 <= x < PANEL_W and 0 <= y < PANEL_H:
+            draw.point((x, y), fill=color)
+
+    def _icon_plane(self, draw, x, y, color):
+        pts = [(x+2,y),(x+1,y+1),(x+2,y+1),(x+3,y+1),(x,y+2),(x+1,y+2),(x+2,y+2),
+               (x+3,y+2),(x+4,y+2),(x+2,y+3),(x+1,y+4),(x+2,y+4),(x+3,y+4)]
+        for px, py in pts:
+            self._pixel(draw, px, py, color)
+
+
+    # ================= FULL BLEED SPORTS RENDERER =================
+    def draw_sport_full_bleed(self, game):
+        W = PANEL_W; H = PANEL_H
+        img = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img, "RGBA")
+
+        sport    = str(game.get('sport', '')).lower()
+        is_nfl   = 'football' in sport or 'nfl' in sport or 'ncf' in sport
+        is_nhl   = 'hockey' in sport or 'nhl' in sport
+        is_mlb   = 'baseball' in sport or 'mlb' in sport
+        sit      = game.get('situation', {}) or {}
+        home_clr = self.get_team_color(game, 'home')
+        away_clr = self.get_team_color(game, 'away')
+        h_score  = str(game.get('home_score', ''))
+        a_score  = str(game.get('away_score', ''))
+        home_ab  = str(game.get('home_abbr', '')).upper()
+        away_ab  = str(game.get('away_abbr', '')).upper()
+        poss_ab  = str(sit.get('possession', '')).upper()
+
+        # ── FOOTBALL: full field matching HTML footballField() ───────────────
+        if is_nfl:
+            def _parse_hex_color(value):
                 try:
-                    minutes = int(minute_val)
-                    seconds = int(second_val)
-                    return _render_clock(minutes, seconds, max_time)
+                    c = str(value or '').strip().lstrip('#')
+                    if len(c) == 6:
+                        return tuple(int(c[i:i+2], 16) for i in (0, 2, 4))
                 except Exception:
                     pass
+                return None
 
-            short_val = live_time.get("short")
-            if short_val:
-                short_match = re.match(r"\s*(\d+)(?:\+(\d+))?'", str(short_val))
-                if short_match:
-                    base = int(short_match.group(1))
-                    extra = int(short_match.group(2) or 0)
-                    if extra:
-                        return f"{base}+{extra:02d}:00'"
-                    return f"{base:02d}:00'"
+            # Prefer explicit team colors; if missing, fall back to a readable
+            # default palette (instead of logo-average grays).
+            home_ez = _parse_hex_color(game.get('home_color')) or home_clr
+            away_ez = _parse_hex_color(game.get('away_color')) or away_clr
 
-        if fallback_text:
-            text = str(fallback_text)
-            text_match = re.search(r"(\d+)(?:\+(\d+))?'", text)
-            if text_match:
-                base = int(text_match.group(1))
-                extra = int(text_match.group(2) or 0)
-                if extra:
-                    return f"{base}+{extra:02d}:00'"
-                return f"{base:02d}:00'"
+            def _is_dull(c):
+                return max(c) - min(c) < 25
 
-        return None
+            if _is_dull(home_ez):
+                home_ez = (155, 32, 32)
+            if _is_dull(away_ez):
+                away_ez = (32, 62, 155)
 
-    def _extract_matches(self, sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc):
-        matches = []
-        _local_tz = timezone(timedelta(hours=conf.get('utc_offset', -5)))
-        for section in sections:
-            candidate_matches = section.get("matches") if isinstance(section, dict) else None
-            if candidate_matches is None: candidate_matches = [section]
-            
-            for match in candidate_matches:
-                if not isinstance(match, dict): continue
-                
-                status = match.get("status") or {}
-                kickoff = status.get("utcTime") or match.get("time")
-                if not kickoff: continue
-                
-                try:
-                    match_dt = parse_iso(kickoff)
-                    if not (start_window <= match_dt <= end_window): continue
-                except: continue
+            EZ_RATIO = 30 / 360
+            ezW    = W * EZ_RATIO          # ~32 px
+            playW  = W * (300 / 360)       # ~320 px
+            hT     = H * (70.75 / 160)     # upper hash row
+            hB     = H * (89.25 / 160)     # lower hash row
 
-                mid = match.get("id")
-                h_name = match.get("home", {}).get("name") or "Home"
-                a_name = match.get("away", {}).get("name") or "Away"
-                
-                h_ab = SOCCER_ABBR_OVERRIDES.get(h_name, h_name[:3].upper())
-                a_ab = SOCCER_ABBR_OVERRIDES.get(a_name, a_name[:3].upper())
-                
-                finished = bool(status.get("finished"))
-                started = bool(status.get("started"))
-                reason = (status.get("reason") or {}).get("short") or ""
-                
-                home_score = (match.get("home") or {}).get("score")
-                away_score = (match.get("away") or {}).get("score")
+            # 1 · Grass bands (10 alternating strips)
+            for i in range(10):
+                bx = ezW + i * playW / 10
+                d.rectangle([bx, 0, bx + playW / 10, H],
+                            fill=(22, 52, 18) if i % 2 == 0 else (27, 64, 24))
 
-                status_score = status.get("score") or status.get("current") or {}
-                if isinstance(status_score, dict):
-                    if home_score is None: home_score = status_score.get("home")
-                    if away_score is None: away_score = status_score.get("away")
-                    
-                    for key in ("ft", "fulltime"):
-                        ft_score = status_score.get(key)
-                        if isinstance(ft_score, (list, tuple)) and len(ft_score) >= 2:
-                            if home_score is None: home_score = ft_score[0]
-                            if away_score is None: away_score = ft_score[1]
-                elif isinstance(status_score, (list, tuple)) and len(status_score) >= 2:
-                    if home_score is None: home_score = status_score[0]
-                    if away_score is None: away_score = status_score[1]
+            # 2 · End zones  HOME=left  AWAY=right
+            d.rectangle([0, 0, ezW, H], fill=home_ez)
+            d.rectangle([W - ezW, 0, W, H], fill=away_ez)
+            d.line([(ezW, 0), (ezW, H)],         fill=(255, 255, 255, 230))
+            d.line([(W - ezW, 0), (W - ezW, H)], fill=(255, 255, 255, 230))
 
-                score_str_sources = [
-                    status.get("scoreStr"),
-                    (match.get("home") or {}).get("scoreStr"),
-                    (match.get("away") or {}).get("scoreStr"),
-                    status.get("statusText") if "-" in str(status.get("statusText", "")) else None 
-                ]
+            # 3 · 10-yard stripe lines
+            for i in range(11):
+                lx = ezW + i * playW / 10
+                op = 115 if i == 5 else 64
+                d.line([(lx, 0), (lx, H)], fill=(255, 255, 255, op))
 
-                for s_str in score_str_sources:
-                    if home_score is not None and away_score is not None: break
-                    h_val, a_val = self._parse_score_str(s_str)
-                    if home_score is None: home_score = h_val
-                    if away_score is None: away_score = a_val
+            # 4 · Hash marks
+            for y in range(1, 100):
+                hx = ezW + y / 100 * playW
+                is5 = (y % 5 == 0)
+                hl  = H * 0.042 if is5 else H * 0.022
+                op  = 128 if is5 else 66
+                d.line([(hx, hT - hl), (hx, hT + hl)], fill=(255, 255, 255, op))
+                d.line([(hx, hB - hl), (hx, hB + hl)], fill=(255, 255, 255, op))
 
-                final_home_score = str(home_score) if home_score is not None else "0"
-                final_away_score = str(away_score) if away_score is not None else "0"
-
-                gst = 'pre'
-                
-                try:
-                    k_dt = parse_iso(kickoff)
-                    local_k = k_dt.astimezone(_local_tz)
-                    disp = local_k.strftime("%I:%M %p").lstrip('0')
-                except:
-                    disp = kickoff.split("T")[1][:5]
-
-                if started and not finished:
-                    gst = 'in'
-                    clock_str = self._format_live_clock(status, match.get("status_text"))
-                    if clock_str:
-                        disp = clock_str
-                    else:
-                        disp = "In Progress"
-                    
-                    current_minute = 0
+            # 5 · Parse LOS and yards-to-go from situation
+            los, ytg = -1, 10
+            dd_text  = sit.get('downDist', '')
+            at_team = ''
+            is_goal_to_go = False
+            drive_to_right = None  # True => offense driving toward right endzone
+            parsed_yard = None
+            if ' at ' in dd_text:
+                after = dd_text.split(' at ', 1)[1].strip().split()
+                if len(after) >= 2:
+                    team, yard_s = after[0].upper(), after[1]
+                    at_team = team
                     try:
-                        current_minute = int((status.get("liveTime") or {}).get("minute", 0))
-                    except: pass
-
-                    raw_status_text = str(status.get("statusText", ""))
-                    is_ht = (
-                        reason == "HT" 
-                        or raw_status_text == "HT" 
-                        or "Halftime" in raw_status_text
-                        or status.get("liveTime", {}).get("short") == "HT"
-                        or reason == "PET" 
-                    )
-                    
-                    if is_ht:
-                        if current_minute >= 105:
-                            disp = "HT ET"
-                        else:
-                            disp = "HALF"
-
-                elif finished:
-                    gst = 'post'
-                    disp = "Final" 
-                    if "AET" in reason: disp = "Final AET"
-                    if "Pen" in reason or (status.get("reason") and "Pen" in str(status.get("reason"))):
-                        disp = "FIN"
-
-                elif status.get("cancelled"):
-                    gst = 'post'
-                    disp = "Postponed"
-                
-                if "Postponed" in reason or "PPD" in reason:
-                    gst = 'post'
-                    disp = "Postponed"
-
-                if match_dt < visible_start_utc or match_dt >= visible_end_utc:
-                      if gst != 'in': continue
-
-                is_shootout = False
-                if "Pen" in reason or (gst == 'in' and "Pen" in str(status)) or disp == "FIN":
-                    is_shootout = True
-                    if gst == 'in': disp = "Pens"
-                
-                shootout_data = None
-                if is_shootout:
-                    shootout_data = self._fetch_fotmob_details(mid, match.get("home", {}).get("id"), match.get("away", {}).get("id"))
-
-                is_shown = True
-                if "Postponed" in disp or "PPD" in reason or status.get("cancelled"):
-                    is_shown = False
-
-                h_id = match.get("home", {}).get("id")
-                a_id = match.get("away", {}).get("id")
-                h_fotmob_logo = f"https://images.fotmob.com/image_resources/logo/teamlogo/{h_id}.png" if h_id else None
-                a_fotmob_logo = f"https://images.fotmob.com/image_resources/logo/teamlogo/{a_id}.png" if a_id else None
-
-                h_info = self.lookup_team_info_from_cache(internal_id, h_ab, h_name, logo=h_fotmob_logo)
-                a_info = self.lookup_team_info_from_cache(internal_id, a_ab, a_name, logo=a_fotmob_logo)
-                
-                matches.append({
-                    'type': 'scoreboard',
-                    'sport': internal_id, 
-                    'id': str(mid), 
-                    'status': disp, 
-                    'state': gst, 
-                    'is_shown': is_shown,
-                    'home_abbr': h_ab, 'home_score': final_home_score, 
-                    'home_logo': f"https://images.fotmob.com/image_resources/logo/teamlogo/{h_id}.png",
-                    'away_abbr': a_ab, 'away_score': final_away_score, 
-                    'away_logo': f"https://images.fotmob.com/image_resources/logo/teamlogo/{a_id}.png",
-                    'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
-                    'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
-                    'startTimeUTC': kickoff,
-                    'estimated_duration': 115,
-                    'situation': { 'possession': '', 'shootout': shootout_data }
-                })
-        return matches
-
-    def _fetch_fotmob_league(self, league_id, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc):
-        try:
-            url = "https://www.fotmob.com/api/leagues"
-            last_sections = []
-            
-            for l_type in ("cup", "league", None):
-                params = {"id": league_id, "tab": "matches", "timeZone": "UTC", "type": l_type, "_": int(time.time())}
-                
-                try:
-                    resp = self.session.get(url, params=params, headers=HEADERS, timeout=TIMEOUTS['slow'])
-                    resp.raise_for_status()
-                    payload = resp.json()
-                    
-                    sections = payload.get("matches", {}).get("allMatches", [])
-                    if not sections:
-                        sections = payload.get("fixtures", {}).get("allMatches", [])
-                    
-                    last_sections = sections
-                    matches = self._extract_matches(sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc)
-                    if matches: return matches
-                except: continue
-            
-            if last_sections:
-                 return self._extract_matches(last_sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc)
-            return []
-        except Exception as e:
-            print(f"FotMob League {league_id} error: {e}")
-            return []
-
-    def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc):
-        local_games = []
-
-        if config.get('type') == 'leaderboard':
-            return local_games
-
-        try:
-            curr_p = config.get('scoreboard_params', {}).copy()
-            
-            # CHANGE B: DATE OPTIMIZATION
-            now_local = dt.now(timezone.utc).astimezone(timezone(timedelta(hours=utc_offset)))
-            
-            custom = TestMode.get_custom_date()
-            if custom:
-                curr_p['dates'] = custom
-            else:
-                # If before 3AM, fetch yesterday's games so finals persist
-                if now_local.hour < 3:
-                    fetch_date = now_local - timedelta(days=1)
+                        yard = int(yard_s)
+                        parsed_yard = yard
+                        los = yard if team == home_ab else (100 - yard if team == away_ab else 50)
+                    except ValueError:
+                        pass
+            if '&' in dd_text and los >= 0:
+                ytg_raw = dd_text.split('&', 1)[1].strip().split()[0].lower()
+                if ytg_raw in ('goal', 'gl'):
+                    is_goal_to_go = True
                 else:
-                    fetch_date = now_local
-                curr_p['dates'] = fetch_date.strftime("%Y%m%d")
-            
-            # --- FIX: CACHE BUSTER ---
-            # Forces ESPN's CDN to return live data instead of a stale cached file
-            curr_p['_'] = int(time.time() * 1000)
-            
-            r = self.session.get(f"{self.base_url}{config['path']}/scoreboard", params=curr_p, headers=HEADERS, timeout=TIMEOUTS['default'])
-            data = r.json()
-            
-            events = data.get('events', [])
-            if not events:
-                leagues = data.get('leagues', [])
-                if leagues and len(leagues) > 0:
-                    events = leagues[0].get('events', [])
-            
-            for e in events:
-                gid = str(e['id'])
+                    try: ytg = int(ytg_raw)
+                    except ValueError: ytg = 10
 
-                # CHANGE A: CACHE CHECK (with date guard)
-                if gid in self.final_game_cache:
-                    cached = self.final_game_cache[gid]
+            # Infer drive direction once and use it everywhere (FD line + red-zone).
+            if poss_ab == home_ab:
+                drive_to_right = True
+            elif poss_ab == away_ab:
+                drive_to_right = False
+
+            # Goal-to-go marker is most reliable for direction when possession is noisy.
+            if is_goal_to_go and at_team:
+                if poss_ab in (home_ab, away_ab):
+                    if at_team == poss_ab:
+                        # Offense on its own side: attacking opposite endzone.
+                        drive_to_right = (poss_ab == home_ab)
+                    else:
+                        # Offense in opponent territory: attacking that side's endzone.
+                        drive_to_right = (at_team == away_ab)
+                elif at_team == home_ab:
+                    drive_to_right = False
+                elif at_team == away_ab:
+                    drive_to_right = True
+
+            if drive_to_right is None:
+                drive_to_right = True
+
+            if is_goal_to_go and los >= 0:
+                if parsed_yard is not None:
+                    ytg = max(1, parsed_yard)
+                    los = max(0, min(100, 100 - parsed_yard if drive_to_right else parsed_yard))
+                else:
+                    goal_line = 100 if drive_to_right else 0
+                    ytg = max(1, abs(goal_line - los))
+                    # For goal-to-go visuals, place LOS near the attacking goal line
+                    # so the ball/FD/red-zone all live on the scoring side.
+                    los = max(0, min(100, 100 - ytg if drive_to_right else ytg))
+
+            # 6 · Red zone tint
+            is_rz = sit.get('isRedZone', False)
+            if is_rz:
+                rz_overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                rz_d = ImageDraw.Draw(rz_overlay, "RGBA")
+                if drive_to_right:
+                    rz_d.rectangle([ezW + int(0.8 * playW), 0, W - ezW, H], fill=(220, 0, 0, 128))
+                    d.line([(ezW + 0.8 * playW, 0), (ezW + 0.8 * playW, H)], fill=(255, 34, 34, 200), width=2)
+                else:
+                    rz_d.rectangle([ezW, 0, ezW + int(0.2 * playW), H], fill=(220, 0, 0, 128))
+                    d.line([(ezW + 0.2 * playW, 0), (ezW + 0.2 * playW, H)], fill=(255, 34, 34, 200), width=2)
+                img.alpha_composite(rz_overlay)
+
+            # 7 · Center text overlay (period + context, matching HTML getBgText)
+            prd     = self.shorten_status(game.get('status', ''), sport)
+            ctx     = dd_text.split(' at ')[0].strip() if ' at ' in dd_text else dd_text
+            ctx_clr = (255, 136, 0) if is_rz else (240, 216, 0)
+            cx_mid  = W // 2
+            if prd or ctx:
+                y_prd = int(H * 0.32) if ctx else int(H * 0.5)
+                self.draw_outlined_text(d, cx_mid, y_prd, prd, self.big_font, (255, 255, 255), (0, 0, 0, 200))
+                if ctx:
+                    self.draw_outlined_text(d, cx_mid, int(H * 0.72), ctx, self.font, ctx_clr, (0, 0, 0, 200))
+
+            # 8 · Logos in end zones
+            LOGO_SZ  = min(int(ezW * 0.85), int(H * 0.65))
+            logo_top = max(0, int(H * 0.30) - LOGO_SZ // 2)
+            h_logo_cx = int(ezW / 2)
+            a_logo_cx = W - int(ezW / 2)
+            hl = self.get_logo(game.get('home_logo'), (24, 24))
+            al = self.get_logo(game.get('away_logo'), (24, 24))
+            if hl:
+                ls = hl.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
+                img.paste(ls, (h_logo_cx - LOGO_SZ // 2, logo_top), ls)
+            if al:
+                ls = al.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
+                img.paste(ls, (a_logo_cx - LOGO_SZ // 2, logo_top), ls)
+
+            # 9 · Score badges
+            score_y   = int(H * 0.82)
+            slot_cx   = int(ezW + playW * 0.05)
+            aslot_cx  = int(W - ezW - playW * 0.05)
+            # Default: keep scores outside endzones
+            h_sc_cx   = slot_cx
+            a_sc_cx   = aslot_cx
+            if is_rz:
+                if poss_ab == home_ab:
+                    h_sc_cx = slot_cx
+                    a_sc_cx = a_logo_cx
+                elif poss_ab == away_ab:
+                    h_sc_cx = h_logo_cx
+                    a_sc_cx = aslot_cx
+            for scx, sc in [(h_sc_cx, h_score), (a_sc_cx, a_score)]:
+                if not sc: continue
+                sw = (len(str(sc)) * 5) + 6
+                sh = 11
+                box_left = scx - (sw // 2)
+                box_top = score_y - (sh // 2)
+                box_right = box_left + sw - 1
+                box_bottom = box_top + sh - 1
+                d.rectangle([box_left, box_top, box_right, box_bottom], fill=(0, 0, 0, 218))
+                text_w = len(str(sc)) * 5
+                text_h = 6
+                text_x = box_left + ((sw - text_w) // 2)
+                text_y = box_top + ((sh - text_h + 1) // 2)
+                draw_hybrid_text(d, text_x, text_y, str(sc), (255, 255, 255))
+
+            # 10 · First-down line + LOS line + football
+            if 0 <= los <= 100:
+                los_px = ezW + los * playW / 100
+                fd_pct = min(100, los + ytg) if drive_to_right else max(0, los - ytg)
+                fd_px  = ezW + fd_pct * playW / 100
+                d.line([(fd_px, 0), (fd_px, H)],   fill=(240, 216, 0, 245), width=2)
+                d.line([(los_px, 0), (los_px, H)],  fill=(200, 200, 200, 240), width=2)
+                brx = max(4, int(H * 0.13))
+                bry = max(2, int(H * 0.08))
+                by  = H // 2
+                d.ellipse([los_px - brx, by - bry, los_px + brx, by + bry], fill=(139, 69, 19), outline=(61, 26, 6))
+                d.line([(los_px - int(brx * 0.7), by), (los_px + int(brx * 0.7), by)], fill=(255, 255, 255, 165))
+
+            # 11 · Possession ▼ indicator
+            pcx = None
+            if poss_ab == home_ab: pcx = int(ezW / 2)
+            elif poss_ab == away_ab: pcx = W - int(ezW / 2)
+            if pcx:
+                d.polygon([(pcx - 3, H - 4), (pcx + 3, H - 4), (pcx, H - 1)], fill=(255, 255, 255))
+
+            return img
+
+        # ── NON-FOOTBALL: sport background + side scrims ────────────────────
+        if is_nhl:
+            self._draw_hockey_rink(d, W, H)
+        elif is_mlb:
+            self._draw_baseball_diamond(d, W, H, sit)
+        else:
+            self._draw_basketball_court(d, W, H)
+
+        # ── MLB: special full-width layout matching HTML L1 getBgText() ──────
+        if is_mlb:
+            # Parse inning from status string  e.g. "Top 7th" / "Bottom 3rd" / "Mid 8th"
+            status_raw = str(game.get('status', '')).upper()
+            is_top_inn = 'TOP' in status_raw
+            is_bot_inn = 'BOT' in status_raw or 'BOTTOM' in status_raw
+            is_mid_inn = not is_top_inn and not is_bot_inn  # MID / END
+
+            # Extract inning number
+            inn_num = ''
+            for word in status_raw.split():
+                clean = word.replace('TH','').replace('ST','').replace('ND','').replace('RD','')
+                if clean.isdigit():
+                    inn_num = clean
+                    break
+
+            def _ordinal(n):
+                n = int(n)
+                if 10 <= n % 100 <= 19: return f"{n}th"
+                return f"{n}" + {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+
+            inn_ordinal = _ordinal(inn_num) if inn_num else ''  # e.g. "9th"
+
+            balls   = sit.get('balls',   0)
+            strikes = sit.get('strikes', 0)
+            outs    = sit.get('outs',    0)
+
+            # ── Step 1: side scrims via alpha_composite (correct blending) ──
+            # Drawing alpha lines directly on RGBA replaces pixels instead of blending.
+            # Use a separate overlay and alpha_composite onto the base image.
+            scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            sd = ImageDraw.Draw(scrim)
+            SOLID, FADE = 45, 80
+            for x in range(SOLID + FADE):
+                a = 250 if x < SOLID else max(0, int(250 * (SOLID + FADE - x) / FADE))
+                sd.line([(x, 0),         (x, H)],         fill=(0, 0, 0, a))
+                sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
+            img.alpha_composite(scrim)
+            d.rectangle([0, 0, 2, H],     fill=home_clr)
+            d.rectangle([W - 3, 0, W, H], fill=away_clr)
+
+            # ── Step 3: logos ────────────────────────────────────────────────
+            LOGO_SZ  = 24
+            logo_y   = (H - LOGO_SZ) // 2
+            h_logo_x = 6
+            a_logo_x = W - 3 - LOGO_SZ - 5
+            hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ))
+            al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ))
+            if hl: img.paste(hl, (h_logo_x, logo_y), hl)
+            if al: img.paste(al, (a_logo_x, logo_y), al)
+
+            # ── Step 4: scores ───────────────────────────────────────────────
+            h_sc_x = h_logo_x + LOGO_SZ + 4
+            a_sc_x = a_logo_x - 4
+            self.draw_outlined_text(d, h_sc_x, H // 2, h_score,
+                                    self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='lm')
+            h_sc_w = d.textlength(h_score, font=self.clock_giant)
+            self.draw_outlined_text(d, a_sc_x, H // 2, a_score,
+                                    self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
+            a_sc_w = d.textlength(a_score, font=self.clock_giant)
+
+            # ── Step 5: inning text + BSO (drawn AFTER scrim so they're on top) ──
+            # HTML: spread=75, leftX=W/2-75=117, rightX=W/2+75=267
+            left_txt_x  = W // 2 - 75   # 117
+            right_txt_x = W // 2 + 75   # 267
+
+            bso_rows = [
+                ('B', str(balls),   (74,  175, 255)),
+                ('S', str(strikes), (255, 136,   0)),
+                ('O', str(outs),    (224,  48,  48)),
+            ]
+
+            if not is_mid_inn:
+                inn_cx  = left_txt_x  if is_top_inn else right_txt_x
+                bso_cx  = right_txt_x if is_top_inn else left_txt_x
+            else:
+                inn_cx  = left_txt_x
+                bso_cx  = right_txt_x
+
+            def draw_inning_indicator(cx, cy, is_top, is_bot, ordinal_str):
+                """Draw inning indicator: [▲/▼ arrow] [bold number] [suffix], all inline and centered."""
+                if not ordinal_str:
+                    return
+                f_num = self.big_font   # 14pt bold
+                f_sup = self.micro      # 7pt small suffix
+
+                num_part = ''.join(c for c in ordinal_str if c.isdigit())
+                suf_part = ''.join(c for c in ordinal_str if not c.isdigit())
+
+                num_w = d.textlength(num_part, font=f_num)
+                suf_w = d.textlength(suf_part, font=f_sup)
+                arrow_w = 8
+                gap     = 2
+                total_w = arrow_w + gap + num_w + suf_w
+                x = int(cx - total_w / 2)
+
+                # Arrow — vertically centered at cy with ±5px half-height
+                ah    = 4
+                mid_x = x + arrow_w // 2
+                if is_top:
+                    d.polygon([(x-1, cy+ah+1), (x+arrow_w+1, cy+ah+1), (mid_x, cy-ah-1)], fill=(0, 0, 0))
+                    d.polygon([(x,   cy+ah),   (x+arrow_w,   cy+ah),   (mid_x, cy-ah)],   fill=(255, 255, 255))
+                elif is_bot:
+                    d.polygon([(x-1, cy-ah-1), (x+arrow_w+1, cy-ah-1), (mid_x, cy+ah+1)], fill=(0, 0, 0))
+                    d.polygon([(x,   cy-ah),   (x+arrow_w,   cy-ah),   (mid_x, cy+ah)],   fill=(255, 255, 255))
+                else:
+                    d.rectangle([x, cy-1, x+arrow_w, cy+1], fill=(180, 180, 180))
+                x += arrow_w + gap
+
+                # Number — anchor='mm' truly centers it on cy
+                nx = x + int(num_w / 2)
+                for dx in [-1, 0, 1]:
+                    for dy in [-1, 0, 1]:
+                        if dx == 0 and dy == 0: continue
+                        d.text((nx+dx, cy+dy), num_part, font=f_num, fill=(0, 0, 0, 200), anchor='mm')
+                d.text((nx, cy), num_part, font=f_num, fill=(255, 255, 255), anchor='mm')
+                x += int(num_w)
+
+                # Suffix — inline with inning number (no superscript raise)
+                d.text((x, cy), suf_part, font=f_sup, fill=(190, 190, 190), anchor='lm')
+
+            draw_inning_indicator(inn_cx, H // 2, is_top_inn, is_bot_inn, inn_ordinal)
+            y_start = 4
+            for (lbl, val, col) in bso_rows:
+                draw_tiny_text(d, bso_cx - 8, y_start, lbl, (180, 180, 180))
+                draw_tiny_text(d, bso_cx,     y_start, val, col)
+                y_start += 8
+
+            # ── Step 6: bat icon ─────────────────────────────────────────────
+            if is_top_inn:
+                self.draw_bat(d, int(a_sc_x - a_sc_w - 8), 7)   # cx between score and logo
+            elif is_bot_inn:
+                self.draw_bat(d, int(h_sc_x + h_sc_w + 8), 7)
+
+            return img
+
+        # ── NHL / NBA: side scrims (alpha_composite) then text on top ────────
+
+        # Hockey PP / EN badges
+        h_badge = a_badge = ''
+        if is_nhl and sit.get('powerPlay'):
+            if poss_ab == home_ab:   h_badge = 'PP'
+            elif poss_ab == away_ab: a_badge = 'PP'
+        elif is_nhl and sit.get('emptyNet'):
+            en_side = str(sit.get('emptyNetSide', '')).upper()
+            if en_side in ('HOME', home_ab):
+                h_badge = 'EN'
+            elif en_side in ('AWAY', away_ab):
+                a_badge = 'EN'
+            elif poss_ab == home_ab:
+                a_badge = 'EN'
+            elif poss_ab == away_ab:
+                h_badge = 'EN'
+
+        # Side scrims via alpha_composite (correct blending)
+        scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(scrim)
+        SOLID, FADE = 45, 80
+        for x in range(SOLID + FADE):
+            a = 250 if x < SOLID else max(0, int(250 * (SOLID + FADE - x) / FADE))
+            sd.line([(x, 0), (x, H)],             fill=(0, 0, 0, a))
+            sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
+        img.alpha_composite(scrim)
+
+        # Centre text (period + context) — drawn AFTER scrim so it's visible
+        prd = self.shorten_status(game.get('status', ''), sport)
+        cx  = W // 2
+        if prd:
+            self.draw_outlined_text(d, cx, H // 2, prd,
+                                    self.big_font, (255, 255, 255), (0, 0, 0, 200))
+
+        # Team-color borders
+        d.rectangle([0, 0, 2, H],     fill=home_clr)
+        d.rectangle([W - 3, 0, W, H], fill=away_clr)
+
+        # Hockey badges: compact text-only labels (avoid full-height side blocks)
+        l_used = 3; r_used = 3
+
+        # Logos
+        LOGO_SZ  = 24
+        h_logo_x = l_used + 5
+        a_logo_x = W - r_used - LOGO_SZ - 5
+        logo_y   = (H - LOGO_SZ) // 2
+        hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ))
+        al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ))
+        if hl: img.paste(hl, (h_logo_x, logo_y), hl)
+        if al: img.paste(al, (a_logo_x, logo_y), al)
+
+        # Scores
+        h_sc_x = h_logo_x + LOGO_SZ + 4
+        a_sc_x = a_logo_x - 4
+        self.draw_outlined_text(d, h_sc_x, H // 2, h_score,
+                                self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='lm')
+        h_sc_w = d.textlength(h_score, font=self.clock_giant)
+        self.draw_outlined_text(d, a_sc_x, H // 2, a_score,
+                                self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
+        a_sc_w = d.textlength(a_score, font=self.clock_giant)
+
+        if h_badge:
+            h_col = (255, 204, 0) if h_badge == 'PP' else (255, 90, 90)
+            h_badge_x = int(h_sc_x + h_sc_w + 9)
+            self.draw_outlined_text(d, h_badge_x, H // 2, h_badge,
+                                    self.tiny, h_col, (0, 0, 0, 220), anchor='mm')
+        if a_badge:
+            a_col = (255, 204, 0) if a_badge == 'PP' else (255, 90, 90)
+            a_badge_x = int(a_sc_x - a_sc_w - 9)
+            self.draw_outlined_text(d, a_badge_x, H // 2, a_badge,
+                                    self.tiny, a_col, (0, 0, 0, 220), anchor='mm')
+
+        # No possession arrow for hockey/basketball full-bleed mode.
+
+        return img
+
+    # ── Sport background helpers — exact ports of the HTML JS functions ──────
+
+    def _draw_hockey_rink(self, d, W, H):
+        """
+        Port of HTML hockeyRink() — ice blue surface, blue lines, red lines,
+        face-off circles, goal creases, and nets.
+        HTML uses rounded clipPath corners; we approximate with a rounded rectangle
+        drawn on top at the end.
+        """
+        bl1 = W * 0.28
+        bl2 = W * 0.72
+        gl1 = W * 0.085
+        gl2 = W * 0.915
+
+        # Ice surface + lighter zone tints
+        d.rectangle([0, 0, W, H], fill=(205, 228, 248))
+        d.rectangle([0, 0, bl1, H],    fill=(196, 219, 244))
+        d.rectangle([bl2, 0, W, H],    fill=(196, 219, 244))
+
+        # Removed horizontal texture lines to avoid stray white-line artifacts
+        # on the LED matrix/emulator rendering.
+
+        # Blue lines (2.5px wide each)
+        d.rectangle([bl1 - 1, 0, bl1 + 1.5, H], fill=(34, 85, 204))
+        d.rectangle([bl2 - 1, 0, bl2 + 1.5, H], fill=(34, 85, 204))
+
+        # Neutral-zone faceoff dots just inside the neutral zone near each blue line
+        neutral_dot_r = 2
+        neutral_dot_fill = (204, 26, 26, 210)
+        neutral_dot_outline = (140, 12, 12, 220)
+        neutral_x_off = max(4, int(W * 0.02))
+        for fx, fy in [
+            (bl1 + neutral_x_off, H * 0.28),
+            (bl1 + neutral_x_off, H * 0.72),
+            (bl2 - neutral_x_off, H * 0.28),
+            (bl2 - neutral_x_off, H * 0.72),
+        ]:
+            d.ellipse([fx - neutral_dot_r, fy - neutral_dot_r, fx + neutral_dot_r, fy + neutral_dot_r],
+                      fill=neutral_dot_fill, outline=neutral_dot_outline)
+
+        # Center red line — dashed (6 segments)
+        dash_h = int(H / 6 * 0.7)
+        for i in range(6):
+            ry = int(i * H / 6)
+            d.rectangle([W / 2 - 0.6, ry, W / 2 + 0.6, ry + dash_h], fill=(204, 26, 26))
+
+        # Goal lines
+        d.line([(gl1, 0), (gl1, H)], fill=(204, 26, 26), width=1)
+        d.line([(gl2, 0), (gl2, H)], fill=(204, 26, 26), width=1)
+
+        # Center circle + dot
+        cr = H * 0.40
+        d.ellipse([W/2 - cr, H/2 - cr, W/2 + cr, H/2 + cr],
+                  outline=(204, 26, 26, 128), width=1)
+        d.ellipse([W/2 - 2, H/2 - 2, W/2 + 2, H/2 + 2], fill=(204, 26, 26, 179))
+
+        # Zone face-off dots + circles
+        fo_r = H * 0.25
+        fo_dot = 2.5
+        for fx, fy in [
+            (bl1 * 0.5,            H * 0.28),
+            (bl1 * 0.5,            H * 0.72),
+            (bl2 + (W - bl2) * 0.5, H * 0.28),
+            (bl2 + (W - bl2) * 0.5, H * 0.72),
+        ]:
+            d.ellipse([fx - fo_dot, fy - fo_dot, fx + fo_dot, fy + fo_dot],
+                      fill=(204, 26, 26, 179))
+            d.ellipse([fx - fo_r, fy - fo_r, fx + fo_r, fy + fo_r],
+                      outline=(204, 26, 26, 89), width=1)
+
+        # Goal creases — arcs opening inward from each goal line
+        cr2 = H * 0.32
+        # Left crease opens rightward (arc from 270° to 90°, i.e. right half of circle)
+        d.arc([gl1 - cr2, H/2 - cr2, gl1 + cr2, H/2 + cr2],
+              start=270, end=90, fill=(68, 136, 238), width=1)
+        # Right crease opens leftward
+        d.arc([gl2 - cr2, H/2 - cr2, gl2 + cr2, H/2 + cr2],
+              start=90, end=270, fill=(68, 136, 238), width=1)
+
+        # Goalie nets (small rectangles just outside goal lines)
+        nh = int(H * 0.28)
+        ny = (H - nh) // 2
+        d.rectangle([gl1,     ny, gl1 + 4, ny + nh], fill=(221, 221, 221), outline=(153, 153, 153))
+        d.rectangle([gl2 - 4, ny, gl2,     ny + nh], fill=(221, 221, 221), outline=(153, 153, 153))
+
+        # Rounded corner overlay (simulate HTML clipPath rx)
+        cr_r = H * 0.45
+        d.rounded_rectangle([0, 0, W - 1, H - 1], radius=int(cr_r),
+                             outline=(122, 173, 206), width=1)
+
+    def _draw_baseball_diamond(self, d, W, H, sit):
+        """
+        Port of HTML baseballDiamond().
+        cx=W/2, cy=H*0.55, r=H*0.42, bs=H*0.16 (half-diagonal of rotated base).
+        Base positions:  home=(cx,cy+r)  1B=(cx+r,cy)  2B=(cx,cy-r)  3B=(cx-r,cy)
+
+        Key fix: the HTML dirt is an SVG arc path that bows UPWARD from below the canvas.
+        Best PIL approximation is a filled ellipse centered at (cx, cy+r*0.1) with
+        rx=r*1.4, ry=r*1.1 — this produces the correct kidney/infield-skin shape.
+        """
+        cx = W / 2
+        cy = H * 0.55
+        r  = H * 0.42
+        bs = H * 0.16     # half-diagonal — bases are rotated squares drawn as diamonds
+
+        home  = (cx,     cy + r)
+        first = (cx + r, cy)
+        sec   = (cx,     cy - r)
+        third = (cx - r, cy)
+
+        # 1 · Alternating grass bands (full width)
+        for i in range(10):
+            bx = i * W / 10
+            d.rectangle([bx, 0, bx + W / 10, H],
+                        fill=(17, 41, 17) if i % 2 == 0 else (21, 50, 21))
+
+        # 2 · Dirt infield — ellipse centered just below diamond midpoint.
+        #     The HTML uses an SVG arc path whose bottom goes off-canvas (y=home+3=~34)
+        #     and whose curve bows upward; this ellipse replicates that visible shape.
+        dc   = cy + r * 0.1     # ellipse centre y  (~19.0 for H=32)
+        drx  = r * 1.4          # horizontal radius (~18.8)
+        dry  = r * 1.1          # vertical radius   (~14.8)
+        d.ellipse([cx - drx, dc - dry, cx + drx, dc + dry], fill=(158, 105, 68))
+
+        # 3 · Inner grass diamond  (HTML: polygon with 2-px inset at each vertex)
+        # The top vertex (2nd base) needs a larger inset so the grass doesn't
+        # overlap the base: sec_y=4.2, bs=5.1, so base bottom=9.3 — inset by bs+1
+        d.polygon([
+            (cx,           home[1]  - 2),
+            (first[0] - 2, first[1]),
+            (cx,           sec[1]   + bs + 1),   # clear the base footprint
+            (third[0] + 2, third[1]),
+        ], fill=(17, 41, 17), outline=(158, 105, 68))
+
+        # 4 · Pitcher's mound + rubber
+        pr = r * 0.22
+        d.ellipse([cx - pr, cy - pr, cx + pr, cy + pr], fill=(158, 105, 68))
+        d.rectangle([cx - 1.5, cy - 0.5, cx + 1.5, cy + 0.5], fill=(255, 255, 255))
+
+        # 5 · Home-plate dirt circle
+        hpr = r * 0.28
+        d.ellipse([home[0] - hpr, home[1] - hpr,
+                   home[0] + hpr, home[1] + hpr], fill=(158, 105, 68))
+
+        # 6 · Base lines
+        for p1, p2 in [(home, first), (first, sec), (sec, third), (third, home)]:
+            d.line([p1, p2], fill=(255, 255, 255, 204), width=1)
+
+        # 7 · Bases — rotated squares (diamond polygons)
+        # Note: 2nd base (sec) is at y=cy-r = H*0.13 ≈ 4px from top.
+        # With bs=H*0.16≈5px the top point goes to y≈-1 (off screen).
+        # Clip the top point of 2nd base to y=1 so it stays visible.
+        def draw_base(pt, on):
+            x, y = pt
+            c = (255, 204, 0) if on else (255, 255, 255)
+            top_y = max(1, y - bs)   # clamp top so it never goes off-canvas
+            d.polygon([
+                (x,      top_y),    # top  (clamped)
+                (x + bs, y),        # right
+                (x,      y + bs),   # bottom
+                (x - bs, y),        # left
+            ], fill=c, outline=(0, 0, 0))
+
+        draw_base(third, sit.get('onThird',  False))
+        draw_base(first, sit.get('onFirst',  False))
+        draw_base(sec,   sit.get('onSecond', False))   # draw 2nd last — it's closest to top edge
+
+        # 8 · Home plate — pentagon
+        hp_s = r * 0.12
+        d.polygon([
+            (home[0],         home[1] + hp_s),
+            (home[0] + hp_s,  home[1]),
+            (home[0] + hp_s,  home[1] - hp_s),
+            (home[0] - hp_s,  home[1] - hp_s),
+            (home[0] - hp_s,  home[1]),
+        ], fill=(255, 255, 255), outline=(0, 0, 0))
+
+    def _draw_basketball_court(self, d, W, H):
+        """
+        Exact port of HTML basketballCourt().
+        lW=W*0.18  lH=H*0.62  lY=(H-lH)/2  thR=H*0.54
+        """
+        lW  = W * 0.18
+        lH  = H * 0.62
+        lY  = (H - lH) / 2
+        thR = H * 0.54
+
+        # 1 · Floor (hardwood orange)
+        d.rectangle([0, 0, W, H], fill=(200, 120, 58))
+
+          # 2 · Court boundary
+        d.rectangle([1, 1, W - 2, H - 2], outline=(255, 255, 255, 128))
+
+          # 3 · Half-court line + centre circle
+        d.line([(W / 2, 0), (W / 2, H)], fill=(255, 255, 255, 115))
+        cr = H * 0.33
+        d.ellipse([W/2 - cr, H/2 - cr, W/2 + cr, H/2 + cr], outline=(255, 255, 255, 97))
+
+          # 4 · Paint lanes (left and right)
+        d.rectangle([0,      lY, lW,     lY + lH], fill=(160, 80, 32), outline=(255, 255, 255, 140))
+        d.rectangle([W - lW, lY, W,      lY + lH], fill=(160, 80, 32), outline=(255, 255, 255, 140))
+
+          # 5 · Free-throw circles
+        ftc_r = lH * 0.26
+        d.ellipse([lW - ftc_r, H/2 - ftc_r, lW + ftc_r, H/2 + ftc_r],
+                  outline=(255, 255, 255, 97))
+        d.ellipse([W - lW - ftc_r, H/2 - ftc_r, W - lW + ftc_r, H/2 + ftc_r],
+                  outline=(255, 255, 255, 97))
+
+          # 6 · Three-point arcs
+        d.arc([0 - thR, lY - 4, thR,     lY + lH + 4], start=270, end=90,
+              fill=(255, 255, 255, 97))
+        d.arc([W - thR, lY - 4, W + thR, lY + lH + 4], start=90,  end=270,
+              fill=(255, 255, 255, 97))
+
+          # 7 · Basket posts (vertical lines at ~45% of lane width from edge)
+        px_l = lW * 0.45
+        px_r = W - px_l
+        d.line([(px_l, H * 0.33), (px_l, H * 0.67)], fill=(220, 220, 220, 165), width=1)
+        d.line([(px_r, H * 0.33), (px_r, H * 0.67)], fill=(220, 220, 220, 165), width=1)
+
+    # ================= GENERIC CARD RENDERERS =================
+    def draw_stock_card(self, game):
+        img = Image.new("RGBA", (128, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        try:
+            symbol = str(game.get('home_abbr', 'UNK'))
+            if not symbol.startswith('$') and not any(c.isdigit() for c in symbol): symbol = "$" + symbol
+            price = str(game.get('home_score', '0.00'))
+            if not price.startswith('$'): price = "$" + price
+            change_pct = str(game.get('away_score', '0.00%'))
+            change_amt = str(game.get('situation', {}).get('change', '0.00'))
+            if not change_amt.startswith('$') and not change_amt.startswith('-'): change_amt = "$" + change_amt
+            if change_amt.startswith('-'): change_amt = change_amt.replace('-', '-$')
+            logo = self.get_logo(game.get('home_logo'), size=(24, 24))
+            is_up = not change_pct.startswith('-')
+            color = (0, 255, 0) if is_up else (255, 0, 0)
+            if logo: img.paste(logo, (2, 4), logo)
+            x_text_start = 28 if logo else 2
+            d.text((x_text_start, -2), symbol, font=self.big_font, fill=(255, 255, 255))
+            d.text((x_text_start, 11), price, font=self.huge_font, fill=color)
+            RIGHT_ALIGN = 126
+            w_pct = d.textlength(change_pct, font=self.medium_font)
+            pct_x = int(RIGHT_ALIGN - w_pct)
+            arrow_x = pct_x - 6
+            self.draw_arrow(d, arrow_x, 4, is_up, color)
+            d.text((pct_x, -1), change_pct, font=self.medium_font, fill=color)
+            w_price = d.textlength(price, font=self.huge_font)
+            overlap_x = x_text_start + w_price + 6
+            if arrow_x > overlap_x:
+                w_amt = d.textlength(change_amt, font=self.medium_font)
+                amt_x = int(RIGHT_ALIGN - w_amt)
+                d.text((amt_x, 15), change_amt, font=self.medium_font, fill=color)
+        except Exception as e:
+            print(f"Stock Render Err: {e}")
+        return img
+
+    def draw_leaderboard_card(self, game):
+        img = Image.new("RGBA", (64, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        try:
+            sport = str(game.get('sport', '')).lower()
+            accent_color = (100, 100, 100)
+            if 'f1' in sport: accent_color = (255, 0, 0)
+            elif 'nascar' in sport: accent_color = (255, 215, 0)
+            elif 'indy' in sport: accent_color = (0, 144, 255)
+            d.rectangle((0, 0, 63, 7), fill=(20, 20, 20))
+            d.line((0, 8, 63, 8), fill=accent_color, width=1)
+            t_name = str(game.get('tourney_name', '')).upper().replace("GRAND PRIX", "GP").replace("TT", "").strip()[:14]
+            header_w = len(t_name) * 5
+            hx = (64 - header_w) // 2
+            draw_tiny_text(d, hx, 1, t_name, (220, 220, 220))
+            leaders = game.get('leaders', [])
+            if not isinstance(leaders, list): leaders = []
+            y_off = 10
+            for i, p in enumerate(leaders[:3]):
+                rank_color = (200, 200, 200)
+                if i == 0: rank_color = (255, 215, 0)
+                elif i == 1: rank_color = (192, 192, 192)
+                elif i == 2: rank_color = (205, 127, 50)
+                acronym = str(p.get('name', 'UNK'))[:3].upper()
+                raw_score = str(p.get('score', ''))
+                display_score = "LDR" if "LEADER" in raw_score.upper() else raw_score
+                draw_tiny_text(d, 1, y_off, str(i+1), rank_color)
+                draw_tiny_text(d, 8, y_off, acronym, (255, 255, 255))
+                score_w = len(display_score) * 5
+                draw_tiny_text(d, 63 - score_w, y_off, display_score, (255, 100, 100))
+                y_off += 8
+        except:
+            pass
+        return img
+
+    def draw_weather_detailed(self, game):
+        img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        sit = game.get('situation', {}) or {}
+        stats = sit.get('stats', {}) or {}
+        forecast = sit.get('forecast', []) or []
+        cur_icon = sit.get('icon', 'cloud')
+        DEEP_BLUE = (18, 45, 95)
+
+        temp_f = str(game.get('home_abbr', '--')).replace('°', '').strip()
+        try:
+            tv = int(float(temp_f))
+            if tv >= 90:   temp_color = (255, 90, 35)
+            elif tv >= 75: temp_color = (255, 185, 40)
+            elif tv >= 55: temp_color = (95, 225, 105)
+            elif tv >= 35: temp_color = (95, 190, 255)
+            else:          temp_color = (190, 230, 255)
+        except:
+            temp_color = (240, 240, 245)
+
+        d.rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), fill=(0, 0, 0))
+        d.line((0, 0, PANEL_W - 1, 0), fill=DEEP_BLUE)
+
+        left_w = 124
+        d.rectangle((0, 0, left_w, 31), fill=(0, 0, 0))
+        d.line((left_w, 0, left_w, 31), fill=DEEP_BLUE)
+
+        location_name = normalize_special_chars(str(game.get('away_abbr', 'CITY')).upper()).strip()
+        if len(location_name) > 15:
+            location_name = location_name[:15]
+        draw_tiny_text(d, 4, 2, location_name, (125, 170, 230))
+
+        self.draw_weather_pixel_art(d, cur_icon, 3, 11)
+
+        temp_disp = "--" if not temp_f else temp_f
+        d.text((24, 10), f"{temp_disp}\u00b0F", font=self.big_font, fill=temp_color)
+
+        cond = normalize_special_chars(str(game.get('status', '')).upper()).strip()
+        replacements = {
+            'PARTLY CLOUDY': 'PARTLY CLDY',
+            'MOSTLY CLOUDY': 'MOSTLY CLDY',
+            'SCATTERED SHOWERS': 'SCT SHOWERS',
+            'THUNDERSTORMS': 'T-STORMS',
+            'THUNDERSTORM': 'T-STORM',
+            'LIGHT RAIN': 'LGT RAIN'
+        }
+        cond = replacements.get(cond, cond)
+        if len(cond) > 19:
+            cond = cond[:19]
+        if cond:
+            draw_tiny_text(d, 24, 25, cond, (105, 145, 190))
+
+        aqi_val = str(stats.get('aqi', '--')).strip() or '--'
+        uv_val = str(stats.get('uv', '--')).strip() or '--'
+        aqi_col = self.get_aqi_color(aqi_val)
+
+        aqi_box = (74, 3, 121, 11)
+        uv_box = (74, 13, 121, 21)
+        d.rectangle(aqi_box, fill=(2, 6, 14), outline=DEEP_BLUE)
+        d.rectangle(uv_box, fill=(2, 6, 14), outline=DEEP_BLUE)
+
+        aqi_label = "AQI"; aqi_value = aqi_val[:4]
+        uv_label = "UV";   uv_value  = uv_val[:4]
+        tiny_h = 5
+
+        aqi_mid = (aqi_box[0] + aqi_box[2]) // 2
+        aqi_label_w = len(aqi_label) * 5; aqi_value_w = len(aqi_value) * 5
+        aqi_label_x = aqi_box[0] + ((aqi_mid - aqi_box[0]) - aqi_label_w) // 2
+        aqi_value_x = aqi_mid + ((aqi_box[2] - aqi_mid + 1) - aqi_value_w) // 2
+        aqi_y = aqi_box[1] + ((aqi_box[3] - aqi_box[1] + 1) - tiny_h) // 2
+        draw_tiny_text(d, aqi_label_x, aqi_y, aqi_label, (95, 120, 160))
+        draw_tiny_text(d, aqi_value_x, aqi_y, aqi_value, aqi_col)
+
+        uv_mid = (uv_box[0] + uv_box[2]) // 2
+        uv_label_w = len(uv_label) * 5; uv_value_w = len(uv_value) * 5
+        uv_label_x = uv_box[0] + ((uv_mid - uv_box[0]) - uv_label_w) // 2
+        uv_value_x = uv_mid + ((uv_box[2] - uv_mid + 1) - uv_value_w) // 2
+        uv_y = uv_box[1] + ((uv_box[3] - uv_box[1] + 1) - tiny_h) // 2
+        draw_tiny_text(d, uv_label_x, uv_y, uv_label, (95, 120, 160))
+        draw_tiny_text(d, uv_value_x, uv_y, uv_value, (210, 155, 255))
+
+        if not forecast:
+            forecast = [
+                {'day': 'MON', 'icon': 'sun',   'high': 80, 'low': 70},
+                {'day': 'TUE', 'icon': 'rain',  'high': 75, 'low': 65},
+                {'day': 'WED', 'icon': 'cloud', 'high': 78, 'low': 68},
+                {'day': 'THU', 'icon': 'storm', 'high': 72, 'low': 60},
+                {'day': 'FRI', 'icon': 'sun',   'high': 82, 'low': 72},
+            ]
+
+        right_start = left_w + 1
+        right_w = PANEL_W - right_start
+        col_w = right_w // 5
+
+        for i, day in enumerate(forecast[:5]):
+            cx = right_start + (i * col_w)
+            col_right = cx + col_w - 1
+            if i == 4: col_right = PANEL_W - 1
+
+            bg = (0, 0, 0) if i % 2 == 0 else (1, 3, 8)
+            d.rectangle((cx, 0, col_right, 31), fill=bg)
+            if i < 4: d.line((col_right, 3, col_right, 29), fill=DEEP_BLUE)
+
+            day_str = normalize_special_chars(str(day.get('day', '???'))[:3].upper())
+            day_w = len(day_str) * 5
+            day_x = cx + max(0, ((col_right - cx + 1) - day_w) // 2)
+            draw_tiny_text(d, day_x, 2, day_str, (110, 160, 220))
+            d.line((cx + 4, 8, col_right - 4, 8), fill=DEEP_BLUE)
+
+            icon_x = cx + max(0, ((col_right - cx + 1) - 16) // 2)
+            self.draw_weather_pixel_art(d, day.get('icon', 'cloud'), icon_x, 9)
+
+            hi = str(day.get('high', '--')).replace('°', '')
+            lo = str(day.get('low', '--')).replace('°', '')
+            hi_w = len(hi) * 5; lo_w = len(lo) * 5
+            total_w = hi_w + 5 + lo_w
+            tx = cx + max(0, ((col_right - cx + 1) - total_w) // 2)
+            temp_y = 26
+            draw_tiny_text(d, tx,           temp_y, hi,  (255, 115, 75))
+            draw_tiny_text(d, tx + hi_w,    temp_y, "/", (70, 88, 120))
+            draw_tiny_text(d, tx + hi_w + 5, temp_y, lo, (90, 165, 255))
+
+        return img
+
+    def draw_clock_modern(self):
+        img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        now = datetime.now()
+        date_str = now.strftime("%A %B %d").upper()
+        w_date = d.textlength(date_str, font=self.tiny)
+        d.text(((PANEL_W - w_date)/2, -1), date_str, font=self.tiny, fill=(200, 200, 200))
+        time_str = now.strftime("%I:%M:%S").lstrip('0')
+        w_time = d.textlength(time_str, font=self.clock_giant)
+        d.text(((PANEL_W - w_time)/2, 4), time_str, font=self.clock_giant, fill=(255, 255, 255))
+        sec_val = now.second
+        ms_val = now.microsecond
+        total_seconds = sec_val + (ms_val / 1000000.0)
+        bar_width = int((total_seconds / 60.0) * PANEL_W)
+        d.rectangle((0, 31, PANEL_W, 31), fill=(30, 30, 30))
+        d.rectangle((0, 31, bar_width, 31), fill=(0, 200, 255))
+        return img
+
+    def draw_music_card(self, game):
+        img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        artist = str(game.get('home_abbr', 'Unknown')).strip()
+        song = str(game.get('away_abbr', 'Unknown')).strip()
+        cover_url = game.get('home_logo')
+        next_covers = game.get('next_logos', [])
+        sit = game.get('situation', {})
+        is_playing = sit.get('is_playing', False)
+        server_progress = float(sit.get('progress', 0.0))
+        server_fetch_ts = float(sit.get('fetch_ts', time.time()))
+        total_dur = float(sit.get('duration', 1.0))
+        if total_dur <= 0: total_dur = 1.0
+        now = time.time()
+        dt_frame = now - self.last_frame_time
+        self.last_frame_time = now
+        if is_playing:
+            time_since_fetch = now - server_fetch_ts
+            local_progress = server_progress + time_since_fetch
+            self.vinyl_rotation = (self.vinyl_rotation - (100.0 * dt_frame)) % 360
+            self.text_scroll_pos += (15.0 * dt_frame)
+        else:
+            local_progress = server_progress
+        local_progress = min(local_progress, total_dur)
+
+        time_remaining = total_dur - local_progress
+        if is_playing and time_remaining <= 5.0 and not self.transitioning_out:
+            self.transitioning_out = True
+            self.prev_vinyl_cache = self.vinyl_cache
+            self.prev_dominant_color = self.dominant_color
+            self.fade_alpha = 0.5
+            if next_covers and next_covers[0]:
+                try:
+                    next_url = next_covers[0]
+                    raw_next = self.get_logo(next_url, (self.COVER_SIZE, self.COVER_SIZE))
+                    if not raw_next:
+                        raw_next = Image.open(io.BytesIO(requests.get(next_url, timeout=1).content)).convert("RGBA")
+                    raw_next = raw_next.resize((self.COVER_SIZE, self.COVER_SIZE))
+                    next_art = ImageOps.fit(raw_next, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
+                    next_art.putalpha(self.vinyl_mask)
+                    self.vinyl_cache = next_art
+                    stat = ImageStat.Stat(raw_next)
+                    self.dominant_color = tuple(int(x) for x in stat.mean[:3])
+                except:
+                    pass
+
+        if cover_url != self.last_cover_url:
+            if not self.transitioning_out:
+                self.fade_alpha = 1.0
+                self.prev_vinyl_cache = None
+            else:
+                self.transitioning_out = False
+            self.last_cover_url = cover_url
+            if cover_url:
+                try:
+                    raw = self.get_logo(cover_url, (self.COVER_SIZE, self.COVER_SIZE))
+                    if not raw:
+                        raw = Image.open(io.BytesIO(requests.get(cover_url, timeout=1).content)).convert("RGBA")
+                    self.extract_colors_and_spindle(raw)
+                    raw = raw.resize((self.COVER_SIZE, self.COVER_SIZE))
+                    output = ImageOps.fit(raw, (self.COVER_SIZE, self.COVER_SIZE), centering=(0.5, 0.5))
+                    output.putalpha(self.vinyl_mask)
+                    self.vinyl_cache = output
+                except:
+                    pass
+
+        if self.fade_alpha < 1.0:
+            self.fade_alpha = min(1.0, self.fade_alpha + (0.1 * dt_frame))
+        t_alpha = self.fade_alpha
+        smooth_alpha = t_alpha * t_alpha * (3 - 2 * t_alpha)
+        def blend_colors(c1, c2, alpha):
+            return tuple(int(c1[i] + (c2[i] - c1[i]) * alpha) for i in range(3))
+        current_ui_color = blend_colors(self.prev_dominant_color, self.dominant_color, smooth_alpha)
+
+        composite = self.scratch_layer.copy()
+        if self.vinyl_cache:
+            if smooth_alpha < 1.0 and self.prev_vinyl_cache:
+                blended_cover = Image.blend(self.prev_vinyl_cache, self.vinyl_cache, smooth_alpha)
+                offset = (self.VINYL_SIZE - self.COVER_SIZE) // 2
+                composite.paste(blended_cover, (offset, offset), blended_cover)
+            else:
+                offset = (self.VINYL_SIZE - self.COVER_SIZE) // 2
+                composite.paste(self.vinyl_cache, (offset, offset), self.vinyl_cache)
+        draw_comp = ImageDraw.Draw(composite)
+        draw_comp.ellipse((22, 22, 28, 28), fill="#222")
+        draw_comp.ellipse((23, 23, 27, 27), fill=self.spindle_color)
+        rotated = composite.rotate(self.vinyl_rotation, resample=Image.Resampling.BICUBIC)
+        img.paste(rotated, (4, -9), rotated)
+
+        TEXT_X = 60
+        self.draw_scrolling_text(img, song, self.medium_font, TEXT_X, 0, 188, self.text_scroll_pos, "white")
+        self.draw_scrolling_text(img, artist, self.tiny, TEXT_X + 16, 17, 172, self.text_scroll_pos, (180, 180, 180))
+
+        d.ellipse((TEXT_X, 15, TEXT_X+12, 15+12), fill=current_ui_color)
+        d.arc((TEXT_X+3, 15+3, TEXT_X+9, 15+9), 190, 350, fill="black", width=1)
+        d.arc((TEXT_X+3, 15+5, TEXT_X+9, 15+11), 190, 350, fill="black", width=1)
+        d.arc((TEXT_X+4, 15+7, TEXT_X+8, 15+12), 190, 350, fill="black", width=1)
+
+        old_dom = self.dominant_color
+        self.dominant_color = current_ui_color
+        self.render_visualizer(d, 248, 6, 80, 20, is_playing=is_playing)
+        self.dominant_color = old_dom
+
+        pct = min(1.0, max(0.0, local_progress / total_dur))
+        d.rectangle((0, 31, int(PANEL_W * pct), 31), fill=current_ui_color)
+        def fmt_time(seconds):
+            m, s = divmod(int(max(0, seconds)), 60)
+            return f"{m}:{s:02d}"
+        rem_str = f"-{fmt_time(total_dur - local_progress)}"
+        d.text((PANEL_W - d.textlength(rem_str, font=self.tiny) - 5, 10), rem_str, font=self.tiny, fill="white")
+        return img
+
+    def draw_flight_visitor(self, game):
+        img = Image.new("RGBA", (PANEL_W, PANEL_H), self.C_BG + (255,))
+        d = ImageDraw.Draw(img)
+
+        guest_name = str(game.get('guest_name', game.get('id', '???')))
+        flight_id = str(game.get('id', '???'))
+        route_origin = str(game.get('origin_city', '???'))
+        route_dest = str(game.get('dest_city', '???'))
+        alt = int(game.get('alt', 0))
+        dist = int(game.get('dist', 0))
+        speed = int(game.get('speed', 0))
+        eta_str = str(game.get('eta_str', '--'))
+        progress = int(game.get('progress', 0))
+        status = str(game.get('status', 'scheduled'))
+        is_live = game.get('is_live', False)
+        try:
+            delay_min = int(float(game.get('delay_min', 0) or 0))
+        except (TypeError, ValueError):
+            delay_min = 0
+        is_delayed = bool(game.get('is_delayed', False)) or delay_min > 0 or ('delay' in status.lower())
+        plane_type = str(game.get('aircraft_type', '') or '').strip()
+        if plane_type:
+            plane_type = plane_type[:60]
+
+        def with_plane_label(text):
+            return f"{text}  {plane_type}" if plane_type else text
+
+        if is_delayed:
+            plane_color = self.C_RED
+        else:
+            plane_color = self.C_GRN if is_live else self.C_AMBER
+        self._icon_plane(d, 6, 2, plane_color)
+        draw_tiny_text(d, 18, 2, guest_name, self.C_AMBER)
+        if guest_name.upper() != flight_id.upper():
+            id_w = len(flight_id) * 5
+            draw_tiny_text(d, PANEL_W - id_w - 8, 2, flight_id, self.C_GRY)
+
+        route_str = f"{route_origin} > {route_dest}"
+        draw_tiny_text(d, 6, 10, route_str, self.C_BLUE_TXT)
+
+        if is_live:
+            stats = f"{dist} MI  {eta_str}  {speed} MPH  {alt:,} FT"
+            draw_tiny_text(d, 6, 18, with_plane_label(stats), self.C_WHT)
+        else:
+            draw_tiny_text(d, 6, 18, with_plane_label(status.upper()), self.C_AMBER)
+
+        bar_x, bar_y, bar_w, bar_h = 6, 27, 372, 3
+        bar_bg = (15, 35, 15)
+        bar_fill = self.C_GRN
+        if is_delayed:
+            bar_bg = (60, 10, 10)
+            bar_fill = self.C_RED
+        d.rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), fill=bar_bg)
+        pct = progress / 100.0 if is_live else 0.02
+        fill_w = int(bar_w * max(0.02, min(0.98, pct)))
+        d.rectangle((bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), fill=bar_fill)
+        return img
+
+    def draw_flight_airport(self, weather_item, arrivals, departures):
+        img = Image.new("RGBA", (PANEL_W, PANEL_H), self.C_BG + (255,))
+        d = ImageDraw.Draw(img)
+
+        d.rectangle((0, 0, PANEL_W, 6), fill=(20, 30, 45))
+        d.rectangle((0, 7, PANEL_W, 7), fill=(40, 90, 160))
+
+        airport_name = str(weather_item.get('home_abbr', 'AIRPORT')) if weather_item else 'AIRPORT'
+        draw_tiny_text(d, 3, 1, airport_name, self.C_BLUE_TXT)
+
+        weather_temp = str(weather_item.get('away_abbr', '--')) if weather_item else '--'
+        weather_cond = str(weather_item.get('status', '')) if weather_item else ''
+        weather_str = f"{weather_temp} {weather_cond}"
+        wx_w = len(weather_str) * 5
+        draw_tiny_text(d, PANEL_W - wx_w - 3, 1, weather_str, self.C_WHT)
+
+        d.rectangle((2, 9, 189, 30), fill=(25, 35, 50))
+        draw_tiny_text(d, 5, 10, "NEXT ARRIVAL", self.C_GRY)
+        for i, arr in enumerate(arrivals[:2]):
+            flight_id = str(arr.get('away_abbr', '???'))
+            from_city = str(arr.get('home_abbr', '???'))
+            text_str = f"{flight_id} FROM {from_city}"[:36]
+            draw_tiny_text(d, 5, 18 + i * 7, text_str, self.C_GRN)
+        if not arrivals:
+            draw_tiny_text(d, 5, 18, "--", self.C_GRY)
+
+        d.rectangle((194, 9, 381, 30), fill=(25, 35, 50))
+        draw_tiny_text(d, 197, 10, "NEXT DEPARTURE", self.C_GRY)
+        for i, dep in enumerate(departures[:2]):
+            flight_id = str(dep.get('away_abbr', '???'))
+            to_city = str(dep.get('home_abbr', '???'))
+            text_str = f"{flight_id} TO {to_city}"[:36]
+            draw_tiny_text(d, 197, 18 + i * 7, text_str, self.C_RED)
+        if not departures:
+            draw_tiny_text(d, 197, 18, "--", self.C_GRY)
+
+        return img
+
+    def draw_single_game(self, game):
+        game_hash = self.get_game_hash(game)
+        
+        if game.get('sport') == 'clock':
+            return self.draw_clock_modern()
+
+        if game.get('type') == 'music' or game.get('sport') == 'music':
+            return self.draw_music_card(game)
+
+        if game.get('type') != 'weather':
+            if game_hash in self.game_render_cache:
+                return self.game_render_cache[game_hash]
+
+        if game.get('type') == 'weather':
+            img = self.draw_weather_detailed(game)
+            self.game_render_cache[game_hash] = img
+            return img
+
+        if self.mode == 'sports_full' and game.get('type') not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(game.get('type','')):
+            img = self.draw_sport_full_bleed(game)
+            self.game_render_cache[game_hash] = img
+            return img
+
+        if game.get('type') == 'stock_ticker' or str(game.get('sport', '')).startswith('stock'):
+            img = self.draw_stock_card(game)
+            self.game_render_cache[game_hash] = img
+            return img
+
+        if game.get('type') == 'leaderboard':
+            img = self.draw_leaderboard_card(game)
+            self.game_render_cache[game_hash] = img
+            return img
+
+        if game.get('type') == 'flight_visitor':
+            img = self.draw_flight_visitor(game)
+            self.game_render_cache[game_hash] = img
+            return img
+
+        if game.get('type') == 'flight_airport_hud':
+            img = self.draw_flight_airport(
+                game.get('_weather_item'),
+                game.get('_arrivals', []),
+                game.get('_departures', [])
+            )
+            self.game_render_cache[game_hash] = img
+            return img
+
+        # --- DEFAULT SCROLLING SPORTS SCOREBOARD ---
+        img = Image.new("RGBA", (64, 32), (0, 0, 0, 0))
+        if not isinstance(game, dict):
+            return img
+        try:
+            d = ImageDraw.Draw(img)
+            sport = str(game.get('sport', '')).lower()
+            is_football = 'football' in sport or 'nfl' in sport or 'ncf' in sport
+            is_hockey = 'hockey' in sport or 'nhl' in sport
+            is_baseball = 'baseball' in sport or 'mlb' in sport or 'wbc' in sport
+            is_soccer = 'soccer' in sport
+            is_march_madness = 'march_madness' in sport
+            is_active = (game.get('state') == 'in')
+            sit = game.get('situation', {}) or {}
+            poss = sit.get('possession')
+            shootout = sit.get('shootout')
+
+            a_score = str(game.get('away_score', ''))
+            h_score = str(game.get('home_score', ''))
+            has_indicator = is_active and (poss or sit.get('powerPlay') or sit.get('emptyNet'))
+            is_wide = ((is_football and is_active) or len(a_score) >= 2 or len(h_score) >= 2 or has_indicator)
+            if is_march_madness:
+                is_wide = False
+            if is_baseball:
+                is_wide = (len(a_score) >= 2 or len(h_score) >= 2)
+
+            logo_size = (16, 16) if is_wide else (24, 24)
+            logo_y = 5 if is_wide else 0
+            l1_pos = (2, logo_y) if is_wide else (0, logo_y)
+            l2_pos = (46, logo_y) if is_wide else (40, logo_y)
+
+            score_y = 10 if is_wide else 12
+
+            l1 = self.get_logo(game.get('away_logo'), logo_size)
+            if l1: img.paste(l1, l1_pos, l1)
+            else: d.text(l1_pos, str(game.get('away_abbr','UNK'))[:3], font=self.micro, fill=(150,150,150))
+            l2 = self.get_logo(game.get('home_logo'), logo_size)
+            if l2: img.paste(l2, l2_pos, l2)
+            else: d.text(l2_pos, str(game.get('home_abbr','UNK'))[:3], font=self.micro, fill=(150,150,150))
+
+            score = f"{a_score}-{h_score}"
+            w_sc = d.textlength(score, font=self.score_default_font)
+            d.text(((64-w_sc)/2, score_y), score, font=self.score_default_font, fill=(255,255,255))
+
+            status = self.shorten_status(game.get('status', ''), game.get('sport', ''))
+            st_x = (64 - len(status.replace('~', ''))*5) // 2
+            draw_hybrid_text(d, st_x, 25, status, (180, 180, 180))
+
+            if is_march_madness:
+                h_seed = str(game.get('home_seed', ''))
+                a_seed = str(game.get('away_seed', ''))
+                if a_seed:
+                    w = len(a_seed) * 5
+                    sx = 12 - (w // 2)
+                    draw_tiny_text(d, sx, 26, a_seed, (200, 200, 200))
+                if h_seed:
+                    w = len(h_seed) * 5
+                    sx = 52 - (w // 2)
+                    draw_tiny_text(d, sx, 26, h_seed, (200, 200, 200))
+
+            elif shootout:
+                away_so = shootout.get('away', []) if isinstance(shootout, dict) else []
+                home_so = shootout.get('home', []) if isinstance(shootout, dict) else []
+                if is_soccer:
+                    self.draw_soccer_shootout(d, away_so, 2, 26)
+                    self.draw_soccer_shootout(d, home_so, 46, 26)
+                else:
+                    self.draw_shootout_indicators(d, away_so, 2, 26)
+                    self.draw_shootout_indicators(d, home_so, 46, 26)
+
+            elif is_active and not is_march_madness:
+                icon_y = logo_y + logo_size[1] + 3
+                tx = -1
+                side = None
+                if (is_football or is_soccer) and poss: side = poss
+                elif is_hockey and (sit.get('powerPlay') or sit.get('emptyNet')) and poss: side = poss
+
+                away_id = str(game.get('away_id', '')); home_id = str(game.get('home_id', ''))
+                away_abbr = str(game.get('away_abbr', '')); home_abbr = str(game.get('home_abbr', ''))
+                side_str = str(side)
+
+                poss_side = "none"
+                if side_str and (side_str == away_abbr or side_str == away_id):
+                    tx = l1_pos[0] + (logo_size[0]//2) - 2; poss_side = "away"
+                elif side_str and (side_str == home_abbr or side_str == home_id):
+                    tx = l2_pos[0] + (logo_size[0]//2) + 2; poss_side = "home"
+
+                if tx != -1:
+                    if is_football:
+                        d.ellipse([tx-3, icon_y, tx+3, icon_y+4], fill=(170,85,0))
+                        d.line([(tx, icon_y+1), (tx, icon_y+3)], fill='white', width=1)
+                    elif is_hockey:
+                        self.draw_hockey_stick(d, tx+2, icon_y+5, 3)
+                    elif is_soccer:
+                        d.ellipse((tx-2, icon_y, tx+2, icon_y+4), fill='white'); d.point((tx, icon_y+2), fill='black')
+
+                if is_hockey:
+                    if sit.get('emptyNet'):
+                        w = d.textlength("EN", font=self.tiny)
+                        d.text(((64-w)/2, -1), "EN", font=self.tiny, fill=(255,255,0))
+                    elif sit.get('powerPlay'):
+                        w = d.textlength("PP", font=self.tiny)
+                        d.text(((64-w)/2, -1), "PP", font=self.tiny, fill=(255,255,0))
+                elif is_baseball:
+                    bases = [(31,2), (27,6), (35,6)]
+                    active_bases = [sit.get('onSecond'), sit.get('onThird'), sit.get('onFirst')]
+                    for i, p in enumerate(bases):
+                        color = (255,255,150) if active_bases[i] else (45,45,45)
+                        d.rectangle((p[0], p[1], p[0]+3, p[1]+3), fill=color)
+                    b_count = int(sit.get('balls', 0)); s_count = int(sit.get('strikes', 0)); o_count = int(sit.get('outs', 0))
+                    raw_st = str(game.get('status', '')).upper()
+                    is_mid = any(x in raw_st for x in ['MID', 'MIDDLE', 'END'])
+                    if not is_mid:
+                        o_x = (64 - 10) // 2
+                        self.draw_baseball_hud(d, o_x, 23, o_count)
+                        is_bot = 'BOT' in raw_st or 'BOTTOM' in raw_st
+                        sb_x = 44 if is_bot else 5
+                        draw_tiny_text(d, sb_x,      26, str(b_count), (  0, 200,   0))
+                        draw_tiny_text(d, sb_x +  5, 26, '-',          (100, 100, 100))
+                        draw_tiny_text(d, sb_x + 10, 26, str(s_count), (255, 100,   0))
+                elif is_football:
+                    dd = sit.get('downDist', '')
+                    if dd:
+                        s_dd = dd.split(' at ')[0]
+                        w = d.textlength(s_dd, font=self.micro)
+                        d.text(((64-w)/2, -1), s_dd, font=self.micro, fill=(0,255,0))
+                if is_football and sit.get('isRedZone'):
+                    d.rectangle((0, 0, 63, 31), outline=(255, 0, 0), width=1)
+        except Exception as e:
+            print(f"Game render error: {e}")
+
+        self.game_render_cache[game_hash] = img
+        return img
+
+    def get_game_hash(self, game):
+        s = (
+            f"{self.mode}_"
+            f"{game.get('id')}_{game.get('home_score')}_{game.get('away_score')}_"
+            f"{game.get('situation', {}).get('change')}_{game.get('status')}"
+        )
+        return hashlib.md5(s.encode()).hexdigest()
+
+    def get_item_width(self, game):
+        t = game.get('type')
+        s = game.get('sport', '')
+        if self.mode == 'sports_full' and t not in ['music', 'weather', 'leaderboard', 'stock_ticker'] and 'flight' not in str(t):
+            return PANEL_W
+        if t == 'music' or s == 'music': return PANEL_W
+        if t == 'stock_ticker' or (s and str(s).startswith('stock')): return 128
+        if t == 'weather': return PANEL_W
+        if t == 'flight_visitor': return PANEL_W
+        if t == 'flight_airport_hud': return PANEL_W
+        return 64
+
+    # ================= STRIP BUILDER =================
+    def build_seamless_strip(self, playlist):
+        if not playlist:
+            return None
+        safe_playlist = playlist[:60]
+        total_w = sum(self.get_item_width(g) for g in safe_playlist)
+        strip = Image.new("RGBA", (total_w + PANEL_W, PANEL_H), (0,0,0,255))
+        x = 0
+        for g in safe_playlist:
+            card = self.draw_single_game(g)
+            strip.paste(card, (x, 0), card)
+            x += card.width
+        bx = x; i = 0
+        while bx < total_w + PANEL_W and len(safe_playlist) > 0:
+            g = safe_playlist[i % len(safe_playlist)]
+            card = self.draw_single_game(g)
+            strip.paste(card, (bx, 0), card)
+            bx += card.width
+            i += 1
+        return strip
+
+    def start_static_display(self):
+        if not self.static_items:
+            return False
+        game = self.static_items[self.static_index % len(self.static_items)]
+        self.static_index += 1
+        self.static_current_game = game
+        self.static_current_image = self.draw_single_game(game)
+        self.static_until = time.time() + PAGE_HOLD_TIME
+        self.showing_static = True
+        return True
+
+    # ================= RENDER LOOP =================
+    def render_loop(self):
+        strip_offset = 0.0
+
+        while self.running:
+            try:
+                if self.is_pairing:
+                    frame = self.draw_pairing_screen()
+                    self.update_display(frame)
+                    time.sleep(0.1)
+                    continue
+
+                if self.brightness <= 0.001:
+                    self.matrix.Fill(0, 0, 0)
+                    time.sleep(0.5)
+                    continue
+
+                spotify_data = next((g for g in self.static_items if g.get('id') == 'spotify_now'), None)
+                music_is_playing = False
+                if spotify_data:
+                    music_is_playing = spotify_data.get('situation', {}).get('is_playing', False)
+                if self.mode != 'music':
+                    music_is_playing = False
+
+                if self.showing_static:
+                    if self.bg_strip_ready and self.current_data_hash != self.last_applied_hash:
+                        self.showing_static = False
+                        time.sleep(0.033)
+                        continue
+
+                    if self.static_current_game:
+                        game_type = str(self.static_current_game.get('type', ''))
+                        sport = str(self.static_current_game.get('sport', '')).lower()
+
+                        if sport.startswith('clock') or game_type == 'music' or sport == 'music':
+                            if game_type == 'music' or sport == 'music':
+                                if spotify_data:
+                                    self.static_current_game = spotify_data
+                                    if music_is_playing:
+                                        self.static_until = time.time() + 2.0
+                            self.static_current_image = self.draw_single_game(self.static_current_game)
+                            if self.static_current_image:
+                                self.update_display(self.static_current_image)
+                            if time.time() >= self.static_until:
+                                self.showing_static = False
+                            time.sleep(0.033)
+                            continue
+
+                    if self.static_current_image:
+                        self.update_display(self.static_current_image)
+                    if time.time() >= self.static_until:
+                        self.showing_static = False
+                    time.sleep(0.033)
+                    continue
+
+                if self.bg_strip_ready:
+                    new_hash = self.current_data_hash
+                    if new_hash != self.last_applied_hash:
+                        if self.bg_strip is not None:
+                            if self.active_strip is None:
+                                self.active_strip = self.bg_strip
+                                self.games = self.new_games_list
+                                strip_offset = 0
+                            else:
+                                current_x = int(strip_offset)
+                                old_total_width = self.active_strip.width - PANEL_W if self.active_strip else 1
+                                if old_total_width <= 0:
+                                    old_total_width = 1
+                                progress_pct = current_x / float(old_total_width)
+                                new_total_width = self.bg_strip.width - PANEL_W
+                                if new_total_width <= 0:
+                                    new_total_width = 1
+                                new_offset = int(progress_pct * new_total_width)
+                                if new_offset < 0:
+                                    new_offset = 0
+                                if new_offset > new_total_width:
+                                    new_offset = 0
+                                self.active_strip = self.bg_strip
+                                self.games = self.new_games_list
+                                strip_offset = float(new_offset)
+                                accum_w = 0
+                                visible_item_id = None
+                                pixel_delta = 0
+                                for g in self.games:
+                                    w = self.get_item_width(g)
+                                    if accum_w + w > current_x:
+                                        visible_item_id = g.get('id')
+                                        pixel_delta = current_x - accum_w
+                                        break
+                                    accum_w += w
+                                new_offset = -1
+                                new_accum_w = 0
+                                if visible_item_id:
+                                    for g in self.new_games_list:
+                                        w = self.get_item_width(g)
+                                        if g.get('id') == visible_item_id:
+                                            new_offset = new_accum_w + pixel_delta
+                                            break
+                                        new_accum_w += w
+                                self.active_strip = self.bg_strip
+                                self.games = self.new_games_list
+                                strip_offset = float(new_offset) if new_offset >= 0 else 0.0
+                        else:
+                            self.active_strip = None
+                        self.last_applied_hash = new_hash
+                    self.bg_strip_ready = False
+
+                    if music_is_playing and spotify_data:
+                        self.static_current_game = spotify_data
+                        self.static_current_image = self.draw_single_game(spotify_data)
+                        self.static_until = time.time() + 2.0
+                        self.showing_static = True
+                        continue
+
+                if self.active_strip:
+                    total_w = self.active_strip.width - PANEL_W
+                    if total_w <= 0: total_w = 1
+                    if strip_offset >= total_w:
+                        strip_offset = 0
+                        if self.static_items:
+                            if self.start_static_display():
+                                continue
+                    x = int(strip_offset)
+                    view = self.active_strip.crop((x, 0, x + PANEL_W, PANEL_H))
+                    self.update_display(view)
+                    strip_offset += 1
+                    if self.scroll_sleep > 0:
+                        time.sleep(self.scroll_sleep)
+                else:
+                    if self.static_items and self.start_static_display():
+                        continue
+                    self.update_display(self.draw_clock_modern())
+                    time.sleep(0.033)
+
+            except Exception as e:
+                print(f"Render Error: {e}")
+                time.sleep(0.5)
+
+    # ================= BACKEND POLLER =================
+    def poll_backend(self):
+        print("Backend Poller Started...")
+        last_hash = ""
+        session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=1)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+
+        while self.running:
+            try:
+                tz_name, utc_offset = self._get_local_timezone_info()
+                params = {"id": self.device_id}
+                if tz_name:
+                    params["timezone_name"] = tz_name
+                if isinstance(utc_offset, (int, float)):
+                    params["utc_offset"] = str(utc_offset)
+
+                url = f"{BACKEND_URL}/data"
+                r = session.get(url, params=params, headers=self._request_headers(), timeout=5, verify=False)
+                if r.status_code != 200:
+                    time.sleep(2)
+                    continue
+
+                data = r.json()
+                server_status = data.get('status', 'active')
+
+                if server_status == 'pairing':
+                    print(f"Server requests pairing. Auto-pairing as {self.device_id}...")
                     try:
-                        cached_dt = parse_iso(cached.get('startTimeUTC', ''))
-                        if visible_start_utc <= cached_dt <= visible_end_utc:
-                            local_games.append(cached)
+                        r_pair = session.post(
+                            f"{BACKEND_URL}/pair/id",
+                            json={"id": self.device_id, "name": "Ticker"},
+                            headers=self._request_headers(),
+                            timeout=5, verify=False
+                        )
+                        if r_pair.status_code == 200 and r_pair.json().get('success'):
+                            print("Auto-pairing successful!")
+                            self.is_pairing = False
+                            time.sleep(0.5)
                             continue
                         else:
-                            del self.final_game_cache[gid]
-                    except:
-                        del self.final_game_cache[gid]
-                
-                utc_str = e['date'].replace('Z', '')
-                st = e.get('status', {})
-                tp = st.get('type', {})
-                gst = tp.get('state', 'pre')
-                
-                try:
-                    game_dt = dt.fromisoformat(utc_str).replace(tzinfo=timezone.utc)
-                    if gst != 'in' and gst != 'half':
-                        if not (window_start_utc <= game_dt <= window_end_utc): continue
-                    
-                    if game_dt < visible_start_utc or game_dt >= visible_end_utc:
-                          if gst not in ['in', 'half']:
-                              continue
-                except: continue
-
-                comp = e['competitions'][0]
-                h = comp['competitors'][0]
-                a = comp['competitors'][1]
-                h_ab = h['team'].get('abbreviation', 'UNK')
-                a_ab = a['team'].get('abbreviation', 'UNK')
-                
-                if league_key == 'ncf_fbs' and h_ab not in FBS_TEAMS and a_ab not in FBS_TEAMS: continue
-                if league_key == 'ncf_fcs' and h_ab not in FCS_TEAMS and a_ab not in FCS_TEAMS: continue
-
-                # Seed Extraction Logic for March Madness
-                h_seed = h.get('curatedRank', {}).get('current', '')
-                a_seed = a.get('curatedRank', {}).get('current', '')
-                if h_seed == 99: h_seed = ""
-                if a_seed == 99: a_seed = ""
-
-                h_lg = self.get_corrected_logo(league_key, h_ab, h['team'].get('logo',''))
-                a_lg = self.get_corrected_logo(league_key, a_ab, a['team'].get('logo',''))
-                
-                h_clr = h['team'].get('color')
-                a_clr = a['team'].get('color')
-                h_alt = h['team'].get('alternateColor')
-                a_alt = a['team'].get('alternateColor')
-
-                # Force fallback to our hardcoded colors for missing ESPN data
-                if not h_clr or h_clr == '000000' or not a_clr or a_clr == '000000':
-                    h_info = self.lookup_team_info_from_cache(league_key, h_ab, logo=h_lg)
-                    a_info = self.lookup_team_info_from_cache(league_key, a_ab, logo=a_lg)
-                    h_clr = h_clr if h_clr and h_clr != '000000' else h_info.get('color', '000000')
-                    a_clr = a_clr if a_clr and a_clr != '000000' else a_info.get('color', '000000')
-                    h_alt = h_alt if h_alt else h_info.get('alt_color', 'ffffff')
-                    a_alt = a_alt if a_alt else a_info.get('alt_color', 'ffffff')
+                            print(f"Auto-pairing failed: {r_pair.text}")
+                    except Exception as pair_ex:
+                        print(f"Auto-pairing error: {pair_ex}")
+                    self.is_pairing = True
+                    self.pairing_code = data.get('code', '------')
+                    time.sleep(1)
+                    continue
                 else:
-                    h_clr = h_clr or '000000'
-                    a_clr = a_clr or '000000'
-                    h_alt = h_alt or 'ffffff'
-                    a_alt = a_alt or 'ffffff'
+                    if self.is_pairing:
+                        print("Paired successfully!")
+                    self.is_pairing = False
 
-                h_score = h.get('score','0')
-                a_score = a.get('score','0')
-                if 'soccer' in league_key: 
-                    h_score = re.sub(r'\s*\(.*?\)', '', str(h_score))
-                    a_score = re.sub(r'\s*\(.*?\)', '', str(a_score))
+                local_conf = data.get('local_config') or {}
+                if self.mode_override:
+                    server_mode = local_conf.get('mode', 'sports')
+                    if server_mode == self.mode_override:
+                        self.mode_override = None
+                else:
+                    self.mode = local_conf.get('mode', 'sports')
 
-                s_disp = tp.get('shortDetail', 'TBD')
-                p = st.get('period', 1)
-                duration_est = self.calculate_game_timing(league_key, e['date'], p, s_disp)
+                if server_status == 'sleep':
+                    self.brightness = 0.0
+                else:
+                    raw_brightness = local_conf.get('brightness', 100)
+                    self.brightness = float(raw_brightness) / 100.0
 
-                # --- FIX: ROBUST STATE INFERENCE ---
-                # ESPN sometimes fails to switch 'state' to 'in', leaving it stuck as 'pre'.
-                if gst == 'pre' and any(x in s_disp for x in ['1st', '2nd', '3rd', 'OT', 'Half', 'Qtr', 'Inning']):
-                    if "FINAL" not in s_disp.upper():
-                        gst = 'in'
+                self.scroll_sleep = local_conf.get('scroll_speed', 0.05)
+                self.inverted = local_conf.get('inverted', False)
 
-                is_suspended = False
-                susp_keywords = ["Suspended", "Postponed", "Canceled", "Delayed", "PPD"]
-                for kw in susp_keywords:
-                    if kw in s_disp:
-                        is_suspended = True
-                        break
-                
-                if not is_suspended:
-                    if gst == 'pre':
-                        try: s_disp = game_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
-                        except: pass
-                    elif gst == 'in' or gst == 'half':
-                        clk = st.get('displayClock', '0:00').replace("'", "")
-                        
-                        # --- FIX: EXTRACT CLOCK FROM DETAIL IF ESPN LEAVES IT BLANK ---
-                        if (not clk or clk == '0:00') and ':' in s_disp:
-                            m = re.search(r'(\d{1,2}:\d{2})', s_disp)
-                            if m: clk = m.group(1)
+                content = data.get('content', {})
+                new_games = content.get('sports', [])
 
-                        if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in config['path']): s_disp = "Halftime"
-                        elif 'hockey' in config['path'] and clk == '0:00':
-                                if p == 1: s_disp = "End 1st"
-                                elif p == 2: s_disp = "End 2nd"
-                                elif p == 3: s_disp = "End 3rd"
-                                else: s_disp = "Intermission"
+                current_payload = {'games': new_games, 'config': local_conf, 'status': server_status}
+                current_hash = hashlib.md5(json.dumps(current_payload, sort_keys=True).encode()).hexdigest()
+                self.current_data_hash = current_hash
+
+                if current_hash != last_hash:
+                    static_items = []
+                    scrolling_items = []
+                    logos_to_fetch = []
+
+                    flight_weather = None
+                    flight_arrivals = []
+                    flight_departures = []
+                    other_games = []
+
+                    for g in new_games:
+                        ft = g.get('type', '')
+                        if ft == 'flight_weather':
+                            flight_weather = g
+                        elif ft == 'flight_arrival':
+                            flight_arrivals.append(g)
+                        elif ft == 'flight_departure':
+                            flight_departures.append(g)
                         else:
-                            if 'soccer' in config['path']:
-                                in_extra = p >= 3 or 'ET' in tp.get('shortDetail', '')
-                                if in_extra:
-                                    if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT', 'ET HT']: s_disp = "ET HT"
-                                    else: s_disp = f"ET {clk}'"
-                                else:
-                                    s_disp = f"{clk}'"
-                                    if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
-                            elif 'basketball' in config['path']:
-                                if p > 4: s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
-                                else: s_disp = f"Q{p} {clk}"
-                            elif 'football' in config['path']:
-                                if p > 4: s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
-                                else: s_disp = f"Q{p} {clk}"
-                            elif 'hockey' in config['path']:
-                                if p > 3: s_disp = f"OT{p-3 if p-3>1 else ''} {clk}"
-                                else: s_disp = f"P{p} {clk}"
-                            elif 'baseball' in config['path']:
-                                short_detail = tp.get('shortDetail', s_disp)
-                                s_disp = short_detail.replace(" - ", " ").replace("Inning", "In")
-                            else: s_disp = f"P{p} {clk}"
+                            other_games.append(g)
 
-                s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
-                s_disp = s_disp.replace("End of ", "End ").replace(" Quarter", "").replace(" Inning", "").replace(" Period", "")
+                    if flight_weather or flight_arrivals or flight_departures:
+                        hud_item = {
+                            'type': 'flight_airport_hud',
+                            'sport': 'flight',
+                            'id': 'airport_hud',
+                            'is_shown': True,
+                            '_weather_item': flight_weather,
+                            '_arrivals': flight_arrivals,
+                            '_departures': flight_departures,
+                        }
+                        other_games.append(hud_item)
 
-                if "FINAL" in s_disp:
-                    if league_key == 'nhl':
-                        if "SO" in s_disp or "Shootout" in s_disp or p >= 5: s_disp = "FINAL S/O"
-                        elif p >= 4 and "OT" not in s_disp: s_disp = f"FINAL OT{p-3 if p-3>1 else ''}"
-                    elif league_key in ['nba', 'nfl', 'ncf_fbs', 'ncf_fcs'] and p > 4 and "OT" not in s_disp:
-                         s_disp = f"FINAL OT{p-4 if p-4>1 else ''}"
+                    for g in other_games:
+                        sport = str(g.get('sport', '')).lower()
+                        g_type = g.get('type', '')
+                        is_music = (g_type == 'music' or sport == 'music')
 
-                sit = comp.get('situation', {})
-                shootout_data = None
-                
-                poss_raw = sit.get('possession')
-                if poss_raw: self.possession_cache[e['id']] = poss_raw
-                elif gst in ('in', 'half'):
-                    _cached_poss = self.possession_cache.get(e['id'])
-                    if _cached_poss is not None: poss_raw = _cached_poss
-                
-                if gst == 'pre' or gst == 'post' or gst == 'final' or s_disp == 'Halftime' or is_suspended:
-                    poss_raw = None
-                    self.possession_cache.pop(e['id'], None)
-
-                poss_abbr = ""
-                if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
-                elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
-                
-                down_text = sit.get('downDistanceText') or sit.get('shortDownDistanceText') or ''
-                if s_disp == "Halftime": down_text = ''
-
-                game_obj = {
-                    'type': 'scoreboard', 'sport': league_key, 'id': gid, 'status': s_disp, 'state': gst, 'is_shown': True,
-                    'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg,
-                    'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg,
-                    'home_color': f"#{h_clr}", 'home_alt_color': f"#{h_alt}",
-                    'away_color': f"#{a_clr}", 'away_alt_color': f"#{a_alt}",
-                    'startTimeUTC': e['date'],
-                    'estimated_duration': duration_est,
-                    
-                    # MARCH MADNESS SPECIFIC FIELDS
-                    'home_seed': str(h_seed),
-                    'away_seed': str(a_seed),
-                    
-                    'situation': { 
-                        'possession': poss_abbr, 
-                        'isRedZone': sit.get('isRedZone', False), 
-                        'downDist': down_text, 
-                        'shootout': shootout_data,
-                        'powerPlay': False, 
-                        'emptyNet': False
-                    }
-                }
-                if league_key == 'mlb':
-                    game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 
-                        'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
-                
-                if is_suspended: game_obj['is_shown'] = False
-                
-                local_games.append(game_obj)
-                
-                # CHANGE C: SAVE FINAL GAMES TO CACHE
-                if gst == 'post' and "FINAL" in s_disp:
-                    self.final_game_cache[gid] = game_obj
-
-        except Exception as e: print(f"Error fetching {league_key}: {e}")
-        return local_games
-
-    def fetch_pinned_game(self, pinned_str, conf, visible_start_utc, visible_end_utc):
-        """
-        Fetches ONLY the pinned game, bypassing all other league fetches.
-        pinned_str format: "league:game_id" (e.g., "nfl:401547378" or "soccer_epl:423141")
-        """
-        try:
-            league_key, game_id = pinned_str.split(':', 1)
-            league_key = league_key.lower()
-        except ValueError:
-            print("Invalid pinned game format. Use 'league:game_id'")
-            return []
-
-        utc_offset = conf.get('utc_offset', -5)
-
-        # 0. NHL Native Pinned Game (handles NHL gamecenter IDs like 2025020978)
-        if league_key == 'nhl':
-            try:
-                native = self._fetch_nhl_landing(game_id)
-                if native:
-                    st = str(native.get('gameState', 'OFF')).upper()
-                    map_st = 'in' if st in ['LIVE', 'CRIT'] else ('pre' if st in ['PRE', 'FUT'] else 'post')
-
-                    g_utc = native.get('startTimeUTC', '')
-                    raw_h = native.get('homeTeam', {}).get('abbrev', 'UNK')
-                    raw_a = native.get('awayTeam', {}).get('abbrev', 'UNK')
-                    h_ab = ABBR_MAPPING.get(raw_h, raw_h)
-                    a_ab = ABBR_MAPPING.get(raw_a, raw_a)
-
-                    h_sc = str(native.get('homeTeam', {}).get('score', 0))
-                    a_sc = str(native.get('awayTeam', {}).get('score', 0))
-
-                    h_lg = self.get_corrected_logo('nhl', h_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{h_ab.lower()}.png")
-                    a_lg = self.get_corrected_logo('nhl', a_ab, f"https://a.espncdn.com/i/teamlogos/nhl/500/{a_ab.lower()}.png")
-                    h_info = self.lookup_team_info_from_cache('nhl', h_ab, logo=h_lg)
-                    a_info = self.lookup_team_info_from_cache('nhl', a_ab, logo=a_lg)
-
-                    disp = "Scheduled"
-                    pp = False
-                    poss = ""
-                    en = False
-                    shootout_data = None
-
-                    pd = native.get('periodDescriptor', {})
-                    clk = native.get('clock', {})
-                    p_num = int(pd.get('number', 1) or 1)
-                    p_type = str(pd.get('periodType', '')).upper()
-                    time_rem = clk.get('timeRemaining', '00:00')
-
-                    if map_st == 'pre':
-                        try:
-                            g_dt = parse_iso(g_utc)
-                            disp = g_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
-                        except:
-                            pass
-                    elif map_st == 'post':
-                        disp = "FINAL"
-                        if p_type == 'SHOOTOUT' or p_num >= 5:
-                            disp = "FINAL S/O"
-                        elif p_type == 'OT' or p_num == 4:
-                            disp = "FINAL OT"
-                    else:
-                        if p_type == 'SHOOTOUT' or p_num >= 5:
-                            disp = "S/O"
-                            shootout_data = self.fetch_shootout_details(game_id, 0, 0)
-                        elif clk.get('inIntermission', False) or time_rem == "00:00":
-                            if p_num == 1:
-                                disp = "End 1st"
-                            elif p_num == 2:
-                                disp = "End 2nd"
-                            elif p_num == 3:
-                                disp = "End 3rd"
-                            else:
-                                disp = "End OT"
+                        if is_music:
+                            if g.get('home_logo'): logos_to_fetch.append((g.get('home_logo'), (42, 42)))
+                            for nurl in g.get('next_logos', []):
+                                if nurl: logos_to_fetch.append((nurl, (42, 42)))
                         else:
-                            p_lbl = "OT" if p_num == 4 else f"P{p_num}"
-                            disp = f"{p_lbl} {time_rem}"
+                            if g.get('home_logo'):
+                                logos_to_fetch.append((g.get('home_logo'), (24, 24)))
+                                logos_to_fetch.append((g.get('home_logo'), (16, 16)))
+                            if g.get('away_logo'):
+                                logos_to_fetch.append((g.get('away_logo'), (24, 24)))
+                                logos_to_fetch.append((g.get('away_logo'), (16, 16)))
 
-                    sit_obj = native.get('situation', {})
-                    if sit_obj:
-                        sit = sit_obj.get('situationCode', '1551')
-                        if len(sit) >= 4 and sit.isdigit():
-                            ag = int(sit[0])
-                            as_ = int(sit[1])
-                            hs = int(sit[2])
-                            hg = int(sit[3])
-                            if as_ > hs:
-                                pp = True
-                                poss = a_ab
-                            elif hs > as_:
-                                pp = True
-                                poss = h_ab
-                            en = (ag == 0 or hg == 0)
+                        if g_type == 'weather' or sport.startswith('clock') or is_music or g_type == 'flight_visitor' or g_type == 'flight_airport_hud':
+                            static_items.append(g)
+                        elif self.mode == 'sports_full' and g_type not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(g_type):
+                            static_items.append(g)
+                        else:
+                            scrolling_items.append(g)
 
-                    if "FINAL" in disp:
-                        shootout_data = None
+                    unique_logos = list(set(logos_to_fetch))
+                    if unique_logos:
+                        fs = [self.executor.submit(self.download_and_process_logo, u, s) for u, s in unique_logos]
+                        concurrent.futures.wait(fs)
 
-                    return [{
-                        'type': 'scoreboard',
-                        'sport': 'nhl', 'id': str(game_id), 'status': disp, 'state': map_st, 'is_shown': True,
-                        'home_abbr': h_ab, 'home_score': h_sc, 'home_logo': h_lg, 'home_id': h_ab,
-                        'away_abbr': a_ab, 'away_score': a_sc, 'away_logo': a_lg, 'away_id': a_ab,
-                        'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
-                        'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
-                        'startTimeUTC': g_utc,
-                        'estimated_duration': self.calculate_game_timing('nhl', g_utc, p_num, disp),
-                        'situation': {
-                            'powerPlay': pp,
-                            'possession': poss,
-                            'emptyNet': en,
-                            'shootout': shootout_data
-                        }
-                    }]
+                    self.new_games_list = scrolling_items
+                    self.static_items = static_items
+                    self.static_index = 0
+
+                    if scrolling_items:
+                        self.bg_strip = self.build_seamless_strip(scrolling_items)
+                    else:
+                        self.bg_strip = None
+
+                    self.game_render_cache.clear()
+                    self.bg_strip_ready = True
+                    last_hash = current_hash
+
+                time.sleep(0.5)
+
             except Exception as e:
-                print(f"NHL Pinned Game Error: {e}")
+                print(f"Poll Error: {e}")
+                time.sleep(2)
 
-        # 1. FotMob (Soccer) Pinned Game
-        if league_key in FOTMOB_LEAGUE_MAP:
-            try:
-                url = f"https://www.fotmob.com/api/matchDetails?matchId={game_id}"
-                resp = self.session.get(url, headers=HEADERS, timeout=TIMEOUTS['slow'])
-                if resp.status_code == 200:
-                    payload = resp.json()
-                    general = payload.get("general", {})
-                    header = payload.get("header", {})
-                    status_obj = header.get("status", {})
-                    
-                    # Convert matchDetails into the standard FotMob 'matches' array format 
-                    mock_match = {
-                        "id": game_id,
-                        "home": {"id": general.get("homeTeam", {}).get("id"), "name": general.get("homeTeam", {}).get("name")},
-                        "away": {"id": general.get("awayTeam", {}).get("id"), "name": general.get("awayTeam", {}).get("name")},
-                        "status": {
-                            "utcTime": general.get("matchTimeUTC"),
-                            "finished": status_obj.get("finished"),
-                            "started": status_obj.get("started"),
-                            "cancelled": status_obj.get("cancelled"),
-                            "scoreStr": status_obj.get("scoreStr"),
-                            "reason": status_obj.get("reason"),
-                            "liveTime": status_obj.get("liveTime")
-                        }
-                    }
-                    
-                    # Pass a massive time window so it passes normal time filters
-                    huge_start = dt(1970, 1, 1, tzinfo=timezone.utc)
-                    huge_end = dt(2099, 1, 1, tzinfo=timezone.utc)
-                    return self._extract_matches([mock_match], league_key, conf, huge_start, huge_end, huge_start, huge_end)
-            except Exception as e:
-                print(f"FotMob Pinned Game Error: {e}")
-                return []
 
-        # 2. ESPN Pinned Game (NFL, NBA, MLB, NHL, NCAA)
-        config = self.leagues.get(league_key)
-        path = config.get('path') if config else None
-        if not path:
-            paths = {
-                'nfl': 'football/nfl', 'mlb': 'baseball/mlb', 'nhl': 'hockey/nhl', 'nba': 'basketball/nba',
-                'ncf_fbs': 'football/college-football', 'ncf_fcs': 'football/college-football',
-                'march_madness': 'basketball/mens-college-basketball'
-            }
-            path = paths.get(league_key)
-
-        if not path:
-            print(f"Unsupported pinned game league: {league_key}")
-            return []
-
-        try:
-            url = f"{self.base_url}{path}/summary?event={game_id}"
-            r = self.session.get(url, headers=HEADERS, timeout=TIMEOUTS['default'])
-            if r.status_code != 200:
-                return []
-            
-            data = r.json()
-            header = data.get('header', {})
-            comp = header.get('competitions', [{}])[0]
-            
-            e_date = comp.get('date', '')
-            st = comp.get('status', {})
-            tp = st.get('type', {})
-            gst = tp.get('state', 'pre')
-
-            # Extract competitors
-            competitors = comp.get('competitors', [])
-            h = next((c for c in competitors if c.get('homeAway') == 'home'), competitors[0] if competitors else {})
-            a = next((c for c in competitors if c.get('homeAway') == 'away'), competitors[1] if len(competitors) > 1 else {})
-
-            h_ab = h.get('team', {}).get('abbreviation', 'UNK')
-            a_ab = a.get('team', {}).get('abbreviation', 'UNK')
-
-            h_lg = self.get_corrected_logo(league_key, h_ab, h.get('team', {}).get('logos', [{}])[0].get('href', ''))
-            a_lg = self.get_corrected_logo(league_key, a_ab, a.get('team', {}).get('logos', [{}])[0].get('href', ''))
-
-            h_clr = h.get('team', {}).get('color', '000000')
-            a_clr = a.get('team', {}).get('color', '000000')
-            h_alt = h.get('team', {}).get('alternateColor', 'ffffff')
-            a_alt = a.get('team', {}).get('alternateColor', 'ffffff')
-
-            if not h_clr or h_clr == '000000' or not a_clr or a_clr == '000000':
-                h_info = self.lookup_team_info_from_cache(league_key, h_ab, logo=h_lg)
-                a_info = self.lookup_team_info_from_cache(league_key, a_ab, logo=a_lg)
-                h_clr = h_clr if h_clr and h_clr != '000000' else h_info.get('color', '000000')
-                a_clr = a_clr if a_clr and a_clr != '000000' else a_info.get('color', '000000')
-                h_alt = h_alt if h_alt else h_info.get('alt_color', 'ffffff')
-                a_alt = a_alt if a_alt else a_info.get('alt_color', 'ffffff')
-
-            h_score = h.get('score', '0')
-            a_score = a.get('score', '0')
-
-            s_disp = tp.get('shortDetail', 'TBD')
-            p = st.get('period', 1)
-
-            # State Inference
-            if gst == 'pre' and any(x in s_disp for x in ['1st', '2nd', '3rd', 'OT', 'Half', 'Qtr', 'Inning']):
-                if "FINAL" not in s_disp.upper():
-                    gst = 'in'
-
-            is_suspended = any(kw in s_disp for kw in ["Suspended", "Postponed", "Canceled", "Delayed", "PPD"])
-
-            if not is_suspended:
-                if gst == 'pre':
-                    try: 
-                        game_dt = parse_iso(e_date)
-                        s_disp = game_dt.astimezone(timezone(timedelta(hours=utc_offset))).strftime("%I:%M %p").lstrip('0')
-                    except: pass
-                elif gst in ['in', 'half']:
-                    clk = st.get('displayClock', '0:00').replace("'", "")
-                    if (not clk or clk == '0:00') and ':' in s_disp:
-                        m = re.search(r'(\d{1,2}:\d{2})', s_disp)
-                        if m: clk = m.group(1)
-
-                    if gst == 'half' or (p == 2 and clk == '0:00' and 'football' in path): s_disp = "Halftime"
-                    elif 'hockey' in path and clk == '0:00':
-                        s_disp = "End 1st" if p == 1 else "End 2nd" if p == 2 else "End 3rd" if p == 3 else "Intermission"
-                    else:
-                        if 'basketball' in path:
-                            s_disp = f"OT{p-4 if p-4>1 else ''} {clk}" if p > 4 else f"Q{p} {clk}"
-                        elif 'football' in path:
-                            s_disp = f"OT{p-4 if p-4>1 else ''} {clk}" if p > 4 else f"Q{p} {clk}"
-                        elif 'hockey' in path:
-                            s_disp = f"OT{p-3 if p-3>1 else ''} {clk}" if p > 3 else f"P{p} {clk}"
-                        elif 'baseball' in path:
-                            s_disp = tp.get('shortDetail', s_disp).replace(" - ", " ").replace("Inning", "In")
-                        else: s_disp = f"P{p} {clk}"
-
-            s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
-            s_disp = s_disp.replace("End of ", "End ").replace(" Quarter", "").replace(" Inning", "").replace(" Period", "")
-
-            # Possessions & Situations
-            sit_data = data.get('drives', {}).get('current', {}) if 'football' in path else {}
-            poss_raw = sit_data.get('team', {}).get('id') if sit_data else None
-            
-            balls, strikes, outs, onFirst, onSecond, onThird = 0, 0, 0, False, False, False
-            if 'baseball' in path and data.get('situation'):
-                bsit = data['situation']
-                balls = bsit.get('balls', 0)
-                strikes = bsit.get('strikes', 0)
-                outs = bsit.get('outs', 0)
-                onFirst = bsit.get('onFirst', False)
-                onSecond = bsit.get('onSecond', False)
-                onThird = bsit.get('onThird', False)
-                poss_raw = bsit.get('batter', {}).get('team', {}).get('id')
-
-            poss_abbr = ""
-            if str(poss_raw) == str(h.get('team', {}).get('id')): poss_abbr = h_ab
-            elif str(poss_raw) == str(a.get('team', {}).get('id')): poss_abbr = a_ab
-
-            down_text = sit_data.get('shortDownDistanceText') or sit_data.get('description') or ''
-            if s_disp == "Halftime": down_text = ''
-
-            game_obj = {
-                'type': 'scoreboard', 'sport': league_key, 'id': game_id, 'status': s_disp, 'state': gst, 'is_shown': not is_suspended,
-                'home_abbr': h_ab, 'home_score': h_score, 'home_logo': h_lg, 'home_id': h.get('team', {}).get('id'),
-                'away_abbr': a_ab, 'away_score': a_score, 'away_logo': a_lg, 'away_id': a.get('team', {}).get('id'),
-                'home_color': f"#{h_clr}", 'home_alt_color': f"#{h_alt}",
-                'away_color': f"#{a_clr}", 'away_alt_color': f"#{a_alt}",
-                'startTimeUTC': e_date,
-                'estimated_duration': 180,
-                'situation': { 
-                    'possession': poss_abbr, 
-                    'isRedZone': sit_data.get('isRedZone', False), 
-                    'downDist': down_text, 
-                    'shootout': None,
-                    'powerPlay': False, 
-                    'emptyNet': False,
-                    'balls': balls, 'strikes': strikes, 'outs': outs,
-                    'onFirst': onFirst, 'onSecond': onSecond, 'onThird': onThird
-                }
-            }
-            
-            return [game_obj]
-
-        except Exception as e:
-            print(f"ESPN Pinned Game Error: {e}")
-            return []
-
-    def get_music_object(self):
-        if not state['active_sports'].get('music', False): return None
-        s_data = spotify_fetcher.get_cached_state()
-        
-        # If no data or explicit "Waiting for Music" state, return placeholder
-        if not s_data or s_data.get('name') == "Waiting for Music...":
-            return None
-
-        is_playing = s_data.get('is_playing', False)
-        
-        # INTERPOLATION: Only add elapsed time if Spotify says it is currently playing
-        elapsed = 0
-        if is_playing:
-            elapsed = time.time() - s_data.get('last_fetch_ts', time.time())
-        
-        prog = min(s_data['progress'] + elapsed, s_data['duration'])
-        
-        cur_m, cur_s = divmod(int(prog), 60)
-        tot_m, tot_s = divmod(int(s_data['duration']), 60)
-        
-        # Clearer status string for the ticker
-        if is_playing:
-            status_str = f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}"
-        else:
-            status_str = f"PAUSED {cur_m}:{cur_s:02d}"
-
-        return {
-            'type': 'music', 
-            'sport': 'music', 
-            'id': 'spotify_now',
-            'status': status_str, 
-            'state': 'in' if is_playing else 'paused',
-            'is_shown': True, 
-            'home_abbr': s_data.get('artist', 'Unknown'),
-            'away_abbr': s_data.get('name', 'Unknown'),
-            'home_logo': s_data.get('cover', ''),
-            'situation': {
-                'progress': prog,
-                'duration': s_data['duration'],
-                'is_playing': is_playing,
-                'fetch_ts': time.time()
-            }
-        }
-
-    # ── Per-mode buffer builders ────────────────────────────────────────────
-
-    def _filter_and_sort_games(self, all_games, visible_start_utc, visible_end_utc):
-        """Apply 3AM cutoff window filter and sort by priority."""
-        filtered = []
-        for g in all_games:
-            g_type = g.get('type', '')
-            g_sport = g.get('sport', '')
-            if g_type in ['clock', 'weather', 'music'] or g_sport in ['clock', 'weather', 'music', 'flight']:
-                filtered.append(g)
-                continue
-            state_val = g.get('state', '')
-            status_val = str(g.get('status', '')).upper()
-            if state_val in ['in', 'half', 'crit']:
-                filtered.append(g)
-                continue
-            if state_val == 'pre':
-                filtered.append(g)
-                continue
-            if state_val == 'post' or 'FINAL' in status_val:
-                try:
-                    game_dt = parse_iso(g.get('startTimeUTC', ''))
-                    if visible_start_utc <= game_dt < visible_end_utc:
-                        filtered.append(g)
-                except Exception:
-                    filtered.append(g)
-                continue
-            filtered.append(g)
-        filtered.sort(key=_game_sort_key)
-        return filtered
-
-    def _build_sports_buffer(self):
-        """Fetch all active sports leagues and return sorted game list."""
-        with data_lock:
-            conf = {
-                'active_sports': state.get('active_sports', {}),
-                'mode': state.get('mode', 'sports'),
-                'utc_offset': state.get('utc_offset', -5),
-                'debug_mode': state.get('debug_mode', False),
-                'custom_date': state.get('custom_date'),
-            }
-
-            # Special pinned-game poller inputs (sports_full): collect active pins
-            # and merge fresh pinned objects into the normal sports snapshot.
-            active_pins = []
-            seen_pins = set()
-            for _t in tickers.values():
-                _s = _t.get('settings', {})
-                single_pin, pin_list = _normalize_single_pin(
-                    pinned_game=_s.get('pinned_game'),
-                    pinned_games=_s.get('pinned_games', [])
-                )
-                for _p in pin_list:
-                    _pn = str(_p).strip().lower()
-                    if _pn and _pn not in seen_pins:
-                        seen_pins.add(_pn)
-                        active_pins.append(_p)
-            
-        all_games = []
-        utc_offset = conf.get('utc_offset', -5)
-        now_utc = dt.now(timezone.utc)
-        now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
-        
-        # Visibility Windows
-        if now_local.hour < 3:
-            visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
-            visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
-        else:
-            visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-            visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
-        
-        visible_start_utc = visible_start_local.astimezone(timezone.utc)
-        visible_end_utc = visible_end_local.astimezone(timezone.utc)
-        window_start_utc = (now_local - timedelta(hours=30)).astimezone(timezone.utc)
-        window_end_utc = (now_local + timedelta(hours=48)).astimezone(timezone.utc)
-
-        futures = {}
-        for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
-            f = self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
-            futures[f] = internal_id
-
-        if not conf['debug_mode']:
-            f = self.executor.submit(self._fetch_nhl_native, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
-            futures[f] = 'nhl_native'
-
-        for league_key, config in self.leagues.items():
-            if league_key == 'nhl' or league_key.startswith('soccer_'): continue
-            f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
-            futures[f] = league_key
-        
-        partial = {lk: self.league_last_data.get(lk, []) for lk in futures.values()}
-        deadline = time.time() + API_TIMEOUT
-
-        for future in concurrent.futures.as_completed(list(futures.keys())):
-            lk = futures[future]
-            try:
-                res = future.result(timeout=0)
-                if res:
-                    partial[lk] = res
-                    self.league_last_data[lk] = res
-            except Exception: pass
-            interim_all = []
-            for games in partial.values(): interim_all.extend(games)
-            interim = self._filter_and_sort_games(interim_all, visible_start_utc, visible_end_utc)
-            with data_lock:
-                if interim or not state.get('current_games'): state['current_games'] = interim
-            if time.time() >= deadline: break
-
-        all_games = []
-        for games in partial.values(): all_games.extend(games)
-
-        # Pinned refresh merge: poll only pinned games and merge them into the
-        # normal sports feed so sports_full gets a fresh focused game while
-        # retaining all other scores from the standard poller.
-        if active_pins:
-            pinned_futures = {
-                self.executor.submit(self.fetch_pinned_game, p, conf, visible_start_utc, visible_end_utc): p
-                for p in active_pins
-            }
-            merged_index = {(str(g.get('sport', '')), str(g.get('id', ''))): i for i, g in enumerate(all_games)}
-            for pf in concurrent.futures.as_completed(list(pinned_futures.keys())):
-                try:
-                    pin_games = pf.result(timeout=0)
-                except Exception:
-                    pin_games = []
-                for pg in pin_games or []:
-                    key = (str(pg.get('sport', '')), str(pg.get('id', '')))
-                    if key in merged_index:
-                        all_games[merged_index[key]] = pg
-                    else:
-                        merged_index[key] = len(all_games)
-                        all_games.append(pg)
-
-        return self._filter_and_sort_games(all_games, visible_start_utc, visible_end_utc)
-
-    def _build_stocks_buffer(self):
-        with data_lock:
-            active_sports = dict(state['active_sports'])
-        games = []
-        for item in LEAGUE_OPTIONS:
-            if item['type'] == 'stock':
-                games.extend(self.stocks.get_list(item['id']))
-        return games
-
-    def _build_weather_buffer(self):
-        with data_lock:
-            city = state['weather_city']
-            lat  = state['weather_lat']
-            lon  = state['weather_lon']
-        if lat != self.weather.lat or lon != self.weather.lon or city != self.weather.city_name:
-            self.weather.update_config(city=city, lat=lat, lon=lon)
-        w = self.weather.get_weather()
-        if w:
-            return [w]
-        return [{
-            'type': 'weather',
-            'sport': 'weather',
-            'id': 'weather_loading',
-            'away_abbr': str(city or 'WEATHER').upper(),
-            'home_abbr': '--',
-            'situation': {
-                'icon': 'cloud',
-                'stats': {'aqi': '--', 'uv': '--'},
-                'forecast': []
-            },
-            'home_score': '--',
-            'away_score': '0',
-            'status': 'LOADING',
-            'is_shown': True
-        }]
-
-    def _build_music_buffer(self):
-        obj = self.get_music_object()
-        return [obj] if obj else []
-
-    def _build_clock_buffer(self):
-        return [{'type': 'clock', 'sport': 'clock', 'id': 'clk', 'is_shown': True}]
-
-    def _build_flights_buffer(self):
-        if not flight_tracker:
-            return []
-        return flight_tracker.get_airport_objects()
-
-    def _build_flight_tracker_buffer(self):
-        if not flight_tracker:
-            return []
-        obj = flight_tracker.get_visitor_object()
-        return [obj] if obj else []
-
-    # ── Central update dispatcher ──────────────────────────────────────────
-
-    def update_current_games(self):
-        """Build and cache content buffers for every mode currently needed by any ticker."""
-        with data_lock:
-            global_mode = state.get('mode', 'sports')
-            # Collect all modes currently in use across all tickers
-            needed: set = {global_mode}
-            for t in tickers.values():
-                m = t.get('settings', {}).get('mode')
-                if m and m in VALID_MODES:
-                    needed.add(m)
-            
-
-        _dispatch = {
-            'sports':         self._build_sports_buffer,
-            'live':           self._build_sports_buffer,
-            'my_teams':       self._build_sports_buffer,
-            'stocks':         self._build_stocks_buffer,
-            'weather':        self._build_weather_buffer,
-            'music':          self._build_music_buffer,
-            'clock':          self._build_clock_buffer,
-            'flights':        self._build_flights_buffer,
-            'flight_tracker': self._build_flight_tracker_buffer,
-        }
-
-        sports_built = False
-        for mode in needed:
-            is_sports = mode in ('sports', 'live', 'my_teams', 'sports_full')
-
-            if is_sports and sports_built:
-                # All three sports-like modes share the same raw buffer; already built.
-                continue
-
-            builder = _dispatch.get(mode, self._build_sports_buffer)
-            result = builder()
-
-            if is_sports:
-                sports_built = True
-                # Store under all sports-like keys (filtering is done in /data)
-                for sm in ('sports', 'live', 'my_teams', 'sports_full'):
-                    self._set_mode_buffer(sm, result)
-
-                # Maintain history buffer for live-delay
-                snap = (time.time(), result[:])
-                self.history_buffer.append(snap)
-                if len(self.history_buffer) > 120:
-                    self.history_buffer = self.history_buffer[-120:]
-
-                # Persist non-empty sports games so they survive server restarts
-                if result:
-                    try:
-                        save_json_atomically(GAME_CACHE_FILE, result)
-                    except Exception:
-                        pass
-            else:
-                self._set_mode_buffer(mode, result)
-
-        # Keep global state['current_games'] in sync with the global mode
-        # (for backward compat with any code that reads it directly)
-        with self._mode_buffer_lock:
-            global_result = self._mode_buffers.get(global_mode, [])
-        is_global_sports = global_mode in ('sports', 'live', 'my_teams', 'sports_full')
-        with data_lock:
-            if global_result or not is_global_sports or not state.get('current_games'):
-                state['current_games'] = global_result
-
-    def get_snapshot_for_delay(self, delay_seconds):
-        """Return current games, optionally from history buffer for live-delay."""
-        with self._mode_buffer_lock:
-            latest_sports = list(self._mode_buffers.get('sports', []))
-
-        if delay_seconds <= 0:
-            if latest_sports:
-                return latest_sports
-            with data_lock:
-                return list(state.get('current_games', []))
-
-        if not self.history_buffer:
-            if latest_sports:
-                return latest_sports
-            with data_lock:
-                return list(state.get('current_games', []))
-
-        target_time = time.time() - delay_seconds
-        chosen = None
-        for ts, snapshot in reversed(self.history_buffer):
-            if ts <= target_time:
-                chosen = snapshot
-                break
-
-        if chosen is None and self.history_buffer:
-            chosen = self.history_buffer[0][1]
-
-        if chosen is None:
-            return latest_sports
-
-        return chosen
-
-    def _set_mode_buffer(self, mode: str, result: list):
-        """Store result in per-mode buffer. Also syncs global buffer when mode matches global."""
-        with self._mode_buffer_lock:
-            self._mode_buffers[mode] = result
-        # Keep global state['current_games'] in sync for backward compat
-        with data_lock:
-            if state.get('mode') == mode:
-                if result or not state.get('current_games'):
-                    state['current_games'] = result
-
-    def get_mode_snapshot(self, mode: str, delay_seconds: float = 0) -> list:
-        """Return buffered content for the given mode.
-        Sports modes with delay use the history buffer for live-delay support.
-        All other modes always return current data (delay is ignored).
-        """
-        if mode in ('sports', 'live', 'my_teams', 'sports_full'):
-            return self.get_snapshot_for_delay(delay_seconds)
-        with self._mode_buffer_lock:
-            return list(self._mode_buffers.get(mode, []))
-
-# Restore TestMode from persisted state (only active when debug_mode is on)
-if state.get('debug_mode'):
-    TestMode.configure(
-        enabled=state.get('test_mode', False),
-        spotify=state.get('test_spotify', False),
-        stocks=state.get('test_stocks', False),
-        sports_date=state.get('test_sports_date', False),
-        flights=state.get('test_flights', False),
-        custom_date=state.get('custom_date'),
-    )
-    if tee_instance is not None:
-        Tee.verbose_debug = True
-
-# Initialize Global Fetcher
-fetcher = SportsFetcher(
-    initial_city=state['weather_city'], 
-    initial_lat=state['weather_lat'], 
-    initial_lon=state['weather_lon']
-)
-
-# Initialize Spotify Fetcher
-spotify_fetcher = SpotifyFetcher()
-spotify_fetcher.start()
-
-# Initialize Flight Tracker
-# FlightTracker itself has no dependency on airportsdata — that package is only
-# used by lookup_and_auto_fill_airport() for code validation. Always create the
-# tracker so that flights/flight_tracker modes work even without airportsdata.
-try:
-    flight_tracker = FlightTracker()
-    flight_tracker.track_flight_id = state.get('track_flight_id', '')
-    flight_tracker.track_guest_name = state.get('track_guest_name', '')
-    flight_tracker.airport_code_icao = state.get('airport_code_icao', 'KEWR')
-    flight_tracker.airport_code_iata = state.get('airport_code_iata', 'EWR')
-    flight_tracker.airport_name = state.get('airport_name', 'Newark')
-    flight_tracker.airline_filter = ''  # Force empty - support all airlines
-except Exception as e:
-    print(f"⚠️ FlightTracker init failed: {e}")
-    flight_tracker = None
-
-# ── Section K: Worker Threads ──
-def _any_ticker_needs(*modes):
-    """Return True if the global state or any paired ticker is in one of the given modes."""
-    mode_set = set(modes)
-    with data_lock:
-        # Pinned game override: force sports_full behavior whenever any pin exists.
-        if 'sports_full' in mode_set:
-            for t in tickers.values():
-                s = t.get('settings', {})
-                if s.get('pinned_game'):
-                    return True
-                t_pins = s.get('pinned_games', [])
-                if isinstance(t_pins, list) and any(str(p).strip() for p in t_pins):
-                    return True
-
-        if state.get('mode') in mode_set:
-            return True
-        for t in tickers.values():
-            if t.get('paired') and t.get('settings', {}).get('mode') in mode_set:
-                return True
-    return False
-
-def _normalize_single_pin(pinned_game=None, pinned_games=None):
-    single = ''
-
-    if isinstance(pinned_games, list):
-        cleaned = [str(x).strip() for x in pinned_games if str(x).strip()]
-        if cleaned:
-            single = cleaned[-1]
-
-    if not single and pinned_game is not None:
-        single = str(pinned_game).strip()
-
-    return single, ([single] if single else [])
-
-def sports_worker():
-    try: fetcher.fetch_all_teams()
-    except Exception as e: print(f"Team fetch error: {e}")
-
-    while True:
-        start_time = time.time()
-        if _any_ticker_needs('sports', 'live', 'my_teams', 'sports_full'):
-            try:
-                fetcher.update_current_games()
-            except Exception as e:
-                print(f"Sports Worker Error: {e}")
-        execution_time = time.time() - start_time
-        time.sleep(max(0, SPORTS_UPDATE_INTERVAL - execution_time))
-
-def stocks_worker():
-    _cached_active_key = None
-    while True:
-        try:
-            if _any_ticker_needs('stocks'):
-                with data_lock:
-                    active_sports = state['active_sports']
-                active_key = frozenset(k for k, v in active_sports.items() if k.startswith('stock_') and v)
-                if active_key != _cached_active_key:
-                    _cached_active_key = active_key
-                fetcher.stocks.update_market_data(list(_cached_active_key))
-                fetcher.update_current_games()
-        except Exception as e:
-            print(f"Stock worker error: {e}")
-        time.sleep(1)
-
-def music_worker():
-    while True:
-        try:
-            if _any_ticker_needs('music'):
-                try:
-                    fetcher.update_current_games()
-                except Exception as e:
-                    print(f"Music Worker Error: {e}")
-        except Exception as e:
-            print(f"Music worker error: {e}")
-        time.sleep(1)
-
-def flights_worker():
-    if not flight_tracker:
-        if TestMode.is_enabled('flights'):
-            print("[DEBUG] flights_worker: No flight_tracker available")
-        return
-    if TestMode.is_enabled('flights'):
-        print("[DEBUG] flights_worker: Starting")
-    while True:
-        start_time = time.time()
-        try:
-            forced = getattr(flight_tracker, '_force_refresh', False)
-            if forced:
-                flight_tracker._force_refresh = False
-                if TestMode.is_enabled('flights'):
-                    print("[DEBUG] flights_worker: Force refresh triggered")
-
-            with data_lock:
-                mode = state['mode']
-
-            did_fetch = False
-            
-            # 1. Airport Data: Fetch if in flights mode or forced
-            if mode == 'flights' or forced:
-                if flight_tracker.airport_code_iata:
-                    if forced or time.time() - flight_tracker.last_airport_fetch >= 30:
-                        flight_tracker.fetch_airport_activity()
-                        flight_tracker.last_airport_fetch = time.time()
-                        did_fetch = True
-
-            # 2. Visitor Tracking: Fetch if ID exists (Persistent) or mode is explicitly flight_tracker
-            # This ensures we keep repolling even if mode is turned 'off' (switched to sports)
-            if flight_tracker.track_flight_id:
-                if forced or time.time() - flight_tracker.last_visitor_fetch >= 30:
-                    flight_tracker.fetch_visitor_tracking()
-                    flight_tracker.last_visitor_fetch = time.time()
-                    did_fetch = True
-
-            if did_fetch or forced:
-                try: fetcher.update_current_games()
-                except: pass
-        except Exception as e:
-            print(f"Flight worker error: {e}")
-
-        execution_time = time.time() - start_time
-        flight_tracker.wake_event.wait(timeout=max(0, 5 - execution_time))
-        flight_tracker.wake_event.clear()
-
-# ── Section L: Flask Routes ──
-app = Flask(__name__)
-CORS(app) 
-
-@app.route('/api/config', methods=['POST'])
-def api_config():
-    try:
-        new_data = request.json
-        if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
-
-        # Migrate legacy modes to canonical mode names
-        incoming_submode = new_data.get('flight_submode')
-
-        # Pin normalization (ticker-scoped): always keep a single pinned game.
-        normalized_pin = None
-        normalized_pin_list = None
-        if 'pinned_game' in new_data or 'pinned_games' in new_data:
-            normalized_pin, normalized_pin_list = _normalize_single_pin(
-                pinned_game=new_data.get('pinned_game'),
-                pinned_games=new_data.get('pinned_games')
-            )
-
-        if 'mode' in new_data:
-            new_data['mode'] = MODE_MIGRATIONS.get(new_data['mode'], new_data['mode'])
-            # Submode compatibility: allow both directions
-            if incoming_submode == 'track':
-                new_data['mode'] = 'flight_tracker'
-            elif incoming_submode == 'airport' and new_data['mode'] == 'flight_tracker':
-                new_data['mode'] = 'flights'
-            # Reject any mode that isn't valid; fall back to sports
-            if new_data['mode'] not in VALID_MODES:
-                new_data['mode'] = 'sports'
-        elif incoming_submode in ('track', 'airport'):
-            new_data['mode'] = 'flight_tracker' if incoming_submode == 'track' else 'flights'
-        # Drop flight_submode — no longer a valid key
-        new_data.pop('flight_submode', None)
-        
-        # 1. Determine which ticker is being targeted
-        target_id = new_data.get('ticker_id') or request.args.get('id')
-        
-        cid = request.headers.get('X-Client-ID')
-        
-        # If we have a CID, try to find the associated ticker
-        if not target_id and cid:
-            for tid, t_data in tickers.items():
-                if cid in t_data.get('clients', []):
-                    target_id = tid
-                    break
-        
-        # Fallback for single-ticker setups
-        if not target_id and len(tickers) == 1: 
-            target_id = list(tickers.keys())[0]
-
-        # If a specific ticker is targeted but doesn't exist yet, create it so
-        # mode and other settings are applied locally instead of falling back to
-        # global state.
-        if target_id and target_id not in tickers:
-            seed_client = cid or target_id
-            tickers[target_id] = {
-                "name": "Ticker",
-                "settings": DEFAULT_TICKER_SETTINGS.copy(),
-                "my_teams": None,
-                "clients": [seed_client],
-                "paired": True,
-                "pairing_code": generate_pairing_code(),
-                "last_seen": time.time()
-            }
-            tickers[target_id]['settings']['mode'] = state.get('mode', 'sports')
-            save_specific_ticker(target_id)
-
-        # ================= SECURITY CHECK START =================
-        if target_id and target_id in tickers:
-            rec = tickers[target_id]
-            
-            # If the client ID is not in the list, block them. 
-            if cid not in rec.get('clients', []):
-                print(f"⛔ Blocked unauthorized config change from {cid}")
-                return jsonify({"error": "Unauthorized: Device not paired"}), 403
-        # ================== SECURITY CHECK END ==================
-
-        with data_lock:
-            # Update Weather (Global)
-            new_city = new_data.get('weather_city')
-            if new_city: 
-                fetcher.weather.update_config(city=new_city, lat=new_data.get('weather_lat'), lon=new_data.get('weather_lon'))
-
-            # Update Flight Tracker (Global)
-            if flight_tracker:
-                flight_changed = False
-                if 'track_flight_id' in new_data:
-                    flight_tracker.track_flight_id = new_data.get('track_flight_id', '')
-                    flight_changed = True
-                if 'track_guest_name' in new_data:
-                    flight_tracker.track_guest_name = new_data.get('track_guest_name', '')
-                
-                # Auto-fill airport information when any airport code is provided
-                airport_code_input = None
-                if 'airport_code_iata' in new_data:
-                    airport_code_input = new_data.get('airport_code_iata', '').strip()
-                elif 'airport_code_icao' in new_data:
-                    airport_code_input = new_data.get('airport_code_icao', '').strip()
-                
-                if airport_code_input:
-                    # Perform airport lookup
-                    airport_info = lookup_and_auto_fill_airport(airport_code_input)
-                    
-                    if airport_info['iata']:  # Only update if airport was found
-                        flight_tracker.airport_code_iata = airport_info['iata']
-                        flight_tracker.airport_code_icao = airport_info['icao']
-                        flight_tracker.airport_name = airport_info['name']
-                        print(f"✅ Airport auto-fill: {airport_info['iata']} ({airport_info['icao']}) - {airport_info['name']}")
-                        flight_changed = True
-                    else:
-                        print(f"⚠️ Airport code '{airport_code_input}' not found in database")
-                        # Clear airport info if code is invalid
-                        flight_tracker.airport_code_iata = ''
-                        flight_tracker.airport_code_icao = ''
-                        flight_tracker.airport_name = ''
-                        flight_changed = True
-                elif 'airport_code_icao' in new_data:
-                    flight_tracker.airport_code_icao = new_data.get('airport_code_icao', '')
-                    flight_changed = True
-                if 'airport_name' in new_data and not airport_code_input:
-                    flight_tracker.airport_name = new_data.get('airport_name', '')
-                if flight_changed:
-                    # Clear stale data immediately so old airport/flight info doesn't linger
-                    with flight_tracker.lock:
-                        flight_tracker.airport_arrivals = []
-                        flight_tracker.airport_departures = []
-                        flight_tracker.airport_weather = {"temp": "--", "cond": "LOADING"}
-                        if not flight_tracker.track_flight_id:
-                            flight_tracker.visitor_flight = None
-                    # Signal the flights_worker to fetch immediately (no 30s wait)
-                    flight_tracker.force_update()
-            
-            allowed_keys = {
-                'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date',
-                'weather_city', 'weather_lat', 'weather_lon', 'utc_offset',
-                'timezone_name',
-                'track_flight_id', 'track_guest_name', 'airport_code_icao',
-                'airport_code_iata', 'airport_name',
-                'test_mode', 'test_spotify', 'test_stocks', 'test_sports_date', 'test_flights',
-                'pinned_game', 'pinned_games'
-            }
-            
-            for k, v in new_data.items():
-                if k not in allowed_keys: continue
-                
-                # HANDLE TEAMS
-                if k == 'my_teams':
-                    if v is None or (isinstance(v, list) and not v):
-                        # null or empty list = reset ticker to use global fallback (always [])
-                        if target_id and target_id in tickers:
-                            tickers[target_id]['my_teams'] = None
-                            tickers[target_id].pop('my_teams_set', None)
-                        continue
-                    elif isinstance(v, list):
-                        cleaned = []
-                        seen = set()
-                        for e in v:
-                            if e:
-                                entry = str(e).strip()
-                                if ':' in entry:
-                                    # Already prefixed: normalize to lowercase_league:UPPER_ABBR
-                                    lg, ab = entry.split(':', 1)
-                                    raw = f"{lg.lower()}:{ab.upper()}"
-                                else:
-                                    # Plain abbr: look up league and normalize
-                                    ab = entry.upper()
-                                    matches = [lg for lg, idx in fetcher._teams_abbr_index.items() if ab in idx]
-                                    raw = f"{matches[0]}:{ab}" if len(matches) == 1 else ab
-                                if raw not in seen:
-                                    seen.add(raw)
-                                    cleaned.append(raw)
-                        if target_id and target_id in tickers:
-                            tickers[target_id]['my_teams'] = cleaned if cleaned else None
-                            tickers[target_id].pop('my_teams_set', None)
-                        # else: global my_teams always stays [] — ignore untargeted team updates
-                        continue
-
-                # HANDLE ACTIVE SPORTS — only accept keys that exist in LEAGUE_OPTIONS
-                if k == 'active_sports' and isinstance(v, dict):
-                    for ak, av in v.items():
-                        if ak in _VALID_LEAGUE_IDS:
-                            state['active_sports'][ak] = av
-                    continue
-                
-                # HANDLE MODE — per-ticker isolation
-                if k == 'mode':
-                    if target_id and target_id in tickers:
-                        # Targeted request: only update this ticker's mode
-                        tickers[target_id]['settings']['mode'] = v
-                    else:
-                        # No specific target: update the global default
-                        state['mode'] = v
-                    continue
-
-                # HANDLE PINS — already normalized above; skip raw assignment
-                if k in ('pinned_game', 'pinned_games'):
-                    if target_id and target_id in tickers:
-                        tickers[target_id]['settings']['pinned_game'] = normalized_pin or ''
-                        tickers[target_id]['settings']['pinned_games'] = list(normalized_pin_list or [])
-                    continue
-
-                # HANDLE ALL OTHER SETTINGS
-                if v is not None: state[k] = v
-
-                # SYNC TO TICKER SETTINGS (non-mode keys only)
-                if target_id and target_id in tickers:
-                    if k in tickers[target_id]['settings']:
-                        tickers[target_id]['settings'][k] = v
-            
-            # Sync auto-filled airport info back to state dictionary
-            # (This ensures /api/state returns the validated airport data)
-            if flight_tracker:
-                state['airport_code_iata'] = flight_tracker.airport_code_iata
-                state['airport_code_icao'] = flight_tracker.airport_code_icao
-                state['airport_name'] = flight_tracker.airport_name
-                state['track_flight_id'] = flight_tracker.track_flight_id
-                state['track_guest_name'] = flight_tracker.track_guest_name
-
-                # Also sync to ticker-specific settings if a ticker is targeted
-                if target_id and target_id in tickers:
-                    tickers[target_id]['settings']['airport_code_iata'] = flight_tracker.airport_code_iata
-                    tickers[target_id]['settings']['airport_code_icao'] = flight_tracker.airport_code_icao
-                    tickers[target_id]['settings']['airport_name'] = flight_tracker.airport_name
-                    tickers[target_id]['settings']['track_flight_id'] = flight_tracker.track_flight_id
-                    tickers[target_id]['settings']['track_guest_name'] = flight_tracker.track_guest_name
-
-            # Force airline_filter to always be empty (support all airlines)
-            state['airline_filter'] = ''
-
-        # Sync console verbosity with debug_mode
-        if tee_instance is not None:
-            Tee.verbose_debug = state.get('debug_mode', False)
-
-        # Sync TestMode whenever any test_* or debug key changes
-        if any(k.startswith('test_') or k in ('debug_mode', 'custom_date') for k in new_data):
-            TestMode.configure(
-                enabled=state.get('test_mode', False),
-                spotify=state.get('test_spotify', False),
-                stocks=state.get('test_stocks', False),
-                sports_date=state.get('test_sports_date', False),
-                flights=state.get('test_flights', False),
-                custom_date=state.get('custom_date'),
-            )
-
-        # For flights modes, wake the background worker immediately so data is
-        # ready as soon as possible (otherwise it can take up to 30 s to fetch).
-        # Check effective mode: use targeted ticker's mode if set, else global.
-        new_mode = (tickers[target_id]['settings'].get('mode') if (target_id and target_id in tickers)
-                    else None) or state.get('mode', '')
-        if new_mode in ('flights', 'flight_tracker') and flight_tracker:
-            flight_tracker.force_update()
-
-        # Rebuild buffer in background — sports fetches can take 30 s+, don't block the response
-        threading.Thread(target=fetcher.update_current_games, daemon=True).start()
-
-        if target_id:
-            save_specific_ticker(target_id)
-            # Also persist global config for flight/weather settings that live globally
-            save_global_config()
-        else:
-            save_global_config()
-        
-        current_teams = tickers[target_id].get('my_teams', []) if (target_id and target_id in tickers) else state['my_teams']
-        
-        resolved = {}
-        if flight_tracker:
-            resolved = {
-                "airport_code_iata": flight_tracker.airport_code_iata,
-                "airport_code_icao": flight_tracker.airport_code_icao,
-                "airport_name":      flight_tracker.airport_name,
-            }
-        return jsonify({"status": "ok", "saved_teams": current_teams, "ticker_id": target_id, **resolved})
-        
-    except Exception as e:
-        print(f"Config Error: {e}") 
-        return jsonify({"error": "Failed"}), 500
-
-@app.route('/leagues', methods=['GET'])
-def get_league_options():
-    league_meta = []
-    for item in LEAGUE_OPTIONS:
-         league_meta.append({
-             'id': item['id'], 
-             'label': item['label'], 
-             'type': item['type'],
-             'enabled': state['active_sports'].get(item['id'], False)
-         })
-    # Add Music Option explicitly if not in list
-    if not any(x['id'] == 'music' for x in league_meta):
-        league_meta.append({'id': 'music', 'label': 'Music', 'type': 'util', 'enabled': state['active_sports'].get('music', False)})
-        
-    return jsonify(league_meta)
-
-@app.route('/data', methods=['GET'])
-def get_ticker_data():
-    ticker_id = request.args.get('id')
-    
-    # 1. Resolve Ticker ID
-    if not ticker_id and len(tickers) == 1: 
-        ticker_id = list(tickers.keys())[0]
-    
-    if not ticker_id:
-        return jsonify({"status": "ok", "content": {"sports": []}})
-
-    # Auto-create ticker if ID is unknown
-    if ticker_id not in tickers:
-        tickers[ticker_id] = {
-            "name": "Ticker",
-            "settings": DEFAULT_TICKER_SETTINGS.copy(),
-            "my_teams": None,
-            # Hardware device self-authorizes: its device_id is both the ticker key
-            # and its client identity, so add it to clients automatically.
-            "clients": [ticker_id],
-            "paired": True,
-            "pairing_code": generate_pairing_code(),
-            "last_seen": time.time()
-        }
-        # Sync new ticker to global state immediately
-        tickers[ticker_id]['settings']['mode'] = state.get('mode', 'sports')
-        save_specific_ticker(ticker_id)
-
-    rec = tickers[ticker_id]
-    rec['last_seen'] = time.time()
-
-    # Auto-detect ticker timezone from its public IP (ip-api.com) and persist.
-    _maybe_update_ticker_timezone_from_request(ticker_id, request)
-    
-    # 2. Pairing Check
-    if not rec.get('clients') or not rec.get('paired'):
-        if not rec.get('pairing_code'):
-            rec['pairing_code'] = generate_pairing_code()
-            save_specific_ticker(ticker_id)
-        return jsonify({ "status": "pairing", "code": rec['pairing_code'], "ticker_id": ticker_id })
-
-    t_settings = rec['settings']
-
-    # Per-ticker mode: use the ticker's own mode setting, fall back to global
-    current_mode = t_settings.get('mode') or state.get('mode', 'sports')
-    current_mode = MODE_MIGRATIONS.get(current_mode, current_mode)
-    sports_mode_family = ('sports', 'live', 'my_teams', 'sports_full')
-    
-    # --- FORCE SPORTS_FULL IF TICKER HAS A PIN ---
-    t_pinned_game = str(rec.get('settings', {}).get('pinned_game', '')).strip()
-    t_pins = rec.get('settings', {}).get('pinned_games', [])
-    has_pinned_game = bool(t_pinned_game) or (isinstance(t_pins, list) and any(str(p).strip() for p in t_pins))
-    effective_pin = t_pinned_game if t_pinned_game else ''
-    if not effective_pin and isinstance(t_pins, list):
-        non_empty = [str(p).strip() for p in t_pins if str(p).strip()]
-        if non_empty:
-            effective_pin = non_empty[0]
-
-    if has_pinned_game and current_mode in sports_mode_family:
-        current_mode = 'sports_full'
-    elif current_mode not in VALID_MODES:
-        current_mode = state.get('mode', 'sports')
-
-    # Sleep Mode Check
-    if t_settings.get('brightness', 100) <= 0:
-        return jsonify({ "status": "sleep", "content": { "sports": [] } })
-
-    # 4. Content Fetching
-    # Live delay only applies to sports content (history buffer only exists for sports)
-    is_sports_mode = current_mode in sports_mode_family
-    delay_seconds = (t_settings.get('live_delay_seconds', 0)
-                     if (is_sports_mode and t_settings.get('live_delay_mode'))
-                     else 0)
-    if effective_pin and current_mode == 'sports_full':
-        raw_games = fetcher.get_mode_snapshot('sports_full', delay_seconds)
-        pin_id = str(effective_pin).split(':', 1)[-1]
-        raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
-    else:
-        raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
-    active_sports = state.get('active_sports', {})
-    visible_items = []
-
-    def _sport_for_data_mode(sport_name: str) -> str:
-        sport_norm = str(sport_name or '').lower()
-        return 'mlb' if sport_norm == 'wbc' else sport_norm
-
-    # 5. Filter Buffer based on current_mode
-    if current_mode == 'music':
-        for g in raw_games:
-            if g.get('type') == 'music':
-                g['is_shown'] = True
-                visible_items.append(g)
-        
-        # Fallback: If buffer is empty, fetch immediately
-        if not visible_items:
-            music_obj = fetcher.get_music_object()
-            if music_obj: visible_items.append(music_obj)
-
-    elif current_mode == 'my_teams':
-        _ticker_teams = rec.get('my_teams')
-        saved_teams = set(state.get('my_teams', []) if _ticker_teams is None else _ticker_teams)
-        COLLISION_ABBRS = {'LV'}
-        for g in raw_games:
-            sport = _sport_for_data_mode(g.get('sport', ''))
-            if not active_sports.get(sport, True): continue
-            h_ab, a_ab = str(g.get('home_abbr', '')).upper(), str(g.get('away_abbr', '')).upper()
-            in_home = f"{sport}:{h_ab}" in saved_teams or (h_ab in saved_teams and h_ab not in COLLISION_ABBRS)
-            in_away = f"{sport}:{a_ab}" in saved_teams or (a_ab in saved_teams and a_ab not in COLLISION_ABBRS)
-            if in_home or in_away:
-                g_copy = g.copy()
-                g_copy['sport'] = sport
-                g_copy['is_shown'] = True
-                visible_items.append(g_copy)
-
-    elif current_mode == 'live':
-        for g in raw_games:
-            sport = _sport_for_data_mode(g.get('sport', ''))
-            if not active_sports.get(sport, True): continue
-            if g.get('state') in _ACTIVE_STATES:
-                g_copy = g.copy()
-                g_copy['sport'] = sport
-                g_copy['is_shown'] = True
-                visible_items.append(g_copy)
-
-    elif current_mode == 'sports_full':
-        # Pinned game override — show everything without active_sports filtering
-        for g in raw_games:
-            sport = _sport_for_data_mode(g.get('sport', ''))
-            g_copy = g.copy()
-            g_copy['sport'] = sport
-            g_copy['is_shown'] = True
-            visible_items.append(g_copy)
-
-    elif current_mode == 'sports':
-        for g in raw_games:
-            sport = _sport_for_data_mode(g.get('sport', ''))
-            if not active_sports.get(sport, True): continue
-            if g.get('type') in ['music', 'clock', 'weather', 'stock_ticker', 'flight_visitor']:
-                continue
-            status_lower = str(g.get('status', '')).lower()
-            if any(k in status_lower for k in ("postponed", "suspended", "canceled", "ppd")):
-                continue
-            g_copy = g.copy()
-            g_copy['sport'] = sport
-            g_copy['is_shown'] = True
-            visible_items.append(g_copy)
-
-    else:
-        # Stocks, Weather, Clock, Flights
-        for g in raw_games:
-            g_type, g_sport = g.get('type', ''), g.get('sport', '')
-            match = False
-            if current_mode == 'stocks' and g_type == 'stock_ticker': match = True
-            elif current_mode == 'weather' and g_type == 'weather': match = True
-            elif current_mode == 'clock' and g_type == 'clock': match = True
-            elif current_mode == 'flights' and g_sport == 'flight': match = True
-            elif current_mode == 'flight_tracker' and g_type == 'flight_visitor': match = True
-
-            if match:
-                g['is_shown'] = True
-                visible_items.append(g)
-
-    tz_name, tz_offset = _get_ticker_timezone_context(rec)
-    _apply_timezone_to_game_times(visible_items, tz_name=tz_name, utc_offset=tz_offset)
-
-    # 6. Final Response
-    # Display-only override: if normal sports mode has exactly one item,
-    # render it as full-bleed without persisting ticker/global mode changes.
-    response_local_config = dict(t_settings)
-    response_local_config['timezone_name'] = tz_name
-    response_local_config['utc_offset'] = tz_offset
-    effective_mode_for_response = current_mode
-    if current_mode == 'sports' and len(visible_items) == 1:
-        effective_mode_for_response = 'sports_full'
-    response_local_config['mode'] = effective_mode_for_response
-
-    # Report global config from global state only. Do not reflect per-ticker
-    # pin overrides here, otherwise global_config.mode appears to change.
-    g_config = { "mode": state.get('mode', 'sports') }
-    if rec.get('reboot_requested'): g_config['reboot'] = True
-    if rec.get('update_requested'): g_config['update'] = True
-        
-    return jsonify({ 
-        "status": "ok", 
-        "version": SERVER_VERSION,
-        "ticker_id": ticker_id,
-        "global_config": g_config, 
-        "local_config": response_local_config,
-        "content": { "sports": visible_items } 
-    })
-
-@app.route('/api/spotify/now', methods=['GET'])
-def api_spotify():
-    data = spotify_fetcher.get_cached_state()
-    # If playing, calculate real-time progress based on elapsed time since last poll
-    if data.get('is_playing') and data.get('last_fetch_ts'):
-        elapsed = time.time() - data['last_fetch_ts']
-        data['progress'] = min(data['progress'] + elapsed, data.get('duration', 0))
-    return jsonify(data)
-
-@app.route('/api/airport/lookup', methods=['GET'])
-def api_airport_lookup():
-    """
-    Lookup airport information by IATA or ICAO code.
-    Query params: code=ABE or code=KABE
-    Returns: {iata, icao, name}
-    """
-    try:
-        code = request.args.get('code', '').strip()
-        if not code:
-            return jsonify({"error": "Please provide an airport code"}), 400
-        
-        airport_info = lookup_and_auto_fill_airport(code)
-        
-        if airport_info['iata']:
-            return jsonify({
-                "status": "found",
-                "iata": airport_info['iata'],
-                "icao": airport_info['icao'],
-                "name": airport_info['name']
-            })
-        else:
-            return jsonify({
-                "status": "not_found",
-                "message": f"Airport code '{code}' not found"
-            }), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/pair', methods=['POST'])
-def pair_ticker():
-    try:
-        cid = request.headers.get('X-Client-ID')
-        json_body = request.json or {}
-        code = json_body.get('code')
-        friendly_name = json_body.get('name', 'My Ticker')
-        
-        print(f"🔗 Pairing Attempt from Client: {cid} | Code: {code}")
-
-        if not cid or not code:
-            print("❌ Missing CID or Code")
-            return jsonify({"success": False, "message": "Missing Data"}), 400
-        
-        input_code = str(code).strip()
-
-        for uid, rec in tickers.items():
-            known_code = str(rec.get('pairing_code', '')).strip()
-            
-            if known_code == input_code:
-                if cid not in rec.get('clients', []):
-                    rec['clients'].append(cid)
-                
-                rec['paired'] = True
-                rec['name'] = friendly_name
-                save_specific_ticker(uid)
-                
-                print(f"✅ Paired Successfully to Ticker: {uid}")
-                return jsonify({"success": True, "ticker_id": uid})
-        
-        print(f"❌ Invalid Code. Input: {input_code}")
-        return jsonify({"success": False, "message": "Invalid Pairing Code"}), 200
-
-    except Exception as e:
-        print(f"🔥 Pairing Server Error: {e}")
-        return jsonify({"success": False, "message": "Server Logic Error"}), 500
-
-@app.route('/pair/id', methods=['POST'])
-def pair_ticker_by_id():
-    cid = request.headers.get('X-Client-ID')
-    tid = request.json.get('id')
-    friendly_name = request.json.get('name', 'My Ticker')
-    
-    if not cid or not tid: return jsonify({"success": False}), 400
-    
-    if tid in tickers:
-        if cid not in tickers[tid]['clients']: tickers[tid]['clients'].append(cid)
-        tickers[tid]['paired'] = True
-        tickers[tid]['name'] = friendly_name
-        save_specific_ticker(tid)
-        return jsonify({"success": True, "ticker_id": tid})
-        
-    return jsonify({"success": False}), 404
-
-@app.route('/api/flight/debug', methods=['GET'])
-def debug_flight_tracking():
-    """Diagnostic endpoint to see what's happening with flight tracking"""
-    if not flight_tracker:
-        return jsonify({'error': 'Flight tracking not available'})
-    
-    # Force an immediate fetch
-    try:
-        flight_tracker.fetch_visitor_tracking()
-    except Exception as e:
-        return jsonify({'error': f'Fetch failed: {str(e)}'})
-    
-    # Get the current state
-    with flight_tracker.lock:
-        visitor_data = flight_tracker.visitor_flight.copy() if flight_tracker.visitor_flight else None
-    
-    return jsonify({
-        'config': {
-            'track_flight_id': flight_tracker.track_flight_id,
-            'track_guest_name': flight_tracker.track_guest_name,
-            'fr_api_available': flight_tracker.fr_api is not None
-        },
-        'visitor_flight': visitor_data,
-        'last_fetch': {
-            'visitor': flight_tracker.last_visitor_fetch,
-            'time_since': time.time() - flight_tracker.last_visitor_fetch
-        }
-    })
-
-@app.route('/register', methods=['POST'])
-def register_ticker():
-    """Register a new ticker and auto-pair the requesting client."""
-    try:
-        cid = request.headers.get('X-Client-ID')
-        json_body = request.json or {}
-        friendly_name = json_body.get('name', 'My Ticker')
-
-        if not cid:
-            return jsonify({"success": False, "message": "Missing X-Client-ID header"}), 400
-
-        # Check if this client already owns a ticker — return it instead of creating a duplicate
-        for tid, rec in tickers.items():
-            if cid in rec.get('clients', []):
-                print(f"🔁 Client {cid} already owns ticker {tid}, returning existing")
-                return jsonify({"success": True, "ticker_id": tid})
-
-        # Generate a unique ticker ID
-        new_tid = str(uuid.uuid4())
-
-        # Create the ticker record
-        new_ticker = {
-            "name": friendly_name,
-            "settings": DEFAULT_TICKER_SETTINGS.copy(),
-            "my_teams": None,
-            "clients": [cid],
-            "paired": True,
-            "pairing_code": generate_pairing_code(),
-            "last_seen": time.time()
-        }
-        # Copy default mode into settings
-        new_ticker['settings']['mode'] = state.get('mode', 'sports')
-
-        tickers[new_tid] = new_ticker
-        save_specific_ticker(new_tid)
-
-        print(f"✅ Registered new ticker: {new_tid} (client: {cid})")
-        return jsonify({"success": True, "ticker_id": new_tid})
-
-    except Exception as e:
-        print(f"🔥 Register Error: {e}")
-        return jsonify({"success": False, "message": "Server error"}), 500
-
-@app.route('/ticker/<tid>/unpair', methods=['POST'])
-def unpair(tid):
-    cid = request.headers.get('X-Client-ID')
-    if tid in tickers and cid in tickers[tid]['clients']:
-        tickers[tid]['clients'].remove(cid)
-        if not tickers[tid]['clients']: tickers[tid]['paired'] = False; tickers[tid]['pairing_code'] = generate_pairing_code()
-        save_specific_ticker(tid)
-    return jsonify({"success": True})
-
-@app.route('/tickers', methods=['GET'])
-def list_tickers():
-    cid = request.headers.get('X-Client-ID'); 
-    if not cid: return jsonify([])
-    res = []
-    for uid, rec in tickers.items():
-        if cid in rec.get('clients', []): res.append({ "id": uid, "name": rec.get('name', 'Ticker'), "settings": rec['settings'], "last_seen": rec.get('last_seen', 0) })
-    return jsonify(res)
-
-@app.route('/ticker/<tid>', methods=['POST'])
-def update_settings(tid):
-    if tid not in tickers: return jsonify({"error":"404"}), 404
-
-    cid = request.headers.get('X-Client-ID')
-    rec = tickers[tid]
-    
-    if not cid or cid not in rec.get('clients', []):
-        print(f"⛔ Blocked unauthorized settings change from {cid}")
-        return jsonify({"error": "Unauthorized: Device not paired"}), 403
-
-    data = request.json
-    rec['settings'].update(data)
-    
-    # --- FIX: Sync Mode (per-ticker only — do NOT touch global state['mode']) ---
-    if 'mode' in data:
-        new_mode = data['mode']
-        new_mode = MODE_MIGRATIONS.get(new_mode, new_mode)
-        if new_mode not in VALID_MODES:
-            new_mode = 'sports'
-
-        with data_lock:
-            # Only update this ticker's mode setting; other tickers keep theirs
-            rec['settings']['mode'] = new_mode
-
-        # Trigger immediate buffer rebuild in the background so this request
-        # returns quickly (sports refresh can take >5s).
-        threading.Thread(target=fetcher.update_current_games, daemon=True).start()
-
-    save_specific_ticker(tid)
-    
-    print(f"✅ Updated Settings for {tid}: {data}") 
-    return jsonify({"success": True})
-
-@app.route('/api/state', methods=['GET'])
-def api_state():
-    ticker_id = request.args.get('id')
-    
-    # 1. Resolve Ticker ID (Manual, Header, or Single-Ticker Fallback)
-    if not ticker_id:
-        cid = request.headers.get('X-Client-ID')
-        if cid:
-            for tid, t_data in tickers.items():
-                if cid in t_data.get('clients', []):
-                    ticker_id = tid
-                    break
-    
-    if not ticker_id and len(tickers) == 1:
-        ticker_id = list(tickers.keys())[0]
-
-    # Initialize with global state, then override with ticker-specific settings if found
-    with data_lock:
-        response_settings = dict(state)
-    if ticker_id and ticker_id in tickers:
-        response_settings.update(tickers[ticker_id]['settings'])
-        response_settings['active_sports'] = dict(state['active_sports'])  # global always wins
-        _t_teams = tickers[ticker_id].get('my_teams')
-        # None = use global fallback (always []); non-empty list = ticker's saved teams
-        response_settings['my_teams'] = list(state.get('my_teams', [])) if _t_teams is None else _t_teams
-        response_settings['ticker_id'] = ticker_id
-
-        # Include stored timezone context (learned from /data ticker requests).
-        _tz_name, _tz_offset = _get_ticker_timezone_context(tickers[ticker_id])
-        response_settings['timezone_name'] = _tz_name
-        response_settings['utc_offset'] = _tz_offset
-
-    pinned_game = ''
-    pinned_games = []
-    if ticker_id and ticker_id in tickers:
-        _settings = tickers[ticker_id].get('settings', {})
-        pinned_game, pinned_games = _normalize_single_pin(
-            pinned_game=_settings.get('pinned_game'),
-            pinned_games=_settings.get('pinned_games', [])
-        )
-    response_settings['pinned_game'] = pinned_game
-    response_settings['pinned_games'] = pinned_games
-    response_settings['is_pinned'] = bool(pinned_game)
-
-    current_mode = MODE_MIGRATIONS.get(response_settings.get('mode', 'sports'), response_settings.get('mode', 'sports'))
-    sports_mode_family = ('sports', 'live', 'my_teams', 'sports_full')
-
-    # Legacy app behavior: reflect pin by forcing sports_full mode in /api/state.
-    # This keeps pinned detection compatible with clients that key off mode.
-    if pinned_game and current_mode in sports_mode_family:
-        current_mode = 'sports_full'
-        response_settings['mode'] = current_mode
-    
-    if current_mode not in VALID_MODES:
-        current_mode = 'sports'
-        
-    response_settings['flight_submode'] = 'track' if current_mode == 'flight_tracker' else 'airport'
-
-    is_sports_mode = current_mode in sports_mode_family
-    delay_seconds = (response_settings.get('live_delay_seconds', 0)
-                     if (is_sports_mode and response_settings.get('live_delay_mode'))
-                     else 0)
-    raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
-    processed_games = []
-    saved_teams = set(response_settings.get('my_teams', []))
-    COLLISION_ABBRS = {'LV'}
-    _active_sports = state.get('active_sports', {})
-
-    for g in raw_games:
-        game_copy = g.copy()
-        sport = game_copy.get('sport', '')
-        g_type = game_copy.get('type', '')
-        if current_mode in ('sports', 'live', 'my_teams'):
-            should_show = _active_sports.get(sport, True)
-        else:
-            should_show = True
-
-        if current_mode == 'my_teams':
-            h_ab = str(game_copy.get('home_abbr', '')).upper()
-            a_ab = str(game_copy.get('away_abbr', '')).upper()
-            in_home = f"{sport}:{h_ab}" in saved_teams or (h_ab in saved_teams and h_ab not in COLLISION_ABBRS)
-            in_away = f"{sport}:{a_ab}" in saved_teams or (a_ab in saved_teams and a_ab not in COLLISION_ABBRS)
-            if not (in_home or in_away):
-                should_show = False
-        elif current_mode == 'live':
-            if game_copy.get('state') not in ('in', 'half', 'crit'):
-                should_show = False
-        elif current_mode == 'sports':
-            if g_type in ('music', 'clock', 'weather', 'stock_ticker', 'flight_visitor'):
-                should_show = False
-            else:
-                status_lower = str(game_copy.get('status', '')).lower()
-                if any(k in status_lower for k in ("postponed", "suspended", "canceled", "ppd")):
-                    should_show = False
-        elif current_mode == 'music':
-            if g_type != 'music':
-                should_show = False
-        elif current_mode == 'stocks':
-            if g_type != 'stock_ticker':
-                should_show = False
-        elif current_mode == 'weather':
-            if g_type != 'weather':
-                should_show = False
-        elif current_mode == 'clock':
-            if g_type != 'clock':
-                should_show = False
-        elif current_mode == 'flights':
-            if sport != 'flight':
-                should_show = False
-        elif current_mode == 'flight_tracker':
-            if g_type != 'flight_visitor':
-                should_show = False
-
-        game_copy['is_shown'] = should_show
-        processed_games.append(game_copy)
-
-    tz_name = str(response_settings.get('timezone_name', '')).strip()
-    tz_offset = response_settings.get('utc_offset', state.get('utc_offset', -5))
-    _apply_timezone_to_game_times(processed_games, tz_name=tz_name, utc_offset=tz_offset)
-
-    return jsonify({
-        "status": "ok",
-        "settings": response_settings,
-        "games": processed_games,
-        "is_pinned": bool(pinned_game),
-        "pinned_game": pinned_game,
-        "pinned_games": pinned_games
-    })
-
-
-@app.route('/api/timezone', methods=['GET'])
-def api_timezone_debug():
-    """
-    Debug endpoint for ticker timezone resolution.
-    Query params:
-      - id: ticker id (optional; inferred from X-Client-ID or single-ticker fallback)
-      - refresh: 1/true to force running timezone update pipeline for this request
-    """
-    ticker_id = request.args.get('id')
-    if not ticker_id:
-        cid = request.headers.get('X-Client-ID')
-        if cid:
-            for tid, t_data in tickers.items():
-                if cid in t_data.get('clients', []):
-                    ticker_id = tid
-                    break
-    if not ticker_id and len(tickers) == 1:
-        ticker_id = list(tickers.keys())[0]
-
-    if not ticker_id or ticker_id not in tickers:
-        return jsonify({
-            "status": "error",
-            "message": "Ticker not found. Provide ?id=<ticker_id>",
-            "known_tickers": list(tickers.keys())[:20]
-        }), 404
-
-    refresh_raw = str(request.args.get('refresh', '')).strip().lower()
-    do_refresh = refresh_raw in ('1', 'true', 'yes', 'y', 'on')
-
-    if do_refresh:
-        _maybe_update_ticker_timezone_from_request(ticker_id, request)
-
-    rec = tickers[ticker_id]
-    settings = rec.get('settings', {}) if isinstance(rec, dict) else {}
-
-    hdr_tz, hdr_offset = _extract_timezone_from_request_headers(request)
-    client_ip = _extract_client_ip(request)
-
-    ip_lookup = None
-    if client_ip:
-        ip_tz, ip_off = _lookup_timezone_for_ip(client_ip)
-        ip_lookup = {
-            "ip": client_ip,
-            "timezone": ip_tz,
-            "utc_offset": ip_off,
-        }
-
-    self_tz, self_off, self_ip = _lookup_timezone_for_current_connection()
-
-    lat = settings.get('weather_lat', state.get('weather_lat'))
-    lon = settings.get('weather_lon', state.get('weather_lon'))
-    ll_tz, ll_off = _lookup_timezone_for_latlon(lat, lon)
-
-    effective_tz, effective_off = _get_ticker_timezone_context(rec)
-
-    return jsonify({
-        "status": "ok",
-        "ticker_id": ticker_id,
-        "refresh_applied": do_refresh,
-        "request_inputs": {
-            "query": {
-                "timezone_name": request.args.get('timezone_name'),
-                "utc_offset": request.args.get('utc_offset'),
-                "tz": request.args.get('tz'),
-                "offset": request.args.get('offset'),
-            },
-            "headers": {
-                "X-Client-ID": request.headers.get('X-Client-ID'),
-                "X-Ticker-Timezone": request.headers.get('X-Ticker-Timezone'),
-                "X-Ticker-Utc-Offset": request.headers.get('X-Ticker-Utc-Offset'),
-                "X-Timezone": request.headers.get('X-Timezone'),
-                "X-UTC-Offset": request.headers.get('X-UTC-Offset'),
-                "X-Forwarded-For": request.headers.get('X-Forwarded-For'),
-                "X-Real-IP": request.headers.get('X-Real-IP'),
-                "CF-Connecting-IP": request.headers.get('CF-Connecting-IP'),
-            },
-            "resolved_from_request": {
-                "header_timezone": hdr_tz,
-                "header_utc_offset": hdr_offset,
-                "client_ip": client_ip,
-                "remote_addr": request.remote_addr,
-            }
-        },
-        "stored": {
-            "settings.timezone_name": settings.get('timezone_name'),
-            "settings.utc_offset": settings.get('utc_offset'),
-            "rec.timezone_name": rec.get('timezone_name'),
-            "rec.last_ip": rec.get('last_ip'),
-            "weather_lat": lat,
-            "weather_lon": lon,
-        },
-        "lookups": {
-            "ip_lookup": ip_lookup,
-            "current_connection_lookup": {
-                "ip": self_ip,
-                "timezone": self_tz,
-                "utc_offset": self_off,
-            },
-            "latlon_lookup": {
-                "timezone": ll_tz,
-                "utc_offset": ll_off,
-            }
-        },
-        "effective": {
-            "timezone_name": effective_tz,
-            "utc_offset": effective_off,
-        }
-    })
-
-@app.route('/api/pin_games', methods=['POST'])
-def api_pin_games():
-    try:
-        payload = request.json or {}
-        ticker_id = payload.get('ticker_id') or request.args.get('id')
-        cid = request.headers.get('X-Client-ID')
-
-        if not ticker_id and cid:
-            for tid, rec in tickers.items():
-                if cid in rec.get('clients', []):
-                    ticker_id = tid
-                    break
-        if not ticker_id and len(tickers) == 1:
-            ticker_id = list(tickers.keys())[0]
-
-        if ticker_id and ticker_id in tickers:
-            rec = tickers[ticker_id]
-            if cid and cid not in rec.get('clients', []):
-                print(f"⛔ Blocked unauthorized pin change from {cid}")
-                return jsonify({"error": "Unauthorized: Device not paired"}), 403
-
-        single_pin, pin_list = _normalize_single_pin(pinned_games=payload.get('game_ids', []))
-
-        with data_lock:
-            if ticker_id and ticker_id in tickers:
-                tickers[ticker_id]['settings']['pinned_game'] = single_pin
-                tickers[ticker_id]['settings']['pinned_games'] = pin_list
-
-        if ticker_id and ticker_id in tickers:
-            save_specific_ticker(ticker_id)
-
-        threading.Thread(target=fetcher.update_current_games, daemon=True).start()
-
-        return jsonify({
-            "status": "ok",
-            "ticker_id": ticker_id,
-            "pinned_game": single_pin,
-            "pinned_games": pin_list
-        })
-    except Exception as e:
-        print(f"Pin API Error: {e}")
-        return jsonify({"error": "Failed to save pinned games"}), 500
-    
-@app.route('/api/teams')
-def api_teams():
-    with data_lock: return jsonify(state['all_teams_data'])
-
-@app.route('/api/hardware', methods=['POST'])
-def api_hardware():
-    try:
-        data = request.json or {}
-        action = data.get('action')
-        ticker_id = data.get('ticker_id')
-        
-        # NEW: Handle Update Action
-        if action == 'update':
-            with data_lock:
-                for t in tickers.values(): t['update_requested'] = True
-            threading.Timer(60, lambda: [t.update({'update_requested':False}) for t in tickers.values()]).start()
-            return jsonify({"status": "ok", "message": "Updating Fleet"})
-
-        if action == 'reboot':
-            if ticker_id and ticker_id in tickers:
-                with data_lock:
-                    tickers[ticker_id]['reboot_requested'] = True
-                def clear_flag(tid):
-                    with data_lock:
-                        if tid in tickers: tickers[tid]['reboot_requested'] = False
-                threading.Timer(15, clear_flag, args=[ticker_id]).start()
-                return jsonify({"status": "ok", "message": f"Rebooting {ticker_id}"})
-            elif len(tickers) > 0:
-                target = list(tickers.keys())[0]
-                with data_lock:
-                    tickers[target]['reboot_requested'] = True
-                threading.Timer(15, lambda: tickers[target].update({'reboot_requested': False})).start()
-                return jsonify({"status": "ok"})
-                
-        return jsonify({"status": "ignored"})
-    except Exception as e:
-        print(f"Hardware API Error: {e}")
-        return jsonify({"status": "error"}), 500
-
-@app.route('/api/debug', methods=['GET', 'POST'])
-def api_debug():
-    if request.method == 'POST':
-        payload = request.json or {}
-        with data_lock:
-            state.update(payload)
-        # Sync TestMode whenever any relevant key was sent
-        if any(k.startswith('test_') or k in ('debug_mode', 'custom_date') for k in payload):
-            TestMode.configure(
-                enabled=state.get('test_mode', False),
-                spotify=state.get('test_spotify', False),
-                stocks=state.get('test_stocks', False),
-                sports_date=state.get('test_sports_date', False),
-                flights=state.get('test_flights', False),
-                custom_date=state.get('custom_date'),
-            )
-        if tee_instance is not None:
-            Tee.verbose_debug = state.get('debug_mode', False)
-        return jsonify({"status": "ok"})
-    else:
-        # GET: return current debug / test mode snapshot
-        with data_lock:
-            debug_snap = {
-                'debug_mode': state.get('debug_mode'),
-                'custom_date': state.get('custom_date'),
-                'show_debug_options': state.get('show_debug_options'),
-            }
-        return jsonify({
-            "state_debug": debug_snap,
-            "test_mode": TestMode.status(),
-        })
-
-@app.route('/errors', methods=['GET'])
-def get_logs():
-    log_file = "ticker.log"
-    if not os.path.exists(log_file):
-        return "Log file not found", 404
-    try:
-        file_size = os.path.getsize(log_file)
-        read_size = min(file_size, 102400) 
-        log_content = ""
-        with open(log_file, 'rb') as f:
-            if file_size > read_size:
-                f.seek(file_size - read_size)
-            data = f.read()
-            log_content = data.decode('utf-8', errors='replace')
-
-        html_response = f"""
-        <!DOCTYPE html>
-        <html>
-        <head><title>Logs</title><meta http-equiv="refresh" content="10"></head>
-        <body style="background:#111;color:#0f0;font-family:monospace;padding:20px;">
-            <pre>{log_content}</pre>
-            <script>window.scrollTo(0,document.body.scrollHeight);</script>
-        </body></html>
-        """
-        return app.response_class(response=html_response, status=200, mimetype='text/html')
-    except Exception as e:
-        return f"Error: {str(e)}", 500
-
-@app.route('/api/my_teams', methods=['GET'])
-def check_my_teams():
-    ticker_id = request.args.get('id')
-    with data_lock:
-        global_teams = state.get('my_teams', [])
-        if not ticker_id:
-            return jsonify({ "status": "ok", "scope": "Global", "teams": global_teams })
-
-        if ticker_id in tickers:
-            rec = tickers[ticker_id]
-            specific_teams = rec.get('my_teams')
-            using_fallback = specific_teams is None
-            effective = global_teams if using_fallback else specific_teams
-            return jsonify({ 
-                "status": "ok", "scope": "Ticker Specific", 
-                "using_global_fallback": using_fallback, 
-                "teams": effective 
-            })
-        
-        return jsonify({"error": "Ticker ID not found"}), 404
-
-@app.route('/api/airports', methods=['GET'])
-def get_airports():
-    airports = [
-        {'icao': 'KEWR', 'iata': 'EWR', 'name': 'Newark', 'city': 'New York'},
-        {'icao': 'KJFK', 'iata': 'JFK', 'name': 'JFK', 'city': 'New York'},
-        {'icao': 'KLGA', 'iata': 'LGA', 'name': 'LaGuardia', 'city': 'New York'},
-        {'icao': 'KORD', 'iata': 'ORD', 'name': "O'Hare", 'city': 'Chicago'},
-        {'icao': 'KLAX', 'iata': 'LAX', 'name': 'LAX', 'city': 'Los Angeles'},
-        {'icao': 'KSFO', 'iata': 'SFO', 'name': 'San Francisco', 'city': 'San Francisco'},
-        {'icao': 'KATL', 'iata': 'ATL', 'name': 'Hartsfield', 'city': 'Atlanta'},
-        {'icao': 'KDEN', 'iata': 'DEN', 'name': 'Denver Intl', 'city': 'Denver'},
-        {'icao': 'KDFW', 'iata': 'DFW', 'name': 'Dallas/Fort Worth', 'city': 'Dallas'},
-        {'icao': 'KBOS', 'iata': 'BOS', 'name': 'Logan', 'city': 'Boston'},
-        {'icao': 'KSEA', 'iata': 'SEA', 'name': 'SeaTac', 'city': 'Seattle'},
-        {'icao': 'KMIA', 'iata': 'MIA', 'name': 'Miami Intl', 'city': 'Miami'},
-    ]
-    return jsonify(airports)
-
-@app.route('/api/airlines', methods=['GET'])
-def get_airlines():
-    airlines = [
-        {'code': '', 'name': 'All Airlines'},
-        {'code': 'UA', 'name': 'United Airlines'},
-        {'code': 'DL', 'name': 'Delta'},
-        {'code': 'AA', 'name': 'American'},
-        {'code': 'WN', 'name': 'Southwest'},
-        {'code': 'B6', 'name': 'JetBlue'},
-        {'code': 'AS', 'name': 'Alaska'},
-    ]
-    return jsonify(airlines)
-
-@app.route('/api/flight/status', methods=['GET'])
-def get_flight_status():
-    if not flight_tracker:
-        return jsonify({'available': False})
-    # Optional: force a fresh fetch for debugging
-    force = request.args.get('force') == '1'
-    if force:
-        try:
-            flight_tracker.fetch_visitor_tracking()
-        except Exception as e:
-            print(f"[DEBUG] force fetch failed: {e}")
-    with data_lock:
-        return jsonify({
-            'available': True,
-            'visitor_enabled': state['active_sports'].get('flight_tracker', False),
-            'airport_enabled': state['active_sports'].get('flight_airport', False),
-            'tracking': {
-                'flight_id': state.get('track_flight_id', ''),
-                'guest_name': state.get('track_guest_name', ''),
-                'airport': {
-                    'icao': state.get('airport_code_icao', ''),
-                    'iata': state.get('airport_code_iata', ''),
-                    'name': state.get('airport_name', ''),
-                    'airline': ''  # Always empty - support all airlines
-                }
-            },
-            'visitor': flight_tracker.get_visitor_object() if force else None
-        })
-
-@app.route('/')
-def root(): return "Ticker Server v7 Running"
-
+# ================= ENTRY POINT =================
 if __name__ == "__main__":
-    print("🚀 Starting Ticker Server...")
-    threading.Thread(target=sports_worker, daemon=True).start()
-    threading.Thread(target=stocks_worker, daemon=True).start()
-    threading.Thread(target=music_worker, daemon=True).start()
-    if flight_tracker:
-        threading.Thread(target=flights_worker, daemon=True).start()
-    print("✅ Worker threads started")
-    print("🌐 Starting Flask on port 5000...")
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+    ticker = TickerStreamer()
+    try:
+        ticker.render_loop()
+    except KeyboardInterrupt:
+        print("Stopping...")
+        ticker.running = False
