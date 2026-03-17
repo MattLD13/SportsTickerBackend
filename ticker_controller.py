@@ -1946,13 +1946,13 @@ class TickerStreamer:
                 h_seed = str(game.get('home_seed', ''))
                 a_seed = str(game.get('away_seed', ''))
                 if a_seed:
-                    w = len(a_seed) * 5
-                    sx = 8 - (w // 2)
-                    draw_tiny_text(d, sx, 26, a_seed, self.march_seed_color)
+                    w = d.textlength(a_seed, font=self.tiny)
+                    sx = 8 - (w / 2)
+                    d.text((sx, 24), a_seed, font=self.tiny, fill=self.march_seed_color)
                 if h_seed:
-                    w = len(h_seed) * 5
-                    sx = 56 - (w // 2)
-                    draw_tiny_text(d, sx, 26, h_seed, self.march_seed_color)
+                    w = d.textlength(h_seed, font=self.tiny)
+                    sx = 56 - (w / 2)
+                    d.text((sx, 24), h_seed, font=self.tiny, fill=self.march_seed_color)
 
             elif shootout:
                 away_so = shootout.get('away', []) if isinstance(shootout, dict) else []
