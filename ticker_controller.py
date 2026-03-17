@@ -1946,11 +1946,11 @@ class TickerStreamer:
                 if a_seed:
                     w = len(a_seed) * 5
                     sx = 8 - (w // 2)
-                    draw_tiny_text(d, sx, 26, a_seed, (200, 200, 200))
+                    draw_tiny_text(d, sx, 26, a_seed, (66, 117, 199))
                 if h_seed:
                     w = len(h_seed) * 5
                     sx = 56 - (w // 2)
-                    draw_tiny_text(d, sx, 26, h_seed, (200, 200, 200))
+                    draw_tiny_text(d, sx, 26, h_seed, (66, 117, 199))
 
             elif shootout:
                 away_so = shootout.get('away', []) if isinstance(shootout, dict) else []
