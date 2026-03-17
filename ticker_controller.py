@@ -303,6 +303,8 @@ class TickerStreamer:
         self.mode = 'sports'
         self.mode_override = None
         self.running = True
+        self.render_version = "2026-03-17-mm-seed-blue"
+        self.march_seed_color = (66, 117, 199)  # #4275c7
 
         options = RGBMatrixOptions()
         options.rows = 32
@@ -1946,11 +1948,11 @@ class TickerStreamer:
                 if a_seed:
                     w = len(a_seed) * 5
                     sx = 8 - (w // 2)
-                    draw_tiny_text(d, sx, 26, a_seed, (66, 117, 199))
+                    draw_tiny_text(d, sx, 26, a_seed, self.march_seed_color)
                 if h_seed:
                     w = len(h_seed) * 5
                     sx = 56 - (w // 2)
-                    draw_tiny_text(d, sx, 26, h_seed, (66, 117, 199))
+                    draw_tiny_text(d, sx, 26, h_seed, self.march_seed_color)
 
             elif shootout:
                 away_so = shootout.get('away', []) if isinstance(shootout, dict) else []
@@ -2028,9 +2030,11 @@ class TickerStreamer:
 
     def get_game_hash(self, game):
         s = (
-            f"{self.mode}_"
+            f"{self.render_version}_{self.mode}_"
             f"{game.get('id')}_{game.get('home_score')}_{game.get('away_score')}_"
-            f"{game.get('situation', {}).get('change')}_{game.get('status')}"
+            f"{game.get('situation', {}).get('change')}_{game.get('status')}_"
+            f"{game.get('sport', '')}_{game.get('state', '')}_"
+            f"{game.get('away_seed', '')}_{game.get('home_seed', '')}"
         )
         return hashlib.md5(s.encode()).hexdigest()
 
