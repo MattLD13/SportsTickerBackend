@@ -303,7 +303,7 @@ class TickerStreamer:
         self.mode = 'sports'
         self.mode_override = None
         self.running = True
-        self.render_version = "2026-03-17-mm-seed-blue"
+        self.render_version = "2026-03-17-mm-seed-blue-v2"
         self.march_seed_color = (66, 117, 199)  # #4275c7
 
         options = RGBMatrixOptions()
@@ -1946,13 +1946,9 @@ class TickerStreamer:
                 h_seed = str(game.get('home_seed', ''))
                 a_seed = str(game.get('away_seed', ''))
                 if a_seed:
-                    w = d.textlength(a_seed, font=self.tiny)
-                    sx = 8 - (w / 2)
-                    d.text((sx, 24), a_seed, font=self.tiny, fill=self.march_seed_color)
+                    self.draw_outlined_text(d, 8, 27, a_seed, self.tiny, self.march_seed_color, (0, 0, 0), anchor='mm')
                 if h_seed:
-                    w = d.textlength(h_seed, font=self.tiny)
-                    sx = 56 - (w / 2)
-                    d.text((sx, 24), h_seed, font=self.tiny, fill=self.march_seed_color)
+                    self.draw_outlined_text(d, 56, 27, h_seed, self.tiny, self.march_seed_color, (0, 0, 0), anchor='mm')
 
             elif shootout:
                 away_so = shootout.get('away', []) if isinstance(shootout, dict) else []
