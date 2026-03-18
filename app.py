@@ -118,6 +118,7 @@ def _build_airline_mappings():
     return dict(_IATA_TO_ICAO_FALLBACK)
 
 _IATA_TO_ICAO = _build_airline_mappings()
+
 _ICAO_TO_IATA = {v: k for k, v in _IATA_TO_ICAO.items()}
 
 # ── ICAO aircraft type code -> human-readable name normalization ──
