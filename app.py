@@ -250,6 +250,9 @@ TICKER_DATA_DIR = "ticker_data"
 if not os.path.exists(TICKER_DATA_DIR):
     os.makedirs(TICKER_DATA_DIR)
 
+# Only this ticker can see/select poop_fetcher mode.
+POOP_FETCHER_MODE_TICKER_ID = "722c59f4-fce3-4735-b072-faaa2f579a0a"
+
 GLOBAL_CONFIG_FILE = "global_config.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 GAME_CACHE_FILE = "game_cache.json"
@@ -549,6 +552,7 @@ LEAGUE_OPTIONS = [
     {'id': 'weather', 'label': 'Weather', 'type': 'util', 'default': True},
     {'id': 'clock', 'label': 'Clock', 'type': 'util', 'default': True},
     {'id': 'music', 'label': 'Music', 'type': 'util', 'default': True},
+    {'id': 'poop_fetcher', 'label': 'Poop Fetcher', 'type': 'util', 'default': False},
     {'id': 'flight_tracker', 'label': 'Flight Tracker', 'type': 'util', 'default': False},
     {'id': 'flight_airport', 'label': 'Airport Activity', 'type': 'util', 'default': False},
     {'id': 'stock_tech_ai', 'label': 'Tech / AI Stocks', 'type': 'stock', 'default': True, 'stock_list': ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSM", "AVGO", "ORCL", "CRM", "AMD", "IBM", "INTC", "QCOM", "CSCO", "ADBE", "TXN", "AMAT", "INTU", "NOW", "MU"]},
@@ -594,7 +598,11 @@ def _game_sort_key(x):
 
 
 # Valid mode set — no 'all', no 'flight2', no 'flight_submode'
-VALID_MODES = {'sports', 'sports_full', 'live', 'my_teams', 'stocks', 'weather', 'music', 'clock', 'flights', 'flight_tracker'}
+VALID_MODES = {'sports', 'sports_full', 'live', 'my_teams', 'stocks', 'weather', 'music', 'clock', 'flights', 'flight_tracker', 'poop_fetcher'}
+
+
+def _is_poop_fetcher_mode_allowed(ticker_id):
+    return str(ticker_id or '').strip() == str(POOP_FETCHER_MODE_TICKER_ID).strip()
 
 # Legacy mode migration map applied at load time and on /api/config writes
 MODE_MIGRATIONS = {'all': 'sports', 'flight2': 'flight_tracker'}
@@ -3996,6 +4004,9 @@ class SportsFetcher:
         obj = flight_tracker.get_visitor_object()
         return [obj] if obj else []
 
+    def _build_poop_fetcher_buffer(self):
+        return [poop_fetcher.get_mode_object()]
+
     # ── Central update dispatcher ──────────────────────────────────────────
 
     def update_current_games(self):
@@ -4020,6 +4031,7 @@ class SportsFetcher:
             'clock':          self._build_clock_buffer,
             'flights':        self._build_flights_buffer,
             'flight_tracker': self._build_flight_tracker_buffer,
+            'poop_fetcher':   self._build_poop_fetcher_buffer,
         }
 
         sports_built = False
@@ -4279,9 +4291,73 @@ def flights_worker():
         flight_tracker.wake_event.wait(timeout=max(0, 5 - execution_time))
         flight_tracker.wake_event.clear()
 
+
+class PoopFetecher:
+    """Lightweight connection registry for PoopTracker app clients."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._clients = {}
+
+    def register_client(self, client_id, name):
+        safe_name = (name or '').strip() or 'PoopTracker User'
+        with self._lock:
+            self._clients[client_id] = {
+                'name': safe_name,
+                'connected_at': time.time(),
+                'last_seen': time.time()
+            }
+        return self._clients[client_id]
+
+    def heartbeat(self, client_id):
+        with self._lock:
+            if client_id in self._clients:
+                self._clients[client_id]['last_seen'] = time.time()
+                return self._clients[client_id]
+        return None
+
+    def get_mode_object(self):
+        with self._lock:
+            connected_count = len(self._clients)
+        return {
+            'type': 'poop_fetcher',
+            'sport': 'poop_fetcher',
+            'id': 'poop_fetcher_status',
+            'home_abbr': 'POOP',
+            'away_abbr': str(connected_count),
+            'status': f'{connected_count} CONNECTED',
+            'is_shown': True
+        }
+
+
+PoopFetcher = PoopFetecher
+poop_fetcher = PoopFetecher()
+
 # ── Section L: Flask Routes ──
 app = Flask(__name__)
 CORS(app) 
+
+
+@app.route('/api/poop/health', methods=['GET'])
+def poop_health():
+    return jsonify({"success": True, "message": "PoopTracker server is ready"})
+
+
+@app.route('/api/poop/register', methods=['POST'])
+def poop_register():
+    try:
+        payload = request.json or {}
+        name = payload.get('name', '')
+        client_id = request.headers.get('X-Client-ID') or str(uuid.uuid4())
+        rec = poop_fetcher.register_client(client_id, name)
+        return jsonify({
+            "success": True,
+            "client_id": client_id,
+            "name": rec.get('name', 'PoopTracker User')
+        })
+    except Exception as e:
+        print(f"Poop register error: {e}")
+        return jsonify({"success": False, "message": "Server error"}), 500
 
 @app.route('/api/config', methods=['POST'])
 def api_config():
@@ -4331,6 +4407,9 @@ def api_config():
         # Fallback for single-ticker setups
         if not target_id and len(tickers) == 1: 
             target_id = list(tickers.keys())[0]
+
+        if new_data.get('mode') == 'poop_fetcher' and not _is_poop_fetcher_mode_allowed(target_id):
+            new_data['mode'] = 'sports'
 
         # If a specific ticker is targeted but doesn't exist yet, create it so
         # mode and other settings are applied locally instead of falling back to
@@ -4561,14 +4640,29 @@ def api_config():
 
 @app.route('/leagues', methods=['GET'])
 def get_league_options():
+    ticker_id = request.args.get('id')
+    if not ticker_id:
+        cid = request.headers.get('X-Client-ID')
+        if cid:
+            for tid, t_data in tickers.items():
+                if cid in t_data.get('clients', []):
+                    ticker_id = tid
+                    break
+    if not ticker_id and len(tickers) == 1:
+        ticker_id = list(tickers.keys())[0]
+
+    poop_fetcher_allowed = _is_poop_fetcher_mode_allowed(ticker_id)
+
     league_meta = []
     for item in LEAGUE_OPTIONS:
-         league_meta.append({
-             'id': item['id'], 
-             'label': item['label'], 
-             'type': item['type'],
-             'enabled': state['active_sports'].get(item['id'], False)
-         })
+        if item['id'] == 'poop_fetcher' and not poop_fetcher_allowed:
+            continue
+        league_meta.append({
+            'id': item['id'],
+            'label': item['label'],
+            'type': item['type'],
+            'enabled': state['active_sports'].get(item['id'], False)
+        })
     # Add Music Option explicitly if not in list
     if not any(x['id'] == 'music' for x in league_meta):
         league_meta.append({'id': 'music', 'label': 'Music', 'type': 'util', 'enabled': state['active_sports'].get('music', False)})
@@ -4637,6 +4731,9 @@ def get_ticker_data():
         current_mode = 'sports_full'
     elif current_mode not in VALID_MODES:
         current_mode = state.get('mode', 'sports')
+
+    if current_mode == 'poop_fetcher' and not _is_poop_fetcher_mode_allowed(ticker_id):
+        current_mode = 'sports'
 
     # Sleep Mode Check
     if t_settings.get('brightness', 100) <= 0:
@@ -4732,6 +4829,7 @@ def get_ticker_data():
             elif current_mode == 'clock' and g_type == 'clock': match = True
             elif current_mode == 'flights' and g_sport == 'flight': match = True
             elif current_mode == 'flight_tracker' and g_type == 'flight_visitor': match = True
+            elif current_mode == 'poop_fetcher' and g_type == 'poop_fetcher': match = True
 
             if match:
                 g['is_shown'] = True
@@ -4968,6 +5066,8 @@ def update_settings(tid):
         new_mode = MODE_MIGRATIONS.get(new_mode, new_mode)
         if new_mode not in VALID_MODES:
             new_mode = 'sports'
+        if new_mode == 'poop_fetcher' and not _is_poop_fetcher_mode_allowed(tid):
+            new_mode = 'sports'
 
         with data_lock:
             # Only update this ticker's mode setting; other tickers keep theirs
@@ -5037,6 +5137,12 @@ def api_state():
     
     if current_mode not in VALID_MODES:
         current_mode = 'sports'
+    if current_mode == 'poop_fetcher' and not _is_poop_fetcher_mode_allowed(ticker_id):
+        current_mode = 'sports'
+
+    response_settings['mode'] = current_mode
+    if not _is_poop_fetcher_mode_allowed(ticker_id):
+        response_settings.get('active_sports', {}).pop('poop_fetcher', None)
         
     response_settings['flight_submode'] = 'track' if current_mode == 'flight_tracker' else 'airport'
 
@@ -5093,6 +5199,9 @@ def api_state():
                 should_show = False
         elif current_mode == 'flight_tracker':
             if g_type != 'flight_visitor':
+                should_show = False
+        elif current_mode == 'poop_fetcher':
+            if g_type != 'poop_fetcher':
                 should_show = False
 
         game_copy['is_shown'] = should_show
