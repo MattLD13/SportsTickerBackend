@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import uuid
+from html import escape
 from datetime import datetime as dt, timezone, timedelta
 
 try:
@@ -3430,8 +3431,12 @@ class SportsFetcher:
                                     s_disp = f"{clk}'"
                                     if gst == 'half' or tp.get('shortDetail') in ['Halftime', 'HT']: s_disp = "Half"
                             elif 'basketball' in config['path']:
-                                if p > 4: s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
-                                else: s_disp = f"Q{p} {clk}"
+                                if p > 4:
+                                    s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
+                                elif league_key == 'march_madness' and p <= 2:
+                                    s_disp = f"H{p} {clk}"
+                                else:
+                                    s_disp = f"Q{p} {clk}"
                             elif 'football' in config['path']:
                                 if p > 4: s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
                                 else: s_disp = f"Q{p} {clk}"
@@ -3744,7 +3749,12 @@ class SportsFetcher:
                         s_disp = "End 1st" if p == 1 else "End 2nd" if p == 2 else "End 3rd" if p == 3 else "Intermission"
                     else:
                         if 'basketball' in path:
-                            s_disp = f"OT{p-4 if p-4>1 else ''} {clk}" if p > 4 else f"Q{p} {clk}"
+                            if p > 4:
+                                s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
+                            elif league_key == 'march_madness' and p <= 2:
+                                s_disp = f"H{p} {clk}"
+                            else:
+                                s_disp = f"Q{p} {clk}"
                         elif 'football' in path:
                             s_disp = f"OT{p-4 if p-4>1 else ''} {clk}" if p > 4 else f"Q{p} {clk}"
                         elif 'hockey' in path:
@@ -4580,179 +4590,119 @@ def poop_log():
 
 @app.route('/poop/admin', methods=['GET'])
 def poop_admin_dashboard():
-        html = """<!doctype html>
-<html lang=\"en\">
+    authed = _poop_admin_authorized()
+    status = request.args.get('status', '').strip()
+
+    if not authed:
+        msg = ""
+        if status == 'bad_password':
+            msg = '<p class="bad">Invalid password.</p>'
+        html = f"""<!doctype html>
+<html lang="en">
 <head>
-    <meta charset=\"utf-8\" />
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
-    <title>Poop Admin</title>
-    <style>
-        :root { --bg:#0f172a; --card:#111827; --fg:#e5e7eb; --muted:#94a3b8; --ok:#10b981; --danger:#ef4444; --line:#334155; }
-        body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; background: radial-gradient(circle at 0% 0%, #1e293b, var(--bg)); color:var(--fg); }
-        .wrap { max-width: 960px; margin: 0 auto; padding: 20px; }
-        .card { background: color-mix(in srgb, var(--card) 92%, black 8%); border:1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
-        h1,h2 { margin:0 0 10px; }
-        input, button { border-radius: 10px; border:1px solid var(--line); background:#0b1220; color:var(--fg); padding:10px 12px; }
-        button { cursor:pointer; }
-        .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-        .muted { color: var(--muted); font-size: 13px; }
-        .ok { color: var(--ok); }
-        .bad { color: var(--danger); }
-        table { width:100%; border-collapse: collapse; }
-        th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); font-size: 14px; }
-        .hidden { display:none; }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Poop Admin</title>
+  <style>
+    body {{ margin:0; font-family: ui-sans-serif, system-ui, sans-serif; background:#0f172a; color:#e5e7eb; }}
+    .wrap {{ max-width: 760px; margin: 0 auto; padding: 20px; }}
+    .card {{ background:#111827; border:1px solid #334155; border-radius: 14px; padding: 16px; }}
+    input, button {{ border-radius: 10px; border:1px solid #334155; background:#0b1220; color:#e5e7eb; padding:10px 12px; }}
+    .row {{ display:flex; gap:8px; align-items:center; }}
+    .bad {{ color:#ef4444; }}
+  </style>
 </head>
 <body>
-    <div class=\"wrap\">
-        <h1>Poop Admin Dashboard</h1>
-
-        <div id=\"loginCard\" class=\"card\">
-            <h2>Login</h2>
-            <form class=\"row\" method=\"POST\" action=\"/poop/admin/login\">
-                <input id=\"pw\" name=\"password\" type=\"password\" placeholder=\"Password\" required />
-                <button type=\"submit\">Sign In</button>
-            </form>
-            <p id=\"loginMsg\" class=\"muted\"></p>
-        </div>
-
-        <div id=\"dash\" class=\"hidden\">
-            <div class=\"card\">
-                <div class=\"row\" style=\"justify-content:space-between\">
-                    <h2>Users</h2>
-                    <button onclick=\"logout()\">Logout</button>
-                </div>
-                <table id=\"usersTable\"></table>
-            </div>
-
-            <div class=\"card\">
-                <h2>Add Entry</h2>
-                <div class=\"row\">
-                    <select id=\"addUser\"></select>
-                    <button onclick=\"addEntry()\">Add Poop</button>
-                </div>
-            </div>
-
-            <div class=\"card\">
-                <h2>Entries</h2>
-                <p id=\"stateMsg\" class=\"muted\"></p>
-                <table id=\"entriesTable\"></table>
-            </div>
-        </div>
+  <div class="wrap">
+    <h1>Poop Admin Dashboard</h1>
+    <div class="card">
+      <h2>Login</h2>
+      <form class="row" method="POST" action="/poop/admin/login">
+        <input name="password" type="password" placeholder="Password" required />
+        <button type="submit">Sign In</button>
+      </form>
+      {msg}
     </div>
-
-<script>
-async function api(path, method='GET', body=null) {
-    const res = await fetch(path, {
-        method,
-        headers: {'Content-Type':'application/json'},
-        credentials: 'same-origin',
-        body: body ? JSON.stringify(body) : null
-    });
-    const json = await res.json().catch(()=>({success:false,message:'Invalid response'}));
-    if (!res.ok) throw new Error(json.message || 'Request failed');
-    return json;
-}
-
-function setLoginMsg(msg, good=false){
-    const el = document.getElementById('loginMsg');
-    el.textContent = msg || '';
-    el.className = good ? 'ok' : 'bad';
-}
-
-async function login(){
-    try {
-        const pw = document.getElementById('pw').value || '';
-        await api('/api/poop/admin/login','POST',{password:pw});
-        setLoginMsg('Authenticated', true);
-        await refresh();
-    } catch (e) {
-        setLoginMsg(e.message || 'Login failed', false);
-    }
-}
-
-async function logout(){
-    try { await api('/api/poop/admin/logout','POST',{}); } catch(_){}
-    document.getElementById('dash').classList.add('hidden');
-    document.getElementById('loginCard').classList.remove('hidden');
-}
-
-async function renameUser(id){
-    const input = document.getElementById('u_'+id);
-    const newName = (input?.value || '').trim();
-    if (!newName) return;
-    try {
-        await api('/api/poop/admin/user','POST',{client_id:id,name:newName});
-        await refresh();
-    } catch (e) {
-        alert(e.message || 'Rename failed');
-    }
-}
-
-async function addEntry(){
-    const clientId = document.getElementById('addUser').value;
-    if (!clientId) return;
-    try {
-        await api('/api/poop/admin/entry/add','POST',{client_id: clientId});
-        await refresh();
-    } catch (e) {
-        alert(e.message || 'Add failed');
-    }
-}
-
-async function deleteEntry(id){
-    if (!confirm('Delete this entry?')) return;
-    try {
-        await api('/api/poop/admin/entry/delete','POST',{entry_id:id});
-        await refresh();
-    } catch (e) {
-        alert(e.message || 'Delete failed');
-    }
-}
-
-function render(state){
-    const users = state.users || [];
-    const entries = (state.entries || []).slice().sort((a,b)=>String(b.timestamp).localeCompare(String(a.timestamp)));
-
-    const usersTable = document.getElementById('usersTable');
-    usersTable.innerHTML = '<tr><th>ID</th><th>Name</th><th>Action</th></tr>' + users.map(u =>
-        '<tr>' +
-            '<td>'+u.id+'</td>' +
-            '<td><input id="u_'+u.id+'" value="'+(u.name||'').replace(/"/g,'&quot;')+'" /></td>' +
-            '<td><button onclick="renameUser(\''+u.id+'\')">Save</button></td>' +
-        '</tr>'
-    ).join('');
-
-    const addUser = document.getElementById('addUser');
-    addUser.innerHTML = users.map(u => '<option value="'+u.id+'">'+u.name+' ('+u.id+')</option>').join('');
-
-    const entriesTable = document.getElementById('entriesTable');
-    entriesTable.innerHTML = '<tr><th>User</th><th>Timestamp</th><th>ID</th><th>Action</th></tr>' + entries.map(e =>
-        '<tr>' +
-            '<td>'+e.user_id+'</td>' +
-            '<td>'+e.timestamp+'</td>' +
-            '<td>'+e.id+'</td>' +
-            '<td><button onclick="deleteEntry(\''+e.id+'\')">Delete</button></td>' +
-        '</tr>'
-    ).join('');
-
-    document.getElementById('stateMsg').textContent = users.length + ' users, ' + entries.length + ' entries';
-}
-
-async function refresh(){
-    const state = await api('/api/poop/admin/state');
-    document.getElementById('loginCard').classList.add('hidden');
-    document.getElementById('dash').classList.remove('hidden');
-    render(state);
-}
-
-(async () => {
-    try { await refresh(); }
-    catch (_) {}
-})();
-</script>
+  </div>
 </body></html>"""
         return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+    state = poop_fetcher.get_state()
+    users = state.get('users', [])
+    entries = sorted(state.get('entries', []), key=lambda e: str(e.get('timestamp', '')), reverse=True)
+
+    users_rows = []
+    for u in users:
+        uid = escape(str(u.get('id', '')))
+        uname = escape(str(u.get('name', 'PoopTracker User')))
+        users_rows.append(
+            f"<tr><td>{uid}</td><td><form method='POST' action='/poop/admin/user' class='row'>"
+            f"<input type='hidden' name='client_id' value='{uid}' />"
+            f"<input name='name' value='{uname}' required />"
+            f"<button type='submit'>Save</button></form></td></tr>"
+        )
+
+    user_options = ''.join(
+        f"<option value='{escape(str(u.get('id', '')))}'>{escape(str(u.get('name', 'PoopTracker User')))}</option>"
+        for u in users
+    )
+
+    entry_rows = []
+    for e in entries:
+        eid = escape(str(e.get('id', '')))
+        user_id = escape(str(e.get('user_id', '')))
+        ts = escape(str(e.get('timestamp', '')))
+        entry_rows.append(
+            f"<tr><td>{user_id}</td><td>{ts}</td><td>{eid}</td><td>"
+            f"<form method='POST' action='/poop/admin/entry/delete'>"
+            f"<input type='hidden' name='entry_id' value='{eid}' />"
+            f"<button type='submit'>Delete</button></form></td></tr>"
+        )
+
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Poop Admin</title>
+  <style>
+    body {{ margin:0; font-family: ui-sans-serif, system-ui, sans-serif; background:#0f172a; color:#e5e7eb; }}
+    .wrap {{ max-width: 1080px; margin: 0 auto; padding: 20px; }}
+    .card {{ background:#111827; border:1px solid #334155; border-radius: 14px; padding: 16px; margin-bottom: 14px; }}
+    h1,h2 {{ margin:0 0 10px; }}
+    input, select, button {{ border-radius: 10px; border:1px solid #334155; background:#0b1220; color:#e5e7eb; padding:10px 12px; }}
+    .row {{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }}
+    table {{ width:100%; border-collapse: collapse; }}
+    th, td {{ text-align:left; padding:8px; border-bottom:1px solid #334155; font-size: 14px; vertical-align: top; }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="row" style="justify-content:space-between">
+      <h1>Poop Admin Dashboard</h1>
+      <form method="POST" action="/poop/admin/logout"><button type="submit">Logout</button></form>
+    </div>
+
+    <div class="card">
+      <h2>Add Entry</h2>
+      <form class="row" method="POST" action="/poop/admin/entry/add">
+        <select name="client_id" required>{user_options}</select>
+        <button type="submit">Add Poop</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Users</h2>
+      <table><tr><th>ID</th><th>Name</th></tr>{''.join(users_rows)}</table>
+    </div>
+
+    <div class="card">
+      <h2>Entries</h2>
+      <table><tr><th>User</th><th>Timestamp</th><th>ID</th><th>Action</th></tr>{''.join(entry_rows)}</table>
+    </div>
+  </div>
+</body></html>"""
+    return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
 
 
 @app.route('/api/poop/admin/login', methods=['POST'])
@@ -4793,6 +4743,45 @@ def poop_admin_login_form():
             samesite='Lax',
         )
         return response
+    return redirect('/poop/admin?status=bad_password')
+
+
+@app.route('/poop/admin/logout', methods=['POST'])
+def poop_admin_logout_form():
+    session.pop('poop_admin_ok', None)
+    response = make_response(redirect('/poop/admin'))
+    response.delete_cookie('poop_admin_basic')
+    return response
+
+
+@app.route('/poop/admin/user', methods=['POST'])
+def poop_admin_user_update_form():
+    if not _poop_admin_authorized():
+        return redirect('/poop/admin')
+    client_id = str(request.form.get('client_id') or '').strip()
+    name = str(request.form.get('name') or '').strip()
+    if client_id and name:
+        poop_fetcher.set_user_name(client_id, name)
+    return redirect('/poop/admin')
+
+
+@app.route('/poop/admin/entry/add', methods=['POST'])
+def poop_admin_entry_add_form():
+    if not _poop_admin_authorized():
+        return redirect('/poop/admin')
+    client_id = str(request.form.get('client_id') or '').strip()
+    if client_id:
+        poop_fetcher.add_entry(client_id)
+    return redirect('/poop/admin')
+
+
+@app.route('/poop/admin/entry/delete', methods=['POST'])
+def poop_admin_entry_delete_form():
+    if not _poop_admin_authorized():
+        return redirect('/poop/admin')
+    entry_id = str(request.form.get('entry_id') or '').strip()
+    if entry_id:
+        poop_fetcher.delete_entry(entry_id)
     return redirect('/poop/admin')
 
 
