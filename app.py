@@ -4609,10 +4609,10 @@ def poop_admin_dashboard():
 
         <div id=\"loginCard\" class=\"card\">
             <h2>Login</h2>
-            <div class=\"row\">
-                <input id=\"pw\" type=\"password\" placeholder=\"Password\" />
-                <button onclick=\"login()\">Sign In</button>
-            </div>
+            <form class=\"row\" method=\"POST\" action=\"/poop/admin/login\">
+                <input id=\"pw\" name=\"password\" type=\"password\" placeholder=\"Password\" required />
+                <button type=\"submit\">Sign In</button>
+            </form>
             <p id=\"loginMsg\" class=\"muted\"></p>
         </div>
 
