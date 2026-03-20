@@ -195,7 +195,7 @@ def normalize_aircraft_type(icao_code, fr24_model=None):
     return ''
 
 # ================= SERVER VERSION TAG =================
-SERVER_VERSION = "v0.8-AIFlights"
+SERVER_VERSION = "v0.9-Madness"
 
 # ── Section A: Logging ──
 class Tee(object):
@@ -4250,14 +4250,18 @@ def sports_worker():
     except Exception as e: print(f"Team fetch error: {e}")
 
     while True:
-        start_time = time.time()
-        if _any_ticker_needs('sports', 'live', 'my_teams', 'sports_full'):
-            try:
-                fetcher.update_current_games()
-            except Exception as e:
-                print(f"Sports Worker Error: {e}")
-        execution_time = time.time() - start_time
-        time.sleep(max(0, SPORTS_UPDATE_INTERVAL - execution_time))
+        try:
+            start_time = time.time()
+            if _any_ticker_needs('sports', 'live', 'my_teams', 'sports_full'):
+                try:
+                    fetcher.update_current_games()
+                except Exception as e:
+                    print(f"Sports Worker Error: {e}")
+            execution_time = time.time() - start_time
+            time.sleep(max(0, SPORTS_UPDATE_INTERVAL - execution_time))
+        except Exception as e:
+            print(f"Sports Worker Fatal Error (recovering): {e}")
+            time.sleep(SPORTS_UPDATE_INTERVAL)
 
 def stocks_worker():
     _cached_active_key = None
@@ -5322,7 +5326,7 @@ def get_ticker_data():
 
     # Sleep Mode Check
     if t_settings.get('brightness', 100) <= 0:
-        return jsonify({ "status": "sleep", "content": { "sports": [] } })
+        return jsonify({ "status": "sleep", "local_config": dict(t_settings), "content": { "sports": [] } })
 
     # 4. Content Fetching
     # Live delay only applies to sports content (history buffer only exists for sports)
@@ -6140,7 +6144,7 @@ def get_flight_status():
         })
 
 @app.route('/')
-def root(): return "Ticker Server v7 Running"
+def root(): return "Ticker Server v9 Running"
 
 if __name__ == "__main__":
     print("🚀 Starting Ticker Server...")
