@@ -3434,7 +3434,7 @@ class SportsFetcher:
                                 if p > 4:
                                     s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
                                 elif league_key == 'march_madness' and p <= 2:
-                                    s_disp = f"H{p} {clk}"
+                                    s_disp = f"H{p}{clk}"
                                 else:
                                     s_disp = f"Q{p} {clk}"
                             elif 'football' in config['path']:
@@ -3752,7 +3752,7 @@ class SportsFetcher:
                             if p > 4:
                                 s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
                             elif league_key == 'march_madness' and p <= 2:
-                                s_disp = f"H{p} {clk}"
+                                s_disp = f"H{p}{clk}"
                             else:
                                 s_disp = f"Q{p} {clk}"
                         elif 'football' in path:
@@ -4499,6 +4499,37 @@ class PoopFetecher:
                 self._save_state()
             return deleted
 
+    def set_user_entry_count(self, client_id, target_count):
+        with self._lock:
+            self._maybe_prune_entries_locked()
+            if client_id not in self._clients:
+                return False, 0
+
+            target = max(0, int(target_count))
+            user_entries = [e for e in self._entries if e.get('user_id') == client_id]
+            other_entries = [e for e in self._entries if e.get('user_id') != client_id]
+
+            if target < len(user_entries):
+                user_entries = sorted(
+                    user_entries,
+                    key=lambda e: self._parse_iso_utc(e.get('timestamp')) or dt.min.replace(tzinfo=timezone.utc),
+                    reverse=True,
+                )[:target]
+            elif target > len(user_entries):
+                to_add = target - len(user_entries)
+                now = dt.now(timezone.utc)
+                for i in range(to_add):
+                    user_entries.append({
+                        'id': f"{client_id}-{uuid.uuid4()}",
+                        'user_id': client_id,
+                        'timestamp': (now - timedelta(seconds=(to_add - i))).isoformat(),
+                    })
+
+            self._entries = other_entries + user_entries
+            self._entries.sort(key=lambda e: self._parse_iso_utc(e.get('timestamp')) or dt.min.replace(tzinfo=timezone.utc))
+            self._save_state()
+            return True, len(user_entries)
+
     def get_mode_object(self):
         with self._lock:
             connected_count = len(self._clients)
@@ -4630,16 +4661,25 @@ def poop_admin_dashboard():
     state = poop_fetcher.get_state()
     users = state.get('users', [])
     entries = sorted(state.get('entries', []), key=lambda e: str(e.get('timestamp', '')), reverse=True)
+    count_by_user = {}
+    for e in entries:
+        uid = str(e.get('user_id', ''))
+        count_by_user[uid] = count_by_user.get(uid, 0) + 1
 
     users_rows = []
     for u in users:
         uid = escape(str(u.get('id', '')))
         uname = escape(str(u.get('name', 'PoopTracker User')))
+        current_count = count_by_user.get(str(u.get('id', '')), 0)
         users_rows.append(
             f"<tr><td>{uid}</td><td><form method='POST' action='/poop/admin/user' class='row'>"
             f"<input type='hidden' name='client_id' value='{uid}' />"
             f"<input name='name' value='{uname}' required />"
-            f"<button type='submit'>Save</button></form></td></tr>"
+            f"<button type='submit'>Save</button></form></td>"
+            f"<td>{current_count}</td><td><form method='POST' action='/poop/admin/user/count' class='row'>"
+            f"<input type='hidden' name='client_id' value='{uid}' />"
+            f"<input name='count' type='number' min='0' value='{current_count}' required style='width:100px' />"
+            f"<button type='submit'>Set</button></form></td></tr>"
         )
 
     user_options = ''.join(
@@ -4693,7 +4733,7 @@ def poop_admin_dashboard():
 
     <div class="card">
       <h2>Users</h2>
-      <table><tr><th>ID</th><th>Name</th></tr>{''.join(users_rows)}</table>
+            <table><tr><th>ID</th><th>Name</th><th>Poops</th><th>Set Count</th></tr>{''.join(users_rows)}</table>
     </div>
 
     <div class="card">
@@ -4765,6 +4805,21 @@ def poop_admin_user_update_form():
     return redirect('/poop/admin')
 
 
+@app.route('/poop/admin/user/count', methods=['POST'])
+def poop_admin_user_count_form():
+    if not _poop_admin_authorized():
+        return redirect('/poop/admin')
+    client_id = str(request.form.get('client_id') or '').strip()
+    count_raw = str(request.form.get('count') or '').strip()
+    try:
+        target_count = int(count_raw)
+    except Exception:
+        target_count = 0
+    if client_id:
+        poop_fetcher.set_user_entry_count(client_id, target_count)
+    return redirect('/poop/admin')
+
+
 @app.route('/poop/admin/entry/add', methods=['POST'])
 def poop_admin_entry_add_form():
     if not _poop_admin_authorized():
@@ -4828,6 +4883,27 @@ def poop_admin_user_update():
         return jsonify({"success": True})
     except Exception as e:
         print(f"Poop admin user update error: {e}")
+        return jsonify({"success": False, "message": "Server error"}), 500
+
+
+@app.route('/api/poop/admin/user/count', methods=['POST'])
+def poop_admin_user_count():
+    auth_err = _poop_admin_guard()
+    if auth_err:
+        return auth_err
+    try:
+        payload = request.json or {}
+        client_id = str(payload.get('client_id') or '').strip()
+        count_value = payload.get('count')
+        if not client_id or count_value is None:
+            return jsonify({"success": False, "message": "Missing fields"}), 400
+
+        ok, new_count = poop_fetcher.set_user_entry_count(client_id, int(count_value))
+        if not ok:
+            return jsonify({"success": False, "message": "User not found"}), 404
+        return jsonify({"success": True, "count": new_count})
+    except Exception as e:
+        print(f"Poop admin user count error: {e}")
         return jsonify({"success": False, "message": "Server error"}), 500
 
 
