@@ -1945,14 +1945,30 @@ class TickerStreamer:
             if is_march_madness:
                 h_seed = str(game.get('home_seed', ''))
                 a_seed = str(game.get('away_seed', ''))
+                # Determine seed colors: green for winner, red for loser when game is final
+                a_seed_color = self.march_seed_color
+                h_seed_color = self.march_seed_color
+                game_status = str(game.get('status', '')).upper()
+                if 'FINAL' in game_status:
+                    try:
+                        a_sc = int(game.get('away_score', 0))
+                        h_sc = int(game.get('home_score', 0))
+                        if a_sc > h_sc:
+                            a_seed_color = (100, 180, 100)  # mildly saturated green (winner)
+                            h_seed_color = (180, 100, 100)  # mildly saturated red (loser)
+                        elif h_sc > a_sc:
+                            h_seed_color = (100, 180, 100)
+                            a_seed_color = (180, 100, 100)
+                    except (ValueError, TypeError):
+                        pass
                 if a_seed:
                     aw = len(a_seed) * 5
                     ax = 8 - (aw // 2)
-                    draw_tiny_text(d, ax, 26, a_seed, self.march_seed_color)
+                    draw_tiny_text(d, ax, 26, a_seed, a_seed_color)
                 if h_seed:
                     hw = len(h_seed) * 5
                     hx = 56 - (hw // 2)
-                    draw_tiny_text(d, hx, 26, h_seed, self.march_seed_color)
+                    draw_tiny_text(d, hx, 26, h_seed, h_seed_color)
 
             elif shootout:
                 away_so = shootout.get('away', []) if isinstance(shootout, dict) else []
