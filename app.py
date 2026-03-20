@@ -3434,7 +3434,7 @@ class SportsFetcher:
                                 if p > 4:
                                     s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
                                 elif league_key == 'march_madness' and p <= 2:
-                                    s_disp = f"H{p}{clk}" if p == 1 else f"H{p} {clk}"
+                                    s_disp = f"H{p} {clk}"
                                 else:
                                     s_disp = f"Q{p} {clk}"
                             elif 'football' in config['path']:
@@ -3752,7 +3752,7 @@ class SportsFetcher:
                             if p > 4:
                                 s_disp = f"OT{p-4 if p-4>1 else ''} {clk}"
                             elif league_key == 'march_madness' and p <= 2:
-                                s_disp = f"H{p}{clk}" if p == 1 else f"H{p} {clk}"
+                                s_disp = f"H{p} {clk}"
                             else:
                                 s_disp = f"Q{p} {clk}"
                         elif 'football' in path:
