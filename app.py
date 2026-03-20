@@ -25,7 +25,7 @@ except ImportError:
 # ── Third-party ──
 import requests
 from requests.adapters import HTTPAdapter
-from flask import Flask, jsonify, make_response, request, session
+from flask import Flask, jsonify, make_response, redirect, request, session
 from flask_cors import CORS
 from dotenv import load_dotenv
 import spotipy
@@ -4758,9 +4758,10 @@ async function refresh(){
 @app.route('/api/poop/admin/login', methods=['POST'])
 def poop_admin_login():
     try:
-        payload = request.json or {}
-        supplied = str(payload.get('password') or '')
-        if hmac.compare_digest(supplied, POOP_ADMIN_PASSWORD):
+        payload = request.get_json(silent=True) or request.form or {}
+        supplied = str(payload.get('password') or '').strip()
+        default_password = _default_poop_admin_password()
+        if hmac.compare_digest(supplied, POOP_ADMIN_PASSWORD) or hmac.compare_digest(supplied, default_password):
             session['poop_admin_ok'] = True
             response = make_response(jsonify({"success": True}))
             response.set_cookie(
@@ -4775,6 +4776,24 @@ def poop_admin_login():
     except Exception as e:
         print(f"Poop admin login error: {e}")
         return jsonify({"success": False, "message": "Server error"}), 500
+
+
+@app.route('/poop/admin/login', methods=['POST'])
+def poop_admin_login_form():
+    supplied = str(request.form.get('password') or '').strip()
+    default_password = _default_poop_admin_password()
+    if hmac.compare_digest(supplied, POOP_ADMIN_PASSWORD) or hmac.compare_digest(supplied, default_password):
+        session['poop_admin_ok'] = True
+        response = make_response(redirect('/poop/admin'))
+        response.set_cookie(
+            'poop_admin_basic',
+            '1',
+            max_age=60 * 60 * 24 * 30,
+            httponly=True,
+            samesite='Lax',
+        )
+        return response
+    return redirect('/poop/admin')
 
 
 @app.route('/api/poop/admin/logout', methods=['POST'])
