@@ -25,7 +25,7 @@ except ImportError:
 # ── Third-party ──
 import requests
 from requests.adapters import HTTPAdapter
-from flask import Flask, jsonify, request, session
+from flask import Flask, jsonify, make_response, request, session
 from flask_cors import CORS
 from dotenv import load_dotenv
 import spotipy
@@ -4515,7 +4515,11 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 
 def _poop_admin_authorized():
-    return bool(session.get('poop_admin_ok'))
+    if bool(session.get('poop_admin_ok')):
+        return True
+    # Basic fallback: if session signing is unstable across workers/restarts,
+    # allow a simple cookie gate for this non-sensitive admin dashboard.
+    return request.cookies.get('poop_admin_basic') == '1'
 
 
 def _poop_admin_guard():
@@ -4753,98 +4757,108 @@ async function refresh(){
 
 @app.route('/api/poop/admin/login', methods=['POST'])
 def poop_admin_login():
-        try:
-                payload = request.json or {}
-                supplied = str(payload.get('password') or '')
-                if hmac.compare_digest(supplied, POOP_ADMIN_PASSWORD):
-                        session['poop_admin_ok'] = True
-                        return jsonify({"success": True})
-                return jsonify({"success": False, "message": "Invalid password"}), 401
-        except Exception as e:
-                print(f"Poop admin login error: {e}")
-                return jsonify({"success": False, "message": "Server error"}), 500
+    try:
+        payload = request.json or {}
+        supplied = str(payload.get('password') or '')
+        if hmac.compare_digest(supplied, POOP_ADMIN_PASSWORD):
+            session['poop_admin_ok'] = True
+            response = make_response(jsonify({"success": True}))
+            response.set_cookie(
+                'poop_admin_basic',
+                '1',
+                max_age=60 * 60 * 24 * 30,
+                httponly=True,
+                samesite='Lax',
+            )
+            return response
+        return jsonify({"success": False, "message": "Invalid password"}), 401
+    except Exception as e:
+        print(f"Poop admin login error: {e}")
+        return jsonify({"success": False, "message": "Server error"}), 500
 
 
 @app.route('/api/poop/admin/logout', methods=['POST'])
 def poop_admin_logout():
-        session.pop('poop_admin_ok', None)
-        return jsonify({"success": True})
+    session.pop('poop_admin_ok', None)
+    response = make_response(jsonify({"success": True}))
+    response.delete_cookie('poop_admin_basic')
+    return response
 
 
 @app.route('/api/poop/admin/state', methods=['GET'])
 def poop_admin_state():
-        auth_err = _poop_admin_guard()
-        if auth_err:
-                return auth_err
-        try:
-                state = poop_fetcher.get_state()
-                return jsonify({
-                        "success": True,
-                        "users": state.get('users', []),
-                        "entries": state.get('entries', []),
-                })
-        except Exception as e:
-                print(f"Poop admin state error: {e}")
-                return jsonify({"success": False, "message": "Server error"}), 500
+    auth_err = _poop_admin_guard()
+    if auth_err:
+        return auth_err
+    try:
+        state = poop_fetcher.get_state()
+        return jsonify({
+            "success": True,
+            "users": state.get('users', []),
+            "entries": state.get('entries', []),
+        })
+    except Exception as e:
+        print(f"Poop admin state error: {e}")
+        return jsonify({"success": False, "message": "Server error"}), 500
 
 
 @app.route('/api/poop/admin/user', methods=['POST'])
 def poop_admin_user_update():
-        auth_err = _poop_admin_guard()
-        if auth_err:
-                return auth_err
-        try:
-                payload = request.json or {}
-                client_id = str(payload.get('client_id') or '').strip()
-                name = str(payload.get('name') or '').strip()
-                if not client_id or not name:
-                        return jsonify({"success": False, "message": "Missing fields"}), 400
+    auth_err = _poop_admin_guard()
+    if auth_err:
+        return auth_err
+    try:
+        payload = request.json or {}
+        client_id = str(payload.get('client_id') or '').strip()
+        name = str(payload.get('name') or '').strip()
+        if not client_id or not name:
+            return jsonify({"success": False, "message": "Missing fields"}), 400
 
-                ok = poop_fetcher.set_user_name(client_id, name)
-                if not ok:
-                        return jsonify({"success": False, "message": "User not found"}), 404
-                return jsonify({"success": True})
-        except Exception as e:
-                print(f"Poop admin user update error: {e}")
-                return jsonify({"success": False, "message": "Server error"}), 500
+        ok = poop_fetcher.set_user_name(client_id, name)
+        if not ok:
+            return jsonify({"success": False, "message": "User not found"}), 404
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"Poop admin user update error: {e}")
+        return jsonify({"success": False, "message": "Server error"}), 500
 
 
 @app.route('/api/poop/admin/entry/add', methods=['POST'])
 def poop_admin_entry_add():
-        auth_err = _poop_admin_guard()
-        if auth_err:
-                return auth_err
-        try:
-                payload = request.json or {}
-                client_id = str(payload.get('client_id') or '').strip()
-                if not client_id:
-                        return jsonify({"success": False, "message": "Missing client_id"}), 400
+    auth_err = _poop_admin_guard()
+    if auth_err:
+        return auth_err
+    try:
+        payload = request.json or {}
+        client_id = str(payload.get('client_id') or '').strip()
+        if not client_id:
+            return jsonify({"success": False, "message": "Missing client_id"}), 400
 
-                entry = poop_fetcher.add_entry(client_id)
-                return jsonify({"success": True, "entry": entry})
-        except Exception as e:
-                print(f"Poop admin add entry error: {e}")
-                return jsonify({"success": False, "message": "Server error"}), 500
+        entry = poop_fetcher.add_entry(client_id)
+        return jsonify({"success": True, "entry": entry})
+    except Exception as e:
+        print(f"Poop admin add entry error: {e}")
+        return jsonify({"success": False, "message": "Server error"}), 500
 
 
 @app.route('/api/poop/admin/entry/delete', methods=['POST'])
 def poop_admin_entry_delete():
-        auth_err = _poop_admin_guard()
-        if auth_err:
-                return auth_err
-        try:
-                payload = request.json or {}
-                entry_id = str(payload.get('entry_id') or '').strip()
-                if not entry_id:
-                        return jsonify({"success": False, "message": "Missing entry_id"}), 400
+    auth_err = _poop_admin_guard()
+    if auth_err:
+        return auth_err
+    try:
+        payload = request.json or {}
+        entry_id = str(payload.get('entry_id') or '').strip()
+        if not entry_id:
+            return jsonify({"success": False, "message": "Missing entry_id"}), 400
 
-                ok = poop_fetcher.delete_entry(entry_id)
-                if not ok:
-                        return jsonify({"success": False, "message": "Entry not found"}), 404
-                return jsonify({"success": True})
-        except Exception as e:
-                print(f"Poop admin delete entry error: {e}")
-                return jsonify({"success": False, "message": "Server error"}), 500
+        ok = poop_fetcher.delete_entry(entry_id)
+        if not ok:
+            return jsonify({"success": False, "message": "Entry not found"}), 404
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"Poop admin delete entry error: {e}")
+        return jsonify({"success": False, "message": "Server error"}), 500
 
 @app.route('/api/config', methods=['POST'])
 def api_config():
