@@ -60,6 +60,10 @@ jobs:
 
             # 3. AI API Key
             echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+
+            # 4. Poop Dashboard Admin Auth
+            echo "POOP_ADMIN_PASSWORD=${{ secrets.POOP_ADMIN_PASSWORD }}" >> .env
+            echo "POOP_ADMIN_SESSION_SECRET=${{ secrets.POOP_ADMIN_SESSION_SECRET }}" >> .env
             
             chmod 600 .env
 
