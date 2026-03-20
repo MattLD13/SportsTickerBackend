@@ -249,6 +249,7 @@ def build_pooled_session(pool_size=20, retries=2):
 TICKER_DATA_DIR = "ticker_data"
 if not os.path.exists(TICKER_DATA_DIR):
     os.makedirs(TICKER_DATA_DIR)
+POOP_TRACKER_STATE_FILE = os.path.join(TICKER_DATA_DIR, "pooptracker_state.json")
 
 # Only this ticker can see/select poop_fetcher mode.
 POOP_FETCHER_MODE_TICKER_ID = "722c59f4-fce3-4735-b072-faaa2f579a0a"
@@ -4298,23 +4299,84 @@ class PoopFetecher:
     def __init__(self):
         self._lock = threading.Lock()
         self._clients = {}
+        self._entries = []
+        self._load_state()
+
+    def _load_state(self):
+        if not os.path.exists(POOP_TRACKER_STATE_FILE):
+            return
+        try:
+            with open(POOP_TRACKER_STATE_FILE, 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+            self._clients = raw.get('clients', {}) if isinstance(raw.get('clients'), dict) else {}
+            self._entries = raw.get('entries', []) if isinstance(raw.get('entries'), list) else []
+        except Exception as e:
+            print(f"Poop state load error: {e}")
+
+    def _save_state(self):
+        try:
+            payload = {
+                'clients': self._clients,
+                'entries': self._entries,
+            }
+            temp_file = f"{POOP_TRACKER_STATE_FILE}.tmp"
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            os.replace(temp_file, POOP_TRACKER_STATE_FILE)
+        except Exception as e:
+            print(f"Poop state save error: {e}")
+
+    def _iso_now(self):
+        return dt.now(timezone.utc).isoformat()
 
     def register_client(self, client_id, name):
         safe_name = (name or '').strip() or 'PoopTracker User'
         with self._lock:
+            existing = self._clients.get(client_id, {})
             self._clients[client_id] = {
                 'name': safe_name,
-                'connected_at': time.time(),
-                'last_seen': time.time()
+                'connected_at': existing.get('connected_at', self._iso_now()),
+                'last_seen': self._iso_now()
             }
+            self._save_state()
         return self._clients[client_id]
 
     def heartbeat(self, client_id):
         with self._lock:
             if client_id in self._clients:
-                self._clients[client_id]['last_seen'] = time.time()
+                self._clients[client_id]['last_seen'] = self._iso_now()
+                self._save_state()
                 return self._clients[client_id]
         return None
+
+    def log_poop(self, client_id):
+        with self._lock:
+            if client_id not in self._clients:
+                self._clients[client_id] = {
+                    'name': 'PoopTracker User',
+                    'connected_at': self._iso_now(),
+                    'last_seen': self._iso_now(),
+                }
+            entry = {
+                'id': f"{client_id}-{uuid.uuid4()}",
+                'user_id': client_id,
+                'timestamp': self._iso_now(),
+            }
+            self._entries.append(entry)
+            self._save_state()
+            return entry
+
+    def get_state(self):
+        with self._lock:
+            users = [
+                {'id': cid, 'name': data.get('name', 'PoopTracker User')}
+                for cid, data in self._clients.items()
+            ]
+            users.sort(key=lambda u: (u.get('name') or '').lower())
+            return {
+                'users': users,
+                'entries': list(self._entries),
+            }
 
     def get_mode_object(self):
         with self._lock:
@@ -4357,6 +4419,34 @@ def poop_register():
         })
     except Exception as e:
         print(f"Poop register error: {e}")
+        return jsonify({"success": False, "message": "Server error"}), 500
+
+
+@app.route('/api/poop/state', methods=['GET'])
+def poop_state():
+    try:
+        state = poop_fetcher.get_state()
+        return jsonify({
+            "success": True,
+            "users": state.get('users', []),
+            "entries": state.get('entries', []),
+        })
+    except Exception as e:
+        print(f"Poop state error: {e}")
+        return jsonify({"success": False, "message": "Server error"}), 500
+
+
+@app.route('/api/poop/log', methods=['POST'])
+def poop_log():
+    try:
+        client_id = request.headers.get('X-Client-ID', '').strip()
+        if not client_id:
+            return jsonify({"success": False, "message": "Missing client ID"}), 400
+
+        entry = poop_fetcher.log_poop(client_id)
+        return jsonify({"success": True, "entry": entry})
+    except Exception as e:
+        print(f"Poop log error: {e}")
         return jsonify({"success": False, "message": "Server error"}), 500
 
 @app.route('/api/config', methods=['POST'])
