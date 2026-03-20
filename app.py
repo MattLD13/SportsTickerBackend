@@ -2,6 +2,7 @@
 import csv
 import concurrent.futures
 import glob
+import hmac
 import ipaddress
 import io
 import json
@@ -24,7 +25,7 @@ except ImportError:
 # ── Third-party ──
 import requests
 from requests.adapters import HTTPAdapter
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, session
 from flask_cors import CORS
 from dotenv import load_dotenv
 import spotipy
@@ -250,6 +251,37 @@ TICKER_DATA_DIR = "ticker_data"
 if not os.path.exists(TICKER_DATA_DIR):
     os.makedirs(TICKER_DATA_DIR)
 POOP_TRACKER_STATE_FILE = os.path.join(TICKER_DATA_DIR, "pooptracker_state.json")
+POOP_ADMIN_PASSWORD_FILE = os.path.join(TICKER_DATA_DIR, ".poop_admin_password")
+
+
+def _default_poop_admin_password():
+    return ''.join(chr(x) for x in (97, 100, 109, 105, 110))
+
+
+def _load_poop_admin_password():
+    env_value = (os.getenv('POOP_ADMIN_PASSWORD') or '').strip()
+    if env_value:
+        return env_value
+
+    if os.path.exists(POOP_ADMIN_PASSWORD_FILE):
+        try:
+            with open(POOP_ADMIN_PASSWORD_FILE, 'r', encoding='utf-8') as f:
+                value = f.read().strip()
+            if value:
+                return value
+        except Exception as e:
+            print(f"Poop admin password read error: {e}")
+
+    seeded_value = _default_poop_admin_password()
+    try:
+        with open(POOP_ADMIN_PASSWORD_FILE, 'w', encoding='utf-8') as f:
+            f.write(seeded_value)
+    except Exception as e:
+        print(f"Poop admin password write error: {e}")
+    return seeded_value
+
+
+POOP_ADMIN_PASSWORD = _load_poop_admin_password()
 
 # Only this ticker can see/select poop_fetcher mode.
 POOP_FETCHER_MODE_TICKER_ID = "722c59f4-fce3-4735-b072-faaa2f579a0a"
@@ -4378,6 +4410,44 @@ class PoopFetecher:
                 'entries': list(self._entries),
             }
 
+    def set_user_name(self, client_id, name):
+        safe_name = (name or '').strip()
+        if not safe_name:
+            return False
+        with self._lock:
+            if client_id not in self._clients:
+                return False
+            self._clients[client_id]['name'] = safe_name
+            self._clients[client_id]['last_seen'] = self._iso_now()
+            self._save_state()
+            return True
+
+    def add_entry(self, client_id, timestamp=None):
+        with self._lock:
+            if client_id not in self._clients:
+                self._clients[client_id] = {
+                    'name': 'PoopTracker User',
+                    'connected_at': self._iso_now(),
+                    'last_seen': self._iso_now(),
+                }
+            entry = {
+                'id': f"{client_id}-{uuid.uuid4()}",
+                'user_id': client_id,
+                'timestamp': timestamp or self._iso_now(),
+            }
+            self._entries.append(entry)
+            self._save_state()
+            return entry
+
+    def delete_entry(self, entry_id):
+        with self._lock:
+            before = len(self._entries)
+            self._entries = [e for e in self._entries if e.get('id') != entry_id]
+            deleted = len(self._entries) < before
+            if deleted:
+                self._save_state()
+            return deleted
+
     def get_mode_object(self):
         with self._lock:
             connected_count = len(self._clients)
@@ -4398,6 +4468,19 @@ poop_fetcher = PoopFetecher()
 # ── Section L: Flask Routes ──
 app = Flask(__name__)
 CORS(app) 
+app.secret_key = os.getenv('POOP_ADMIN_SESSION_SECRET') or os.getenv('FLASK_SECRET_KEY') or uuid.uuid4().hex
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+
+def _poop_admin_authorized():
+    return bool(session.get('poop_admin_ok'))
+
+
+def _poop_admin_guard():
+    if _poop_admin_authorized():
+        return None
+    return jsonify({"success": False, "message": "Unauthorized"}), 401
 
 
 @app.route('/api/poop/health', methods=['GET'])
@@ -4448,6 +4531,279 @@ def poop_log():
     except Exception as e:
         print(f"Poop log error: {e}")
         return jsonify({"success": False, "message": "Server error"}), 500
+
+
+@app.route('/poop/admin', methods=['GET'])
+def poop_admin_dashboard():
+        html = """<!doctype html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>Poop Admin</title>
+    <style>
+        :root { --bg:#0f172a; --card:#111827; --fg:#e5e7eb; --muted:#94a3b8; --ok:#10b981; --danger:#ef4444; --line:#334155; }
+        body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; background: radial-gradient(circle at 0% 0%, #1e293b, var(--bg)); color:var(--fg); }
+        .wrap { max-width: 960px; margin: 0 auto; padding: 20px; }
+        .card { background: color-mix(in srgb, var(--card) 92%, black 8%); border:1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+        h1,h2 { margin:0 0 10px; }
+        input, button { border-radius: 10px; border:1px solid var(--line); background:#0b1220; color:var(--fg); padding:10px 12px; }
+        button { cursor:pointer; }
+        .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+        .muted { color: var(--muted); font-size: 13px; }
+        .ok { color: var(--ok); }
+        .bad { color: var(--danger); }
+        table { width:100%; border-collapse: collapse; }
+        th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); font-size: 14px; }
+        .hidden { display:none; }
+    </style>
+</head>
+<body>
+    <div class=\"wrap\">
+        <h1>Poop Admin Dashboard</h1>
+
+        <div id=\"loginCard\" class=\"card\">
+            <h2>Login</h2>
+            <div class=\"row\">
+                <input id=\"pw\" type=\"password\" placeholder=\"Password\" />
+                <button onclick=\"login()\">Sign In</button>
+            </div>
+            <p id=\"loginMsg\" class=\"muted\"></p>
+        </div>
+
+        <div id=\"dash\" class=\"hidden\">
+            <div class=\"card\">
+                <div class=\"row\" style=\"justify-content:space-between\">
+                    <h2>Users</h2>
+                    <button onclick=\"logout()\">Logout</button>
+                </div>
+                <table id=\"usersTable\"></table>
+            </div>
+
+            <div class=\"card\">
+                <h2>Add Entry</h2>
+                <div class=\"row\">
+                    <select id=\"addUser\"></select>
+                    <button onclick=\"addEntry()\">Add Poop</button>
+                </div>
+            </div>
+
+            <div class=\"card\">
+                <h2>Entries</h2>
+                <p id=\"stateMsg\" class=\"muted\"></p>
+                <table id=\"entriesTable\"></table>
+            </div>
+        </div>
+    </div>
+
+<script>
+async function api(path, method='GET', body=null) {
+    const res = await fetch(path, {
+        method,
+        headers: {'Content-Type':'application/json'},
+        credentials: 'same-origin',
+        body: body ? JSON.stringify(body) : null
+    });
+    const json = await res.json().catch(()=>({success:false,message:'Invalid response'}));
+    if (!res.ok) throw new Error(json.message || 'Request failed');
+    return json;
+}
+
+function setLoginMsg(msg, good=false){
+    const el = document.getElementById('loginMsg');
+    el.textContent = msg || '';
+    el.className = good ? 'ok' : 'bad';
+}
+
+async function login(){
+    try {
+        const pw = document.getElementById('pw').value || '';
+        await api('/api/poop/admin/login','POST',{password:pw});
+        setLoginMsg('Authenticated', true);
+        await refresh();
+    } catch (e) {
+        setLoginMsg(e.message || 'Login failed', false);
+    }
+}
+
+async function logout(){
+    try { await api('/api/poop/admin/logout','POST',{}); } catch(_){}
+    document.getElementById('dash').classList.add('hidden');
+    document.getElementById('loginCard').classList.remove('hidden');
+}
+
+async function renameUser(id){
+    const input = document.getElementById('u_'+id);
+    const newName = (input?.value || '').trim();
+    if (!newName) return;
+    try {
+        await api('/api/poop/admin/user','POST',{client_id:id,name:newName});
+        await refresh();
+    } catch (e) {
+        alert(e.message || 'Rename failed');
+    }
+}
+
+async function addEntry(){
+    const clientId = document.getElementById('addUser').value;
+    if (!clientId) return;
+    try {
+        await api('/api/poop/admin/entry/add','POST',{client_id: clientId});
+        await refresh();
+    } catch (e) {
+        alert(e.message || 'Add failed');
+    }
+}
+
+async function deleteEntry(id){
+    if (!confirm('Delete this entry?')) return;
+    try {
+        await api('/api/poop/admin/entry/delete','POST',{entry_id:id});
+        await refresh();
+    } catch (e) {
+        alert(e.message || 'Delete failed');
+    }
+}
+
+function render(state){
+    const users = state.users || [];
+    const entries = (state.entries || []).slice().sort((a,b)=>String(b.timestamp).localeCompare(String(a.timestamp)));
+
+    const usersTable = document.getElementById('usersTable');
+    usersTable.innerHTML = '<tr><th>ID</th><th>Name</th><th>Action</th></tr>' + users.map(u =>
+        '<tr>' +
+            '<td>'+u.id+'</td>' +
+            '<td><input id="u_'+u.id+'" value="'+(u.name||'').replace(/"/g,'&quot;')+'" /></td>' +
+            '<td><button onclick="renameUser(\''+u.id+'\')">Save</button></td>' +
+        '</tr>'
+    ).join('');
+
+    const addUser = document.getElementById('addUser');
+    addUser.innerHTML = users.map(u => '<option value="'+u.id+'">'+u.name+' ('+u.id+')</option>').join('');
+
+    const entriesTable = document.getElementById('entriesTable');
+    entriesTable.innerHTML = '<tr><th>User</th><th>Timestamp</th><th>ID</th><th>Action</th></tr>' + entries.map(e =>
+        '<tr>' +
+            '<td>'+e.user_id+'</td>' +
+            '<td>'+e.timestamp+'</td>' +
+            '<td>'+e.id+'</td>' +
+            '<td><button onclick="deleteEntry(\''+e.id+'\')">Delete</button></td>' +
+        '</tr>'
+    ).join('');
+
+    document.getElementById('stateMsg').textContent = users.length + ' users, ' + entries.length + ' entries';
+}
+
+async function refresh(){
+    const state = await api('/api/poop/admin/state');
+    document.getElementById('loginCard').classList.add('hidden');
+    document.getElementById('dash').classList.remove('hidden');
+    render(state);
+}
+
+(async () => {
+    try { await refresh(); }
+    catch (_) {}
+})();
+</script>
+</body></html>"""
+        return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+
+@app.route('/api/poop/admin/login', methods=['POST'])
+def poop_admin_login():
+        try:
+                payload = request.json or {}
+                supplied = str(payload.get('password') or '')
+                if hmac.compare_digest(supplied, POOP_ADMIN_PASSWORD):
+                        session['poop_admin_ok'] = True
+                        return jsonify({"success": True})
+                return jsonify({"success": False, "message": "Invalid password"}), 401
+        except Exception as e:
+                print(f"Poop admin login error: {e}")
+                return jsonify({"success": False, "message": "Server error"}), 500
+
+
+@app.route('/api/poop/admin/logout', methods=['POST'])
+def poop_admin_logout():
+        session.pop('poop_admin_ok', None)
+        return jsonify({"success": True})
+
+
+@app.route('/api/poop/admin/state', methods=['GET'])
+def poop_admin_state():
+        auth_err = _poop_admin_guard()
+        if auth_err:
+                return auth_err
+        try:
+                state = poop_fetcher.get_state()
+                return jsonify({
+                        "success": True,
+                        "users": state.get('users', []),
+                        "entries": state.get('entries', []),
+                })
+        except Exception as e:
+                print(f"Poop admin state error: {e}")
+                return jsonify({"success": False, "message": "Server error"}), 500
+
+
+@app.route('/api/poop/admin/user', methods=['POST'])
+def poop_admin_user_update():
+        auth_err = _poop_admin_guard()
+        if auth_err:
+                return auth_err
+        try:
+                payload = request.json or {}
+                client_id = str(payload.get('client_id') or '').strip()
+                name = str(payload.get('name') or '').strip()
+                if not client_id or not name:
+                        return jsonify({"success": False, "message": "Missing fields"}), 400
+
+                ok = poop_fetcher.set_user_name(client_id, name)
+                if not ok:
+                        return jsonify({"success": False, "message": "User not found"}), 404
+                return jsonify({"success": True})
+        except Exception as e:
+                print(f"Poop admin user update error: {e}")
+                return jsonify({"success": False, "message": "Server error"}), 500
+
+
+@app.route('/api/poop/admin/entry/add', methods=['POST'])
+def poop_admin_entry_add():
+        auth_err = _poop_admin_guard()
+        if auth_err:
+                return auth_err
+        try:
+                payload = request.json or {}
+                client_id = str(payload.get('client_id') or '').strip()
+                if not client_id:
+                        return jsonify({"success": False, "message": "Missing client_id"}), 400
+
+                entry = poop_fetcher.add_entry(client_id)
+                return jsonify({"success": True, "entry": entry})
+        except Exception as e:
+                print(f"Poop admin add entry error: {e}")
+                return jsonify({"success": False, "message": "Server error"}), 500
+
+
+@app.route('/api/poop/admin/entry/delete', methods=['POST'])
+def poop_admin_entry_delete():
+        auth_err = _poop_admin_guard()
+        if auth_err:
+                return auth_err
+        try:
+                payload = request.json or {}
+                entry_id = str(payload.get('entry_id') or '').strip()
+                if not entry_id:
+                        return jsonify({"success": False, "message": "Missing entry_id"}), 400
+
+                ok = poop_fetcher.delete_entry(entry_id)
+                if not ok:
+                        return jsonify({"success": False, "message": "Entry not found"}), 404
+                return jsonify({"success": True})
+        except Exception as e:
+                print(f"Poop admin delete entry error: {e}")
+                return jsonify({"success": False, "message": "Server error"}), 500
 
 @app.route('/api/config', methods=['POST'])
 def api_config():
