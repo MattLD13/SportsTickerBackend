@@ -4332,6 +4332,7 @@ class PoopFetecher:
         self._lock = threading.Lock()
         self._clients = {}
         self._entries = []
+        self._last_prune_ts = 0
         self._load_state()
 
     def _load_state(self):
@@ -4361,9 +4362,43 @@ class PoopFetecher:
     def _iso_now(self):
         return dt.now(timezone.utc).isoformat()
 
+    def _parse_iso_utc(self, value):
+        if not value:
+            return None
+        try:
+            parsed = dt.fromisoformat(str(value).replace('Z', '+00:00'))
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except Exception:
+            return None
+
+    def _prune_entries_locked(self, retention_days=60):
+        now = dt.now(timezone.utc)
+        cutoff = now - timedelta(days=retention_days)
+        before = len(self._entries)
+        kept = []
+        for entry in self._entries:
+            ts = self._parse_iso_utc(entry.get('timestamp'))
+            if ts is None:
+                continue
+            if ts >= cutoff:
+                kept.append(entry)
+        pruned = before - len(kept)
+        if pruned > 0:
+            self._entries = kept
+            self._save_state()
+            print(f"Poop entries pruned: {pruned} older than {retention_days} days")
+        self._last_prune_ts = time.time()
+
+    def _maybe_prune_entries_locked(self):
+        if (time.time() - self._last_prune_ts) >= 6 * 3600:
+            self._prune_entries_locked(retention_days=60)
+
     def register_client(self, client_id, name):
         safe_name = (name or '').strip() or 'PoopTracker User'
         with self._lock:
+            self._maybe_prune_entries_locked()
             existing = self._clients.get(client_id, {})
             self._clients[client_id] = {
                 'name': safe_name,
@@ -4375,6 +4410,7 @@ class PoopFetecher:
 
     def heartbeat(self, client_id):
         with self._lock:
+            self._maybe_prune_entries_locked()
             if client_id in self._clients:
                 self._clients[client_id]['last_seen'] = self._iso_now()
                 self._save_state()
@@ -4383,6 +4419,7 @@ class PoopFetecher:
 
     def log_poop(self, client_id):
         with self._lock:
+            self._maybe_prune_entries_locked()
             if client_id not in self._clients:
                 self._clients[client_id] = {
                     'name': 'PoopTracker User',
@@ -4400,6 +4437,7 @@ class PoopFetecher:
 
     def get_state(self):
         with self._lock:
+            self._maybe_prune_entries_locked()
             users = [
                 {'id': cid, 'name': data.get('name', 'PoopTracker User')}
                 for cid, data in self._clients.items()
@@ -4415,6 +4453,7 @@ class PoopFetecher:
         if not safe_name:
             return False
         with self._lock:
+            self._maybe_prune_entries_locked()
             if client_id not in self._clients:
                 return False
             self._clients[client_id]['name'] = safe_name
@@ -4424,6 +4463,7 @@ class PoopFetecher:
 
     def add_entry(self, client_id, timestamp=None):
         with self._lock:
+            self._maybe_prune_entries_locked()
             if client_id not in self._clients:
                 self._clients[client_id] = {
                     'name': 'PoopTracker User',
@@ -4441,6 +4481,7 @@ class PoopFetecher:
 
     def delete_entry(self, entry_id):
         with self._lock:
+            self._maybe_prune_entries_locked()
             before = len(self._entries)
             self._entries = [e for e in self._entries if e.get('id') != entry_id]
             deleted = len(self._entries) < before
