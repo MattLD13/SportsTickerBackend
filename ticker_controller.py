@@ -2527,25 +2527,24 @@ def _enhance_logo_visibility(img):
         alpha = rgba.split()[3]
         px = list(rgba.getdata())
 
-        # FIX: Only sample fully opaque pixels to ignore dark anti-aliased edges
+        # Only sample fully opaque pixels to ignore dark anti-aliased edges
         core_pixels = [p for p in px if p[3] > 200]
         if not core_pixels:
-            # Fallback if the logo is entirely semi-transparent
             core_pixels = [p for p in px if p[3] > 20]
             if not core_pixels:
                 return rgba
 
         dark = 0
         for r, g, b, _ in core_pixels:
-            # Calculate luminance
+            # Stricter luminance check: only true black or very dark navy/brown
             lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
-            if lum < 60:  # Bumped slightly to catch deep blues/reds
+            if lum < 40: 
                 dark += 1
 
         dark_ratio = dark / len(core_pixels)
         
-        # If less than 70% of the core logo is dark, it's bright enough. Skip outline.
-        if dark_ratio < 0.70:
+        # If the logo isn't at least 92% very dark, SKIP the outline.
+        if dark_ratio < 0.92:
             return rgba
 
         # It's a dark logo, add the white stroke
