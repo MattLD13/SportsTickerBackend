@@ -1095,15 +1095,13 @@ class TickerStreamer:
         # Hockey PP / EN badges
         h_badge = a_badge = ''
         if is_nhl and sit.get('emptyNet'):
-            en_side = str(sit.get('emptyNetSide', '')).upper()
-            if en_side in ('HOME', home_ab):
+            # If home has possession (extra skater), home net is empty
+            if poss_ab == home_ab:
                 h_badge = 'EN'
-            elif en_side in ('AWAY', away_ab):
-                a_badge = 'EN'
-            elif poss_ab == home_ab:
-                a_badge = 'EN'
             elif poss_ab == away_ab:
-                h_badge = 'EN'
+                a_badge = 'EN'
+            else:
+                a_badge = 'EN' # Fallback
         elif is_nhl and sit.get('powerPlay'):
             if poss_ab == home_ab:   h_badge = 'PP'
             elif poss_ab == away_ab: a_badge = 'PP'
@@ -2520,7 +2518,7 @@ def _download_logo(url, size=(22, 22)):
 
 
 def _enhance_logo_visibility(img):
-    """Only outline logos that are overwhelmingly dark (>95% dark pixels)."""
+    """Only outline logos that are overwhelmingly dark."""
     try:
         if not img or img.mode != 'RGBA':
             return img
@@ -2529,20 +2527,28 @@ def _enhance_logo_visibility(img):
         alpha = rgba.split()[3]
         px = list(rgba.getdata())
 
-        opaque = [p for p in px if p[3] > 20]
-        if not opaque:
-            return rgba
+        # FIX: Only sample fully opaque pixels to ignore dark anti-aliased edges
+        core_pixels = [p for p in px if p[3] > 200]
+        if not core_pixels:
+            # Fallback if the logo is entirely semi-transparent
+            core_pixels = [p for p in px if p[3] > 20]
+            if not core_pixels:
+                return rgba
 
         dark = 0
-        for r, g, b, _ in opaque:
+        for r, g, b, _ in core_pixels:
+            # Calculate luminance
             lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
-            if lum < 48:
+            if lum < 60:  # Bumped slightly to catch deep blues/reds
                 dark += 1
-        dark_ratio = dark / max(1, len(opaque))
-        if dark_ratio < 0.95:
+
+        dark_ratio = dark / len(core_pixels)
+        
+        # If less than 70% of the core logo is dark, it's bright enough. Skip outline.
+        if dark_ratio < 0.70:
             return rgba
 
-        # One-pixel outside ring around opaque marks keeps black logos visible.
+        # It's a dark logo, add the white stroke
         edge = alpha.filter(ImageFilter.MaxFilter(3))
         ring = ImageChops.subtract(edge, alpha)
         ring_layer = Image.new('RGBA', rgba.size, (245, 245, 245, 230))
@@ -2799,13 +2805,14 @@ class StadiumRenderer:
             poss_hdr_x = (h_logo_x + LOGO_SZ // 2) if is_poss_home \
                          else (a_logo_x + LOGO_SZ // 2)
 
-            if is_pp and (is_poss_home or is_poss_away):
-                pf_text(d, 'PP', poss_hdr_x - pf_w('PP') // 2, 2, 255, 220, 0)
-            elif is_en:
-                en_is_home = _side_from_value(en_team) == 'home'
+            if is_en:
+                # Fallback to possession to figure out who pulled their goalie
+                en_is_home = (poss_side == 'home')
                 en_hdr_x = (h_logo_x + LOGO_SZ // 2) if en_is_home \
                            else (a_logo_x + LOGO_SZ // 2)
                 pf_text(d, 'EN', en_hdr_x - pf_w('EN') // 2, 2, 255, 100, 100)
+            elif is_pp and (is_poss_home or is_poss_away):
+                pf_text(d, 'PP', poss_hdr_x - pf_w('PP') // 2, 2, 255, 220, 0)
 
         # NHL shootout — vertical columns next to logos
         if is_nhl and is_so:
