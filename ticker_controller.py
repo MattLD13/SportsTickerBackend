@@ -33,7 +33,6 @@ REFRESH_RATE = 0
 ID_FILE_PATH = "/boot/ticker_id.txt"
 ID_FILE_FALLBACK = "ticker_id.txt"
 ASSETS_DIR = os.path.expanduser("~/ticker/assets")
-
 requests.packages.urllib3.disable_warnings()
 
 
