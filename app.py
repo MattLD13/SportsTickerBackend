@@ -4552,6 +4552,220 @@ class PoopFetecher:
 PoopFetcher = PoopFetecher
 poop_fetcher = PoopFetecher()
 
+# ─────────────────────────────────────────────────────────────────────────────
+# FAKE NFL REPLAY — New York Giants 28, Philadelphia Eagles 27
+# Week 11 · Sunday, November 17, 2024 · MetLife Stadium, East Rutherford NJ
+#
+# Injected alongside real live sports data.  Loops indefinitely once finished.
+# Adjust _FAKE_NFL_SPEED to change pace (default 10 = 10× real game speed,
+# full game plays out in ~6 min of real time).
+# ─────────────────────────────────────────────────────────────────────────────
+
+_FAKE_NFL_SPEED   = 10          # game-seconds advance per real-second
+_FAKE_NFL_GAME_ID = "fake_nyg_phi_2024_w11"
+_FAKE_NFL_START   = time.time()
+
+# ── Play-by-play keyframes ────────────────────────────────────────────────────
+# Each tuple: (game_secs, quarter, clock_str, nyg_score, phi_score,
+#              possession_abbr, down_dist_text, is_red_zone)
+#
+# Special clock values:
+#   "HALF"  → halftime display  (state = 'half')
+#   "FINAL" → game over display (state = 'post')
+# quarter 0 = pre-game; possession '' = no active possession
+
+_FAKE_NFL_PLAYS = [
+    # ── PRE-GAME ──────────────────────────────────────────────────────────────
+    (0,    0, "7:00 PM",  0,  0,  "",    "",             False),
+
+    # ── FIRST QUARTER ─────────────────────────────────────────────────────────
+    (30,   1, "15:00",    0,  0,  "PHI", "1st & 10",     False),   # Kickoff — PHI ball at own 25
+    (90,   1, "13:30",    0,  0,  "PHI", "2nd & 5",      False),   # Hurts hits A.J. Brown, 5 yds
+    (150,  1, "12:00",    0,  0,  "PHI", "1st & 10",     False),   # Saquon sweeps right, 8 yds
+    (210,  1, "11:00",    0,  0,  "PHI", "2nd & 2",      False),   # Hurts sneaks for 2
+    (270,  1, "10:00",    0,  0,  "PHI", "1st & 10",     False),   # PHI at NYG 42
+    (330,  1, "8:45",     0,  0,  "PHI", "3rd & 4",      False),   # 3rd down — Hurts incomplete
+    (370,  1, "8:22",     0,  0,  "PHI", "4th & 4",      False),   # Eagles sending kicker out
+    (390,  1, "8:10",     0,  3,  "",    "",              False),   # ⚡ ELLIOTT 41-YD FG GOOD — PHI 3  NYG 0
+    (450,  1, "7:00",     0,  3,  "NYG", "1st & 10",     False),   # Giants take over at own 22
+    (510,  1, "5:55",     0,  3,  "NYG", "2nd & 7",      False),   # DeVito checkdown, 3 yds
+    (570,  1, "4:55",     0,  3,  "NYG", "1st & 10",     False),   # NABERS 22-yd reception!
+    (630,  1, "4:00",     0,  3,  "NYG", "2nd & 4",      False),   # DeVito scrambles, 6 yds
+    (690,  1, "3:05",     0,  3,  "NYG", "1st & 10",     True),    # 🔴 RED ZONE — NYG at PHI 18
+    (750,  1, "2:15",     0,  3,  "NYG", "2nd & 5",      True),    # Wan'Dale Robinson, 6 yds
+    (790,  1, "1:45",     0,  3,  "NYG", "1st & Goal",   True),    # 1st & Goal at PHI 7
+    (810,  1, "1:35",     7,  3,  "",    "",              False),   # 🏈 TOUCHDOWN — Malik Nabers 7-yd catch! NYG 7  PHI 3
+    (860,  1, "0:55",     7,  3,  "PHI", "1st & 10",     False),   # PHI trying to answer before end of Q1
+
+    # ── SECOND QUARTER ────────────────────────────────────────────────────────
+    (900,  2, "15:00",    7,  3,  "PHI", "1st & 10",     False),   # Q2 — PHI resumes drive
+    (960,  2, "13:55",    7,  3,  "PHI", "2nd & 8",      False),   # Hurts incomplete under pressure from Kayvon
+    (1020, 2, "12:55",    7,  3,  "PHI", "3rd & 8",      False),   # Hurts scrambles for 10 — 1st DOWN!
+    (1080, 2, "12:00",    7,  3,  "PHI", "1st & 10",     False),   # Barkley 6 yds up the gut
+    (1140, 2, "11:00",    7,  3,  "PHI", "2nd & 4",      False),   # PHI crosses into NYG territory
+    (1200, 2, "9:55",     7,  3,  "PHI", "1st & 10",     False),   # DeVonta Smith slant, 12 yds
+    (1260, 2, "9:00",     7,  3,  "PHI", "1st & 10",     True),    # 🔴 RED ZONE — PHI at NYG 22
+    (1305, 2, "8:15",     7,  3,  "PHI", "1st & Goal",   True),    # Barkley screen breaks tackle, Goal to Go
+    (1322, 2, "7:55",     7,  10, "",    "",              False),   # 🏈 TOUCHDOWN — Hurts QB sneak! PHI 10  NYG 7
+    (1400, 2, "6:10",     7,  10, "NYG", "1st & 10",     False),   # Giants must respond
+    (1440, 2, "5:30",     7,  10, "NYG", "2nd & 11",     False),   # SACK — DeVito down for -7
+    (1500, 2, "4:30",     7,  10, "NYG", "3rd & 18",     False),   # Nabers 9-yd catch — still short
+    (1540, 2, "3:50",     7,  10, "NYG", "Punt",         False),   # Giants forced to punt
+    (1580, 2, "3:05",     7,  10, "PHI", "1st & 10",     False),   # PHI ball at own 42
+    (1620, 2, "2:05",     7,  10, "PHI", "1st & 10",     False),   # PHI drives; BARKLEY 11 yds
+    (1680, 2, "2:00",     7,  10, "PHI", "2nd & 9",      False),   # 🚨 TWO-MINUTE WARNING — NYG 7  PHI 10
+    (1710, 2, "1:38",     7,  10, "PHI", "Punt",         False),   # PHI plays it safe — punts!
+    (1740, 2, "0:55",     7,  10, "NYG", "1st & 10",     False),   # Giants ball at own 31 — 55 seconds left!
+    (1760, 2, "0:38",     7,  10, "NYG", "2nd & 6",      False),   # NABERS sideline grab, 18 yds!
+    (1775, 2, "0:28",     7,  10, "NYG", "1st & 10",     True),    # 🔴 RED ZONE — NYG at PHI 24, clock ticking
+    (1788, 2, "0:08",     14, 10, "",    "",              False),   # 🏈 TOUCHDOWN — Jalin Hyatt 24-yd TD! NYG 14  PHI 10
+    (1800, 2, "HALF",     14, 10, "",    "",              False),   # ⏸ HALFTIME — NYG 14  PHI 10
+    (1860, 2, "HALF",     14, 10, "",    "",              False),
+    (1920, 2, "HALF",     14, 10, "",    "",              False),
+    (1980, 2, "HALF",     14, 10, "",    "",              False),
+    (2040, 2, "HALF",     14, 10, "",    "",              False),
+
+    # ── THIRD QUARTER ─────────────────────────────────────────────────────────
+    (2100, 3, "15:00",    14, 10, "PHI", "1st & 10",     False),   # PHI receives second-half kickoff
+    (2160, 3, "14:00",    14, 10, "PHI", "2nd & 3",      False),   # Barkley hits the hole, 7 yds
+    (2220, 3, "13:00",    14, 10, "PHI", "1st & 10",     False),   # Hurts play-action incomplete
+    (2280, 3, "12:00",    14, 10, "PHI", "1st & 10",     False),   # Barkley sweeps for 12 yds
+    (2340, 3, "11:00",    14, 10, "PHI", "2nd & 4",      False),   # DeVonta Smith fights for 6
+    (2400, 3, "10:00",    14, 10, "PHI", "1st & 10",     False),   # PHI at NYG 38
+    (2440, 3, "9:00",     14, 10, "PHI", "1st & 10",     True),    # 🔴 BARKLEY 22-yd burst — RED ZONE!
+    (2500, 3, "8:00",     14, 10, "PHI", "2nd & 4",      True),    # Hurts rolls right — Brown drops it
+    (2540, 3, "7:25",     14, 10, "PHI", "3rd & 4",      True),    # Barkley takes the handoff…
+    (2560, 3, "7:05",     14, 17, "",    "",              False),   # 🏈 TOUCHDOWN — Saquon Barkley 8-yd run! PHI 17  NYG 14
+    (2610, 3, "6:10",     14, 17, "NYG", "1st & 10",     False),   # Giants need a big drive
+    (2660, 3, "5:20",     14, 17, "NYG", "2nd & 7",      False),   # Nabers drag route, 12 yds
+    (2710, 3, "4:25",     14, 17, "NYG", "2nd & 8",      False),   # DeVito pump-fakes — SACKED!
+    (2750, 3, "3:45",     14, 17, "NYG", "Punt",         False),   # NYG punts — PHI at own 18
+    (2790, 3, "3:05",     14, 17, "PHI", "1st & 10",     False),   # PHI drives for insurance
+    (2840, 3, "2:20",     14, 17, "PHI", "2nd & 6",      False),   # Barkley 8 yds over right tackle
+    (2880, 3, "1:35",     14, 17, "PHI", "1st & 10",     True),    # 🔴 PHI red zone at NYG 22
+    (2910, 3, "1:05",     14, 17, "PHI", "3rd & 2",      True),    # Incomplete — PHI sends kicker out
+    (2930, 3, "0:55",     14, 20, "",    "",              False),   # ⚡ ELLIOTT 38-YD FG GOOD — PHI 20  NYG 14
+    (2970, 3, "0:22",     14, 20, "NYG", "1st & 10",     False),   # Giants ball, Q3 winding down
+    (2990, 3, "0:10",     14, 20, "NYG", "1st & 10",     True),    # NABERS streaking to the end zone…
+    (3000, 3, "0:06",     21, 20, "",    "",              False),   # 🏈 TOUCHDOWN — Nabers 22-yd TD! NYG 21  PHI 20!!
+
+    # ── FOURTH QUARTER ────────────────────────────────────────────────────────
+    (3060, 4, "15:00",    21, 20, "PHI", "1st & 10",     False),   # Q4 — NYG 21  PHI 20
+    (3120, 4, "14:00",    21, 20, "PHI", "2nd & 6",      False),   # Hurts fires to A.J. Brown, 8 yds
+    (3180, 4, "13:00",    21, 20, "PHI", "1st & 10",     False),   # Barkley 6 yds up the gut
+    (3240, 4, "12:00",    21, 20, "PHI", "2nd & 4",      False),   # Hurts scrambles — slides for 5
+    (3300, 4, "11:00",    21, 20, "PHI", "1st & 10",     False),   # Brown slant, first down
+    (3355, 4, "10:05",    21, 20, "PHI", "1st & 10",     True),    # 🔴 EAGLES IN RED ZONE at NYG 20
+    (3395, 4, "9:15",     21, 20, "PHI", "1st & Goal",   True),    # 1st & Goal — Brown route back of end zone
+    (3420, 4, "8:45",     21, 27, "",    "",              False),   # 🏈 TOUCHDOWN — A.J. Brown 8-yd catch! PHI 27  NYG 21
+    (3470, 4, "8:02",     21, 27, "NYG", "1st & 10",     False),   # 💔 GIANTS TRAIL 27-21 — 8 minutes left
+    (3530, 4, "7:08",     21, 27, "NYG", "2nd & 8",      False),   # DeVito scrambles, keeps drive alive
+    (3590, 4, "6:20",     21, 27, "NYG", "1st & 10",     False),   # Nabers drag, 14-yd pickup!
+    (3650, 4, "5:28",     21, 27, "NYG", "2nd & 5",      False),   # Giants cross the 50
+    (3710, 4, "4:38",     21, 27, "NYG", "1st & 10",     False),   # DeVito to Slayton, 12 yds
+    (3760, 4, "3:48",     21, 27, "NYG", "2nd & 3",      False),   # DeVito shot to end zone — nearly!!
+    (3800, 4, "3:12",     21, 27, "NYG", "1st & 10",     True),    # 🔴 RED ZONE — NYG at PHI 18 — 3:12 to go
+    (3830, 4, "2:44",     21, 27, "NYG", "1st & Goal",   True),    # GOAL LINE — 1st & Goal at PHI 7
+    (3860, 4, "2:22",     21, 27, "NYG", "2nd & Goal",   True),    # Run stuffed at the 3-yard line
+    (3890, 4, "2:08",     21, 27, "NYG", "3rd & Goal",   True),    # DeVito back to pass… WAN'DALE…
+    (3910, 4, "2:02",     28, 27, "",    "",              False),   # 🏆 TOUCHDOWN — Wan'Dale Robinson 3-yd catch! NYG 28  PHI 27!!
+    (3960, 4, "1:48",     28, 27, "PHI", "1st & 10",     False),   # PHI ball — 1:48 left, NO TIMEOUTS
+    (4020, 4, "1:18",     28, 27, "PHI", "2nd & 6",      False),   # Hurts heaves deep — KNOCKED AWAY!
+    (4080, 4, "0:44",     28, 27, "PHI", "3rd & 6",      False),   # Hurts to Brown — SHORT of sticks
+    (4140, 4, "0:18",     28, 27, "PHI", "4th & 2",      False),   # 4TH & 2 — EAGLES GOING FOR IT AT NYG 33!
+    (4180, 4, "0:07",     28, 27, "PHI", "FG Attempt",   False),   # ⚡ ELLIOTT 51-YD FG ATTEMPT…
+    (4210, 4, "FINAL",    28, 27, "",    "",              False),   # WIDE RIGHT!! GIANTS WIN!!!
+]
+
+_FAKE_NFL_TOTAL_GAME_SECS = _FAKE_NFL_PLAYS[-1][0] + 60   # loop point
+
+
+def _fake_nfl_game_object():
+    """Return a game-object dict representing the current simulated game state."""
+    elapsed_real  = time.time() - _FAKE_NFL_START
+    game_secs     = (elapsed_real * _FAKE_NFL_SPEED) % _FAKE_NFL_TOTAL_GAME_SECS
+
+    # Walk forward through keyframes to find the latest one we've passed
+    row = _FAKE_NFL_PLAYS[0]
+    for kf in _FAKE_NFL_PLAYS:
+        if kf[0] <= game_secs:
+            row = kf
+        else:
+            break
+
+    _, q, clk, nyg, phi, poss, down_dist, rz = row
+
+    # Derive ESPN-style state / status strings
+    if clk == "FINAL":
+        gst   = "post"
+        s_disp = "FINAL"
+        poss  = ""
+        down_dist = ""
+    elif clk == "HALF":
+        gst   = "half"
+        s_disp = "Halftime"
+        poss  = ""
+        down_dist = ""
+    elif q == 0:
+        gst   = "pre"
+        s_disp = clk          # "7:00 PM"
+        poss  = ""
+        down_dist = ""
+    else:
+        gst   = "in"
+        s_disp = f"Q{q} {clk}"
+
+    return {
+        'type':           'scoreboard',
+        'sport':          'nfl',
+        'id':             _FAKE_NFL_GAME_ID,
+        'status':         s_disp,
+        'state':          gst,
+        'is_shown':       True,
+        # Giants are the home team at MetLife
+        'home_abbr':      'NYG',
+        'home_score':     str(nyg),
+        'home_logo':      'https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png',
+        'home_color':     '#0B2265',
+        'home_alt_color': '#A71930',
+        # Eagles are away
+        'away_abbr':      'PHI',
+        'away_score':     str(phi),
+        'away_logo':      'https://a.espncdn.com/i/teamlogos/nfl/500/phi.png',
+        'away_color':     '#004C54',
+        'away_alt_color': '#A5ACAF',
+        'startTimeUTC':   '2024-11-17T18:00:00Z',
+        'estimated_duration': 0,
+        'home_seed':      '',
+        'away_seed':      '',
+        'situation': {
+            'possession': poss,
+            'isRedZone':  rz,
+            'downDist':   down_dist if gst == 'in' else '',
+            'shootout':   None,
+            'powerPlay':  False,
+            'emptyNet':   False,
+        },
+    }
+
+
+# Wrap fetcher.get_mode_snapshot to inject the fake game alongside real data.
+# This does NOT change any existing logic — it only prepends one extra entry.
+_orig_get_mode_snapshot = fetcher.get_mode_snapshot
+
+def _injected_get_mode_snapshot(mode, delay_seconds=0):
+    games = list(_orig_get_mode_snapshot(mode, delay_seconds))
+    if mode in ('sports', 'live', 'my_teams', 'sports_full'):
+        fake = _fake_nfl_game_object()
+        # Remove any stale copy of our fake game then prepend the fresh one
+        games = [g for g in games if g.get('id') != _FAKE_NFL_GAME_ID]
+        games = [fake] + games
+    return games
+
+fetcher.get_mode_snapshot = _injected_get_mode_snapshot
+print(f"[FAKE-NFL] Giants 28 Eagles 27 replay loaded — speed {_FAKE_NFL_SPEED}x "
+      f"(full game in ~{int(_FAKE_NFL_TOTAL_GAME_SECS / _FAKE_NFL_SPEED / 60)} min real time)")
+
 # ── Section L: Flask Routes ──
 app = Flask(__name__)
 CORS(app) 
