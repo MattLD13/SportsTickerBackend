@@ -822,6 +822,30 @@ class TickerStreamer:
                 else:
                     try: ytg = int(ytg_raw)
                     except ValueError: ytg = 10
+            elif ' and ' in dd_text.lower() and los >= 0:
+                # ESPN downDistanceText uses "and" (e.g. "3rd and 7 at KC 48")
+                before_at = dd_text.split(' at ')[0] if ' at ' in dd_text else dd_text
+                parts = before_at.lower().split(' and ')
+                if len(parts) >= 2:
+                    ytg_raw = parts[1].strip().split()[0].rstrip('.,')
+                    if ytg_raw in ('goal', 'gl', 'goal:'):
+                        is_goal_to_go = True
+                    else:
+                        try: ytg = int(ytg_raw)
+                        except ValueError: pass
+
+            # Fallback: use numeric yardLine/yardsToGo fields if text parsing gave no LOS
+            if los < 0 and sit.get('yardLine') is not None:
+                raw_yl = int(sit.get('yardLine', 50))
+                pos_team = str(sit.get('possessionTeam', sit.get('yardLineTeam', ''))).upper()
+                if pos_team == home_ab:
+                    los = raw_yl
+                elif pos_team == away_ab:
+                    los = 100 - raw_yl
+                else:
+                    los = raw_yl if raw_yl <= 50 else 100 - raw_yl
+                if sit.get('yardsToGo') is not None:
+                    ytg = max(1, int(sit.get('yardsToGo', 10)))
 
             # Infer drive direction once and use it everywhere (FD line + red-zone).
             if poss_ab == home_ab:
@@ -883,7 +907,7 @@ class TickerStreamer:
 
             # 8 · Logos in end zones
             LOGO_SZ  = min(int(ezW * 0.85), int(H * 0.65))
-            logo_top = max(0, int(H * 0.30) - LOGO_SZ // 2)
+            logo_top = (H - LOGO_SZ) // 2
             h_logo_cx = int(ezW / 2)
             a_logo_cx = W - int(ezW / 2)
             hl = self.get_logo(game.get('home_logo'), (24, 24))
