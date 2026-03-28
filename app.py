@@ -69,7 +69,6 @@ load_dotenv()
 
 # ── Configure AI Service (Add near top of script) ──
 GEMINI_KEY = os.getenv('GEMINI_API_KEY')
-
 AI_CLIENT = None
 AI_AVAILABLE = False
 
