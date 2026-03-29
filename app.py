@@ -3542,10 +3542,9 @@ class SportsFetcher:
                     if gst in ('in', 'half'):
                         need_enrich = (
                             not game_obj['situation'].get('batter_avg')
-                            and not game_obj['situation'].get('batter_h')
-                            and not game_obj['situation'].get('batter_ab')
-                            and int(game_obj['situation'].get('pitcher_pitches', 0) or 0) == 0
-                            and int(game_obj['situation'].get('last_pitch_speed', 0) or 0) == 0
+                            or not game_obj['situation'].get('batter_h')
+                            or not game_obj['situation'].get('batter_ab')
+                            or int(game_obj['situation'].get('pitcher_pitches', 0) or 0) == 0
                         )
                         if need_enrich:
                             _enriched = self._mlb_enrich_live_from_summary(gid, game_obj['situation'])
@@ -3726,6 +3725,82 @@ class SportsFetcher:
             'last_pitch_type': last_pitch_type,
         }
 
+    def _mlb_extract_boxscore_stats(self, data, batter_id=None, pitcher_id=None):
+        """Extract batter/pitcher line stats from ESPN MLB boxscore payload variants."""
+        result = {
+            'batter_avg': '',
+            'batter_h': '',
+            'batter_ab': '',
+            'pitcher_pitches': 0,
+        }
+
+        bid = str(batter_id or '')
+        pid = str(pitcher_id or '')
+        box = (data or {}).get('boxscore') or {}
+
+        # Variant A: boxscore.players[*].statistics[*] with block.keys + athlete.stats[] values.
+        for team in (box.get('players') or []):
+            for block in (team.get('statistics') or []):
+                keys = [str(k) for k in (block.get('keys') or [])]
+                for ath in (block.get('athletes') or []):
+                    aid = str((ath.get('athlete') or {}).get('id') or '')
+                    vals = [str(v) if v is not None else '' for v in (ath.get('stats') or [])]
+                    if not aid or not vals:
+                        continue
+
+                    by_key = {}
+                    for i, k in enumerate(keys):
+                        if i < len(vals):
+                            by_key[k] = vals[i]
+
+                    if aid == bid:
+                        result['batter_avg'] = result['batter_avg'] or by_key.get('avg') or by_key.get('average') or by_key.get('battingAverage') or ''
+                        result['batter_h'] = result['batter_h'] or by_key.get('hits') or ''
+                        result['batter_ab'] = result['batter_ab'] or by_key.get('atBats') or ''
+
+                        h_ab = by_key.get('hits-atBats') or by_key.get('h-ab') or ''
+                        if h_ab and ('-' in h_ab or '/' in h_ab):
+                            parts = re.split(r'[-/]', h_ab)
+                            if len(parts) >= 2:
+                                if not result['batter_h']:
+                                    result['batter_h'] = str(parts[0]).strip()
+                                if not result['batter_ab']:
+                                    result['batter_ab'] = str(parts[1]).strip()
+
+                    if aid == pid:
+                        pc = by_key.get('pitches') or by_key.get('numberOfPitches') or by_key.get('pitchCount') or ''
+                        if not pc:
+                            pc_st = by_key.get('pitches-strikes') or by_key.get('pitchCount-strikes') or ''
+                            if isinstance(pc_st, str) and '-' in pc_st:
+                                pc = pc_st.split('-', 1)[0]
+                        if pc not in (None, ''):
+                            result['pitcher_pitches'] = self._mlb_int(pc, result['pitcher_pitches'])
+
+        # Variant B: older boxscore.teams[*].statistics[*].athletes with named stat rows.
+        for team_box in (box.get('teams') or []):
+            for stat_block in (team_box.get('statistics') or []):
+                for ath in (stat_block.get('athletes') or []):
+                    aid = str((ath.get('athlete') or {}).get('id') or '')
+                    if not aid:
+                        continue
+                    stat_map = {}
+                    for s in (ath.get('stats') or []):
+                        k = s.get('name')
+                        if not k:
+                            continue
+                        stat_map[k] = s.get('displayValue') or s.get('value') or ''
+
+                    if aid == pid:
+                        pc = stat_map.get('pitchCount') or stat_map.get('numberOfPitches')
+                        if pc not in (None, ''):
+                            result['pitcher_pitches'] = self._mlb_int(pc, result['pitcher_pitches'])
+                    if aid == bid:
+                        result['batter_avg'] = stat_map.get('avg') or result['batter_avg']
+                        result['batter_h'] = stat_map.get('hits') or result['batter_h']
+                        result['batter_ab'] = stat_map.get('atBats') or result['batter_ab']
+
+        return result
+
     def _mlb_get_summary(self, game_id, max_age=12):
         """Return cached MLB summary payload for a game, refreshing every max_age seconds."""
         gid = str(game_id)
@@ -3779,29 +3854,12 @@ class SportsFetcher:
         last_pitch_speed = stats.get('last_pitch_speed', 0) or current_sit.get('last_pitch_speed', 0)
         last_pitch_type = stats.get('last_pitch_type', '') or current_sit.get('last_pitch_type', '')
 
-        # Secondary stats source: boxscore athletes
-        for team_box in (data.get('boxscore', {}).get('teams') or []):
-            stats_block = (team_box.get('statistics') or [{}])[0]
-            for ath in (stats_block.get('athletes') or []):
-                ath_id = str((ath.get('athlete') or {}).get('id', ''))
-                stat_map = {}
-                for s in (ath.get('stats') or []):
-                    k = s.get('name')
-                    if not k:
-                        continue
-                    stat_map[k] = s.get('displayValue') or s.get('value') or ''
-
-                if ath_id == str(pit_pid):
-                    try:
-                        pc = stat_map.get('pitchCount') or stat_map.get('numberOfPitches')
-                        if pc not in (None, ''):
-                            pitcher_pitches = int(float(pc))
-                    except Exception:
-                        pass
-                if ath_id == str(bat_pid):
-                    batter_avg = stat_map.get('avg') or batter_avg
-                    batter_h = stat_map.get('hits') or batter_h
-                    batter_ab = stat_map.get('atBats') or batter_ab
+        # Secondary stats source: boxscore athletes (supports ESPN players+keys/stats shape).
+        box_stats = self._mlb_extract_boxscore_stats(data, bat_pid, pit_pid)
+        batter_avg = box_stats.get('batter_avg') or batter_avg
+        batter_h = box_stats.get('batter_h') or batter_h
+        batter_ab = box_stats.get('batter_ab') or batter_ab
+        pitcher_pitches = box_stats.get('pitcher_pitches') or pitcher_pitches
 
         return {
             'balls': bsit.get('balls', current_sit.get('balls', 0)),
@@ -4114,27 +4172,11 @@ class SportsFetcher:
                 last_pitch_speed = _mlb_stats.get('last_pitch_speed', 0)
                 last_pitch_type = _mlb_stats.get('last_pitch_type', '')
 
-                # Pitcher pitch count + batter stats from boxscore athletes section
-                for _team_box in (data.get('boxscore', {}).get('teams') or []):
-                    for _ath in (_team_box.get('statistics', [{}])[0].get('athletes') if _team_box.get('statistics') else []) or []:
-                        _ath_id = str((_ath.get('athlete') or {}).get('id', ''))
-                        _stats = {}
-                        for s in (_ath.get('stats') or []):
-                            k = s.get('name')
-                            if not k:
-                                continue
-                            _stats[k] = s.get('displayValue') or s.get('value') or ''
-                        if _ath_id == str(_pit_pid):
-                            try:
-                                _pc = _stats.get('pitchCount') or _stats.get('numberOfPitches')
-                                if _pc not in (None, ''):
-                                    pitcher_pitches = int(float(_pc))
-                            except Exception:
-                                pass
-                        if _ath_id == str(_bat_pid):
-                            batter_avg = _stats.get('avg') or batter_avg
-                            batter_h   = _stats.get('hits') or batter_h
-                            batter_ab  = _stats.get('atBats') or batter_ab
+                _box_stats = self._mlb_extract_boxscore_stats(data, _bat_pid, _pit_pid)
+                batter_avg = _box_stats.get('batter_avg') or batter_avg
+                batter_h = _box_stats.get('batter_h') or batter_h
+                batter_ab = _box_stats.get('batter_ab') or batter_ab
+                pitcher_pitches = _box_stats.get('pitcher_pitches') or pitcher_pitches
 
             poss_abbr = ""
             if str(poss_raw) == str(h.get('team', {}).get('id')): poss_abbr = h_ab
