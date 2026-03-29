@@ -3505,8 +3505,52 @@ class SportsFetcher:
                     }
                 }
                 if league_key == 'mlb':
-                    game_obj['situation'].update({'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0), 
-                        'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False)})
+                    _btr = sit.get('batter', {}) or {}
+                    _ptr = sit.get('pitcher', {}) or {}
+                    _bat_ath = _btr.get('athlete', {}) or {}
+                    _pit_ath = _ptr.get('athlete', {}) or {}
+                    _batter_name = _bat_ath.get('shortName') or _bat_ath.get('displayName', '')
+                    _pitcher_name = _pit_ath.get('shortName') or _pit_ath.get('displayName', '')
+                    _batter_avg = ''
+                    _batter_h = ''
+                    _batter_ab = ''
+                    for _s in (_btr.get('statistics') or []):
+                        _n = _s.get('name', '')
+                        if _n == 'avg': _batter_avg = _s.get('displayValue', '')
+                        elif _n == 'hits': _batter_h = _s.get('displayValue', '')
+                        elif _n == 'atBats': _batter_ab = _s.get('displayValue', '')
+                    _pitcher_pitches = 0
+                    for _s in (_ptr.get('statistics') or []):
+                        if _s.get('name') in ('pitchCount', 'pitches', 'numberOfPitches'):
+                            try: _pitcher_pitches = int(_s.get('displayValue', 0))
+                            except: pass
+                    _last_pitch_speed = 0
+                    _last_pitch_type = ''
+                    _lp = sit.get('lastPlay') or {}
+                    if isinstance(_lp, dict):
+                        _spd = _lp.get('pitchVelocity') or _lp.get('velocity') or 0
+                        try: _last_pitch_speed = int(float(_spd)) if _spd else 0
+                        except: pass
+                        _pt = _lp.get('pitchType') or {}
+                        _last_pitch_type = _pt.get('abbreviation') or _pt.get('text', '')
+                    if not _last_pitch_speed:
+                        _plays = sit.get('atBatPlays') or []
+                        for _play in reversed(_plays):
+                            _spd = _play.get('pitchVelocity') or _play.get('velocity') or 0
+                            if _spd:
+                                try: _last_pitch_speed = int(float(_spd))
+                                except: pass
+                                _pt = _play.get('pitchType') or {}
+                                _last_pitch_type = _pt.get('abbreviation') or _pt.get('text', '')
+                                break
+                    game_obj['situation'].update({
+                        'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0),
+                        'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False),
+                        'batter_name': _batter_name, 'batter_avg': _batter_avg,
+                        'batter_h': _batter_h, 'batter_ab': _batter_ab,
+                        'pitcher_name': _pitcher_name, 'pitcher_pitches': _pitcher_pitches,
+                        'last_pitch_speed': _last_pitch_speed, 'last_pitch_type': _last_pitch_type,
+                    })
                 
                 if is_suspended: game_obj['is_shown'] = False
                 
@@ -3777,6 +3821,8 @@ class SportsFetcher:
             poss_raw = comp_sit.get('possession') or (sit_data.get('team', {}).get('id') if sit_data else None)
 
             balls, strikes, outs, onFirst, onSecond, onThird = 0, 0, 0, False, False, False
+            batter_name = pitcher_name = batter_avg = batter_h = batter_ab = last_pitch_type = ''
+            pitcher_pitches = last_pitch_speed = 0
             if 'baseball' in path and data.get('situation'):
                 bsit = data['situation']
                 balls = bsit.get('balls', 0)
@@ -3786,6 +3832,37 @@ class SportsFetcher:
                 onSecond = bsit.get('onSecond', False)
                 onThird = bsit.get('onThird', False)
                 poss_raw = bsit.get('batter', {}).get('team', {}).get('id')
+                _btr = bsit.get('batter', {}) or {}
+                _ptr = bsit.get('pitcher', {}) or {}
+                _bat_ath = _btr.get('athlete', {}) or {}
+                _pit_ath = _ptr.get('athlete', {}) or {}
+                batter_name = _bat_ath.get('shortName') or _bat_ath.get('displayName', '')
+                pitcher_name = _pit_ath.get('shortName') or _pit_ath.get('displayName', '')
+                for _s in (_btr.get('statistics') or []):
+                    _n = _s.get('name', '')
+                    if _n == 'avg': batter_avg = _s.get('displayValue', '')
+                    elif _n == 'hits': batter_h = _s.get('displayValue', '')
+                    elif _n == 'atBats': batter_ab = _s.get('displayValue', '')
+                for _s in (_ptr.get('statistics') or []):
+                    if _s.get('name') in ('pitchCount', 'pitches', 'numberOfPitches'):
+                        try: pitcher_pitches = int(_s.get('displayValue', 0))
+                        except: pass
+                _lp = bsit.get('lastPlay') or {}
+                if isinstance(_lp, dict):
+                    _spd = _lp.get('pitchVelocity') or _lp.get('velocity') or 0
+                    try: last_pitch_speed = int(float(_spd)) if _spd else 0
+                    except: pass
+                    _pt = _lp.get('pitchType') or {}
+                    last_pitch_type = _pt.get('abbreviation') or _pt.get('text', '')
+                if not last_pitch_speed:
+                    for _play in reversed(bsit.get('atBatPlays') or []):
+                        _spd = _play.get('pitchVelocity') or _play.get('velocity') or 0
+                        if _spd:
+                            try: last_pitch_speed = int(float(_spd))
+                            except: pass
+                            _pt = _play.get('pitchType') or {}
+                            last_pitch_type = _pt.get('abbreviation') or _pt.get('text', '')
+                            break
 
             poss_abbr = ""
             if str(poss_raw) == str(h.get('team', {}).get('id')): poss_abbr = h_ab
@@ -3819,10 +3896,14 @@ class SportsFetcher:
                     'powerPlay': False,
                     'emptyNet': False,
                     'balls': balls, 'strikes': strikes, 'outs': outs,
-                    'onFirst': onFirst, 'onSecond': onSecond, 'onThird': onThird
+                    'onFirst': onFirst, 'onSecond': onSecond, 'onThird': onThird,
+                    'batter_name': batter_name, 'batter_avg': batter_avg,
+                    'batter_h': batter_h, 'batter_ab': batter_ab,
+                    'pitcher_name': pitcher_name, 'pitcher_pitches': pitcher_pitches,
+                    'last_pitch_speed': last_pitch_speed, 'last_pitch_type': last_pitch_type,
                 }
             }
-            
+
             return [game_obj]
 
         except Exception as e:
