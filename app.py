@@ -3520,16 +3520,13 @@ class SportsFetcher:
                         _pit_pid,
                         sit.get('pitcherName') or sit.get('pitcher_name') or ''
                     )
-                    _batter_avg = _batter_h = _batter_ab = ''
-                    _pitcher_pitches = _last_pitch_speed = 0
-                    _last_pitch_type = ''
-                    _lp = sit.get('lastPlay') or {}
-                    if isinstance(_lp, dict):
-                        _spd = _lp.get('pitchVelocity') or _lp.get('velocity') or 0
-                        try: _last_pitch_speed = int(float(_spd)) if _spd else 0
-                        except: pass
-                        _pt = _lp.get('pitchType') or {}
-                        _last_pitch_type = _pt.get('abbreviation') or _pt.get('text', '')
+                    _mlb_stats = self._mlb_extract_situation_stats(sit, _bat_obj, _pit_obj)
+                    _batter_avg = _mlb_stats.get('batter_avg', '')
+                    _batter_h = _mlb_stats.get('batter_h', '')
+                    _batter_ab = _mlb_stats.get('batter_ab', '')
+                    _pitcher_pitches = _mlb_stats.get('pitcher_pitches', 0)
+                    _last_pitch_speed = _mlb_stats.get('last_pitch_speed', 0)
+                    _last_pitch_type = _mlb_stats.get('last_pitch_type', '')
                     game_obj['situation'].update({
                         'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0),
                         'onFirst': bool(sit.get('onFirst', False)), 'onSecond': bool(sit.get('onSecond', False)), 'onThird': bool(sit.get('onThird', False)),
@@ -3638,6 +3635,80 @@ class SportsFetcher:
             return str(fallback_name).strip().upper()
 
         return self._mlb_inline_name_from_obj(person_obj)
+
+    def _mlb_find_stat_value(self, data, wanted_keys):
+        """Depth-first search for the first non-empty key in nested ESPN stat payloads."""
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if k in wanted_keys and v not in (None, ''):
+                    return v
+            for v in data.values():
+                found = self._mlb_find_stat_value(v, wanted_keys)
+                if found not in (None, ''):
+                    return found
+        elif isinstance(data, (list, tuple)):
+            for item in data:
+                found = self._mlb_find_stat_value(item, wanted_keys)
+                if found not in (None, ''):
+                    return found
+        return None
+
+    def _mlb_int(self, value, default=0):
+        try:
+            if value in (None, ''):
+                return default
+            return int(float(value))
+        except Exception:
+            return default
+
+    def _mlb_extract_situation_stats(self, sit, batter_obj=None, pitcher_obj=None):
+        """Extract batter/pitcher live stats from diverse ESPN MLB situation payload shapes."""
+        sit = sit or {}
+        batter_obj = batter_obj or (sit.get('batter') or {})
+        pitcher_obj = pitcher_obj or (sit.get('pitcher') or {})
+
+        batter_avg = self._mlb_find_stat_value(
+            [sit.get('batterStats'), sit, batter_obj],
+            {'avg', 'average', 'battingAverage'}
+        )
+        batter_h = self._mlb_find_stat_value(
+            [sit.get('batterStats'), sit, batter_obj],
+            {'hits', 'h'}
+        )
+        batter_ab = self._mlb_find_stat_value(
+            [sit.get('batterStats'), sit, batter_obj],
+            {'atBats', 'ab'}
+        )
+        pitcher_pitches = self._mlb_find_stat_value(
+            [sit.get('pitcherStats'), sit, pitcher_obj],
+            {'pitchCount', 'numberOfPitches', 'pitches', 'totalPitches'}
+        )
+
+        lp = sit.get('lastPlay') or sit.get('lastPitch') or {}
+        last_pitch_speed = 0
+        last_pitch_type = ''
+        if isinstance(lp, dict):
+            spd_val = (
+                lp.get('pitchVelocity')
+                or lp.get('velocity')
+                or lp.get('speed')
+                or self._mlb_find_stat_value(lp, {'pitchVelocity', 'velocity', 'speed'})
+            )
+            last_pitch_speed = self._mlb_int(spd_val, 0)
+            pt = lp.get('pitchType')
+            if isinstance(pt, dict):
+                last_pitch_type = str(pt.get('abbreviation') or pt.get('text') or '').strip()
+            elif isinstance(pt, str):
+                last_pitch_type = pt.strip()
+
+        return {
+            'batter_avg': str(batter_avg).strip() if batter_avg not in (None, '') else '',
+            'batter_h': str(batter_h).strip() if batter_h not in (None, '') else '',
+            'batter_ab': str(batter_ab).strip() if batter_ab not in (None, '') else '',
+            'pitcher_pitches': self._mlb_int(pitcher_pitches, 0),
+            'last_pitch_speed': last_pitch_speed,
+            'last_pitch_type': last_pitch_type,
+        }
 
     def fetch_pinned_game(self, pinned_str, conf, visible_start_utc, visible_end_utc):
         """
@@ -3925,27 +3996,35 @@ class SportsFetcher:
                     bsit.get('pitcherName') or bsit.get('pitcher_name') or ''
                 )
 
-                # Pitch data from lastPlay
-                _lp = bsit.get('lastPlay') or {}
-                if isinstance(_lp, dict):
-                    _spd = _lp.get('pitchVelocity') or _lp.get('velocity') or 0
-                    try: last_pitch_speed = int(float(_spd)) if _spd else 0
-                    except: pass
-                    _pt = _lp.get('pitchType') or {}
-                    last_pitch_type = _pt.get('abbreviation') or _pt.get('text', '')
+                _mlb_stats = self._mlb_extract_situation_stats(bsit, _bat_obj, _pit_obj)
+                batter_avg = _mlb_stats.get('batter_avg', '')
+                batter_h = _mlb_stats.get('batter_h', '')
+                batter_ab = _mlb_stats.get('batter_ab', '')
+                pitcher_pitches = _mlb_stats.get('pitcher_pitches', 0)
+                last_pitch_speed = _mlb_stats.get('last_pitch_speed', 0)
+                last_pitch_type = _mlb_stats.get('last_pitch_type', '')
 
                 # Pitcher pitch count + batter stats from boxscore athletes section
                 for _team_box in (data.get('boxscore', {}).get('teams') or []):
                     for _ath in (_team_box.get('statistics', [{}])[0].get('athletes') if _team_box.get('statistics') else []) or []:
                         _ath_id = str((_ath.get('athlete') or {}).get('id', ''))
-                        _stats  = {s.get('name'): s.get('displayValue') for s in (_ath.get('stats') or [])}
+                        _stats = {}
+                        for s in (_ath.get('stats') or []):
+                            k = s.get('name')
+                            if not k:
+                                continue
+                            _stats[k] = s.get('displayValue') or s.get('value') or ''
                         if _ath_id == str(_pit_pid):
-                            try: pitcher_pitches = int(_stats.get('pitchCount') or _stats.get('numberOfPitches') or 0)
-                            except: pass
+                            try:
+                                _pc = _stats.get('pitchCount') or _stats.get('numberOfPitches')
+                                if _pc not in (None, ''):
+                                    pitcher_pitches = int(float(_pc))
+                            except Exception:
+                                pass
                         if _ath_id == str(_bat_pid):
-                            batter_avg = _stats.get('avg', '')
-                            batter_h   = _stats.get('hits', '')
-                            batter_ab  = _stats.get('atBats', '')
+                            batter_avg = _stats.get('avg') or batter_avg
+                            batter_h   = _stats.get('hits') or batter_h
+                            batter_ab  = _stats.get('atBats') or batter_ab
 
             poss_abbr = ""
             if str(poss_raw) == str(h.get('team', {}).get('id')): poss_abbr = h_ab
