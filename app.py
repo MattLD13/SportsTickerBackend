@@ -3507,10 +3507,12 @@ class SportsFetcher:
                 if league_key == 'mlb':
                     _btr = sit.get('batter', {}) or {}
                     _ptr = sit.get('pitcher', {}) or {}
-                    _bat_ath = _btr.get('athlete', {}) or {}
-                    _pit_ath = _ptr.get('athlete', {}) or {}
-                    _batter_name = _bat_ath.get('shortName') or _bat_ath.get('displayName', '')
-                    _pitcher_name = _pit_ath.get('shortName') or _pit_ath.get('displayName', '')
+                    _bat_ath = _btr.get('athlete') or _btr.get('player') or {}
+                    _pit_ath = _ptr.get('athlete') or _ptr.get('player') or {}
+                    _batter_name = (_bat_ath.get('shortName') or _bat_ath.get('displayName')
+                                    or _bat_ath.get('fullName') or _bat_ath.get('name', ''))
+                    _pitcher_name = (_pit_ath.get('shortName') or _pit_ath.get('displayName')
+                                     or _pit_ath.get('fullName') or _pit_ath.get('name', ''))
                     _batter_avg = ''
                     _batter_h = ''
                     _batter_ab = ''
@@ -3545,7 +3547,7 @@ class SportsFetcher:
                                 break
                     game_obj['situation'].update({
                         'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0),
-                        'onFirst': sit.get('onFirst', False), 'onSecond': sit.get('onSecond', False), 'onThird': sit.get('onThird', False),
+                        'onFirst': bool(sit.get('onFirst', False)), 'onSecond': bool(sit.get('onSecond', False)), 'onThird': bool(sit.get('onThird', False)),
                         'batter_name': _batter_name, 'batter_avg': _batter_avg,
                         'batter_h': _batter_h, 'batter_ab': _batter_ab,
                         'pitcher_name': _pitcher_name, 'pitcher_pitches': _pitcher_pitches,
@@ -3825,19 +3827,25 @@ class SportsFetcher:
             pitcher_pitches = last_pitch_speed = 0
             if 'baseball' in path and data.get('situation'):
                 bsit = data['situation']
+                print(f"[MLB DEBUG] situation keys: {list(bsit.keys())}")
+                print(f"[MLB DEBUG] batter: {bsit.get('batter')}")
+                print(f"[MLB DEBUG] pitcher: {bsit.get('pitcher')}")
                 balls = bsit.get('balls', 0)
                 strikes = bsit.get('strikes', 0)
                 outs = bsit.get('outs', 0)
-                onFirst = bsit.get('onFirst', False)
-                onSecond = bsit.get('onSecond', False)
-                onThird = bsit.get('onThird', False)
+                onFirst = bool(bsit.get('onFirst', False))
+                onSecond = bool(bsit.get('onSecond', False))
+                onThird = bool(bsit.get('onThird', False))
                 poss_raw = bsit.get('batter', {}).get('team', {}).get('id')
                 _btr = bsit.get('batter', {}) or {}
                 _ptr = bsit.get('pitcher', {}) or {}
-                _bat_ath = _btr.get('athlete', {}) or {}
-                _pit_ath = _ptr.get('athlete', {}) or {}
-                batter_name = _bat_ath.get('shortName') or _bat_ath.get('displayName', '')
-                pitcher_name = _pit_ath.get('shortName') or _pit_ath.get('displayName', '')
+                # ESPN may use 'athlete' or 'player' as the nested object key
+                _bat_ath = _btr.get('athlete') or _btr.get('player') or {}
+                _pit_ath = _ptr.get('athlete') or _ptr.get('player') or {}
+                batter_name = (_bat_ath.get('shortName') or _bat_ath.get('displayName')
+                               or _bat_ath.get('fullName') or _bat_ath.get('name', ''))
+                pitcher_name = (_pit_ath.get('shortName') or _pit_ath.get('displayName')
+                                or _pit_ath.get('fullName') or _pit_ath.get('name', ''))
                 for _s in (_btr.get('statistics') or []):
                     _n = _s.get('name', '')
                     if _n == 'avg': batter_avg = _s.get('displayValue', '')
