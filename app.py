@@ -3545,6 +3545,8 @@ class SportsFetcher:
                             or not game_obj['situation'].get('batter_h')
                             or not game_obj['situation'].get('batter_ab')
                             or int(game_obj['situation'].get('pitcher_pitches', 0) or 0) == 0
+                            or int(game_obj['situation'].get('last_pitch_speed', 0) or 0) == 0
+                            or not game_obj['situation'].get('last_pitch_type')
                         )
                         if need_enrich:
                             _enriched = self._mlb_enrich_live_from_summary(gid, game_obj['situation'])
@@ -3676,7 +3678,7 @@ class SportsFetcher:
         except Exception:
             return default
 
-    def _mlb_extract_situation_stats(self, sit, batter_obj=None, pitcher_obj=None):
+    def _mlb_extract_situation_stats(self, sit, batter_obj=None, pitcher_obj=None, full_data=None):
         """Extract batter/pitcher live stats from diverse ESPN MLB situation payload shapes."""
         sit = sit or {}
         batter_obj = batter_obj or (sit.get('batter') or {})
@@ -3700,6 +3702,28 @@ class SportsFetcher:
         )
 
         lp = sit.get('lastPlay') or sit.get('lastPitch') or {}
+
+        # ESPN often provides situation.lastPlay as only {'id': '...'} while
+        # pitchVelocity/pitchType live in the matching object under data['plays'].
+        if isinstance(lp, dict) and isinstance(full_data, dict):
+            has_speed = self._mlb_find_stat_value(lp, {'pitchVelocity', 'velocity', 'speed'}) not in (None, '')
+            pt_val = lp.get('pitchType')
+            has_type = bool(pt_val)
+            if not (has_speed and has_type):
+                lp_id = str(lp.get('id') or '')
+                plays = full_data.get('plays') if isinstance(full_data.get('plays'), list) else []
+                if plays:
+                    resolved = None
+                    if lp_id:
+                        for p in plays:
+                            if str((p or {}).get('id', '')) == lp_id:
+                                resolved = p
+                                break
+                    if resolved is None:
+                        resolved = plays[-1]
+                    if isinstance(resolved, dict):
+                        lp = resolved
+
         last_pitch_speed = 0
         last_pitch_type = ''
         if isinstance(lp, dict):
@@ -3846,7 +3870,7 @@ class SportsFetcher:
             bsit.get('pitcherName') or bsit.get('pitcher_name') or current_sit.get('pitcher_name', '')
         )
 
-        stats = self._mlb_extract_situation_stats(bsit, bat_obj, pit_obj)
+        stats = self._mlb_extract_situation_stats(bsit, bat_obj, pit_obj, data)
         batter_avg = stats.get('batter_avg', '') or current_sit.get('batter_avg', '')
         batter_h = stats.get('batter_h', '') or current_sit.get('batter_h', '')
         batter_ab = stats.get('batter_ab', '') or current_sit.get('batter_ab', '')
@@ -4164,7 +4188,7 @@ class SportsFetcher:
                     bsit.get('pitcherName') or bsit.get('pitcher_name') or ''
                 )
 
-                _mlb_stats = self._mlb_extract_situation_stats(bsit, _bat_obj, _pit_obj)
+                _mlb_stats = self._mlb_extract_situation_stats(bsit, _bat_obj, _pit_obj, data)
                 batter_avg = _mlb_stats.get('batter_avg', '')
                 batter_h = _mlb_stats.get('batter_h', '')
                 batter_ab = _mlb_stats.get('batter_ab', '')
