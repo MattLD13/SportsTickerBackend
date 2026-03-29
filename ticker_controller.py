@@ -325,6 +325,7 @@ class TickerStreamer:
         self.huge_font = load_monospace_font(20, bold=True)
         self.clock_giant = load_monospace_font(28, bold=True)
         self.tiny = load_monospace_font(9)
+        self.tiny_small = load_monospace_font(8)
         self.micro = load_monospace_font(7)
         self.nano = load_monospace_font(5)
         self.score_default_font = ImageFont.load_default()
@@ -907,45 +908,64 @@ class TickerStreamer:
 
             # 8 · Logos in end zones
             LOGO_SZ  = min(int(ezW * 0.85), int(H * 0.65))
-            logo_top = (H - LOGO_SZ) // 2
+            logo_top_center = (H - LOGO_SZ) // 2   # vertically centred
             h_logo_cx = int(ezW / 2)
             a_logo_cx = W - int(ezW / 2)
-            hl = self.get_logo(game.get('home_logo'), (24, 24))
-            al = self.get_logo(game.get('away_logo'), (24, 24))
-            if hl:
-                ls = hl.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
-                img.paste(ls, (h_logo_cx - LOGO_SZ // 2, logo_top), ls)
-            if al:
-                ls = al.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
-                img.paste(ls, (a_logo_cx - LOGO_SZ // 2, logo_top), ls)
 
-            # 9 · Score badges
+            # 9 · Score badges — determine positions first so logos can dodge them
             score_y   = int(H * 0.82)
             slot_cx   = int(ezW + playW * 0.05)
             aslot_cx  = int(W - ezW - playW * 0.05)
-            # Default: keep scores outside endzones
             h_sc_cx   = slot_cx
             a_sc_cx   = aslot_cx
             if is_rz:
                 if poss_ab == home_ab:
-                    h_sc_cx = slot_cx
-                    a_sc_cx = a_logo_cx
+                    a_sc_cx = a_logo_cx   # away score moves into away endzone
                 elif poss_ab == away_ab:
-                    h_sc_cx = h_logo_cx
-                    a_sc_cx = aslot_cx
+                    h_sc_cx = h_logo_cx   # home score moves into home endzone
+
+            # Push logo up when its score badge sits below it in the endzone
+            score_box_top = score_y - (11 // 2)          # top edge of score badge
+            logo_top_up   = max(0, score_box_top - LOGO_SZ - 1)  # just above the badge
+            h_logo_top = logo_top_up if h_sc_cx == h_logo_cx else logo_top_center
+            a_logo_top = logo_top_up if a_sc_cx == a_logo_cx else logo_top_center
+
+            def _black_ring_logo(logo):
+                """Convert the artificial white enhancement ring to black (copy only)."""
+                ls = logo.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
+                px = ls.load()
+                for yy in range(ls.height):
+                    for xx in range(ls.width):
+                        r, g, b, a = px[xx, yy]
+                        # Target the white ring added by _enhance_logo_visibility:
+                        # alpha ~230, RGB all very white (>220). Fully-opaque white
+                        # pixels inside the logo (a==255) are intentional — skip those.
+                        if 180 < a < 252 and r > 220 and g > 220 and b > 220:
+                            px[xx, yy] = (0, 0, 0, a)
+                return ls
+
+            hl = self.get_logo(game.get('home_logo'), (24, 24))
+            al = self.get_logo(game.get('away_logo'), (24, 24))
+            if hl:
+                ls = _black_ring_logo(hl)
+                img.paste(ls, (h_logo_cx - LOGO_SZ // 2, h_logo_top), ls)
+            if al:
+                ls = _black_ring_logo(al)
+                img.paste(ls, (a_logo_cx - LOGO_SZ // 2, a_logo_top), ls)
+
             for scx, sc in [(h_sc_cx, h_score), (a_sc_cx, a_score)]:
                 if not sc: continue
                 sw = (len(str(sc)) * 5) + 6
                 sh = 11
                 box_left = scx - (sw // 2)
                 box_top = score_y - (sh // 2)
-                box_right = box_left + sw - 1
-                box_bottom = box_top + sh - 1
-                d.rectangle([box_left, box_top, box_right, box_bottom], fill=(0, 0, 0, 218))
                 text_w = len(str(sc)) * 5
                 text_h = 6
                 text_x = box_left + ((sw - text_w) // 2)
                 text_y = box_top + ((sh - text_h + 1) // 2)
+                # Conforming black outline: draw text shifted in 4 directions, then white on top
+                for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    draw_hybrid_text(d, text_x + dx, text_y + dy, str(sc), (0, 0, 0))
                 draw_hybrid_text(d, text_x, text_y, str(sc), (255, 255, 255))
 
             # 10 · First-down line + LOS line + football
@@ -954,19 +974,12 @@ class TickerStreamer:
                 fd_pct = min(100, los + ytg) if drive_to_right else max(0, los - ytg)
                 fd_px  = ezW + fd_pct * playW / 100
                 d.line([(fd_px, 0), (fd_px, H)],   fill=(240, 216, 0, 245), width=2)
-                d.line([(los_px, 0), (los_px, H)],  fill=(200, 200, 200, 240), width=2)
+                d.line([(los_px, 0), (los_px, H)],  fill=(30, 60, 180, 240), width=2)
                 brx = max(4, int(H * 0.13))
                 bry = max(2, int(H * 0.08))
                 by  = H // 2
                 d.ellipse([los_px - brx, by - bry, los_px + brx, by + bry], fill=(139, 69, 19), outline=(61, 26, 6))
                 d.line([(los_px - int(brx * 0.7), by), (los_px + int(brx * 0.7), by)], fill=(255, 255, 255, 165))
-
-            # 11 · Possession ▼ indicator
-            pcx = None
-            if poss_ab == home_ab: pcx = int(ezW / 2)
-            elif poss_ab == away_ab: pcx = W - int(ezW / 2)
-            if pcx:
-                d.polygon([(pcx - 3, H - 4), (pcx + 3, H - 4), (pcx, H - 1)], fill=(255, 255, 255))
 
             return img
 
@@ -1040,9 +1053,11 @@ class TickerStreamer:
             a_sc_w = d.textlength(a_score, font=self.clock_giant)
 
             # ── Step 5: inning text + BSO (drawn AFTER scrim so they're on top) ──
-            # HTML: spread=75, leftX=W/2-75=117, rightX=W/2+75=267
-            left_txt_x  = W // 2 - 75   # 117
-            right_txt_x = W // 2 + 75   # 267
+            # Pull these closer to the center diamond so side lanes can hold
+            # batter/pitcher detail blocks.
+            center_spread = 40
+            left_txt_x  = W // 2 - center_spread
+            right_txt_x = W // 2 + center_spread
 
             bso_rows = [
                 ('B', str(balls),   (74,  175, 255)),
@@ -1111,6 +1126,116 @@ class TickerStreamer:
                 self.draw_bat(d, int(a_sc_x - a_sc_w - 8), 7)   # cx between score and logo
             elif is_bot_inn:
                 self.draw_bat(d, int(h_sc_x + h_sc_w + 8), 7)
+
+            # ── Step 7: batter / pitcher detail blocks in side lanes ────────
+            def _short_last_name(raw, max_chars=10):
+                txt = str(raw or '').strip()
+                if not txt:
+                    return ''
+                parts = [p for p in txt.replace('.', ' ').split() if p]
+                return (parts[-1] if parts else txt).upper()[:max_chars]
+
+            def _trim_line(raw, max_chars=15):
+                return str(raw or '').strip()[:max_chars]
+
+            def _compact_pitch_name(full_type, abbr_type):
+                txt = str(full_type or '').strip()
+                if txt:
+                    txt = txt.split('(', 1)[0].strip()
+                    txt = txt.split('/', 1)[0].strip()
+                if not txt:
+                    return str(abbr_type or '').strip().upper()[:10]
+                if len(txt) > 12:
+                    words = txt.replace('-', ' ').split()
+                    if words:
+                        txt = words[-1]
+                return txt.title()[:12]
+
+            def _draw_info_block(cx, lines, y0=7):
+                y = y0
+                for line in lines:
+                    line_txt = _trim_line(line)
+                    if line_txt:
+                        self.draw_outlined_text(
+                            d,
+                            int(cx),
+                            y,
+                            line_txt,
+                            self.tiny_small,
+                            (255, 255, 255),
+                            (0, 0, 0, 220),
+                            anchor='mm'
+                        )
+                    y += 9
+
+            batter_name  = _short_last_name(sit.get('batter_name', ''))
+            pitcher_name = _short_last_name(sit.get('pitcher_name', ''))
+            batter_avg   = sit.get('batter_avg', '')
+            batter_h     = sit.get('batter_h', '')
+            batter_ab    = sit.get('batter_ab', '')
+            pit_pitches  = sit.get('pitcher_pitches', 0)
+            last_spd     = sit.get('last_pitch_speed', 0)
+            last_abbr    = sit.get('last_pitch_type_abbr', '') or sit.get('last_pitch_type', '')
+            last_full    = sit.get('last_pitch_type_full', '')
+
+            batter_avg_txt = str(batter_avg or '').strip()
+            if batter_avg_txt.startswith('0.'):
+                batter_avg_txt = batter_avg_txt[1:]
+
+            batter_h_txt = str(batter_h or '').strip()
+            batter_ab_txt = str(batter_ab or '').strip()
+            if batter_h_txt and batter_ab_txt:
+                batter_hits_ab_line = f"At Bats: {batter_h_txt}/{batter_ab_txt}"
+            elif batter_h_txt:
+                batter_hits_ab_line = f"At Bats: {batter_h_txt}/-"
+            elif batter_ab_txt:
+                batter_hits_ab_line = f"At Bats: -/{batter_ab_txt}"
+            else:
+                batter_hits_ab_line = ''
+
+            if batter_avg_txt:
+                batter_avg_line = f"AVG:{batter_avg_txt}"
+            else:
+                batter_avg_line = ''
+
+            pitch_count_line = ''
+            if str(pit_pitches).strip() and str(pit_pitches).strip() != '0':
+                pitch_count_line = f"P:{pit_pitches}"
+
+            pitch_type_line = _compact_pitch_name(last_full, last_abbr)
+            if str(last_spd).strip() and str(last_spd).strip() != '0' and pitch_type_line:
+                pitch_info_line = f"{last_spd} {pitch_type_line}"
+            elif str(last_spd).strip() and str(last_spd).strip() != '0':
+                pitch_info_line = f"{last_spd} MPH"
+            else:
+                pitch_info_line = pitch_type_line
+
+            # Prefer backend possession marker; fall back to inning state.
+            home_batting = bool(home_ab and poss_ab and poss_ab == home_ab)
+            away_batting = bool(away_ab and poss_ab and poss_ab == away_ab)
+            if not home_batting and not away_batting:
+                home_batting = is_bot_inn and not is_mid_inn
+                away_batting = is_top_inn and not is_mid_inn
+            if home_batting and away_batting:
+                home_batting = is_bot_inn and not is_mid_inn
+                away_batting = is_top_inn and not is_mid_inn
+
+            info_lane_spread = 92
+            info_left_cx  = W // 2 - info_lane_spread
+            info_right_cx = W // 2 + info_lane_spread
+
+            bat_lines = [batter_name, batter_hits_ab_line, batter_avg_line]
+            pit_lines = [pitcher_name, pitch_count_line, pitch_info_line]
+
+            if home_batting and not away_batting:
+                _draw_info_block(info_left_cx, bat_lines)
+                _draw_info_block(info_right_cx, pit_lines)
+            elif away_batting and not home_batting:
+                _draw_info_block(info_left_cx, pit_lines)
+                _draw_info_block(info_right_cx, bat_lines)
+            else:
+                _draw_info_block(info_left_cx, pit_lines)
+                _draw_info_block(info_right_cx, bat_lines)
 
             return img
 
