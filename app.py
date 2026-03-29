@@ -3547,21 +3547,28 @@ class SportsFetcher:
         pid = str(player_id)
         if pid in self._mlb_player_cache:
             return self._mlb_player_cache[pid]
-        try:
-            url = f"{self.base_url}baseball/mlb/athletes/{pid}"
-            r = self.session.get(url, headers=HEADERS, timeout=5)
-            if r.status_code == 200:
-                ath = r.json().get('athlete', {})
-                full = (ath.get('shortName') or ath.get('displayName')
-                        or ath.get('fullName') or ath.get('lastName', ''))
-                # shortName is "F. Lastname"; grab everything after the dot-space
-                if '. ' in full:
-                    full = full.split('. ', 1)[1]
-                name = full.upper()
-                self._mlb_player_cache[pid] = name
-                return name
-        except Exception:
-            pass
+        # Try ESPN core API first, then site API fallback
+        urls = [
+            f"https://sports.core.api.espn.com/v2/sports/baseball/leagues/mlb/athletes/{pid}",
+            f"{self.base_url}baseball/mlb/athletes/{pid}",
+        ]
+        for url in urls:
+            try:
+                r = self.session.get(url, headers=HEADERS, timeout=5)
+                print(f"[MLB PLAYER] pid={pid} url={url} status={r.status_code}")
+                if r.status_code == 200:
+                    ath = r.json()
+                    full = (ath.get('shortName') or ath.get('displayName')
+                            or ath.get('fullName') or ath.get('lastName', ''))
+                    print(f"[MLB PLAYER] pid={pid} full={full!r}")
+                    if '. ' in full:
+                        full = full.split('. ', 1)[1]
+                    name = full.upper()
+                    self._mlb_player_cache[pid] = name
+                    return name
+            except Exception as ex:
+                print(f"[MLB PLAYER] pid={pid} error={ex}")
+        self._mlb_player_cache[pid] = ''   # cache miss so we don't retry every tick
         return ''
 
     def fetch_pinned_game(self, pinned_str, conf, visible_start_utc, visible_end_utc):
