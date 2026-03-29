@@ -3528,13 +3528,18 @@ class SportsFetcher:
                     _pitcher_pitches = _mlb_stats.get('pitcher_pitches', 0)
                     _last_pitch_speed = _mlb_stats.get('last_pitch_speed', 0)
                     _last_pitch_type = _mlb_stats.get('last_pitch_type', '')
+                    _last_pitch_type_abbr = _mlb_stats.get('last_pitch_type_abbr', _last_pitch_type)
+                    _last_pitch_type_full = _mlb_stats.get('last_pitch_type_full', '')
                     game_obj['situation'].update({
                         'balls': sit.get('balls', 0), 'strikes': sit.get('strikes', 0), 'outs': sit.get('outs', 0),
                         'onFirst': bool(sit.get('onFirst', False)), 'onSecond': bool(sit.get('onSecond', False)), 'onThird': bool(sit.get('onThird', False)),
                         'batter_name': _batter_name, 'batter_avg': _batter_avg,
                         'batter_h': _batter_h, 'batter_ab': _batter_ab,
                         'pitcher_name': _pitcher_name, 'pitcher_pitches': _pitcher_pitches,
-                        'last_pitch_speed': _last_pitch_speed, 'last_pitch_type': _last_pitch_type,
+                        'last_pitch_speed': _last_pitch_speed,
+                        'last_pitch_type': _last_pitch_type,
+                        'last_pitch_type_abbr': _last_pitch_type_abbr,
+                        'last_pitch_type_full': _last_pitch_type_full,
                     })
 
                     # ESPN scoreboard often omits MLB batter/pitcher stat fields.
@@ -3678,6 +3683,96 @@ class SportsFetcher:
         except Exception:
             return default
 
+    def _mlb_normalize_pitch_type(self, pitch_type):
+        """Return normalized (abbr, full_name) for MLB pitch types."""
+        raw_abbr = ''
+        raw_full = ''
+
+        if isinstance(pitch_type, dict):
+            raw_abbr = str(pitch_type.get('abbreviation') or '').strip().upper()
+            raw_full = str(pitch_type.get('text') or pitch_type.get('displayValue') or '').strip()
+        elif isinstance(pitch_type, str):
+            p = pitch_type.strip()
+            if p and len(p) <= 4 and ' ' not in p and '-' not in p:
+                raw_abbr = p.upper()
+            else:
+                raw_full = p
+
+        full_l = raw_full.lower()
+
+        official_full = {
+            'FF': 'Four-Seam Fastball',
+            'FT': 'Two-Seam Fastball / Sinker',
+            'FC': 'Cutter (Fastball-cutter)',
+            'FA': 'Fastball (general)',
+            'FS': 'Splitter / Split-fingered Fastball',
+            'SF': 'Splitter / Split-fingered Fastball',
+            'SI': 'Sinker',
+            'SL': 'Slider',
+            'CB': 'Curveball',
+            'CU': 'Curveball',
+            'KC': 'Knuckle Curve',
+            'SC': 'Screwball',
+            'ST': 'Sweeper',
+            'CH': 'Changeup',
+            'EP': 'Eephus',
+            'FO': 'Forkball',
+            'KN': 'Knuckleball',
+            'UN': 'Unidentified / Unknown',
+            'XX': 'Unidentified / Unknown',
+            'PO': 'Pitchout',
+            'GY': 'Gyroball',
+            'NP': 'No Pitch',
+        }
+
+        # Pass through official abbreviations as-is.
+        abbr = raw_abbr if raw_abbr in official_full else ''
+        if not abbr:
+            if 'four-seam' in full_l or '4-seam' in full_l:
+                abbr = 'FF'
+            elif 'two-seam' in full_l or '2-seam' in full_l:
+                abbr = 'FT'
+            elif 'sinker' in full_l:
+                abbr = 'SI'
+            elif 'cutter' in full_l:
+                abbr = 'FC'
+            elif 'slider' in full_l:
+                abbr = 'SL'
+            elif 'sweeper' in full_l:
+                abbr = 'ST'
+            elif 'knuckle curve' in full_l:
+                abbr = 'KC'
+            elif 'curve' in full_l:
+                abbr = 'CB'
+            elif 'screwball' in full_l:
+                abbr = 'SC'
+            elif 'change' in full_l:
+                abbr = 'CH'
+            elif 'eephus' in full_l:
+                abbr = 'EP'
+            elif 'forkball' in full_l:
+                abbr = 'FO'
+            elif 'split' in full_l:
+                abbr = 'SF'
+            elif 'knuckleball' in full_l:
+                abbr = 'KN'
+            elif 'pitchout' in full_l:
+                abbr = 'PO'
+            elif 'gyro' in full_l:
+                abbr = 'GY'
+            elif 'no pitch' in full_l:
+                abbr = 'NP'
+            elif 'unknown' in full_l or 'unidentified' in full_l:
+                abbr = 'UN'
+            elif 'fastball' in full_l:
+                abbr = 'FA'
+
+        full = official_full.get(abbr, '')
+        if not full and raw_full:
+            full = raw_full
+
+        return abbr, full
+
     def _mlb_extract_situation_stats(self, sit, batter_obj=None, pitcher_obj=None, full_data=None):
         """Extract batter/pitcher live stats from diverse ESPN MLB situation payload shapes."""
         sit = sit or {}
@@ -3725,7 +3820,8 @@ class SportsFetcher:
                         lp = resolved
 
         last_pitch_speed = 0
-        last_pitch_type = ''
+        last_pitch_type_abbr = ''
+        last_pitch_type_full = ''
         if isinstance(lp, dict):
             spd_val = (
                 lp.get('pitchVelocity')
@@ -3735,10 +3831,12 @@ class SportsFetcher:
             )
             last_pitch_speed = self._mlb_int(spd_val, 0)
             pt = lp.get('pitchType')
-            if isinstance(pt, dict):
-                last_pitch_type = str(pt.get('abbreviation') or pt.get('text') or '').strip()
-            elif isinstance(pt, str):
-                last_pitch_type = pt.strip()
+            if not pt:
+                pt = {
+                    'abbreviation': lp.get('pitchTypeAbbreviation'),
+                    'text': lp.get('pitchTypeText')
+                }
+            last_pitch_type_abbr, last_pitch_type_full = self._mlb_normalize_pitch_type(pt)
 
         return {
             'batter_avg': str(batter_avg).strip() if batter_avg not in (None, '') else '',
@@ -3746,7 +3844,10 @@ class SportsFetcher:
             'batter_ab': str(batter_ab).strip() if batter_ab not in (None, '') else '',
             'pitcher_pitches': self._mlb_int(pitcher_pitches, 0),
             'last_pitch_speed': last_pitch_speed,
-            'last_pitch_type': last_pitch_type,
+            # Keep legacy key for compatibility; value is normalized abbreviation.
+            'last_pitch_type': last_pitch_type_abbr,
+            'last_pitch_type_abbr': last_pitch_type_abbr,
+            'last_pitch_type_full': last_pitch_type_full,
         }
 
     def _mlb_extract_boxscore_stats(self, data, batter_id=None, pitcher_id=None):
@@ -3876,7 +3977,13 @@ class SportsFetcher:
         batter_ab = stats.get('batter_ab', '') or current_sit.get('batter_ab', '')
         pitcher_pitches = stats.get('pitcher_pitches', 0) or current_sit.get('pitcher_pitches', 0)
         last_pitch_speed = stats.get('last_pitch_speed', 0) or current_sit.get('last_pitch_speed', 0)
-        last_pitch_type = stats.get('last_pitch_type', '') or current_sit.get('last_pitch_type', '')
+        last_pitch_type_abbr = (
+            stats.get('last_pitch_type_abbr', '')
+            or stats.get('last_pitch_type', '')
+            or current_sit.get('last_pitch_type_abbr', '')
+            or current_sit.get('last_pitch_type', '')
+        )
+        last_pitch_type_full = stats.get('last_pitch_type_full', '') or current_sit.get('last_pitch_type_full', '')
 
         # Secondary stats source: boxscore athletes (supports ESPN players+keys/stats shape).
         box_stats = self._mlb_extract_boxscore_stats(data, bat_pid, pit_pid)
@@ -3899,7 +4006,9 @@ class SportsFetcher:
             'pitcher_name': pitcher_name or current_sit.get('pitcher_name', ''),
             'pitcher_pitches': self._mlb_int(pitcher_pitches, 0),
             'last_pitch_speed': self._mlb_int(last_pitch_speed, 0),
-            'last_pitch_type': str(last_pitch_type or '').strip(),
+            'last_pitch_type': str(last_pitch_type_abbr or '').strip(),
+            'last_pitch_type_abbr': str(last_pitch_type_abbr or '').strip(),
+            'last_pitch_type_full': str(last_pitch_type_full or '').strip(),
         }
 
     def fetch_pinned_game(self, pinned_str, conf, visible_start_utc, visible_end_utc):
@@ -4195,6 +4304,8 @@ class SportsFetcher:
                 pitcher_pitches = _mlb_stats.get('pitcher_pitches', 0)
                 last_pitch_speed = _mlb_stats.get('last_pitch_speed', 0)
                 last_pitch_type = _mlb_stats.get('last_pitch_type', '')
+                last_pitch_type_abbr = _mlb_stats.get('last_pitch_type_abbr', last_pitch_type)
+                last_pitch_type_full = _mlb_stats.get('last_pitch_type_full', '')
 
                 _box_stats = self._mlb_extract_boxscore_stats(data, _bat_pid, _pit_pid)
                 batter_avg = _box_stats.get('batter_avg') or batter_avg
@@ -4238,7 +4349,10 @@ class SportsFetcher:
                     'batter_name': batter_name, 'batter_avg': batter_avg,
                     'batter_h': batter_h, 'batter_ab': batter_ab,
                     'pitcher_name': pitcher_name, 'pitcher_pitches': pitcher_pitches,
-                    'last_pitch_speed': last_pitch_speed, 'last_pitch_type': last_pitch_type,
+                    'last_pitch_speed': last_pitch_speed,
+                    'last_pitch_type': last_pitch_type,
+                    'last_pitch_type_abbr': last_pitch_type_abbr,
+                    'last_pitch_type_full': last_pitch_type_full,
                 }
             }
 
