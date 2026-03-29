@@ -2459,6 +2459,7 @@ class SportsFetcher:
         
         self.consecutive_empty_fetches = 0
         self._mlb_player_cache = {}   # playerId (int/str) → last name string
+        self._mlb_summary_cache = {}  # gameId -> {'ts': float, 'data': dict}
         # abbr-keyed index rebuilt in fetch_all_teams — O(1) team lookups
         self._teams_abbr_index: dict = {}  # league -> {abbr -> team_entry}
         # Per-mode content buffers: mode_name → list[game_obj]
@@ -3535,6 +3536,21 @@ class SportsFetcher:
                         'pitcher_name': _pitcher_name, 'pitcher_pitches': _pitcher_pitches,
                         'last_pitch_speed': _last_pitch_speed, 'last_pitch_type': _last_pitch_type,
                     })
+
+                    # ESPN scoreboard often omits MLB batter/pitcher stat fields.
+                    # Enrich from per-game summary for live/half games when these are blank.
+                    if gst in ('in', 'half'):
+                        need_enrich = (
+                            not game_obj['situation'].get('batter_avg')
+                            and not game_obj['situation'].get('batter_h')
+                            and not game_obj['situation'].get('batter_ab')
+                            and int(game_obj['situation'].get('pitcher_pitches', 0) or 0) == 0
+                            and int(game_obj['situation'].get('last_pitch_speed', 0) or 0) == 0
+                        )
+                        if need_enrich:
+                            _enriched = self._mlb_enrich_live_from_summary(gid, game_obj['situation'])
+                            if _enriched:
+                                game_obj['situation'].update(_enriched)
                 
                 if is_suspended: game_obj['is_shown'] = False
                 
@@ -3708,6 +3724,100 @@ class SportsFetcher:
             'pitcher_pitches': self._mlb_int(pitcher_pitches, 0),
             'last_pitch_speed': last_pitch_speed,
             'last_pitch_type': last_pitch_type,
+        }
+
+    def _mlb_get_summary(self, game_id, max_age=12):
+        """Return cached MLB summary payload for a game, refreshing every max_age seconds."""
+        gid = str(game_id)
+        now = time.time()
+        cached = self._mlb_summary_cache.get(gid)
+        if cached and (now - cached.get('ts', 0) < max_age):
+            return cached.get('data')
+
+        try:
+            url = f"{self.base_url}baseball/mlb/summary"
+            r = self.session.get(url, params={'event': gid}, headers=HEADERS, timeout=TIMEOUTS['default'])
+            if r.status_code == 200:
+                data = r.json()
+                self._mlb_summary_cache[gid] = {'ts': now, 'data': data}
+                return data
+        except Exception:
+            pass
+        return None
+
+    def _mlb_enrich_live_from_summary(self, game_id, current_sit):
+        """Fill missing live MLB fields from the per-game summary endpoint."""
+        data = self._mlb_get_summary(game_id)
+        if not data:
+            return {}
+
+        current_sit = current_sit or {}
+        comp = (data.get('header', {}).get('competitions') or [{}])[0]
+        bsit = data.get('situation') or comp.get('situation') or {}
+
+        bat_obj = bsit.get('batter') or {}
+        pit_obj = bsit.get('pitcher') or {}
+        bat_pid = self._mlb_player_id_from_obj(bat_obj)
+        pit_pid = self._mlb_player_id_from_obj(pit_obj)
+
+        batter_name = self._mlb_resolve_person_name(
+            bat_obj,
+            bat_pid,
+            bsit.get('batterName') or bsit.get('batter_name') or current_sit.get('batter_name', '')
+        )
+        pitcher_name = self._mlb_resolve_person_name(
+            pit_obj,
+            pit_pid,
+            bsit.get('pitcherName') or bsit.get('pitcher_name') or current_sit.get('pitcher_name', '')
+        )
+
+        stats = self._mlb_extract_situation_stats(bsit, bat_obj, pit_obj)
+        batter_avg = stats.get('batter_avg', '') or current_sit.get('batter_avg', '')
+        batter_h = stats.get('batter_h', '') or current_sit.get('batter_h', '')
+        batter_ab = stats.get('batter_ab', '') or current_sit.get('batter_ab', '')
+        pitcher_pitches = stats.get('pitcher_pitches', 0) or current_sit.get('pitcher_pitches', 0)
+        last_pitch_speed = stats.get('last_pitch_speed', 0) or current_sit.get('last_pitch_speed', 0)
+        last_pitch_type = stats.get('last_pitch_type', '') or current_sit.get('last_pitch_type', '')
+
+        # Secondary stats source: boxscore athletes
+        for team_box in (data.get('boxscore', {}).get('teams') or []):
+            stats_block = (team_box.get('statistics') or [{}])[0]
+            for ath in (stats_block.get('athletes') or []):
+                ath_id = str((ath.get('athlete') or {}).get('id', ''))
+                stat_map = {}
+                for s in (ath.get('stats') or []):
+                    k = s.get('name')
+                    if not k:
+                        continue
+                    stat_map[k] = s.get('displayValue') or s.get('value') or ''
+
+                if ath_id == str(pit_pid):
+                    try:
+                        pc = stat_map.get('pitchCount') or stat_map.get('numberOfPitches')
+                        if pc not in (None, ''):
+                            pitcher_pitches = int(float(pc))
+                    except Exception:
+                        pass
+                if ath_id == str(bat_pid):
+                    batter_avg = stat_map.get('avg') or batter_avg
+                    batter_h = stat_map.get('hits') or batter_h
+                    batter_ab = stat_map.get('atBats') or batter_ab
+
+        return {
+            'balls': bsit.get('balls', current_sit.get('balls', 0)),
+            'strikes': bsit.get('strikes', current_sit.get('strikes', 0)),
+            'outs': bsit.get('outs', current_sit.get('outs', 0)),
+            'onFirst': bool(bsit.get('onFirst', current_sit.get('onFirst', False))),
+            'onSecond': bool(bsit.get('onSecond', current_sit.get('onSecond', False))),
+            'onThird': bool(bsit.get('onThird', current_sit.get('onThird', False))),
+            'batter_name': batter_name or current_sit.get('batter_name', ''),
+            'batter_avg': str(batter_avg).strip() if batter_avg not in (None, '') else '',
+            'batter_h': str(batter_h).strip() if batter_h not in (None, '') else '',
+            'batter_ab': str(batter_ab).strip() if batter_ab not in (None, '') else '',
+            'pitcher_name': pitcher_name or current_sit.get('pitcher_name', ''),
+            'pitcher_pitches': self._mlb_int(pitcher_pitches, 0),
+            'last_pitch_speed': self._mlb_int(last_pitch_speed, 0),
+            'last_pitch_type': str(last_pitch_type or '').strip(),
         }
 
     def fetch_pinned_game(self, pinned_str, conf, visible_start_utc, visible_end_utc):
