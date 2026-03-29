@@ -3506,10 +3506,20 @@ class SportsFetcher:
                     }
                 }
                 if league_key == 'mlb':
-                    _bat_pid = (sit.get('batter') or {}).get('playerId')
-                    _pit_pid = (sit.get('pitcher') or {}).get('playerId')
-                    _batter_name  = self._mlb_player_last_name(_bat_pid)
-                    _pitcher_name = self._mlb_player_last_name(_pit_pid)
+                    _bat_obj = sit.get('batter') or {}
+                    _pit_obj = sit.get('pitcher') or {}
+                    _bat_pid = self._mlb_player_id_from_obj(_bat_obj)
+                    _pit_pid = self._mlb_player_id_from_obj(_pit_obj)
+                    _batter_name = self._mlb_resolve_person_name(
+                        _bat_obj,
+                        _bat_pid,
+                        sit.get('batterName') or sit.get('batter_name') or ''
+                    )
+                    _pitcher_name = self._mlb_resolve_person_name(
+                        _pit_obj,
+                        _pit_pid,
+                        sit.get('pitcherName') or sit.get('pitcher_name') or ''
+                    )
                     _batter_avg = _batter_h = _batter_ab = ''
                     _pitcher_pitches = _last_pitch_speed = 0
                     _last_pitch_type = ''
@@ -3555,21 +3565,79 @@ class SportsFetcher:
         for url in urls:
             try:
                 r = self.session.get(url, headers=HEADERS, timeout=5)
-                print(f"[MLB PLAYER] pid={pid} url={url} status={r.status_code}")
                 if r.status_code == 200:
                     ath = r.json()
                     full = (ath.get('shortName') or ath.get('displayName')
                             or ath.get('fullName') or ath.get('lastName', ''))
-                    print(f"[MLB PLAYER] pid={pid} full={full!r}")
                     if '. ' in full:
                         full = full.split('. ', 1)[1]
                     name = full.upper()
                     self._mlb_player_cache[pid] = name
                     return name
-            except Exception as ex:
-                print(f"[MLB PLAYER] pid={pid} error={ex}")
+            except Exception:
+                pass
         self._mlb_player_cache[pid] = ''   # cache miss so we don't retry every tick
         return ''
+
+    def _mlb_player_id_from_obj(self, person_obj):
+        """Extract an MLB player ID from a batter/pitcher object, handling ESPN variants."""
+        if not isinstance(person_obj, dict):
+            return ''
+
+        pid = person_obj.get('playerId') or person_obj.get('id')
+        if pid:
+            return str(pid)
+
+        ath = person_obj.get('athlete')
+        if isinstance(ath, dict):
+            ath_id = ath.get('id') or ath.get('playerId')
+            if ath_id:
+                return str(ath_id)
+
+        ref = person_obj.get('$ref')
+        if isinstance(ref, str):
+            m = re.search(r'/athletes/(\d+)', ref)
+            if m:
+                return m.group(1)
+
+        return ''
+
+    def _mlb_inline_name_from_obj(self, person_obj):
+        """Read a usable display/last name directly from an ESPN person object."""
+        if not isinstance(person_obj, dict):
+            return ''
+
+        for key in ('lastName', 'displayName', 'shortName', 'fullName', 'name'):
+            val = person_obj.get(key)
+            if val:
+                name = str(val).strip()
+                if '. ' in name:
+                    name = name.split('. ', 1)[1]
+                return name.upper()
+
+        ath = person_obj.get('athlete')
+        if isinstance(ath, dict):
+            for key in ('lastName', 'displayName', 'shortName', 'fullName', 'name'):
+                val = ath.get(key)
+                if val:
+                    name = str(val).strip()
+                    if '. ' in name:
+                        name = name.split('. ', 1)[1]
+                    return name.upper()
+
+        return ''
+
+    def _mlb_resolve_person_name(self, person_obj, person_id=None, fallback_name=''):
+        """Resolve batter/pitcher name from ID first, then fallback name/object text."""
+        if person_id:
+            by_id = self._mlb_player_last_name(person_id)
+            if by_id:
+                return by_id
+
+        if fallback_name:
+            return str(fallback_name).strip().upper()
+
+        return self._mlb_inline_name_from_obj(person_obj)
 
     def fetch_pinned_game(self, pinned_str, conf, visible_start_utc, visible_end_utc):
         """
@@ -3841,11 +3909,21 @@ class SportsFetcher:
                 onThird = bool(bsit.get('onThird', False))
 
                 # ESPN summary gives bare {playerId: N} — look up names via athletes API
-                _bat_pid = (bsit.get('batter') or {}).get('playerId')
-                _pit_pid = (bsit.get('pitcher') or {}).get('playerId')
+                _bat_obj = bsit.get('batter') or {}
+                _pit_obj = bsit.get('pitcher') or {}
+                _bat_pid = self._mlb_player_id_from_obj(_bat_obj)
+                _pit_pid = self._mlb_player_id_from_obj(_pit_obj)
                 poss_raw = None   # batter team unavailable in summary; determine from inning
-                batter_name  = self._mlb_player_last_name(_bat_pid)
-                pitcher_name = self._mlb_player_last_name(_pit_pid)
+                batter_name = self._mlb_resolve_person_name(
+                    _bat_obj,
+                    _bat_pid,
+                    bsit.get('batterName') or bsit.get('batter_name') or ''
+                )
+                pitcher_name = self._mlb_resolve_person_name(
+                    _pit_obj,
+                    _pit_pid,
+                    bsit.get('pitcherName') or bsit.get('pitcher_name') or ''
+                )
 
                 # Pitch data from lastPlay
                 _lp = bsit.get('lastPlay') or {}
