@@ -2460,6 +2460,8 @@ class SportsFetcher:
         self.consecutive_empty_fetches = 0
         self._mlb_player_cache = {}   # playerId (int/str) → last name string
         self._mlb_summary_cache = {}  # gameId -> {'ts': float, 'data': dict}
+        self._mlb_gamepk_cache = {}   # espn_gid -> mlb gamePk (or None on miss)
+        self._mlb_challenge_cache = {}  # gamePk -> {'ts': float, 'home': int|None, 'away': int|None}
         # abbr-keyed index rebuilt in fetch_all_teams — O(1) team lookups
         self._teams_abbr_index: dict = {}  # league -> {abbr -> team_entry}
         # Per-mode content buffers: mode_name → list[game_obj]
@@ -3557,6 +3559,12 @@ class SportsFetcher:
                             _enriched = self._mlb_enrich_live_from_summary(gid, game_obj['situation'])
                             if _enriched:
                                 game_obj['situation'].update(_enriched)
+
+                        # Fetch manager challenge counts from MLB Stats API (cached 60s).
+                        _gamepk = self._mlb_get_gamepk(gid, h_ab, a_ab, e['date'])
+                        _h_ch, _a_ch = self._mlb_get_challenges(_gamepk)
+                        game_obj['home_challenges'] = _h_ch
+                        game_obj['away_challenges'] = _a_ch
                 
                 if is_suspended: game_obj['is_shown'] = False
                 
@@ -3568,6 +3576,77 @@ class SportsFetcher:
 
         except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games
+
+    def _mlb_get_gamepk(self, espn_gid, home_abbr, away_abbr, date_utc_str):
+        """Resolve MLB Stats API gamePk for an ESPN game, cached per espn_gid."""
+        gid = str(espn_gid)
+        if gid in self._mlb_gamepk_cache:
+            return self._mlb_gamepk_cache[gid]
+        # Build candidate dates: the UTC date and the day before (US evening games)
+        dates_to_try = []
+        try:
+            date_part = str(date_utc_str or '')[:10]
+            if date_part:
+                from datetime import date as _date, timedelta as _td
+                d = _date.fromisoformat(date_part)
+                dates_to_try = [str(d), str(d - _td(days=1))]
+        except Exception:
+            pass
+        for date_str in dates_to_try:
+            try:
+                r = self.session.get(
+                    'https://statsapi.mlb.com/api/v1/schedule',
+                    params={
+                        'sportId': '1', 'date': date_str,
+                        'fields': 'dates,games,gamePk,teams,home,away,team,abbreviation',
+                    },
+                    timeout=5,
+                )
+                if r.status_code != 200:
+                    continue
+                for date_obj in r.json().get('dates', []):
+                    for game in date_obj.get('games', []):
+                        pk = game.get('gamePk')
+                        t = game.get('teams', {})
+                        h = (t.get('home', {}).get('team', {}).get('abbreviation') or '').upper()
+                        a = (t.get('away', {}).get('team', {}).get('abbreviation') or '').upper()
+                        if h == home_abbr.upper() and a == away_abbr.upper():
+                            self._mlb_gamepk_cache[gid] = pk
+                            return pk
+            except Exception:
+                pass
+        self._mlb_gamepk_cache[gid] = None
+        return None
+
+    def _mlb_get_challenges(self, gamepk, max_age=60):
+        """Return (home_remaining, away_remaining) from MLB Stats API, cached 60s."""
+        if not gamepk:
+            return None, None
+        pk_str = str(gamepk)
+        now = time.time()
+        cached = self._mlb_challenge_cache.get(pk_str)
+        if cached and (now - cached.get('ts', 0) < max_age):
+            return cached.get('home'), cached.get('away')
+        try:
+            r = self.session.get(
+                f'https://statsapi.mlb.com/api/v1.1/game/{gamepk}/feed/live',
+                params={'fields': 'gameData,review'},
+                timeout=5,
+            )
+            if r.status_code == 200:
+                review = r.json().get('gameData', {}).get('review', {})
+                home_rem = review.get('home', {}).get('remaining')
+                away_rem = review.get('away', {}).get('remaining')
+                entry = {
+                    'ts': now,
+                    'home': int(home_rem) if home_rem is not None else None,
+                    'away': int(away_rem) if away_rem is not None else None,
+                }
+                self._mlb_challenge_cache[pk_str] = entry
+                return entry['home'], entry['away']
+        except Exception:
+            pass
+        return None, None
 
     def _mlb_player_last_name(self, player_id):
         """Return last name for an MLB player ID, using cache + ESPN athletes API."""
