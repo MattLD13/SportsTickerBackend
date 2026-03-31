@@ -3561,7 +3561,14 @@ class SportsFetcher:
                                 game_obj['situation'].update(_enriched)
 
                         # Fetch manager challenge counts from MLB Stats API (cached 60s).
-                        _gamepk = self._mlb_get_gamepk(gid, h_ab, a_ab, e['date'])
+                        _gamepk = self._mlb_get_gamepk(
+                            gid,
+                            h_ab,
+                            a_ab,
+                            e['date'],
+                            h['team'].get('id'),
+                            a['team'].get('id'),
+                        )
                         _h_rem, _h_used, _a_rem, _a_used = self._mlb_get_challenges(_gamepk)
                         game_obj['home_challenges'] = _h_rem
                         game_obj['home_challenges_used'] = _h_used
@@ -3579,11 +3586,30 @@ class SportsFetcher:
         except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games
 
-    def _mlb_get_gamepk(self, espn_gid, home_abbr, away_abbr, date_utc_str):
+    def _mlb_abbr_candidates(self, abbr):
+        """Return MLB abbreviation aliases so ESPN and Stats API values can match."""
+        val = str(abbr or '').strip().upper()
+        if not val:
+            return set()
+        aliases = {
+            'ARI': {'ARI', 'AZ'},
+            'AZ': {'AZ', 'ARI'},
+            'WSH': {'WSH', 'WAS'},
+            'WAS': {'WAS', 'WSH'},
+        }
+        return aliases.get(val, {val})
+
+    def _mlb_get_gamepk(self, espn_gid, home_abbr, away_abbr, date_utc_str, home_team_id=None, away_team_id=None):
         """Resolve MLB Stats API gamePk for an ESPN game, cached per espn_gid."""
         gid = str(espn_gid)
         if gid in self._mlb_gamepk_cache:
             return self._mlb_gamepk_cache[gid]
+
+        home_abbr_set = self._mlb_abbr_candidates(home_abbr)
+        away_abbr_set = self._mlb_abbr_candidates(away_abbr)
+        home_id = str(home_team_id) if home_team_id is not None else ''
+        away_id = str(away_team_id) if away_team_id is not None else ''
+
         # Build candidate dates: the UTC date and the day before (US evening games)
         dates_to_try = []
         try:
@@ -3607,9 +3633,18 @@ class SportsFetcher:
                     for game in date_obj.get('games', []):
                         pk = game.get('gamePk')
                         t = game.get('teams', {})
-                        h = (t.get('home', {}).get('team', {}).get('abbreviation') or '').upper()
-                        a = (t.get('away', {}).get('team', {}).get('abbreviation') or '').upper()
-                        if h == home_abbr.upper() and a == away_abbr.upper():
+                        h_team = t.get('home', {}).get('team', {})
+                        a_team = t.get('away', {}).get('team', {})
+
+                        h = (h_team.get('abbreviation') or '').upper()
+                        a = (a_team.get('abbreviation') or '').upper()
+                        h_id = str(h_team.get('id') or '')
+                        a_id = str(a_team.get('id') or '')
+
+                        id_match = bool(home_id and away_id and h_id == home_id and a_id == away_id)
+                        abbr_match = bool(h in home_abbr_set and a in away_abbr_set)
+
+                        if id_match or abbr_match:
                             self._mlb_gamepk_cache[gid] = pk
                             return pk
             except Exception:
@@ -3618,13 +3653,24 @@ class SportsFetcher:
 
     def _mlb_get_challenges(self, gamepk, max_age=60):
         """Return (home_rem, home_used, away_rem, away_used) from MLB Stats API, cached 60s."""
+        def _safe_int(v, default=0):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return default
+
         if not gamepk:
-            return None, None, None, None
+            return 0, 0, 0, 0
         pk_str = str(gamepk)
         now = time.time()
         cached = self._mlb_challenge_cache.get(pk_str)
         if cached and (now - cached.get('ts', 0) < max_age):
-            return cached.get('home_rem'), cached.get('home_used'), cached.get('away_rem'), cached.get('away_used')
+            return (
+                _safe_int(cached.get('home_rem')),
+                _safe_int(cached.get('home_used')),
+                _safe_int(cached.get('away_rem')),
+                _safe_int(cached.get('away_used')),
+            )
         try:
             r = self.session.get(
                 f'https://statsapi.mlb.com/api/v1.1/game/{gamepk}/feed/live',
@@ -3635,19 +3681,27 @@ class SportsFetcher:
                 review = r.json().get('gameData', {}).get('review', {})
                 h = review.get('home', {})
                 a = review.get('away', {})
-                def _int(v): return int(v) if v is not None else None
                 entry = {
                     'ts': now,
-                    'home_rem':  _int(h.get('remaining')),
-                    'home_used': _int(h.get('used')),
-                    'away_rem':  _int(a.get('remaining')),
-                    'away_used': _int(a.get('used')),
+                    'home_rem': _safe_int(h.get('remaining')),
+                    'home_used': _safe_int(h.get('used')),
+                    'away_rem': _safe_int(a.get('remaining')),
+                    'away_used': _safe_int(a.get('used')),
                 }
                 self._mlb_challenge_cache[pk_str] = entry
                 return entry['home_rem'], entry['home_used'], entry['away_rem'], entry['away_used']
         except Exception:
             pass
-        return None, None, None, None
+
+        # Fallback to stale cache entry when API call fails; otherwise zeros.
+        if cached:
+            return (
+                _safe_int(cached.get('home_rem')),
+                _safe_int(cached.get('home_used')),
+                _safe_int(cached.get('away_rem')),
+                _safe_int(cached.get('away_used')),
+            )
+        return 0, 0, 0, 0
 
     def _mlb_player_last_name(self, player_id):
         """Return last name for an MLB player ID, using cache + ESPN athletes API."""
@@ -4437,8 +4491,18 @@ class SportsFetcher:
             }
 
             if 'baseball' in (path or '') and gst in ('in', 'half'):
-                _gpk = self._mlb_get_gamepk(str(game_id), h_ab, a_ab, e_date)
-                _hr, _hu, _ar, _au = self._mlb_get_challenges(_gpk)
+                try:
+                    _gpk = self._mlb_get_gamepk(
+                        str(game_id),
+                        h_ab,
+                        a_ab,
+                        e_date,
+                        h.get('team', {}).get('id'),
+                        a.get('team', {}).get('id'),
+                    )
+                    _hr, _hu, _ar, _au = self._mlb_get_challenges(_gpk)
+                except Exception:
+                    _hr = _hu = _ar = _au = 0
                 game_obj['home_challenges'] = _hr
                 game_obj['home_challenges_used'] = _hu
                 game_obj['away_challenges'] = _ar
