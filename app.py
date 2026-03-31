@@ -3326,6 +3326,21 @@ class SportsFetcher:
                     try:
                         cached_dt = parse_iso(cached.get('startTimeUTC', ''))
                         if visible_start_utc <= cached_dt <= visible_end_utc:
+                            if league_key == 'mlb' and (
+                                cached.get('home_challenges') is None
+                                or cached.get('away_challenges') is None
+                                or cached.get('home_challenges_used') is None
+                                or cached.get('away_challenges_used') is None
+                            ):
+                                cached = dict(cached)
+                                self._mlb_apply_challenge_fields(
+                                    cached,
+                                    gid,
+                                    cached.get('home_abbr', ''),
+                                    cached.get('away_abbr', ''),
+                                    cached.get('startTimeUTC') or e.get('date') or '',
+                                )
+                                self.final_game_cache[gid] = cached
                             local_games.append(cached)
                             continue
                         else:
@@ -3560,20 +3575,16 @@ class SportsFetcher:
                             if _enriched:
                                 game_obj['situation'].update(_enriched)
 
-                        # Fetch manager challenge counts from MLB Stats API (cached 60s).
-                        _gamepk = self._mlb_get_gamepk(
-                            gid,
-                            h_ab,
-                            a_ab,
-                            e['date'],
-                            h['team'].get('id'),
-                            a['team'].get('id'),
-                        )
-                        _h_rem, _h_used, _a_rem, _a_used = self._mlb_get_challenges(_gamepk)
-                        game_obj['home_challenges'] = _h_rem
-                        game_obj['home_challenges_used'] = _h_used
-                        game_obj['away_challenges'] = _a_rem
-                        game_obj['away_challenges_used'] = _a_used
+                    # Always include challenge fields for MLB (live/final/pinned UI consistency).
+                    self._mlb_apply_challenge_fields(
+                        game_obj,
+                        gid,
+                        h_ab,
+                        a_ab,
+                        e['date'],
+                        h['team'].get('id'),
+                        a['team'].get('id'),
+                    )
                 
                 if is_suspended: game_obj['is_shown'] = False
                 
@@ -3743,6 +3754,26 @@ class SportsFetcher:
             a_rem, a_used = _normalize_pair(cached.get('away_rem'), cached.get('away_used'))
             return h_rem, h_used, a_rem, a_used
         return 2, 0, 2, 0
+
+    def _mlb_apply_challenge_fields(self, game_obj, game_id, home_abbr, away_abbr, date_utc_str, home_team_id=None, away_team_id=None):
+        """Attach MLB challenge fields to game object across all game states."""
+        try:
+            gamepk = self._mlb_get_gamepk(
+                game_id,
+                home_abbr,
+                away_abbr,
+                date_utc_str,
+                home_team_id,
+                away_team_id,
+            )
+            h_rem, h_used, a_rem, a_used = self._mlb_get_challenges(gamepk)
+        except Exception:
+            h_rem, h_used, a_rem, a_used = 2, 0, 2, 0
+
+        game_obj['home_challenges'] = h_rem
+        game_obj['home_challenges_used'] = h_used
+        game_obj['away_challenges'] = a_rem
+        game_obj['away_challenges_used'] = a_used
 
     def _mlb_player_last_name(self, player_id):
         """Return last name for an MLB player ID, using cache + ESPN athletes API."""
@@ -4531,23 +4562,16 @@ class SportsFetcher:
                 }
             }
 
-            if 'baseball' in (path or '') and gst in ('in', 'half'):
-                try:
-                    _gpk = self._mlb_get_gamepk(
-                        str(game_id),
-                        h_ab,
-                        a_ab,
-                        e_date,
-                        h.get('team', {}).get('id'),
-                        a.get('team', {}).get('id'),
-                    )
-                    _hr, _hu, _ar, _au = self._mlb_get_challenges(_gpk)
-                except Exception:
-                    _hr = _hu = _ar = _au = 0
-                game_obj['home_challenges'] = _hr
-                game_obj['home_challenges_used'] = _hu
-                game_obj['away_challenges'] = _ar
-                game_obj['away_challenges_used'] = _au
+            if 'baseball' in (path or ''):
+                self._mlb_apply_challenge_fields(
+                    game_obj,
+                    str(game_id),
+                    h_ab,
+                    a_ab,
+                    e_date,
+                    h.get('team', {}).get('id'),
+                    a.get('team', {}).get('id'),
+                )
 
             return [game_obj]
 
