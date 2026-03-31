@@ -3609,6 +3609,11 @@ class SportsFetcher:
         away_abbr_set = self._mlb_abbr_candidates(away_abbr)
         home_id = str(home_team_id) if home_team_id is not None else ''
         away_id = str(away_team_id) if away_team_id is not None else ''
+        target_dt = None
+        try:
+            target_dt = parse_iso(str(date_utc_str or ''))
+        except Exception:
+            target_dt = None
 
         # Build candidate dates: the UTC date and the day before (US evening games)
         dates_to_try = []
@@ -3617,14 +3622,17 @@ class SportsFetcher:
             if date_part:
                 from datetime import date as _date, timedelta as _td
                 d = _date.fromisoformat(date_part)
-                dates_to_try = [str(d), str(d - _td(days=1))]
+                dates_to_try = [str(d), str(d - _td(days=1)), str(d + _td(days=1))]
         except Exception:
             pass
+
+        candidates = []
+        candidate_index = 0
         for date_str in dates_to_try:
             try:
                 r = self.session.get(
                     'https://statsapi.mlb.com/api/v1/schedule',
-                    params={'sportId': '1', 'date': date_str},
+                    params={'sportId': '1', 'date': date_str, 'hydrate': 'team'},
                     timeout=5,
                 )
                 if r.status_code != 200:
@@ -3645,63 +3653,96 @@ class SportsFetcher:
                         abbr_match = bool(h in home_abbr_set and a in away_abbr_set)
 
                         if id_match or abbr_match:
-                            self._mlb_gamepk_cache[gid] = pk
-                            return pk
+                            game_dt = None
+                            try:
+                                game_dt = parse_iso(str(game.get('gameDate') or ''))
+                            except Exception:
+                                game_dt = None
+                            if target_dt and game_dt:
+                                score = abs((game_dt - target_dt).total_seconds())
+                            else:
+                                score = float(candidate_index)
+                            candidates.append((score, candidate_index, pk))
+                            candidate_index += 1
             except Exception:
                 pass
+
+        if candidates:
+            best_pk = sorted(candidates, key=lambda x: (x[0], x[1]))[0][2]
+            self._mlb_gamepk_cache[gid] = best_pk
+            return best_pk
         return None  # Don't cache None — retry on next poll until found
 
     def _mlb_get_challenges(self, gamepk, max_age=60):
         """Return (home_rem, home_used, away_rem, away_used) from MLB Stats API, cached 60s."""
-        def _safe_int(v, default=0):
+        def _safe_int(v):
             try:
                 return int(v)
             except (TypeError, ValueError):
-                return default
+                return None
+
+        def _normalize_pair(rem_val, used_val, default_remaining=2):
+            rem = _safe_int(rem_val)
+            used = _safe_int(used_val)
+            if rem is None and used is None:
+                return default_remaining, 0
+            if rem is None:
+                rem = max(0, default_remaining - max(0, used or 0))
+            if used is None:
+                used = max(0, default_remaining - max(0, rem or 0))
+            return max(0, rem), max(0, used)
 
         if not gamepk:
-            return 0, 0, 0, 0
+            return 2, 0, 2, 0
         pk_str = str(gamepk)
         now = time.time()
         cached = self._mlb_challenge_cache.get(pk_str)
         if cached and (now - cached.get('ts', 0) < max_age):
-            return (
-                _safe_int(cached.get('home_rem')),
-                _safe_int(cached.get('home_used')),
-                _safe_int(cached.get('away_rem')),
-                _safe_int(cached.get('away_used')),
-            )
+            h_rem, h_used = _normalize_pair(cached.get('home_rem'), cached.get('home_used'))
+            a_rem, a_used = _normalize_pair(cached.get('away_rem'), cached.get('away_used'))
+            return h_rem, h_used, a_rem, a_used
         try:
             r = self.session.get(
                 f'https://statsapi.mlb.com/api/v1.1/game/{gamepk}/feed/live',
-                params={'fields': 'gameData.review'},
                 timeout=5,
             )
             if r.status_code == 200:
-                review = r.json().get('gameData', {}).get('review', {})
-                h = review.get('home', {})
-                a = review.get('away', {})
+                game_data = r.json().get('gameData', {})
+                abs_ch = game_data.get('absChallenges', {})
+                review = game_data.get('review', {})
+
+                h_rem = h_used = a_rem = a_used = None
+
+                # Prefer ABS challenge counts when present (teams start with 2).
+                if isinstance(abs_ch, dict) and abs_ch.get('hasChallenges'):
+                    h_abs = abs_ch.get('home', {})
+                    a_abs = abs_ch.get('away', {})
+                    h_rem, h_used = _normalize_pair(h_abs.get('remaining'), h_abs.get('usedFailed'))
+                    a_rem, a_used = _normalize_pair(a_abs.get('remaining'), a_abs.get('usedFailed'))
+                else:
+                    h = review.get('home', {}) if isinstance(review, dict) else {}
+                    a = review.get('away', {}) if isinstance(review, dict) else {}
+                    h_rem, h_used = _normalize_pair(h.get('remaining'), h.get('used'))
+                    a_rem, a_used = _normalize_pair(a.get('remaining'), a.get('used'))
+
                 entry = {
                     'ts': now,
-                    'home_rem': _safe_int(h.get('remaining')),
-                    'home_used': _safe_int(h.get('used')),
-                    'away_rem': _safe_int(a.get('remaining')),
-                    'away_used': _safe_int(a.get('used')),
+                    'home_rem': h_rem,
+                    'home_used': h_used,
+                    'away_rem': a_rem,
+                    'away_used': a_used,
                 }
                 self._mlb_challenge_cache[pk_str] = entry
                 return entry['home_rem'], entry['home_used'], entry['away_rem'], entry['away_used']
         except Exception:
             pass
 
-        # Fallback to stale cache entry when API call fails; otherwise zeros.
+        # Fallback to stale cache entry when API call fails; otherwise 2 remaining, 0 used.
         if cached:
-            return (
-                _safe_int(cached.get('home_rem')),
-                _safe_int(cached.get('home_used')),
-                _safe_int(cached.get('away_rem')),
-                _safe_int(cached.get('away_used')),
-            )
-        return 0, 0, 0, 0
+            h_rem, h_used = _normalize_pair(cached.get('home_rem'), cached.get('home_used'))
+            a_rem, a_used = _normalize_pair(cached.get('away_rem'), cached.get('away_used'))
+            return h_rem, h_used, a_rem, a_used
+        return 2, 0, 2, 0
 
     def _mlb_player_last_name(self, player_id):
         """Return last name for an MLB player ID, using cache + ESPN athletes API."""
