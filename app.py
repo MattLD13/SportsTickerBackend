@@ -3598,10 +3598,7 @@ class SportsFetcher:
             try:
                 r = self.session.get(
                     'https://statsapi.mlb.com/api/v1/schedule',
-                    params={
-                        'sportId': '1', 'date': date_str,
-                        'fields': 'dates,games,gamePk,teams,home,away,team,abbreviation',
-                    },
+                    params={'sportId': '1', 'date': date_str},
                     timeout=5,
                 )
                 if r.status_code != 200:
@@ -3617,8 +3614,7 @@ class SportsFetcher:
                             return pk
             except Exception:
                 pass
-        self._mlb_gamepk_cache[gid] = None
-        return None
+        return None  # Don't cache None — retry on next poll until found
 
     def _mlb_get_challenges(self, gamepk, max_age=60):
         """Return (home_rem, home_used, away_rem, away_used) from MLB Stats API, cached 60s."""
@@ -3632,7 +3628,7 @@ class SportsFetcher:
         try:
             r = self.session.get(
                 f'https://statsapi.mlb.com/api/v1.1/game/{gamepk}/feed/live',
-                params={'fields': 'gameData,review'},
+                params={'fields': 'gameData.review'},
                 timeout=5,
             )
             if r.status_code == 200:
@@ -4439,6 +4435,14 @@ class SportsFetcher:
                     'last_pitch_type_full': last_pitch_type_full,
                 }
             }
+
+            if 'baseball' in (path or '') and gst in ('in', 'half'):
+                _gpk = self._mlb_get_gamepk(str(game_id), h_ab, a_ab, e_date)
+                _hr, _hu, _ar, _au = self._mlb_get_challenges(_gpk)
+                game_obj['home_challenges'] = _hr
+                game_obj['home_challenges_used'] = _hu
+                game_obj['away_challenges'] = _ar
+                game_obj['away_challenges_used'] = _au
 
             return [game_obj]
 
