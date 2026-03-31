@@ -3562,9 +3562,11 @@ class SportsFetcher:
 
                         # Fetch manager challenge counts from MLB Stats API (cached 60s).
                         _gamepk = self._mlb_get_gamepk(gid, h_ab, a_ab, e['date'])
-                        _h_ch, _a_ch = self._mlb_get_challenges(_gamepk)
-                        game_obj['home_challenges'] = _h_ch
-                        game_obj['away_challenges'] = _a_ch
+                        _h_rem, _h_used, _a_rem, _a_used = self._mlb_get_challenges(_gamepk)
+                        game_obj['home_challenges'] = _h_rem
+                        game_obj['home_challenges_used'] = _h_used
+                        game_obj['away_challenges'] = _a_rem
+                        game_obj['away_challenges_used'] = _a_used
                 
                 if is_suspended: game_obj['is_shown'] = False
                 
@@ -3619,14 +3621,14 @@ class SportsFetcher:
         return None
 
     def _mlb_get_challenges(self, gamepk, max_age=60):
-        """Return (home_remaining, away_remaining) from MLB Stats API, cached 60s."""
+        """Return (home_rem, home_used, away_rem, away_used) from MLB Stats API, cached 60s."""
         if not gamepk:
-            return None, None
+            return None, None, None, None
         pk_str = str(gamepk)
         now = time.time()
         cached = self._mlb_challenge_cache.get(pk_str)
         if cached and (now - cached.get('ts', 0) < max_age):
-            return cached.get('home'), cached.get('away')
+            return cached.get('home_rem'), cached.get('home_used'), cached.get('away_rem'), cached.get('away_used')
         try:
             r = self.session.get(
                 f'https://statsapi.mlb.com/api/v1.1/game/{gamepk}/feed/live',
@@ -3635,18 +3637,21 @@ class SportsFetcher:
             )
             if r.status_code == 200:
                 review = r.json().get('gameData', {}).get('review', {})
-                home_rem = review.get('home', {}).get('remaining')
-                away_rem = review.get('away', {}).get('remaining')
+                h = review.get('home', {})
+                a = review.get('away', {})
+                def _int(v): return int(v) if v is not None else None
                 entry = {
                     'ts': now,
-                    'home': int(home_rem) if home_rem is not None else None,
-                    'away': int(away_rem) if away_rem is not None else None,
+                    'home_rem':  _int(h.get('remaining')),
+                    'home_used': _int(h.get('used')),
+                    'away_rem':  _int(a.get('remaining')),
+                    'away_used': _int(a.get('used')),
                 }
                 self._mlb_challenge_cache[pk_str] = entry
-                return entry['home'], entry['away']
+                return entry['home_rem'], entry['home_used'], entry['away_rem'], entry['away_used']
         except Exception:
             pass
-        return None, None
+        return None, None, None, None
 
     def _mlb_player_last_name(self, player_id):
         """Return last name for an MLB player ID, using cache + ESPN athletes API."""
