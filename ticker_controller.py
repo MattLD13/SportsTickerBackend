@@ -549,6 +549,86 @@ class TickerStreamer:
             return tuple(int(x) for x in stat.mean[:3])
         return (60, 60, 60)
 
+    def _parse_hex_color(self, value):
+        try:
+            c = str(value or '').strip().lstrip('#')
+            if len(c) == 6:
+                return tuple(int(c[i:i+2], 16) for i in (0, 2, 4))
+        except Exception:
+            pass
+        return None
+
+    def _is_near_black(self, color, lum_threshold=24, max_threshold=42, chroma_threshold=16):
+        if not color or len(color) < 3:
+            return True
+        r, g, b = int(color[0]), int(color[1]), int(color[2])
+        lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        mx = max(r, g, b)
+        mn = min(r, g, b)
+        chroma = mx - mn
+        # Treat only truly dark/near-neutral tones as near-black.
+        return (mx <= max_threshold and lum <= lum_threshold) or (
+            mx <= (max_threshold + 6)
+            and lum <= (lum_threshold + 4)
+            and chroma <= chroma_threshold
+        )
+
+    def _is_near_white(self, color, lum_threshold=236, min_channel_threshold=226):
+        if not color or len(color) < 3:
+            return False
+        r, g, b = int(color[0]), int(color[1]), int(color[2])
+        lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return lum >= lum_threshold or min(r, g, b) >= min_channel_threshold
+
+    def _logo_nonblack_dominant_colors(self, logo, limit=2):
+        if not logo:
+            return []
+        try:
+            rgba = logo.convert('RGBA').resize((24, 24), Image.NEAREST)
+            colors = rgba.getcolors(24 * 24) or []
+            ranked = sorted(colors, key=lambda x: x[0], reverse=True)
+            picks = []
+            for _, col in ranked:
+                if len(col) == 4:
+                    r, g, b, a = col
+                    if a < 90:
+                        continue
+                else:
+                    r, g, b = col[:3]
+                rgb = (int(r), int(g), int(b))
+                if self._is_near_black(rgb):
+                    continue
+                if any(sum(abs(rgb[i] - p[i]) for i in range(3)) < 45 for p in picks):
+                    continue
+                picks.append(rgb)
+                if len(picks) >= limit:
+                    break
+            return picks
+        except Exception:
+            return []
+
+    def _resolve_challenge_strip_color(self, game, side, fallback):
+        primary = self._parse_hex_color(game.get(f'{side}_color'))
+        if primary and not self._is_near_black(primary):
+            return primary
+
+        alt = self._parse_hex_color(game.get(f'{side}_alt_color'))
+        if alt and not self._is_near_black(alt) and not self._is_near_white(alt):
+            return alt
+
+        logo = self.get_logo(game.get(f'{side}_logo'), (24, 24))
+        dom = self._logo_nonblack_dominant_colors(logo, limit=2)
+        if dom:
+            return dom[0]
+
+        if alt and not self._is_near_black(alt):
+            return alt
+        if alt:
+            return alt
+        if primary:
+            return primary
+        return fallback
+
     def draw_hockey_stick(self, draw, cx, cy, size):
         WOOD = (150, 75, 0); TAPE = (255, 255, 255)
         pattern = [[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,1,1,1,0],
@@ -1029,8 +1109,57 @@ class TickerStreamer:
                 sd.line([(x, 0),         (x, H)],         fill=(0, 0, 0, a))
                 sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
             img.alpha_composite(scrim)
-            d.rectangle([0, 0, 2, H],     fill=home_clr)
-            d.rectangle([W - 3, 0, W, H], fill=away_clr)
+            # ── Step 2: challenge indicator bars ────────────────────────────────
+            # Full-mode MLB spec:
+            # - 4px-wide full-height connected team-color strip
+            # - each lost challenge draws a 2x14 box inside that strip
+            _h_rem  = game.get('home_challenges')
+            _h_used = game.get('home_challenges_used')
+            _a_rem  = game.get('away_challenges')
+            _a_used = game.get('away_challenges_used')
+
+            home_ch_clr = self._resolve_challenge_strip_color(game, 'home', home_clr)
+            away_ch_clr = self._resolve_challenge_strip_color(game, 'away', away_clr)
+
+            def _draw_challenge_bar(bx0, bx1, rem, used, team_clr):
+                # Base: always draw a full-height connected strip.
+                d.rectangle([bx0, 0, bx1, H - 1], fill=team_clr)
+
+                def _to_int(v):
+                    try:
+                        return int(v)
+                    except Exception:
+                        return None
+
+                rem_i = _to_int(rem)
+                used_i = _to_int(used)
+                if used_i is None and rem_i is not None:
+                    used_i = max(0, 2 - max(0, rem_i))
+                if used_i is None:
+                    return
+
+                lost_count = min(2, max(0, used_i))
+                if lost_count <= 0:
+                    return
+
+                # Lost markers are fixed top/bottom slots (never centered).
+                box_w = 2
+                box_h = 14
+                box_x0 = bx0 + ((bx1 - bx0 + 1) - box_w) // 2
+                box_x1 = box_x0 + box_w - 1
+                top_y0 = 1
+                top_y1 = top_y0 + box_h - 1
+                bot_y1 = H - 2
+                bot_y0 = bot_y1 - box_h + 1
+
+                # "Open" box = carved out from the strip so it's clearly not centered/filled.
+                if lost_count >= 1:
+                    d.rectangle([box_x0, top_y0, box_x1, top_y1], fill=(0, 0, 0, 0))
+                if lost_count >= 2:
+                    d.rectangle([box_x0, bot_y0, box_x1, bot_y1], fill=(0, 0, 0, 0))
+
+            _draw_challenge_bar(0,     3,   _h_rem, _h_used, home_ch_clr)
+            _draw_challenge_bar(W - 4, W - 1, _a_rem, _a_used, away_ch_clr)
 
             # ── Step 3: logos ────────────────────────────────────────────────
             LOGO_SZ  = 24
@@ -1133,7 +1262,12 @@ class TickerStreamer:
                 if not txt:
                     return ''
                 parts = [p for p in txt.replace('.', ' ').split() if p]
-                return (parts[-1] if parts else txt).upper()[:max_chars]
+                _SUFFIXES = {'JR', 'SR', 'II', 'III', 'IV', 'V', 'VI'}
+                if len(parts) >= 2 and parts[-1].upper() in _SUFFIXES:
+                    last = f"{parts[-2]} {parts[-1]}"
+                else:
+                    last = parts[-1] if parts else txt
+                return last.upper()[:max_chars]
 
             def _trim_line(raw, max_chars=15):
                 return str(raw or '').strip()[:max_chars]
@@ -1151,8 +1285,15 @@ class TickerStreamer:
                         txt = words[-1]
                 return txt.title()[:12]
 
-            def _draw_info_block(cx, lines, y0=7):
-                y = y0
+            def _draw_info_block(cx, lines, y0=None):
+                non_empty = sum(1 for l in lines if str(l or '').strip())
+                if non_empty >= 4:
+                    start = 4 if y0 is None else y0
+                    spacing = 8
+                else:
+                    start = 7 if y0 is None else y0
+                    spacing = 9
+                y = start
                 for line in lines:
                     line_txt = _trim_line(line)
                     if line_txt:
@@ -1166,7 +1307,7 @@ class TickerStreamer:
                             (0, 0, 0, 220),
                             anchor='mm'
                         )
-                    y += 9
+                    y += spacing
 
             batter_name  = _short_last_name(sit.get('batter_name', ''))
             pitcher_name = _short_last_name(sit.get('pitcher_name', ''))
@@ -1224,8 +1365,16 @@ class TickerStreamer:
             info_left_cx  = W // 2 - info_lane_spread
             info_right_cx = W // 2 + info_lane_spread
 
-            bat_lines = [batter_name, batter_hits_ab_line, batter_avg_line]
-            pit_lines = [pitcher_name, pitch_count_line, pitch_info_line]
+            # Challenge counts (from MLB Stats API via server)
+            home_ch = game.get('home_challenges')
+            away_ch = game.get('away_challenges')
+            bat_ch  = home_ch if home_batting else (away_ch if away_batting else None)
+            pit_ch  = away_ch if home_batting else (home_ch if away_batting else None)
+            bat_ch_line = f"CH:{bat_ch}" if bat_ch is not None else ''
+            pit_ch_line = f"CH:{pit_ch}" if pit_ch is not None else ''
+
+            bat_lines = [batter_name, batter_hits_ab_line, batter_avg_line, bat_ch_line]
+            pit_lines = [pitcher_name, pitch_count_line, pitch_info_line, pit_ch_line]
 
             if home_batting and not away_batting:
                 _draw_info_block(info_left_cx, bat_lines)
