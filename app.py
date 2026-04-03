@@ -5029,16 +5029,11 @@ def sports_worker():
             time.sleep(SPORTS_UPDATE_INTERVAL)
 
 def stocks_worker():
-    _cached_active_key = None
     while True:
         try:
             if _any_ticker_needs('stocks'):
-                with data_lock:
-                    active_sports = state['active_sports']
-                active_key = frozenset(k for k, v in active_sports.items() if k.startswith('stock_') and v)
-                if active_key != _cached_active_key:
-                    _cached_active_key = active_key
-                fetcher.stocks.update_market_data(list(_cached_active_key))
+                # Fetch all sectors always so switching is instant; /data and /api/state filter by active_sports
+                fetcher.stocks.update_market_data(list(_STOCK_LISTS.keys()))
                 fetcher.update_current_games()
         except Exception as e:
             print(f"Stock worker error: {e}")
