@@ -1886,12 +1886,12 @@ class StockFetcher:
         return None
 
     def update_market_data(self, active_lists):
-        if time.time() - self.last_fetch < self.update_interval: return
+        if time.time() - self.last_fetch < self.update_interval: return False
         target_symbols = set()
         for list_key in active_lists:
             if list_key in self.lists: target_symbols.update(self.lists[list_key])
-        if not target_symbols: return
-        
+        if not target_symbols: return False
+
         updated_count = 0
         for symbol in list(target_symbols):
             res = self._fetch_single_stock(symbol)
@@ -1899,11 +1899,13 @@ class StockFetcher:
                 self.market_cache[res['symbol']] = {'price': res['price'], 'change_amt': res['change_amt'], 'change_pct': res['change_pct']}
                 updated_count += 1
             if not self.simulated:
-                time.sleep(self.safe_sleep_time) 
+                time.sleep(self.safe_sleep_time)
 
         if updated_count > 0:
             self.last_fetch = time.time()
             self.save_cache()
+            return True
+        return False
 
     def get_stock_obj(self, symbol, label):
         data = self.market_cache.get(symbol)
@@ -4763,7 +4765,7 @@ class SportsFetcher:
             active_sports = dict(state['active_sports'])
         games = []
         for item in LEAGUE_OPTIONS:
-            if item['type'] == 'stock':
+            if item['type'] == 'stock' and active_sports.get(item['id'], False):
                 games.extend(self.stocks.get_list(item['id']))
         return games
 
@@ -5029,12 +5031,19 @@ def sports_worker():
             time.sleep(SPORTS_UPDATE_INTERVAL)
 
 def stocks_worker():
+    _last_active_key = None
     while True:
         try:
             if _any_ticker_needs('stocks'):
+                with data_lock:
+                    active_sports = state['active_sports']
+                active_key = frozenset(k for k, v in active_sports.items() if k.startswith('stock_') and v)
+                if active_key != _last_active_key:
+                    _last_active_key = active_key
+                    fetcher.update_current_games()  # Immediate buffer rebuild on sector change
                 # Fetch all sectors always so switching is instant; /data and /api/state filter by active_sports
-                fetcher.stocks.update_market_data(list(_STOCK_LISTS.keys()))
-                fetcher.update_current_games()
+                if fetcher.stocks.update_market_data(list(_STOCK_LISTS.keys())):
+                    fetcher.update_current_games()  # Rebuild only when fresh data arrives
         except Exception as e:
             print(f"Stock worker error: {e}")
         time.sleep(1)
