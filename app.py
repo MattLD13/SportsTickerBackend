@@ -608,6 +608,46 @@ _STOCK_LISTS = {
     if item['type'] == 'stock' and 'stock_list' in item
 }
 
+_LEAGUE_CATEGORY_ORDER = {
+    'football': 0,
+    'basketball': 1,
+    'baseball': 2,
+    'hockey': 3,
+    'soccer': 4,
+    'other': 5,
+    'util': 6,
+    'stock': 7,
+}
+
+
+def _auto_category_for_option(item: dict) -> str:
+    t = item.get('type')
+    if t != 'sport':
+        return str(t or 'other')
+
+    league_id = str(item.get('id', ''))
+    path = str((item.get('fetch') or {}).get('path', '')).lower()
+
+    if league_id.startswith('soccer_') or path.startswith('soccer/'):
+        return 'soccer'
+    if path.startswith('football/'):
+        return 'football'
+    if path.startswith('basketball/'):
+        return 'basketball'
+    if path.startswith('baseball/'):
+        return 'baseball'
+    if path.startswith('hockey/'):
+        return 'hockey'
+    return 'other'
+
+
+def _league_sort_key(item: dict):
+    category = _auto_category_for_option(item)
+    return (
+        _LEAGUE_CATEGORY_ORDER.get(category, 99),
+        str(item.get('label', '')).lower(),
+    )
+
 # Pre-compiled regex and frozensets for hot-path checks
 _TIME_RE = re.compile(r'\d+:\d+')
 _ACTIVE_STATES = frozenset({'in', 'half', 'crit'})
@@ -633,7 +673,7 @@ def _game_sort_key(x):
 
 
 # Valid mode set — no 'all', no 'flight2', no 'flight_submode'
-VALID_MODES = {'sports', 'sports_full', 'live', 'my_teams', 'stocks', 'weather', 'music', 'clock', 'flights', 'flight_tracker', 'poop_fetcher'}
+VALID_MODES = {'sports', 'sports_full', 'soccer_full', 'live', 'my_teams', 'stocks', 'weather', 'music', 'clock', 'flights', 'flight_tracker', 'poop_fetcher'}
 
 
 def _is_poop_fetcher_mode_allowed(ticker_id):
@@ -4866,6 +4906,7 @@ class SportsFetcher:
             'sports':         self._build_sports_buffer,
             'live':           self._build_sports_buffer,
             'my_teams':       self._build_sports_buffer,
+            'soccer_full':    self._build_sports_buffer,
             'stocks':         self._build_stocks_buffer,
             'weather':        self._build_weather_buffer,
             'music':          self._build_music_buffer,
@@ -4877,7 +4918,7 @@ class SportsFetcher:
 
         sports_built = False
         for mode in needed:
-            is_sports = mode in ('sports', 'live', 'my_teams', 'sports_full')
+            is_sports = mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
 
             if is_sports and sports_built:
                 # All three sports-like modes share the same raw buffer; already built.
@@ -4889,7 +4930,7 @@ class SportsFetcher:
             if is_sports:
                 sports_built = True
                 # Store under all sports-like keys (filtering is done in /data)
-                for sm in ('sports', 'live', 'my_teams', 'sports_full'):
+                for sm in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
                     self._set_mode_buffer(sm, result)
 
                 # Maintain history buffer for live-delay
@@ -4911,7 +4952,7 @@ class SportsFetcher:
         # (for backward compat with any code that reads it directly)
         with self._mode_buffer_lock:
             global_result = self._mode_buffers.get(global_mode, [])
-        is_global_sports = global_mode in ('sports', 'live', 'my_teams', 'sports_full')
+        is_global_sports = global_mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
         with data_lock:
             if global_result or not is_global_sports or not state.get('current_games'):
                 state['current_games'] = global_result
@@ -4963,7 +5004,7 @@ class SportsFetcher:
         Sports modes with delay use the history buffer for live-delay support.
         All other modes always return current data (delay is ignored).
         """
-        if mode in ('sports', 'live', 'my_teams', 'sports_full'):
+        if mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
             return self.get_snapshot_for_delay(delay_seconds)
         with self._mode_buffer_lock:
             return list(self._mode_buffers.get(mode, []))
@@ -5050,7 +5091,7 @@ def sports_worker():
     while True:
         try:
             start_time = time.time()
-            if _any_ticker_needs('sports', 'live', 'my_teams', 'sports_full'):
+            if _any_ticker_needs('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
                 try:
                     fetcher.update_current_games()
                 except Exception as e:
@@ -6084,13 +6125,14 @@ def get_league_options():
     poop_fetcher_allowed = _is_poop_fetcher_mode_allowed(ticker_id)
 
     league_meta = []
-    for item in LEAGUE_OPTIONS:
+    for item in sorted(LEAGUE_OPTIONS, key=_league_sort_key):
         if item['id'] == 'poop_fetcher' and not poop_fetcher_allowed:
             continue
         league_meta.append({
             'id': item['id'],
             'label': item['label'],
             'type': item['type'],
+            'category': _auto_category_for_option(item),
             'enabled': state['active_sports'].get(item['id'], False)
         })
     # Add Music Option explicitly if not in list
@@ -6145,7 +6187,7 @@ def get_ticker_data():
     # Per-ticker mode: use the ticker's own mode setting, fall back to global
     current_mode = t_settings.get('mode') or state.get('mode', 'sports')
     current_mode = MODE_MIGRATIONS.get(current_mode, current_mode)
-    sports_mode_family = ('sports', 'live', 'my_teams', 'sports_full')
+    sports_mode_family = ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
     
     # --- FORCE SPORTS_FULL IF TICKER HAS A PIN ---
     t_pinned_game = str(rec.get('settings', {}).get('pinned_game', '')).strip()
@@ -6230,6 +6272,16 @@ def get_ticker_data():
         # Pinned game override — show everything without active_sports filtering
         for g in raw_games:
             sport = _sport_for_data_mode(g.get('sport', ''))
+            g_copy = g.copy()
+            g_copy['sport'] = sport
+            g_copy['is_shown'] = True
+            visible_items.append(g_copy)
+
+    elif current_mode == 'soccer_full':
+        for g in raw_games:
+            sport = _sport_for_data_mode(g.get('sport', ''))
+            if not str(sport).startswith('soccer_'):
+                continue
             g_copy = g.copy()
             g_copy['sport'] = sport
             g_copy['is_shown'] = True
@@ -6557,7 +6609,7 @@ def api_state():
     response_settings['is_pinned'] = bool(pinned_game)
 
     current_mode = MODE_MIGRATIONS.get(response_settings.get('mode', 'sports'), response_settings.get('mode', 'sports'))
-    sports_mode_family = ('sports', 'live', 'my_teams', 'sports_full')
+    sports_mode_family = ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
 
     # Legacy app behavior: reflect pin by forcing sports_full mode in /api/state.
     # This keeps pinned detection compatible with clients that key off mode.
@@ -6612,6 +6664,9 @@ def api_state():
                 status_lower = str(game_copy.get('status', '')).lower()
                 if any(k in status_lower for k in ("postponed", "suspended", "canceled", "ppd")):
                     should_show = False
+        elif current_mode == 'soccer_full':
+            if not str(sport).startswith('soccer_'):
+                should_show = False
         elif current_mode == 'music':
             if g_type != 'music':
                 should_show = False

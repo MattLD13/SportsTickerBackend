@@ -249,6 +249,17 @@ def load_monospace_font(size, bold=False):
             continue
     return ImageFont.load_default()
 
+
+def load_display_font(size, bold=False):
+    # Prefer non-monospace display fonts to avoid dotted-zero glyphs in large number rendering.
+    font_candidates = ["DejaVuSans-Bold.ttf", "DejaVuSans.ttf"] if bold else ["DejaVuSans.ttf"]
+    for font_name in font_candidates:
+        try:
+            return ImageFont.truetype(font_name, size)
+        except:
+            continue
+    return load_monospace_font(size, bold=bold)
+
 # ================= DEVICE ID =================
 def get_device_id():
     path_to_use = ID_FILE_PATH
@@ -325,8 +336,8 @@ class TickerStreamer:
         self.font = load_monospace_font(10, bold=True)
         self.medium_font = load_monospace_font(12, bold=True)
         self.big_font = load_monospace_font(14, bold=True)
-        self.huge_font = load_monospace_font(20, bold=True)
-        self.clock_giant = load_monospace_font(28, bold=True)
+        self.huge_font = load_display_font(20, bold=True)
+        self.clock_giant = load_display_font(28, bold=True)
         self.tiny = load_monospace_font(9)
         self.tiny_small = load_monospace_font(8)
         self.micro = load_monospace_font(7)
@@ -1329,16 +1340,16 @@ class TickerStreamer:
             batter_h_txt = str(batter_h or '').strip()
             batter_ab_txt = str(batter_ab or '').strip()
             if batter_h_txt and batter_ab_txt:
-                batter_hits_ab_line = f"At Bats: {batter_h_txt}/{batter_ab_txt}"
+                batter_hits_ab_line = f"{batter_h_txt}/{batter_ab_txt}"
             elif batter_h_txt:
-                batter_hits_ab_line = f"At Bats: {batter_h_txt}/-"
+                batter_hits_ab_line = f"{batter_h_txt}/-"
             elif batter_ab_txt:
-                batter_hits_ab_line = f"At Bats: -/{batter_ab_txt}"
+                batter_hits_ab_line = f"-/{batter_ab_txt}"
             else:
                 batter_hits_ab_line = ''
 
             if batter_avg_txt:
-                batter_avg_line = f"AVG:{batter_avg_txt}"
+                batter_avg_line = batter_avg_txt
             else:
                 batter_avg_line = ''
 
@@ -1368,16 +1379,8 @@ class TickerStreamer:
             info_left_cx  = W // 2 - info_lane_spread
             info_right_cx = W // 2 + info_lane_spread
 
-            # Challenge counts (from MLB Stats API via server)
-            home_ch = game.get('home_challenges')
-            away_ch = game.get('away_challenges')
-            bat_ch  = home_ch if home_batting else (away_ch if away_batting else None)
-            pit_ch  = away_ch if home_batting else (home_ch if away_batting else None)
-            bat_ch_line = f"CH:{bat_ch}" if bat_ch is not None else ''
-            pit_ch_line = f"CH:{pit_ch}" if pit_ch is not None else ''
-
-            bat_lines = [batter_name, batter_hits_ab_line, batter_avg_line, bat_ch_line]
-            pit_lines = [pitcher_name, pitch_count_line, pitch_info_line, pit_ch_line]
+            bat_lines = [batter_name, batter_hits_ab_line, batter_avg_line]
+            pit_lines = [pitcher_name, pitch_count_line, pitch_info_line]
 
             if home_batting and not away_batting:
                 _draw_info_block(info_left_cx, bat_lines)
@@ -2126,7 +2129,7 @@ class TickerStreamer:
             self.game_render_cache[game_hash] = img
             return img
 
-        if self.mode == 'sports_full' and game.get('type') not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(game.get('type','')):
+        if self.mode in ('sports_full', 'soccer_full') and game.get('type') not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(game.get('type','')):
             img = self.draw_sport_full_bleed(game)
             self.game_render_cache[game_hash] = img
             return img
@@ -2178,7 +2181,7 @@ class TickerStreamer:
     def get_item_width(self, game):
         t = game.get('type')
         s = game.get('sport', '')
-        if self.mode == 'sports_full' and t not in ['music', 'weather', 'leaderboard', 'stock_ticker'] and 'flight' not in str(t):
+        if self.mode in ('sports_full', 'soccer_full') and t not in ['music', 'weather', 'leaderboard', 'stock_ticker'] and 'flight' not in str(t):
             return PANEL_W
         if t == 'music' or s == 'music': return PANEL_W
         if t == 'stock_ticker' or (s and str(s).startswith('stock')): return 128
@@ -2499,7 +2502,7 @@ class TickerStreamer:
 
                         if g_type == 'weather' or sport.startswith('clock') or is_music or g_type == 'flight_visitor' or g_type == 'flight_airport_hud':
                             static_items.append(g)
-                        elif self.mode == 'sports_full' and g_type not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(g_type):
+                        elif self.mode in ('sports_full', 'soccer_full') and g_type not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(g_type):
                             static_items.append(g)
                         else:
                             scrolling_items.append(g)
