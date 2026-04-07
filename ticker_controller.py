@@ -16,7 +16,10 @@ import colorsys
 import unicodedata
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
-from rgbmatrix import RGBMatrix, RGBMatrixOptions
+try:
+    from rgbmatrix import RGBMatrix, RGBMatrixOptions
+except ImportError:
+    RGBMatrix = RGBMatrixOptions = None   # test / non-Pi environment
 from flask import Flask, request, render_template_string
 
 # ================= CONFIGURATION =================
@@ -2591,7 +2594,7 @@ ZONE = LOGO_SZ + LOGO_PAD  # space each side takes = 24px
 PF = {
     '0':[[1,1,1],[1,0,1],[1,0,1],[1,0,1],[1,1,1]],
     '1':[[0,1,0],[1,1,0],[0,1,0],[0,1,0],[1,1,1]],
-    '2':[[1,1,1],[0,0,1],[0,1,0],[1,0,0],[1,1,1]],
+    '2':[[1,1,1],[0,0,1],[1,1,1],[1,0,0],[1,1,1]],
     '3':[[1,1,1],[0,0,1],[0,1,1],[0,0,1],[1,1,1]],
     '4':[[1,0,1],[1,0,1],[1,1,1],[0,0,1],[0,0,1]],
     '5':[[1,1,1],[1,0,0],[1,1,1],[0,0,1],[1,1,1]],
@@ -2791,8 +2794,10 @@ def draw_shootout_dot(d, x, y, result, size=5, stride=7):
         fi(d, x + 1, y + 1, size - 2, size - 2, 10, 10, 14)
 
 def draw_so_column(d, x, y, results, vertical=True, size=5, stride=7, max_show=5):
-    """Draw a column (or row) of shootout dots."""
-    for i, r in enumerate(results[:max_show]):
+    """Draw a column (or row) of shootout dots, always showing at least 3 slots."""
+    n_show = min(max(len(results), 3), max_show)
+    for i in range(n_show):
+        r = results[i] if i < len(results) else 'pending'
         dx = x if vertical else x + i * stride
         dy = y + i * stride if vertical else y
         draw_shootout_dot(d, dx, dy, r, size=size, stride=stride)
@@ -2886,7 +2891,7 @@ def calc_card_width(g):
     is_active = state == 'in'
     is_mlb = 'baseball' in sport or 'mlb' in sport
     is_nfl = 'football' in sport or 'nfl' in sport
-    is_nhl = 'hockey' in sport or 'nhl' in sport
+    is_nhl = 'hockey'   in sport or 'nhl' in sport
     sit = g.get('situation', {}) or {}
     shootout = sit.get('shootout') or (g.get('so') if 'so' in g else None)
     is_so = bool(shootout)
@@ -2894,25 +2899,28 @@ def calc_card_width(g):
 
     a_score = str(g.get('away_score', g.get('as', 0)))
     h_score = str(g.get('home_score', g.get('hs', 0)))
-    score_str = f"{a_score}-{h_score}"
     status = str(g.get('status', ''))
 
-    score_w = pf_w(score_str, sc=2)
+    # Per-side width: each score side only takes the width it needs.
+    a_score_w = pf_w(a_score, sc=2)
+    h_score_w = pf_w(h_score, sc=2)
+    score_w = a_score_w + pf_w('-', sc=2) + h_score_w
     center = score_w
 
     if is_mlb and is_active:
-        center = max(center, pf_w(score_str, sc=2) + 2)
+        center = max(center, score_w + 2)
     else:
         center = max(center, pf_w(status))
 
     if is_nfl and is_active and dd:
         center = max(center, pf_w(dd))
 
+    # Shootout: vertical SO columns (7px each) flank the score on both sides
     if (is_nhl or sport == 'soccer') and is_so:
-        center = max(center, pf_w(score_str) + 2)
+        center = max(center, score_w + 14)
 
     total = ZONE + 4 + center + 4 + ZONE
-    return min(96, int((total + 1) // 2 * 2))
+    return min(160, int((total + 1) // 2 * 2))
 
 
 # ── Main renderer ─────────────────────────────────────────────────────────────
@@ -2986,7 +2994,6 @@ class StadiumRenderer:
         hc = g['hc']   # home colour
         a_score = str(g['as'])
         h_score = str(g['hs'])
-        score_str = f"{a_score}-{h_score}"
         status = g['status']
 
         def _side_from_value(val):
@@ -3056,14 +3063,19 @@ class StadiumRenderer:
 
         # ── Score (skipped for active MLB — drawn in MLB block) ───────────────
         if not (is_mlb and is_active):
-            sw = pf_w(score_str, sc=2)
-            score_layer = Image.new('RGBA', (sw, 10), (0, 0, 0, 0))
+            a_sw = pf_w(a_score, sc=2)
+            h_sw = pf_w(h_score, sc=2)
+            dash_sw = pf_w('-', sc=2)
+            total_sw = a_sw + dash_sw + h_sw
+            # Render using true per-side widths so only the lopsided side expands.
+            score_layer = Image.new('RGBA', (total_sw, 10), (0, 0, 0, 0))
             score_draw = ImageDraw.Draw(score_layer, 'RGBA')
-            pf_text(score_draw, score_str, 0, 0, 255, 255, 255, sc=2)
-            # Slightly larger than MLB while staying tighter than the prior 12px render.
-            score_layer = score_layer.resize((sw, 11), Image.Resampling.NEAREST)
-            score_x = int(round(center_x - (sw / 2.0)))
-            img.alpha_composite(score_layer, (score_x, 9))
+            pf_text(score_draw, a_score, 0,           0, 255, 255, 255, sc=2)
+            pf_text(score_draw, '-',     a_sw,        0, 255, 255, 255, sc=2)
+            pf_text(score_draw, h_score, a_sw + dash_sw, 0, 255, 255, 255, sc=2)
+            score_layer = score_layer.resize((total_sw, 11), Image.Resampling.NEAREST)
+            layer_x = int(round(center_x - total_sw / 2.0))
+            img.alpha_composite(score_layer, (layer_x, 9))
 
         # ══ NFL ══════════════════════════════════════════════════════════════
         if is_nfl and is_active:
@@ -3079,15 +3091,15 @@ class StadiumRenderer:
                     hdr_cx = h_logo_x + LOGO_SZ // 2 - 1
                 else:
                     hdr_cx = a_logo_x + LOGO_SZ // 2 - 1
-                if rz:
-                    pf_text(d, 'RZ', hdr_cx - pf_w('RZ') // 2, 2, 255, 80, 80)
-                    d.rectangle([0, 0, CW - 1, H - 1],
-                                outline=(255, 40, 40, 153), width=1)
-                else:
-                    draw_football(d, hdr_cx, 2)
+                draw_football(d, hdr_cx, 2)
+
+            if rz:
+                d.rectangle([0, 0, CW - 1, H - 1],
+                            outline=(255, 40, 40, 153), width=1)
 
             if dd:
-                pf_text(d, dd, cCX - pf_w(dd) // 2, 23, 0, 200, 60)
+                dd_color = (235, 70, 70) if rz else (0, 200, 60)
+                pf_text(d, dd, cCX - pf_w(dd) // 2, 23, *dd_color)
 
         # ══ NHL ══════════════════════════════════════════════════════════════
         if is_nhl and is_active and not is_so:
@@ -3111,14 +3123,15 @@ class StadiumRenderer:
             elif is_pp and (is_poss_home or is_poss_away):
                 pf_text(d, 'PP', poss_hdr_x - pf_w('PP') // 2, 2, 255, 220, 0)
 
-        # NHL shootout — vertical columns next to logos
+        # NHL shootout — vertical columns just inside the logos; card width
+        # is expanded by calc_card_width to keep them clear of the score.
         if is_nhl and is_so:
             so_a = shootout.get('away', [])
             so_h = shootout.get('home', [])
             draw_so_column(d, a_logo_x + LOGO_SZ + 2, 9, so_a,
-                           vertical=True, size=5, stride=7)
+                           vertical=True, size=5, stride=7, max_show=3)
             draw_so_column(d, h_logo_x - 7, 9, so_h,
-                           vertical=True, size=5, stride=7)
+                           vertical=True, size=5, stride=7, max_show=3)
 
         # ══ MLB ══════════════════════════════════════════════════════════════
         if is_mlb and is_active:
@@ -3168,18 +3181,24 @@ class StadiumRenderer:
             bsx += pf_text(d, '-',     bsx, 2, 160, 160, 160)
             pf_text(d,     s_glyph, bsx, 2, 255, 140,  40)       # orange
 
-            # Score
-            mlb_sw = pf_w(score_str, sc=2)
-            mlb_x = cCX - (mlb_sw // 2)
-            pf_text(d, score_str, mlb_x, 8, 255, 255, 255, sc=2)
+            # Score – true per-side widths, centered as one block.
+            a_sw   = pf_w(a_score, sc=2)
+            h_sw   = pf_w(h_score, sc=2)
+            dash_sw = pf_w('-', sc=2)
+            total_sw = a_sw + dash_sw + h_sw
+            score_x = int(round(center_x - total_sw / 2.0))
+            dash_x = score_x + a_sw
+            pf_text(d, a_score, score_x,            8, 255, 255, 255, sc=2)
+            pf_text(d, '-',     dash_x,             8, 255, 255, 255, sc=2)
+            pf_text(d, h_score, dash_x + dash_sw,   8, 255, 255, 255, sc=2)
 
-            # Base diamond centered, y=17
-            draw_base_diamond(d, cCX, 17, on1, on2, on3)
+            # Base diamond centred under the dash glyph (dash_x + 3 = visual centre)
+            draw_base_diamond(d, dash_x + 3, 19, on1, on2, on3)
 
-            # Outs — 3 red pips below diamond
-            out_y = 27
+            # Outs — 3 red pips centered under the diamond.
+            out_y = 28
             out_total_w = 3 * 5 - 1
-            ox = cCX - out_total_w // 2
+            ox = (dash_x + 3) - out_total_w // 2
             for i in range(3):
                 col = (210, 70, 70) if i < outs else (45, 45, 45)
                 fi(d, ox + i * 5, out_y, 4, 3, *col)
@@ -3188,7 +3207,7 @@ class StadiumRenderer:
         if is_soc and is_so:
             so_a = shootout.get('away', [])
             so_h = shootout.get('home', [])
-            # 3×3 dots, 4px stride → 5 dots = 8..24px, fits in 32px canvas
+            # 3x3 dots, 5px stride -> top at y=8, last box ends at y=30.
             self._draw_soccer_so_col(d, a_logo_x + LOGO_SZ + 2, 8, so_a)
             self._draw_soccer_so_col(d, h_logo_x - 5, 8, so_h)
 
@@ -3219,21 +3238,18 @@ class StadiumRenderer:
         draw_hybrid_text(d, tx + 1, ty + 1, label, (8, 8, 8, 180))
         draw_hybrid_text(d, tx, ty, label, (255, 240, 150, 255))
 
-    # ── Soccer SO column (3×3 dots, 4px stride) ───────────────────────────────
+    # ── Soccer SO column (3x3 dots, 5px stride) ───────────────────────────────
     def _draw_soccer_so_col(self, d, x, y, results):
-        for i, r in enumerate(results[:5]):
-            dy = y + i * 4
+        n_show = 5
+        for i in range(n_show):
+            r = results[i] if i < len(results) else 'pending'
+            dy = y + i * 5
             if r == 'goal':
                 fi(d, x, dy, 3, 3, 50, 200, 70)
             elif r == 'miss':
-                fi(d, x,     dy,     2, 1, 220, 55, 55)
-                fi(d, x + 1, dy + 1, 1, 1, 220, 55, 55)
-                fi(d, x,     dy + 2, 2, 1, 220, 55, 55)
-                fi(d, x + 2, dy,     1, 1, 220, 55, 55)
-                fi(d, x + 2, dy + 2, 1, 1, 220, 55, 55)
+                fi(d, x, dy, 3, 3, 220, 55, 55)
             else:
-                fi(d, x,     dy,     3, 3, 55, 55, 55)
-                fi(d, x + 1, dy + 1, 1, 1, 10, 10, 14)
+                fi(d, x, dy, 3, 3, 80, 80, 80)
 
     # ── Fallback logo (coloured block) ────────────────────────────────────────
     def _draw_fallback_logo(self, d, x, y, color):
@@ -3340,7 +3356,7 @@ def build_strip(games, logo_cache=None, repeat=1):
 if __name__ == '__main__':
     ticker = TickerStreamer()
     try:
-       ticker.render_loop()
+      ticker.render_loop()
     except KeyboardInterrupt:
-       print("Stopping...")
-       ticker.running = False
+      print("Stopping...")
+      ticker.running = False

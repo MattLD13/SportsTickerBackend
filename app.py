@@ -2987,10 +2987,21 @@ class SportsFetcher:
 
     def _fetch_fotmob_details(self, match_id, home_id=None, away_id=None):
         try:
-            url = f"https://www.fotmob.com/api/matchDetails?matchId={match_id}"
-            resp = self.session.get(url, headers=HEADERS, timeout=TIMEOUTS['slow'])
-            resp.raise_for_status()
-            payload = resp.json()
+            payload = None
+            detail_urls = [
+                f"https://www.fotmob.com/api/data/matchDetails?matchId={match_id}",
+                f"https://www.fotmob.com/api/matchDetails?matchId={match_id}",
+            ]
+            for url in detail_urls:
+                try:
+                    resp = self.session.get(url, headers=HEADERS, timeout=TIMEOUTS['slow'])
+                    resp.raise_for_status()
+                    payload = resp.json()
+                    break
+                except Exception:
+                    continue
+            if not isinstance(payload, dict):
+                return None
             
             info = payload.get("general", {})
             general_home = (info.get("homeTeam") or {}).get("id")
@@ -3018,7 +3029,8 @@ class SportsFetcher:
             if home_shootout or away_shootout:
                 return {'home': home_shootout, 'away': away_shootout}
             return None
-        except: return None
+        except Exception:
+            return None
 
     def _parse_score_str(self, score_str):
         if not score_str or "-" not in str(score_str):
@@ -3257,28 +3269,46 @@ class SportsFetcher:
 
     def _fetch_fotmob_league(self, league_id, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc):
         try:
-            url = "https://www.fotmob.com/api/leagues"
-            last_sections = []
-            
-            for l_type in ("cup", "league", None):
-                params = {"id": league_id, "tab": "matches", "timeZone": "UTC", "type": l_type, "_": int(time.time())}
-                
+            url = "https://www.fotmob.com/api/data/matches"
+            # Fetch day-by-day within the requested window because FotMob's new endpoint is date-scoped.
+            start_date = start_window.date()
+            end_date = end_window.date()
+            day = start_date
+            aggregate_sections = []
+
+            while day <= end_date:
+                params = {
+                    "date": day.strftime("%Y%m%d"),
+                    "timezone": "UTC",
+                    "ccode3": "USA",
+                }
                 try:
                     resp = self.session.get(url, params=params, headers=HEADERS, timeout=TIMEOUTS['slow'])
                     resp.raise_for_status()
                     payload = resp.json()
-                    
-                    sections = payload.get("matches", {}).get("allMatches", [])
-                    if not sections:
-                        sections = payload.get("fixtures", {}).get("allMatches", [])
-                    
-                    last_sections = sections
-                    matches = self._extract_matches(sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc)
-                    if matches: return matches
-                except: continue
-            
-            if last_sections:
-                 return self._extract_matches(last_sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc)
+                    leagues = payload.get("leagues", []) if isinstance(payload, dict) else []
+
+                    filtered_sections = []
+                    for league in leagues:
+                        if not isinstance(league, dict):
+                            continue
+                        ids = {
+                            league.get("id"),
+                            league.get("primaryId"),
+                            league.get("parentLeagueId"),
+                        }
+                        if league_id in ids:
+                            filtered_sections.append(league)
+
+                    if filtered_sections:
+                        aggregate_sections.extend(filtered_sections)
+                except Exception:
+                    pass
+
+                day += timedelta(days=1)
+
+            if aggregate_sections:
+                return self._extract_matches(aggregate_sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc)
             return []
         except Exception as e:
             print(f"FotMob League {league_id} error: {e}")
