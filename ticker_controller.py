@@ -826,6 +826,7 @@ class TickerStreamer:
         is_nfl   = 'football' in sport or 'nfl' in sport or 'ncf' in sport
         is_nhl   = 'hockey' in sport or 'nhl' in sport
         is_mlb   = 'baseball' in sport or 'mlb' in sport
+        is_soc   = 'soccer' in sport
         sit      = game.get('situation', {}) or {}
         home_clr = self.get_team_color(game, 'home')
         away_clr = self.get_team_color(game, 'away')
@@ -1074,6 +1075,66 @@ class TickerStreamer:
                 by  = H // 2
                 d.ellipse([los_px - brx, by - bry, los_px + brx, by + bry], fill=(139, 69, 19), outline=(61, 26, 6))
                 d.line([(los_px - int(brx * 0.7), by), (los_px + int(brx * 0.7), by)], fill=(255, 255, 255, 165))
+
+            return img
+
+        # ── SOCCER: full-width pitch layout ─────────────────────────────────
+        if is_soc:
+            home_pitch = self.get_team_color(game, 'home')
+            away_pitch = self.get_team_color(game, 'away')
+
+            # Pitch background with subtle stripes and center circle.
+            d.rectangle([0, 0, W, H], fill=(18, 96, 36))
+            for i in range(8):
+                x0 = int(i * W / 8)
+                x1 = int((i + 1) * W / 8)
+                shade = (22, 104, 40) if i % 2 == 0 else (18, 96, 36)
+                d.rectangle([x0, 0, x1, H], fill=shade)
+            d.rectangle([1, 1, W - 2, H - 2], outline=(245, 245, 245, 210), width=1)
+            d.line([(W // 2, 0), (W // 2, H)], fill=(245, 245, 245, 180), width=1)
+            d.ellipse([W // 2 - 13, H // 2 - 13, W // 2 + 13, H // 2 + 13], outline=(245, 245, 245, 180), width=1)
+            d.rectangle([1, 8, 10, H - 8], fill=(245, 245, 245, 28))
+            d.rectangle([W - 11, 8, W - 2, H - 8], fill=(245, 245, 245, 28))
+
+            # Fade the edges like the basketball/hockey cards so text and logos stay readable.
+            scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            sd = ImageDraw.Draw(scrim)
+            SOLID, FADE = 45, 80
+            for x in range(SOLID + FADE):
+                a = 250 if x < SOLID else max(0, int(250 * (SOLID + FADE - x) / FADE))
+                sd.line([(x, 0), (x, H)], fill=(0, 0, 0, a))
+                sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
+            img.alpha_composite(scrim)
+
+            # Team-colored side bars and score placements.
+            d.rectangle([0, 0, 3, H], fill=home_pitch)
+            d.rectangle([W - 4, 0, W, H], fill=away_pitch)
+
+            LOGO_SZ = 24
+            logo_y = (H - LOGO_SZ) // 2
+            h_logo_x = 6
+            a_logo_x = W - 3 - LOGO_SZ - 5
+            hl = self.get_logo(game.get('home_logo'), (LOGO_SZ, LOGO_SZ))
+            al = self.get_logo(game.get('away_logo'), (LOGO_SZ, LOGO_SZ))
+            if hl: img.paste(hl, (h_logo_x, logo_y), hl)
+            if al: img.paste(al, (a_logo_x, logo_y), al)
+
+            h_sc_x = h_logo_x + LOGO_SZ + 4
+            a_sc_x = a_logo_x - 4
+            self.draw_outlined_text(d, h_sc_x, H // 2, h_score,
+                                    self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='lm')
+            self.draw_outlined_text(d, a_sc_x, H // 2, a_score,
+                                    self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
+
+            status_text = str(game.get('status', '')).strip()
+            if status_text:
+                self.draw_outlined_text(d, W // 2, 7, status_text[:16], self.tiny, (255, 240, 150), (0, 0, 0, 220), anchor='ma')
+
+            if sit.get('shootout'):
+                so_a = sit.get('shootout', {}).get('away', [])
+                so_h = sit.get('shootout', {}).get('home', [])
+                self._draw_soccer_so_col(d, a_logo_x + LOGO_SZ + 2, 8, so_a)
+                self._draw_soccer_so_col(d, h_logo_x - 5, 8, so_h)
 
             return img
 
