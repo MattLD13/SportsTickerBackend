@@ -1946,22 +1946,339 @@ class TickerStreamer:
 
         return img
 
-    def draw_clock_modern(self):
-        img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
+     def draw_clock_modern(self):
+        import time
+        import threading
+        import urllib.request
+        import json
+        import random
+        
+        # 1. Initialize Masters state and assets on first run
+        if not hasattr(self, 'masters_data'):
+            self.masters_data = None
+            self.masters_last_fetch = 0
+            self.masters_current_pair = 0
+            self.masters_last_switch = time.time()
+            self.masters_fetching = False
+            
+            self.M_COLORS = {
+                'bg': (0, 103, 71, 255),
+                'gold': (200, 168, 75, 255),
+                'eagle': (250, 204, 21, 255),
+                'birdie': (34, 197, 94, 255),
+                'bogey': (239, 68, 68, 255),
+                'double': (153, 27, 27, 255),
+                'par_border': (30, 140, 90, 255),
+                'white': (255, 255, 255, 255),
+                'label_gray': (100, 160, 120, 255),
+                'black': (0, 0, 0, 255),
+                'stripe_lead': (200, 168, 75, 255),
+            }
+            
+            self.M_FONT = {
+                'A': [2, 5, 7, 5, 5], 'B': [6, 5, 7, 5, 6], 'C': [7, 4, 4, 4, 7], 'D': [6, 5, 5, 5, 6],
+                'E': [7, 4, 7, 4, 7], 'F': [7, 4, 7, 4, 4], 'G': [7, 4, 5, 5, 7], 'H': [5, 5, 7, 5, 5],
+                'I': [7, 2, 2, 2, 7], 'J': [1, 1, 1, 5, 2], 'K': [5, 6, 4, 6, 5], 'L': [4, 4, 4, 4, 7],
+                'M': [5, 7, 7, 5, 5], 'N': [5, 7, 5, 5, 5], 'O': [7, 5, 5, 5, 7], 'P': [7, 5, 7, 4, 4],
+                'Q': [7, 5, 5, 7, 1], 'R': [7, 5, 6, 5, 5], 'S': [7, 4, 7, 1, 7], 'T': [7, 2, 2, 2, 2],
+                'U': [5, 5, 5, 5, 7], 'V': [5, 5, 5, 2, 2], 'W': [5, 5, 7, 7, 5], 'X': [5, 5, 2, 5, 5],
+                'Y': [5, 5, 2, 2, 2], 'Z': [7, 1, 2, 4, 7], '0': [7, 5, 5, 5, 7], '1': [2, 6, 2, 2, 7],
+                '2': [7, 1, 7, 4, 7], '3': [7, 1, 7, 1, 7], '4': [5, 5, 7, 1, 1], '5': [7, 4, 7, 1, 7],
+                '6': [7, 4, 7, 5, 7], '7': [7, 1, 1, 1, 1], '8': [7, 5, 7, 5, 7], '9': [7, 5, 7, 1, 7],
+                '-': [0, 0, 7, 0, 0], '+': [0, 2, 7, 2, 0], '.': [0, 0, 0, 0, 2], ' ': [0, 0, 0, 0, 0]
+            }
+
+        # 2. Async Data Fetching (Every 60 seconds)
+        now = time.time()
+        if now - self.masters_last_fetch > 60 and not self.masters_fetching:
+            self.masters_fetching = True
+            def fetch_task():
+                def generate_holes(par_list, today_score, thru):
+                    played = 18 if thru == 'F' else int(thru) if str(thru).isdigit() else 0
+                    played = min(18, max(0, played))
+                    diffs = [0] * played
+                    current = 0
+                    loops = 0
+                    while current < today_score and played > 0 and loops < 1000:
+                        idx = random.randint(0, played-1)
+                        if diffs[idx] < 3:
+                            diffs[idx] += 1
+                            current += 1
+                        loops += 1
+                    loops = 0
+                    while current > today_score and played > 0 and loops < 1000:
+                        idx = random.randint(0, played-1)
+                        if diffs[idx] > (1 - par_list[idx]):
+                            diffs[idx] -= 1
+                            current -= 1
+                        loops += 1
+                    holes = []
+                    for i in range(18):
+                        if i < played: holes.append(par_list[i] + diffs[i])
+                        else: holes.append(None)
+                    return holes
+
+                def get_mock_data():
+                    pars = [4,5,4,3,4,3,4,5,4, 4,3,4,5,4,5,3,4,4]
+                    players = [
+                        {'pos': '1', 'name': 'SCHEFFLER', 'total': -18, 'today': -5, 'thru': 'F', 'holes': [3,5,3,3,5,2,4,3,3, 4,3,3,4,4,5,3,4,3]},
+                        {'pos': 'T2', 'name': 'LOWRY', 'total': -14, 'today': -4, 'thru': 'F', 'holes': [4,4,4,3,4,3,4,4,4, 4,3,4,4,3,5,4,4,3]},
+                        {'pos': 'T2', 'name': 'BURNS', 'total': -14, 'today': -5, 'thru': 16, 'holes': [4,4,4,2,3,3,5,3,4, 3,4,4,3,4,4,3,None,None]},
+                        {'pos': '4', 'name': 'MACINTYRE', 'total': -13, 'today': -3, 'thru': 'F', 'holes': [4,5,3,3,4,3,4,4,4, 4,3,4,5,4,5,3,4,3]},
+                        {'pos': 'CUT', 'name': 'WOODS', 'total': 5, 'today': 2, 'thru': 'F', 'holes': [5,5,5,4,5,3,5,5,4, 4,4,4,6,4,5,3,4,4]},
+                        {'pos': 'CUT', 'name': 'MCILROY', 'total': 3, 'today': 1, 'thru': 'F', 'holes': [4,6,4,3,4,3,5,5,4, 4,3,4,5,4,5,3,4,4]}
+                    ]
+                    return "THE MASTERS", pars, players
+
+                try:
+                    url = "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=5) as response:
+                        data = json.loads(response.read().decode())
+                        
+                    event_name = data['events'][0]['name'].upper()
+                    comp = data['events'][0]['competitions'][0]
+                    
+                    try:
+                        course = comp['course']
+                        if isinstance(course, list): course = course[0]
+                        pars = [h['par'] for h in course['holes']]
+                    except:
+                        pars = [4,5,4,3,4,3,4,5,4, 4,3,4,5,4,5,3,4,4]
+
+                    players = []
+                    for c in comp['competitors']:
+                        pos = c.get('status', {}).get('position', {}).get('displayName', '-')
+                        
+                        if pos in ['WD', 'DQ']:
+                            continue
+                        
+                        display_name = c.get('athlete', {}).get('displayName', 'Unknown')
+                        short_name = c.get('athlete', {}).get('shortName', '')
+                        if not short_name: 
+                            short_name = display_name.split()[-1]
+                            
+                        short_name = short_name.upper()
+                        if len(short_name) > 11:
+                            short_name = display_name.split()[-1].upper()
+                            
+                        name_str = short_name[:11]
+                        score_str = c.get('score', 'E')
+                        total = 0 if score_str in ['E', 'EVEN'] else int(score_str.replace('+','')) if score_str.replace('+','').replace('-','').isdigit() else 0
+
+                        today = 0
+                        for stat in c.get('statistics', []):
+                            if stat.get('name') == 'today':
+                                tv = stat.get('displayValue', '0')
+                                today = 0 if tv in ['E', 'EVEN'] else int(tv.replace('+','')) if tv.replace('+','').replace('-','').isdigit() else 0
+
+                        thru = c.get('status', {}).get('thru', 0)
+                        if c.get('status', {}).get('playActivity', {}).get('description') == 'Finished':
+                            thru = 'F'
+
+                        if thru == 0 or str(thru) == '0':
+                            valid_linescores = [ls for ls in c.get('linescores', []) if 'value' in ls]
+                            if valid_linescores:
+                                last_round_val = valid_linescores[-1]['value']
+                                today = int(last_round_val) - sum(pars)
+                                thru = 'F'
+
+                        holes = generate_holes(pars, today, thru)
+                        players.append({
+                            'pos': pos, 'name': name_str,
+                            'total': total, 'today': today, 'thru': thru,
+                            'holes': holes
+                        })
+
+                    if all(p['pos'] == '-' for p in players):
+                        players.sort(key=lambda x: x['total'])
+                        current_rank = 1
+                        for i in range(len(players)):
+                            if i > 0 and players[i]['total'] == players[i-1]['total']:
+                                players[i]['pos'] = f"T{current_rank}"
+                                if 'T' not in players[i-1]['pos']:
+                                    players[i-1]['pos'] = f"T{current_rank}"
+                            else:
+                                current_rank = i + 1
+                                players[i]['pos'] = str(current_rank)
+                        
+                    for p in players:
+                        if p['pos'] not in ['CUT', 'WD', 'DQ', '-']:
+                            nums = ''.join(filter(str.isdigit, p['pos']))
+                            if nums and int(nums) > 50:
+                                p['pos'] = 'CUT'
+
+                    final_players = []
+                    cut_count = 0
+                    for p in players:
+                        if p['pos'] == 'CUT':
+                            if cut_count < 8:
+                                final_players.append(p)
+                                cut_count += 1
+                        else:
+                            final_players.append(p)
+                    players = final_players
+
+                    if sum(abs(p['total']) for p in players) == 0:
+                        print("API returned all 0s. Falling back to Concept 7 Mock Data to show styling.")
+                        self.masters_data = get_mock_data()
+                    else:
+                        self.masters_data = (event_name, pars, players)
+                except Exception as e:
+                    print(f"Failed to load real API ({e}). Loading Concept 7 Default Data.")
+                    self.masters_data = get_mock_data()
+                finally:
+                    self.masters_last_fetch = time.time()
+                    self.masters_fetching = False
+
+            threading.Thread(target=fetch_task, daemon=True).start()
+
+        # 3. Setup Canvas
+        img = Image.new("RGBA", (PANEL_W, 32), self.M_COLORS['bg'])
         d = ImageDraw.Draw(img)
-        now = datetime.now()
-        date_str = now.strftime("%A %B %d").upper()
-        w_date = d.textlength(date_str, font=self.tiny)
-        d.text(((PANEL_W - w_date)/2, -1), date_str, font=self.tiny, fill=(200, 200, 200))
-        time_str = now.strftime("%I:%M:%S").lstrip('0')
-        w_time = d.textlength(time_str, font=self.clock_giant)
-        d.text(((PANEL_W - w_time)/2, 4), time_str, font=self.clock_giant, fill=(255, 255, 255))
-        sec_val = now.second
-        ms_val = now.microsecond
-        total_seconds = sec_val + (ms_val / 1000000.0)
-        bar_width = int((total_seconds / 60.0) * PANEL_W)
-        d.rectangle((0, 31, PANEL_W, 31), fill=(30, 30, 30))
-        d.rectangle((0, 31, bar_width, 31), fill=(0, 200, 255))
+
+        if not self.masters_data:
+            d.text((140, 10), "LOADING MASTERS...", font=self.font, fill=self.M_COLORS['gold'])
+            return img
+
+        event_name, pars, players = self.masters_data
+        pairs = [(players[i], players[i+1] if i+1 < len(players) else None) for i in range(0, len(players), 2)]
+
+        # 4. Handle Timings
+        if len(pairs) > 0:
+            p1, p2 = pairs[self.masters_current_pair % len(pairs)]
+            is_cut_pair = (p1['pos'] == 'CUT') or (p2 is not None and p2['pos'] == 'CUT')
+            current_interval = 2.0 if is_cut_pair else 4.0
+            
+            if now - self.masters_last_switch > current_interval:
+                self.masters_current_pair = (self.masters_current_pair + 1) % len(pairs)
+                self.masters_last_switch = now
+                p1, p2 = pairs[self.masters_current_pair % len(pairs)]
+        else:
+            p1, p2 = None, None
+
+        # 5. Drawing Helpers
+        BRAND_W = 30
+        POS_X = 34
+        NAME_X = 47
+        FRONT_X = 95
+        FSUB_CX = 194
+        BACK_X = 208
+        BSUB_CX = 314
+        TODAY_CX = 342
+        TOTAL_CX = 368
+
+        def draw_text(d_obj, text, x, y, color):
+            curr_x = int(x)
+            for char in str(text).upper():
+                if char in self.M_FONT:
+                    pattern = self.M_FONT[char]
+                    for r, row_val in enumerate(pattern):
+                        for c in range(3):
+                            if (row_val >> (2 - c)) & 1:
+                                d_obj.point((curr_x + c, int(y) + r), fill=color)
+                    curr_x += 4
+                else:
+                    curr_x += 4
+            return curr_x
+
+        def draw_text_centered(d_obj, text, x_center, y, color):
+            width = len(str(text)) * 4 - 1
+            start_x = x_center - width // 2
+            draw_text(d_obj, text, start_x, y, color)
+
+        def format_score(val):
+            if val == 0: return "E"
+            if val > 0: return f"+{val}"
+            return str(val)
+
+        def draw_box(d_obj, x, y, score, par):
+            if score is None:
+                d_obj.rectangle([x, y, x+6, y+6], outline=self.M_COLORS['par_border'])
+                draw_text_centered(d_obj, "-", x+3, y+1, self.M_COLORS['label_gray'])
+                return
+
+            diff = score - par
+            if diff <= -2:
+                d_obj.ellipse([x, y, x+6, y+6], fill=self.M_COLORS['eagle'])
+                draw_text_centered(d_obj, str(score), x+3, y+1, self.M_COLORS['black'])
+            elif diff == -1:
+                d_obj.ellipse([x, y, x+6, y+6], fill=self.M_COLORS['birdie'])
+                draw_text_centered(d_obj, str(score), x+3, y+1, self.M_COLORS['black'])
+            elif diff == 0:
+                d_obj.rectangle([x, y, x+6, y+6], outline=self.M_COLORS['par_border'])
+                draw_text_centered(d_obj, str(score), x+3, y+1, self.M_COLORS['white'])
+            elif diff == 1:
+                d_obj.rectangle([x, y, x+6, y+6], fill=self.M_COLORS['bogey'])
+                draw_text_centered(d_obj, str(score), x+3, y+1, self.M_COLORS['white'])
+            else:
+                d_obj.rectangle([x, y, x+6, y+6], fill=self.M_COLORS['double'])
+                draw_text_centered(d_obj, str(score), x+3, y+1, self.M_COLORS['white'])
+
+        def draw_player(d_obj, player, y_pos, pars):
+            if player['pos'] == '1':
+                d_obj.rectangle([POS_X - 4, y_pos + 1, POS_X - 3, y_pos + 5], fill=self.M_COLORS['stripe_lead'])
+
+            if player['pos'] == 'CUT': p_color = self.M_COLORS['bogey']
+            elif player['pos'] == '1': p_color = self.M_COLORS['gold']
+            else: p_color = self.M_COLORS['white']
+                
+            draw_text(d_obj, player['pos'], POS_X, y_pos+1, p_color)
+            draw_text(d_obj, player['name'], NAME_X, y_pos+1, self.M_COLORS['white'])
+
+            f_score = 0
+            for i in range(9):
+                bx = FRONT_X + i*10
+                score = player['holes'][i]
+                draw_box(d_obj, bx, y_pos, score, pars[i])
+                if score is not None: f_score += (score - pars[i])
+            draw_text_centered(d_obj, format_score(f_score), FSUB_CX, y_pos+1, self.M_COLORS['white'])
+
+            b_score = 0
+            for i in range(9):
+                bx = BACK_X + i*11
+                score = player['holes'][9+i]
+                draw_box(d_obj, bx, y_pos, score, pars[9+i])
+                if score is not None: b_score += (score - pars[9+i])
+            draw_text_centered(d_obj, format_score(b_score), BSUB_CX, y_pos+1, self.M_COLORS['white'])
+
+            draw_text_centered(d_obj, format_score(player['today']), TODAY_CX, y_pos+1, self.M_COLORS['white'])
+            
+            tot_color = self.M_COLORS['white']
+            if player['total'] < 0: tot_color = self.M_COLORS['birdie']
+            elif player['total'] > 0: tot_color = self.M_COLORS['bogey']
+                
+            draw_text_centered(d_obj, format_score(player['total']), TOTAL_CX, y_pos+1, tot_color)
+
+        # 6. Render Current State
+        d.line([(BRAND_W, 0), (BRAND_W, 31)], fill=self.M_COLORS['gold'])
+        draw_text_centered(d, "THE", BRAND_W // 2, 4, self.M_COLORS['gold'])
+        draw_text_centered(d, "MASTERS", BRAND_W // 2, 12, self.M_COLORS['gold'])
+        draw_text_centered(d, "2025", BRAND_W // 2, 20, self.M_COLORS['gold'])
+
+        if pairs and p1:
+            for i in range(1, 10):
+                draw_text_centered(d, str(i), FRONT_X + (i-1)*10 + 3, 2, self.M_COLORS['label_gray'])
+            draw_text_centered(d, "FRONT", FSUB_CX, 2, self.M_COLORS['label_gray'])
+
+            for i in range(10, 19):
+                draw_text_centered(d, str(i), BACK_X + (i-10)*11 + 3, 2, self.M_COLORS['label_gray'])
+            draw_text_centered(d, "BACK", BSUB_CX, 2, self.M_COLORS['label_gray'])
+
+            draw_text_centered(d, "TODAY", TODAY_CX, 2, self.M_COLORS['label_gray'])
+            draw_text_centered(d, "TOTAL", TOTAL_CX, 2, self.M_COLORS['label_gray'])
+
+            draw_player(d, p1, 9, pars)
+            if p2:
+                d.line([(POS_X, 19), (PANEL_W - 4, 19)], fill=self.M_COLORS['par_border'])
+                draw_player(d, p2, 22, pars)
+
+            num_dots = min(len(pairs), 10)
+            dot_start_x = PANEL_W - (num_dots * 5) - 2
+            for i in range(num_dots):
+                color = self.M_COLORS['gold'] if i == (self.masters_current_pair % num_dots) else self.M_COLORS['par_border']
+                d.rectangle([dot_start_x + i*5, 32 - 3, dot_start_x + i*5 + 1, 32 - 2], fill=color)
+
         return img
 
     def draw_music_card(self, game):
