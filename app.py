@@ -14,6 +14,7 @@ import string
 import sys
 import threading
 import time
+import traceback
 import uuid
 from html import escape
 from datetime import datetime as dt, timezone, timedelta
@@ -572,6 +573,7 @@ LEAGUE_OPTIONS = [
     {'id': 'ncf_fbs', 'label': 'NCAA (FBS)', 'type': 'sport', 'default': True, 'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs', 'label': 'NCAA (FCS)', 'type': 'sport', 'default': True, 'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
     {'id': 'march_madness', 'label': 'March Madness', 'type': 'sport', 'default': True, 'fetch': {'path': 'basketball/mens-college-basketball', 'scoreboard_params': {'groups': '100', 'limit': '100'}, 'type': 'scoreboard'}},
+    {'id': 'masters', 'label': 'The Masters', 'type': 'sport', 'default': False, 'fetch': {'path': 'golf/pga', 'type': 'leaderboard'}},
     {'id': 'soccer_epl', 'label': 'Premier League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_fa_cup','label': 'FA Cup', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
     {'id': 'soccer_champ', 'label': 'Championship', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
@@ -673,7 +675,7 @@ def _game_sort_key(x):
 
 
 # Valid mode set — no 'all', no 'flight2', no 'flight_submode'
-VALID_MODES = {'sports', 'sports_full', 'soccer_full', 'live', 'my_teams', 'stocks', 'weather', 'music', 'clock', 'flights', 'flight_tracker', 'poop_fetcher'}
+VALID_MODES = {'sports', 'sports_full', 'soccer_full', 'live', 'my_teams', 'stocks', 'weather', 'music', 'clock', 'masters', 'flights', 'flight_tracker', 'poop_fetcher'}
 
 
 def _is_poop_fetcher_mode_allowed(ticker_id):
@@ -2511,6 +2513,12 @@ class SportsFetcher:
         # Sports/live/my_teams share the same raw buffer; filtering happens in /data.
         self._mode_buffers: dict = {}
         self._mode_buffer_lock = threading.Lock()
+        # Prevent overlapping expensive refresh passes from workers/routes.
+        self._update_lock = threading.Lock()
+        self._update_pending = threading.Event()
+        # Masters API cache to avoid re-fetching every trigger burst.
+        self._masters_cache = {'ts': 0.0, 'game': None}
+        self._masters_cache_ttl = 60.0
         
         self.leagues = { 
             item['id']: item['fetch'] 
@@ -3670,6 +3678,265 @@ class SportsFetcher:
         except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games
 
+    def _masters_parse_relative_score(self, raw):
+        txt = str(raw or '').strip().upper()
+        if not txt:
+            return None
+        if txt in ('E', 'EVEN'):
+            return 0
+        try:
+            return int(float(txt))
+        except Exception:
+            return None
+
+    def _masters_format_relative_score(self, value):
+        if value is None:
+            return '--'
+        if value == 0:
+            return 'E'
+        return f"+{value}" if value > 0 else str(value)
+
+    def _masters_position_sort_key(self, raw_position):
+        txt = str(raw_position or '').strip().upper()
+        if not txt:
+            return (9999, txt)
+        if txt in ('CUT', 'WD', 'DQ'):
+            return (10000, txt)
+        cleaned = txt.replace('T', '')
+        m = re.search(r'\d+', cleaned)
+        if m:
+            try:
+                return (int(m.group(0)), txt)
+            except Exception:
+                return (9999, txt)
+        return (9999, txt)
+
+    def _masters_extract_holes(self, competitor):
+        holes = [None] * 18
+        rounds = competitor.get('linescores', []) if isinstance(competitor, dict) else []
+        if not isinstance(rounds, list):
+            rounds = []
+
+        active_round = None
+        for rd in reversed(rounds):
+            if isinstance(rd, dict) and isinstance(rd.get('linescores'), list):
+                active_round = rd
+                break
+
+        if not active_round:
+            return holes
+
+        seq_idx = 0
+        for hole in active_round.get('linescores', []):
+            if not isinstance(hole, dict):
+                continue
+
+            h_idx = None
+            h_num = hole.get('period')
+            try:
+                h_num_int = int(h_num)
+                if 1 <= h_num_int <= 18:
+                    h_idx = h_num_int - 1
+            except Exception:
+                h_idx = None
+
+            if h_idx is None:
+                if seq_idx >= 18:
+                    continue
+                h_idx = seq_idx
+                seq_idx += 1
+
+            stroke = None
+            for key in ('value', 'displayValue'):
+                raw_val = hole.get(key)
+                try:
+                    if raw_val is not None and str(raw_val).strip() != '':
+                        stroke = int(float(raw_val))
+                        break
+                except Exception:
+                    continue
+
+            if stroke is not None:
+                holes[h_idx] = stroke
+                if h_idx >= seq_idx:
+                    seq_idx = h_idx + 1
+
+        return holes
+
+    def _masters_round_label(self, comp):
+        round_num = None
+        try:
+            round_num = int(safe_get(comp, 'status', 'period', default=0) or 0)
+        except Exception:
+            round_num = None
+
+        detail = str(safe_get(comp, 'status', 'type', 'shortDetail', default='') or '')
+        if not round_num:
+            m = re.search(r'round\s*(\d+)', detail, flags=re.IGNORECASE)
+            if m:
+                try:
+                    round_num = int(m.group(1))
+                except Exception:
+                    round_num = None
+
+        if round_num and round_num > 0:
+            return f"ROUND {round_num}"
+        return 'ROUND'
+
+    def _fetch_masters_game(self, force=False):
+        now_ts = time.time()
+        cached = self._masters_cache.get('game')
+        cached_ts = float(self._masters_cache.get('ts', 0.0) or 0.0)
+        if not force and cached and (now_ts - cached_ts) < self._masters_cache_ttl:
+            return cached
+
+        try:
+            url = "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"
+            resp = self.session.get(
+                url,
+                headers=HEADERS,
+                params={'_': int(now_ts * 1000)},
+                timeout=TIMEOUTS['slow']
+            )
+            resp.raise_for_status()
+            payload = resp.json() if resp.content else {}
+            events = payload.get('events', []) if isinstance(payload, dict) else []
+            if not isinstance(events, list) or not events:
+                self._masters_cache = {'ts': now_ts, 'game': None}
+                return None
+
+            masters_event = None
+            for event in events:
+                name = str(event.get('name') or event.get('shortName') or '').lower()
+                if 'masters' in name:
+                    masters_event = event
+                    break
+
+            # Off-season: don't return a random PGA event as Masters.
+            if not masters_event:
+                self._masters_cache = {'ts': now_ts, 'game': None}
+                return None
+
+            comp = (masters_event.get('competitions') or [{}])[0] or {}
+            comps = comp.get('competitors', []) if isinstance(comp, dict) else []
+            if not isinstance(comps, list):
+                comps = []
+
+            players = []
+            for c in comps:
+                if not isinstance(c, dict):
+                    continue
+
+                status_obj = c.get('status', {}) if isinstance(c.get('status'), dict) else {}
+                pos = safe_get(status_obj, 'position', 'displayName', default='-')
+                athlete = c.get('athlete', {}) if isinstance(c.get('athlete'), dict) else {}
+                short_name = str(athlete.get('shortName') or athlete.get('displayName') or 'UNKNOWN').strip()
+                if short_name:
+                    short_name = short_name.split()[-1].upper()
+                short_name = short_name[:14]
+
+                total_val = self._masters_parse_relative_score(c.get('score'))
+                if total_val is None:
+                    total_val = self._masters_parse_relative_score(c.get('displayValue'))
+
+                today_val = None
+                stats = c.get('statistics', []) if isinstance(c.get('statistics'), list) else []
+                for stat in stats:
+                    if str(stat.get('name', '')).lower() == 'today':
+                        today_val = self._masters_parse_relative_score(stat.get('displayValue'))
+                        break
+
+                holes = self._masters_extract_holes(c)
+                players.append({
+                    'pos': str(pos or '-'),
+                    'name': short_name or 'UNKNOWN',
+                    'total': total_val,
+                    'today': today_val,
+                    'thru': status_obj.get('thru', 0),
+                    'holes': holes,
+                })
+
+            if not players:
+                self._masters_cache = {'ts': now_ts, 'game': None}
+                return None
+
+            players.sort(
+                key=lambda p: (
+                    self._masters_position_sort_key(p.get('pos')),
+                    p.get('total') if p.get('total') is not None else 9999,
+                    p.get('name', 'ZZZ')
+                )
+            )
+            leader = players[0]
+
+            event_date = str(masters_event.get('date') or comp.get('date') or '')
+            year = str(dt.now().year)
+            if len(event_date) >= 4 and event_date[:4].isdigit():
+                year = event_date[:4]
+
+            round_label = self._masters_round_label(comp)
+            state_val = str(safe_get(comp, 'status', 'type', 'state', default='pre') or 'pre').lower()
+            if state_val not in ('pre', 'in', 'half', 'post', 'final', 'crit'):
+                state_val = 'pre'
+
+            course = comp.get('course', [])
+            if isinstance(course, list):
+                course = course[0] if course else {}
+            if not isinstance(course, dict):
+                course = {}
+            holes = course.get('holes', []) if isinstance(course.get('holes'), list) else []
+            pars = []
+            for h in holes[:18]:
+                try:
+                    pars.append(int(h.get('par')))
+                except Exception:
+                    pars.append(None)
+            if len(pars) < 18:
+                pars = [4, 5, 4, 3, 4, 3, 4, 5, 4, 4, 3, 4, 5, 4, 5, 3, 4, 4]
+
+            leader_score = self._masters_format_relative_score(leader.get('total'))
+            game_obj = {
+                'type': 'masters',
+                'sport': 'masters',
+                'id': str(masters_event.get('id') or 'masters_current'),
+                'status': round_label,
+                'state': state_val,
+                'is_shown': False,
+                # App card mapping (no app changes): top row then bottom row.
+                'away_abbr': 'THE MASTERS',
+                'away_score': str(year),
+                'away_logo': '',
+                'home_abbr': str(leader.get('name') or 'LEADER'),
+                'home_score': leader_score,
+                'home_logo': '',
+                'home_color': '#0B4F2A',
+                'home_alt_color': '#FFFFFF',
+                'away_color': '#C8A84B',
+                'away_alt_color': '#0B4F2A',
+                'tourney_name': 'THE MASTERS',
+                'startTimeUTC': event_date,
+                'estimated_duration': 60,
+                'situation': {
+                    'round': round_label,
+                    'leader': str(leader.get('name') or 'LEADER'),
+                    'leader_score': leader_score,
+                },
+                # Ticker-only rich payload for masters mode rendering.
+                'masters': {
+                    'event_name': 'THE MASTERS',
+                    'year': str(year),
+                    'round': round_label,
+                    'players': players,
+                    'pars': pars,
+                }
+            }
+
+            self._masters_cache = {'ts': now_ts, 'game': game_obj}
+            return game_obj
+        except Exception as e:
+            print(f"Masters fetch error: {e}")
+            return self._masters_cache.get('game')
+
     def _mlb_abbr_candidates(self, abbr):
         """Return MLB abbreviation aliases so ESPN and Stats API values can match."""
         val = str(abbr or '').strip().upper()
@@ -4304,6 +4571,11 @@ class SportsFetcher:
 
         utc_offset = conf.get('utc_offset', -5)
 
+        # Masters pin always resolves to current Masters snapshot.
+        if league_key == 'masters':
+            masters_game = self._fetch_masters_game(force=True)
+            return [masters_game] if masters_game else []
+
         # 0. NHL Native Pinned Game (handles NHL gamecenter IDs like 2025020978)
         if league_key == 'nhl':
             try:
@@ -4753,6 +5025,9 @@ class SportsFetcher:
                     if _pn and _pn not in seen_pins:
                         seen_pins.add(_pn)
                         active_pins.append(_p)
+            masters_needed = bool(conf.get('active_sports', {}).get('masters', False))
+            if not masters_needed:
+                masters_needed = any(str(p).strip().lower().startswith('masters:') for p in active_pins)
             
         all_games = []
         utc_offset = conf.get('utc_offset', -5)
@@ -4782,7 +5057,7 @@ class SportsFetcher:
             futures[f] = 'nhl_native'
 
         for league_key, config in self.leagues.items():
-            if league_key == 'nhl' or league_key.startswith('soccer_'): continue
+            if league_key in ('nhl', 'masters') or league_key.startswith('soccer_'): continue
             f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
             futures[f] = league_key
         
@@ -4806,6 +5081,20 @@ class SportsFetcher:
 
         all_games = []
         for games in partial.values(): all_games.extend(games)
+
+        if masters_needed:
+            masters_game = self._fetch_masters_game()
+            if masters_game:
+                m_key = (str(masters_game.get('sport', '')), str(masters_game.get('id', '')))
+                replaced = False
+                for idx, existing in enumerate(all_games):
+                    e_key = (str(existing.get('sport', '')), str(existing.get('id', '')))
+                    if e_key == m_key:
+                        all_games[idx] = masters_game
+                        replaced = True
+                        break
+                if not replaced:
+                    all_games.append(masters_game)
 
         # Pinned refresh merge: poll only pinned games and merge them into the
         # normal sports feed so sports_full gets a fresh focused game while
@@ -4874,6 +5163,10 @@ class SportsFetcher:
     def _build_clock_buffer(self):
         return [{'type': 'clock', 'sport': 'clock', 'id': 'clk', 'is_shown': True}]
 
+    def _build_masters_buffer(self):
+        obj = self._fetch_masters_game(force=True)
+        return [obj] if obj else []
+
     def _build_flights_buffer(self):
         if not flight_tracker:
             return []
@@ -4892,70 +5185,83 @@ class SportsFetcher:
 
     def update_current_games(self):
         """Build and cache content buffers for every mode currently needed by any ticker."""
-        with data_lock:
-            global_mode = state.get('mode', 'sports')
-            # Collect all modes currently in use across all tickers
-            needed: set = {global_mode}
-            for t in tickers.values():
-                m = t.get('settings', {}).get('mode')
-                if m and m in VALID_MODES:
-                    needed.add(m)
-            
+        if not self._update_lock.acquire(blocking=False):
+            # A refresh is already running. Coalesce this request and run once more.
+            self._update_pending.set()
+            return
 
-        _dispatch = {
-            'sports':         self._build_sports_buffer,
-            'live':           self._build_sports_buffer,
-            'my_teams':       self._build_sports_buffer,
-            'soccer_full':    self._build_sports_buffer,
-            'stocks':         self._build_stocks_buffer,
-            'weather':        self._build_weather_buffer,
-            'music':          self._build_music_buffer,
-            'clock':          self._build_clock_buffer,
-            'flights':        self._build_flights_buffer,
-            'flight_tracker': self._build_flight_tracker_buffer,
-            'poop_fetcher':   self._build_poop_fetcher_buffer,
-        }
+        try:
+            while True:
+                # Consume any prior coalesced request before this pass; new requests
+                # that arrive during the pass will set the event again.
+                self._update_pending.clear()
 
-        sports_built = False
-        for mode in needed:
-            is_sports = mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
+                with data_lock:
+                    global_mode = state.get('mode', 'sports')
+                    # Collect all modes currently in use across all tickers.
+                    needed: set = {global_mode}
+                    for t in tickers.values():
+                        m = t.get('settings', {}).get('mode')
+                        if m and m in VALID_MODES:
+                            needed.add(m)
 
-            if is_sports and sports_built:
-                # All three sports-like modes share the same raw buffer; already built.
-                continue
+                _dispatch = {
+                    'sports':         self._build_sports_buffer,
+                    'live':           self._build_sports_buffer,
+                    'my_teams':       self._build_sports_buffer,
+                    'soccer_full':    self._build_sports_buffer,
+                    'stocks':         self._build_stocks_buffer,
+                    'weather':        self._build_weather_buffer,
+                    'music':          self._build_music_buffer,
+                    'clock':          self._build_clock_buffer,
+                    'masters':        self._build_masters_buffer,
+                    'flights':        self._build_flights_buffer,
+                    'flight_tracker': self._build_flight_tracker_buffer,
+                    'poop_fetcher':   self._build_poop_fetcher_buffer,
+                }
 
-            builder = _dispatch.get(mode, self._build_sports_buffer)
-            result = builder()
+                sports_built = False
+                for mode in needed:
+                    is_sports = mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
 
-            if is_sports:
-                sports_built = True
-                # Store under all sports-like keys (filtering is done in /data)
-                for sm in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
-                    self._set_mode_buffer(sm, result)
+                    if is_sports and sports_built:
+                        # Sports-like modes share one raw buffer; filtering happens in /data.
+                        continue
 
-                # Maintain history buffer for live-delay
-                snap = (time.time(), result[:])
-                self.history_buffer.append(snap)
-                if len(self.history_buffer) > 120:
-                    self.history_buffer = self.history_buffer[-120:]
+                    builder = _dispatch.get(mode, self._build_sports_buffer)
+                    result = builder()
 
-                # Persist non-empty sports games so they survive server restarts
-                if result:
-                    try:
-                        save_json_atomically(GAME_CACHE_FILE, result)
-                    except Exception:
-                        pass
-            else:
-                self._set_mode_buffer(mode, result)
+                    if is_sports:
+                        sports_built = True
+                        for sm in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
+                            self._set_mode_buffer(sm, result)
 
-        # Keep global state['current_games'] in sync with the global mode
-        # (for backward compat with any code that reads it directly)
-        with self._mode_buffer_lock:
-            global_result = self._mode_buffers.get(global_mode, [])
-        is_global_sports = global_mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
-        with data_lock:
-            if global_result or not is_global_sports or not state.get('current_games'):
-                state['current_games'] = global_result
+                        snap = (time.time(), result[:])
+                        self.history_buffer.append(snap)
+                        if len(self.history_buffer) > 120:
+                            self.history_buffer = self.history_buffer[-120:]
+
+                        if result:
+                            try:
+                                save_json_atomically(GAME_CACHE_FILE, result)
+                            except Exception:
+                                pass
+                    else:
+                        self._set_mode_buffer(mode, result)
+
+                # Keep global state['current_games'] in sync with the global mode.
+                with self._mode_buffer_lock:
+                    global_result = self._mode_buffers.get(global_mode, [])
+                is_global_sports = global_mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
+                with data_lock:
+                    if global_result or not is_global_sports or not state.get('current_games'):
+                        state['current_games'] = global_result
+
+                # Drain coalesced refreshes without recursive calls.
+                if not self._update_pending.is_set():
+                    break
+        finally:
+            self._update_lock.release()
 
     def get_snapshot_for_delay(self, delay_seconds):
         """Return current games, optionally from history buffer for live-delay."""
@@ -5050,6 +5356,68 @@ except Exception as e:
     flight_tracker = None
 
 # ── Section K: Worker Threads ──
+_refresh_event = threading.Event()
+_refresh_state_lock = threading.Lock()
+_refresh_requested = False
+_refresh_reason = 'startup'
+_refresh_thread_started = False
+
+
+def _threading_excepthook(args):
+    try:
+        thread_name = getattr(args.thread, 'name', 'unknown-thread')
+        print(f"[THREAD-CRASH] {thread_name}: {args.exc_type.__name__}: {args.exc_value}")
+        stack = ''.join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
+        if stack.strip():
+            print(stack.rstrip())
+    except Exception:
+        pass
+
+
+threading.excepthook = _threading_excepthook
+
+
+def refresh_worker():
+    global _refresh_requested
+    while True:
+        _refresh_event.wait()
+        while True:
+            with _refresh_state_lock:
+                if not _refresh_requested:
+                    _refresh_event.clear()
+                    break
+                _refresh_requested = False
+                reason = _refresh_reason
+
+            started = time.time()
+            try:
+                print(f"[REFRESH] start reason={reason}")
+                fetcher.update_current_games()
+                print(f"[REFRESH] done reason={reason} took={time.time() - started:.2f}s")
+            except Exception as e:
+                print(f"[REFRESH] error reason={reason}: {e}")
+
+
+def _ensure_refresh_thread_running():
+    global _refresh_thread_started
+    if _refresh_thread_started:
+        return
+    with _refresh_state_lock:
+        if _refresh_thread_started:
+            return
+        threading.Thread(target=refresh_worker, name='refresh_worker', daemon=True).start()
+        _refresh_thread_started = True
+
+
+def request_refresh(reason='manual'):
+    global _refresh_requested, _refresh_reason
+    _ensure_refresh_thread_running()
+    with _refresh_state_lock:
+        _refresh_requested = True
+        _refresh_reason = str(reason or 'manual')
+    _refresh_event.set()
+
+
 def _any_ticker_needs(*modes):
     """Return True if the global state or any paired ticker is in one of the given modes."""
     mode_set = set(modes)
@@ -5091,9 +5459,9 @@ def sports_worker():
     while True:
         try:
             start_time = time.time()
-            if _any_ticker_needs('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
+            if _any_ticker_needs('sports', 'live', 'my_teams', 'sports_full', 'soccer_full', 'masters'):
                 try:
-                    fetcher.update_current_games()
+                    request_refresh('sports_worker')
                 except Exception as e:
                     print(f"Sports Worker Error: {e}")
             execution_time = time.time() - start_time
@@ -5112,10 +5480,10 @@ def stocks_worker():
                 active_key = frozenset(k for k, v in active_sports.items() if k.startswith('stock_') and v)
                 if active_key != _last_active_key:
                     _last_active_key = active_key
-                    fetcher.update_current_games()  # Immediate buffer rebuild on sector change
+                    request_refresh('stocks_sector_change')  # Immediate buffer rebuild on sector change
                 # Fetch all sectors always so switching is instant; /data and /api/state filter by active_sports
                 if fetcher.stocks.update_market_data(list(_STOCK_LISTS.keys())):
-                    fetcher.update_current_games()  # Rebuild only when fresh data arrives
+                    request_refresh('stocks_market_update')  # Rebuild only when fresh data arrives
         except Exception as e:
             print(f"Stock worker error: {e}")
         time.sleep(1)
@@ -5125,7 +5493,7 @@ def music_worker():
         try:
             if _any_ticker_needs('music'):
                 try:
-                    fetcher.update_current_games()
+                    request_refresh('music_worker')
                 except Exception as e:
                     print(f"Music Worker Error: {e}")
         except Exception as e:
@@ -5170,7 +5538,7 @@ def flights_worker():
                     did_fetch = True
 
             if did_fetch or forced:
-                try: fetcher.update_current_games()
+                try: request_refresh('flights_worker')
                 except: pass
         except Exception as e:
             print(f"Flight worker error: {e}")
@@ -6084,8 +6452,8 @@ def api_config():
         if new_mode in ('flights', 'flight_tracker') and flight_tracker:
             flight_tracker.force_update()
 
-        # Rebuild buffer in background — sports fetches can take 30 s+, don't block the response
-        threading.Thread(target=fetcher.update_current_games, daemon=True).start()
+        # Rebuild buffer via centralized refresh queue (coalesced, non-overlapping).
+        request_refresh('api_config')
 
         if target_id:
             save_specific_ticker(target_id)
@@ -6199,7 +6567,13 @@ def get_ticker_data():
         if non_empty:
             effective_pin = non_empty[0]
 
-    if has_pinned_game and current_mode in sports_mode_family:
+    pin_league = ''
+    if effective_pin and ':' in effective_pin:
+        pin_league = effective_pin.split(':', 1)[0].strip().lower()
+
+    if has_pinned_game and pin_league == 'masters':
+        current_mode = 'masters'
+    elif has_pinned_game and current_mode in sports_mode_family:
         current_mode = 'sports_full'
     elif current_mode not in VALID_MODES:
         current_mode = state.get('mode', 'sports')
@@ -6221,6 +6595,13 @@ def get_ticker_data():
         raw_games = fetcher.get_mode_snapshot('sports_full', delay_seconds)
         pin_id = str(effective_pin).split(':', 1)[-1]
         raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
+    elif effective_pin and current_mode == 'masters':
+        raw_games = fetcher.get_mode_snapshot('masters', 0)
+        pin_id = str(effective_pin).split(':', 1)[-1]
+        raw_games = [
+            g for g in raw_games
+            if str(g.get('id', '')) == pin_id or str(g.get('sport', '')).lower() == 'masters'
+        ]
     else:
         raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
     active_sports = state.get('active_sports', {})
@@ -6260,6 +6641,8 @@ def get_ticker_data():
 
     elif current_mode == 'live':
         for g in raw_games:
+            if g.get('type') == 'masters':
+                continue
             sport = _sport_for_data_mode(g.get('sport', ''))
             if not active_sports.get(sport, True): continue
             if g.get('state') in _ACTIVE_STATES:
@@ -6271,6 +6654,8 @@ def get_ticker_data():
     elif current_mode == 'sports_full':
         # Pinned game override — show everything without active_sports filtering
         for g in raw_games:
+            if g.get('type') == 'masters':
+                continue
             sport = _sport_for_data_mode(g.get('sport', ''))
             g_copy = g.copy()
             g_copy['sport'] = sport
@@ -6291,7 +6676,7 @@ def get_ticker_data():
         for g in raw_games:
             sport = _sport_for_data_mode(g.get('sport', ''))
             if not active_sports.get(sport, True): continue
-            if g.get('type') in ['music', 'clock', 'weather', 'stock_ticker', 'flight_visitor']:
+            if g.get('type') in ['music', 'clock', 'weather', 'stock_ticker', 'flight_visitor', 'masters']:
                 continue
             status_lower = str(g.get('status', '')).lower()
             if any(k in status_lower for k in ("postponed", "suspended", "canceled", "ppd")):
@@ -6309,6 +6694,7 @@ def get_ticker_data():
             if current_mode == 'stocks' and g_type == 'stock_ticker': match = True
             elif current_mode == 'weather' and g_type == 'weather': match = True
             elif current_mode == 'clock' and g_type == 'clock': match = True
+            elif current_mode == 'masters' and (g_type == 'masters' or str(g_sport).lower() == 'masters'): match = True
             elif current_mode == 'flights' and g_sport == 'flight': match = True
             elif current_mode == 'flight_tracker' and g_type == 'flight_visitor': match = True
             elif current_mode == 'poop_fetcher' and g_type == 'poop_fetcher': match = True
@@ -6555,9 +6941,8 @@ def update_settings(tid):
             # Only update this ticker's mode setting; other tickers keep theirs
             rec['settings']['mode'] = new_mode
 
-        # Trigger immediate buffer rebuild in the background so this request
-        # returns quickly (sports refresh can take >5s).
-        threading.Thread(target=fetcher.update_current_games, daemon=True).start()
+        # Trigger immediate buffer rebuild through centralized queue.
+        request_refresh('ticker_mode_update')
 
     save_specific_ticker(tid)
     
@@ -6658,7 +7043,7 @@ def api_state():
             if game_copy.get('state') not in ('in', 'half', 'crit'):
                 should_show = False
         elif current_mode == 'sports':
-            if g_type in ('music', 'clock', 'weather', 'stock_ticker', 'flight_visitor'):
+            if g_type in ('music', 'clock', 'weather', 'stock_ticker', 'flight_visitor', 'masters'):
                 should_show = False
             else:
                 status_lower = str(game_copy.get('status', '')).lower()
@@ -6678,6 +7063,9 @@ def api_state():
                 should_show = False
         elif current_mode == 'clock':
             if g_type != 'clock':
+                should_show = False
+        elif current_mode == 'masters':
+            if g_type != 'masters':
                 should_show = False
         elif current_mode == 'flights':
             if sport != 'flight':
@@ -6847,7 +7235,7 @@ def api_pin_games():
         if ticker_id and ticker_id in tickers:
             save_specific_ticker(ticker_id)
 
-        threading.Thread(target=fetcher.update_current_games, daemon=True).start()
+        request_refresh('pin_update')
 
         return jsonify({
             "status": "ok",
@@ -7044,11 +7432,13 @@ def root(): return "Ticker Server v9 Running"
 
 if __name__ == "__main__":
     print("🚀 Starting Ticker Server...")
-    threading.Thread(target=sports_worker, daemon=True).start()
-    threading.Thread(target=stocks_worker, daemon=True).start()
-    threading.Thread(target=music_worker, daemon=True).start()
+    _ensure_refresh_thread_running()
+    request_refresh('startup')
+    threading.Thread(target=sports_worker, name='sports_worker', daemon=True).start()
+    threading.Thread(target=stocks_worker, name='stocks_worker', daemon=True).start()
+    threading.Thread(target=music_worker, name='music_worker', daemon=True).start()
     if flight_tracker:
-        threading.Thread(target=flights_worker, daemon=True).start()
+        threading.Thread(target=flights_worker, name='flights_worker', daemon=True).start()
     print("✅ Worker threads started")
     print("🌐 Starting Flask on port 5000...")
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
