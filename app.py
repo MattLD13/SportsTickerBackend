@@ -341,7 +341,7 @@ FLIGHTAWARE_API_KEY = os.getenv('FLIGHTAWARE_API_KEY', '')
 BLUEBOARD_BASE = "https://theblueboard.co"
 BLANK_LOGO_SENTINEL = "__blank_logo__"
 BLANK_LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/5/59/Empty.png"
-MASTERS_LOGO_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTV7Q5abLQUPNy-UuBkABRnDdhK5VT8XgYnjw&s"
+MASTERS_LOGO_URL = "https://upload.wikimedia.org/wikipedia/en/2/23/Masters_Logo.png"
 
 def get_city_name(iata_code):
     if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
