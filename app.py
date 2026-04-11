@@ -339,6 +339,7 @@ CACHE_TTL = {
 KNOTS_TO_MPH = 1.15078
 FLIGHTAWARE_API_KEY = os.getenv('FLIGHTAWARE_API_KEY', '')
 BLUEBOARD_BASE = "https://theblueboard.co"
+BLANK_LOGO_SENTINEL = "__blank_logo__"
 
 def get_city_name(iata_code):
     if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
@@ -1395,6 +1396,28 @@ def _apply_timezone_to_game_times(games: list, tz_name: str = '', utc_offset: fl
             g['status'] = local_dt.strftime("%I:%M %p").lstrip('0')
         except Exception:
             continue
+
+
+def _blank_logo_url_for_request(req) -> str:
+    """Build an absolute URL for the transparent placeholder logo."""
+    try:
+        return f"{req.host_url.rstrip('/')}/api/blank-logo.png"
+    except Exception:
+        return "/api/blank-logo.png"
+
+
+def _materialize_blank_logo_urls(games: list, req):
+    """Replace sentinel logo values with a real URL the app can load."""
+    if not isinstance(games, list):
+        return
+    blank_url = _blank_logo_url_for_request(req)
+    for g in games:
+        if not isinstance(g, dict):
+            continue
+        if g.get('home_logo') == BLANK_LOGO_SENTINEL:
+            g['home_logo'] = blank_url
+        if g.get('away_logo') == BLANK_LOGO_SENTINEL:
+            g['away_logo'] = blank_url
 
 
 def fetch_json(session, url, *, timeout=None, params=None, headers=None):
@@ -3905,10 +3928,11 @@ class SportsFetcher:
                 # App card mapping (no app changes): top row then bottom row.
                 'away_abbr': 'THE MASTERS',
                 'away_score': str(year),
-                'away_logo': '',
+                # Keep logo slots visually blank in the app instead of fallback text.
+                'away_logo': BLANK_LOGO_SENTINEL,
                 'home_abbr': str(leader.get('name') or 'LEADER'),
                 'home_score': leader_score,
-                'home_logo': '',
+                'home_logo': BLANK_LOGO_SENTINEL,
                 'home_color': '#0B4F2A',
                 'home_alt_color': '#FFFFFF',
                 'away_color': '#C8A84B',
@@ -3936,6 +3960,43 @@ class SportsFetcher:
         except Exception as e:
             print(f"Masters fetch error: {e}")
             return self._masters_cache.get('game')
+
+    def _masters_placeholder_game(self):
+        """Fallback object so masters mode never degrades to clock when pinned."""
+        year = str(dt.now().year)
+        return {
+            'type': 'masters',
+            'sport': 'masters',
+            'id': 'masters_placeholder',
+            'status': 'ROUND',
+            'state': 'pre',
+            'is_shown': False,
+            'away_abbr': 'THE MASTERS',
+            'away_score': year,
+            'away_logo': BLANK_LOGO_SENTINEL,
+            'home_abbr': 'LEADER',
+            'home_score': '--',
+            'home_logo': BLANK_LOGO_SENTINEL,
+            'home_color': '#0B4F2A',
+            'home_alt_color': '#FFFFFF',
+            'away_color': '#C8A84B',
+            'away_alt_color': '#0B4F2A',
+            'tourney_name': 'THE MASTERS',
+            'startTimeUTC': '',
+            'estimated_duration': 60,
+            'situation': {
+                'round': 'ROUND',
+                'leader': 'LEADER',
+                'leader_score': '--',
+            },
+            'masters': {
+                'event_name': 'THE MASTERS',
+                'year': year,
+                'round': 'ROUND',
+                'players': [],
+                'pars': [4, 5, 4, 3, 4, 3, 4, 5, 4, 4, 3, 4, 5, 4, 5, 3, 4, 4],
+            }
+        }
 
     def _mlb_abbr_candidates(self, abbr):
         """Return MLB abbreviation aliases so ESPN and Stats API values can match."""
@@ -5165,7 +5226,9 @@ class SportsFetcher:
 
     def _build_masters_buffer(self):
         obj = self._fetch_masters_game(force=True)
-        return [obj] if obj else []
+        if obj:
+            return [obj]
+        return [self._masters_placeholder_game()]
 
     def _build_flights_buffer(self):
         if not flight_tracker:
@@ -6568,8 +6631,16 @@ def get_ticker_data():
             effective_pin = non_empty[0]
 
     pin_league = ''
-    if effective_pin and ':' in effective_pin:
-        pin_league = effective_pin.split(':', 1)[0].strip().lower()
+    pin_game_id = ''
+    if effective_pin:
+        pin_norm = str(effective_pin).strip().lower()
+        if ':' in pin_norm:
+            pin_league, pin_game_id = pin_norm.split(':', 1)
+        else:
+            pin_game_id = pin_norm
+            # Backward compatibility for legacy unsuffixed masters pins.
+            if pin_norm.startswith('masters'):
+                pin_league = 'masters'
 
     if has_pinned_game and pin_league == 'masters':
         current_mode = 'masters'
@@ -6597,10 +6668,10 @@ def get_ticker_data():
         raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
     elif effective_pin and current_mode == 'masters':
         raw_games = fetcher.get_mode_snapshot('masters', 0)
-        pin_id = str(effective_pin).split(':', 1)[-1]
+        pin_id = (pin_game_id or str(effective_pin).split(':', 1)[-1]).strip().lower()
         raw_games = [
             g for g in raw_games
-            if str(g.get('id', '')) == pin_id or str(g.get('sport', '')).lower() == 'masters'
+            if str(g.get('id', '')).strip().lower() == pin_id or str(g.get('sport', '')).lower() == 'masters'
         ]
     else:
         raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
@@ -6702,6 +6773,8 @@ def get_ticker_data():
             if match:
                 g['is_shown'] = True
                 visible_items.append(g)
+
+    _materialize_blank_logo_urls(visible_items, request)
 
     tz_name, tz_offset = _get_ticker_timezone_context(rec)
     _apply_timezone_to_game_times(visible_items, tz_name=tz_name, utc_offset=tz_offset)
@@ -7082,6 +7155,7 @@ def api_state():
 
     tz_name = str(response_settings.get('timezone_name', '')).strip()
     tz_offset = response_settings.get('utc_offset', state.get('utc_offset', -5))
+    _materialize_blank_logo_urls(processed_games, request)
     _apply_timezone_to_game_times(processed_games, tz_name=tz_name, utc_offset=tz_offset)
 
     return jsonify({
@@ -7092,6 +7166,20 @@ def api_state():
         "pinned_game": pinned_game,
         "pinned_games": pinned_games
     })
+
+
+@app.route('/api/blank-logo.png', methods=['GET'])
+def api_blank_logo():
+    # 1x1 transparent PNG (keeps logo slot blank with no fallback text).
+    png = (
+        b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+        b'\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04\x00\x01'
+        b'\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+    )
+    resp = make_response(png)
+    resp.headers['Content-Type'] = 'image/png'
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
 
 
 @app.route('/api/timezone', methods=['GET'])
