@@ -341,6 +341,7 @@ FLIGHTAWARE_API_KEY = os.getenv('FLIGHTAWARE_API_KEY', '')
 BLUEBOARD_BASE = "https://theblueboard.co"
 BLANK_LOGO_SENTINEL = "__blank_logo__"
 BLANK_LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/5/59/Empty.png"
+MASTERS_LOGO_URL = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTV7Q5abLQUPNy-UuBkABRnDdhK5VT8XgYnjw&s"
 
 def get_city_name(iata_code):
     if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
@@ -3926,10 +3927,11 @@ class SportsFetcher:
                 # App card mapping (no app changes): top row then bottom row.
                 'away_abbr': 'THE MASTERS',
                 'away_score': str(year),
-                # Keep logo slots visually blank in the app instead of fallback text.
-                'away_logo': BLANK_LOGO_SENTINEL,
+                # Use tournament logo for Masters row only.
+                'away_logo': MASTERS_LOGO_URL,
                 'home_abbr': str(leader.get('name') or 'LEADER'),
                 'home_score': leader_score,
+                # Keep player logo slot blank.
                 'home_logo': BLANK_LOGO_SENTINEL,
                 'home_color': '#0B4F2A',
                 'home_alt_color': '#FFFFFF',
@@ -3971,9 +3973,10 @@ class SportsFetcher:
             'is_shown': False,
             'away_abbr': 'THE MASTERS',
             'away_score': year,
-            'away_logo': BLANK_LOGO_SENTINEL,
+            'away_logo': MASTERS_LOGO_URL,
             'home_abbr': 'LEADER',
             'home_score': '--',
+            # Keep player logo slot blank.
             'home_logo': BLANK_LOGO_SENTINEL,
             'home_color': '#0B4F2A',
             'home_alt_color': '#FFFFFF',
