@@ -6681,7 +6681,9 @@ def get_ticker_data():
             if pin_norm.startswith('masters'):
                 pin_league = 'masters'
 
-    if has_pinned_game and pin_league == 'masters':
+    # Pin overrides should only remap sports-family modes. Non-sports modes
+    # (clock/weather/music/flights/etc.) must remain user-selectable.
+    if has_pinned_game and pin_league == 'masters' and current_mode in sports_mode_family:
         current_mode = 'masters'
     elif has_pinned_game and current_mode in sports_mode_family:
         current_mode = 'sports_full'
