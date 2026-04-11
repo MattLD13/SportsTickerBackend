@@ -340,6 +340,7 @@ KNOTS_TO_MPH = 1.15078
 FLIGHTAWARE_API_KEY = os.getenv('FLIGHTAWARE_API_KEY', '')
 BLUEBOARD_BASE = "https://theblueboard.co"
 BLANK_LOGO_SENTINEL = "__blank_logo__"
+BLANK_LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/5/59/Empty.png"
 
 def get_city_name(iata_code):
     if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
@@ -1399,11 +1400,8 @@ def _apply_timezone_to_game_times(games: list, tz_name: str = '', utc_offset: fl
 
 
 def _blank_logo_url_for_request(req) -> str:
-    """Build an absolute URL for the transparent placeholder logo."""
-    try:
-        return f"{req.host_url.rstrip('/')}/api/blank-logo.png"
-    except Exception:
-        return "/api/blank-logo.png"
+    """Return the configured transparent placeholder logo URL."""
+    return BLANK_LOGO_URL
 
 
 def _materialize_blank_logo_urls(games: list, req):
@@ -5268,6 +5266,25 @@ class SportsFetcher:
                         if m and m in VALID_MODES:
                             needed.add(m)
 
+                        # If any ticker has a masters pin, ensure masters buffer is built
+                        # even when that ticker is currently in another mode (e.g. clock).
+                        t_settings = t.get('settings', {})
+                        t_single_pin, t_pin_list = _normalize_single_pin(
+                            pinned_game=t_settings.get('pinned_game'),
+                            pinned_games=t_settings.get('pinned_games', []),
+                        )
+                        for _pin in t_pin_list:
+                            pin_norm = str(_pin).strip().lower()
+                            if not pin_norm:
+                                continue
+                            if ':' in pin_norm:
+                                pin_league = pin_norm.split(':', 1)[0]
+                            else:
+                                pin_league = 'masters' if pin_norm.startswith('masters') else ''
+                            if pin_league == 'masters':
+                                needed.add('masters')
+                                break
+
                 _dispatch = {
                     'sports':         self._build_sports_buffer,
                     'live':           self._build_sports_buffer,
@@ -5494,6 +5511,25 @@ def _any_ticker_needs(*modes):
                 t_pins = s.get('pinned_games', [])
                 if isinstance(t_pins, list) and any(str(p).strip() for p in t_pins):
                     return True
+
+        # Masters pin should keep masters refreshes alive even if ticker mode
+        # is currently something else (e.g. clock).
+        if 'masters' in mode_set:
+            for t in tickers.values():
+                s = t.get('settings', {})
+                t_single_pin, t_pin_list = _normalize_single_pin(
+                    pinned_game=s.get('pinned_game'),
+                    pinned_games=s.get('pinned_games', []),
+                )
+                for _pin in t_pin_list:
+                    pin_norm = str(_pin).strip().lower()
+                    if not pin_norm:
+                        continue
+                    if ':' in pin_norm:
+                        if pin_norm.split(':', 1)[0] == 'masters':
+                            return True
+                    elif pin_norm.startswith('masters'):
+                        return True
 
         if state.get('mode') in mode_set:
             return True
