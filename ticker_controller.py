@@ -260,6 +260,22 @@ def load_display_font(size, bold=False):
             continue
     return load_monospace_font(size, bold=bold)
 
+
+class NullMatrix:
+    """No-op RGB matrix fallback so the app can run off-device (e.g., Windows dev)."""
+
+    def __init__(self, width=PANEL_W, height=PANEL_H):
+        self.width = width
+        self.height = height
+        self.brightness = 100
+        self._last_image = None
+
+    def SetImage(self, img):
+        self._last_image = img
+
+    def Fill(self, r, g, b):
+        self._last_image = Image.new("RGB", (self.width, self.height), (int(r), int(g), int(b)))
+
 # ================= DEVICE ID =================
 def get_device_id():
     path_to_use = ID_FILE_PATH
@@ -319,16 +335,20 @@ class TickerStreamer:
         self.mode_override = None
         self.running = True
 
-        options = RGBMatrixOptions()
-        options.rows = 32
-        options.cols = 64
-        options.chain_length = 6
-        options.parallel = 1
-        options.hardware_mapping = 'regular'
-        options.gpio_slowdown = 2
-        options.disable_hardware_pulsing = True
-        options.drop_privileges = False
-        self.matrix = RGBMatrix(options=options)
+        if RGBMatrix is not None and RGBMatrixOptions is not None:
+            options = RGBMatrixOptions()
+            options.rows = 32
+            options.cols = 64
+            options.chain_length = 6
+            options.parallel = 1
+            options.hardware_mapping = 'regular'
+            options.gpio_slowdown = 2
+            options.disable_hardware_pulsing = True
+            options.drop_privileges = False
+            self.matrix = RGBMatrix(options=options)
+        else:
+            print("  rgbmatrix not available; using NullMatrix fallback.")
+            self.matrix = NullMatrix()
 
         self.logo_cache = {}
         self.stadium = StadiumRenderer(logo_cache=self.logo_cache)
@@ -673,6 +693,18 @@ class TickerStreamer:
             elif res == 'miss': draw.point((x_off, y), fill=(255,0,0)); draw.point((x_off+1, y+1), fill=(255,0,0))
             elif res == 'goal': draw.rectangle((x_off, y, x_off+1, y+1), fill=(0,255,0))
             x_off += 4
+
+    def _draw_soccer_so_col(self, draw, x, y, results):
+        n_show = 5
+        for i in range(n_show):
+            res = results[i] if i < len(results) else 'pending'
+            dy = y + i * 5
+            if res == 'goal':
+                draw.rectangle((x, dy, x+2, dy+2), fill=(50, 200, 70))
+            elif res == 'miss':
+                draw.rectangle((x, dy, x+2, dy+2), fill=(220, 55, 55))
+            else:
+                draw.rectangle((x, dy, x+2, dy+2), fill=(80, 80, 80))
 
     def draw_baseball_hud(self, draw, x, y, o):
         for i in range(3): draw.rectangle((x+(i*4), y, x+(i*4)+1, y+1), fill=((255, 0, 0) if i < o else (40, 40, 40)))
@@ -1946,7 +1978,7 @@ class TickerStreamer:
 
         return img
 
-     def draw_clock_modern(self):
+    def draw_clock_modern(self):
         import time
         import threading
         import urllib.request
@@ -1968,9 +2000,9 @@ class TickerStreamer:
                 'birdie': (34, 197, 94, 255),
                 'bogey': (239, 68, 68, 255),
                 'double': (153, 27, 27, 255),
-                'par_border': (30, 140, 90, 255),
+                    'par_border': (245, 220, 130, 255),
                 'white': (255, 255, 255, 255),
-                'label_gray': (100, 160, 120, 255),
+                    'label_gray': (235, 245, 225, 255),
                 'black': (0, 0, 0, 255),
                 'stripe_lead': (200, 168, 75, 255),
             }
