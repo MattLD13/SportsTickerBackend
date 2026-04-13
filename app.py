@@ -1186,7 +1186,6 @@ def _lookup_timezone_for_ip(ip_addr: str) -> tuple[str | None, float | None]:
                 'offset': offset_hours,
                 'ts': now_ts,
             }
-    _prune_dict_cache(_IP_TZ_CACHE, max_size=200)
             return tz_name, offset_hours
     except Exception as e:
         print(f"[TZ] ip-api lookup failed for {ip_addr}: {e}")
@@ -1222,7 +1221,6 @@ def _lookup_timezone_for_current_connection() -> tuple[str | None, float | None,
                 'timezone': tz_name,
                 'offset': offset_hours,
                 'query': query_ip,
-    _prune_dict_cache(_IP_TZ_CACHE, max_size=200)
                 'ts': now_ts,
             }
             return tz_name, offset_hours, query_ip
@@ -1265,7 +1263,6 @@ def _lookup_timezone_for_latlon(lat: float, lon: float) -> tuple[str | None, flo
 
         off = _utc_offset_hours_for_timezone(tz_name)
         _IP_TZ_CACHE[cache_key] = {
-    _prune_dict_cache(_IP_TZ_CACHE, max_size=200)
             'timezone': tz_name,
             'offset': off,
             'ts': now_ts,
