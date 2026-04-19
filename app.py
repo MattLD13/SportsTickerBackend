@@ -4302,7 +4302,7 @@ class SportsFetcher:
         if any(word in lower for word in ('postponed', 'canceled', 'cancelled', 'suspended', 'ppd')):
             return text
         if 'delay' in lower or 'rain' in lower or 'weather' in lower:
-            return 'rain delay'
+            return 'Rain Delay'
         return text
 
     def _mlb_normalize_pitch_type(self, pitch_type):
