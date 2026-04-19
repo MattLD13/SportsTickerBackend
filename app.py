@@ -212,8 +212,6 @@ class Tee(object):
         self.stdout = self
         self.stderr = self
 
-    _write_count: int = 0  # class-level counter for periodic log size check
-
     def write(self, data):
         # Suppress [DEBUG] console spam unless debug_mode is on.
         # Always write to the log file so post-mortem analysis still works.
@@ -228,19 +226,6 @@ class Tee(object):
             self.original_stdout.write(data)
             self.original_stdout.flush()
 
-            # Periodic log size check — every ~5000 writes, truncate if too large
-            Tee._write_count += 1
-            if Tee._write_count % 5000 == 0:
-                try:
-                    pos = self.file.tell()
-                    if pos > 10 * 1024 * 1024:  # 10 MB
-                        self.file.close()
-                        with open(self.file.name, 'w') as f:
-                            f.write(f"--- Log Truncated (runtime) ---\n")
-                        self.file = open(self.file.name, 'a', buffering=1, encoding='utf-8')
-                except Exception:
-                    pass
-
     def flush(self):
         with self._lock:
             self.file.flush()
@@ -248,15 +233,7 @@ class Tee(object):
 
 tee_instance = None
 try:
-    # Truncate log if it exceeds LOG_MAX_BYTES to prevent disk exhaustion
-    if os.path.exists("ticker.log"):
-        try:
-            if os.path.getsize("ticker.log") > 10 * 1024 * 1024:  # 10 MB
-                with open("ticker.log", "w") as f:
-                    f.write(f"--- Log Truncated at {__import__('datetime').datetime.now()} ---\n")
-        except Exception:
-            pass
-    else:
+    if not os.path.exists("ticker.log"):
         with open("ticker.log", "w") as f: f.write("--- Log Started ---\n")
     tee_instance = Tee("ticker.log", "a")
     sys.stdout = tee_instance
@@ -320,7 +297,7 @@ AIRLINE_CACHE_FILE = "airline_code_cache.json"
 
 SPORTS_UPDATE_INTERVAL = 5.0    
 STOCKS_UPDATE_INTERVAL = 30     
-WORKER_THREAD_COUNT = 5         # Reduced from 10 to save memory
+WORKER_THREAD_COUNT = 10        
 API_TIMEOUT = 7.0            
 
 data_lock = threading.Lock()
@@ -461,7 +438,6 @@ def ai_lookup_airline_codes(query_code: str):
             iata, icao = parts[0], parts[1]
             _ai_airline_cache[iata] = icao   # bidirectional
             _ai_airline_cache[icao] = iata
-            _prune_dict_cache(_ai_airline_cache, max_size=500)
             save_airline_cache()
             print(f"[AIRLINE-AI] Resolved '{query_code}' → IATA={iata}, ICAO={icao}")
             return icao, iata
@@ -520,7 +496,6 @@ def get_airport_display_name(iata_code):
                 # Validation: ensure AI didn't return something bizarrely long
                 if len(short_name) < len(raw_name) + 5: 
                     _ai_airport_cache[cache_key] = short_name
-                    _prune_dict_cache(_ai_airport_cache, max_size=500)
                     save_airport_cache()
                     return short_name
                 
@@ -552,7 +527,6 @@ def get_airport_display_name(iata_code):
 
     # Cache the algorithmic result too so we don't try AI again for this airport
     _ai_airport_cache[cache_key] = clean_name
-    _prune_dict_cache(_ai_airport_cache, max_size=500)
     save_airport_cache()
     return clean_name
 
@@ -593,31 +567,6 @@ def haversine(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
     return R * c
 
-
-# ── Cache eviction helper (prevents OOM on long-running instances) ──
-_CACHE_MAX_SIZES = {
-    'final_game':    500,
-    'mlb_player':    1000,
-    'mlb_summary':   100,
-    'mlb_gamepk':    500,
-    'mlb_challenge': 200,
-    'ip_tz':         200,
-    'airport':       500,
-    'airline':       500,
-}
-
-def _prune_dict_cache(cache: dict, max_size: int = 500, evict_count: int = 100):
-    """Evict oldest entries when cache exceeds max_size (dicts are insertion-ordered in 3.7+)."""
-    if len(cache) <= max_size:
-        return
-    keys_to_remove = list(cache.keys())[:evict_count]
-    for k in keys_to_remove:
-        del cache[k]
-
-# ── Log file size management ──
-LOG_MAX_BYTES = 10 * 1024 * 1024  # 10 MB — truncate on startup if exceeded
-LOG_FILE = "ticker.log"
-
 # ── Section D: Data Tables ──
 LEAGUE_OPTIONS = [
     {'id': 'nfl', 'label': 'NFL', 'type': 'sport', 'default': True, 'fetch': {'path': 'football/nfl', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
@@ -627,12 +576,12 @@ LEAGUE_OPTIONS = [
     {'id': 'ncf_fbs', 'label': 'NCAA (FBS)', 'type': 'sport', 'default': True, 'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '80'}, 'type': 'scoreboard'}},
     {'id': 'ncf_fcs', 'label': 'NCAA (FCS)', 'type': 'sport', 'default': True, 'fetch': {'path': 'football/college-football', 'scoreboard_params': {'groups': '81'}, 'type': 'scoreboard'}},
     {'id': 'march_madness', 'label': 'March Madness', 'type': 'sport', 'default': True, 'fetch': {'path': 'basketball/mens-college-basketball', 'scoreboard_params': {'groups': '100', 'limit': '100'}, 'type': 'scoreboard'}},
-    #{'id': 'masters', 'label': 'The Masters', 'type': 'sport', 'default': False, 'fetch': {'path': 'golf/pga', 'type': 'leaderboard'}},
+    {'id': 'masters', 'label': 'The Masters', 'type': 'sport', 'default': False, 'fetch': {'path': 'golf/pga', 'type': 'leaderboard'}},
     {'id': 'soccer_epl', 'label': 'Premier League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.1', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_fa_cup','label': 'FA Cup', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.fa', 'type': 'scoreboard'}},
     {'id': 'soccer_champ', 'label': 'Championship', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.2', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    #{'id': 'soccer_l1', 'label': 'League One', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
-    #{'id': 'soccer_l2', 'label': 'League Two', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l1', 'label': 'League One', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.3', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
+    {'id': 'soccer_l2', 'label': 'League Two', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/eng.4', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_wc', 'label': 'FIFA World Cup', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/fifa.world', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     {'id': 'soccer_champions_league', 'label': 'Champions League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.champions', 'team_params': {'limit': 50}, 'type': 'scoreboard'}},
     {'id': 'soccer_europa_league', 'label': 'Europa League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 200}, 'type': 'scoreboard'}},
@@ -1092,6 +1041,18 @@ def _extract_client_ip(req) -> str | None:
         except Exception:
             return None
 
+    
+        def _mlb_normalize_status_label(self, status_text):
+            """Normalize MLB status labels for downstream display."""
+            text = str(status_text or '').strip()
+            lower = text.lower()
+            if not text:
+                return text
+            if any(word in lower for word in ('postponed', 'canceled', 'cancelled', 'suspended', 'ppd')):
+                return text
+            if 'delay' in lower or 'rain' in lower or 'weather' in lower:
+                return 'rain delay'
+            return text
     header_candidates = [
         'CF-Connecting-IP',
         'X-Forwarded-For',
@@ -1768,7 +1729,7 @@ class WeatherFetcher:
         self.city_name = city
         self.last_fetch = 0
         self.cache = None
-        self.session = build_pooled_session(pool_size=3)  # Reduced from 10
+        self.session = build_pooled_session(pool_size=10)
 
     def update_config(self, city=None, lat=None, lon=None):
         try:
@@ -2044,7 +2005,7 @@ class StockFetcher:
 
 class FlightTracker:
     def __init__(self):
-        self.session = build_pooled_session(pool_size=4)  # Reduced from 10
+        self.session = build_pooled_session(pool_size=10)
         self.lock = threading.Lock()
         self.visitor_flight = None
         self.airport_arrivals = []
@@ -2563,8 +2524,8 @@ class SportsFetcher:
         self.possession_cache = {} 
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         
-        # FIX: Reduced pool size from 15 → 6 to save RAM on small instances
-        self.session = build_pooled_session(pool_size=6)
+        # CHANGE 1: Reduce Pool Size to 15 (Save RAM)
+        self.session = build_pooled_session(pool_size=15)
         
         # CHANGE 2: Use Configured Thread Count (10)
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=WORKER_THREAD_COUNT)
@@ -3429,16 +3390,7 @@ class SportsFetcher:
                 day += timedelta(days=1)
 
             if aggregate_sections:
-                matches = self._extract_matches(aggregate_sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc)
-                # Deduplicate — same match can appear in multiple days' FotMob results
-                seen_ids = set()
-                deduped = []
-                for m in matches:
-                    mid = m.get('id')
-                    if mid not in seen_ids:
-                        seen_ids.add(mid)
-                        deduped.append(m)
-                return deduped
+                return self._extract_matches(aggregate_sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc)
             return []
         except Exception as e:
             print(f"FotMob League {league_id} error: {e}")
@@ -3628,7 +3580,9 @@ class SportsFetcher:
                                 else: s_disp = f"P{p} {clk}"
                             elif 'baseball' in config['path']:
                                 short_detail = tp.get('shortDetail', s_disp)
-                                s_disp = short_detail.replace(" - ", " ").replace("Inning", "In")
+                                s_disp = self._mlb_normalize_status_label(
+                                    short_detail.replace(" - ", " ").replace("Inning", "In")
+                                )
                             else: s_disp = f"P{p} {clk}"
 
                 s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
@@ -3756,7 +3710,6 @@ class SportsFetcher:
                 # CHANGE C: SAVE FINAL GAMES TO CACHE
                 if gst == 'post' and "FINAL" in s_disp:
                     self.final_game_cache[gid] = game_obj
-                    _prune_dict_cache(self.final_game_cache, max_size=500)
 
         except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games
@@ -4144,7 +4097,6 @@ class SportsFetcher:
         if candidates:
             best_pk = sorted(candidates, key=lambda x: (x[0], x[1]))[0][2]
             self._mlb_gamepk_cache[gid] = best_pk
-            _prune_dict_cache(self._mlb_gamepk_cache, max_size=500)
             return best_pk
         return None  # Don't cache None — retry on next poll until found
 
@@ -4208,7 +4160,6 @@ class SportsFetcher:
                     'away_used': a_used,
                 }
                 self._mlb_challenge_cache[pk_str] = entry
-                _prune_dict_cache(self._mlb_challenge_cache, max_size=200)
                 return entry['home_rem'], entry['home_used'], entry['away_rem'], entry['away_used']
         except Exception:
             pass
@@ -4263,12 +4214,10 @@ class SportsFetcher:
                         full = full.split('. ', 1)[1]
                     name = full.upper()
                     self._mlb_player_cache[pid] = name
-                    _prune_dict_cache(self._mlb_player_cache, max_size=1000)
                     return name
             except Exception:
                 pass
         self._mlb_player_cache[pid] = ''   # cache miss so we don't retry every tick
-        _prune_dict_cache(self._mlb_player_cache, max_size=1000)
         return ''
 
     def _mlb_player_id_from_obj(self, person_obj):
@@ -4613,7 +4562,6 @@ class SportsFetcher:
             if r.status_code == 200:
                 data = r.json()
                 self._mlb_summary_cache[gid] = {'ts': now, 'data': data}
-                _prune_dict_cache(self._mlb_summary_cache, max_size=100)
                 return data
         except Exception:
             pass
@@ -4935,7 +4883,9 @@ class SportsFetcher:
                         elif 'hockey' in path:
                             s_disp = f"OT{p-3 if p-3>1 else ''} {clk}" if p > 3 else f"P{p} {clk}"
                         elif 'baseball' in path:
-                            s_disp = tp.get('shortDetail', s_disp).replace(" - ", " ").replace("Inning", "In")
+                            s_disp = self._mlb_normalize_status_label(
+                                tp.get('shortDetail', s_disp).replace(" - ", " ").replace("Inning", "In")
+                            )
                         else: s_disp = f"P{p} {clk}"
 
             s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
@@ -5313,25 +5263,6 @@ class SportsFetcher:
 
     # ── Central update dispatcher ──────────────────────────────────────────
 
-    def _periodic_cache_cleanup(self):
-        """Evict stale entries from time-keyed caches. Called every refresh cycle."""
-        now = time.time()
-        # MLB summary cache: evict entries older than 5 minutes
-        stale_summaries = [k for k, v in self._mlb_summary_cache.items()
-                          if now - v.get('ts', 0) > 300]
-        for k in stale_summaries:
-            del self._mlb_summary_cache[k]
-        # MLB challenge cache: evict entries older than 10 minutes
-        stale_challenges = [k for k, v in self._mlb_challenge_cache.items()
-                           if now - v.get('ts', 0) > 600]
-        for k in stale_challenges:
-            del self._mlb_challenge_cache[k]
-        # IP TZ cache: evict expired entries
-        stale_tz = [k for k, v in _IP_TZ_CACHE.items()
-                   if now - v.get('ts', 0) > _IP_TZ_CACHE_TTL]
-        for k in stale_tz:
-            del _IP_TZ_CACHE[k]
-
     def update_current_games(self):
         """Build and cache content buffers for every mode currently needed by any ticker."""
         if not self._update_lock.acquire(blocking=False):
@@ -5344,12 +5275,6 @@ class SportsFetcher:
                 # Consume any prior coalesced request before this pass; new requests
                 # that arrive during the pass will set the event again.
                 self._update_pending.clear()
-
-                # Periodic stale cache eviction
-                try:
-                    self._periodic_cache_cleanup()
-                except Exception:
-                    pass
 
                 with data_lock:
                     global_mode = state.get('mode', 'sports')
