@@ -1041,18 +1041,6 @@ def _extract_client_ip(req) -> str | None:
         except Exception:
             return None
 
-    
-        def _mlb_normalize_status_label(self, status_text):
-            """Normalize MLB status labels for downstream display."""
-            text = str(status_text or '').strip()
-            lower = text.lower()
-            if not text:
-                return text
-            if any(word in lower for word in ('postponed', 'canceled', 'cancelled', 'suspended', 'ppd')):
-                return text
-            if 'delay' in lower or 'rain' in lower or 'weather' in lower:
-                return 'rain delay'
-            return text
     header_candidates = [
         'CF-Connecting-IP',
         'X-Forwarded-For',
@@ -4304,6 +4292,18 @@ class SportsFetcher:
             return int(float(value))
         except Exception:
             return default
+
+    def _mlb_normalize_status_label(self, status_text):
+        """Normalize MLB status labels for downstream display."""
+        text = str(status_text or '').strip()
+        lower = text.lower()
+        if not text:
+            return text
+        if any(word in lower for word in ('postponed', 'canceled', 'cancelled', 'suspended', 'ppd')):
+            return text
+        if 'delay' in lower or 'rain' in lower or 'weather' in lower:
+            return 'rain delay'
+        return text
 
     def _mlb_normalize_pitch_type(self, pitch_type):
         """Return normalized (abbr, full_name) for MLB pitch types."""
