@@ -1042,18 +1042,6 @@ def _extract_client_ip(req) -> str | None:
         except Exception:
             return None
 
-    
-        def _mlb_normalize_status_label(self, status_text):
-            """Normalize MLB status labels for downstream display."""
-            text = str(status_text or '').strip()
-            lower = text.lower()
-            if not text:
-                return text
-            if any(word in lower for word in ('postponed', 'canceled', 'cancelled', 'suspended', 'ppd')):
-                return text
-            if 'delay' in lower or 'rain' in lower or 'weather' in lower:
-                return 'rain delay'
-            return text
     header_candidates = [
         'CF-Connecting-IP',
         'X-Forwarded-For',
@@ -2560,6 +2548,17 @@ class SportsFetcher:
             for item in LEAGUE_OPTIONS 
             if item['type'] == 'sport' and 'fetch' in item 
         }
+
+    def _mlb_normalize_status_label(self, status_text):
+        text = str(status_text or '').strip()
+        lower = text.lower()
+        if not text:
+            return text
+        if any(word in lower for word in ('postponed', 'canceled', 'cancelled', 'suspended', 'ppd')):
+            return text
+        if 'delay' in lower or 'rain' in lower or 'weather' in lower:
+            return 'rain delay'
+        return text
 
     def _calculate_next_update(self, games):
         """Returns TIMESTAMP when we should next fetch this league"""
