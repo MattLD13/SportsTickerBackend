@@ -3193,6 +3193,7 @@ class SportsFetcher:
 
     def _extract_matches(self, sections, internal_id, conf, start_window, end_window, visible_start_utc, visible_end_utc):
         matches = []
+        seen_match_ids = set()
         _local_tz = timezone(timedelta(hours=conf.get('utc_offset', -5)))
         for section in sections:
             candidate_matches = section.get("matches") if isinstance(section, dict) else None
@@ -3211,6 +3212,9 @@ class SportsFetcher:
                 except: continue
 
                 mid = match.get("id")
+                if mid in seen_match_ids: continue
+                seen_match_ids.add(mid)
+                
                 h_name = match.get("home", {}).get("name") or "Home"
                 a_name = match.get("away", {}).get("name") or "Away"
                 
