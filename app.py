@@ -874,12 +874,19 @@ state['my_teams'] = []
 # Reconcile active_sports against current LEAGUE_OPTIONS:
 # remove deprecated keys, add any new ones with their defaults
 _valid_league_ids = {item['id'] for item in LEAGUE_OPTIONS}
+_deprecated_leagues = []
 for _k in list(state['active_sports'].keys()):
     if _k not in _valid_league_ids:
         del state['active_sports'][_k]
+        _deprecated_leagues.append(_k)
 for _item in LEAGUE_OPTIONS:
     if _item['id'] not in state['active_sports']:
         state['active_sports'][_item['id']] = _item['default']
+
+# If deprecated leagues were removed, persist the cleaned state
+if _deprecated_leagues:
+    print(f"🧹 Removed deprecated leagues: {', '.join(_deprecated_leagues)}")
+    save_global_config()
 
 # Ensure mode is valid
 state['mode'] = MODE_MIGRATIONS.get(state.get('mode', 'sports'), state.get('mode', 'sports'))
