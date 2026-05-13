@@ -715,6 +715,9 @@ class TickerStreamer:
 
     def shorten_status(self, status, sport=''):
         if not status: return ""
+        _susp = ("delay", "delayed", "suspended", "postponed", "canceled", "ppd")
+        if any(k in str(status).lower() for k in _susp):
+            return str(status).title()
         sp = str(sport).lower()
         if 'baseball' in sp or 'mlb' in sp or 'wbc' in sp:
             su = str(status).upper()
@@ -1162,7 +1165,7 @@ class TickerStreamer:
             self.draw_outlined_text(d, a_sc_x, H // 2, a_score,
                                     self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
 
-            status_text = str(game.get('status', '')).strip()
+            status_text = str(game.get('status', '')).strip().title()
             if status_text:
                 self.draw_outlined_text(d, W // 2, 7, status_text[:16], self.tiny, (255, 240, 150), (0, 0, 0, 220), anchor='ma')
 

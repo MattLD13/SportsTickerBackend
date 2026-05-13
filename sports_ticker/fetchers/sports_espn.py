@@ -158,7 +158,7 @@ class SportsEspnMixin:
                         gst = 'in'
 
                 is_suspended = False
-                susp_keywords = ["Suspended", "Postponed", "Canceled", "Delayed", "PPD"]
+                susp_keywords = ["Suspended", "Postponed", "Canceled", "Delayed", "Delay", "PPD"]
                 for kw in susp_keywords:
                     if kw in s_disp:
                         is_suspended = True
