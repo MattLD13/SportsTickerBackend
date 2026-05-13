@@ -1,296 +1,296 @@
 # Sports Ticker Backend
 
-A comprehensive Flask-based backend server for managing sports scores, stock data, weather information, and Spotify integration for LED matrix display tickers.
+Flask backend for LED sports ticker displays. It aggregates sports scores, golf leaderboards, stocks, weather, Spotify playback, and flight information, then serves ticker-specific display payloads to paired devices.
 
-## Overview
+## What It Does
 
-The Sports Ticker Backend is a powerful API server designed to aggregate and serve real-time sports scores, stock market data, weather updates, and music information to LED matrix display devices (particularly RGB LED panels via Raspberry Pi). It supports multiple sports leagues, stock tracking, custom team configurations, and goal horn playback integration.
+- Serves display data for one or many ticker devices.
+- Stores global settings in `global_config.json` and per-device settings in `ticker_data/*.json`.
+- Keeps background workers running for sports, stocks, music, and flights.
+- Supports per-ticker modes, teams, timezone detection, pinned games, live delay, brightness/sleep behavior, and hardware reboot/update flags.
+- Keeps `app.py` as a compatibility entrypoint while the implementation lives in the `sports_ticker` package.
 
-## Features
+## Current Architecture
 
-### Sports Data
-- **NHL** - National Hockey League
-- **NBA** - National Basketball Association
-- **NFL** - National Football League
-- **MLB** - Major League Baseball
-- **AHL** - American Hockey League
-- **Soccer Leagues**:
-  - Premier League (EPL)
-  - FA Cup
-  - Championship
-  - League One & Two
-  - FIFA World Cup
-  - Champions League
-  - Europa League
-  - MLS
-- **College Sports**:
-  - NCAA Football (FBS & FCS)
-- **Racing**:
-  - Formula 1
-  - NASCAR
-
-### Additional Features
-- Real-time stock price tracking with Finnhub API integration
-- Weather data integration
-- Clock display
-- Spotify "Now Playing" integration
-- Custom team favorites and filtering
-- Multi-ticker device management
-- Goal horn audio streaming to ESP32 devices
-- Automated cache cleanup and data refresh
-
-## Prerequisites
-
-- Python 3.7+
-- Flask
-- Raspberry Pi with RGB LED Matrix (for ticker display)
-- API Keys (optional but recommended):
-  - Finnhub API keys for stock data
-  - Spotify API credentials for music integration
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/MattLD13/SportsTickerBackend.git
-cd SportsTickerBackend
+```text
+app.py                         Compatibility entrypoint
+sports_ticker/runtime.py        App factory and server runner
+sports_ticker/routes_runtime.py Flask app creation and route registration
+sports_ticker/core.py           Shared state, constants, caches, helpers
+sports_ticker/workers.py        Background refresh workers
+sports_ticker/leagues.py        League, mode, stock, and golf metadata
+sports_ticker/fetchers/         Sports, weather, stock, Spotify, flight fetchers
+sports_ticker/routes/           API route modules
+sports_ticker/services/         Compatibility helper exports
+ticker_controller.py            Raspberry Pi LED matrix controller
+ESPstreamer/                    ESP32 goal horn streaming tools
 ```
 
-2. Install dependencies:
-```bash
+Recent cleanup centralized ticker creation, pairing helpers, mode normalization, shared route constants, and debug/test-mode syncing so route modules do less hand-rolled duplication.
+
+## Supported Content
+
+Sports and utilities are defined in `sports_ticker/leagues.py`.
+
+- NFL
+- MLB
+- NHL
+- NBA
+- NCAA Football, FBS and FCS
+- March Madness
+- PGA Golf, including Masters/PGA Championship branding fallbacks
+- Soccer: Premier League, FA Cup, Championship, World Cup, Champions League, Europa League, MLS
+- Weather
+- Clock
+- Spotify now playing
+- Flight tracker and airport activity
+- Stock groups: Tech/AI, Momentum, Energy, Finance, Consumer
+
+## Display Modes
+
+Valid modes are:
+
+```text
+sports
+sports_full
+soccer_full
+live
+my_teams
+stocks
+weather
+music
+clock
+golf
+masters
+flights
+flight_tracker
+```
+
+Legacy modes are migrated automatically:
+
+```text
+all -> sports
+flight2 -> flight_tracker
+poop_fetcher -> sports
+masters -> golf
+```
+
+Pinned sports games can temporarily display as `sports_full`; Masters pins can display as `masters` for compatibility.
+
+## Setup
+
+1. Install Python dependencies:
+
+```powershell
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file with your API credentials:
+2. Optional: create a `.env` file.
+
 ```env
-# Finnhub Stock API Keys
+PORT=5000
+FLASK_SECRET_KEY=change-me
+
+# Optional stock API keys. Without these, stocks run in simulation mode.
 FINNHUB_KEY_1=your_key_here
 FINNHUB_KEY_2=your_key_here
 FINNHUB_KEY_3=your_key_here
 FINNHUB_KEY_4=your_key_here
 FINNHUB_KEY_5=your_key_here
 
-# Spotify API Keys (Web API)
+# Optional Spotify support.
 SPOTIFY_CLIENT_ID=your_client_id
 SPOTIFY_CLIENT_SECRET=your_client_secret
 SPOTIFY_REFRESH_TOKEN=your_refresh_token
 
-# Spotify Credentials (Librespot)
-SPOTIFY_USERNAME=your_spotify_username
-SPOTIFY_PASSWORD=your_spotify_password
+# Optional flight and AI helpers.
+FLIGHTAWARE_API_KEY=your_key_here
+GEMINI_API_KEY=your_key_here
 ```
 
-4. Run the server:
-```bash
+Optional Python packages unlock extra features when installed:
+
+- `spotipy` for Spotify OAuth/client support
+- `airportsdata` for airport lookup/autofill
+- `FlightRadar24` SDK for flight tracking support
+- `Pillow` for logo color extraction
+- `google-genai` for Gemini-assisted airport/airline fallback lookups
+
+3. Run the backend:
+
+```powershell
 python app.py
 ```
 
-The server will start on `http://0.0.0.0:5000` by default.
+The server listens on `0.0.0.0:$PORT`, defaulting to `5000`.
 
-## Configuration
+## API Quick Reference
 
-The backend automatically creates a `ticker_data` directory to store ticker-specific configurations and a `global_config.json` for server-wide settings.
+### Device Data
 
-### Global Configuration
-- Sports update interval: 5 seconds
-- Stock update interval: 30 seconds
-- Worker thread count: 10
-- API timeout: 3 seconds
+- `GET /data?id=<ticker_id>`  
+  Returns the display payload for one ticker. Unknown IDs are auto-created and self-authorized with the ticker ID as the first client ID.
 
-## API Endpoints
+- `GET /api/state?id=<ticker_id>`  
+  Returns current settings plus all current games/items with `is_shown` flags.
 
-### Configuration & Setup
+- `GET /api/teams`  
+  Returns the fetched team catalog.
 
-#### `POST /api/config`
-Update ticker configuration with league preferences and team favorites.
+- `GET /api/my_teams?id=<ticker_id>`  
+  Returns saved teams for a ticker.
 
-**Request Body:**
+### Pairing and Tickers
+
+- `POST /register` with `X-Client-ID`  
+  Creates a new paired ticker for the client, or returns the existing ticker for that client.
+
+- `POST /pair` with `X-Client-ID` and JSON body `{"code": "123456", "name": "Kitchen"}`  
+  Pairs a client to an existing ticker pairing code.
+
+- `POST /pair/id` with `X-Client-ID` and JSON body `{"id": "<ticker_id>", "name": "Kitchen"}`  
+  Pairs by ticker ID.
+
+- `POST /ticker/<tid>/unpair` with `X-Client-ID`  
+  Removes that client from the ticker.
+
+- `GET /tickers` with `X-Client-ID`  
+  Lists tickers associated with the client.
+
+### Configuration
+
+- `POST /api/config`  
+  Updates global and/or ticker-scoped config. Use `ticker_id` in the JSON body or `?id=<ticker_id>` to target a ticker.
+
+Common fields:
+
 ```json
 {
-  "ticker_id": "ticker_123",
-  "active_sports": {
-    "nhl": true,
-    "nba": true,
-    "mlb": false
-  },
-  "active_leagues": {
-    "soccer_epl": true,
-    "nfl": true
-  },
-  "favorite_teams": ["Team1", "Team2"]
+  "ticker_id": "ticker-id",
+  "mode": "sports",
+  "active_sports": {"nhl": true, "nba": false},
+  "my_teams": ["nhl:NJ", "mlb:NYY"],
+  "weather_city": "New York",
+  "weather_lat": 40.7128,
+  "weather_lon": -74.006,
+  "timezone_name": "America/New_York",
+  "utc_offset": -4,
+  "pinned_game": "nhl:123456"
 }
 ```
 
-#### `POST /pair`
-Pair a new ticker device with the backend.
+- `POST /ticker/<tid>`  
+  Updates a specific ticker's local settings. Requires `X-Client-ID` for an already paired client.
 
-**Request Body:**
-```json
-{
-  "ticker_id": "unique_ticker_id",
-  "pair_code": "6-digit-code"
-}
-```
+- `POST /api/pin_games`  
+  Saves the active pin for a ticker. Body example: `{"ticker_id": "...", "game_ids": ["nhl:123456"]}`.
 
-#### `POST /pair/id`
-Generate a new pairing ID for device registration.
+### Metadata and Utilities
 
-#### `POST /ticker/<tid>/unpair`
-Unpair a ticker device from the backend.
+- `GET /leagues`  
+  Lists all available sports, utilities, and stock groups.
 
-### Data Retrieval
+- `GET /api/spotify/now`  
+  Returns cached Spotify playback state.
 
-#### `GET /data?ticker_id=<tid>`
-Retrieve all configured data for a specific ticker.
+- `GET /api/blank-logo.png`  
+  Returns the transparent placeholder logo.
 
-**Response:**
-```json
-{
-  "leagues": [...],
-  "sports": {
-    "nhl": [...],
-    "nba": [...]
-  },
-  "stocks": [...],
-  "weather": {...},
-  "music": {...}
-}
-```
+- `GET /`  
+  Basic health text.
 
-#### `GET /leagues`
-Get list of all available sports leagues and data types.
+### Flights
 
-#### `GET /api/state`
-Get current server state including all active tickers and their data.
+- `GET /api/airport/lookup?code=EWR`
+- `GET /api/airports?q=newark`
+- `GET /api/airlines`
+- `GET /api/flight/status`
+- `GET /api/flight/debug`
 
-#### `GET /api/teams`
-Get list of all available teams across all sports.
+### Debug and Hardware
 
-#### `GET /api/my_teams?ticker_id=<tid>`
-Get favorite teams for a specific ticker.
+- `GET /api/timezone?id=<ticker_id>&refresh=1`
+- `GET /timezone?id=<ticker_id>&refresh=1`
+- `GET /api/debug`
+- `POST /api/debug`
+- `POST /api/hardware` with `{"action": "update"}` or `{"action": "reboot", "ticker_id": "..."}`
+- `GET /errors`
 
-#### `GET /tickers`
-Get list of all paired ticker devices.
+## Storage and Caches
 
-### Spotify Integration
+- `ticker_data/*.json`: per-ticker settings, clients, pairing code, teams, timezone, and flags.
+- `global_config.json`: global active sports, default mode, weather, flight settings.
+- `game_cache.json`: latest sports cache loaded at startup so displays are not blank after restart.
+- `stock_cache.json`: stock cache.
+- `airport_name_cache.json` and `airline_code_cache.json`: AI-assisted lookup caches.
+- `ticker.log`: rolling server log mirrored from stdout/stderr.
 
-#### `GET /api/spotify/now`
-Get currently playing Spotify track information.
+## Background Workers
 
-**Response:**
-```json
-{
-  "is_playing": true,
-  "artist": "Artist Name",
-  "title": "Song Title",
-  "album": "Album Name"
-}
-```
+`sports_ticker/workers.py` starts:
 
-### Hardware Control
+- `sports_worker`: team catalog and sports buffer refreshes
+- `stocks_worker`: stock sector/market updates
+- `music_worker`: Spotify refreshes when music mode is needed
+- `flights_worker`: airport and tracked visitor flight updates
+- `refresh_worker`: coalesced central buffer rebuild queue
 
-#### `POST /api/hardware`
-Send commands to ticker hardware devices (update, restart, etc.).
-
-**Request Body:**
-```json
-{
-  "action": "update",
-  "ticker_id": "ticker_123"
-}
-```
-
-### Debug & Monitoring
-
-#### `POST /api/debug`
-Enable debug logging for specific ticker.
-
-#### `GET /errors`
-Retrieve error logs from the server.
-
-## Components
-
-### Main Application (`app.py`)
-The primary Flask server that:
-- Manages API endpoints
-- Handles ticker device pairing and configuration
-- Fetches and caches sports data from multiple sources
-- Aggregates stock market data using Finnhub API
-- Manages Spotify integration
-- Coordinates multi-threaded data updates
-
-### Ticker Controller (`ticker_controller.py`)
-The display controller for Raspberry Pi RGB LED matrices that:
-- Renders game scores, stocks, and weather on LED panels
-- Manages page transitions and animations
-- Handles team logos and color schemes
-- Provides WiFi setup interface for initial configuration
-- Communicates with the backend server for data updates
-
-### ESP Streamer (`ESPstreamer/`)
-Audio streaming component for ESP32 devices:
-- `streamer.py` - Flask server for managing goal horn audio
-- `goalHorns.py` - Goal horn playback automation
-- Converts and uploads MP3 files to ESP32 speakers
-- Controls audio playback (play, stop, volume)
-
-### iOS App (`iosApp.swift`)
-SwiftUI-based mobile application for:
-- Pairing and managing ticker devices
-- Configuring sports leagues and team preferences
-- Viewing live scores and standings
-- Remote ticker control
-
-## Deployment
-
-The repository includes GitHub Actions workflows (`.github/workflows/deploy.yml`) for automated deployment:
-
-1. Automatic deployment on push to `main` branch
-2. SCP file transfer to production server
-3. Environment variable configuration
-4. Service restart via systemd
-
-## Data Sources
-
-- **Sports**: ESPN API, NHL API, FotMob (Soccer)
-- **Stocks**: Finnhub API
-- **Weather**: Custom weather API integration
-- **Music**: Spotify Web API and Librespot
-
-## Logging
-
-Server logs are automatically written to `ticker.log` for debugging and monitoring purposes.
-
-## Version
-
-Current Server Version: `v0.6-Stable`
-
-## License
-
-This project is provided as-is for personal and educational use.
-
-## Support
-
-For issues, questions, or contributions, please open an issue on the GitHub repository.
-
-## Architecture Notes
-
-- **Multi-threaded Design**: Uses concurrent workers for parallel API requests
-- **Connection Pooling**: HTTP adapter with connection pooling for optimal performance
-- **Caching**: Implements intelligent caching for stocks and sports data
-- **Rate Limiting**: Built-in rate limiting for external API calls
-- **Error Handling**: Comprehensive error handling and logging throughout
+Workers start when `run_server()` is called. `create_app()` creates the Flask app without starting background workers, which is useful for tests and imports.
 
 ## Development
 
-### Running Tests
-Currently, this project does not have automated tests. Manual testing is performed by:
-1. Starting the Flask server
-2. Testing API endpoints with curl or Postman
-3. Verifying data display on connected ticker devices
+Compile/smoke-check the package:
 
-### Code Structure
-- API routes are defined in `app.py`
-- Data fetching logic uses concurrent futures for parallel execution
-- Configuration is stored per-ticker in JSON files
-- LED matrix rendering is handled by `ticker_controller.py`
+```powershell
+python -m compileall sports_ticker
+```
+
+Minimal Flask smoke test:
+
+```powershell
+@'
+from sports_ticker import runtime
+app = runtime.create_app()
+client = app.test_client()
+for path in ('/', '/leagues', '/api/state'):
+    resp = client.get(path)
+    print(path, resp.status_code)
+'@ | python -
+```
+
+There is no full automated test suite yet. Be careful with changes to provider parsing in `sports_ticker/fetchers/`; ESPN, NHL, FotMob, MLB Stats API, and golf payloads differ in subtle ways.
+
+## Deployment
+
+`.github/workflows/deploy.yml` contains the deployment workflow. `app.py` remains the WSGI-compatible import target:
+
+```python
+from sports_ticker import create_app
+app = create_app()
+```
+
+Running `python app.py` starts background workers and serves Flask.
+
+## Data Sources
+
+- ESPN site APIs for most sports and golf
+- NHL native API for NHL live details
+- FotMob for soccer detail fallbacks
+- MLB Stats API for MLB challenge and live enrichment
+- Finnhub for stocks, with simulation fallback
+- Open-Meteo for weather and airport weather
+- Spotify Web API for now playing
+- FlightRadar24/FlightAware-related flight helpers where configured
+- ip-api and Open-Meteo timezone fallback for ticker timezone detection
+
+## Version
+
+Current server version is defined in `sports_ticker/core.py` as:
+
+```text
+v0.10 - Optimized
+```
+
+## Notes
+
+This project is personal/educational software. Keep generated runtime data, logs, caches, and `__pycache__` files out of commits unless you intentionally need a fixture.

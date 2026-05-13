@@ -6,7 +6,7 @@ on:
 
 jobs:
   # ---------------------------------------------------
-  # JOB 1: Deploy Server Code (server.py) & Restart
+  # JOB 1: Deploy backend package & restart
   # ---------------------------------------------------
   deploy:
     runs-on: ubuntu-latest
@@ -21,8 +21,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          # Ensure server.py is included
-          source: "server.py,app.py,requirements.txt,*.json,ticker_controller.py"
+          source: "app.py,sports_ticker/**,requirements.txt,*.json,ticker_controller.py"
           target: "/home/${{ secrets.SSH_USER }}/"
 
       # 2. Configure .env and Restart Service
@@ -61,10 +60,6 @@ jobs:
             # 3. AI API Key
             echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
 
-            # 4. Poop Dashboard Admin Auth
-            echo "POOP_ADMIN_PASSWORD=${{ secrets.POOP_ADMIN_PASSWORD }}" >> .env
-            echo "POOP_ADMIN_SESSION_SECRET=${{ secrets.POOP_ADMIN_SESSION_SECRET }}" >> .env
-            
             chmod 600 .env
 
             # ---------------------------------------------------------
@@ -74,11 +69,11 @@ jobs:
                 # Install standard requirements
                 pip3 install -r requirements.txt --break-system-packages || pip3 install -r requirements.txt
                 
-                # Install Librespot Dependencies & AI Library
-                pip3 install librespot protobuf google-generativeai --break-system-packages
+                # Install optional runtime integrations not yet pinned in requirements.txt
+                pip3 install librespot protobuf google-generativeai google-genai spotipy --break-system-packages
             else
                 pip install -r requirements.txt
-                pip install librespot protobuf google-generativeai
+                pip install librespot protobuf google-generativeai google-genai spotipy
             fi
 
             echo "Restarting ticker service..."
