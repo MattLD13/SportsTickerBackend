@@ -321,8 +321,11 @@ from .leagues import (
 )
 
 def get_city_name(iata_code):
-    if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
+    if not iata_code:
+        return 'UNKNOWN'
     code = iata_code.strip().upper()
+    if not AIRPORTS_DB:
+        return code
     if code in AIRPORTS_DB:
         return AIRPORTS_DB[code].get('city', code)
     return code
@@ -392,8 +395,11 @@ def get_airport_display_name(iata_code):
     Uses AI to intelligently shorten airport names with persistent file caching.
     Saves results to airport_name_cache.json to avoid Gemini API quota limits.
     """
-    if not iata_code or not AIRPORTS_DB: return 'UNKNOWN'
+    if not iata_code:
+        return 'UNKNOWN'
     code = iata_code.strip().upper()
+    if not AIRPORTS_DB:
+        return code
     
     if code not in AIRPORTS_DB: return code
 

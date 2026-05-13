@@ -2789,3 +2789,44 @@ True
 / 200 text/html; charset=utf-8
 /leagues 200 application/json
 /api/state 200 application/json
+📂 Found 10 saved tickers in 'ticker_data'
+📦 Loaded 33 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+tracker True airport EWR Newark
+[19:49:45] WARN         | FR24 Schedule HTTP 403 for EWR arrivals
+[19:49:45] WARN         | FR24 Schedule HTTP 403 for EWR departures
+arrivals 0 []
+departures 0 []
+📂 Found 10 saved tickers in 'ticker_data'
+📦 Loaded 33 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+[19:51:34] WEATHER      | No coordinates for EWR
+[19:51:35] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
+arrivals 2 [{'id': 'UAL1102', 'status_label': 'ARRIVING', 'sort_time': 1778716369, 'from': 'UNKNOWN'}, {'id': 'RPA3654', 'status_label': 'ARRIVING', 'sort_time': 1778716466, 'from': 'UNKNOWN'}]
+departures 2 [{'id': 'UAL36', 'status_label': 'DEPARTING', 'sort_time': 1778717400, 'to': 'UNKNOWN'}, {'id': 'UAL555', 'status_label': 'DEPARTING', 'sort_time': 1778717880, 'to': 'UNKNOWN'}]
+objects [{'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx', 'home_abbr': 'Newark', 'away_abbr': '--', 'status': 'UNKNOWN', 'is_shown': True}, {'type': 'flight_arrival', 'sport': 'flight', 'id': 'arr_0', 'status': 'ARRIVING', 'home_abbr': 'UNKNOWN', 'away_abbr': 'UAL1102', 'is_shown': True}, {'type': 'flight_arrival', 'sport': 'flight', 'id': 'arr_1', 'status': 'ARRIVING', 'home_abbr': 'UNKNOWN', 'away_abbr': 'RPA3654', 'is_shown': True}, {'type': 'flight_departure', 'sport': 'flight', 'id': 'dep_0', 'status': 'DEPARTING', 'home_abbr': 'UNKNOWN', 'away_abbr': 'UAL36', 'is_shown': True}, {'type': 'flight_departure', 'sport': 'flight', 'id': 'dep_1', 'status': 'DEPARTING', 'home_abbr': 'UNKNOWN', 'away_abbr': 'UAL555', 'is_shown': True}]
+📂 Found 10 saved tickers in 'ticker_data'
+📦 Loaded 33 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+[19:52:08] WEATHER      | No coordinates for EWR
+[19:52:08] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
+ticker 17e00af2-82b3-457b-b1f1-33a0f9c8530f
+items 5
+{'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx', 'home_abbr': 'Newark', 'away_abbr': '--', 'status': 'UNKNOWN', 'is_shown': True}
+{'type': 'flight_arrival', 'sport': 'flight', 'id': 'arr_0', 'status': 'ARRIVING', 'home_abbr': 'FLL', 'away_abbr': 'UAL1102', 'is_shown': True}
+{'type': 'flight_arrival', 'sport': 'flight', 'id': 'arr_1', 'status': 'ARRIVING', 'home_abbr': 'GSP', 'away_abbr': 'RPA3569', 'is_shown': True}
+{'type': 'flight_departure', 'sport': 'flight', 'id': 'dep_0', 'status': 'DEPARTING', 'home_abbr': 'EDI', 'away_abbr': 'UAL36', 'is_shown': True}
+{'type': 'flight_departure', 'sport': 'flight', 'id': 'dep_1', 'status': 'DEPARTING', 'home_abbr': 'PHX', 'away_abbr': 'UAL555', 'is_shown': True}
+📂 Found 10 saved tickers in 'ticker_data'
+📦 Loaded 32 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+[19:52:52] WEATHER      | No coordinates for EWR
+[19:52:53] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
+5 ['flight_weather', 'flight_arrival', 'flight_arrival', 'flight_departure', 'flight_departure']
+{'type': 'flight_arrival', 'sport': 'flight', 'id': 'arr_0', 'status': 'ARRIVING', 'home_abbr': 'FLL', 'away_abbr': 'UAL1102', 'is_shown': True}
+📂 Found 10 saved tickers in 'ticker_data'
+📦 Loaded 32 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+[19:53:51] WEATHER      | No coordinates for EWR
+[19:53:52] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
+ok 5

@@ -252,13 +252,10 @@ def flights_worker():
                 if TestMode.is_enabled('flights'):
                     print("[DEBUG] flights_worker: Force refresh triggered")
 
-            with data_lock:
-                mode = state['mode']
-
             did_fetch = False
             
             # 1. Airport Data: Fetch if in flights mode or forced
-            if mode == 'flights' or forced:
+            if _any_ticker_needs('flights') or forced:
                 if flight_tracker.airport_code_iata:
                     if forced or time.time() - flight_tracker.last_airport_fetch >= 30:
                         flight_tracker.fetch_airport_activity()

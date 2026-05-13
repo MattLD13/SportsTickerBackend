@@ -44,7 +44,17 @@ class FlightTracker:
         try:
             timestamp = int(time.time())
             url = f"https://api.flightradar24.com/common/v1/airport.json?code={self.airport_code_iata}&plugin[]=schedule&plugin-setting[schedule][mode]={mode}&plugin-setting[schedule][timestamp]={timestamp}&page=1&limit=100"
-            headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
+            headers = {
+                'User-Agent': (
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    'Chrome/124.0 Safari/537.36'
+                ),
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Origin': 'https://www.flightradar24.com',
+                'Referer': f"https://www.flightradar24.com/data/airports/{self.airport_code_iata.lower()}/{mode}",
+            }
             
             res = self.session.get(url, headers=headers, timeout=TIMEOUTS['slow'])
             if res.status_code == 429:

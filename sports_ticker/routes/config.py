@@ -269,6 +269,8 @@ def update_settings(tid):
             rec['settings']['mode'] = new_mode
 
         # Trigger immediate buffer rebuild through centralized queue.
+        if new_mode in ('flights', 'flight_tracker') and flight_tracker:
+            flight_tracker.force_update()
         request_refresh('ticker_mode_update')
 
     save_specific_ticker(tid)
