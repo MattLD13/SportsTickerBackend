@@ -769,10 +769,10 @@ for _item in LEAGUE_OPTIONS:
     if _item['id'] not in state['active_sports']:
         state['active_sports'][_item['id']] = _item['default']
 
-# If deprecated leagues were removed, persist the cleaned state
+# If deprecated leagues were removed, persist the cleaned state (deferred until save_global_config is defined)
 if _deprecated_leagues:
     print(f"🧹 Removed deprecated leagues: {', '.join(_deprecated_leagues)}")
-    save_global_config()
+_deprecated_leagues_pending_save = bool(_deprecated_leagues)
 
 # Ensure mode is valid
 state['mode'] = MODE_MIGRATIONS.get(state.get('mode', 'sports'), state.get('mode', 'sports'))
@@ -863,6 +863,9 @@ def save_global_config():
         save_json_atomically(GLOBAL_CONFIG_FILE, export_data)
     except Exception as e:
         print(f"Error saving global config: {e}")
+
+if _deprecated_leagues_pending_save:
+    save_global_config()
 
 def save_specific_ticker(tid):
     """Saves ONLY the specified ticker to its own file"""
