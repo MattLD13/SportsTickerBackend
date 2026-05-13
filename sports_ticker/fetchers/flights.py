@@ -47,15 +47,21 @@ class FlightTracker:
             headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
             
             res = self.session.get(url, headers=headers, timeout=TIMEOUTS['slow'])
-            if res.status_code != 200:
+            if res.status_code == 429:
+                self.log("WARN", f"FR24 Schedule rate-limited (429) for {self.airport_code_iata} {mode}")
                 return []
-            
+            if res.status_code != 200:
+                self.log("WARN", f"FR24 Schedule HTTP {res.status_code} for {self.airport_code_iata} {mode}")
+                return []
+
             data = res.json()
             schedule = safe_get(data, 'result', 'response', 'airport', 'pluginData', 'schedule', mode, default={})
 
             if not schedule or 'data' not in schedule:
+                self.log("DEBUG", f"FR24 Schedule: no data for {self.airport_code_iata} {mode} (keys: {list(schedule.keys()) if isinstance(schedule, dict) else type(schedule).__name__})")
                 return []
             
+            total_raw = len(schedule['data'])
             processed_list = []
             for flight in schedule['data']:
                 try:
@@ -153,6 +159,7 @@ class FlightTracker:
             # Sort by time so the closest 2 flights are selected
             processed_list.sort(key=lambda x: x['sort_time'])
 
+            self.log("DEBUG", f"FR24 {mode}: {total_raw} raw → {len(processed_list)} after filter/dedup → returning {min(len(processed_list), 2)}")
             return processed_list[:2] # Return only the 2 closest flights
             
         except Exception as e:
@@ -505,7 +512,7 @@ class FlightTracker:
             self.log("DEBUG", f"get_airport_objects called - arrivals: {len(self.airport_arrivals)}, departures: {len(self.airport_departures)}")
             result.append({
                 'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx',
-                'home_abbr': self.airport_name or self.airport_code_icao,
+                'home_abbr': self.airport_name or self.airport_code_icao or self.airport_code_iata or 'AIRPORT',
                 'away_abbr': self.airport_weather['temp'], 'status': self.airport_weather['cond'], 'is_shown': True
             })
             for i, arr in enumerate(self.airport_arrivals[:2]):
