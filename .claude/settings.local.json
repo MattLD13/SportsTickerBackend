@@ -17,7 +17,10 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('emulator.py', encoding='utf-8'\\).read\\(\\)\\); print\\('emulator.py syntax OK'\\)\")",
       "Bash(python emulator.py --help)",
       "Bash(python -c ' *)",
-      "Bash(.venvScriptspython.exe -c ' *)"
+      "Bash(.venvScriptspython.exe -c ' *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\" -Directory)",
+      "Bash(Select-Object Name)",
+      "PowerShell(head -50)"
     ]
   }
 }

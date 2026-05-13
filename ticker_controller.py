@@ -2001,24 +2001,10 @@ class TickerStreamer:
         return img
 
     def draw_golf_scroll_card(self, game):
-        """Compact top-3 golf card for sports/live mode scrolling strip."""
-        if not hasattr(self, 'M_FONT'):
-            self.M_FONT = {
-                'A': [2, 5, 7, 5, 5], 'B': [6, 5, 7, 5, 6], 'C': [7, 4, 4, 4, 7], 'D': [6, 5, 5, 5, 6],
-                'E': [7, 4, 7, 4, 7], 'F': [7, 4, 7, 4, 4], 'G': [7, 4, 5, 5, 7], 'H': [5, 5, 7, 5, 5],
-                'I': [7, 2, 2, 2, 7], 'J': [1, 1, 1, 5, 2], 'K': [5, 6, 4, 6, 5], 'L': [4, 4, 4, 4, 7],
-                'M': [5, 7, 7, 5, 5], 'N': [5, 7, 5, 5, 5], 'O': [7, 5, 5, 5, 7], 'P': [7, 5, 7, 4, 4],
-                'Q': [7, 5, 5, 7, 1], 'R': [7, 5, 6, 5, 5], 'S': [7, 4, 7, 1, 7], 'T': [7, 2, 2, 2, 2],
-                'U': [5, 5, 5, 5, 7], 'V': [5, 5, 5, 2, 2], 'W': [5, 5, 7, 7, 5], 'X': [5, 5, 2, 5, 5],
-                'Y': [5, 5, 2, 2, 2], 'Z': [7, 1, 2, 4, 7], '0': [7, 5, 5, 5, 7], '1': [2, 6, 2, 2, 7],
-                '2': [7, 1, 7, 4, 7], '3': [7, 1, 7, 1, 7], '4': [5, 5, 7, 1, 1], '5': [7, 4, 7, 1, 7],
-                '6': [7, 4, 7, 5, 7], '7': [7, 1, 1, 1, 1], '8': [7, 5, 7, 5, 7], '9': [7, 5, 7, 1, 7],
-                '-': [0, 0, 7, 0, 0], '+': [0, 2, 7, 2, 0], '.': [0, 0, 0, 0, 2], ' ': [0, 0, 0, 0, 0]
-            }
-
-        M_COLORS = self._golf_colors(game)
+        """Compact top-3 golf card for sports/live mode scrolling strip. Matches stadium theme."""
+        import re as _re
         W = 128
-        img = Image.new("RGBA", (W, 32), M_COLORS['bg'])
+        img = Image.new("RGBA", (W, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
 
         golf_payload = (game.get('golf') or game.get('masters') or {}) if isinstance(game, dict) else {}
@@ -2026,33 +2012,29 @@ class TickerStreamer:
         round_label = str(golf_payload.get('round') or game.get('status') or '').upper()
         players = golf_payload.get('players', []) if isinstance(golf_payload.get('players'), list) else []
 
-        LOGO_W = 16
-        DIV_X = LOGO_W + 1
-        TEXT_X = DIV_X + 3
+        # Header: full event name + round, centered (e.g. "PGA CHAMPIONSHIP R2")
+        rnd_m = _re.search(r'\d+', round_label)
+        rnd_short = f"R{rnd_m.group()}" if rnd_m else 'R-'
+        header = f"{event_name} {rnd_short}"
+        tw = len(header) * 5
+        tx = max(1, (W - tw) // 2)
+        draw_hybrid_text(d, tx + 1, 2, header, (8, 8, 8, 180))
+        draw_hybrid_text(d, tx,     1, header, (255, 240, 150, 255))
 
-        # Draw tournament logo
-        logo_url = game.get('away_logo')
-        logo_img = self.get_logo(logo_url, (LOGO_W, LOGO_W)) if logo_url else None
-        if logo_img:
-            logo_y = (32 - LOGO_W) // 2
-            img.paste(logo_img, (0, logo_y), logo_img if logo_img.mode == 'RGBA' else None)
+        # Blue separator
+        d.line([(0, 7), (W - 1, 7)], fill=(55, 76, 130))
 
-        # Vertical divider
-        d.line([(DIV_X, 0), (DIV_X, 31)], fill=M_COLORS['gold'])
+        # Column layout (no logo — start at x=1)
+        # POS: 3 chars (15px), NAME: 10 chars (50px), TODAY: 4 chars (20px), TOTAL: 4 chars (20px)
+        POS_X    = 1
+        NAME_X   = 18    # pos 15px + 2px gap
+        TODAY_CX = 84    # center of today column; "TODAY" (25px) centered → label at 72
+        TOTAL_CX = 112   # center of total column; "TOTAL" (25px) centered → label at 100, ends at 125
 
-        def draw_text(x, y, text, color):
-            cx = int(x)
-            for ch in str(text).upper():
-                pat = self.M_FONT.get(ch)
-                if pat is None:
-                    cx += 4
-                    continue
-                for r, rv in enumerate(pat):
-                    for c in range(3):
-                        if (rv >> (2 - c)) & 1:
-                            d.point((cx + c, int(y) + r), fill=color)
-                cx += 4
-            return cx
+        # Column labels centered at column centers
+        LABEL_COLOR = (80, 95, 130)
+        draw_tiny_text(d, TODAY_CX - 12, 8, 'TODAY', LABEL_COLOR)
+        draw_tiny_text(d, TOTAL_CX - 12, 8, 'TOTAL', LABEL_COLOR)
 
         def fmt_score(val):
             if val is None:
@@ -2065,37 +2047,43 @@ class TickerStreamer:
                 return 'E'
             return f"+{v}" if v > 0 else str(v)
 
-        # Header row: event name + round
-        header = event_name[:12]
-        if round_label:
-            header = f"{header}  {round_label}"
-        draw_text(TEXT_X, 1, header[:20], M_COLORS['gold'])
+        def score_color(val):
+            try:
+                v = int(val)
+                if v < 0:
+                    return (100, 210, 100)
+                if v > 0:
+                    return (220, 80, 80)
+            except Exception:
+                pass
+            return (255, 255, 255)
 
-        # Player rows (top 3)
         top3 = [p for p in players if isinstance(p, dict) and str(p.get('pos', '')).upper() not in ('WD', 'DQ')][:3]
-        row_ys = [9, 17, 25]
+        row_ys = [14, 20, 26]
+
         if not top3:
-            draw_text(TEXT_X, 9, 'LOADING...', M_COLORS['white'])
+            draw_tiny_text(d, NAME_X, 18, 'LOADING', (150, 150, 150))
         else:
             for i, p in enumerate(top3):
                 y = row_ys[i]
-                pos = str(p.get('pos', '-')).upper()
-                name = str(p.get('name', '')).upper()[:10]
-                score = fmt_score(p.get('total'))
+                pos   = str(p.get('pos', '-')).upper()[:3]
+                name  = str(p.get('name', '')).upper()[:10]
+                total = p.get('total')
+                today = p.get('today')
 
                 if pos.replace('T', '') == '1':
-                    p_color = M_COLORS['gold']
+                    pos_color = (255, 215, 0)
                 elif pos == 'CUT':
-                    p_color = M_COLORS['bogey']
+                    pos_color = (220, 80, 80)
                 else:
-                    p_color = M_COLORS['white']
+                    pos_color = (200, 200, 200)
 
-                cx = draw_text(TEXT_X, y, pos, p_color)
-                cx = draw_text(cx + 2, y, name, M_COLORS['white'])
-
-                # Right-align score
-                score_w = len(score) * 4 - 1
-                draw_text(W - score_w - 3, y, score, p_color)
+                today_str = fmt_score(today)
+                total_str = fmt_score(total)
+                draw_tiny_text(d, POS_X,                          y, pos,       pos_color)
+                draw_tiny_text(d, NAME_X,                         y, name,      (255, 255, 255))
+                draw_tiny_text(d, TODAY_CX - len(today_str)*5//2, y, today_str, score_color(today))
+                draw_tiny_text(d, TOTAL_CX - len(total_str)*5//2, y, total_str, score_color(total))
 
         return img
 
@@ -2592,7 +2580,7 @@ class TickerStreamer:
             return self.draw_clock_modern()
 
         if game.get('type') in ('golf', 'masters') or str(game.get('sport', '')).lower() in ('golf', 'masters'):
-            if self.mode == 'golf':
+            if self.mode in ('golf', 'sports_full'):
                 return self.draw_golf_mode(game)
             return self.draw_golf_scroll_card(game)
 
@@ -2663,7 +2651,7 @@ class TickerStreamer:
         if self.mode in ('sports_full', 'soccer_full') and t not in ['music', 'weather', 'leaderboard', 'stock_ticker'] and 'flight' not in str(t):
             return PANEL_W
         if t in ('golf', 'masters') or str(s).lower() in ('golf', 'masters'):
-            return PANEL_W if self.mode == 'golf' else 128 + GAME_SEPARATOR_W
+            return PANEL_W if self.mode in ('golf', 'sports_full') else 128 + GAME_SEPARATOR_W
         if t == 'music' or s == 'music': return PANEL_W
         if t == 'stock_ticker' or (s and str(s).startswith('stock')): return 128
         if t == 'weather': return PANEL_W

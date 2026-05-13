@@ -130,18 +130,24 @@ class SportsGolfMixin:
                 self._golf_cache = {'ts': now_ts, 'game': None}
                 return None
 
-            # Pick the first in-progress event, or else the most recent by date.
+            # Pick the first in-progress event, then post, then skip pre entirely.
             active_event = None
+            post_event = None
             for event in events:
                 comp0 = (event.get('competitions') or [{}])[0] or {}
                 state = str(safe_get(comp0, 'status', 'type', 'state', default='pre') or 'pre').lower()
                 if state in ('in', 'half', 'crit'):
                     active_event = event
                     break
+                if state in ('post', 'final') and post_event is None:
+                    post_event = event
 
             if not active_event:
-                # Most recent event (first in list is typically most current from ESPN)
-                active_event = events[0]
+                active_event = post_event  # show completed tourney; skip pre-tournament events
+
+            if not active_event:
+                self._golf_cache = {'ts': now_ts, 'game': None}
+                return None
 
             event_name = str(active_event.get('name') or active_event.get('shortName') or 'PGA TOUR').strip()
             tour_colors = _golf_tournament_colors(event_name)
