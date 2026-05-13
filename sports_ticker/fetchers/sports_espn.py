@@ -212,7 +212,7 @@ class SportsEspnMixin:
                             else: s_disp = f"P{p} {clk}"
 
                 if is_suspended:
-                    s_disp = s_disp.title()
+                    s_disp = s_disp.split(',')[0].strip().title()
                 s_disp = s_disp.replace("Final", "FINAL").replace("/OT", " OT").replace("/SO", " S/O")
                 s_disp = s_disp.replace("End of ", "End ").replace(" Quarter", "").replace(" Inning", "").replace(" Period", "")
 
