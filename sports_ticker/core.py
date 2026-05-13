@@ -553,6 +553,17 @@ def normalize_mode(mode, fallback='sports'):
     return normalized if normalized in VALID_MODES else fallback
 
 
+def _normalize_single_pin(pinned_game=None, pinned_games=None):
+    single = ''
+    if isinstance(pinned_games, list):
+        cleaned = [str(x).strip() for x in pinned_games if str(x).strip()]
+        if cleaned:
+            single = cleaned[-1]
+    if not single and pinned_game is not None:
+        single = str(pinned_game).strip()
+    return single, ([single] if single else [])
+
+
 def _game_sort_key(x):
     t = x.get('type', '')
     if t == 'clock':

@@ -496,6 +496,8 @@ class SportsModesMixin:
 
         futures = {}
         for internal_id, fid in FOTMOB_LEAGUE_MAP.items():
+            if not conf.get('active_sports', {}).get(internal_id, False):
+                continue
             f = self.executor.submit(self._fetch_fotmob_league, fid, internal_id, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc)
             futures[f] = internal_id
 

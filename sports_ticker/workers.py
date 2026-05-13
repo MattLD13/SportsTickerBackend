@@ -165,18 +165,6 @@ def _any_ticker_needs(*modes):
                 return True
     return False
 
-def _normalize_single_pin(pinned_game=None, pinned_games=None):
-    single = ''
-
-    if isinstance(pinned_games, list):
-        cleaned = [str(x).strip() for x in pinned_games if str(x).strip()]
-        if cleaned:
-            single = cleaned[-1]
-
-    if not single and pinned_game is not None:
-        single = str(pinned_game).strip()
-
-    return single, ([single] if single else [])
 
 def sports_worker():
     try: fetcher.fetch_all_teams()
