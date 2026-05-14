@@ -345,6 +345,22 @@ def _load_json_cache(filepath: str, label: str) -> dict:
 _ai_airport_cache: dict = _load_json_cache(AIRPORT_CACHE_FILE, "shortened airport names")
 _ai_airline_cache: dict = _load_json_cache(AIRLINE_CACHE_FILE, "airline codes")
 
+# Migrate old "CODE_Full Name" keys to plain "CODE" keys (one-time at startup)
+def _migrate_airport_cache():
+    import re as _re
+    additions = {}
+    for key, name in _ai_airport_cache.items():
+        m = _re.match(r'^([A-Z]{2,4})_(.+)$', key)
+        if m:
+            code = m.group(1)
+            if code not in _ai_airport_cache:
+                additions[code] = name
+    if additions:
+        _ai_airport_cache.update(additions)
+        save_json_atomically(AIRPORT_CACHE_FILE, _ai_airport_cache)
+        print(f"[AIRPORT-CACHE] Migrated {len(additions)} legacy keys to plain-code format.")
+_migrate_airport_cache()
+
 def ai_lookup_airline_codes(query_code: str):
     """
     Resolve an unknown airline code (2-letter IATA or 3-letter ICAO) via Gemini AI.
@@ -404,16 +420,10 @@ def get_airport_display_name(iata_code):
     if code in _ai_airport_cache:
         return _ai_airport_cache[code]
 
-    # 2. Also check legacy key format (CODE_RAWNAME) for backwards compat with existing cache file
+    # 2. Look up AIRPORTS_DB for AI/fallback
     data = (AIRPORTS_DB or {}).get(code, {})
     raw_name = data.get('name', code)
     city = data.get('city', '')
-    legacy_key = f"{code}_{raw_name}"
-    if legacy_key in _ai_airport_cache:
-        name = _ai_airport_cache[legacy_key]
-        _ai_airport_cache[code] = name
-        save_json_atomically(AIRPORT_CACHE_FILE, _ai_airport_cache)
-        return name
 
     # 3. Try AI (Gemini 2.0 Flash)
     if AI_AVAILABLE and AI_CLIENT:
