@@ -36,6 +36,8 @@ class WeatherFetcher:
     def get_day_name(self, date_str):
         try:
             date_obj = dt.strptime(date_str, '%Y-%m-%d')
+            if date_obj.date() == dt.now().date():
+                return 'TODAY'
             return date_obj.strftime('%a').upper()
         except: return "DAY"
 

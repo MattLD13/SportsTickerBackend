@@ -774,16 +774,19 @@ class TickerStreamer:
             d.line([(x+6, y+13), (x+9, y+13)], fill=bolt_clr, width=1)
             d.line([(x+9, y+13), (x+7, y+16)], fill=bolt_clr, width=1)
         elif 'cloud' in icon or 'overcast' in icon:
-            drift = int(math.sin(t * 0.4) * 1)
-            d.ellipse((x+5+drift, y+3, x+15+drift, y+11), fill=CLOUD_W)
-            d.ellipse((x+0, y+6, x+11, y+13), fill=(175, 180, 192))
-            d.ellipse((x+7+drift, y+5, x+16+drift, y+13), fill=(198, 202, 212))
+            d1 = int(math.sin(t * 1.8) * 3)
+            d2 = int(math.sin(t * 0.9 + 1.2) * 2)
+            bright = int(210 + math.sin(t * 1.1) * 25)
+            d.ellipse((x+0, y+6, x+11, y+13), fill=(120, 125, 142))
+            d.ellipse((x+7+d2, y+5, x+16+d2, y+13), fill=(165, 170, 185))
+            d.ellipse((x+5+d1, y+3, x+15+d1, y+11), fill=(bright, bright+5, bright+15))
         else:
-            drift = int(math.sin(t * 0.4) * 1)
+            d1 = int(math.sin(t * 1.2) * 1)
+            d2 = int(math.sin(t * 0.7 + 0.8) * 1)
             d.ellipse((x+5, y+1, x+12, y+8), fill=SUN_Y)
             d.point((x+11, y+1), fill=SUN_Y)
-            d.ellipse((x+1+drift, y+5, x+12+drift, y+13), fill=(190, 195, 208))
-            d.ellipse((x+7+drift, y+4, x+16+drift, y+12), fill=CLOUD_W)
+            d.ellipse((x+1+d1, y+5, x+12+d1, y+13), fill=(150, 155, 172))
+            d.ellipse((x+7+d2, y+4, x+16+d2, y+12), fill=CLOUD_W)
 
     def get_aqi_color(self, aqi):
         try:
@@ -1883,6 +1886,44 @@ class TickerStreamer:
         anim_t = time.time()
         DEEP_BLUE = (18, 45, 95)
 
+        def sky_tint(icon):
+            ic = icon.lower()
+            if 'sun'   in ic: return (8, 4, 0)
+            if 'storm' in ic: return (6, 0, 12)
+            if 'snow'  in ic: return (1, 3, 10)
+            if 'rain'  in ic: return (0, 4, 14)
+            return (2, 2, 7)
+
+        def draw_amb(icon, rx, ry, rw, rh, t):
+            ic = icon.lower()
+            n = max(2, rw // 20)
+            _fx = [0.06, 0.20, 0.35, 0.50, 0.65, 0.80, 0.12, 0.70]
+            _fy = [0.10, 0.28, 0.56, 0.75, 0.15, 0.45, 0.80, 0.35]
+            _sp = [2.1,  1.7,  2.5,  1.9,  2.3,  1.5,  2.0,  1.8]
+            _ph = [0.0,  1.3,  2.8,  0.7,  4.2,  5.1,  3.3,  1.9]
+            if 'sun' in ic:
+                for j in range(n):
+                    sx = rx + int(_fx[j] * rw); sy = ry + int(_fy[j] * rh)
+                    b = int(max(0, math.sin(t * _sp[j] + _ph[j])) ** 2 * 190)
+                    if b > 10: d.point((sx, sy), fill=(b, b, int(b * 0.88)))
+            elif 'storm' in ic:
+                fp = t % 6.0
+                if fp < 0.07:
+                    glow = int((1.0 - fp / 0.07) * 35)
+                    d.rectangle((rx, ry, rx + rw - 1, ry + rh - 1), fill=(glow, glow // 2, glow + 12))
+                elif 3.2 < fp < 3.27:
+                    glow = int((1.0 - (fp - 3.2) / 0.07) * 22)
+                    d.rectangle((rx, ry, rx + rw - 1, ry + rh - 1), fill=(glow, glow // 2, glow + 12))
+            elif 'snow' in ic:
+                _sfx = [0.06, 0.22, 0.38, 0.55, 0.72, 0.88, 0.14]
+                _ssp = [1.7,  1.4,  1.9,  1.5,  1.8,  1.6,  2.0]
+                _sph = [0.0,  2.1,  1.4,  3.5,  4.8,  0.9,  2.7]
+                for j in range(min(n + 1, len(_sfx))):
+                    bx = rx + int(_sfx[j] * rw) + int(math.sin(t * 0.7 + _sph[j]) * 2)
+                    by = ry + int((t * _ssp[j] + _sph[j] * 4) % (rh + 2))
+                    if rx <= bx < rx + rw and ry <= by < ry + rh:
+                        d.point((bx, by), fill=(40, 60, 100))
+
         temp_f = str(game.get('home_abbr', '--')).replace('°', '').strip()
         try:
             tv = int(float(temp_f))
@@ -1894,11 +1935,13 @@ class TickerStreamer:
         except:
             temp_color = (240, 240, 245)
 
-        d.rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), fill=(0, 0, 0))
+        tint = sky_tint(cur_icon)
+        d.rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), fill=tint)
         d.line((0, 0, PANEL_W - 1, 0), fill=DEEP_BLUE)
 
         left_w = 124
-        d.rectangle((0, 0, left_w, 31), fill=(0, 0, 0))
+        d.rectangle((0, 0, left_w, 31), fill=tint)
+        draw_amb(cur_icon, 0, 0, left_w, 32, anim_t)
         d.line((left_w, 0, left_w, 31), fill=DEEP_BLUE)
 
         location_name = normalize_special_chars(str(game.get('away_abbr', 'CITY')).upper()).strip()
@@ -1923,13 +1966,16 @@ class TickerStreamer:
         cond = replacements.get(cond, cond)
         if len(cond) > 19:
             cond = cond[:19]
-        if cond:
+        if feels_val and feels_val != '--':
+            draw_tiny_text(d, 24, 25, f"FEELS {feels_val}°", feels_col)
+        elif cond:
             draw_tiny_text(d, 24, 25, cond, (105, 145, 190))
 
-        aqi_val   = str(stats.get('aqi',   '--')).strip() or '--'
-        uv_val    = str(stats.get('uv',    '--')).strip() or '--'
-        feels_val = str(stats.get('feels', '--')).strip() or '--'
-        wind_val  = str(stats.get('wind',  '--')).strip() or '--'
+        aqi_val   = str(stats.get('aqi',      '--')).strip() or '--'
+        uv_val    = str(stats.get('uv',       '--')).strip() or '--'
+        feels_val = str(stats.get('feels',    '--')).strip() or '--'
+        wind_val  = str(stats.get('wind',     '--')).strip() or '--'
+        hum_val   = str(stats.get('humidity', '--')).strip() or '--'
         aqi_col   = self.get_aqi_color(aqi_val)
 
         try:
@@ -1947,7 +1993,7 @@ class TickerStreamer:
         stat_boxes = [
             ((74, 1,  121, 7),  "AQI",  aqi_val[:4],  (95, 120, 160), aqi_col),
             ((74, 9,  121, 15), "UV",   uv_val[:4],   (95, 120, 160), (210, 155, 255)),
-            ((74, 17, 121, 23), "FEEL", feels_val[:4], (95, 120, 160), feels_col),
+            ((74, 17, 121, 23), "HUM",  hum_val[:3] + '%', (95, 120, 160), (90, 200, 255)),
             ((74, 25, 121, 31), "WIND", wind_val[:3],  (95, 120, 160), (90, 200, 255)),
         ]
         for box, label, value, lbl_clr, val_clr in stat_boxes:
@@ -1977,18 +2023,22 @@ class TickerStreamer:
             col_right = cx + col_w - 1
             if i == 4: col_right = PANEL_W - 1
 
-            bg = (0, 0, 0) if i % 2 == 0 else (1, 3, 8)
+            col_icon = day.get('icon', 'cloud')
+            col_t = sky_tint(col_icon)
+            bg = col_t if i % 2 == 0 else tuple(max(0, c - 1) for c in col_t)
             d.rectangle((cx, 0, col_right, 31), fill=bg)
+            draw_amb(col_icon, cx, 0, col_right - cx + 1, 32, anim_t + i * 1.7)
             if i < 4: d.line((col_right, 3, col_right, 29), fill=DEEP_BLUE)
 
-            day_str = normalize_special_chars(str(day.get('day', '???'))[:3].upper())
+            day_str = 'TODAY' if i == 0 else normalize_special_chars(str(day.get('day', '???'))[:3].upper())
             day_w = len(day_str) * 5
             day_x = cx + max(0, ((col_right - cx + 1) - day_w) // 2)
-            draw_tiny_text(d, day_x, 2, day_str, (110, 160, 220))
+            lbl_col = (255, 255, 255) if i == 0 else (110, 160, 220)
+            draw_tiny_text(d, day_x, 2, day_str, lbl_col)
             d.line((cx + 4, 8, col_right - 4, 8), fill=DEEP_BLUE)
 
             icon_x = cx + max(0, ((col_right - cx + 1) - 16) // 2)
-            self.draw_weather_pixel_art(d, day.get('icon', 'cloud'), icon_x, 9, t=anim_t)
+            self.draw_weather_pixel_art(d, day.get('icon', 'cloud'), icon_x, 9, t=anim_t + i * 1.7)
 
             hi = str(day.get('high', '--')).replace('°', '')
             lo = str(day.get('low', '--')).replace('°', '')
@@ -2762,7 +2812,7 @@ class TickerStreamer:
                         game_type = str(self.static_current_game.get('type', ''))
                         sport = str(self.static_current_game.get('sport', '')).lower()
 
-                        if sport.startswith('clock') or game_type in ('music', 'golf', 'masters') or sport in ('music', 'golf', 'masters'):
+                        if sport.startswith('clock') or game_type in ('music', 'golf', 'masters', 'weather') or sport in ('music', 'golf', 'masters'):
                             if game_type == 'music' or sport == 'music':
                                 if spotify_data:
                                     self.static_current_game = spotify_data
