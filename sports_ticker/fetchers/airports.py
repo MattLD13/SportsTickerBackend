@@ -23,6 +23,19 @@ class AirportMixin:
                         candidates.add(paired_code)
         return candidates
 
+    @staticmethod
+    def _parse_ts(value):
+        """Extract an integer Unix timestamp from either a plain int or a dict like {"utc": 123}."""
+        if isinstance(value, dict):
+            for key in ('utc', 'unix', 'time', 'timestamp'):
+                if key in value:
+                    value = value[key]
+                    break
+        try:
+            return int(value)
+        except Exception:
+            return None
+
     def fetch_fr24_schedule(self, mode='arrivals'):
         """Includes delayed flights and sorts by closest arrival/departure time."""
         airport_code = self._get_airport_query_code()
@@ -40,12 +53,14 @@ class AirportMixin:
 
             res = self.session.get(url, headers=headers, timeout=TIMEOUTS['slow'])
             if res.status_code != 200:
+                self.log("WARNING", f"FR24 schedule API returned {res.status_code} for {airport_code}")
                 return []
 
             data = res.json()
             schedule = safe_get(data, 'result', 'response', 'airport', 'pluginData', 'schedule', mode, default={})
 
             if not schedule or 'data' not in schedule:
+                self.log("WARNING", f"FR24 schedule: no data in response for {airport_code} {mode}")
                 return []
 
             total_raw = len(schedule['data'])
@@ -60,9 +75,11 @@ class AirportMixin:
                     time_info = safe_get(f_data, 'time', default={})
                     t_bucket = 'arrival' if mode == 'arrivals' else 'departure'
 
-                    sched_ts = safe_get(time_info, 'scheduled', t_bucket) or 0
-                    est_ts = (safe_get(time_info, 'estimated', t_bucket)
-                              or safe_get(time_info, 'other', t_bucket))
+                    sched_ts = self._parse_ts(safe_get(time_info, 'scheduled', t_bucket)) or 0
+                    est_ts = (self._parse_ts(safe_get(time_info, 'estimated', t_bucket))
+                              or self._parse_ts(safe_get(time_info, 'real', t_bucket))
+                              or self._parse_ts(safe_get(time_info, 'actual', t_bucket))
+                              or self._parse_ts(safe_get(time_info, 'other', t_bucket)))
 
                     sort_ts = est_ts if est_ts else sched_ts
                     if sort_ts == 0:
