@@ -2830,3 +2830,14 @@ items 5
 [19:53:51] WEATHER      | No coordinates for EWR
 [19:53:52] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
 ok 5
+📂 Found 10 saved tickers in 'ticker_data'
+📦 Loaded 32 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+2 [{'id': 'RPA3442', 'status_label': 'ARRIVING', 'sort_time': 1778716746, 'from': 'BUF'}, {'id': 'UPS4082', 'status_label': 'ARRIVING', 'sort_time': 1778716832, 'from': 'SDF'}]
+📂 Found 10 saved tickers in 'ticker_data'
+📦 Loaded 32 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+[19:59:44] WEATHER      | No coordinates for EWR
+[19:59:45] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
+2 2
+[{'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx', 'home_abbr': 'Newark', 'away_abbr': '--', 'status': 'UNKNOWN', 'is_shown': True}, {'type': 'flight_arrival', 'sport': 'flight', 'id': 'arr_0', 'status': 'ARRIVING', 'home_abbr': 'SDF', 'away_abbr': 'UPS4082', 'is_shown': True}, {'type': 'flight_arrival', 'sport': 'flight', 'id': 'arr_1', 'status': 'ARRIVING', 'home_abbr': 'CLT', 'away_abbr': 'UAL371', 'is_shown': True}]
