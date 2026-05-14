@@ -429,15 +429,16 @@ def get_airport_display_name(iata_code):
     if AI_AVAILABLE and AI_CLIENT:
         try:
             prompt = (
-                f"Convert the airport name '{raw_name}' (City: {city}) into its common display name. \n"
+                f"Shorten the airport name '{raw_name}' (City: {city}) for a compact display ticker.\n"
                 "Rules:\n"
-                "1. STRIP: Remove words like 'International', 'Airport', 'Field', 'Intercontinental', 'Municipal'.\n"
-                "2. REDUNDANCY: Remove the city name if it is just a descriptor (e.g. 'Denver Intl' -> 'Denver').\n"
-                "3. PERSON NAMES: Always use the Full Name (First + Last). Do not shorten to surname only. \n"
-                "   - CORRECT: 'George Bush', 'Harry Reid', 'Gerald Ford'\n"
-                "   - INCORRECT: 'Bush', 'Reid', 'Ford'\n"
-                "4. COLLOQUIAL: If the airport has a famous acronym or nickname, use that instead.\n"
-                "   - Example: 'John F. Kennedy' -> 'JFK'\n"
+                "1. KEEP 'International' if it is part of the airport's distinct identity (e.g. 'Newark Liberty International', 'Los Angeles International').\n"
+                "2. REMOVE only trailing standalone 'Airport' and generic suffixes like 'Intercontinental', 'Municipal', 'Regional', 'Field'.\n"
+                "3. REMOVE the city name only when it adds no info (e.g. 'Denver International Airport' -> 'Denver International').\n"
+                "4. PERSON NAMES: Always use Full Name (First + Last). Never shorten to surname only.\n"
+                "   - CORRECT: 'John F. Kennedy', 'George Bush', 'Harry Reid'\n"
+                "   - INCORRECT: 'Kennedy', 'Bush', 'Reid'\n"
+                "5. COLLOQUIAL: Use a famous acronym or nickname when universally known.\n"
+                "   - Example: 'John F. Kennedy International' -> 'JFK'\n"
                 "   - Example: 'London Heathrow' -> 'Heathrow'\n"
                 f"Input to process: {raw_name}"
             )
@@ -460,20 +461,16 @@ def get_airport_display_name(iata_code):
             else:
                 print(f"[AI] Failed to shorten {code}: {e}")
 
-    # 4. Algorithmic fallback
+    # 4. Algorithmic fallback — keep "International", only strip bare suffixes
     replacements = [
-        " International Airport", " Intercontinental Airport", " Regional Airport",
-        " International", " Intercontinental", " Municipal",
+        " Intercontinental Airport", " Regional Airport", " Municipal Airport",
+        " Intercontinental", " Municipal", " Regional",
         " Airport", " Intl", " Apt", " Field", " Air Force Base", " AFB"
     ]
     clean_name = raw_name
     for phrase in replacements:
-        clean_name = re.compile(re.escape(phrase), re.IGNORECASE).sub("", clean_name)
+        clean_name = re.compile(re.escape(phrase) + r'\s*$', re.IGNORECASE).sub("", clean_name)
     clean_name = clean_name.strip()
-    if city and clean_name.lower().startswith(city.lower()):
-        candidate = clean_name[len(city):].strip()
-        if len(candidate) > 2:
-            clean_name = candidate
 
     _ai_airport_cache[code] = clean_name
     save_json_atomically(AIRPORT_CACHE_FILE, _ai_airport_cache)
