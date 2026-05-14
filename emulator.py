@@ -45,6 +45,20 @@ import ticker_controller as _tc
 
 DEFAULT_URL = "http://localhost:5000"
 SCALE_OPTIONS = [2, 3, 4, 5, 6, 8]
+MODE_OPTIONS = [
+    "sports",
+    "live",
+    "my_teams",
+    "sports_full",
+    "soccer_full",
+    "golf",
+    "stocks",
+    "weather",
+    "music",
+    "clock",
+    "flights",
+    "flight_tracker",
+]
 
 
 # ── Emulated ticker ───────────────────────────────────────────────────────────
@@ -90,7 +104,7 @@ class EmulatedTicker(TickerStreamer):
 # ── Tkinter display ────────────────────────────────────────────────────────────
 
 _HELP_TEXT = (
-    "+/=  zoom in    -  zoom out    p  pause    g  grid    s  screenshot    q  quit"
+    "+/=  zoom in    -  zoom out    p  pause    g  grid    m/M  mode    s  screenshot    q  quit"
 )
 
 # Refresh interval for the Tkinter poll (ms).  30 ms ≈ 33 fps.
@@ -104,6 +118,7 @@ class EmulatorWindow:
         self.ticker = ticker
         self.queue = frame_queue
         self.scale = scale
+        self.mode_var = tk.StringVar(value=self._current_mode())
 
         self.paused = False
         self.show_grid = False
@@ -148,11 +163,44 @@ class EmulatorWindow:
         )
         self.lbl_right.pack(side="right")
 
+        mode_bar = tk.Frame(self.root, bg="#111")
+        mode_bar.pack(fill="x", padx=8, pady=(4, 0))
+
+        tk.Label(
+            mode_bar, text="Mode", font=("Courier New", 9),
+            bg="#111", fg="#888", anchor="w"
+        ).pack(side="left")
+
+        mode_menu = tk.OptionMenu(
+            mode_bar,
+            self.mode_var,
+            *MODE_OPTIONS,
+            command=self._apply_mode_from_ui,
+        )
+        mode_menu.config(
+            bg="#222",
+            fg="#eee",
+            activebackground="#333",
+            activeforeground="#fff",
+            highlightthickness=0,
+            bd=0,
+            relief="flat",
+            font=("Courier New", 9),
+        )
+        mode_menu["menu"].config(
+            bg="#222",
+            fg="#eee",
+            activebackground="#444",
+            activeforeground="#fff",
+            relief="flat",
+        )
+        mode_menu.pack(side="left", padx=(8, 0))
+
         # Help footer
         tk.Label(
             self.root, text=_HELP_TEXT,
             font=("Courier New", 8), bg="#111", fg="#3a3a3a"
-        ).pack(padx=8, pady=(2, 8))
+        ).pack(padx=8, pady=(4, 8))
 
     # ── Key bindings ───────────────────────────────────────────────────────────
 
@@ -163,6 +211,8 @@ class EmulatorWindow:
             self.root.bind(key, lambda _e: self._zoom(-1))
         self.root.bind("p",        lambda _e: self._toggle_pause())
         self.root.bind("g",        lambda _e: self._toggle_grid())
+        self.root.bind("m",        lambda _e: self._cycle_mode(+1))
+        self.root.bind("M",        lambda _e: self._cycle_mode(-1))
         self.root.bind("s",        lambda _e: self._screenshot())
         self.root.bind("q",        lambda _e: self.root.destroy())
         self.root.bind("<Escape>", lambda _e: self.root.destroy())
@@ -218,6 +268,8 @@ class EmulatorWindow:
     def _update_status(self):
         import time as _time
         mode = getattr(self.ticker, "mode", "?")
+        if self.mode_var.get() != mode and mode in MODE_OPTIONS:
+            self.mode_var.set(mode)
         n_scroll = len(getattr(self.ticker, "games", []))
         n_static = len(getattr(self.ticker, "static_items", []))
         device = str(getattr(self.ticker, "device_id", "?"))[:12]
@@ -249,7 +301,25 @@ class EmulatorWindow:
             f"Ticker Emulator - {mode} - {_tc.BACKEND_URL}"
         )
 
+    def _current_mode(self) -> str:
+        mode = str(getattr(self.ticker, "mode", "sports") or "sports")
+        return mode if mode in MODE_OPTIONS else "sports"
+
     # ── Actions ────────────────────────────────────────────────────────────────
+
+    def _apply_mode_from_ui(self, mode: str):
+        if mode not in MODE_OPTIONS:
+            return
+        self.mode_var.set(mode)
+        self.ticker.set_mode(mode)
+
+    def _cycle_mode(self, delta: int):
+        current = self.mode_var.get()
+        if current not in MODE_OPTIONS:
+            current = self._current_mode()
+        idx = MODE_OPTIONS.index(current)
+        idx = (idx + delta) % len(MODE_OPTIONS)
+        self._apply_mode_from_ui(MODE_OPTIONS[idx])
 
     def _zoom(self, delta: int):
         if self.scale not in SCALE_OPTIONS:

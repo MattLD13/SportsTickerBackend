@@ -1,0 +1,18 @@
+{
+    "clients": [
+        "legacy-client-1"
+    ],
+    "paired": true,
+    "settings": {
+        "mode": "flights",
+        "flight_submode": "airport",
+        "airport_code_iata": "",
+        "airport_code_icao": "",
+        "airport_name": "",
+        "pinned_game": "",
+        "pinned_games": [],
+        "track_flight_id": "",
+        "track_guest_name": ""
+    },
+    "my_teams": null
+}

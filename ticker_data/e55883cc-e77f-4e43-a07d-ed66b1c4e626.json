@@ -1,0 +1,23 @@
+{
+    "name": "Ticker",
+    "settings": {
+        "brightness": 100,
+        "scroll_speed": 0.03,
+        "scroll_seamless": true,
+        "inverted": false,
+        "panel_count": 2,
+        "live_delay_mode": false,
+        "live_delay_seconds": 45,
+        "utc_offset": -5,
+        "timezone_name": "America/New_York",
+        "mode": "sports"
+    },
+    "my_teams": null,
+    "clients": [
+        "e55883cc-e77f-4e43-a07d-ed66b1c4e626"
+    ],
+    "paired": true,
+    "pairing_code": "396569",
+    "last_seen": 1778719249.4820714,
+    "timezone_name": "America/New_York"
+}

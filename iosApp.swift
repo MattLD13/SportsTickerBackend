@@ -1794,6 +1794,7 @@ struct ModesView: View {
     }
     private func setFlightSubmode(_ submode: String) {
         vm.state.flight_submode = submode
+        vm.state.mode = (submode == "track") ? "flight_tracker" : "flights"
         vm.state.active_sports["flight_airport"] = (submode == "airport")
         vm.state.active_sports["flight_visitor"] = (submode == "track")
         vm.startBurstPolling()

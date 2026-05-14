@@ -12,6 +12,20 @@ def api_config():
 
         # Migrate legacy modes to canonical mode names
         incoming_submode = new_data.get('flight_submode')
+        active_sports_payload = new_data.get('active_sports') if isinstance(new_data.get('active_sports'), dict) else {}
+
+        def _infer_legacy_flight_mode(payload_mode: str | None, submode: str | None) -> str | None:
+            submode_norm = str(submode or '').strip().lower()
+            payload_mode_norm = str(payload_mode or '').strip().lower()
+            if active_sports_payload.get('flight_visitor'):
+                return 'flight_tracker'
+            if active_sports_payload.get('flight_airport'):
+                return 'flights'
+            if submode_norm == 'track' and payload_mode_norm in ('', 'sports', 'all', 'flights'):
+                return 'flight_tracker'
+            if submode_norm == 'airport' and payload_mode_norm in ('', 'sports', 'all', 'flight_tracker'):
+                return 'flights'
+            return None
 
         # Pin normalization (ticker-scoped): always keep a single pinned game.
         normalized_pin = None
@@ -29,8 +43,16 @@ def api_config():
                 new_data['mode'] = 'flight_tracker'
             elif incoming_submode == 'airport' and new_data['mode'] == 'flight_tracker':
                 new_data['mode'] = 'flights'
+            else:
+                inferred_mode = _infer_legacy_flight_mode(new_data['mode'], incoming_submode)
+                if inferred_mode:
+                    new_data['mode'] = inferred_mode
         elif incoming_submode in ('track', 'airport'):
             new_data['mode'] = 'flight_tracker' if incoming_submode == 'track' else 'flights'
+        else:
+            inferred_mode = _infer_legacy_flight_mode(new_data.get('mode'), incoming_submode)
+            if inferred_mode:
+                new_data['mode'] = inferred_mode
         # Drop flight_submode — no longer a valid key
         new_data.pop('flight_submode', None)
         
@@ -82,6 +104,7 @@ def api_config():
                 if airport_code_input:
                     # Perform airport lookup
                     airport_info = lookup_and_auto_fill_airport(airport_code_input)
+                    legacy_flights_payload = bool(active_sports_payload.get('flight_airport') or active_sports_payload.get('flight_visitor') or incoming_submode in ('airport', 'track'))
                     
                     if airport_info['iata']:  # Only update if airport was found
                         flight_tracker.airport_code_iata = airport_info['iata']
@@ -91,10 +114,25 @@ def api_config():
                         flight_changed = True
                     else:
                         print(f"⚠️ Airport code '{airport_code_input}' not found in database")
-                        # Clear airport info if code is invalid
-                        flight_tracker.airport_code_iata = ''
-                        flight_tracker.airport_code_icao = ''
-                        flight_tracker.airport_name = ''
+                        if legacy_flights_payload and 3 <= len(airport_code_input) <= 4:
+                            # Older app builds may send a valid airport code that is not in airportsdata.
+                            # Preserve the raw code so airport fetches can still run.
+                            flight_tracker.airport_code_iata = airport_code_input.upper()
+                            incoming_icao = str(new_data.get('airport_code_icao', '') or '').strip().upper()
+                            incoming_name = str(new_data.get('airport_name', '') or '').strip()
+                            if incoming_icao:
+                                flight_tracker.airport_code_icao = incoming_icao
+                            elif len(airport_code_input) == 4:
+                                flight_tracker.airport_code_icao = airport_code_input.upper()
+                            if incoming_name:
+                                flight_tracker.airport_name = incoming_name
+                            elif not flight_tracker.airport_name:
+                                flight_tracker.airport_name = airport_code_input.upper()
+                        else:
+                            # Clear airport info if code is invalid.
+                            flight_tracker.airport_code_iata = ''
+                            flight_tracker.airport_code_icao = ''
+                            flight_tracker.airport_name = ''
                         flight_changed = True
                 elif 'airport_code_icao' in new_data:
                     flight_tracker.airport_code_icao = new_data.get('airport_code_icao', '')

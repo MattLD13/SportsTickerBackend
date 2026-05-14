@@ -1,0 +1,18 @@
+{
+    "clients": [
+        "legacy-client-3"
+    ],
+    "paired": true,
+    "settings": {
+        "mode": "flight_tracker",
+        "flight_submode": "track",
+        "airport_code_iata": "EWR",
+        "airport_code_icao": "",
+        "airport_name": "EWR",
+        "track_flight_id": "UA123",
+        "track_guest_name": "",
+        "pinned_game": "",
+        "pinned_games": []
+    },
+    "my_teams": null
+}
