@@ -1771,6 +1771,11 @@ struct ModesView: View {
         vm.state.active_sports["weather"] = (target == "weather")
         vm.state.active_sports["clock"] = (target == "clock")
         vm.state.active_sports["music"] = (target == "music")
+        if target != "flights" {
+            vm.state.flight_submode = ""
+            vm.state.active_sports["flight_airport"] = false
+            vm.state.active_sports["flight_visitor"] = false
+        }
         if target == "flights" {
             // Always reset to airport mode when tapping the Flights category tile.
             // If flight_submode were kept as "track", the server would silently

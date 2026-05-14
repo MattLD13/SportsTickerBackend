@@ -114,9 +114,10 @@ def api_config():
                         flight_changed = True
                     else:
                         print(f"⚠️ Airport code '{airport_code_input}' not found in database")
-                        if legacy_flights_payload and 3 <= len(airport_code_input) <= 4:
-                            # Older app builds may send a valid airport code that is not in airportsdata.
-                            # Preserve the raw code so airport fetches can still run.
+                        if 3 <= len(airport_code_input) <= 4:
+                            # Preserve raw airport codes even when the lookup database misses them.
+                            # This keeps the flight worker functional for airportsdata gaps and
+                            # older app builds that still send a valid airport code.
                             flight_tracker.airport_code_iata = airport_code_input.upper()
                             incoming_icao = str(new_data.get('airport_code_icao', '') or '').strip().upper()
                             incoming_name = str(new_data.get('airport_name', '') or '').strip()
@@ -129,7 +130,7 @@ def api_config():
                             elif not flight_tracker.airport_name:
                                 flight_tracker.airport_name = airport_code_input.upper()
                         else:
-                            # Clear airport info if code is invalid.
+                            # Clear airport info if the input is not even airport-like.
                             flight_tracker.airport_code_iata = ''
                             flight_tracker.airport_code_icao = ''
                             flight_tracker.airport_name = ''

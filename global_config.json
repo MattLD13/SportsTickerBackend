@@ -19,7 +19,7 @@
         "clock": true,
         "music": true,
         "flight_tracker": false,
-        "flight_airport": true,
+        "flight_airport": false,
         "stock_tech_ai": true,
         "stock_momentum": false,
         "stock_energy": false,

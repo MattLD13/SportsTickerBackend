@@ -1,0 +1,18 @@
+{
+    "clients": [
+        "client-exit-1"
+    ],
+    "paired": true,
+    "settings": {
+        "mode": "sports",
+        "flight_submode": "airport",
+        "airport_code_iata": "",
+        "airport_code_icao": "",
+        "airport_name": "",
+        "track_flight_id": "UA123",
+        "track_guest_name": "",
+        "pinned_game": "",
+        "pinned_games": []
+    },
+    "my_teams": null
+}

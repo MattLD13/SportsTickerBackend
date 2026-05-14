@@ -3919,3 +3919,335 @@ Newark
 127.0.0.1 - - [13/May/2026 20:49:57] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
 127.0.0.1 - - [13/May/2026 20:49:58] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
 127.0.0.1 - - [13/May/2026 20:49:59] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:50:00] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:01] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:02] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:03] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:03] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:04] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:05] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=6.28s
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:50:06] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=1.03s
+127.0.0.1 - - [13/May/2026 20:50:07] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[20:50:08] WEATHER      | No coordinates for EWR
+127.0.0.1 - - [13/May/2026 20:50:08] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[20:50:08] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
+[REFRESH] start reason=flights_worker
+[REFRESH] done reason=flights_worker took=0.73s
+127.0.0.1 - - [13/May/2026 20:50:09] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:50:10] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=0.25s
+127.0.0.1 - - [13/May/2026 20:50:11] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:12] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:12] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:13] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:14] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.20s
+127.0.0.1 - - [13/May/2026 20:50:15] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:16] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:17] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:18] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:19] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:20] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:50:20] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=1.10s
+127.0.0.1 - - [13/May/2026 20:50:21] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:22] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:23] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:24] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:50:25] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=0.53s
+127.0.0.1 - - [13/May/2026 20:50:26] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:27] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:28] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:28] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:29] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.24s
+127.0.0.1 - - [13/May/2026 20:50:30] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:31] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:32] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:33] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:34] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:35] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:50:36] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=1.23s
+127.0.0.1 - - [13/May/2026 20:50:36] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:37] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:38] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:39] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:50:40] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=0.87s
+127.0.0.1 - - [13/May/2026 20:50:41] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:42] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[20:50:43] WEATHER      | No coordinates for EWR
+127.0.0.1 - - [13/May/2026 20:50:43] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[20:50:43] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
+[REFRESH] start reason=flights_worker
+[REFRESH] done reason=flights_worker took=0.31s
+127.0.0.1 - - [13/May/2026 20:50:44] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:45] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.22s
+127.0.0.1 - - [13/May/2026 20:50:45] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:46] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:47] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:48] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:49] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:50:50] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:51] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=1.43s
+127.0.0.1 - - [13/May/2026 20:50:52] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:53] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:53] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:54] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:50:55] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=0.61s
+127.0.0.1 - - [13/May/2026 20:50:56] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:57] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:58] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:50:59] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:51:00] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=0.22s
+127.0.0.1 - - [13/May/2026 20:51:01] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:01] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:02] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:03] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:04] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:51:05] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:06] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=1.30s
+127.0.0.1 - - [13/May/2026 20:51:07] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:08] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:09] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:09] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.60s
+127.0.0.1 - - [13/May/2026 20:51:10] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:11] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:12] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:13] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:14] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:15] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.21s
+127.0.0.1 - - [13/May/2026 20:51:16] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:16] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:17] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[20:51:18] WEATHER      | No coordinates for EWR
+[20:51:18] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
+[REFRESH] start reason=flights_worker
+127.0.0.1 - - [13/May/2026 20:51:18] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:19] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=flights_worker took=1.20s
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.21s
+127.0.0.1 - - [13/May/2026 20:51:20] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:21] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:22] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:23] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:23] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:24] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:51:25] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=0.65s
+127.0.0.1 - - [13/May/2026 20:51:26] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:27] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:28] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:29] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:30] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.20s
+127.0.0.1 - - [13/May/2026 20:51:30] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:31] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:32] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:33] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:34] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:51:35] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=0.56s
+127.0.0.1 - - [13/May/2026 20:51:36] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:37] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:37] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:38] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:39] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:51:40] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=0.70s
+127.0.0.1 - - [13/May/2026 20:51:41] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:42] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:43] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:44] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:44] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:51:45] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=1.35s
+127.0.0.1 - - [13/May/2026 20:51:46] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:47] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:48] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:49] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:50] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.19s
+127.0.0.1 - - [13/May/2026 20:51:51] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:51] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:52] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[20:51:53] WEATHER      | No coordinates for EWR
+[20:51:53] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
+[REFRESH] start reason=flights_worker
+127.0.0.1 - - [13/May/2026 20:51:53] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=flights_worker took=0.68s
+127.0.0.1 - - [13/May/2026 20:51:54] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.20s
+127.0.0.1 - - [13/May/2026 20:51:55] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:56] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:57] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:58] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:58] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:51:59] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:52:00] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=1.07s
+127.0.0.1 - - [13/May/2026 20:52:01] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:02] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:03] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:03] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:04] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.20s
+127.0.0.1 - - [13/May/2026 20:52:05] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:06] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:07] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:08] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:09] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:09] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:52:10] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=0.82s
+127.0.0.1 - - [13/May/2026 20:52:11] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:12] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:13] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:14] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:15] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:52:16] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=1.05s
+127.0.0.1 - - [13/May/2026 20:52:16] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:17] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:18] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:19] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.20s
+127.0.0.1 - - [13/May/2026 20:52:20] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:21] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:22] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:23] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:23] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:24] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:52:25] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=0.54s
+127.0.0.1 - - [13/May/2026 20:52:26] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:27] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:28] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[20:52:28] WEATHER      | No coordinates for EWR
+[20:52:28] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
+[REFRESH] start reason=flights_worker
+127.0.0.1 - - [13/May/2026 20:52:29] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=flights_worker took=0.97s
+127.0.0.1 - - [13/May/2026 20:52:29] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.20s
+127.0.0.1 - - [13/May/2026 20:52:30] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:31] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:32] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:33] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:34] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:35] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.21s
+127.0.0.1 - - [13/May/2026 20:52:35] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:36] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:37] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:38] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:39] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:52:40] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:41] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=1.00s
+127.0.0.1 - - [13/May/2026 20:52:42] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:42] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:43] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:44] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.21s
+127.0.0.1 - - [13/May/2026 20:52:45] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:46] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:47] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:48] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:48] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:49] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+[REFRESH] done reason=sports_worker took=0.22s
+127.0.0.1 - - [13/May/2026 20:52:50] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:51] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:52] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:53] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:54] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:54] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:52:55] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=1.18s
+127.0.0.1 - - [13/May/2026 20:52:56] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:57] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:58] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+127.0.0.1 - - [13/May/2026 20:52:59] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] start reason=sports_worker
+127.0.0.1 - - [13/May/2026 20:53:00] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+[REFRESH] done reason=sports_worker took=0.18s
+127.0.0.1 - - [13/May/2026 20:53:01] "GET /data?id=4923bd08-ce0e-4931-9aca-7bb88363ac6f HTTP/1.1" 200 -
+📂 Found 16 saved tickers in 'ticker_data'
+📦 Loaded 32 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ Airport code 'EWR' not found in database
+[REFRESH] start reason=api_config
+💾 Saved Ticker: EXITFLIGHT1
+200
+{'airport_code_iata': '', 'airport_code_icao': '', 'airport_name': '', 'saved_teams': None, 'status': 'ok', 'ticker_id': 'EXITFLIGHT1'}
+ticker mode sports
+flight_submode airport
+flight flags None None
+[REFRESH] done reason=api_config took=4.35s
+📂 Found 17 saved tickers in 'ticker_data'
+📦 Loaded 31 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ Airport code 'EWR' not found in database
+[REFRESH] start reason=api_config
+💾 Saved Ticker: ENTER1
+enter 200 {'airport_code_iata': 'EWR', 'airport_code_icao': 'KEWR', 'airport_name': 'Newark', 'saved_teams': None, 'status': 'ok', 'ticker_id': 'ENTER1'}
+saved mode flights
+saved airport EWR KEWR Newark
+---
+⚠️ Airport code 'EWR' not found in database
+💾 Saved Ticker: LEAVE1
+leave 200 {'airport_code_iata': 'EWR', 'airport_code_icao': 'KEWR', 'airport_name': 'Newark', 'saved_teams': None, 'status': 'ok', 'ticker_id': 'LEAVE1'}
+saved mode sports
+saved airport EWR KEWR Newark
+---
+[REFRESH] done reason=api_config took=4.16s
+[REFRESH] start reason=api_config
+[REFRESH] error reason=api_config: cannot schedule new futures after shutdown
