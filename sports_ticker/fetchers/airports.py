@@ -37,145 +37,78 @@ class AirportMixin:
             return None
 
     def fetch_fr24_schedule(self, mode='arrivals'):
-        """Includes delayed flights and sorts by closest arrival/departure time."""
-        airport_code = self._get_airport_query_code()
-        if not airport_code:
+        """Get arriving/departing live flights using the FR24 SDK (schedule endpoint is blocked)."""
+        if not self.fr_api:
             return []
+
+        airport_iata = str(getattr(self, 'airport_code_iata', '') or '').strip().upper()
+        if not airport_iata:
+            return []
+
         try:
-            timestamp = int(time.time())
-            url = f"https://api.flightradar24.com/common/v1/airport.json?code={airport_code}&plugin[]=schedule&plugin-setting[schedule][mode]={mode}&plugin-setting[schedule][timestamp]={timestamp}&page=1&limit=100"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Referer': 'https://www.flightradar24.com/',
-            }
-
-            res = self.session.get(url, headers=headers, timeout=TIMEOUTS['slow'])
-            if res.status_code != 200:
-                self.log("WARNING", f"FR24 schedule API returned {res.status_code} for {airport_code}")
+            flights = self.fr_api.get_flights()
+            if not flights:
                 return []
 
-            data = res.json()
-            schedule = safe_get(data, 'result', 'response', 'airport', 'pluginData', 'schedule', mode, default={})
-
-            if not schedule or 'data' not in schedule:
-                self.log("WARNING", f"FR24 schedule: no data in response for {airport_code} {mode}")
-                return []
-
-            total_raw = len(schedule['data'])
+            now = int(time.time())
             processed_list = []
-            for flight in schedule['data']:
+
+            for flight in flights:
                 try:
-                    f_data = safe_get(flight, 'flight', default={})
-                    status_text = safe_get(f_data, 'status', 'generic', 'status', 'text', default='').lower()
-                    airport_candidates = self._get_airport_code_candidates()
+                    altitude = getattr(flight, 'altitude', 0) or 0
 
-                    # 1. Extract timestamps first so delay can gate the filter
-                    time_info = safe_get(f_data, 'time', default={})
-                    t_bucket = 'arrival' if mode == 'arrivals' else 'departure'
-
-                    sched_ts = self._parse_ts(safe_get(time_info, 'scheduled', t_bucket)) or 0
-                    est_ts = (self._parse_ts(safe_get(time_info, 'estimated', t_bucket))
-                              or self._parse_ts(safe_get(time_info, 'real', t_bucket))
-                              or self._parse_ts(safe_get(time_info, 'actual', t_bucket))
-                              or self._parse_ts(safe_get(time_info, 'other', t_bucket)))
-
-                    sort_ts = est_ts if est_ts else sched_ts
-                    if sort_ts == 0:
-                        continue  # skip if absolutely no time data
-
-                    # Detect delay: status text OR estimated 15+ min later than scheduled
-                    is_delayed = (
-                        'delay' in status_text or
-                        (sched_ts and est_ts and
-                         isinstance(sched_ts, (int, float)) and isinstance(est_ts, (int, float)) and
-                         (est_ts - sched_ts) >= 900)
-                    )
-
-                    # 2. Validate the flight actually operates at this airport
-                    # FR24 occasionally returns flights that route through but don't originate/terminate here
                     if mode == 'arrivals':
-                        dest_iata = safe_get(f_data, 'airport', 'destination', 'code', 'iata', default='')
-                        dest_icao = safe_get(f_data, 'airport', 'destination', 'code', 'icao', default='')
-                        dest_codes = {str(dest_iata or '').strip().upper(), str(dest_icao or '').strip().upper()} - {''}
-                        if dest_codes and airport_candidates and not (airport_candidates & dest_codes):
+                        dest = str(getattr(flight, 'destination_airport_iata', '') or '').strip().upper()
+                        if dest != airport_iata:
                             continue
+                        other_iata = str(getattr(flight, 'origin_airport_iata', '') or '').strip().upper()
+                        entry = {
+                            'from': get_airport_display_name(other_iata),
+                            'status_label': 'ARRIVING',
+                        }
                     else:
-                        origin_iata = safe_get(f_data, 'airport', 'origin', 'code', 'iata', default='')
-                        origin_icao = safe_get(f_data, 'airport', 'origin', 'code', 'icao', default='')
-                        origin_codes = {str(origin_iata or '').strip().upper(), str(origin_icao or '').strip().upper()} - {''}
-                        if origin_codes and airport_candidates and not (airport_candidates & origin_codes):
+                        origin = str(getattr(flight, 'origin_airport_iata', '') or '').strip().upper()
+                        if origin != airport_iata:
                             continue
+                        other_iata = str(getattr(flight, 'destination_airport_iata', '') or '').strip().upper()
+                        entry = {
+                            'to': get_airport_display_name(other_iata),
+                            'status_label': 'DEPARTING',
+                        }
 
-                    # 3. Filter finished flights — delayed flights always pass through
-                    if not is_delayed:
-                        if mode == 'arrivals' and status_text == 'landed':
-                            continue
-                        if mode == 'departures' and status_text == 'departed':
-                            continue
+                    callsign = str(getattr(flight, 'callsign', '') or '').strip()
+                    number = str(getattr(flight, 'number', '') or '').strip()
+                    display_id = callsign or number
+                    if not display_id:
+                        continue
 
-                    # 4. Build display identifier — prefer ICAO callsign (3-letter) over IATA flight number
-                    callsign = safe_get(f_data, 'identification', 'callsign', default='').strip()
-                    iata_num = safe_get(f_data, 'identification', 'number', 'default', default='').strip()
-                    alt_num = safe_get(f_data, 'identification', 'number', 'alternative', default='').strip()
-                    airline_icao = safe_get(f_data, 'airline', 'code', 'icao', default='').strip()
-                    airline_iata = safe_get(f_data, 'airline', 'code', 'iata', default='').strip()
-
-                    if callsign:
-                        # e.g. "UAE210", "UAL264" — already in 3-letter ICAO format
-                        display_id = callsign
-                    elif iata_num and airline_icao:
-                        # Strip IATA prefix and replace with ICAO: "EK210" → "UAE210"
-                        num_only = iata_num[len(airline_iata):] if (airline_iata and iata_num.startswith(airline_iata)) else iata_num
-                        display_id = f"{airline_icao}{num_only}"
-                    elif iata_num:
-                        display_id = iata_num
-                    elif alt_num:
-                        display_id = alt_num
-                    else:
-                        continue  # no usable identifier
-
-                    display_status = "DELAYED" if is_delayed else ("ARRIVING" if mode == 'arrivals' else "DEPARTING")
-
-                    city_key = 'origin' if mode == 'arrivals' else 'destination'
-                    city_code = safe_get(f_data, 'airport', city_key, 'code', 'iata', default='') or safe_get(f_data, 'airport', city_key, 'code', 'icao', default='')
-
-                    entry = {
-                        'id': display_id,
-                        'status_label': display_status,
-                        'sort_time': sort_ts
-                    }
-                    if mode == 'arrivals':
-                        entry['from'] = get_airport_display_name(city_code)
-                    else:
-                        entry['to'] = get_airport_display_name(city_code)
-
+                    # Lower altitude = closer to landing (arrivals) or just departed (departures)
+                    # Negate altitude so lower altitude sorts first (highest sort_time)
+                    entry['id'] = display_id
+                    entry['sort_time'] = now - altitude
                     processed_list.append(entry)
                 except:
                     continue
 
-            # Deduplicate: same airline + same city + same departure minute = same flight
-            # (EK210 and UAE36K are identical — one is the IATA number, the other the ICAO callsign)
+            # Sort by descending sort_time: lowest altitude (closest to landing/just departed) first
+            processed_list.sort(key=lambda x: x['sort_time'], reverse=True)
+
+            # Deduplicate flights with same city and similar altitude
             seen_keys = set()
             deduped = []
             for entry in processed_list:
                 city = entry.get('to') or entry.get('from') or ''
-                time_bucket = round(entry['sort_time'] / 60)  # bucket by minute
-                key = (time_bucket, city)
+                altitude_bucket = round(entry['sort_time'] / 300)  # 5-min buckets
+                key = (altitude_bucket, city)
                 if key not in seen_keys:
                     seen_keys.add(key)
                     deduped.append(entry)
-            processed_list = deduped
 
-            # Sort by time so the closest 2 flights are selected
-            processed_list.sort(key=lambda x: x['sort_time'])
-
-            self.log("DEBUG", f"FR24 {mode}: {total_raw} raw → {len(processed_list)} after filter/dedup → returning {min(len(processed_list), 2)}")
-            return processed_list[:2]  # Return only the 2 closest flights
+            self.log("DEBUG", f"FR24 SDK {mode}: {len(flights)} total → {len(processed_list)} at {airport_iata} → returning {min(len(deduped), 2)}")
+            return deduped[:2]
 
         except Exception as e:
-            self.log("ERROR", f"FR24 Schedule: {e}")
+            self.log("ERROR", f"FR24 SDK Schedule {mode}: {e}")
             return []
 
     def fetch_airport_weather(self):
