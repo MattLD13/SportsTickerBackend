@@ -774,19 +774,14 @@ class TickerStreamer:
             d.line([(x+6, y+13), (x+9, y+13)], fill=bolt_clr, width=1)
             d.line([(x+9, y+13), (x+7, y+16)], fill=bolt_clr, width=1)
         elif 'cloud' in icon or 'overcast' in icon:
-            d1 = int(math.sin(t * 1.8) * 3)
-            d2 = int(math.sin(t * 0.9 + 1.2) * 2)
-            bright = int(210 + math.sin(t * 1.1) * 25)
-            d.ellipse((x+0, y+6, x+11, y+13), fill=(120, 125, 142))
-            d.ellipse((x+7+d2, y+5, x+16+d2, y+13), fill=(165, 170, 185))
-            d.ellipse((x+5+d1, y+3, x+15+d1, y+11), fill=(bright, bright+5, bright+15))
+            d.ellipse((x+0, y+6, x+11, y+13), fill=(100, 105, 122))
+            d.ellipse((x+4, y+5, x+15, y+13), fill=(165, 170, 185))
+            d.ellipse((x+3, y+3, x+13, y+11), fill=(215, 218, 230))
         else:
-            d1 = int(math.sin(t * 1.2) * 1)
-            d2 = int(math.sin(t * 0.7 + 0.8) * 1)
             d.ellipse((x+5, y+1, x+12, y+8), fill=SUN_Y)
             d.point((x+11, y+1), fill=SUN_Y)
-            d.ellipse((x+1+d1, y+5, x+12+d1, y+13), fill=(150, 155, 172))
-            d.ellipse((x+7+d2, y+4, x+16+d2, y+12), fill=CLOUD_W)
+            d.ellipse((x+1, y+5, x+13, y+13), fill=(140, 145, 162))
+            d.ellipse((x+7, y+4, x+17, y+12), fill=CLOUD_W)
 
     def get_aqi_color(self, aqi):
         try:
@@ -1897,15 +1892,18 @@ class TickerStreamer:
         def draw_amb(icon, rx, ry, rw, rh, t):
             ic = icon.lower()
             n = max(2, rw // 20)
-            _fx = [0.06, 0.20, 0.35, 0.50, 0.65, 0.80, 0.12, 0.70]
-            _fy = [0.10, 0.28, 0.56, 0.75, 0.15, 0.45, 0.80, 0.35]
-            _sp = [2.1,  1.7,  2.5,  1.9,  2.3,  1.5,  2.0,  1.8]
-            _ph = [0.0,  1.3,  2.8,  0.7,  4.2,  5.1,  3.3,  1.9]
             if 'sun' in ic:
-                for j in range(n):
-                    sx = rx + int(_fx[j] * rw); sy = ry + int(_fy[j] * rh)
-                    b = int(max(0, math.sin(t * _sp[j] + _ph[j])) ** 2 * 190)
-                    if b > 10: d.point((sx, sy), fill=(b, b, int(b * 0.88)))
+                _sx = [8,19,31,44,52,63,71,83,94,107,115,14,37,58,76,99,119,25,68,89,103,42,57,112,33]
+                _sy = [3,11,5,18,8,25,13,3,21,7, 28, 27,14,2, 23,16,10,20,29,5, 18, 9, 25,19,2 ]
+                _sp = [2.1,1.7,2.5,1.9,2.3,1.5,2.0,1.8,2.4,1.6,2.2,2.7,1.4,2.9,1.3,2.6,1.8,2.0,1.5,2.3,1.9,2.4,1.7,2.1,2.8]
+                _ph = [0.0,1.3,2.8,0.7,4.2,5.1,3.3,1.9,2.1,4.7,0.5,2.9,0.3,3.6,1.1,5.8,4.4,2.2,0.9,3.1,1.6,5.3,2.5,0.8,4.0]
+                n_stars = min(len(_sx), max(14, rw // 8))
+                for j in range(n_stars):
+                    sx = rx + int(_sx[j] * rw / 124)
+                    sy = ry + int(_sy[j] * rh / 32)
+                    bv = int(max(0, math.sin(t * _sp[j] + _ph[j])) ** 2 * 230)
+                    if bv > 15 and not (74 <= sx <= 121):
+                        d.point((sx, sy), fill=(bv, bv, int(bv * 0.88)))
             elif 'storm' in ic:
                 fp = t % 6.0
                 if fp < 0.07:
@@ -1924,6 +1922,20 @@ class TickerStreamer:
                     if rx <= bx < rx + rw and ry <= by < ry + rh:
                         d.point((bx, by), fill=(40, 60, 100))
 
+        def sky_tint_main(icon, h):
+            ic = icon.lower()
+            if 'storm' in ic: return (5,  0, 10)
+            if 'rain'  in ic: return (0,  3, 12)
+            if 'snow'  in ic: return (2,  4, 14)
+            if h < 5  or h >= 22: return (0,  1, 10)  # night
+            if h < 6:             return (4,  1,  8)  # pre-dawn
+            if h < 8:             return (14, 5,  1)  # sunrise
+            if h < 11:            return (2,  5, 16)  # morning
+            if h < 14:            return (1,  7, 20)  # midday
+            if h < 17:            return (2,  6, 15)  # afternoon
+            if h < 20:            return (16, 5,  1)  # sunset
+            return                       (7,  1,  9)  # dusk
+
         temp_f = str(game.get('home_abbr', '--')).replace('°', '').strip()
         try:
             tv = int(float(temp_f))
@@ -1939,9 +1951,26 @@ class TickerStreamer:
         d.rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), fill=tint)
         d.line((0, 0, PANEL_W - 1, 0), fill=DEEP_BLUE)
 
+        now_h      = datetime.now().hour
+        main_tint  = sky_tint_main(cur_icon, now_h)
+        is_night   = now_h < 6 or now_h >= 20
+        is_sunrise = 6 <= now_h < 8
+        is_sunset  = 17 <= now_h < 20
+
         left_w = 124
-        d.rectangle((0, 0, left_w, 31), fill=tint)
-        draw_amb(cur_icon, 0, 0, left_w, 32, anim_t)
+        d.rectangle((0, 0, left_w, 31), fill=main_tint)
+
+        if is_sunrise or is_sunset:
+            warm = (22, 7, 0) if is_sunrise else (20, 6, 1)
+            for row in range(8):
+                intensity = max(0.0, 1.0 - row * 0.13)
+                c = tuple(int(v * intensity) for v in warm)
+                d.line((0, 31 - row, left_w, 31 - row), fill=c)
+
+        if is_night:
+            draw_amb('sun', 0, 0, left_w, 32, anim_t)  # stars always at night
+        else:
+            draw_amb(cur_icon, 0, 0, left_w, 32, anim_t)
         d.line((left_w, 0, left_w, 31), fill=DEEP_BLUE)
 
         location_name = normalize_special_chars(str(game.get('away_abbr', 'CITY')).upper()).strip()
@@ -1953,23 +1982,6 @@ class TickerStreamer:
 
         temp_disp = "--" if not temp_f else temp_f
         d.text((24, 10), f"{temp_disp}\u00b0F", font=self.big_font, fill=temp_color)
-
-        cond = normalize_special_chars(str(game.get('status', '')).upper()).strip()
-        replacements = {
-            'PARTLY CLOUDY': 'PARTLY CLDY',
-            'MOSTLY CLOUDY': 'MOSTLY CLDY',
-            'SCATTERED SHOWERS': 'SCT SHOWERS',
-            'THUNDERSTORMS': 'T-STORMS',
-            'THUNDERSTORM': 'T-STORM',
-            'LIGHT RAIN': 'LGT RAIN'
-        }
-        cond = replacements.get(cond, cond)
-        if len(cond) > 19:
-            cond = cond[:19]
-        if feels_val and feels_val != '--':
-            draw_tiny_text(d, 24, 25, f"FEELS {feels_val}°", feels_col)
-        elif cond:
-            draw_tiny_text(d, 24, 25, cond, (105, 145, 190))
 
         aqi_val   = str(stats.get('aqi',      '--')).strip() or '--'
         uv_val    = str(stats.get('uv',       '--')).strip() or '--'
@@ -1988,22 +2000,39 @@ class TickerStreamer:
         except Exception:
             feels_col = (240, 240, 245)
 
+        cond = normalize_special_chars(str(game.get('status', '')).upper()).strip()
+        replacements = {
+            'PARTLY CLOUDY': 'PARTLY CLDY',
+            'MOSTLY CLOUDY': 'MOSTLY CLDY',
+            'SCATTERED SHOWERS': 'SCT SHOWERS',
+            'THUNDERSTORMS': 'T-STORMS',
+            'THUNDERSTORM': 'T-STORM',
+            'LIGHT RAIN': 'LGT RAIN'
+        }
+        cond = replacements.get(cond, cond)
+        if len(cond) > 19:
+            cond = cond[:19]
+        if feels_val and feels_val != '--':
+            draw_tiny_text(d, 24, 25, f"FEELS {feels_val}F", feels_col)
+        elif cond:
+            draw_tiny_text(d, 24, 25, cond, (105, 145, 190))
+
         # 4 stat boxes, each 6px tall, stacked with 2px gaps, centered in the 32px column
         tiny_h = 5
         stat_boxes = [
-            ((74, 1,  121, 7),  "AQI",  aqi_val[:4],  (95, 120, 160), aqi_col),
-            ((74, 9,  121, 15), "UV",   uv_val[:4],   (95, 120, 160), (210, 155, 255)),
-            ((74, 17, 121, 23), "HUM",  hum_val[:3] + '%', (95, 120, 160), (90, 200, 255)),
-            ((74, 25, 121, 31), "WIND", wind_val[:3],  (95, 120, 160), (90, 200, 255)),
+            ((74, 1,  121, 7),  "AQI",  aqi_val[:4],       (95, 120, 160), aqi_col,           0),
+            ((74, 9,  121, 15), "UV",   uv_val[:4],         (95, 120, 160), (210, 155, 255),   0),
+            ((74, 17, 121, 23), "HUM",  hum_val[:3] + '%',  (95, 120, 160), (90, 200, 255),    0),
+            ((74, 25, 121, 31), "WIND", wind_val[:3],        (95, 120, 160), (90, 200, 255),    2),
         ]
-        for box, label, value, lbl_clr, val_clr in stat_boxes:
+        for box, label, value, lbl_clr, val_clr, tx_off in stat_boxes:
             d.rectangle(box, fill=(2, 6, 14), outline=DEEP_BLUE)
             mid = (box[0] + box[2]) // 2
             lbl_x = box[0] + ((mid - box[0]) - len(label) * 5) // 2
             val_x = mid + ((box[2] - mid + 1) - len(value) * 5) // 2
             ty = box[1] + ((box[3] - box[1] + 1) - tiny_h) // 2
-            draw_tiny_text(d, lbl_x, ty, label, lbl_clr)
-            draw_tiny_text(d, val_x, ty, value, val_clr)
+            draw_tiny_text(d, lbl_x + tx_off, ty, label, lbl_clr)
+            draw_tiny_text(d, val_x + tx_off, ty, value, val_clr)
 
         if not forecast:
             forecast = [
@@ -2030,7 +2059,10 @@ class TickerStreamer:
             draw_amb(col_icon, cx, 0, col_right - cx + 1, 32, anim_t + i * 1.7)
             if i < 4: d.line((col_right, 3, col_right, 29), fill=DEEP_BLUE)
 
-            day_str = 'TODAY' if i == 0 else normalize_special_chars(str(day.get('day', '???'))[:3].upper())
+            if i == 0:
+                day_str = 'TODAY'
+            else:
+                day_str = time.strftime('%a', time.localtime(time.time() + i * 86400)).upper()
             day_w = len(day_str) * 5
             day_x = cx + max(0, ((col_right - cx + 1) - day_w) // 2)
             lbl_col = (255, 255, 255) if i == 0 else (110, 160, 220)
