@@ -737,41 +737,53 @@ class TickerStreamer:
             s = s.replace(f"{r} ", f"{r}~")
         return s
 
-    def draw_weather_pixel_art(self, d, icon_name, x, y):
+    def draw_weather_pixel_art(self, d, icon_name, x, y, t=None):
+        if t is None:
+            t = time.time()
         icon = str(icon_name).lower()
         SUN_Y = (255, 200, 0); CLOUD_W = (205, 210, 220); RAIN_B = (60, 130, 255); SNOW_W = (210, 235, 255)
         if 'sun' in icon or 'clear' in icon:
             d.ellipse((x+3, y+3, x+11, y+11), fill=SUN_Y)
-            for rx, ry in [(x+7, y), (x+7, y+14), (x, y+7), (x+14, y+7)]:
-                d.line([(rx, ry), (rx, ry+1)], fill=SUN_Y)
-            for rx, ry in [(x+2, y+2), (x+12, y+2), (x+2, y+12), (x+12, y+12)]:
-                d.point((rx, ry), fill=SUN_Y)
+            cx_s = x + 7; cy_s = y + 7
+            for i in range(8):
+                angle = i * math.pi / 4 + t * 0.5
+                rx = int(cx_s + math.cos(angle) * 7.5)
+                ry = int(cy_s + math.sin(angle) * 7.5)
+                if x <= rx <= x + 14 and y <= ry <= y + 14:
+                    d.point((rx, ry), fill=SUN_Y)
         elif 'fog' in icon or 'mist' in icon or 'haze' in icon:
-            for fy in [y+3, y+6, y+9, y+12]:
-                d.line([(x+2, fy), (x+13, fy)], fill=(170, 175, 195))
+            for i, fy in enumerate([y+3, y+6, y+9, y+12]):
+                off = int(math.sin(t * 0.6 + i * 1.1) * 2)
+                d.line([(x + max(2, 2 + off), fy), (x + min(13, 13 + off), fy)], fill=(170, 175, 195))
         elif 'rain' in icon or 'drizzle' in icon or 'shower' in icon:
             d.ellipse((x+1, y+1, x+14, y+9), fill=CLOUD_W)
-            for rx, ry in [(x+3, y+11), (x+7, y+12), (x+11, y+11), (x+5, y+14), (x+9, y+13)]:
-                d.line([(rx, ry), (rx-1, ry+2)], fill=RAIN_B)
+            for i, rx in enumerate([x+3, x+7, x+11, x+5, x+9]):
+                ry = y + 10 + int((t * 5 + i * 0.8) % 6)
+                d.line([(rx, ry), (rx - 1, ry + 2)], fill=RAIN_B)
         elif 'snow' in icon or 'blizzard' in icon:
             d.ellipse((x+1, y+1, x+14, y+9), fill=(185, 195, 210))
-            for rx, ry in [(x+3, y+12), (x+7, y+11), (x+11, y+12), (x+5, y+15), (x+9, y+14)]:
+            for i, rx_base in enumerate([x+3, x+7, x+11, x+5, x+9]):
+                ry = y + 10 + int((t * 2 + i * 1.3) % 7)
+                rx = rx_base + int(math.sin(t * 1.5 + i * 0.9))
                 d.point((rx, ry), fill=SNOW_W)
-                d.point((rx, ry+1), fill=SNOW_W)
+                d.point((rx, ry + 1), fill=SNOW_W)
         elif 'storm' in icon or 'thunder' in icon or 'lightning' in icon:
             d.ellipse((x+1, y+1, x+14, y+9), fill=(75, 80, 100))
-            d.line([(x+8, y+9), (x+6, y+13)], fill=(255, 220, 0), width=1)
-            d.line([(x+6, y+13), (x+9, y+13)], fill=(255, 220, 0), width=1)
-            d.line([(x+9, y+13), (x+7, y+16)], fill=(255, 220, 0), width=1)
+            bolt_clr = (255, 220, 0) if (t % 1.4) < 0.9 else (60, 50, 0)
+            d.line([(x+8, y+9), (x+6, y+13)], fill=bolt_clr, width=1)
+            d.line([(x+6, y+13), (x+9, y+13)], fill=bolt_clr, width=1)
+            d.line([(x+9, y+13), (x+7, y+16)], fill=bolt_clr, width=1)
         elif 'cloud' in icon or 'overcast' in icon:
-            d.ellipse((x+5, y+3, x+15, y+11), fill=CLOUD_W)
+            drift = int(math.sin(t * 0.4) * 1)
+            d.ellipse((x+5+drift, y+3, x+15+drift, y+11), fill=CLOUD_W)
             d.ellipse((x+0, y+6, x+11, y+13), fill=(175, 180, 192))
-            d.ellipse((x+7, y+5, x+16, y+13), fill=(198, 202, 212))
+            d.ellipse((x+7+drift, y+5, x+16+drift, y+13), fill=(198, 202, 212))
         else:
+            drift = int(math.sin(t * 0.4) * 1)
             d.ellipse((x+5, y+1, x+12, y+8), fill=SUN_Y)
             d.point((x+11, y+1), fill=SUN_Y)
-            d.ellipse((x+1, y+5, x+12, y+13), fill=(190, 195, 208))
-            d.ellipse((x+7, y+4, x+16, y+12), fill=CLOUD_W)
+            d.ellipse((x+1+drift, y+5, x+12+drift, y+13), fill=(190, 195, 208))
+            d.ellipse((x+7+drift, y+4, x+16+drift, y+12), fill=CLOUD_W)
 
     def get_aqi_color(self, aqi):
         try:
@@ -1868,6 +1880,7 @@ class TickerStreamer:
         stats = sit.get('stats', {}) or {}
         forecast = sit.get('forecast', []) or []
         cur_icon = sit.get('icon', 'cloud')
+        anim_t = time.time()
         DEEP_BLUE = (18, 45, 95)
 
         temp_f = str(game.get('home_abbr', '--')).replace('°', '').strip()
@@ -1893,7 +1906,7 @@ class TickerStreamer:
             location_name = location_name[:15]
         draw_tiny_text(d, 4, 2, location_name, (125, 170, 230))
 
-        self.draw_weather_pixel_art(d, cur_icon, 3, 11)
+        self.draw_weather_pixel_art(d, cur_icon, 3, 11, t=anim_t)
 
         temp_disp = "--" if not temp_f else temp_f
         d.text((24, 10), f"{temp_disp}\u00b0F", font=self.big_font, fill=temp_color)
@@ -1913,34 +1926,38 @@ class TickerStreamer:
         if cond:
             draw_tiny_text(d, 24, 25, cond, (105, 145, 190))
 
-        aqi_val = str(stats.get('aqi', '--')).strip() or '--'
-        uv_val = str(stats.get('uv', '--')).strip() or '--'
-        aqi_col = self.get_aqi_color(aqi_val)
+        aqi_val   = str(stats.get('aqi',   '--')).strip() or '--'
+        uv_val    = str(stats.get('uv',    '--')).strip() or '--'
+        feels_val = str(stats.get('feels', '--')).strip() or '--'
+        wind_val  = str(stats.get('wind',  '--')).strip() or '--'
+        aqi_col   = self.get_aqi_color(aqi_val)
 
-        aqi_box = (74, 3, 121, 11)
-        uv_box = (74, 13, 121, 21)
-        d.rectangle(aqi_box, fill=(2, 6, 14), outline=DEEP_BLUE)
-        d.rectangle(uv_box, fill=(2, 6, 14), outline=DEEP_BLUE)
+        try:
+            fv = int(float(feels_val))
+            if fv >= 90:   feels_col = (255, 90,  35)
+            elif fv >= 75: feels_col = (255, 185, 40)
+            elif fv >= 55: feels_col = (95,  225, 105)
+            elif fv >= 35: feels_col = (95,  190, 255)
+            else:          feels_col = (190, 230, 255)
+        except Exception:
+            feels_col = (240, 240, 245)
 
-        aqi_label = "AQI"; aqi_value = aqi_val[:4]
-        uv_label = "UV";   uv_value  = uv_val[:4]
+        # 4 stat boxes, each 6px tall, stacked with 2px gaps, centered in the 32px column
         tiny_h = 5
-
-        aqi_mid = (aqi_box[0] + aqi_box[2]) // 2
-        aqi_label_w = len(aqi_label) * 5; aqi_value_w = len(aqi_value) * 5
-        aqi_label_x = aqi_box[0] + ((aqi_mid - aqi_box[0]) - aqi_label_w) // 2
-        aqi_value_x = aqi_mid + ((aqi_box[2] - aqi_mid + 1) - aqi_value_w) // 2
-        aqi_y = aqi_box[1] + ((aqi_box[3] - aqi_box[1] + 1) - tiny_h) // 2
-        draw_tiny_text(d, aqi_label_x, aqi_y, aqi_label, (95, 120, 160))
-        draw_tiny_text(d, aqi_value_x, aqi_y, aqi_value, aqi_col)
-
-        uv_mid = (uv_box[0] + uv_box[2]) // 2
-        uv_label_w = len(uv_label) * 5; uv_value_w = len(uv_value) * 5
-        uv_label_x = uv_box[0] + ((uv_mid - uv_box[0]) - uv_label_w) // 2
-        uv_value_x = uv_mid + ((uv_box[2] - uv_mid + 1) - uv_value_w) // 2
-        uv_y = uv_box[1] + ((uv_box[3] - uv_box[1] + 1) - tiny_h) // 2
-        draw_tiny_text(d, uv_label_x, uv_y, uv_label, (95, 120, 160))
-        draw_tiny_text(d, uv_value_x, uv_y, uv_value, (210, 155, 255))
+        stat_boxes = [
+            ((74, 1,  121, 7),  "AQI",  aqi_val[:4],  (95, 120, 160), aqi_col),
+            ((74, 9,  121, 15), "UV",   uv_val[:4],   (95, 120, 160), (210, 155, 255)),
+            ((74, 17, 121, 23), "FEEL", feels_val[:4], (95, 120, 160), feels_col),
+            ((74, 25, 121, 31), "WIND", wind_val[:3],  (95, 120, 160), (90, 200, 255)),
+        ]
+        for box, label, value, lbl_clr, val_clr in stat_boxes:
+            d.rectangle(box, fill=(2, 6, 14), outline=DEEP_BLUE)
+            mid = (box[0] + box[2]) // 2
+            lbl_x = box[0] + ((mid - box[0]) - len(label) * 5) // 2
+            val_x = mid + ((box[2] - mid + 1) - len(value) * 5) // 2
+            ty = box[1] + ((box[3] - box[1] + 1) - tiny_h) // 2
+            draw_tiny_text(d, lbl_x, ty, label, lbl_clr)
+            draw_tiny_text(d, val_x, ty, value, val_clr)
 
         if not forecast:
             forecast = [
@@ -1971,7 +1988,7 @@ class TickerStreamer:
             d.line((cx + 4, 8, col_right - 4, 8), fill=DEEP_BLUE)
 
             icon_x = cx + max(0, ((col_right - cx + 1) - 16) // 2)
-            self.draw_weather_pixel_art(d, day.get('icon', 'cloud'), icon_x, 9)
+            self.draw_weather_pixel_art(d, day.get('icon', 'cloud'), icon_x, 9, t=anim_t)
 
             hi = str(day.get('high', '--')).replace('°', '')
             lo = str(day.get('low', '--')).replace('°', '')

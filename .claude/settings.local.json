@@ -24,7 +24,11 @@
       "Bash(python -c \"from FlightRadar24.api import FlightRadar24API; api = FlightRadar24API\\(\\); print\\([m for m in dir\\(api\\) if not m.startswith\\('_'\\)]\\)\")",
       "Bash(python -c \"import flightradar24; print\\(dir\\(flightradar24\\)\\)\")",
       "Bash(pip show *)",
-      "Bash(pip list *)"
+      "Bash(pip list *)",
+      "Read(//c/Users/mld20/Documents/**)",
+      "Bash(dir \"C:\\\\Users\\\\mld20\\\\Documents\\\\\")",
+      "Bash(ls /mnt/c/Users/mld20/Documents/)",
+      "Read(//mnt/c/Users/mld20/**)"
     ]
   }
 }

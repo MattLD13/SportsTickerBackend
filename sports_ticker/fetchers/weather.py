@@ -53,7 +53,7 @@ class WeatherFetcher:
             # 3. Fetch Forecast (Independent Step)
             w_data = {}
             try:
-                w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&timezone=auto"
+                w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,apparent_temperature,wind_speed_10m,relative_humidity_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
                 w_resp = self.session.get(w_url, timeout=TIMEOUTS['slow'])
                 if w_resp.status_code == 200:
                     w_data = w_resp.json()
@@ -86,7 +86,10 @@ class WeatherFetcher:
             current_temp = int(round(current.get('temperature_2m', 0)))
             current_code = current.get('weather_code', 0)
             current_icon = self.get_weather_icon(current_code)
-            
+            feels_like = int(round(current.get('apparent_temperature', current_temp)))
+            wind_mph = int(round(current.get('wind_speed_10m', 0)))
+            humidity = int(round(current.get('relative_humidity_2m', 0)))
+
             uv = 0
             if 'uv_index_max' in daily and len(daily['uv_index_max']) > 0:
                 uv = daily['uv_index_max'][0]
@@ -117,7 +120,10 @@ class WeatherFetcher:
                     "icon": current_icon,
                     "stats": {
                         "aqi": str(aqi),
-                        "uv": str(uv)
+                        "uv": str(uv),
+                        "feels": str(feels_like),
+                        "wind": str(wind_mph),
+                        "humidity": str(humidity),
                     },
                     "forecast": forecast_list
                 },
