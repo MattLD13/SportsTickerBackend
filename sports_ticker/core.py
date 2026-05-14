@@ -719,7 +719,7 @@ default_state = {
     'track_guest_name': '',
     'airport_code_icao': 'KEWR',
     'airport_code_iata': 'EWR',
-    'airport_name': 'Newark',
+    'airport_name': 'Newark Liberty International',
     'airline_filter': ''
 }
 
@@ -870,7 +870,7 @@ def save_global_config():
                 'track_guest_name': state.get('track_guest_name', ''),
                 'airport_code_icao': state.get('airport_code_icao', 'KEWR'),
                 'airport_code_iata': state.get('airport_code_iata', 'EWR'),
-                'airport_name': state.get('airport_name', 'Newark'),
+                'airport_name': state.get('airport_name', 'Newark Liberty International'),
                 'airline_filter': '',  # Always empty - support all airlines
             }
         
