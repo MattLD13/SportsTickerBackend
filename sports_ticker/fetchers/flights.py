@@ -44,48 +44,16 @@ class FlightTracker:
         try:
             timestamp = int(time.time())
             url = f"https://api.flightradar24.com/common/v1/airport.json?code={self.airport_code_iata}&plugin[]=schedule&plugin-setting[schedule][mode]={mode}&plugin-setting[schedule][timestamp]={timestamp}&page=1&limit=100"
-            referer = f"https://www.flightradar24.com/data/airports/{self.airport_code_iata.lower()}/{mode}"
-            header_profiles = [
-                {
-                    'User-Agent': (
-                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                        'AppleWebKit/537.36 (KHTML, like Gecko) '
-                        'Chrome/124.0 Safari/537.36'
-                    ),
-                    'Accept': 'application/json, text/plain, */*',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Origin': 'https://www.flightradar24.com',
-                    'Referer': referer,
-                },
-                {
-                    'User-Agent': 'curl/8.0',
-                    'Accept': '*/*',
-                },
-                {
-                    'User-Agent': 'Mozilla/5.0',
-                    'Accept': 'application/json',
-                    'Referer': referer,
-                },
-            ]
-
-            res = None
-            for headers in header_profiles:
-                res = self.session.get(url, headers=headers, timeout=TIMEOUTS['slow'])
-                if res.status_code == 200:
-                    break
-                if res.status_code == 429:
-                    self.log("WARN", f"FR24 Schedule rate-limited (429) for {self.airport_code_iata} {mode}")
-                    return []
-            if not res or res.status_code != 200:
-                status_code = getattr(res, 'status_code', 'no-response')
-                self.log("WARN", f"FR24 Schedule HTTP {status_code} for {self.airport_code_iata} {mode}")
+            headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
+            
+            res = self.session.get(url, headers=headers, timeout=TIMEOUTS['slow'])
+            if res.status_code != 200:
                 return []
 
             data = res.json()
             schedule = safe_get(data, 'result', 'response', 'airport', 'pluginData', 'schedule', mode, default={})
 
             if not schedule or 'data' not in schedule:
-                self.log("DEBUG", f"FR24 Schedule: no data for {self.airport_code_iata} {mode} (keys: {list(schedule.keys()) if isinstance(schedule, dict) else type(schedule).__name__})")
                 return []
             
             total_raw = len(schedule['data'])
@@ -193,110 +161,6 @@ class FlightTracker:
             self.log("ERROR", f"FR24 Schedule: {e}")
             return []
 
-    def _parse_schedule_timestamp(self, value):
-        if not value:
-            return 0
-        if isinstance(value, (int, float)):
-            return int(value)
-        try:
-            return int(parse_iso(str(value)).timestamp())
-        except Exception:
-            return 0
-
-    def fetch_flightaware_schedule(self, mode='arrivals'):
-        """Fallback airport schedule fetch using FlightAware AeroAPI."""
-        if not FLIGHTAWARE_API_KEY:
-            self.log("WARN", "FlightAware fallback unavailable: FLIGHTAWARE_API_KEY is not set")
-            return []
-
-        airport_id = (self.airport_code_icao or self.airport_code_iata or '').strip().upper()
-        if not airport_id:
-            return []
-
-        endpoint = 'arrivals' if mode == 'arrivals' else 'departures'
-        now_utc = dt.now(timezone.utc)
-        params = {
-            'start': (now_utc - timedelta(hours=1)).isoformat().replace('+00:00', 'Z'),
-            'end': (now_utc + timedelta(hours=12)).isoformat().replace('+00:00', 'Z'),
-            'max_pages': 1,
-        }
-        url = f"https://aeroapi.flightaware.com/aeroapi/airports/{airport_id}/flights/{endpoint}"
-        headers = {
-            'x-apikey': FLIGHTAWARE_API_KEY,
-            'Accept': 'application/json',
-        }
-
-        try:
-            resp = self.session.get(url, headers=headers, params=params, timeout=TIMEOUTS['slow'])
-            if resp.status_code != 200:
-                self.log("WARN", f"FlightAware {endpoint} HTTP {resp.status_code} for {airport_id}")
-                return []
-
-            payload = resp.json()
-            raw_flights = payload.get(endpoint) or payload.get('flights') or []
-            processed = []
-
-            for flight in raw_flights:
-                try:
-                    ident = (
-                        flight.get('ident_icao')
-                        or flight.get('ident_iata')
-                        or flight.get('ident')
-                        or flight.get('fa_flight_id', '').split('-', 1)[0]
-                    )
-                    ident = str(ident or '').strip().upper()
-                    if not ident:
-                        continue
-
-                    if mode == 'arrivals':
-                        sched_raw = flight.get('scheduled_on') or flight.get('scheduled_in')
-                        est_raw = flight.get('estimated_on') or flight.get('estimated_in')
-                        actual_raw = flight.get('actual_on') or flight.get('actual_in')
-                        city_code = flight.get('origin_iata') or flight.get('origin_lid') or flight.get('origin') or ''
-                        city_key = 'from'
-                    else:
-                        sched_raw = flight.get('scheduled_out') or flight.get('scheduled_off')
-                        est_raw = flight.get('estimated_out') or flight.get('estimated_off')
-                        actual_raw = flight.get('actual_out') or flight.get('actual_off')
-                        city_code = flight.get('destination_iata') or flight.get('destination_lid') or flight.get('destination') or ''
-                        city_key = 'to'
-
-                    sched_ts = self._parse_schedule_timestamp(sched_raw)
-                    est_ts = self._parse_schedule_timestamp(est_raw)
-                    actual_ts = self._parse_schedule_timestamp(actual_raw)
-                    sort_ts = est_ts or sched_ts or actual_ts
-                    if not sort_ts:
-                        continue
-
-                    # Skip already completed movement unless it is the only timing
-                    # detail FlightAware gave us.
-                    if actual_ts and actual_ts < int(time.time()) and (est_ts or sched_ts):
-                        continue
-
-                    is_delayed = bool(sched_ts and est_ts and (est_ts - sched_ts) >= 900)
-                    entry = {
-                        'id': ident,
-                        'status_label': 'DELAYED' if is_delayed else ('ARRIVING' if mode == 'arrivals' else 'DEPARTING'),
-                        'sort_time': sort_ts,
-                        city_key: get_airport_display_name(city_code),
-                    }
-                    processed.append(entry)
-                except Exception:
-                    continue
-
-            processed.sort(key=lambda item: item['sort_time'])
-            self.log("AIRPORT", f"FlightAware {endpoint}: {len(raw_flights)} raw -> {min(len(processed), 2)} shown")
-            return processed[:2]
-        except Exception as e:
-            self.log("ERROR", f"FlightAware {endpoint}: {e}")
-            return []
-
-    def fetch_airport_schedule(self, mode='arrivals'):
-        fr24_items = self.fetch_fr24_schedule(mode)
-        if fr24_items:
-            return fr24_items
-        return self.fetch_flightaware_schedule(mode)
-    
     def parse_flight_code(self, flight_code):
         """
         Parse flight code and return (icao_code, iata_code, flight_num)
@@ -372,8 +236,8 @@ class FlightTracker:
 
             # Fetch arrivals, departures, and weather in parallel
             with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-                f_arr = pool.submit(self.fetch_airport_schedule, 'arrivals')
-                f_dep = pool.submit(self.fetch_airport_schedule, 'departures')
+                f_arr = pool.submit(self.fetch_fr24_schedule, 'arrivals')
+                f_dep = pool.submit(self.fetch_fr24_schedule, 'departures')
                 f_wx  = pool.submit(self.fetch_airport_weather)
                 arrivals   = f_arr.result()
                 departures = f_dep.result()
@@ -643,7 +507,7 @@ class FlightTracker:
             self.log("DEBUG", f"get_airport_objects called - arrivals: {len(self.airport_arrivals)}, departures: {len(self.airport_departures)}")
             result.append({
                 'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx',
-                'home_abbr': self.airport_name or self.airport_code_icao or self.airport_code_iata or 'AIRPORT',
+                'home_abbr': self.airport_name or self.airport_code_icao,
                 'away_abbr': self.airport_weather['temp'], 'status': self.airport_weather['cond'], 'is_shown': True
             })
             for i, arr in enumerate(self.airport_arrivals[:2]):

@@ -2841,3 +2841,10 @@ ok 5
 [19:59:45] AIRPORT      | EWR: 2 arr, 2 dep | Weather: --
 2 2
 [{'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx', 'home_abbr': 'Newark', 'away_abbr': '--', 'status': 'UNKNOWN', 'is_shown': True}, {'type': 'flight_arrival', 'sport': 'flight', 'id': 'arr_0', 'status': 'ARRIVING', 'home_abbr': 'SDF', 'away_abbr': 'UPS4082', 'is_shown': True}, {'type': 'flight_arrival', 'sport': 'flight', 'id': 'arr_1', 'status': 'ARRIVING', 'home_abbr': 'CLT', 'away_abbr': 'UAL371', 'is_shown': True}]
+📂 Found 10 saved tickers in 'ticker_data'
+📦 Loaded 32 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+{'arrivals': [], 'departures': []}
+[20:09:10] WEATHER      | No coordinates for EWR
+[20:09:11] AIRPORT      | EWR: 0 arr, 0 dep | Weather: --
+[{'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx', 'home_abbr': 'Newark', 'away_abbr': '--', 'status': 'UNKNOWN', 'is_shown': True}]
