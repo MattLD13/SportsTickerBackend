@@ -4251,3 +4251,39 @@ saved airport EWR KEWR Newark
 [REFRESH] done reason=api_config took=4.16s
 [REFRESH] start reason=api_config
 [REFRESH] error reason=api_config: cannot schedule new futures after shutdown
+📂 Found 19 saved tickers in 'ticker_data'
+📦 Loaded 31 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Config Error: name 'active_sports_payload' is not defined
+enter 500 {'error': 'Failed'}
+saved mode flights
+saved flight_submode airport
+saved airport EWR KEWR
+---
+Config Error: name 'active_sports_payload' is not defined
+leave 500 {'error': 'Failed'}
+saved mode flights
+saved flight_submode airport
+saved airport EWR KEWR
+---
+📂 Found 19 saved tickers in 'ticker_data'
+📦 Loaded 31 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ Airport code 'EWR' not found in database
+[REFRESH] start reason=api_config
+💾 Saved Ticker: ENTER3
+enter 200 {'airport_code_iata': 'EWR', 'airport_code_icao': 'KEWR', 'airport_name': 'Newark', 'saved_teams': None, 'status': 'ok', 'ticker_id': 'ENTER3'}
+saved mode flights
+saved flight_submode airport
+saved airport EWR KEWR
+---
+⚠️ Airport code 'EWR' not found in database
+💾 Saved Ticker: LEAVE3
+leave 200 {'airport_code_iata': 'EWR', 'airport_code_icao': 'KEWR', 'airport_name': 'Newark', 'saved_teams': None, 'status': 'ok', 'ticker_id': 'LEAVE3'}
+saved mode sports
+saved flight_submode airport
+saved airport EWR KEWR
+---
+[REFRESH] done reason=api_config took=4.57s
+[REFRESH] start reason=api_config
+[REFRESH] error reason=api_config: cannot schedule new futures after shutdown

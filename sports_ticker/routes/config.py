@@ -12,15 +12,9 @@ def api_config():
 
         # Migrate legacy modes to canonical mode names
         incoming_submode = new_data.get('flight_submode')
-        active_sports_payload = new_data.get('active_sports') if isinstance(new_data.get('active_sports'), dict) else {}
-
         def _infer_legacy_flight_mode(payload_mode: str | None, submode: str | None) -> str | None:
             submode_norm = str(submode or '').strip().lower()
             payload_mode_norm = str(payload_mode or '').strip().lower()
-            if active_sports_payload.get('flight_visitor'):
-                return 'flight_tracker'
-            if active_sports_payload.get('flight_airport'):
-                return 'flights'
             if submode_norm == 'track' and payload_mode_norm in ('', 'sports', 'all', 'flights'):
                 return 'flight_tracker'
             if submode_norm == 'airport' and payload_mode_norm in ('', 'sports', 'all', 'flight_tracker'):
@@ -104,7 +98,7 @@ def api_config():
                 if airport_code_input:
                     # Perform airport lookup
                     airport_info = lookup_and_auto_fill_airport(airport_code_input)
-                    legacy_flights_payload = bool(active_sports_payload.get('flight_airport') or active_sports_payload.get('flight_visitor') or incoming_submode in ('airport', 'track'))
+                    legacy_flights_payload = incoming_submode in ('airport', 'track')
                     
                     if airport_info['iata']:  # Only update if airport was found
                         flight_tracker.airport_code_iata = airport_info['iata']
