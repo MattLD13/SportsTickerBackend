@@ -2980,3 +2980,38 @@ arrivals_count 2 departures_count 2 weather {'temp': '--', 'cond': 'UNKNOWN'}
 airport_objects_count 5
 airport_objects [{'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx', 'home_abbr': 'Test Airport', 'away_abbr': '--', 'status': 'UNKNOWN', 'is_shown': True}, {'type': 'flight_arrival', 'sport': 'flight', 'id': 'arr_0', 'status': 'ARRIVING', 'home_abbr': 'DTW', 'away_abbr': 'RPA3699', 'is_shown': True}, {'type': 'flight_arrival', 'sport': 'flight', 'id': 'arr_1', 'status': 'ARRIVING', 'home_abbr': 'MSP', 'away_abbr': 'RPA3681', 'is_shown': True}, {'type': 'flight_departure', 'sport': 'flight', 'id': 'dep_0', 'status': 'DEPARTING', 'home_abbr': 'BOS', 'away_abbr': 'RPA5718', 'is_shown': True}, {'type': 'flight_departure', 'sport': 'flight', 'id': 'dep_1', 'status': 'DEPARTING', 'home_abbr': 'CPT', 'away_abbr': 'UAL1122', 'is_shown': True}]
 ---
+📂 Found 10 saved tickers in 'ticker_data'
+📦 Loaded 32 cached games from game_cache.json
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+CASE JFK/IATA
+[DEBUG] FR24 arrivals: 100 raw → 94 after filter/dedup → returning 2
+[DEBUG] FR24 departures: 100 raw → 100 after filter/dedup → returning 2
+counts 2 2
+first_arr {'id': 'AAL3026', 'status_label': 'ARRIVING', 'sort_time': 1778719009, 'from': 'PHX'}
+first_dep {'id': 'DAL288', 'status_label': 'DEPARTING', 'sort_time': 1778719200, 'to': 'VCE'}
+candidates ['JFK', 'KJFK']
+---
+CASE KJFK/ICAO
+[DEBUG] FR24 arrivals: 100 raw → 94 after filter/dedup → returning 2
+[DEBUG] FR24 departures: 100 raw → 100 after filter/dedup → returning 2
+counts 2 2
+first_arr {'id': 'AAL3026', 'status_label': 'ARRIVING', 'sort_time': 1778719009, 'from': 'PHX'}
+first_dep {'id': 'DAL288', 'status_label': 'DEPARTING', 'sort_time': 1778719200, 'to': 'VCE'}
+candidates ['KJFK']
+---
+CASE EWR/IATA
+[DEBUG] FR24 arrivals: 100 raw → 92 after filter/dedup → returning 2
+[DEBUG] FR24 departures: 100 raw → 97 after filter/dedup → returning 2
+counts 2 2
+first_arr {'id': 'RPA3681', 'status_label': 'ARRIVING', 'sort_time': 1778719016, 'from': 'MSP'}
+first_dep {'id': 'UAL1122', 'status_label': 'DEPARTING', 'sort_time': 1778719200, 'to': 'CPT'}
+candidates ['EWR', 'KEWR']
+---
+CASE KEWR/ICAO
+[DEBUG] FR24 arrivals: 100 raw → 92 after filter/dedup → returning 2
+[DEBUG] FR24 departures: 100 raw → 97 after filter/dedup → returning 2
+counts 2 2
+first_arr {'id': 'RPA3681', 'status_label': 'ARRIVING', 'sort_time': 1778719016, 'from': 'MSP'}
+first_dep {'id': 'UAL1122', 'status_label': 'DEPARTING', 'sort_time': 1778719200, 'to': 'CPT'}
+candidates ['KEWR']
+---

@@ -16,6 +16,11 @@ class AirportMixin:
             code = str(getattr(self, attr, '') or '').strip().upper()
             if code:
                 candidates.add(code)
+                airport_info = lookup_and_auto_fill_airport(code)
+                for paired_code in (airport_info.get('iata', ''), airport_info.get('icao', '')):
+                    paired_code = str(paired_code or '').strip().upper()
+                    if paired_code:
+                        candidates.add(paired_code)
         return candidates
 
     def fetch_fr24_schedule(self, mode='arrivals'):
