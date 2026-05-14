@@ -3,14 +3,35 @@ globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')
 
 
 class AirportMixin:
+    def _get_airport_query_code(self):
+        for attr in ('airport_code_iata', 'airport_code_icao'):
+            code = str(getattr(self, attr, '') or '').strip().upper()
+            if code:
+                return code
+        return ''
+
+    def _get_airport_code_candidates(self):
+        candidates = set()
+        for attr in ('airport_code_iata', 'airport_code_icao'):
+            code = str(getattr(self, attr, '') or '').strip().upper()
+            if code:
+                candidates.add(code)
+        return candidates
+
     def fetch_fr24_schedule(self, mode='arrivals'):
         """Includes delayed flights and sorts by closest arrival/departure time."""
-        if not self.airport_code_iata:
+        airport_code = self._get_airport_query_code()
+        if not airport_code:
             return []
         try:
             timestamp = int(time.time())
-            url = f"https://api.flightradar24.com/common/v1/airport.json?code={self.airport_code_iata}&plugin[]=schedule&plugin-setting[schedule][mode]={mode}&plugin-setting[schedule][timestamp]={timestamp}&page=1&limit=100"
-            headers = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
+            url = f"https://api.flightradar24.com/common/v1/airport.json?code={airport_code}&plugin[]=schedule&plugin-setting[schedule][mode]={mode}&plugin-setting[schedule][timestamp]={timestamp}&page=1&limit=100"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': 'https://www.flightradar24.com/',
+            }
 
             res = self.session.get(url, headers=headers, timeout=TIMEOUTS['slow'])
             if res.status_code != 200:
@@ -28,6 +49,7 @@ class AirportMixin:
                 try:
                     f_data = safe_get(flight, 'flight', default={})
                     status_text = safe_get(f_data, 'status', 'generic', 'status', 'text', default='').lower()
+                    airport_candidates = self._get_airport_code_candidates()
 
                     # 1. Extract timestamps first so delay can gate the filter
                     time_info = safe_get(f_data, 'time', default={})
@@ -53,11 +75,15 @@ class AirportMixin:
                     # FR24 occasionally returns flights that route through but don't originate/terminate here
                     if mode == 'arrivals':
                         dest_iata = safe_get(f_data, 'airport', 'destination', 'code', 'iata', default='')
-                        if dest_iata and dest_iata.upper() != self.airport_code_iata.upper():
+                        dest_icao = safe_get(f_data, 'airport', 'destination', 'code', 'icao', default='')
+                        dest_codes = {str(dest_iata or '').strip().upper(), str(dest_icao or '').strip().upper()} - {''}
+                        if dest_codes and airport_candidates and not (airport_candidates & dest_codes):
                             continue
                     else:
                         origin_iata = safe_get(f_data, 'airport', 'origin', 'code', 'iata', default='')
-                        if origin_iata and origin_iata.upper() != self.airport_code_iata.upper():
+                        origin_icao = safe_get(f_data, 'airport', 'origin', 'code', 'icao', default='')
+                        origin_codes = {str(origin_iata or '').strip().upper(), str(origin_icao or '').strip().upper()} - {''}
+                        if origin_codes and airport_candidates and not (airport_candidates & origin_codes):
                             continue
 
                     # 3. Filter finished flights — delayed flights always pass through
@@ -91,7 +117,7 @@ class AirportMixin:
                     display_status = "DELAYED" if is_delayed else ("ARRIVING" if mode == 'arrivals' else "DEPARTING")
 
                     city_key = 'origin' if mode == 'arrivals' else 'destination'
-                    city_code = safe_get(f_data, 'airport', city_key, 'code', 'iata', default='')
+                    city_code = safe_get(f_data, 'airport', city_key, 'code', 'iata', default='') or safe_get(f_data, 'airport', city_key, 'code', 'icao', default='')
 
                     entry = {
                         'id': display_id,
@@ -166,10 +192,10 @@ class AirportMixin:
 
     def fetch_airport_activity(self):
         try:
-            target_iata = self.airport_code_iata
-            if not target_iata:
+            target_code = self._get_airport_query_code()
+            if not target_code:
                 return
-            self.log("DEBUG", f"Starting airport fetch for {target_iata}")
+            self.log("DEBUG", f"Starting airport fetch for {target_code}")
 
             # Fetch arrivals, departures, and weather in parallel
             with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
@@ -181,7 +207,7 @@ class AirportMixin:
                 weather = f_wx.result()
 
             # Single airport-change guard after all three complete
-            if self.airport_code_iata != target_iata:
+            if self._get_airport_query_code() != target_code:
                 self.log("DEBUG", "Airport changed mid-fetch, discarding results")
                 return
 
@@ -189,7 +215,7 @@ class AirportMixin:
                 self.airport_arrivals = arrivals
                 self.airport_departures = departures
                 self.airport_weather = weather
-            self.log("AIRPORT", f"{target_iata}: {len(arrivals)} arr, {len(departures)} dep | Weather: {weather['temp']}")
+            self.log("AIRPORT", f"{target_code}: {len(arrivals)} arr, {len(departures)} dep | Weather: {weather['temp']}")
         except Exception as e:
             self.log("ERROR", f"Airport Loop: {e}")
 
