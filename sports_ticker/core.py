@@ -392,27 +392,30 @@ def ai_lookup_airline_codes(query_code: str):
 
 def get_airport_display_name(iata_code):
     """
-    Uses AI to intelligently shorten airport names with persistent file caching.
-    Saves results to airport_name_cache.json to avoid Gemini API quota limits.
+    Returns a short display name for an airport.
+    Checks airport_name_cache.json first; calls AI for anything not cached.
+    Cache key is just the IATA code.
     """
     if not iata_code:
         return 'UNKNOWN'
     code = iata_code.strip().upper()
-    if not AIRPORTS_DB:
-        return code
-    
-    if code not in AIRPORTS_DB: return code
 
-    data = AIRPORTS_DB[code]
+    # 1. Check persistent cache by IATA code
+    if code in _ai_airport_cache:
+        return _ai_airport_cache[code]
+
+    # 2. Also check legacy key format (CODE_RAWNAME) for backwards compat with existing cache file
+    data = (AIRPORTS_DB or {}).get(code, {})
     raw_name = data.get('name', code)
     city = data.get('city', '')
-    
-    # 1. Check Persistent Memory Cache
-    cache_key = f"{code}_{raw_name}"
-    if cache_key in _ai_airport_cache:
-        return _ai_airport_cache[cache_key]
+    legacy_key = f"{code}_{raw_name}"
+    if legacy_key in _ai_airport_cache:
+        name = _ai_airport_cache[legacy_key]
+        _ai_airport_cache[code] = name
+        save_json_atomically(AIRPORT_CACHE_FILE, _ai_airport_cache)
+        return name
 
-    # 2. Try AI Service (Gemini 2.0 Flash)
+    # 3. Try AI (Gemini 2.0 Flash)
     if AI_AVAILABLE and AI_CLIENT:
         try:
             prompt = (
@@ -428,53 +431,41 @@ def get_airport_display_name(iata_code):
                 "   - Example: 'London Heathrow' -> 'Heathrow'\n"
                 f"Input to process: {raw_name}"
             )
-            
             response = AI_CLIENT.models.generate_content(
-                model='gemini-2.0-flash', 
+                model='gemini-2.0-flash',
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    candidate_count=1,
-                    max_output_tokens=15,
-                    temperature=0.1
+                    candidate_count=1, max_output_tokens=15, temperature=0.1
                 )
             )
-            
             if response.text:
                 short_name = response.text.strip()
-                # Validation: ensure AI didn't return something bizarrely long
                 if len(short_name) < len(raw_name) + 5:
-                    _ai_airport_cache[cache_key] = short_name
+                    _ai_airport_cache[code] = short_name
                     save_json_atomically(AIRPORT_CACHE_FILE, _ai_airport_cache)
                     return short_name
-                
         except Exception as e:
             if "429" in str(e):
                 print(f"[AI] Quota hit (429) for {code}, using algorithmic fallback.")
             else:
                 print(f"[AI] Failed to shorten {code}: {e}")
 
-    # 3. Fallback: Algorithmic Cleaning (Used if AI is unavailable or fails)
+    # 4. Algorithmic fallback
     replacements = [
         " International Airport", " Intercontinental Airport", " Regional Airport",
-        " International", " Intercontinental", " Municipal", 
+        " International", " Intercontinental", " Municipal",
         " Airport", " Intl", " Apt", " Field", " Air Force Base", " AFB"
     ]
-    
     clean_name = raw_name
     for phrase in replacements:
-        pattern = re.compile(re.escape(phrase), re.IGNORECASE)
-        clean_name = pattern.sub("", clean_name)
-        
+        clean_name = re.compile(re.escape(phrase), re.IGNORECASE).sub("", clean_name)
     clean_name = clean_name.strip()
-    
-    # If the clean name starts with the city name, remove the redundancy
     if city and clean_name.lower().startswith(city.lower()):
         candidate = clean_name[len(city):].strip()
         if len(candidate) > 2:
             clean_name = candidate
 
-    # Cache the algorithmic result too so we don't try AI again for this airport
-    _ai_airport_cache[cache_key] = clean_name
+    _ai_airport_cache[code] = clean_name
     save_json_atomically(AIRPORT_CACHE_FILE, _ai_airport_cache)
     return clean_name
 
