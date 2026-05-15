@@ -1,3 +1,6 @@
+/Users/mattdicks/Desktop/TickerControl/TickerControl/ContentView.swift:1667:25 Closure containing control flow statement cannot be used with result builder 'ViewBuilder'
+
+
 import SwiftUI
 import Foundation
 import Combine
