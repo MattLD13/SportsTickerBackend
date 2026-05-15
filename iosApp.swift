@@ -1762,31 +1762,17 @@ struct ModesView: View {
     }
     
     func setCategory(_ target: String) {
-        let utilities = ["stocks", "weather", "clock", "music", "flights"]
-        if utilities.contains(target) {
+        switch target {
+        case "flights":
+            // Preserve current sub-mode (airport vs track) when re-selecting Flights.
+            if vm.state.mode != "flights" && vm.state.mode != "flight_tracker" {
+                vm.state.mode = "flights"
+            }
+        case "stocks", "weather", "clock", "music":
             vm.state.mode = target
-        } else {
+        default:
             vm.state.mode = "sports"
         }
-        vm.state.active_sports["weather"] = (target == "weather")
-        vm.state.active_sports["clock"] = (target == "clock")
-        vm.state.active_sports["music"] = (target == "music")
-        if target != "flights" {
-            vm.state.flight_submode = ""
-            vm.state.active_sports["flight_airport"] = false
-            vm.state.active_sports["flight_visitor"] = false
-        }
-        if target == "flights" {
-            // Always reset to airport mode when tapping the Flights category tile.
-            // If flight_submode were kept as "track", the server would silently
-            // convert mode:"flights" + flight_submode:"track" back to "flight_tracker",
-            // requiring a second tap. The sub-mode buttons inside the flights section
-            // are the correct place to switch to track mode.
-            vm.state.flight_submode = "airport"
-            vm.state.active_sports["flight_airport"] = true
-            vm.state.active_sports["flight_visitor"] = false
-        }
-        
         if target == "stocks" {
             let stockKeys = stockOptions.map { $0.id }
             let hasStock = stockKeys.contains { vm.state.active_sports[$0] == true }
@@ -1798,10 +1784,7 @@ struct ModesView: View {
         vm.saveSettings()
     }
     private func setFlightSubmode(_ submode: String) {
-        vm.state.flight_submode = submode
-        vm.state.mode = (submode == "track") ? "flight_tracker" : "flights"
-        vm.state.active_sports["flight_airport"] = (submode == "airport")
-        vm.state.active_sports["flight_visitor"] = (submode == "track")
+        vm.state.mode = submode == "track" ? "flight_tracker" : "flights"
         vm.startBurstPolling()
         vm.saveSettings()
     }
@@ -1861,9 +1844,9 @@ struct ModesView: View {
                                         .font(.subheadline).bold()
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(vm.state.flight_submode == "airport" ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
+                                        .background(vm.state.mode == "flights" ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
                                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(vm.state.flight_submode == "airport" ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
+                                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(vm.state.mode == "flights" ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
                                         .foregroundColor(.white)
                                 }
                                 Button {
@@ -1873,14 +1856,14 @@ struct ModesView: View {
                                         .font(.subheadline).bold()
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(vm.state.flight_submode == "track" ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
+                                        .background(vm.state.mode == "flight_tracker" ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
                                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(vm.state.flight_submode == "track" ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
+                                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(vm.state.mode == "flight_tracker" ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
                                         .foregroundColor(.white)
                                 }
                             }
                             .padding().liquidGlass()
-                            if vm.state.flight_submode == "airport" {
+                            if vm.state.mode == "flights" {
                                 VStack(alignment: .leading, spacing: 10) {
                                     HStack {
                                         Image(systemName: "building.2.fill").font(.title2).foregroundStyle(.cyan)

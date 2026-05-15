@@ -28,7 +28,9 @@
       "Read(//c/Users/mld20/Documents/**)",
       "Bash(dir \"C:\\\\Users\\\\mld20\\\\Documents\\\\\")",
       "Bash(ls /mnt/c/Users/mld20/Documents/)",
-      "Read(//mnt/c/Users/mld20/**)"
+      "Read(//mnt/c/Users/mld20/**)",
+      "Bash(python3 -c ' *)",
+      "Bash(dir \"c:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\" /b *.py)"
     ]
   }
 }

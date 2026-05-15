@@ -2113,6 +2113,7 @@ class TickerStreamer:
         event_name = str(golf_payload.get('event_name') or game.get('away_abbr') or 'PGA TOUR').upper()
         round_label = str(golf_payload.get('round') or game.get('status') or '').upper()
         players = golf_payload.get('players', []) if isinstance(golf_payload.get('players'), list) else []
+        pars_list = golf_payload.get('pars', []) if isinstance(golf_payload.get('pars'), list) else []
 
         # Header: full event name + round, centered (e.g. "PGA CHAMPIONSHIP R2")
         rnd_m = _re.search(r'\d+', round_label)
@@ -2160,7 +2161,16 @@ class TickerStreamer:
                 pass
             return (255, 255, 255)
 
-        top3 = [p for p in players if isinstance(p, dict) and str(p.get('pos', '')).upper() not in ('WD', 'DQ')][:3]
+        top3 = [dict(p) for p in players if isinstance(p, dict) and str(p.get('pos', '')).upper() not in ('WD', 'DQ')][:3]
+        if top3 and all(str(p.get('pos', '-')).strip() in ('-', '') for p in top3):
+            totals = [p.get('total') for p in top3]
+            rank = 1
+            for idx, p in enumerate(top3):
+                if idx > 0 and totals[idx] == totals[idx - 1]:
+                    p['pos'] = top3[idx - 1]['pos']
+                else:
+                    rank = idx + 1
+                    p['pos'] = ('T' + str(rank)) if totals.count(totals[idx]) > 1 else str(rank)
         row_ys = [14, 20, 26]
 
         if not top3:
@@ -2171,7 +2181,20 @@ class TickerStreamer:
                 pos   = str(p.get('pos', '-')).upper()[:3]
                 name  = str(p.get('name', '')).upper()[:10]
                 total = p.get('total')
-                today = p.get('today')
+                try:
+                    thru = int(p.get('thru', 0) or 0)
+                except (TypeError, ValueError):
+                    thru = 18 if str(p.get('thru', '')).upper() == 'F' else 0
+                holes_data = p.get('holes', [])
+                if not isinstance(holes_data, list):
+                    holes_data = []
+                holes_with_scores = sum(1 for h in holes_data if h is not None)
+                in_round = thru > 0 or (0 < holes_with_scores < 18)
+                today = p.get('today') if in_round else None
+                if today is None and in_round and pars_list:
+                    played = [(h, pars_list[j]) for j, h in enumerate(holes_data[:18]) if h is not None and j < len(pars_list)]
+                    if played:
+                        today = sum(h - par for h, par in played)
 
                 if pos.replace('T', '') == '1':
                     pos_color = (255, 215, 0)
@@ -2295,9 +2318,16 @@ class TickerStreamer:
 
         if players and all(p['pos'] in ('-', '') for p in players):
             players.sort(key=lambda x: x['total'])
+            totals_all = [p['total'] for p in players]
+            rank = 1
             for idx, p in enumerate(players):
-                p['pos'] = str(idx + 1)
+                if idx > 0 and totals_all[idx] == totals_all[idx - 1]:
+                    p['pos'] = players[idx - 1]['pos']
+                else:
+                    rank = idx + 1
+                    p['pos'] = ('T' + str(rank)) if totals_all.count(totals_all[idx]) > 1 else str(rank)
 
+        players = players[:20]
         pairs = [(players[i], players[i + 1] if i + 1 < len(players) else None) for i in range(0, len(players), 2)]
 
         now_ts = time.time()
@@ -2391,10 +2421,17 @@ class TickerStreamer:
             draw_text(d_obj, player['pos'], POS_X, y_pos + 1, p_color)
             draw_text(d_obj, player['name'], NAME_X, y_pos + 1, M_COLORS['white'])
 
+            try:
+                thru_val = int(player.get('thru', 0) or 0)
+            except (TypeError, ValueError):
+                thru_val = 18 if str(player.get('thru', '')).upper() == 'F' else 0
+            holes_with_scores = sum(1 for h in player['holes'] if h is not None)
+            started_today = thru_val > 0 or (0 < holes_with_scores < 18)
+
             f_score = 0
             for i in range(9):
                 bx = FRONT_X + i * 10
-                score = player['holes'][i]
+                score = player['holes'][i] if started_today else None
                 draw_box(d_obj, bx, y_pos, score, par_vals[i])
                 if score is not None:
                     f_score += (int(score) - int(par_vals[i]))
@@ -2403,13 +2440,16 @@ class TickerStreamer:
             b_score = 0
             for i in range(9):
                 bx = BACK_X + i * 11
-                score = player['holes'][9 + i]
+                score = player['holes'][9 + i] if started_today else None
                 draw_box(d_obj, bx, y_pos, score, par_vals[9 + i])
                 if score is not None:
                     b_score += (int(score) - int(par_vals[9 + i]))
             draw_text_centered(d_obj, format_score(b_score), BSUB_CX, y_pos + 1, M_COLORS['white'])
 
-            draw_text_centered(d_obj, format_score(player['today']), TODAY_CX, y_pos + 1, M_COLORS['white'])
+            if started_today:
+                draw_text_centered(d_obj, format_score(player['today']), TODAY_CX, y_pos + 1, M_COLORS['white'])
+            else:
+                draw_text_centered(d_obj, '-', TODAY_CX, y_pos + 1, M_COLORS['label_gray'])
 
             if player['total'] < 0:
                 tot_color = M_COLORS['birdie']
