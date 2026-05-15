@@ -2,6 +2,8 @@
 Description=Sports Ticker Controller (LED Display)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -12,10 +14,6 @@ Restart=always
 RestartSec=5
 StandardOutput=append:/home/pi/ticker.log
 StandardError=append:/home/pi/ticker.log
-
-# Give the matrix hardware time to initialise before restart attempts.
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 [Install]
 WantedBy=multi-user.target
