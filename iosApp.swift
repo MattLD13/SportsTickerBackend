@@ -1633,6 +1633,20 @@ struct ContentView: View {
 }
 struct HomeView: View {
     @ObservedObject var vm: TickerViewModel
+
+    private var partitionedGames: (other: [Game], airport: [Game]) {
+        var airport: [Game] = []
+        var other: [Game] = []
+        for g in vm.games {
+            if g.sport == "flight" && (g.type == "flight_weather" || g.type == "flight_arrival" || g.type == "flight_departure") {
+                airport.append(g)
+            } else {
+                other.append(g)
+            }
+        }
+        return (other, airport)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -1662,21 +1676,13 @@ struct HomeView: View {
                         Text("No active items found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     } else {
                         let labels = vm.leagueLabels
-                        var airportItems: [Game] = []
-                        var otherItems: [Game] = []
-                        for g in vm.games {
-                            if g.sport == "flight" && (g.type == "flight_weather" || g.type == "flight_arrival" || g.type == "flight_departure") {
-                                airportItems.append(g)
-                            } else {
-                                otherItems.append(g)
-                            }
-                        }
-                        ForEach(otherItems) { game in
+                        let split = partitionedGames
+                        ForEach(split.other) { game in
                             GameRow(game: game, leagueLabel: labels[game.sport], isPinned: vm.isPinned(game))
                                 .onTapGesture { vm.togglePin(game) }
                         }
-                        if !airportItems.isEmpty {
-                            AirportBoardView(flights: airportItems)
+                        if !split.airport.isEmpty {
+                            AirportBoardView(flights: split.airport)
                         }
                     }
                 }.padding(.horizontal)
