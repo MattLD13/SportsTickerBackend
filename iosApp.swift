@@ -1671,12 +1671,12 @@ struct HomeView: View {
                 }.padding(.horizontal)
                 
                 VStack(alignment: .leading, spacing: 12) {
+                    let labels = vm.leagueLabels
+                    let split = partitionedGames
                     Text("ACTIVE FEED").font(.caption).bold().foregroundStyle(.secondary)
                     if vm.games.isEmpty {
                         Text("No active items found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     } else {
-                        let labels = vm.leagueLabels
-                        let split = partitionedGames
                         ForEach(split.other) { game in
                             GameRow(game: game, leagueLabel: labels[game.sport], isPinned: vm.isPinned(game))
                                 .onTapGesture { vm.togglePin(game) }
