@@ -31,7 +31,7 @@
     "weather_lat": 40.7128,
     "weather_lon": -74.006,
     "utc_offset": -5,
-    "track_flight_id": "UA123",
+    "track_flight_id": "",
     "track_guest_name": "",
     "airport_code_icao": "KEWR",
     "airport_code_iata": "EWR",
