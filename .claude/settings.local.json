@@ -35,7 +35,9 @@
       "PowerShell(Select-String -Pattern \"    def \" \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\sports.py\" | Select-Object -First 15 | ForEach-Object { $_.Line.Trim\\(\\) })",
       "PowerShell(Select-String -Pattern \"    def \" \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\sports.py\" | Select-Object -Last 10 | ForEach-Object { $_.Line.Trim\\(\\) })",
       "PowerShell(Select-String -Pattern \"    def \" \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\weather.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\golf.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\music.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\flight.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\misc.py\" | ForEach-Object { \"$\\($_.Filename\\): $\\($_.Line.Trim\\(\\)\\)\" })",
-      "Bash(git -C c:/Users/mld20/Documents/SportsTickerBackend remote -v)"
+      "Bash(git -C c:/Users/mld20/Documents/SportsTickerBackend remote -v)",
+      "Bash(python3 -c \"import sys; sys.path.insert\\(0,'c:/Users/mld20/Documents/SportsTickerBackend'\\); import ticker_controller; print\\(type\\(ticker_controller\\)\\)\")",
+      "Bash(python3 -c \"import sys; sys.path.insert\\(0,'c:/Users/mld20/Documents/SportsTickerBackend'\\); import ticker_controller; print\\(ticker_controller.__file__\\)\")"
     ]
   }
 }
