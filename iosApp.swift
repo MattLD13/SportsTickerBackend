@@ -343,6 +343,10 @@ class TickerViewModel: ObservableObject {
     @Published var games: [Game] = []
     @Published var allTeams: [String: [TeamData]] = [:]
     @Published var leagueOptions: [LeagueOption] = []
+    var leagueLabels: [String: String] { Dictionary(uniqueKeysWithValues: leagueOptions.map { ($0.id, $0.label) }) }
+    var isSportsMode: Bool {
+        !["stocks", "weather", "clock", "music", "flights", "flight_tracker"].contains(state.mode)
+    }
     
     // THE SOURCE OF TRUTH
     @Published var state: TickerState = TickerState(
@@ -607,11 +611,7 @@ class TickerViewModel: ObservableObject {
         request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID") // This matches the Python check
         
         do {
-            let data = try JSONEncoder().encode(state)
-            var jsonDict = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] ?? [:]
-            jsonDict["ticker_id"] = validID
-            request.httpBody = try JSONSerialization.data(withJSONObject: jsonDict, options: [])
-            
+            request.httpBody = try JSONEncoder().encode(state)
             print("📤 Saving settings to \(urlString)")
             currentSaveTask?.cancel()
             currentSaveTask = URLSession.shared.dataTask(with: request) { data, response, error in
@@ -965,6 +965,18 @@ struct NativeLiquidGlass: ViewModifier {
     }
 }
 extension View { func liquidGlass() -> some View { modifier(NativeLiquidGlass()) } }
+func weatherIcon(for condition: String) -> String {
+    let c = condition.uppercased()
+    if c.contains("CLEAR") || c.contains("SUNNY") { return "sun.max.fill" }
+    if c.contains("PARTLY") { return "cloud.sun.fill" }
+    if c.contains("CLOUD") || c.contains("OVERCAST") { return "cloud.fill" }
+    if c.contains("RAIN") || c.contains("DRIZZLE") || c.contains("SHOWER") { return "cloud.rain.fill" }
+    if c.contains("SNOW") { return "cloud.snow.fill" }
+    if c.contains("THUNDER") { return "cloud.bolt.rain.fill" }
+    if c.contains("FOG") || c.contains("MIST") || c.contains("HAZE") { return "cloud.fog.fill" }
+    if c.contains("FREEZING") { return "thermometer.snowflake" }
+    return "cloud.fill"
+}
 struct SituationPill: View {
     let text: String; let color: Color
     var body: some View {
@@ -1052,19 +1064,6 @@ struct GameRow: View {
     var isSituationGlobal: Bool {
         guard game.situation != nil else { return false }
         return !activeSituation.isEmpty && !hasPossession(isHome: true) && !hasPossession(isHome: false)
-    }
-    
-    func weatherIcon(for condition: String) -> String {
-        let c = condition.uppercased()
-        if c.contains("CLEAR") || c.contains("SUNNY") { return "sun.max.fill" }
-        if c.contains("PARTLY") { return "cloud.sun.fill" }
-        if c.contains("CLOUD") || c.contains("OVERCAST") { return "cloud.fill" }
-        if c.contains("RAIN") || c.contains("DRIZZLE") || c.contains("SHOWER") { return "cloud.rain.fill" }
-        if c.contains("SNOW") { return "cloud.snow.fill" }
-        if c.contains("THUNDER") { return "cloud.bolt.rain.fill" }
-        if c.contains("FOG") || c.contains("MIST") || c.contains("HAZE") { return "cloud.fog.fill" }
-        if c.contains("FREEZING") { return "thermometer.snowflake" }
-        return "cloud.fill"
     }
     
     var formattedSport: String {
@@ -1376,19 +1375,6 @@ struct AirportBoardView: View {
     private var arrivals: [Game] { flights.filter { $0.type == "flight_arrival" } }
     private var departures: [Game] { flights.filter { $0.type == "flight_departure" } }
     
-    private func weatherIcon(for condition: String) -> String {
-        let c = condition.uppercased()
-        if c.contains("CLEAR") || c.contains("SUNNY") { return "sun.max.fill" }
-        if c.contains("PARTLY") { return "cloud.sun.fill" }
-        if c.contains("CLOUD") || c.contains("OVERCAST") { return "cloud.fill" }
-        if c.contains("RAIN") || c.contains("DRIZZLE") || c.contains("SHOWER") { return "cloud.rain.fill" }
-        if c.contains("SNOW") { return "cloud.snow.fill" }
-        if c.contains("THUNDER") { return "cloud.bolt.rain.fill" }
-        if c.contains("FOG") || c.contains("MIST") || c.contains("HAZE") { return "cloud.fog.fill" }
-        if c.contains("FREEZING") { return "thermometer.snowflake" }
-        return "cloud.fill"
-    }
-    
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
         
@@ -1647,10 +1633,6 @@ struct ContentView: View {
 }
 struct HomeView: View {
     @ObservedObject var vm: TickerViewModel
-    private var isSportsMode: Bool {
-        let nonSportsModes = ["stocks", "weather", "clock", "music", "flights", "flight_tracker"]
-        return !nonSportsModes.contains(vm.state.mode)
-    }
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -1670,8 +1652,8 @@ struct HomeView: View {
                         FilterBtn(title: "Live Only", val: "live", cur: filterMode) { vm.state.mode = "live"; vm.startBurstPolling(); vm.saveSettings() }
                         FilterBtn(title: "My Teams", val: "my_teams", cur: filterMode) { vm.state.mode = "my_teams"; vm.startBurstPolling(); vm.saveSettings() }
                     }
-                    .disabled(!isSportsMode)
-                    .opacity(isSportsMode ? 1.0 : 0.4)
+                    .disabled(!vm.isSportsMode)
+                    .opacity(vm.isSportsMode ? 1.0 : 0.4)
                 }.padding(.horizontal)
                 
                 VStack(alignment: .leading, spacing: 12) {
@@ -1679,16 +1661,20 @@ struct HomeView: View {
                     if vm.games.isEmpty {
                         Text("No active items found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     } else {
-                        // Group airport flight items into a board view
-                        let airportItems = vm.games.filter { $0.sport == "flight" && ($0.type == "flight_weather" || $0.type == "flight_arrival" || $0.type == "flight_departure") }
-                        let otherItems = vm.games.filter { !($0.sport == "flight" && ($0.type == "flight_weather" || $0.type == "flight_arrival" || $0.type == "flight_departure")) }
-                        // Render visitor flight cards first (if any)
+                        let labels = vm.leagueLabels
+                        var airportItems: [Game] = []
+                        var otherItems: [Game] = []
+                        for g in vm.games {
+                            if g.sport == "flight" && (g.type == "flight_weather" || g.type == "flight_arrival" || g.type == "flight_departure") {
+                                airportItems.append(g)
+                            } else {
+                                otherItems.append(g)
+                            }
+                        }
                         ForEach(otherItems) { game in
-                            let label = vm.leagueOptions.first(where: { $0.id == game.sport })?.label
-                            GameRow(game: game, leagueLabel: label, isPinned: vm.isPinned(game))
+                            GameRow(game: game, leagueLabel: labels[game.sport], isPinned: vm.isPinned(game))
                                 .onTapGesture { vm.togglePin(game) }
                         }
-                        // Render grouped airport board
                         if !airportItems.isEmpty {
                             AirportBoardView(flights: airportItems)
                         }
@@ -1742,7 +1728,6 @@ struct ModesView: View {
     @State private var localAirportCode: String = ""
     @State private var localFlightNumber: String = ""
     @State private var localGuestName: String = ""
-    @State private var flightSubMode: Int = 0 // 0 = Airport, 1 = Track Flight
     @FocusState private var isAirportFieldFocused: Bool
     @FocusState private var isFlightFieldFocused: Bool
     @FocusState private var isGuestFieldFocused: Bool
