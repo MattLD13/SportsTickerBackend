@@ -232,7 +232,7 @@ struct TickerState: Codable, Sendable {
         // If server fails to send sports, default to ALL enabled (Safety Net)
         active_sports = (try? container.decode([String: Bool].self, forKey: .active_sports)) ?? TickerState.defaultActiveSports
         
-        let rawMode = (try? container.decode(String.self, forKey: .mode)) ?? "all"
+        let rawMode = (try? container.decode(String.self, forKey: .mode)) ?? "sports"
         if rawMode == "flight2" {
             mode = "flights"
             flight_submode = "track"
@@ -278,7 +278,7 @@ struct TickerState: Codable, Sendable {
     }
     
     // === 2. BETTER DEFAULTS (Fixes "NFL Only" bug) ===
-    init(active_sports: [String: Bool]? = nil, mode: String = "all", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil, track_flight_id: String = "", track_guest_name: String = "", airport_code_iata: String = "EWR", airport_code_icao: String = "KEWR", airport_name: String = "Newark", flight_submode: String = "airport", pinned_game: String? = nil, pinned_games: [String] = []) {
+    init(active_sports: [String: Bool]? = nil, mode: String = "sports", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil, track_flight_id: String = "", track_guest_name: String = "", airport_code_iata: String = "EWR", airport_code_icao: String = "KEWR", airport_name: String = "Newark", flight_submode: String = "airport", pinned_game: String? = nil, pinned_games: [String] = []) {
         
         // Default to ALL sports if none provided
         self.active_sports = active_sports ?? TickerState.defaultActiveSports
@@ -351,7 +351,7 @@ class TickerViewModel: ObservableObject {
     // THE SOURCE OF TRUTH
     @Published var state: TickerState = TickerState(
             active_sports: nil, // This will now trigger the "All Sports" default
-            mode: "all",
+            mode: "sports",
             scroll_seamless: false,
             my_teams: [],
             debug_mode: false,
