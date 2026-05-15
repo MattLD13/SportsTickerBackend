@@ -273,7 +273,8 @@ class SportsModesMixin:
             poss_raw = comp_sit.get('possession') or (sit_data.get('team', {}).get('id') if sit_data else None)
 
             balls, strikes, outs, onFirst, onSecond, onThird = 0, 0, 0, False, False, False
-            batter_name = pitcher_name = batter_avg = batter_h = batter_ab = last_pitch_type = ''
+            batter_name = pitcher_name = batter_avg = batter_h = batter_ab = ''
+            last_pitch_type = last_pitch_type_abbr = last_pitch_type_full = ''
             pitcher_pitches = last_pitch_speed = 0
             if 'baseball' in path and data.get('situation'):
                 bsit = data['situation']

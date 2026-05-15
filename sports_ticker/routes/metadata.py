@@ -1,7 +1,7 @@
 import time
 from flask import request, jsonify, make_response
 from ..routes_runtime import app
-from ..core import state, LEAGUE_OPTIONS, _league_sort_key, _auto_category_for_option
+from ..core import state, LEAGUE_OPTIONS, _league_sort_key, _auto_category_for_option, resolve_ticker_id
 from ..workers import spotify_fetcher
 
 @app.route('/leagues', methods=['GET'])
