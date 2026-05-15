@@ -33,10 +33,12 @@ class FlightTracker(AirportMixin):
         self.wake_event.set()
     
     def log(self, cat, msg):
-        # Suppress DEBUG-category output unless test_flights is on
-        if cat == 'DEBUG' and not TestMode.is_enabled('flights'):
-            return
-        print(f"[{dt.now().strftime('%H:%M:%S')}] {cat:<12} | {msg}")
+        line = f"[{dt.now().strftime('%H:%M:%S')}] {cat:<12} | {msg}"
+        # Errors and warnings always go to console; everything else is file-only.
+        if cat in ('ERROR', 'WARNING'):
+            print(line)
+        else:
+            print(f"[DEBUG]{line}")
     
     def parse_flight_code(self, flight_code):
         """

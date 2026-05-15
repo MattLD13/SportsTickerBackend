@@ -104,9 +104,9 @@ def refresh_worker():
 
             started = time.time()
             try:
-                print(f"[REFRESH] start reason={reason}")
+                print(f"[DEBUG][REFRESH] start reason={reason}")
                 fetcher.update_current_games()
-                print(f"[REFRESH] done reason={reason} took={time.time() - started:.2f}s")
+                print(f"[DEBUG][REFRESH] done reason={reason} took={time.time() - started:.2f}s")
             except Exception as e:
                 print(f"[REFRESH] error reason={reason}: {e}")
 

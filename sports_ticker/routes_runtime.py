@@ -1,9 +1,13 @@
 """Flask app construction and route registration."""
 
+import logging
 import os
 import uuid
 from flask import Flask
 from flask_cors import CORS
+
+# Suppress per-request access lines (200/304 noise) — errors still surface.
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 app = Flask(__name__)
 CORS(app)
