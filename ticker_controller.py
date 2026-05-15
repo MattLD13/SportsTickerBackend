@@ -2992,6 +2992,7 @@ class TickerStreamer:
     def poll_backend(self):
         print("Backend Poller Started...")
         last_hash = ""
+        _backoff = 1.0
         session = requests.Session()
         adapter = requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=1)
         session.mount('http://', adapter)
@@ -3122,14 +3123,20 @@ class TickerStreamer:
                     unique_logos = list(set(logos_to_fetch))
                     if unique_logos:
                         fs = [self.executor.submit(self.download_and_process_logo, u, s) for u, s in unique_logos]
-                        concurrent.futures.wait(fs)
+                        # Wait at most 2 s so slow CDNs don't stall the render loop;
+                        # any logos that miss the window appear on the next content change.
+                        concurrent.futures.wait(fs, timeout=2.0)
 
                     self.new_games_list = scrolling_items
                     self.static_items = static_items
                     self.static_index = 0
 
                     if scrolling_items:
-                        self.bg_strip = self.build_seamless_strip(scrolling_items)
+                        try:
+                            self.bg_strip = self.build_seamless_strip(scrolling_items)
+                        except Exception as strip_err:
+                            print(f"Strip build error: {strip_err}")
+                            self.bg_strip = None
                     else:
                         self.bg_strip = None
 
@@ -3137,11 +3144,13 @@ class TickerStreamer:
                     self.bg_strip_ready = True
                     last_hash = current_hash
 
+                _backoff = 1.0
                 time.sleep(0.5)
 
             except Exception as e:
                 print(f"Poll Error: {e}")
-                time.sleep(2)
+                time.sleep(_backoff)
+                _backoff = min(_backoff * 2, 30.0)
 
 
 # ================= ENTRY POINT =================

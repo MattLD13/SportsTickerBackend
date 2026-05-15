@@ -1,113 +1,107 @@
-name: Deploy System
+name: Deploy
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
-  # ---------------------------------------------------
-  # JOB 1: Deploy backend package & restart
-  # ---------------------------------------------------
-  deploy:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Detect which parts of the repo changed
+  # ─────────────────────────────────────────────────────────────────────────
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      backend:    ${{ steps.filter.outputs.backend }}
+      controller: ${{ steps.filter.outputs.controller }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'app.py'
+              - 'sports_ticker/**'
+              - 'requirements.txt'
+              - '*.json'
+            controller:
+              - 'ticker_controller/**'
+              - 'updater.py'
+              - 'ticker-controller.service'
+              - 'setup.sh'
 
-      # 1. Copy files to server
-      - name: Copy files via SCP
+  # ─────────────────────────────────────────────────────────────────────────
+  # Deploy backend to server (only when backend files changed)
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-backend:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy files to server
         uses: appleboy/scp-action@master
         with:
-          host: ${{ secrets.SSH_HOST }}
+          host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          source: "app.py,sports_ticker/**,requirements.txt,*.json,ticker_controller.py"
-          target: "/home/${{ secrets.SSH_USER }}/"
+          key:      ${{ secrets.SSH_KEY }}
+          source:   "app.py,sports_ticker/**,requirements.txt,*.json,ticker_controller/**,updater.py"
+          target:   "/home/${{ secrets.SSH_USER }}/"
 
-      # 2. Configure .env and Restart Service
-      - name: Deploy and Restart Service
+      - name: Write .env and restart backend
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.SSH_HOST }}
+          host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
+          key:      ${{ secrets.SSH_KEY }}
           script: |
-            # Navigate to app directory
             cd /home/${{ secrets.SSH_USER }}/
 
-            # ---------------------------------------------------------
-            # GENERATE .env FILE FROM SECRETS
-            # ---------------------------------------------------------
-            echo "Generating .env file..."
-            
-            # Finnhub Keys
-            echo "FINNHUB_KEY_1=${{ secrets.FINNHUB_KEY_1 }}" > .env
-            echo "FINNHUB_KEY_2=${{ secrets.FINNHUB_KEY_2 }}" >> .env
-            echo "FINNHUB_KEY_3=${{ secrets.FINNHUB_KEY_3 }}" >> .env
-            echo "FINNHUB_KEY_4=${{ secrets.FINNHUB_KEY_4 }}" >> .env
-            echo "FINNHUB_KEY_5=${{ secrets.FINNHUB_KEY_5 }}" >> .env
-            
-            # Spotify Keys (HYBRID SETUP: NEEDS ALL 5)
-            # 1. Old Web API Keys (For Metadata)
-            echo "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}" >> .env
+            # ── Generate .env ──────────────────────────────────────────────
+            echo "FINNHUB_KEY_1=${{ secrets.FINNHUB_KEY_1 }}"           > .env
+            echo "FINNHUB_KEY_2=${{ secrets.FINNHUB_KEY_2 }}"          >> .env
+            echo "FINNHUB_KEY_3=${{ secrets.FINNHUB_KEY_3 }}"          >> .env
+            echo "FINNHUB_KEY_4=${{ secrets.FINNHUB_KEY_4 }}"          >> .env
+            echo "FINNHUB_KEY_5=${{ secrets.FINNHUB_KEY_5 }}"          >> .env
+            echo "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}"  >> .env
             echo "SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}" >> .env
             echo "SPOTIFY_REFRESH_TOKEN=${{ secrets.SPOTIFY_REFRESH_TOKEN }}" >> .env
-            
-            # 2. New Librespot Keys (For Instant Trigger)
-            echo "SPOTIFY_USERNAME=${{ secrets.SPOTIFY_USERNAME }}" >> .env
-            echo "SPOTIFY_PASSWORD=${{ secrets.SPOTIFY_PASSWORD }}" >> .env
-
-            # 3. AI API Key
-            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
-
+            echo "SPOTIFY_USERNAME=${{ secrets.SPOTIFY_USERNAME }}"    >> .env
+            echo "SPOTIFY_PASSWORD=${{ secrets.SPOTIFY_PASSWORD }}"    >> .env
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"        >> .env
             chmod 600 .env
 
-            # ---------------------------------------------------------
-            # INSTALL & RESTART
-            # ---------------------------------------------------------
-            if pip3 --version; then
-                # Install standard requirements
-                pip3 install -r requirements.txt --break-system-packages || pip3 install -r requirements.txt
-                
-                # Install optional runtime integrations not yet pinned in requirements.txt
-                pip3 install librespot protobuf google-generativeai google-genai spotipy --break-system-packages
-            else
-                pip install -r requirements.txt
-                pip install librespot protobuf google-generativeai google-genai spotipy
-            fi
+            # ── Install deps ──────────────────────────────────────────────
+            pip3 install -r requirements.txt --break-system-packages 2>/dev/null \
+              || pip3 install -r requirements.txt
+            pip3 install librespot protobuf google-generativeai google-genai spotipy \
+              --break-system-packages 2>/dev/null || true
 
-            echo "Restarting ticker service..."
+            # ── Restart backend ───────────────────────────────────────────
+            echo "Restarting ticker (backend)..."
             sudo systemctl restart ticker
             sudo systemctl status ticker --no-pager
 
-  # ---------------------------------------------------
-  # JOB 2: Trigger Ticker Update (If Controller Changed)
-  # ---------------------------------------------------
-  # signal-fleet:
-  #   runs-on: ubuntu-latest
-  #   needs: deploy # Wait for server to be up before signaling
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v3
-  #       with:
-  #         fetch-depth: 2 # Important: Required to see file changes
-
-  #     - name: Check if Controller Code Changed
-  #       id: check_changes
-  #       run: |
-  #         # Check git diff for the specific controller file
-  #         if git diff --name-only HEAD^ HEAD | grep -q "ticker_controller.py"; then
-  #           echo "updated=true" >> $GITHUB_OUTPUT
-  #           echo "Controller code changed. Triggering fleet update."
-  #         else
-  #           echo "updated=false" >> $GITHUB_OUTPUT
-  #           echo "No controller changes. Skipping fleet signal."
-  #         fi
-
-  #     - name: Send Update Signal to Server
-  #       if: steps.check_changes.outputs.updated == 'true'
-  #       run: |
-  #         # Uses your real domain.
-  #         curl -X POST https://ticker.mattdicks.org/api/hardware \
-  #         -H "Content-Type: application/json" \
-  #         -d '{"action": "update", "ticker_id": "all"}'
+  # ─────────────────────────────────────────────────────────────────────────
+  # Signal all Pi tickers to pull the new controller code
+  # (only when ticker_controller/** or updater.py changed)
+  # ─────────────────────────────────────────────────────────────────────────
+  signal-fleet:
+    runs-on: ubuntu-latest
+    needs: [changes, deploy-backend]
+    # Run even if deploy-backend was skipped (controller-only push)
+    if: |
+      always() &&
+      needs.changes.outputs.controller == 'true' &&
+      (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
+    steps:
+      - name: Send update signal to all tickers
+        run: |
+          echo "Controller code changed — signalling fleet..."
+          curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+            -X POST https://ticker.mattdicks.org/api/hardware \
+            -H "Content-Type: application/json" \
+            -d '{"action":"update","ticker_id":"all"}'

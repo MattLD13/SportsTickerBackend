@@ -1,8 +1,8 @@
-from .. import core as _core
-from .. import workers as _workers
+import time
+from flask import request, jsonify
 from ..routes_runtime import app
-globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
-globals().update({k: v for k, v in vars(_workers).items() if not k.startswith('__')})
+from ..core import state, data_lock, lookup_and_auto_fill_airport
+from ..workers import flight_tracker
 
 @app.route('/api/airport/lookup', methods=['GET'])
 def api_airport_lookup():

@@ -1,8 +1,14 @@
+from flask import request, jsonify
 from .. import core as _core
 from .. import workers as _workers
 from ..routes_runtime import app
-globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
-globals().update({k: v for k, v in vars(_workers).items() if not k.startswith('__')})
+from ..core import (
+    state, tickers, data_lock,
+    normalize_mode, _normalize_single_pin, VALID_MODES, _VALID_LEAGUE_IDS,
+    lookup_and_auto_fill_airport, resolve_ticker_id, create_ticker_record,
+    save_specific_ticker, save_global_config,
+)
+from ..workers import request_refresh, fetcher, flight_tracker, sync_test_mode_from_state
 
 @app.route('/api/config', methods=['POST'])
 def api_config():

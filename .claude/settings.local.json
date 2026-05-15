@@ -30,7 +30,12 @@
       "Bash(ls /mnt/c/Users/mld20/Documents/)",
       "Read(//mnt/c/Users/mld20/**)",
       "Bash(python3 -c ' *)",
-      "Bash(dir \"c:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\" /b *.py)"
+      "Bash(dir \"c:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\" /b *.py)",
+      "PowerShell(New-Item -ItemType Directory -Path \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\" -Force)",
+      "PowerShell(Select-String -Pattern \"    def \" \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\sports.py\" | Select-Object -First 15 | ForEach-Object { $_.Line.Trim\\(\\) })",
+      "PowerShell(Select-String -Pattern \"    def \" \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\sports.py\" | Select-Object -Last 10 | ForEach-Object { $_.Line.Trim\\(\\) })",
+      "PowerShell(Select-String -Pattern \"    def \" \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\weather.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\golf.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\music.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\flight.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\misc.py\" | ForEach-Object { \"$\\($_.Filename\\): $\\($_.Line.Trim\\(\\)\\)\" })",
+      "Bash(git -C c:/Users/mld20/Documents/SportsTickerBackend remote -v)"
     ]
   }
 }

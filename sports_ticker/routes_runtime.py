@@ -1,7 +1,9 @@
 """Flask app construction and route registration."""
 
-from . import core as _core
-globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
+import os
+import uuid
+from flask import Flask
+from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)

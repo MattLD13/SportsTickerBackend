@@ -1,9 +1,15 @@
 # Runtime singleton initialization and background worker loops.
 
-from . import core as _core
+import threading
+import time
+import traceback
 from . import fetchers_runtime as _fetchers
-globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
-globals().update({k: v for k, v in vars(_fetchers).items() if not k.startswith('__')})
+from .core import (
+    state, tickers, data_lock,
+    SPORTS_UPDATE_INTERVAL, _normalize_single_pin, _STOCK_LISTS,
+    Tee, tee_instance,
+)
+from .fetchers_runtime import TestMode, SportsFetcher, SpotifyFetcher, FlightTracker
 
 # Restore TestMode from persisted state (only active when debug_mode is on)
 if state.get('debug_mode'):
@@ -272,7 +278,7 @@ def flights_worker():
 
             if did_fetch or forced:
                 try: request_refresh('flights_worker')
-                except: pass
+                except Exception: pass
         except Exception as e:
             print(f"Flight worker error: {e}")
 

@@ -1,8 +1,10 @@
-from .. import core as _core
-from .. import workers as _workers
+import uuid
+from flask import request, jsonify
 from ..routes_runtime import app
-globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
-globals().update({k: v for k, v in vars(_workers).items() if not k.startswith('__')})
+from ..core import (
+    tickers,
+    pair_client_to_ticker, create_ticker_record, save_specific_ticker, generate_pairing_code,
+)
 
 @app.route('/pair', methods=['POST'])
 def pair_ticker():

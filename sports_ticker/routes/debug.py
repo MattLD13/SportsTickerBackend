@@ -1,8 +1,18 @@
-from .. import core as _core
-from .. import workers as _workers
+import os
+import threading
+import time
+from flask import request, jsonify
 from ..routes_runtime import app
-globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
-globals().update({k: v for k, v in vars(_workers).items() if not k.startswith('__')})
+from ..core import (
+    state, tickers, data_lock,
+    resolve_ticker_id,
+    _maybe_update_ticker_timezone_from_request, _extract_timezone_from_request_headers,
+    _extract_client_ip, _lookup_timezone_for_ip,
+    _lookup_timezone_for_current_connection, _lookup_timezone_for_latlon,
+    _get_ticker_timezone_context,
+)
+from ..workers import sync_test_mode_from_state
+from ..fetchers_runtime import TestMode
 
 @app.route('/api/timezone', methods=['GET'])
 @app.route('/timezone', methods=['GET'])

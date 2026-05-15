@@ -1,8 +1,16 @@
-from .. import core as _core
-from .. import workers as _workers
+import time
+from flask import request, jsonify
 from ..routes_runtime import app
-globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
-globals().update({k: v for k, v in vars(_workers).items() if not k.startswith('__')})
+from ..core import (
+    state, tickers, data_lock,
+    normalize_mode, _normalize_single_pin,
+    resolve_ticker_id, create_ticker_record, save_specific_ticker, generate_pairing_code,
+    SPORTS_MODE_FAMILY, NON_SCOREBOARD_TYPES, HIDDEN_STATUS_KEYWORDS, _ACTIVE_STATES,
+    _get_ticker_timezone_context, _apply_timezone_to_game_times,
+    _materialize_blank_logo_urls, _maybe_update_ticker_timezone_from_request,
+    SERVER_VERSION,
+)
+from ..workers import request_refresh, fetcher
 
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
