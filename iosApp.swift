@@ -1,6 +1,3 @@
-/Users/mattdicks/Desktop/TickerControl/TickerControl/ContentView.swift:1667:25 Closure containing control flow statement cannot be used with result builder 'ViewBuilder'
-
-
 import SwiftUI
 import Foundation
 import Combine
@@ -1637,6 +1634,10 @@ struct ContentView: View {
 struct HomeView: View {
     @ObservedObject var vm: TickerViewModel
 
+    private var filterMode: String { vm.state.mode == "sports_full" ? "sports" : vm.state.mode }
+    private var leagueLabels: [String: String] { vm.leagueLabels }
+    private var splitGames: (other: [Game], airport: [Game]) { partitionedGames }
+
     private var partitionedGames: (other: [Game], airport: [Game]) {
         var airport: [Game] = []
         var other: [Game] = []
@@ -1663,7 +1664,6 @@ struct HomeView: View {
                 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("DISPLAY FILTER").font(.caption).bold().foregroundStyle(.secondary)
-                    let filterMode = vm.state.mode == "sports_full" ? "sports" : vm.state.mode
                     HStack(spacing: 12) {
                         FilterBtn(title: "Show All", val: "sports", cur: filterMode) { vm.state.mode = "sports"; vm.startBurstPolling(); vm.saveSettings() }
                         FilterBtn(title: "Live Only", val: "live", cur: filterMode) { vm.state.mode = "live"; vm.startBurstPolling(); vm.saveSettings() }
@@ -1674,18 +1674,16 @@ struct HomeView: View {
                 }.padding(.horizontal)
                 
                 VStack(alignment: .leading, spacing: 12) {
-                    let labels = vm.leagueLabels
-                    let split = partitionedGames
                     Text("ACTIVE FEED").font(.caption).bold().foregroundStyle(.secondary)
                     if vm.games.isEmpty {
                         Text("No active items found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     } else {
-                        ForEach(split.other) { game in
-                            GameRow(game: game, leagueLabel: labels[game.sport], isPinned: vm.isPinned(game))
+                        ForEach(splitGames.other) { game in
+                            GameRow(game: game, leagueLabel: leagueLabels[game.sport], isPinned: vm.isPinned(game))
                                 .onTapGesture { vm.togglePin(game) }
                         }
-                        if !split.airport.isEmpty {
-                            AirportBoardView(flights: split.airport)
+                        if !splitGames.airport.isEmpty {
+                            AirportBoardView(flights: splitGames.airport)
                         }
                     }
                 }.padding(.horizontal)
