@@ -1759,11 +1759,14 @@ struct ModesView: View {
             // Preserve current sub-mode (airport vs track) when re-selecting Flights.
             if vm.state.mode != "flights" && vm.state.mode != "flight_tracker" {
                 vm.state.mode = "flights"
+                vm.state.flight_submode = "airport"
             }
         case "stocks", "weather", "clock", "music":
             vm.state.mode = target
+            vm.state.flight_submode = ""
         default:
             vm.state.mode = "sports"
+            vm.state.flight_submode = ""
         }
         if target == "stocks" {
             let stockKeys = stockOptions.map { $0.id }
@@ -1777,6 +1780,7 @@ struct ModesView: View {
     }
     private func setFlightSubmode(_ submode: String) {
         vm.state.mode = submode == "track" ? "flight_tracker" : "flights"
+        vm.state.flight_submode = submode
         vm.startBurstPolling()
         vm.saveSettings()
     }
