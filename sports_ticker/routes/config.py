@@ -10,16 +10,7 @@ def api_config():
         new_data = request.json
         if not isinstance(new_data, dict): return jsonify({"error": "Invalid payload"}), 400
 
-        # Migrate legacy modes to canonical mode names
-        incoming_submode = new_data.get('flight_submode')
-        def _infer_legacy_flight_mode(payload_mode: str | None, submode: str | None) -> str | None:
-            submode_norm = str(submode or '').strip().lower()
-            payload_mode_norm = str(payload_mode or '').strip().lower()
-            if submode_norm == 'track' and payload_mode_norm in ('', 'sports', 'all', 'flights'):
-                return 'flight_tracker'
-            if submode_norm == 'airport' and payload_mode_norm in ('', 'sports', 'all', 'flight_tracker'):
-                return 'flights'
-            return None
+        incoming_submode = str(new_data.get('flight_submode') or '').strip().lower()
 
         # Pin normalization (ticker-scoped): always keep a single pinned game.
         normalized_pin = None
@@ -32,22 +23,21 @@ def api_config():
 
         if 'mode' in new_data:
             new_data['mode'] = normalize_mode(new_data['mode'])
-            # Submode compatibility: allow both directions
-            if incoming_submode == 'track':
-                new_data['mode'] = 'flight_tracker'
-            elif incoming_submode == 'airport' and new_data['mode'] == 'flight_tracker':
-                new_data['mode'] = 'flights'
-            else:
-                inferred_mode = _infer_legacy_flight_mode(new_data['mode'], incoming_submode)
-                if inferred_mode:
-                    new_data['mode'] = inferred_mode
+            resolved = new_data['mode']
+            # Submode only adjusts within the flights family.
+            # An explicit non-flight mode (sports, weather, etc.) is never overridden.
+            if resolved in ('flights', 'flight_tracker'):
+                if incoming_submode == 'track':
+                    new_data['mode'] = 'flight_tracker'
+                elif incoming_submode == 'airport':
+                    new_data['mode'] = 'flights'
+            elif resolved not in VALID_MODES and incoming_submode in ('track', 'airport'):
+                # Mode was invalid/unknown — use submode as fallback.
+                new_data['mode'] = 'flight_tracker' if incoming_submode == 'track' else 'flights'
         elif incoming_submode in ('track', 'airport'):
+            # No mode in payload — derive entirely from submode (legacy hardware path).
             new_data['mode'] = 'flight_tracker' if incoming_submode == 'track' else 'flights'
-        else:
-            inferred_mode = _infer_legacy_flight_mode(new_data.get('mode'), incoming_submode)
-            if inferred_mode:
-                new_data['mode'] = inferred_mode
-        # Drop flight_submode — no longer a valid key
+        # Drop flight_submode — no longer a stored key
         new_data.pop('flight_submode', None)
         
         cid = request.headers.get('X-Client-ID')
