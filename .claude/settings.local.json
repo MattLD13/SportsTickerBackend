@@ -41,7 +41,8 @@
       "Bash(python -c \"import py_compile; py_compile.compile\\('sports_ticker/routes/metadata.py', doraise=True\\); print\\('OK'\\)\")",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git commit -m 'Fix sport_labels TypeError: remove extra braces outside f-string context *)"
     ]
   }
 }
