@@ -7,7 +7,7 @@
         "ncf_fbs": true,
         "ncf_fcs": true,
         "march_madness": true,
-        "golf": false,
+        "golf": true,
         "soccer_epl": true,
         "soccer_fa_cup": true,
         "soccer_champ": true,

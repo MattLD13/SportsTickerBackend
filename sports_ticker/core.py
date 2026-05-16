@@ -354,19 +354,30 @@ for t_file in ticker_files:
 # ── Section F2: Startup Ticker Purge ──
 _STALE_TICKER_DAYS = 7
 _BAD_ID_PATTERNS = ('poop', '_myteams', '_state', '_test')
+_UNNAMED_GRACE_HOURS = 1  # keep unnamed tickers for 1h in case they're mid-setup
 
 def purge_stale_tickers():
-    """Remove tickers not seen in the last 7 days and any with junk IDs."""
-    cutoff = time.time() - (_STALE_TICKER_DAYS * 24 * 3600)
+    """Remove stale, junk-ID, and unnamed tickers."""
+    now = time.time()
+    stale_cutoff  = now - (_STALE_TICKER_DAYS * 24 * 3600)
+    unnamed_cutoff = now - (_UNNAMED_GRACE_HOURS * 3600)
     to_remove = []
     with data_lock:
         for tid in list(tickers):
+            rec = tickers[tid]
             tid_lower = tid.lower()
+            last = rec.get('last_seen', 0) or 0
+            # Junk ID patterns — always remove
             if any(p in tid_lower for p in _BAD_ID_PATTERNS):
                 to_remove.append(tid)
                 continue
-            last = tickers[tid].get('last_seen', 0) or 0
-            if last < cutoff:
+            # Stale — not seen in 7 days
+            if last < stale_cutoff:
+                to_remove.append(tid)
+                continue
+            # Unnamed — remove if also not recently active
+            name = (rec.get('name') or '').strip()
+            if not name and last < unnamed_cutoff:
                 to_remove.append(tid)
         for tid in to_remove:
             tickers.pop(tid, None)
