@@ -18,11 +18,14 @@ class WeatherMixin:
             cx_s = x + 7; cy_s = y + 7
             for i in range(8):
                 angle = i * math.pi / 4
-                anim = math.sin(t * 3 + i) * 0.5
-                x1 = round(cx_s + math.cos(angle) * 5.0)
-                y1 = round(cy_s + math.sin(angle) * 5.0)
-                x2 = round(cx_s + math.cos(angle) * (7.5 + anim))
-                y2 = round(cy_s + math.sin(angle) * (7.5 + anim))
+                is_diag = (i % 2 != 0)
+                r1 = 6.5 if is_diag else 6.0
+                wave = math.sin(t * 4 - i * math.pi / 4)
+                r2 = r1 + 1.5 + wave * 1.5
+                x1 = round(cx_s + math.cos(angle) * r1)
+                y1 = round(cy_s + math.sin(angle) * r1)
+                x2 = round(cx_s + math.cos(angle) * r2)
+                y2 = round(cy_s + math.sin(angle) * r2)
                 d.line([(x1, y1), (x2, y2)], fill=SUN_Y)
         elif 'fog' in icon or 'mist' in icon or 'haze' in icon:
             for i, fy in enumerate([y+3, y+6, y+9, y+12]):
