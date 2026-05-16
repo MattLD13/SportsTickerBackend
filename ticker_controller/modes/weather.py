@@ -14,17 +14,46 @@ class WeatherMixin:
         icon = str(icon_name).lower()
         SUN_Y = (255, 200, 0); CLOUD_W = (205, 210, 220); RAIN_B = (60, 130, 255); SNOW_W = (210, 235, 255)
         if 'sun' in icon or 'clear' in icon:
-            d.ellipse((x+3, y+3, x+11, y+11), fill=SUN_Y)
+            # Pulsing core
             cx_s = x + 7; cy_s = y + 7
+            pulse = 1.0 + 0.18 * math.sin(t * 3.0)
+            core_r = max(3, int(4 * pulse))
+            d.ellipse((cx_s-core_r, cy_s-core_r, cx_s+core_r, cy_s+core_r), fill=SUN_Y)
+
+            # Soft layered glow (semi-transparent rings)
+            try:
+                # draw expanding translucent rings for glow
+                for g, extra in enumerate((2, 4, 6)):
+                    alpha = int(80 / (g + 1))
+                    glow = (SUN_Y[0], SUN_Y[1], SUN_Y[2], alpha)
+                    r = core_r + extra
+                    d.ellipse((cx_s - r, cy_s - r, cx_s + r, cy_s + r), fill=glow)
+            except Exception:
+                # fallback if RGBA fill not supported on this draw object
+                pass
+
+            # Rotating rays with a bit of thickness and faster rotation
             for i in range(8):
-                angle = i * math.pi / 4 + t * 0.5
-                r1 = 6.0
-                r2 = 8.0
+                angle = i * math.pi / 4 + t * 1.2
+                r1 = core_r + 2
+                r2 = core_r + 7
                 x1 = round(cx_s + math.cos(angle) * r1)
                 y1 = round(cy_s + math.sin(angle) * r1)
                 x2 = round(cx_s + math.cos(angle) * r2)
-                y2 = round(cy_s + math.sin(angle) * r2)
-                d.line([(x1, y1), (x2, y2)], fill=SUN_Y)
+                y2 = round(cx_s + math.sin(angle) * r2)
+                # draw layered line to give a glowing ray
+                for w in range(3):
+                    a = max(0, 255 - w * 90)
+                    col = (SUN_Y[0], SUN_Y[1], SUN_Y[2], a)
+                    d.line([(x1, y1), (x2, y2)], fill=col, width=1 + w)
+
+            # Small orbiting highlights for extra motion
+            for j in range(3):
+                ang = t * (1.7 + j * 0.6) + j * 2.0
+                rr = core_r + 4 + j * 2
+                sx = round(cx_s + math.cos(ang) * rr)
+                sy = round(cy_s + math.sin(ang) * rr)
+                d.ellipse((sx - 1, sy - 1, sx + 1, sy + 1), fill=(255, 220, 80))
         elif 'fog' in icon or 'mist' in icon or 'haze' in icon:
             for i, fy in enumerate([y+3, y+6, y+9, y+12]):
                 off = int(math.sin(t * 0.6 + i * 1.1) * 2)
