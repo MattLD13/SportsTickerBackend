@@ -48,7 +48,7 @@ class FlightMixin:
             plane_color = self.C_GRN if is_live else self.C_AMBER
         self._icon_plane(d, 6, 2, plane_color)
         draw_tiny_text(d, 18, 2, guest_name, self.C_AMBER)
-        if guest_name.upper() != flight_id.upper():
+        if guest_name.upper() != flight_id.upper() and flight_id.lower() != 'flight_tracker_blank':
             id_w = len(flight_id) * 5
             draw_tiny_text(d, PANEL_W - id_w - 8, 2, flight_id, self.C_GRY)
 
