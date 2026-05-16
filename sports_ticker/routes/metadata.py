@@ -130,7 +130,7 @@ def root():
 </div>''')
         return '\n'.join(cards)
 
-    sport_labels = {{item['id']: item['label'] for item in LEAGUE_OPTIONS}}
+    sport_labels = {item['id']: item['label'] for item in LEAGUE_OPTIONS}
     enabled_sports  = [sport_labels.get(sid, sid) for sid, on in active_sports.items() if on]
 
     def sport_pill(label, on):
