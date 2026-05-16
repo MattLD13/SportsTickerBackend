@@ -21,10 +21,11 @@ class WeatherMixin:
 
             # Rotating outer rays: alternate rays swap between "long" and "short" lengths
             rays = 12
-            rot_speed = 1.1
+            rot_speed = 0.5  # slower rotation
             swap_speed = 1.0
             long_pulse_speed = 3.0
             short_pulse_speed = 3.4
+            gap = 3  # gap between core and start of rays
             for i in range(rays):
                 phase = (i / float(rays)) * (2 * math.pi)
                 angle = phase + t * rot_speed
@@ -38,7 +39,7 @@ class WeatherMixin:
                     # short rays pulse between 2 and 3 pixels
                     length_f = 2.0 + 0.5 * (1.0 + math.sin(t * short_pulse_speed + i * 0.4))
                 length = int(round(length_f))
-                r1 = core_r + 1
+                r1 = core_r + gap
                 r2 = core_r + length
                 x1 = round(cx_s + math.cos(angle) * r1)
                 y1 = round(cy_s + math.sin(angle) * r1)
@@ -51,13 +52,7 @@ class WeatherMixin:
                 col = (intensity, int(intensity * 0.9), int(intensity * 0.35))
                 d.line([(x1, y1), (x2, y2)], fill=col, width=1)
 
-            # subtle small highlights rotating with rays
-            for j in range(3):
-                ang = t * (1.6 + j * 0.5) + j * 1.1
-                rr = core_r + 6 + j * 1
-                sx = round(cx_s + math.cos(ang) * rr)
-                sy = round(cy_s + math.sin(ang) * rr)
-                d.ellipse((sx - 1, sy - 1, sx + 1, sy + 1), fill=(255, 230, 120))
+            # (removed small rotating highlight blobs per request)
         elif 'fog' in icon or 'mist' in icon or 'haze' in icon:
             for i, fy in enumerate([y+3, y+6, y+9, y+12]):
                 off = int(math.sin(t * 0.6 + i * 1.1) * 2)
