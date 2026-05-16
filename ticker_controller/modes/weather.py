@@ -17,11 +17,9 @@ class WeatherMixin:
             d.ellipse((x+3, y+3, x+11, y+11), fill=SUN_Y)
             cx_s = x + 7; cy_s = y + 7
             for i in range(8):
-                angle = i * math.pi / 4
-                is_diag = (i % 2 != 0)
-                r1 = 6.5 if is_diag else 6.0
-                wave = math.sin(t * 4 - i * math.pi / 4)
-                r2 = r1 + 1.5 + wave * 1.5
+                angle = i * math.pi / 4 + t * 0.5
+                r1 = 6.0
+                r2 = 8.0
                 x1 = round(cx_s + math.cos(angle) * r1)
                 y1 = round(cy_s + math.sin(angle) * r1)
                 x2 = round(cx_s + math.cos(angle) * r2)
