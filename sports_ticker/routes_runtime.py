@@ -16,17 +16,19 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 from .routes.config import api_config, update_settings
-from .routes.metadata import api_blank_logo, api_spotify, get_league_options, root
+from .routes.metadata import api_blank_logo, api_spotify, get_league_options
 from .routes.state import api_pin_games, api_state, api_teams, check_my_teams, get_ticker_data
 from .routes.ticker import list_tickers, pair_ticker, pair_ticker_by_id, register_ticker, unpair
 from .routes.flight import api_airport_lookup, debug_flight_tracking, get_airlines, get_airports, get_flight_status
 from .routes.debug import api_debug, api_hardware, api_timezone_debug, get_logs
 from .routes.preview import preview_strip
+from .dashboard import dashboard as _dashboard_bp
+app.register_blueprint(_dashboard_bp)
 
 __all__ = [
     'app',
     'api_config', 'update_settings',
-    'api_blank_logo', 'api_spotify', 'get_league_options', 'root',
+    'api_blank_logo', 'api_spotify', 'get_league_options',
     'api_pin_games', 'api_state', 'api_teams', 'check_my_teams', 'get_ticker_data',
     'list_tickers', 'pair_ticker', 'pair_ticker_by_id', 'register_ticker', 'unpair',
     'api_airport_lookup', 'debug_flight_tracking', 'get_airlines', 'get_airports', 'get_flight_status',

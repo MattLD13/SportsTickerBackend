@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sports Ticker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('dashboard.static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-led">
+      <div class="led"></div><div class="led"></div><div class="led"></div>
+      <div class="led"></div><div class="led"></div><div class="led"></div>
+    </div>
+    Sports Ticker
+  </div>
+  <div class="build">
+    <a href="https://github.com/MattLD13/SportsTickerBackend/commit/{{ version_hash }}" target="_blank">{{ version_hash }}</a>
+    &nbsp;·&nbsp; {{ server_version }}
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- ═══ SECTION 1: LED TICKER CANVAS ═══ -->
+  <div class="led-section">
+    <div class="led-section-title">
+      Live Ticker Preview
+      <span>&#9632; 384×32 LED Matrix · 2× scale</span>
+    </div>
+
+    <div class="canvas-wrap" id="canvas-wrap">
+      <canvas id="ticker-canvas" width="768" height="64"></canvas>
+      <div class="pause-badge" id="pause-badge">&#9646;&#9646;</div>
+    </div>
+    <div class="fetch-status" id="fetch-status">fetching…</div>
+
+    <div class="mode-filters" id="mode-filters">
+      <button class="mf-btn active" data-mode="sports"         style="--c:#FF8C00">ALL SPORTS</button>
+      <button class="mf-btn"        data-mode="live"           style="--c:#FF4444">LIVE</button>
+      <button class="mf-btn"        data-mode="stocks"         style="--c:#44DD88">STOCKS</button>
+      <button class="mf-btn"        data-mode="music"          style="--c:#CC44FF">MUSIC</button>
+      <button class="mf-btn"        data-mode="flights"        style="--c:#00DDCC">FLIGHTS</button>
+      <button class="mf-btn"        data-mode="flight_tracker" style="--c:#00AACC">TRACKER</button>
+      <button class="mf-btn"        data-mode="weather"        style="--c:#44AAFF">WEATHER</button>
+      <button class="mf-btn"        data-mode="clock"          style="--c:#888888">CLOCK</button>
+    </div>
+
+    <div class="ctrl-bar">
+
+      <!-- Speed: always visible -->
+      <div class="ctrl-row">
+        <span class="ctrl-label">Speed</span>
+        <div class="speed-wrap">
+          <input type="range" id="speed-range" min="1" max="10" step="1" value="5">
+          <span class="speed-num" id="speed-val">5</span>
+        </div>
+      </div>
+      <div class="ctrl-sep"></div>
+
+      <!-- Sports / Live: pin hint + unpin -->
+      <div class="ctrl-panel" id="ctrl-sports">
+        <span class="ctrl-label">Click a game below to pin it on the ticker</span>
+        <button class="ctrl-btn danger" id="unpin-btn" onclick="unpinGame()" style="display:none">✕ Unpin</button>
+      </div>
+
+      <!-- Weather -->
+      <div class="ctrl-panel" id="ctrl-weather">
+        <span class="ctrl-label">City</span>
+        <input class="ctrl-input sm" id="weather-city" placeholder="New York" value="{{ weather_city }}">
+        <button class="ctrl-btn primary" onclick="setWeather()">Set</button>
+      </div>
+
+      <!-- Flights airport -->
+      <div class="ctrl-panel" id="ctrl-flights">
+        <span class="ctrl-label">Airport</span>
+        <input class="ctrl-input sm" id="airport-code" placeholder="EWR" maxlength="4" value="{{ airport_iata }}">
+        <button class="ctrl-btn primary" onclick="setAirport()">Set</button>
+      </div>
+
+      <!-- Flight tracker -->
+      <div class="ctrl-panel" id="ctrl-flight_tracker">
+        <span class="ctrl-label">Flight</span>
+        <input class="ctrl-input sm" id="flight-id" placeholder="UA123" value="{{ track_flight_id }}">
+        <span class="ctrl-label">Guest</span>
+        <input class="ctrl-input sm" id="guest-name" placeholder="Name">
+        <button class="ctrl-btn primary" onclick="setFlightTracker()">Track</button>
+        <button class="ctrl-btn danger"  onclick="clearFlight()">Clear</button>
+      </div>
+
+      <!-- Music: now-playing card -->
+      <div class="ctrl-panel" id="ctrl-music">
+        <div class="now-playing" id="now-playing">
+          <img class="np-art" id="np-art" src="" alt="">
+          <div class="np-info">
+            <div class="np-title"  id="np-title">Loading…</div>
+            <div class="np-artist" id="np-artist"></div>
+            <div class="np-bar">
+              <div class="np-prog"><div class="np-fill" id="np-fill" style="width:0%"></div></div>
+              <span class="np-time" id="np-time">0:00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stocks -->
+      <div class="ctrl-panel" id="ctrl-stocks">
+        <span class="ctrl-label">Live market data · refreshes every 20s</span>
+      </div>
+
+      <!-- Clock -->
+      <div class="ctrl-panel" id="ctrl-clock">
+        <span class="ctrl-label" id="clock-display" style="font-family:var(--font-mono);font-size:15px;color:var(--text-hi)">--:--:--</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ SECTION 2: DETAIL PANEL ═══ -->
+  <div class="detail-panel">
+    <div class="section-title" id="detail-title">Live Items</div>
+    <div class="detail-grid"   id="detail-grid">
+      <p style="color:var(--text-mute);font-size:13px">Loading data…</p>
+    </div>
+  </div>
+
+  <!-- ═══ SECTION 3: SERVER STATS ═══ -->
+  <div class="stats">
+    <div class="stat">
+      <div class="val">{{ uptime_str }}</div>
+      <div class="lbl">Uptime</div>
+    </div>
+    <div class="stat">
+      <div class="val">{{ named_paired_count }}</div>
+      <div class="lbl">Paired</div>
+    </div>
+    <div class="stat">
+      <div class="val" style="text-transform:uppercase">{{ global_mode.replace('_', ' ') }}</div>
+      <div class="lbl">Mode</div>
+    </div>
+    <div class="stat">
+      <div class="val">{{ weather_city }}</div>
+      <div class="lbl">Weather City</div>
+    </div>
+    <div class="stat">
+      <div class="val">{{ enabled_sports_count }}</div>
+      <div class="lbl">Active Feeds</div>
+    </div>
+  </div>
+
+  <div class="section-title">Active Ticker</div>
+  <div class="ticker-grid">{{ ticker_cards_html | safe }}</div>
+
+  <div class="section-title">Active Sports &amp; Features</div>
+  <div class="sports-grid">{{ sport_html | safe }}</div>
+
+</div>
+
+<div class="footer">
+  Data refreshes every 30s &nbsp;·&nbsp;
+  <a href="/api/state">api/state</a> &nbsp;·&nbsp;
+  <a href="/api/debug">api/debug</a>
+</div>
+
+<!-- Config: Python values for JS -->
+<script>
+window._CFG = {
+  tickerId:      {{ ticker_id | tojson }},
+  weatherCity:   {{ weather_city | tojson }},
+  airportIata:   {{ airport_iata | tojson }},
+  trackFlightId: {{ track_flight_id | tojson }},
+};
+</script>
+<script src="{{ url_for('dashboard.static', filename='ticker.js') }}"></script>
+
+</body>
+</html>
