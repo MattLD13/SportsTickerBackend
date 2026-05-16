@@ -9,7 +9,7 @@ const LED_W = 384;
 const LED_H = 32;
 const SCALE = 2;
 const SCROLL_SPD = 0.3;
-const FETCH_EVERY = 20000;
+const FETCH_EVERY = 10000;
 const STATIC_MODES = new Set(['music', 'weather', 'clock', 'flights', 'flight_tracker', 'golf', 'masters']);
 
 const canvas = document.getElementById('ticker-canvas');
@@ -45,7 +45,41 @@ function drawLedGrid() {
   }
 }
 
+function renderClockOnCanvas() {
+  const cw = LED_W * SCALE, ch = LED_H * SCALE;
+  ctx.fillStyle = '#040406';
+  ctx.fillRect(0, 0, cw, ch);
+
+  const now = new Date();
+  const hh = (now.getHours() % 12) || 12;
+  const mm = now.getMinutes().toString().padStart(2, '0');
+  const ss = now.getSeconds().toString().padStart(2, '0');
+  const ampm = now.getHours() < 12 ? 'AM' : 'PM';
+  const timeStr = `${hh}:${mm}:${ss} ${ampm}`;
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
+
+  ctx.save();
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'center';
+
+  ctx.font = `bold ${Math.round(ch * 0.42)}px 'JetBrains Mono', monospace`;
+  ctx.fillStyle = '#a8a8bc';
+  ctx.fillText(timeStr, cw / 2, Math.round(ch * 0.58));
+
+  ctx.font = `${Math.round(ch * 0.2)}px 'JetBrains Mono', monospace`;
+  ctx.fillStyle = '#383848';
+  ctx.fillText(dateStr, cw / 2, Math.round(ch * 0.88));
+  ctx.restore();
+
+  drawLedGrid();
+}
+
 function renderFrame() {
+  if (currentApiMode === 'clock') {
+    renderClockOnCanvas();
+    return;
+  }
+
   ctx.fillStyle = '#040406';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -93,6 +127,12 @@ function tick() {
 }
 
 async function fetchStrip() {
+  // Clock is rendered directly on canvas — no strip fetch needed
+  if (currentApiMode === 'clock') {
+    fetchStatus.textContent = 'Clock — live canvas render';
+    return;
+  }
+
   if (BROWSER_RT && typeof BROWSER_RT.renderStrip === 'function') {
     try {
       const strip = await BROWSER_RT.renderStrip(currentApiMode, TICKER_ID);
@@ -336,6 +376,15 @@ window.pinCardGame = async function (el, gameId) {
     pinnedId = gameId;
     el.classList.add('pinned');
     document.getElementById('unpin-btn').style.display = '';
+
+    // Switch to sports mode when pinning so the pinned game shows immediately
+    if (currentApiMode !== 'sports') {
+      document.querySelectorAll('.mf-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('.mf-btn[data-mode="sports"]')?.classList.add('active');
+      currentApiMode = 'sports';
+      scrollSrcX = 0;
+      showCtrlPanel('sports');
+    }
   }
 
   try {
@@ -343,9 +392,17 @@ window.pinCardGame = async function (el, gameId) {
     if (TICKER_ID) payload.ticker_id = TICKER_ID;
     await fetch('/api/pin_games', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: _tickerHeaders(),
       body: JSON.stringify(payload),
     });
+    // Also update the ticker mode to sports via config so hardware ticker switches
+    if (pinnedId) {
+      fetch('/api/config', {
+        method: 'POST',
+        headers: _tickerHeaders(),
+        body: _tickerBody({ mode: 'sports' }),
+      }).catch(() => {});
+    }
     fetchAll();
   } catch (e) {
     console.error(e);
@@ -361,7 +418,7 @@ window.unpinGame = async function () {
     if (TICKER_ID) payload.ticker_id = TICKER_ID;
     await fetch('/api/pin_games', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: _tickerHeaders(),
       body: JSON.stringify(payload),
     });
     fetchAll();
@@ -605,8 +662,9 @@ fetchAll();
 fetchNowPlaying();
 setInterval(fetchAll, FETCH_EVERY);
 setInterval(fetchNowPlaying, 30000);
+// Refresh strip every second for music so progress updates
 setInterval(() => {
-  if (currentApiMode === 'music') fetchAll();
+  if (currentApiMode === 'music') fetchStrip();
 }, 1000);
 tick();
 
