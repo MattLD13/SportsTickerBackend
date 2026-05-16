@@ -1,6 +1,9 @@
 """Misc metadata API routes (leagues, Spotify, blank logo)."""
 
 import time
+import urllib.request
+import urllib.parse
+import json as _json
 from flask import request, jsonify, make_response
 from ..routes_runtime import app
 from ..core import (
@@ -41,6 +44,54 @@ def api_spotify():
         elapsed = time.time() - data['last_fetch_ts']
         data['progress'] = min(data['progress'] + elapsed, data.get('duration', 0))
     return jsonify(data)
+
+
+@app.route('/api/music/search', methods=['GET'])
+def api_music_search():
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify([])
+    encoded = urllib.parse.quote(q)
+    url = f'https://itunes.apple.com/search?term={encoded}&media=music&limit=8&entity=song'
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = _json.loads(resp.read())
+        results = []
+        for item in data.get('results', []):
+            results.append({
+                'track_id':    str(item.get('trackId', '')),
+                'title':       item.get('trackName', ''),
+                'artist':      item.get('artistName', ''),
+                'album':       item.get('collectionName', ''),
+                'art_url':     item.get('artworkUrl100', '').replace('100x100', '300x300'),
+                'duration_ms': item.get('trackTimeMillis', 0),
+                'preview_url': item.get('previewUrl', ''),
+            })
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 502
+
+
+@app.route('/api/music/custom', methods=['GET'])
+def api_music_custom_get():
+    return jsonify(state.get('custom_music_track', {}))
+
+
+@app.route('/api/music/custom', methods=['POST'])
+def api_music_custom_set():
+    body = request.get_json(force=True, silent=True) or {}
+    if body:
+        state['custom_music_track'] = {
+            'track_id':    body.get('track_id', ''),
+            'title':       body.get('title', ''),
+            'artist':      body.get('artist', ''),
+            'art_url':     body.get('art_url', ''),
+            'duration_ms': int(body.get('duration_ms', 0)),
+            'set_at':      time.time(),
+        }
+    else:
+        state['custom_music_track'] = {}
+    return jsonify({'ok': True})
 
 
 @app.route('/api/blank-logo.png', methods=['GET'])

@@ -422,7 +422,81 @@ window.clearFlight = async function () {
   }
 };
 
+window.musicSearch = async function () {
+  const q = document.getElementById('music-search-input').value.trim();
+  if (!q) return;
+  const resultsEl = document.getElementById('music-results');
+  resultsEl.innerHTML = '<span style="color:var(--text-mute);font-size:12px">Searching…</span>';
+  try {
+    const r = await fetch('/api/music/search?q=' + encodeURIComponent(q));
+    const items = await r.json();
+    if (!items.length) {
+      resultsEl.innerHTML = '<span style="color:var(--text-mute);font-size:12px">No results</span>';
+      return;
+    }
+    resultsEl.innerHTML = items.map((it, i) => `
+      <div class="music-result-row" onclick="selectCustomTrack(${i})" data-idx="${i}">
+        <img class="music-result-art" src="${it.art_url}" onerror="this.style.display='none'" alt="">
+        <div class="music-result-info">
+          <div class="music-result-title">${it.title}</div>
+          <div class="music-result-artist">${it.artist}</div>
+        </div>
+      </div>`).join('');
+    resultsEl._items = items;
+  } catch (e) {
+    resultsEl.innerHTML = '<span style="color:#f44">Error: ' + e.message + '</span>';
+  }
+};
+
+window.selectCustomTrack = async function (idx) {
+  const resultsEl = document.getElementById('music-results');
+  const items = resultsEl._items || [];
+  const it = items[idx];
+  if (!it) return;
+  try {
+    await fetch('/api/music/custom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(it),
+    });
+    resultsEl.innerHTML = '';
+    document.getElementById('music-search-input').value = '';
+    document.getElementById('music-clear-btn').style.display = '';
+    nowPlayingStart = Date.now() / 1000;
+    nowPlayingDuration = (it.duration_ms || 180000) / 1000;
+    renderNowPlaying(it.title, it.artist, it.art_url, 0, nowPlayingDuration);
+    fetchAll();
+  } catch (e) {
+    console.error(e);
+  }
+};
+
+window.clearCustomMusic = async function () {
+  try {
+    await fetch('/api/music/custom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    document.getElementById('music-clear-btn').style.display = 'none';
+    document.getElementById('music-results').innerHTML = '';
+    fetchAll();
+  } catch (e) {
+    console.error(e);
+  }
+};
+
 async function fetchNowPlaying() {
+  const customR = await fetch('/api/music/custom').catch(() => null);
+  if (customR && customR.ok) {
+    const custom = await customR.json();
+    if (custom && custom.title) {
+      const durationSec = (custom.duration_ms || 0) / 1000 || 180;
+      const elapsed = (Date.now() / 1000) - (custom.set_at || 0);
+      const progressSec = elapsed % durationSec;
+      nowPlayingDuration = durationSec;
+      nowPlayingStart = Date.now() / 1000 - progressSec;
+      renderNowPlaying(custom.title, custom.artist || '', custom.art_url || '', progressSec, durationSec);
+      document.getElementById('music-clear-btn').style.display = '';
+      return;
+    }
+  }
   try {
     const r = await fetch('/api/spotify/now');
     if (r.ok) {

@@ -266,6 +266,7 @@ default_state = {
     'airport_code_iata': 'EWR',
     'airport_name': 'Newark Liberty International',
     'airline_filter': '',
+    'custom_music_track': {},
 }
 
 DEFAULT_TICKER_SETTINGS = {

@@ -410,7 +410,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             return self.draw_clock_modern()
 
         if game.get('type') in ('golf', 'masters') or str(game.get('sport', '')).lower() in ('golf', 'masters'):
-            if self.mode in ('golf', 'sports_full'):
+            if self.mode in ('golf', 'masters', 'sports_full'):
                 return self.draw_golf_mode(game)
             return self.draw_golf_scroll_card(game)
 

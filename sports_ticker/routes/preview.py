@@ -181,6 +181,17 @@ def _placeholder_item_for_mode(mode: str) -> dict | None:
         }
     if mode == 'clock':
         return {'type': 'clock', 'sport': 'clock', 'id': 'clk', 'is_shown': True}
+    if mode == 'weather':
+        return {
+            'type': 'weather', 'sport': 'weather', 'id': 'weather_blank', 'is_shown': True,
+            'away_abbr': 'NO CITY SET', 'home_abbr': '--', 'status': 'SET A CITY',
+            'situation': {'icon': 'cloud', 'stats': {}, 'forecast': []},
+        }
+    if mode in ('flights', 'flight_tracker'):
+        return {
+            'type': 'flight_airport_hud', 'sport': 'flight', 'id': 'airport_hud_blank', 'is_shown': True,
+            '_weather_item': None, '_arrivals': [], '_departures': [],
+        }
     return None
 
 

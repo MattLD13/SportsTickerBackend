@@ -54,8 +54,8 @@
       <div class="ctrl-row">
         <span class="ctrl-label">Speed</span>
         <div class="speed-wrap">
-          <input type="range" id="speed-range" min="1" max="10" step="1" value="5">
-          <span class="speed-num" id="speed-val">5</span>
+          <input type="range" id="speed-range" min="1" max="10" step="1" value="3">
+          <span class="speed-num" id="speed-val">3</span>
         </div>
       </div>
       <div class="ctrl-sep"></div>
@@ -97,6 +97,14 @@
               <span class="np-time" id="np-time">0:00</span>
             </div>
           </div>
+        </div>
+        <div class="music-search-wrap">
+          <div class="music-search-row">
+            <input class="ctrl-input" id="music-search-input" placeholder="Search song or artist…" style="flex:1" onkeydown="if(event.key==='Enter')musicSearch()">
+            <button class="ctrl-btn primary" onclick="musicSearch()">Search</button>
+            <button class="ctrl-btn danger" id="music-clear-btn" onclick="clearCustomMusic()" style="display:none">✕ Clear</button>
+          </div>
+          <div class="music-results" id="music-results"></div>
         </div>
       </div>
 

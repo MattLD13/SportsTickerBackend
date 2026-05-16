@@ -47,7 +47,11 @@
       "Bash(Get-ChildItem ios_icons -Recurse)",
       "Bash(Select-Object Name, Length)",
       "Bash(Format-Table -AutoSize)",
-      "Bash(python generate_hires_logo.py)"
+      "Bash(python generate_hires_logo.py)",
+      "Bash(.venv\\\\Scripts\\\\python.exe -c \"import ytmusicapi; print\\('ok'\\)\")",
+      "Bash(python -c \"import ytmusicapi; print\\('ok'\\)\")",
+      "Bash(python -c \"import yt_dlp; print\\('yt-dlp ok'\\)\")",
+      "Bash(python -c \"import requests; print\\('requests ok'\\)\")"
     ]
   }
 }

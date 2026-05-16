@@ -17,7 +17,6 @@ class SportsModesMixin:
             league_key, game_id = pinned_str.split(':', 1)
             league_key = league_key.lower()
         except ValueError:
-            print("Invalid pinned game format. Use 'league:game_id'")
             return []
 
         utc_offset = conf.get('utc_offset', -5)
@@ -379,6 +378,33 @@ class SportsModesMixin:
 
     def get_music_object(self, require_enabled=True):
         if require_enabled and not state['active_sports'].get('music', False): return None
+
+        custom = state.get('custom_music_track', {})
+        if custom and custom.get('title'):
+            duration_sec = custom.get('duration_ms', 0) / 1000.0 or 180.0
+            elapsed = time.time() - custom.get('set_at', time.time())
+            prog = elapsed % duration_sec if duration_sec else 0
+            cur_m, cur_s = divmod(int(prog), 60)
+            tot_m, tot_s = divmod(int(duration_sec), 60)
+            return {
+                'type': 'music',
+                'sport': 'music',
+                'id': 'custom_track',
+                'status': f"{cur_m}:{cur_s:02d} / {tot_m}:{tot_s:02d}",
+                'state': 'in',
+                'is_shown': True,
+                'home_abbr': custom.get('artist', ''),
+                'away_abbr': custom.get('title', ''),
+                'home_logo': custom.get('art_url', ''),
+                'next_logos': [],
+                'situation': {
+                    'progress': prog,
+                    'duration': duration_sec,
+                    'is_playing': True,
+                    'fetch_ts': time.time(),
+                }
+            }
+
         s_data = spotify_fetcher.get_cached_state()
         
         # If no data or explicit "Waiting for Music" state, return placeholder
