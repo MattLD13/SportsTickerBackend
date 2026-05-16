@@ -38,6 +38,8 @@ _SPORTS_TYPES = {
     'soccer_europa_league', 'soccer_mls', 'soccer_wc', 'golf', 'masters',
 }
 
+_STATIC_PREVIEW_MODES = {'music', 'weather', 'clock', 'flights', 'flight_tracker', 'golf', 'masters'}
+
 
 def _get_renderer():
     global _renderer
@@ -133,6 +135,53 @@ def _pf(draw, text, x, y, color, sc=2):
 
 def _pw(text, sc=2):
     return len(str(text)) * 4 * sc
+
+
+def _placeholder_item_for_mode(mode: str) -> dict | None:
+    mode = str(mode or '').lower()
+    if mode == 'music':
+        return {
+            'type': 'music',
+            'sport': 'music',
+            'id': 'spotify_idle',
+            'status': 'IDLE',
+            'state': 'paused',
+            'is_shown': True,
+            'home_abbr': 'MUSIC',
+            'away_abbr': 'NO SONG DATA',
+            'home_logo': '',
+            'next_logos': [],
+            'situation': {
+                'progress': 0,
+                'duration': 1,
+                'is_playing': False,
+                'fetch_ts': time.time(),
+            },
+        }
+    if mode == 'flight_tracker':
+        return {
+            'type': 'flight_visitor',
+            'sport': 'flight',
+            'id': 'flight_tracker_blank',
+            'guest_name': 'NO FLIGHT SELECTED',
+            'origin_city': 'TRACKER',
+            'dest_city': 'SETUP',
+            'alt': 0,
+            'dist': 0,
+            'eta_str': '--',
+            'speed': 0,
+            'progress': 0,
+            'status': 'ADD FLIGHT',
+            'delay_min': 0,
+            'is_delayed': False,
+            'is_live': False,
+            'aircraft_type': '',
+            'aircraft_code': '',
+            'is_shown': True,
+        }
+    if mode == 'clock':
+        return {'type': 'clock', 'sport': 'clock', 'id': 'clk', 'is_shown': True}
+    return None
 
 
 def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
@@ -357,6 +406,18 @@ def _empty_png():
     return r
 
 
+def _single_card_png(card: Image.Image):
+    if card.mode != 'RGB':
+        card = card.convert('RGB')
+    buf = io.BytesIO()
+    card.save(buf, 'PNG')
+    buf.seek(0)
+    r = Response(buf.getvalue(), mimetype='image/png')
+    r.headers['Cache-Control'] = 'no-store'
+    r.headers['X-Strip-Width'] = str(card.width)
+    return r
+
+
 @app.route('/api/preview/strip.png')
 def preview_strip():
     mode_str = request.args.get('mode', state.get('mode', 'sports'))
@@ -368,6 +429,10 @@ def preview_strip():
 
     games = _filter_preview_games(games, current_mode)
     games = _collapse_flight_airport_items(games)
+    if not games:
+        placeholder = _placeholder_item_for_mode(current_mode)
+        if placeholder:
+            games = [placeholder]
 
     renderer = _get_renderer()
 
@@ -392,7 +457,13 @@ def preview_strip():
             print(f"[preview] render error for {g.get('id','?')}: {e}")
 
     if not cards:
+        placeholder = _placeholder_item_for_mode(current_mode)
+        if placeholder:
+            return _single_card_png(_render_non_game(placeholder, current_mode))
         return _empty_png()
+
+    if current_mode in _STATIC_PREVIEW_MODES:
+        return _single_card_png(cards[0])
 
     total_w = sum(c.width for c in cards) + (len(cards) - 1) * SEP_W
     strip   = Image.new('RGBA', (total_w, PANEL_H), (0, 0, 0, 255))

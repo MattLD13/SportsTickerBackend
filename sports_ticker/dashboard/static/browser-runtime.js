@@ -425,10 +425,61 @@ def _next_static_game(static_items):
     return game
 
 
+def _placeholder_item_for_mode(mode):
+    mode = str(mode or '').lower()
+    if mode == 'music':
+        return {
+            'type': 'music',
+            'sport': 'music',
+            'id': 'spotify_idle',
+            'status': 'IDLE',
+            'state': 'paused',
+            'is_shown': True,
+            'home_abbr': 'MUSIC',
+            'away_abbr': 'NO SONG DATA',
+            'home_logo': '',
+            'next_logos': [],
+            'situation': {
+                'progress': 0,
+                'duration': 1,
+                'is_playing': False,
+                'fetch_ts': time.time(),
+            },
+        }
+    if mode == 'flight_tracker':
+        return {
+            'type': 'flight_visitor',
+            'sport': 'flight',
+            'id': 'flight_tracker_blank',
+            'guest_name': 'NO FLIGHT SELECTED',
+            'origin_city': 'TRACKER',
+            'dest_city': 'SETUP',
+            'alt': 0,
+            'dist': 0,
+            'eta_str': '--',
+            'speed': 0,
+            'progress': 0,
+            'status': 'ADD FLIGHT',
+            'delay_min': 0,
+            'is_delayed': False,
+            'is_live': False,
+            'aircraft_type': '',
+            'aircraft_code': '',
+            'is_shown': True,
+        }
+    if mode == 'clock':
+        return {'type': 'clock', 'sport': 'clock', 'id': 'clk', 'is_shown': True}
+    return None
+
+
 def render_strip(games, mode='sports'):
     _RENDERER.mode = mode or 'sports'
     _RENDERER.game_render_cache = {}
     playlist = [g for g in games if isinstance(g, dict) and g.get('is_shown', True)]
+    if not playlist:
+        placeholder = _placeholder_item_for_mode(_RENDERER.mode)
+        if placeholder:
+            playlist = [placeholder]
     static_items, scrolling_items = _partition_games(playlist, _RENDERER.mode)
 
     if static_items and not scrolling_items:

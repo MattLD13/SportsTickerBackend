@@ -421,6 +421,49 @@ class SportsModesMixin:
             }
         }
 
+    def _music_placeholder_object(self):
+        return {
+            'type': 'music',
+            'sport': 'music',
+            'id': 'spotify_idle',
+            'status': 'IDLE',
+            'state': 'paused',
+            'is_shown': True,
+            'home_abbr': 'MUSIC',
+            'away_abbr': 'NO SONG DATA',
+            'home_logo': '',
+            'next_logos': [],
+            'situation': {
+                'progress': 0,
+                'duration': 1,
+                'is_playing': False,
+                'fetch_ts': time.time()
+            }
+        }
+
+    def _flight_tracker_placeholder_object(self):
+        return {
+            'type': 'flight_visitor',
+            'sport': 'flight',
+            'id': 'flight_tracker_blank',
+            'guest_name': 'NO FLIGHT SELECTED',
+            'route': 'TRACKER > SETUP',
+            'origin_city': 'TRACKER',
+            'dest_city': 'SETUP',
+            'alt': 0,
+            'dist': 0,
+            'eta_str': '--',
+            'speed': 0,
+            'progress': 0,
+            'status': 'ADD FLIGHT',
+            'delay_min': 0,
+            'is_delayed': False,
+            'is_live': False,
+            'aircraft_type': '',
+            'aircraft_code': '',
+            'is_shown': True
+        }
+
     def _filter_and_sort_games(self, all_games, visible_start_utc, visible_end_utc):
         """Apply 3AM cutoff window filter and sort by priority."""
         filtered = []
@@ -610,7 +653,7 @@ class SportsModesMixin:
 
     def _build_music_buffer(self):
         obj = self.get_music_object()
-        return [obj] if obj else []
+        return [obj] if obj else [self._music_placeholder_object()]
 
     def _build_clock_buffer(self):
         return [{'type': 'clock', 'sport': 'clock', 'id': 'clk', 'is_shown': True}]
@@ -628,9 +671,9 @@ class SportsModesMixin:
 
     def _build_flight_tracker_buffer(self):
         if not flight_tracker:
-            return []
+            return [self._flight_tracker_placeholder_object()]
         obj = flight_tracker.get_visitor_object()
-        return [obj] if obj else []
+        return [obj] if obj else [self._flight_tracker_placeholder_object()]
 
     def update_current_games(self):
         """Build and cache content buffers for every mode currently needed by any ticker."""

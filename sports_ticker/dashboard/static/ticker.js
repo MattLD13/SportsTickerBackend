@@ -10,6 +10,7 @@ const LED_H = 32;
 const SCALE = 2;
 const SCROLL_SPD = 0.5;
 const FETCH_EVERY = 20000;
+const STATIC_MODES = new Set(['music', 'weather', 'clock', 'flights', 'flight_tracker', 'golf', 'masters']);
 
 const canvas = document.getElementById('ticker-canvas');
 const ctx = canvas.getContext('2d');
@@ -30,6 +31,10 @@ let nowPlayingStart = 0;
 let nowPlayingDuration = 210;
 
 window._scrollSpd = SCROLL_SPD;
+
+function isStaticMode(mode) {
+  return STATIC_MODES.has(String(mode || '').toLowerCase());
+}
 
 function drawLedGrid() {
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -73,7 +78,7 @@ function renderFrame() {
 }
 
 function tick() {
-  if (!paused && stripBitmap && stripSrcW > 0) {
+  if (!paused && stripBitmap && stripSrcW > 0 && !isStaticMode(currentApiMode)) {
     scrollSrcX = (scrollSrcX + (window._scrollSpd || SCROLL_SPD)) % stripSrcW;
   }
   renderFrame();
