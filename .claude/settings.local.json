@@ -51,7 +51,10 @@
       "Bash(.venv\\\\Scripts\\\\python.exe -c \"import ytmusicapi; print\\('ok'\\)\")",
       "Bash(python -c \"import ytmusicapi; print\\('ok'\\)\")",
       "Bash(python -c \"import yt_dlp; print\\('yt-dlp ok'\\)\")",
-      "Bash(python -c \"import requests; print\\('requests ok'\\)\")"
+      "Bash(python -c \"import requests; print\\('requests ok'\\)\")",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\sports_ticker\\\\dashboard\\\\\" -Recurse -Force | Select-Object FullName | ForEach-Object { $_.FullName } | Sort-Object)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\" -Recurse -Directory)",
+      "Bash(Select-Object -First 20)"
     ]
   }
 }
