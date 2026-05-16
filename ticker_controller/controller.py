@@ -841,7 +841,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                                 logos_to_fetch.append((g.get('away_logo'), (24, 24)))
                                 logos_to_fetch.append((g.get('away_logo'), (16, 16)))
 
-                        is_golf_fullscreen = (g_type in ('golf', 'masters') or sport in ('golf', 'masters')) and self.mode == 'golf'
+                        is_golf_fullscreen = (g_type in ('golf', 'masters') or sport in ('golf', 'masters')) and self.mode in ('golf', 'masters')
                         if g_type == 'weather' or sport.startswith('clock') or is_golf_fullscreen or is_music or g_type == 'flight_visitor' or g_type == 'flight_airport_hud':
                             static_items.append(g)
                         elif self.mode in ('sports_full', 'soccer_full') and g_type not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(g_type):

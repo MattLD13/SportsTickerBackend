@@ -8,7 +8,7 @@ const BROWSER_RT = window.__tickerBrowserRuntime || null;
 const LED_W = 384;
 const LED_H = 32;
 const SCALE = 2;
-const SCROLL_SPD = 0.5;
+const SCROLL_SPD = 0.3;
 const FETCH_EVERY = 20000;
 const STATIC_MODES = new Set(['music', 'weather', 'clock', 'flights', 'flight_tracker', 'golf', 'masters']);
 
@@ -132,7 +132,7 @@ async function fetchItems() {
     const data = await resp.json();
     allItems = data && Array.isArray(data.games) ? data.games.filter(item => item && item.is_shown !== false) : [];
     const serverPin = data && (data.pinned_game || (Array.isArray(data.pinned_games) ? data.pinned_games[0] : ''));
-    pinnedId = serverPin ? String(serverPin).split(':').pop() : null;
+    pinnedId = serverPin ? String(serverPin) : null;
     document.getElementById('unpin-btn').style.display = pinnedId ? '' : 'none';
     updateDetailPanel();
   } catch (e) {
@@ -210,8 +210,10 @@ function makeDetailCard(item, idx) {
 
   const gameId = item.id || '';
   const isGame = isSportsGame(item);
-  const clickFn = isGame && gameId ? `pinCardGame(this, '${gameId}')` : 'toggleCard(this)';
-  const gameAttr = gameId ? ` data-game-id="${gameId}"` : '';
+  const sportKey = (item.sport || '').toLowerCase();
+  const pinId = isGame && sportKey && gameId ? `${sportKey}:${gameId}` : gameId;
+  const clickFn = isGame && gameId ? `pinCardGame(this, '${pinId}')` : 'toggleCard(this)';
+  const gameAttr = pinId ? ` data-game-id="${pinId}"` : '';
 
   if (itype === 'weather') {
     badge = 'WEATHER';
