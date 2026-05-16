@@ -250,8 +250,8 @@ def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
         arrow = '▲' if up else '▼'
         _pf(draw, arrow + pct_str, x2 + 6, 20, clr_pct, sc=2)
     elif itype == 'music':
-        artist = (g.get('artist') or g.get('artist_name') or 'ARTIST').upper()[:18]
-        title = (g.get('title') or g.get('song') or '').upper()[:22]
+        artist = (g.get('artist') or g.get('artist_name') or g.get('home_abbr') or 'ARTIST').upper()[:18]
+        title = (g.get('title') or g.get('song') or g.get('away_abbr') or '').upper()[:22]
         draw.rectangle([0, 0, PANEL_W - 1, 3], fill=(60, 0, 100, 255))
         _pf(draw, artist, 4, 6, (200, 100, 255), sc=2)
         _pf(draw, title, 4, 20, (220, 180, 255), sc=2)

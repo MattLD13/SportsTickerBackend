@@ -377,8 +377,8 @@ class SportsModesMixin:
             print(f"ESPN Pinned Game Error: {e}")
             return []
 
-    def get_music_object(self):
-        if not state['active_sports'].get('music', False): return None
+    def get_music_object(self, require_enabled=True):
+        if require_enabled and not state['active_sports'].get('music', False): return None
         s_data = spotify_fetcher.get_cached_state()
         
         # If no data or explicit "Waiting for Music" state, return placeholder
@@ -652,7 +652,7 @@ class SportsModesMixin:
         }]
 
     def _build_music_buffer(self):
-        obj = self.get_music_object()
+        obj = self.get_music_object(require_enabled=False)
         return [obj] if obj else [self._music_placeholder_object()]
 
     def _build_clock_buffer(self):

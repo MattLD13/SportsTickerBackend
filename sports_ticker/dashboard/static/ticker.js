@@ -61,6 +61,13 @@ function renderFrame() {
   }
 
   const canvasH = LED_H * SCALE;
+  if (isStaticMode(currentApiMode)) {
+    const drawSrcW = Math.min(stripSrcW, LED_W);
+    ctx.drawImage(stripBitmap, 0, 0, drawSrcW, LED_H, 0, 0, drawSrcW * SCALE, canvasH);
+    drawLedGrid();
+    return;
+  }
+
   let dstX = 0;
   let srcX = Math.floor(scrollSrcX) % stripSrcW;
 
@@ -123,6 +130,9 @@ async function fetchItems() {
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
     allItems = data && Array.isArray(data.games) ? data.games.filter(item => item && item.is_shown !== false) : [];
+    const serverPin = data && (data.pinned_game || (Array.isArray(data.pinned_games) ? data.pinned_games[0] : ''));
+    pinnedId = serverPin ? String(serverPin).split(':').pop() : null;
+    document.getElementById('unpin-btn').style.display = pinnedId ? '' : 'none';
     updateDetailPanel();
   } catch (e) {
     console.warn('Items fetch error:', e.message);
@@ -213,15 +223,16 @@ function makeDetailCard(item, idx) {
     badge = 'STOCK';
     const pct = item.change_pct != null ? (+item.change_pct).toFixed(2) + '%' : '';
     const pctColor = (item.change_pct || 0) >= 0 ? '#44dd88' : '#ff4444';
-    teams = item.symbol || '';
+    const stockLogo = item.home_logo ? `<img src="${item.home_logo}" style="width:18px;height:18px;object-fit:contain;vertical-align:middle;margin-right:4px" onerror="this.style.display='none'">` : '';
+    teams = stockLogo + (item.symbol || '');
     score = item.price != null ? '$' + (+item.price).toFixed(2) : '';
     status = `<span style="color:${pctColor}">${pct}</span>`;
     detail = `<div class="row"><span>Change</span><span style="color:${pctColor}">${item.change || pct}</span></div>`;
   } else if (itype === 'music') {
     badge = 'MUSIC';
-    teams = item.artist || item.artist_name || 'Unknown Artist';
-    score = item.title || item.song || '';
-    status = item.album || '';
+    teams = item.artist || item.artist_name || item.home_abbr || 'Unknown Artist';
+    score = item.title || item.song || item.away_abbr || '';
+    status = item.album || item.status || '';
   } else if (itype === 'clock') {
     badge = 'CLOCK';
     teams = 'Clock';
@@ -413,10 +424,17 @@ async function fetchNowPlaying() {
     const r = await fetch('/api/spotify/now');
     if (r.ok) {
       const d = await r.json();
-      if (d && d.title) {
-        nowPlayingDuration = (d.duration || 210000) / 1000;
-        nowPlayingStart = Date.now() / 1000 - (d.progress || 0) / 1000;
-        renderNowPlaying(d.title, d.artist, d.album_art || '', (d.progress || 0) / 1000, nowPlayingDuration);
+      const title = d && (d.title || d.name || d.song || d.away_abbr || '');
+      if (title && title !== 'Waiting for Music...') {
+        const artist = d.artist || d.artist_name || d.home_abbr || '';
+        const art = d.album_art || d.cover || d.home_logo || '';
+        const durationRaw = Number(d.duration_ms || d.duration || 210);
+        const progressRaw = Number(d.progress_ms || d.progress || 0);
+        const durationSec = durationRaw > 10000 ? durationRaw / 1000 : durationRaw;
+        const progressSec = progressRaw > 10000 ? progressRaw / 1000 : progressRaw;
+        nowPlayingDuration = durationSec || 210;
+        nowPlayingStart = Date.now() / 1000 - (progressSec || 0);
+        renderNowPlaying(title, artist, art, progressSec || 0, nowPlayingDuration);
         return;
       }
     }

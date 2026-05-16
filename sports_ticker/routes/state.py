@@ -121,7 +121,7 @@ def get_ticker_data():
         
         # Fallback: If buffer is empty, fetch immediately
         if not visible_items:
-            music_obj = fetcher.get_music_object()
+            music_obj = fetcher.get_music_object(require_enabled=False)
             if music_obj: visible_items.append(music_obj)
 
     elif current_mode == 'my_teams':
@@ -297,6 +297,15 @@ def api_state():
                      if (is_sports_mode and response_settings.get('live_delay_mode'))
                      else 0)
     raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
+    if pinned_game and current_mode == 'sports_full':
+        pin_id = str(pinned_game).split(':', 1)[-1]
+        raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
+    elif pinned_game and current_mode == 'masters':
+        pin_id = str(pinned_game).split(':', 1)[-1].strip().lower()
+        raw_games = [
+            g for g in raw_games
+            if str(g.get('id', '')).strip().lower() == pin_id or str(g.get('sport', '')).lower() == 'masters'
+        ]
     processed_games = []
     saved_teams = set(response_settings.get('my_teams', []))
     COLLISION_ABBRS = {'LV'}
