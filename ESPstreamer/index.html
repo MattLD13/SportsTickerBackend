@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚨 Goal Horn Control</title>
+    <style>
+        :root { --primary: #e50914; --dark: #141414; --gray: #333; --light: #f5f5f5; }
+        body { background-color: var(--dark); color: var(--light); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; text-align: center; }
+
+        /* HEADER & SETTINGS */
+        h1 { margin-bottom: 5px; text-transform: uppercase; letter-spacing: 2px; }
+        .settings-bar { background: var(--gray); padding: 15px; border-radius: 10px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; max-width: 600px; margin: 20px auto; }
+        input[type="text"] { padding: 10px; border-radius: 5px; border: none; width: 140px; text-align: center; font-weight: bold; }
+
+        /* CONTROLS */
+        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; color: white; }
+        .btn-stop { background: var(--primary); width: 100%; font-size: 1.2rem; padding: 15px; max-width: 600px; margin: 10px auto; display: block; }
+        .btn-stop:active { transform: scale(0.98); }
+        .volume-control { display: flex; align-items: center; gap: 10px; }
+        input[type="range"] { accent-color: #00bc8c; cursor: pointer; }
+
+        /* SEARCH */
+        #searchBox { width: 100%; max-width: 600px; padding: 15px; font-size: 16px; margin: 20px auto; display: block; border-radius: 8px; border: none; box-sizing: border-box; }
+
+        /* GRID */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; max-width: 1000px; margin: 0 auto; }
+        .card { background: var(--gray); padding: 15px; border-radius: 8px; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80px; }
+        .card:hover { background: #444; transform: translateY(-2px); }
+        .card:active { background: #555; transform: scale(0.95); }
+        .card.playing { background: #1a4a1a; border: 1px solid #00bc8c; }
+        .team-name { font-weight: bold; font-size: 14px; word-break: break-word; }
+
+        /* TOAST NOTIFICATION */
+        #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 5px; padding: 16px; position: fixed; z-index: 1; left: 50%; bottom: 30px; transform: translateX(-50%); box-shadow: 0px 4px 15px rgba(0,0,0,0.5); }
+        #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+
+        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+        @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+
+        .demo-badge { background: #00bc8c; color: #000; font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 4px; letter-spacing: 1px; margin-left: 10px; vertical-align: middle; }
+    </style>
+</head>
+<body>
+
+    <h1>🚨 NHL Goal Horns <span class="demo-badge">BROWSER DEMO</span></h1>
+
+    <div class="settings-bar">
+        <div class="volume-control">
+            <span>🔇</span>
+            <input type="range" min="0" max="150" value="100" id="volSlider" oninput="setVolume(this.value)">
+            <span>🔊</span>
+            <span id="volLabel" style="min-width:40px;">100%</span>
+        </div>
+    </div>
+
+    <button class="btn btn-stop" onclick="stopHorn()">⏹ EMERGENCY STOP</button>
+
+    <input type="text" id="searchBox" placeholder="🔍 Search Teams..." onkeyup="filterGrid()">
+
+    <div class="grid" id="teamGrid">
+        <div class="card" onclick="playHorn('avalanche.mp3')" data-file="avalanche.mp3"><div class="team-name">avalanche</div></div>
+        <div class="card" onclick="playHorn('blackhawks.mp3')" data-file="blackhawks.mp3"><div class="team-name">blackhawks</div></div>
+        <div class="card" onclick="playHorn('bluejackets.mp3')" data-file="bluejackets.mp3"><div class="team-name">bluejackets</div></div>
+        <div class="card" onclick="playHorn('blues.mp3')" data-file="blues.mp3"><div class="team-name">blues</div></div>
+        <div class="card" onclick="playHorn('bruins.mp3')" data-file="bruins.mp3"><div class="team-name">bruins</div></div>
+        <div class="card" onclick="playHorn('canadiens.mp3')" data-file="canadiens.mp3"><div class="team-name">canadiens</div></div>
+        <div class="card" onclick="playHorn('canucks.mp3')" data-file="canucks.mp3"><div class="team-name">canucks</div></div>
+        <div class="card" onclick="playHorn('capitals.mp3')" data-file="capitals.mp3"><div class="team-name">capitals</div></div>
+        <div class="card" onclick="playHorn('devils.mp3')" data-file="devils.mp3"><div class="team-name">devils</div></div>
+        <div class="card" onclick="playHorn('ducks.mp3')" data-file="ducks.mp3"><div class="team-name">ducks</div></div>
+        <div class="card" onclick="playHorn('flames.mp3')" data-file="flames.mp3"><div class="team-name">flames</div></div>
+        <div class="card" onclick="playHorn('flyers.mp3')" data-file="flyers.mp3"><div class="team-name">flyers</div></div>
+        <div class="card" onclick="playHorn('hurricanes.mp3')" data-file="hurricanes.mp3"><div class="team-name">hurricanes</div></div>
+        <div class="card" onclick="playHorn('islanders.mp3')" data-file="islanders.mp3"><div class="team-name">islanders</div></div>
+        <div class="card" onclick="playHorn('jets.mp3')" data-file="jets.mp3"><div class="team-name">jets</div></div>
+        <div class="card" onclick="playHorn('kings.mp3')" data-file="kings.mp3"><div class="team-name">kings</div></div>
+        <div class="card" onclick="playHorn('knights.mp3')" data-file="knights.mp3"><div class="team-name">knights</div></div>
+        <div class="card" onclick="playHorn('kraken.mp3')" data-file="kraken.mp3"><div class="team-name">kraken</div></div>
+        <div class="card" onclick="playHorn('leafs.mp3')" data-file="leafs.mp3"><div class="team-name">leafs</div></div>
+        <div class="card" onclick="playHorn('lightning.mp3')" data-file="lightning.mp3"><div class="team-name">lightning</div></div>
+        <div class="card" onclick="playHorn('mammoth.mp3')" data-file="mammoth.mp3"><div class="team-name">mammoth</div></div>
+        <div class="card" onclick="playHorn('oilers.mp3')" data-file="oilers.mp3"><div class="team-name">oilers</div></div>
+        <div class="card" onclick="playHorn('panthers.mp3')" data-file="panthers.mp3"><div class="team-name">panthers</div></div>
+        <div class="card" onclick="playHorn('penguins.mp3')" data-file="penguins.mp3"><div class="team-name">penguins</div></div>
+        <div class="card" onclick="playHorn('pp.mp3')" data-file="pp.mp3"><div class="team-name">pp</div></div>
+        <div class="card" onclick="playHorn('predators.mp3')" data-file="predators.mp3"><div class="team-name">predators</div></div>
+        <div class="card" onclick="playHorn('rangers.mp3')" data-file="rangers.mp3"><div class="team-name">rangers</div></div>
+        <div class="card" onclick="playHorn('redwings.mp3')" data-file="redwings.mp3"><div class="team-name">redwings</div></div>
+        <div class="card" onclick="playHorn('sabres.mp3')" data-file="sabres.mp3"><div class="team-name">sabres</div></div>
+        <div class="card" onclick="playHorn('senators.mp3')" data-file="senators.mp3"><div class="team-name">senators</div></div>
+        <div class="card" onclick="playHorn('sharks.mp3')" data-file="sharks.mp3"><div class="team-name">sharks</div></div>
+        <div class="card" onclick="playHorn('stars.mp3')" data-file="stars.mp3"><div class="team-name">stars</div></div>
+        <div class="card" onclick="playHorn('wild.mp3')" data-file="wild.mp3"><div class="team-name">wild</div></div>
+    </div>
+
+    <div id="toast">Notification</div>
+
+    <script>
+        let currentAudio = null;
+        let currentCard = null;
+        let currentVolume = 1.0;
+
+        function playHorn(filename) {
+            // Stop any currently playing horn
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+                if (currentCard) currentCard.classList.remove('playing');
+            }
+
+            showToast("▶️ Playing " + filename.replace('.mp3', '') + "...");
+
+            const audio = new Audio('horns/' + filename);
+            audio.volume = currentVolume;
+
+            const card = document.querySelector(`.card[data-file="${filename}"]`);
+            if (card) card.classList.add('playing');
+
+            audio.play().catch(err => {
+                showToast("❌ Could not play audio");
+                console.error(err);
+                if (card) card.classList.remove('playing');
+            });
+
+            audio.onended = function() {
+                if (card) card.classList.remove('playing');
+                if (currentAudio === audio) currentAudio = null;
+            };
+
+            currentAudio = audio;
+            currentCard = card;
+        }
+
+        function stopHorn() {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+                currentAudio = null;
+            }
+            if (currentCard) {
+                currentCard.classList.remove('playing');
+                currentCard = null;
+            }
+            showToast("🛑 Stopped");
+        }
+
+        function setVolume(val) {
+            currentVolume = parseFloat(val) / 100.0;
+            document.getElementById('volLabel').innerText = val + '%';
+            if (currentAudio) currentAudio.volume = Math.min(currentVolume, 1.0);
+        }
+
+        function filterGrid() {
+            const filter = document.getElementById('searchBox').value.toUpperCase();
+            const cards = document.getElementById('teamGrid').getElementsByClassName('card');
+            for (let i = 0; i < cards.length; i++) {
+                const txt = cards[i].innerText;
+                cards[i].style.display = txt.toUpperCase().indexOf(filter) > -1 ? 'flex' : 'none';
+            }
+        }
+
+        function showToast(msg) {
+            const x = document.getElementById('toast');
+            x.innerText = msg;
+            x.className = 'show';
+            setTimeout(function() { x.className = x.className.replace('show', ''); }, 3000);
+        }
+    </script>
+</body>
+</html>
