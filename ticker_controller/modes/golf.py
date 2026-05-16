@@ -94,7 +94,7 @@ class GolfMixin:
                 if not isinstance(holes_data, list):
                     holes_data = []
                 holes_with_scores = sum(1 for h in holes_data if h is not None)
-                in_round = thru > 0 or (0 < holes_with_scores < 18)
+                in_round = thru > 0 or holes_with_scores > 0
                 today = p.get('today') if in_round else None
                 if today is None and in_round and pars_list:
                     played = [(h, pars_list[j]) for j, h in enumerate(holes_data[:18]) if h is not None and j < len(pars_list)]
@@ -193,6 +193,21 @@ class GolfMixin:
             except Exception:
                 return default
 
+        def _as_int_or_none(value):
+            if value is None:
+                return None
+            try:
+                if isinstance(value, str):
+                    txt = value.strip().upper()
+                    if txt in ('', '--'):
+                        return None
+                    if txt in ('E', 'EVEN'):
+                        return 0
+                    return int(float(txt))
+                return int(float(value))
+            except Exception:
+                return None
+
         players = []
         for p in raw_players:
             if not isinstance(p, dict):
@@ -207,7 +222,7 @@ class GolfMixin:
             name = name[:11]
 
             total = _as_int(p.get('total'), 0)
-            today = _as_int(p.get('today'), 0)
+            today = _as_int_or_none(p.get('today'))
             thru = p.get('thru', 0)
             holes = p.get('holes', []) if isinstance(p.get('holes'), list) else []
             holes = (holes + [None] * 18)[:18]
@@ -331,7 +346,7 @@ class GolfMixin:
             except (TypeError, ValueError):
                 thru_val = 18 if str(player.get('thru', '')).upper() == 'F' else 0
             holes_with_scores = sum(1 for h in player['holes'] if h is not None)
-            started_today = thru_val > 0 or (0 < holes_with_scores < 18)
+            started_today = thru_val > 0 or holes_with_scores > 0
 
             f_score = 0
             for i in range(9):
@@ -351,7 +366,7 @@ class GolfMixin:
                     b_score += (int(score) - int(par_vals[9 + i]))
             draw_text_centered(d_obj, format_score(b_score), BSUB_CX, y_pos + 1, M_COLORS['white'])
 
-            if started_today:
+            if started_today and player['today'] is not None:
                 draw_text_centered(d_obj, format_score(player['today']), TODAY_CX, y_pos + 1, M_COLORS['white'])
             else:
                 draw_text_centered(d_obj, '-', TODAY_CX, y_pos + 1, M_COLORS['label_gray'])

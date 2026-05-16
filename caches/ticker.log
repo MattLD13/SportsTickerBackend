@@ -4329,3 +4329,17 @@ flights state 200 shown 1 strip 200 image/png 244 xw 384
 📦 Loaded 31 cached games from game_cache.json
 [AIRLINE-DB] Could not fetch airline data (HTTPSConnectionPool(host='raw.githubusercontent.com', port=443): Max retries exceeded with url: /jpatokal/openflights/master/data/airlines.dat (Caused by NewConnectionError("HTTPSConnection(host='raw.githubusercontent.com', port=443): Failed to establish a new connection: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions"))), using 24 hardcoded entries
 ⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+📂 Found 21 saved tickers in 'ticker_data'
+📦 Loaded 31 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    from sports_ticker.fetchers.sports import SportsFetcher
+  File "c:\Users\mld20\Documents\SportsTickerBackend\sports_ticker\__init__.py", line 3, in <module>
+    from .runtime import create_app, create_runtime, run_server, start_background_workers
+  File "c:\Users\mld20\Documents\SportsTickerBackend\sports_ticker\runtime.py", line 6, in <module>
+    from . import routes_runtime as _routes
+  File "c:\Users\mld20\Documents\SportsTickerBackend\sports_ticker\routes_runtime.py", line 25, in <module>
+    from .dashboard import dashboard as _dashboard_bp
+ImportError: cannot import name 'dashboard' from 'sports_ticker.dashboard' (unknown location)

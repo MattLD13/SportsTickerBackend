@@ -88,6 +88,36 @@ class SportsGolfMixin:
 
         return holes
 
+    def _golf_pick_active_round(self, competitor, current_round=None):
+        rounds = competitor.get('linescores', []) if isinstance(competitor, dict) else []
+        if not isinstance(rounds, list):
+            rounds = []
+
+        # Prefer the competition's current round when it has hole-level data.
+        if current_round:
+            for rd in rounds:
+                if not isinstance(rd, dict):
+                    continue
+                if int(rd.get('period', 0) or 0) != int(current_round):
+                    continue
+                if isinstance(rd.get('linescores'), list) and rd.get('linescores'):
+                    return rd
+
+        # Fall back to the most recent round that has hole data.
+        for rd in reversed(rounds):
+            if isinstance(rd, dict) and isinstance(rd.get('linescores'), list) and rd.get('linescores'):
+                return rd
+
+        # Last resort: current round object even if empty.
+        if current_round:
+            for rd in rounds:
+                if not isinstance(rd, dict):
+                    continue
+                if int(rd.get('period', 0) or 0) == int(current_round):
+                    return rd
+
+        return None
+
     def _golf_round_label(self, comp):
         round_num = None
         try:
@@ -157,13 +187,18 @@ class SportsGolfMixin:
             if not isinstance(comps, list):
                 comps = []
 
+            current_round = safe_get(comp, 'status', 'period', default=0)
+            try:
+                current_round = int(current_round or 0)
+            except Exception:
+                current_round = 0
+
             players = []
             for c in comps:
                 if not isinstance(c, dict):
                     continue
 
                 status_obj = c.get('status', {}) if isinstance(c.get('status'), dict) else {}
-                pos = safe_get(status_obj, 'position', 'displayName', default='-')
                 athlete = c.get('athlete', {}) if isinstance(c.get('athlete'), dict) else {}
                 short_name = str(athlete.get('shortName') or athlete.get('displayName') or 'UNKNOWN').strip()
                 if short_name:
@@ -174,6 +209,8 @@ class SportsGolfMixin:
                 if total_val is None:
                     total_val = self._golf_parse_relative_score(c.get('displayValue'))
 
+                score_text = str(c.get('score') or c.get('displayValue') or '').strip().upper()
+
                 today_val = None
                 stats = c.get('statistics', []) if isinstance(c.get('statistics'), list) else []
                 for stat in stats:
@@ -181,14 +218,63 @@ class SportsGolfMixin:
                         today_val = self._golf_parse_relative_score(stat.get('displayValue'))
                         break
 
-                holes = self._golf_extract_holes(c)
+                active_round = self._golf_pick_active_round(c, current_round=current_round)
+                if today_val is None and isinstance(active_round, dict):
+                    today_val = self._golf_parse_relative_score(active_round.get('displayValue'))
+
+                holes = [None] * 18
+                thru_val = 0
+                if isinstance(active_round, dict):
+                    seq_idx = 0
+                    for hole in active_round.get('linescores', []):
+                        if not isinstance(hole, dict):
+                            continue
+
+                        h_idx = None
+                        try:
+                            h_num_int = int(hole.get('period'))
+                            if 1 <= h_num_int <= 18:
+                                h_idx = h_num_int - 1
+                        except Exception:
+                            h_idx = None
+
+                        if h_idx is None:
+                            if seq_idx >= 18:
+                                continue
+                            h_idx = seq_idx
+                            seq_idx += 1
+
+                        stroke = None
+                        for key in ('value', 'displayValue'):
+                            raw_val = hole.get(key)
+                            try:
+                                if raw_val is not None and str(raw_val).strip() != '':
+                                    stroke = int(float(raw_val))
+                                    break
+                            except Exception:
+                                continue
+
+                        if stroke is not None and 0 <= h_idx < 18:
+                            holes[h_idx] = stroke
+                            if h_idx >= seq_idx:
+                                seq_idx = h_idx + 1
+
+                    thru_val = sum(1 for h in holes if h is not None)
+
+                try:
+                    order_val = int(c.get('order'))
+                except Exception:
+                    order_val = 9999
+
                 players.append({
-                    'pos': str(pos or '-'),
+                    'pos': '-',
                     'name': short_name or 'UNKNOWN',
                     'total': total_val,
                     'today': today_val,
-                    'thru': status_obj.get('thru', 0),
+                    'thru': thru_val,
                     'holes': holes,
+                    'score_text': score_text,
+                    'order': order_val,
                 })
 
             if not players:
@@ -197,11 +283,34 @@ class SportsGolfMixin:
 
             players.sort(
                 key=lambda p: (
-                    self._golf_position_sort_key(p.get('pos')),
+                    p.get('order', 9999),
                     p.get('total') if p.get('total') is not None else 9999,
                     p.get('name', 'ZZZ')
                 )
             )
+
+            # Derive display position labels from ESPN display order and score ties.
+            prev_score = object()
+            prev_pos = '-'
+            for idx, p in enumerate(players):
+                curr_score = p.get('total')
+                if curr_score is None:
+                    txt = str(p.get('score_text') or '').upper()
+                    p['pos'] = txt if txt in ('CUT', 'WD', 'DQ') else '-'
+                    prev_score = object()
+                    prev_pos = p['pos']
+                    continue
+
+                if idx > 0 and curr_score == prev_score:
+                    p['pos'] = prev_pos
+                else:
+                    rank = idx + 1
+                    next_same = (idx + 1 < len(players) and players[idx + 1].get('total') == curr_score)
+                    p['pos'] = f"T{rank}" if next_same else str(rank)
+
+                prev_score = curr_score
+                prev_pos = p['pos']
+
             leader = players[0]
 
             event_date = str(active_event.get('date') or comp.get('date') or '')
