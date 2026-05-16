@@ -34,6 +34,17 @@ SERVICE_MAP = [
 ]
 
 
+def _ensure_safe_directory():
+    """Allow root to operate on a directory owned by another user."""
+    try:
+        subprocess.run(
+            ["git", "config", "--global", "--add", "safe.directory", PROJECT_DIR],
+            capture_output=True, check=False,
+        )
+    except Exception:
+        pass
+
+
 def _git(*args, check=True, capture=True):
     return subprocess.run(
         ["git", "-C", PROJECT_DIR, *args],
@@ -162,6 +173,7 @@ def _try_show_update_ui(step_ref):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    _ensure_safe_directory()
     no_display = "--no-display" in sys.argv
 
     step_ref = {"step": "Checking...", "done": False}
