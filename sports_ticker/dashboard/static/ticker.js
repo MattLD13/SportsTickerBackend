@@ -493,6 +493,11 @@ fetchAll();
 fetchNowPlaying();
 setInterval(fetchAll, FETCH_EVERY);
 setInterval(fetchNowPlaying, 30000);
+setInterval(() => {
+  if (currentApiMode === 'music') {
+    fetchAll();
+  }
+}, 1000);
 tick();
 
 })();

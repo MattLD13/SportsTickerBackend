@@ -164,14 +164,137 @@ function browserEntrySource() {
   return `
 import base64
 import io
+import sys
+import types
 import time
 
 from PIL import Image, ImageDraw, ImageFont
 
-from ticker_controller.config import PANEL_W, PANEL_H
-from ticker_controller.controller import TickerStreamer
-from ticker_controller.fonts import load_display_font, load_monospace_font
-from ticker_controller.stadium import StadiumRenderer
+
+def _install_stubs():
+  if 'flask' not in sys.modules:
+    flask_mod = types.ModuleType('flask')
+
+    class _Request:
+      args = {}
+      headers = {}
+      json = None
+
+    class Flask:
+      def __init__(self, *args, **kwargs):
+        self.config = {}
+        self.secret_key = ''
+
+      def route(self, *args, **kwargs):
+        def decorator(func):
+          return func
+        return decorator
+
+      def register_blueprint(self, *args, **kwargs):
+        return None
+
+    def render_template_string(*args, **kwargs):
+      return ''
+
+    def jsonify(*args, **kwargs):
+      if args:
+        return args[0]
+      return kwargs
+
+    def make_response(value=None):
+      return value
+
+    flask_mod.Flask = Flask
+    flask_mod.request = _Request()
+    flask_mod.render_template_string = render_template_string
+    flask_mod.jsonify = jsonify
+    flask_mod.make_response = make_response
+    sys.modules['flask'] = flask_mod
+
+  if 'requests' not in sys.modules:
+    requests_mod = types.ModuleType('requests')
+    adapters_mod = types.ModuleType('requests.adapters')
+
+    class _Warns:
+      @staticmethod
+      def disable_warnings(*args, **kwargs):
+        return None
+
+    class _Response:
+      def __init__(self, content=b'', status_code=200, headers=None):
+        self.content = content
+        self.status_code = status_code
+        self.headers = headers or {}
+
+      def json(self):
+        raise NotImplementedError('JSON is not implemented in the browser preview stub')
+
+    class HTTPAdapter:
+      def __init__(self, *args, **kwargs):
+        pass
+
+      def close(self):
+        return None
+
+      def init_poolmanager(self, *args, **kwargs):
+        return None
+
+    class Session:
+      def get(self, url, *args, **kwargs):
+        return get(url, *args, **kwargs)
+
+      def post(self, url, *args, **kwargs):
+        return post(url, *args, **kwargs)
+
+      def mount(self, *args, **kwargs):
+        return None
+
+      def close(self):
+        return None
+
+    def get(url, *args, **kwargs):
+      if isinstance(url, str) and url.startswith('data:'):
+        header, payload = url.split(',', 1)
+        if ';base64' in header:
+          return _Response(base64.b64decode(payload), 200, {'Content-Type': header.split(';', 1)[0][5:]})
+        return _Response(payload.encode('utf-8'), 200, {'Content-Type': header.split(';', 1)[0][5:]})
+      raise RuntimeError(f'Browser preview requests only supports data: URLs, got {url!r}')
+
+    def post(*args, **kwargs):
+      return _Response(b'', 200, {})
+
+    requests_mod.Session = Session
+    requests_mod.get = get
+    requests_mod.post = post
+    requests_mod.adapters = adapters_mod
+    requests_mod.packages = types.SimpleNamespace(urllib3=_Warns())
+    adapters_mod.HTTPAdapter = HTTPAdapter
+    sys.modules['requests'] = requests_mod
+    sys.modules['requests.adapters'] = adapters_mod
+
+
+_install_stubs()
+
+
+def _load_real_controller():
+  import importlib.util
+
+  spec = importlib.util.spec_from_file_location('real_ticker_controller', '/app/real_ticker_controller.py')
+  module = importlib.util.module_from_spec(spec)
+  module.__dict__['__name__'] = 'real_ticker_controller'
+  module.__dict__['__file__'] = '/app/real_ticker_controller.py'
+  sys.modules['real_ticker_controller'] = module
+  spec.loader.exec_module(module)
+  return module
+
+
+_RTC = _load_real_controller()
+TickerStreamer = _RTC.TickerStreamer
+PANEL_W = _RTC.PANEL_W
+PANEL_H = _RTC.PANEL_H
+StadiumRenderer = _RTC.StadiumRenderer
+load_display_font = _RTC.load_display_font
+load_monospace_font = _RTC.load_monospace_font
 
 
 class BrowserTickerStreamer(TickerStreamer):
@@ -338,21 +461,11 @@ async function ensureControllerRuntime() {
       const bundleResp = await fetch(BUNDLE_URL, { cache: 'no-store' });
       if (!bundleResp.ok) throw new Error('bundle HTTP ' + bundleResp.status);
       const bundle = await bundleResp.json();
-      const files = bundle && bundle.files ? bundle.files : {};
+      const source = String(bundle && bundle.source ? bundle.source : '');
 
       pyodide.FS.mkdirTree('/app');
-      pyodide.FS.mkdirTree('/app/requests');
-      pyodide.FS.writeFile('/app/requests/__init__.py', requestsStubSource());
-      pyodide.FS.writeFile('/app/requests/adapters.py', 'class HTTPAdapter:\n    def __init__(self, *args, **kwargs):\n        pass\n    def close(self):\n        return None\n    def init_poolmanager(self, *args, **kwargs):\n        return None\n');
+      pyodide.FS.writeFile('/app/real_ticker_controller.py', source);
       pyodide.FS.writeFile('/app/browser_entry.py', browserEntrySource());
-
-      for (const [relPath, source] of Object.entries(files)) {
-        const path = '/app/' + relPath;
-        const parts = path.split('/');
-        parts.pop();
-        if (parts.length > 1) pyodide.FS.mkdirTree(parts.join('/'));
-        pyodide.FS.writeFile(path, source);
-      }
 
       await pyodide.runPythonAsync(`
 import sys
@@ -370,14 +483,14 @@ async function fetchVisibleGames(tickerId, mode) {
   const params = [];
   if (tickerId) params.push('id=' + encodeURIComponent(tickerId));
   if (mode) params.push('mode=' + encodeURIComponent(mode));
-  const url = '/api/state' + (params.length ? '?' + params.join('&') : '');
+  const url = '/data' + (params.length ? '?' + params.join('&') : '');
   const resp = await fetch(url, { cache: 'no-store' });
   if (!resp.ok) throw new Error('HTTP ' + resp.status);
   const payload = await resp.json();
-  const settings = payload && payload.settings ? payload.settings : {};
-  const effectiveMode = String(settings.mode || mode || 'sports');
-  const games = payload && Array.isArray(payload.games)
-    ? payload.games.filter(game => game && game.is_shown !== false)
+  const localConfig = payload && payload.local_config ? payload.local_config : {};
+  const effectiveMode = String(localConfig.mode || mode || 'sports');
+  const games = payload && payload.content && Array.isArray(payload.content.sports)
+    ? payload.content.sports.filter(game => game && game.is_shown !== false)
     : [];
   return {
     mode: effectiveMode,

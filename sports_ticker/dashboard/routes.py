@@ -124,14 +124,11 @@ def root():
 
 @dashboard.route('/api/browser/ticker_controller_bundle')
 def browser_ticker_bundle():
-    files = {}
-    if _TICKER_CONTROLLER_ROOT.exists():
-        for path in sorted(_TICKER_CONTROLLER_ROOT.rglob('*.py')):
-            rel_path = path.relative_to(_REPO_ROOT).as_posix()
-            files[rel_path] = path.read_text(encoding='utf-8')
+    source_path = _REPO_ROOT / 'ticker_controller.py'
+    source = source_path.read_text(encoding='utf-8') if source_path.exists() else ''
     return jsonify({
-        'root': 'ticker_controller',
-        'files': files,
+        'root': 'ticker_controller.py',
+        'source': source,
     })
 
 
