@@ -84,7 +84,7 @@ def _get_preview_renderer():
             renderer.VINYL_SIZE = 51
             renderer.COVER_SIZE = 42
             renderer.vinyl_mask = Image.new('L', (renderer.COVER_SIZE, renderer.COVER_SIZE), 0)
-            ImageDraw.Draw(renderer.vinyl_mask).ellipse((0, 0, 41, 41), fill=255)
+            ImageDraw.Draw(renderer.vinyl_mask).ellipse((0, 0, renderer.COVER_SIZE, renderer.COVER_SIZE), fill=255)
             renderer.scratch_layer = Image.new('RGBA', (renderer.VINYL_SIZE, renderer.VINYL_SIZE), (0, 0, 0, 0))
             renderer._init_vinyl_scratch()
             renderer.vinyl_rotation = 0.0
@@ -99,7 +99,7 @@ def _get_preview_renderer():
             renderer.fade_alpha = 1.0
             renderer.transitioning_out = False
             renderer.viz_heights = [2.0] * 16
-            renderer.viz_phase = [0.0] * 16
+            renderer.viz_phase = [__import__('random').random() * 10 for _ in range(16)]
             renderer.C_BG = (5, 5, 8)
             renderer.C_AMBER = (255, 170, 0)
             renderer.C_BLUE_TXT = (80, 180, 255)
@@ -214,7 +214,7 @@ def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
             if sport == 'flight' or itype == 'flight':
                 return renderer.draw_flight_visitor(g)
             if itype in ('golf', 'masters') or sport in ('golf', 'masters'):
-                if renderer.mode in ('golf', 'sports_full'):
+                if renderer.mode in ('golf', 'masters', 'sports_full'):
                     return renderer.draw_golf_mode(g)
                 return renderer.draw_golf_scroll_card(g)
             if itype == 'leaderboard':

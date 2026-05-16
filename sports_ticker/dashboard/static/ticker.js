@@ -93,6 +93,7 @@ function tick() {
 }
 
 async function fetchStrip() {
+  let browserRuntimeError = null;
   try {
     if (BROWSER_RT && typeof BROWSER_RT.renderStrip === 'function') {
       const strip = await BROWSER_RT.renderStrip(currentApiMode, TICKER_ID);
