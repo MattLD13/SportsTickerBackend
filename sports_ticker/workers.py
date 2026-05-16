@@ -7,7 +7,7 @@ from . import fetchers_runtime as _fetchers
 from .core import (
     state, tickers, data_lock,
     SPORTS_UPDATE_INTERVAL, _normalize_single_pin, _STOCK_LISTS,
-    Tee, tee_instance,
+    Tee, tee_instance, purge_stale_tickers,
 )
 from .fetchers_runtime import TestMode, SportsFetcher, SpotifyFetcher, FlightTracker
 
@@ -239,6 +239,7 @@ def start_background_workers():
         print(f"  Started worker: {name}")
 
     spotify_fetcher.start()
+    purge_stale_tickers()
     request_refresh('startup')
 
 

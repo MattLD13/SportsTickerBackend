@@ -49,23 +49,21 @@ load_dotenv()
 
 # ================= SERVER VERSION =================
 def _compute_version():
+    # 1. Try VERSION file written by CI deploy (server has no .git)
+    version_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'VERSION')
+    try:
+        line = open(version_file).read().strip()
+        date, count, sha = line.split('|', 2)
+        return f"r{count}+{sha}", date, int(count), sha
+    except Exception:
+        pass
+    # 2. Fall back to live git (dev/Pi environment)
     import subprocess as _sp
     try:
-        count = _sp.check_output(
-            ["git", "rev-list", "--count", "HEAD"],
-            cwd=os.path.dirname(os.path.dirname(__file__)),
-            stderr=_sp.DEVNULL, text=True,
-        ).strip()
-        sha = _sp.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=os.path.dirname(os.path.dirname(__file__)),
-            stderr=_sp.DEVNULL, text=True,
-        ).strip()
-        date = _sp.check_output(
-            ["git", "log", "-1", "--format=%cd", "--date=format:%Y.%m.%d"],
-            cwd=os.path.dirname(os.path.dirname(__file__)),
-            stderr=_sp.DEVNULL, text=True,
-        ).strip()
+        root = os.path.dirname(os.path.dirname(__file__))
+        count = _sp.check_output(["git", "rev-list", "--count", "HEAD"], cwd=root, stderr=_sp.DEVNULL, text=True).strip()
+        sha   = _sp.check_output(["git", "rev-parse", "--short", "HEAD"],  cwd=root, stderr=_sp.DEVNULL, text=True).strip()
+        date  = _sp.check_output(["git", "log", "-1", "--format=%cd", "--date=format:%Y.%m.%d"], cwd=root, stderr=_sp.DEVNULL, text=True).strip()
         return f"r{count}+{sha}", date, int(count), sha
     except Exception:
         return "r0+unknown", "unknown", 0, "unknown"
@@ -352,6 +350,37 @@ for t_file in ticker_files:
             tickers[tid] = t_data
     except Exception as e:
         print(f"❌ Failed to load ticker file {t_file}: {e}")
+
+# ── Section F2: Startup Ticker Purge ──
+_STALE_TICKER_DAYS = 7
+_BAD_ID_PATTERNS = ('poop', '_myteams', '_state', '_test')
+
+def purge_stale_tickers():
+    """Remove tickers not seen in the last 7 days and any with junk IDs."""
+    cutoff = time.time() - (_STALE_TICKER_DAYS * 24 * 3600)
+    to_remove = []
+    with data_lock:
+        for tid in list(tickers):
+            tid_lower = tid.lower()
+            if any(p in tid_lower for p in _BAD_ID_PATTERNS):
+                to_remove.append(tid)
+                continue
+            last = tickers[tid].get('last_seen', 0) or 0
+            if last < cutoff:
+                to_remove.append(tid)
+        for tid in to_remove:
+            tickers.pop(tid, None)
+    for tid in to_remove:
+        path = os.path.join(TICKER_DATA_DIR, f"{tid}.json")
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"⚠️  Could not delete {path}: {e}")
+    if to_remove:
+        print(f"🧹 Purged {len(to_remove)} stale/invalid tickers")
+    return to_remove
 
 # Pre-populate current_games from cache for immediate display on restart
 if os.path.exists(GAME_CACHE_FILE):
