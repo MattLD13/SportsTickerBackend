@@ -241,13 +241,84 @@ class BrowserTickerStreamer(TickerStreamer):
 
 
 _RENDERER = BrowserTickerStreamer()
+_STATIC_INDEX = 0
+
+
+def _partition_games(games, mode):
+    flight_weather = None
+    flight_arrivals = []
+    flight_departures = []
+    other_games = []
+
+    for game in games:
+        if not isinstance(game, dict):
+            continue
+        game_type = str(game.get('type', ''))
+        if game_type == 'flight_weather':
+            flight_weather = game
+        elif game_type == 'flight_arrival':
+            flight_arrivals.append(game)
+        elif game_type == 'flight_departure':
+            flight_departures.append(game)
+        else:
+            other_games.append(game)
+
+    if flight_weather or flight_arrivals or flight_departures:
+        other_games.append({
+            'type': 'flight_airport_hud',
+            'sport': 'flight',
+            'id': 'airport_hud',
+            'is_shown': True,
+            '_weather_item': flight_weather,
+            '_arrivals': flight_arrivals,
+            '_departures': flight_departures,
+        })
+
+    static_items = []
+    scrolling_items = []
+
+    for game in other_games:
+        sport = str(game.get('sport', '')).lower()
+        game_type = str(game.get('type', ''))
+        is_music = (game_type == 'music' or sport == 'music')
+        is_golf_fullscreen = (game_type in ('golf', 'masters') or sport in ('golf', 'masters')) and mode == 'golf'
+
+        if game_type == 'weather' or sport.startswith('clock') or is_golf_fullscreen or is_music or game_type == 'flight_visitor' or game_type == 'flight_airport_hud':
+            static_items.append(game)
+        elif mode in ('sports_full', 'soccer_full') and game_type not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(game_type):
+            static_items.append(game)
+        else:
+            scrolling_items.append(game)
+
+    return static_items, scrolling_items
+
+
+def _next_static_game(static_items):
+    global _STATIC_INDEX
+    if not static_items:
+        return None
+    game = static_items[_STATIC_INDEX % len(static_items)]
+    _STATIC_INDEX += 1
+    return game
 
 
 def render_strip(games, mode='sports'):
     _RENDERER.mode = mode or 'sports'
     _RENDERER.game_render_cache = {}
     playlist = [g for g in games if isinstance(g, dict) and g.get('is_shown', True)]
-    strip = _RENDERER.build_seamless_strip(playlist)
+    static_items, scrolling_items = _partition_games(playlist, _RENDERER.mode)
+
+    if static_items and not scrolling_items:
+        strip = _RENDERER.draw_single_game(_next_static_game(static_items))
+    elif _RENDERER.mode in ('sports_full', 'soccer_full') and static_items:
+        strip = _RENDERER.draw_single_game(_next_static_game(static_items))
+    elif scrolling_items:
+        strip = _RENDERER.build_seamless_strip(scrolling_items)
+    elif static_items:
+        strip = _RENDERER.draw_single_game(_next_static_game(static_items))
+    else:
+        strip = _RENDERER.draw_clock_modern()
+
     if strip is None:
         strip = Image.new('RGBA', (PANEL_W, PANEL_H), (0, 0, 0, 255))
     buf = io.BytesIO()
@@ -299,22 +370,27 @@ async function fetchVisibleGames(tickerId, mode) {
   const params = [];
   if (tickerId) params.push('id=' + encodeURIComponent(tickerId));
   if (mode) params.push('mode=' + encodeURIComponent(mode));
-  const url = '/data' + (params.length ? '?' + params.join('&') : '');
+  const url = '/api/state' + (params.length ? '?' + params.join('&') : '');
   const resp = await fetch(url, { cache: 'no-store' });
   if (!resp.ok) throw new Error('HTTP ' + resp.status);
   const payload = await resp.json();
-  const games = payload && payload.content && Array.isArray(payload.content.sports)
-    ? payload.content.sports
+  const settings = payload && payload.settings ? payload.settings : {};
+  const effectiveMode = String(settings.mode || mode || 'sports');
+  const games = payload && Array.isArray(payload.games)
+    ? payload.games.filter(game => game && game.is_shown !== false)
     : [];
-  return Promise.all(games.map(game => inlineGameAssets(game)));
+  return {
+    mode: effectiveMode,
+    games: await Promise.all(games.map(game => inlineGameAssets(game))),
+  };
 }
 
 async function renderStrip(mode, tickerId) {
   try {
     const pyodide = await ensureControllerRuntime();
-    const games = await fetchVisibleGames(tickerId, mode);
-    pyodide.globals.set('browser_games_json', JSON.stringify(games));
-    pyodide.globals.set('browser_mode', mode || 'sports');
+    const payload = await fetchVisibleGames(tickerId, mode);
+    pyodide.globals.set('browser_games_json', JSON.stringify(payload.games));
+    pyodide.globals.set('browser_mode', payload.mode || mode || 'sports');
     const jsonText = await pyodide.runPythonAsync(`
 import json
 from browser_entry import render_strip

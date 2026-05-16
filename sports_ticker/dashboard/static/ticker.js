@@ -336,6 +336,7 @@ window.pinCardGame = async function (el, gameId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    fetchAll();
   } catch (e) { console.error(e); }
 };
 
@@ -351,6 +352,7 @@ window.unpinGame = async function () {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    fetchAll();
   } catch (e) { console.error(e); }
 };
 
