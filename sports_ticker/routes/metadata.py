@@ -259,15 +259,14 @@ a:hover{{text-decoration:underline}}
     </div>
     <div class="fetch-status" id="fetch-status">fetching…</div>
     <div class="mode-filters" id="mode-filters">
-      <button class="mf-btn active" data-mode="ALL" style="--c:#FFAA44">ALL</button>
-      <button class="mf-btn" data-mode="NFL"     style="--c:#FF6B35">NFL</button>
-      <button class="mf-btn" data-mode="NBA"     style="--c:#C9082A">NBA</button>
-      <button class="mf-btn" data-mode="NHL"     style="--c:#00B2E3">NHL</button>
-      <button class="mf-btn" data-mode="MLB"     style="--c:#003DA5">MLB</button>
-      <button class="mf-btn" data-mode="SOCCER"  style="--c:#4CAF50">SOCCER</button>
-      <button class="mf-btn" data-mode="GOLF"    style="--c:#66BB44">GOLF</button>
-      <button class="mf-btn" data-mode="WEATHER" style="--c:#44AAFF">WEATHER</button>
-      <button class="mf-btn" data-mode="STOCKS"  style="--c:#44DD88">STOCKS</button>
+      <button class="mf-btn active" data-mode="sports"         style="--c:#FF8C00">ALL SPORTS</button>
+      <button class="mf-btn"        data-mode="live"           style="--c:#FF4444">LIVE</button>
+      <button class="mf-btn"        data-mode="stocks"         style="--c:#44DD88">STOCKS</button>
+      <button class="mf-btn"        data-mode="music"          style="--c:#CC44FF">MUSIC</button>
+      <button class="mf-btn"        data-mode="flights"        style="--c:#00DDCC">FLIGHTS</button>
+      <button class="mf-btn"        data-mode="flight_tracker" style="--c:#00AACC">TRACKER</button>
+      <button class="mf-btn"        data-mode="weather"        style="--c:#44AAFF">WEATHER</button>
+      <button class="mf-btn"        data-mode="clock"          style="--c:#888888">CLOCK</button>
     </div>
   </div>
 
@@ -292,12 +291,10 @@ a:hover{{text-decoration:underline}}
     <div class="stat"><div class="val">{len(enabled_sports)}</div><div class="lbl">Active Feeds</div></div>
   </div>
 
-  <div class="section-title">Paired Tickers</div>
+  <div class="section-title">Active Ticker</div>
   <div class="ticker-grid">
-    {ticker_cards(named_paired)}
+    {ticker_cards(sorted(named_paired, key=lambda x: x[1].get('last_seen') or 0, reverse=True)[:1])}
   </div>
-
-  {"" if not named_unpaired else f'<div class="section-title">Registered (Unpaired)</div><div class="ticker-grid">{ticker_cards(named_unpaired)}</div>'}
 
   <div class="section-title">Active Sports &amp; Features</div>
   <div class="sports-grid">{sport_html}</div>
@@ -346,14 +343,26 @@ const FONT = {{
 // ─── Sport Colors ─────────────────────────────────────────────────────────────
 const SPORT_COLORS = {{
   NFL:'#FF6B35', NBA:'#C9082A', NHL:'#00B2E3', MLB:'#003DA5',
-  SOCCER:'#4CAF50', EPL:'#3D195B', GOLF:'#66BB44',
-  WEATHER:'#44AAFF', STOCKS:'#44DD88', FLIGHT:'#00DDCC',
-  DEFAULT:'#FFAA44'
+  NCF_FBS:'#FF8C00', NCF_FCS:'#FF8C00',
+  SOCCER_EPL:'#3D195B', SOCCER_FA_CUP:'#3D195B', SOCCER_CHAMP:'#003DA5',
+  SOCCER_CHAMPIONS_LEAGUE:'#003366', SOCCER_EUROPA_LEAGUE:'#FF6B00',
+  SOCCER_MLS:'#C0392B', SOCCER_WC:'#C09A2A',
+  GOLF:'#66BB44', MASTERS:'#FFDD00',
+  WEATHER:'#44AAFF', STOCK_TICKER:'#44DD88',
+  MUSIC:'#CC44FF', CLOCK:'#888888',
+  FLIGHT:'#00DDCC', FLIGHT_VISITOR:'#00AACC',
+  DEFAULT:'#FF8C00'
 }};
 
-function sportColor(sport) {{
-  const k = (sport || '').toUpperCase();
-  return SPORT_COLORS[k] || SPORT_COLORS.DEFAULT;
+function sportColor(item) {{
+  const sport = (item.sport || '').toUpperCase();
+  const type  = (item.type  || '').toUpperCase();
+  // Prefer sport key, fall back to type key
+  if (SPORT_COLORS[sport]) return SPORT_COLORS[sport];
+  if (SPORT_COLORS[type])  return SPORT_COLORS[type];
+  // Soccer prefix match
+  if (sport.startsWith('SOCCER')) return '#4CAF50';
+  return SPORT_COLORS.DEFAULT;
 }}
 
 // ─── Canvas setup ─────────────────────────────────────────────────────────────
@@ -409,60 +418,78 @@ let segments      = [];   // [{{text, color, item}}]
 let totalLedWidth = 0;
 let scrollLedX    = 0;    // fractional LED pixels scrolled
 let paused        = false;
-let activeMode    = 'ALL';
+let currentApiMode = 'sports'; // matches active mode button data-mode
 let itemRects     = [];   // [{{item, startX, endX}}] in absolute LED coords each frame
 let selectedItem  = null;
 let rafId         = null;
 
 // ─── Data Fetching ────────────────────────────────────────────────────────────
 function buildApiUrl() {{
-  if (TICKER_ID) return '/api/state?id=' + encodeURIComponent(TICKER_ID);
-  return '/api/state';
+  const params = [];
+  if (TICKER_ID)      params.push('id='   + encodeURIComponent(TICKER_ID));
+  if (currentApiMode) params.push('mode=' + encodeURIComponent(currentApiMode));
+  return '/api/state' + (params.length ? '?' + params.join('&') : '');
 }}
 
 function parseSports(data) {{
-  const sports = (data && data.content && data.content.sports) ? data.content.sports : [];
-  const items = [];
-  for (const item of sports) {{
-    items.push(item);
-  }}
-  return items;
+  // /api/state returns {{ games: [...] }} — include all items (is_shown or not)
+  return (data && Array.isArray(data.games)) ? data.games : [];
 }}
 
 function itemToSegment(item) {{
-  const type = (item.type || item.sport || '').toUpperCase();
-  const color = sportColor(type);
+  const itype  = (item.type  || '').toLowerCase();
+  const sport  = (item.sport || '').toUpperCase();
+  const color  = sportColor(item);
   let text = '';
 
-  if (type === 'WEATHER') {{
-    const city  = (item.city  || item.location || '').toUpperCase().slice(0, 12);
-    const temp  = item.temp  != null ? Math.round(item.temp)  + 'F' : '';
-    const cond  = (item.condition || item.description || '').toUpperCase().slice(0, 10);
+  if (itype === 'weather') {{
+    const city = (item.city || item.location || '').toUpperCase().slice(0, 12);
+    const temp = item.temp  != null ? Math.round(item.temp) + 'F' : '';
+    const cond = (item.condition || item.description || '').toUpperCase().slice(0, 10);
     text = [city, temp, cond].filter(Boolean).join('  ');
-  }} else if (type === 'STOCKS' || type === 'STOCK') {{
-    const sym = (item.symbol || '').toUpperCase();
+
+  }} else if (itype === 'stock_ticker') {{
+    const sym   = (item.symbol || '').toUpperCase();
     const price = item.price != null ? '$' + (+item.price).toFixed(2) : '';
     const pct   = item.change_pct != null
       ? (item.change_pct >= 0 ? '+' : '') + (+item.change_pct).toFixed(1) + '%'
       : '';
     text = [sym, price, pct].filter(Boolean).join('  ');
-  }} else if (type === 'FLIGHT') {{
+
+  }} else if (itype === 'music') {{
+    const artist = (item.artist || '').toUpperCase().slice(0, 12);
+    const title  = (item.title  || item.song || '').toUpperCase().slice(0, 16);
+    text = [artist, title].filter(Boolean).join('  ') || 'MUSIC';
+
+  }} else if (itype === 'clock') {{
+    const t = item.time || item.clock_str || '';
+    text = t ? t.toUpperCase() : 'CLOCK';
+
+  }} else if (itype === 'flight_visitor') {{
     const flt  = (item.flight || item.id || '').toUpperCase();
     const orig = (item.origin || '').toUpperCase();
     const dest = (item.dest   || item.destination || '').toUpperCase();
     const stat = (item.status || '').toUpperCase().slice(0, 8);
-    const route = orig && dest ? orig + '>' + dest : '';
+    const route = (orig && dest) ? orig + '>' + dest : '';
     text = [flt, route, stat].filter(Boolean).join('  ');
+
+  }} else if (sport === 'FLIGHT') {{
+    const airline = (item.airline || '').toUpperCase().slice(0, 4);
+    const num     = (item.flight_number || item.flight || '').toUpperCase().slice(0, 8);
+    const dest    = (item.destination || item.dest || '').toUpperCase().slice(0, 4);
+    const stat    = (item.status || '').toUpperCase().slice(0, 8);
+    text = [airline + num, dest, stat].filter(Boolean).join('  ');
+
   }} else {{
-    // Generic game / sports item
-    const sport  = type.slice(0, 4);
-    const away   = (item.away_abbr  || item.away   || '').toUpperCase().slice(0, 4);
-    const home   = (item.home_abbr  || item.home   || '').toUpperCase().slice(0, 4);
+    // Sports game
+    const league = sport.slice(0, 5);
+    const away   = (item.away_abbr || item.away || '').toUpperCase().slice(0, 4);
+    const home   = (item.home_abbr || item.home || '').toUpperCase().slice(0, 4);
     const aScore = item.away_score != null ? String(item.away_score) : '';
     const hScore = item.home_score != null ? String(item.home_score) : '';
     const score  = (aScore !== '' && hScore !== '') ? aScore + '-' + hScore : '';
     const status = (item.status || item.clock || item.period || '').toUpperCase().slice(0, 8);
-    const parts  = [sport];
+    const parts  = [league];
     if (away)   parts.push(away);
     if (score)  parts.push(score);
     if (home)   parts.push(home);
@@ -474,14 +501,8 @@ function itemToSegment(item) {{
 }}
 
 function rebuildSegments() {{
-  const filtered = activeMode === 'ALL'
-    ? allItems
-    : allItems.filter(it => {{
-        const t = (it.type || it.sport || '').toUpperCase();
-        return t === activeMode || t.startsWith(activeMode);
-      }});
-
-  segments = filtered.map(itemToSegment);
+  // API already returned mode-specific data — show all items
+  segments = allItems.map(itemToSegment);
 
   // Compute total scroll width: each segment + '  ·  ' divider
   const DIV_W = measureText(' · ');
@@ -606,19 +627,16 @@ function tick() {{
 }}
 
 // ─── Detail Panel ─────────────────────────────────────────────────────────────
-function itemSportKey(item) {{
-  return (item.type || item.sport || '').toUpperCase();
-}}
 
 function makeDetailCard(item, idx) {{
-  const sport  = itemSportKey(item);
-  const color  = sportColor(sport);
+  const color  = sportColor(item);
   const bgC    = color + '22';
-  const type   = (item.type || item.sport || '').toUpperCase();
+  const itype  = (item.type  || '').toLowerCase();
+  const sport  = (item.sport || itype || 'game').toUpperCase();
 
   let teamsHtml = '', scoreHtml = '', statusHtml = '', detailHtml = '';
 
-  if (type === 'WEATHER') {{
+  if (itype === 'weather') {{
     const city  = item.city || item.location || 'N/A';
     const temp  = item.temp != null ? Math.round(item.temp) + '°F' : '';
     const cond  = item.condition || item.description || '';
@@ -627,17 +645,30 @@ function makeDetailCard(item, idx) {{
     statusHtml = `<div class="dc-status">${{cond}}</div>`;
     detailHtml = `<div class="row"><span>Humidity</span><span>${{item.humidity != null ? item.humidity + '%' : '—'}}</span></div>
                   <div class="row"><span>Wind</span><span>${{item.wind || '—'}}</span></div>`;
-  }} else if (type === 'STOCKS' || type === 'STOCK') {{
-    const sym  = item.symbol || '';
-    const price = item.price != null ? '$' + (+item.price).toFixed(2) : '';
-    const pct   = item.change_pct != null ? (+item.change_pct).toFixed(2) + '%' : '';
+  }} else if (itype === 'stock_ticker') {{
+    const sym      = item.symbol || '';
+    const price    = item.price != null ? '$' + (+item.price).toFixed(2) : '';
+    const pct      = item.change_pct != null ? (+item.change_pct).toFixed(2) + '%' : '';
     const pctColor = (item.change_pct || 0) >= 0 ? '#44dd88' : '#ff4444';
     teamsHtml  = `<div class="dc-teams">${{sym}}</div>`;
     scoreHtml  = price ? `<div class="dc-score">${{price}}</div>` : '';
     statusHtml = pct ? `<div class="dc-status" style="color:${{pctColor}}">${{pct}}</div>` : '';
     detailHtml = `<div class="row"><span>Change</span><span style="color:${{pctColor}}">${{item.change || pct}}</span></div>
                   <div class="row"><span>Volume</span><span>${{item.volume || '—'}}</span></div>`;
-  }} else if (type === 'FLIGHT') {{
+  }} else if (itype === 'music') {{
+    const title  = item.title  || item.song   || '';
+    const artist = item.artist || item.artist_name || '';
+    const album  = item.album  || '';
+    teamsHtml  = `<div class="dc-teams">${{artist}}</div>`;
+    scoreHtml  = title ? `<div class="dc-score" style="font-size:15px">${{title}}</div>` : '';
+    statusHtml = album ? `<div class="dc-status">${{album}}</div>` : '';
+    detailHtml = `<div class="row"><span>Duration</span><span>${{item.duration ? Math.round(item.duration/1000) + 's' : '—'}}</span></div>`;
+  }} else if (itype === 'clock') {{
+    teamsHtml  = `<div class="dc-teams">Clock</div>`;
+    scoreHtml  = `<div class="dc-score" style="font-size:18px">${{item.time || item.clock_str || '—'}}</div>`;
+    statusHtml = '';
+    detailHtml = `<div class="row"><span>Type</span><span>Clock</span></div>`;
+  }} else if (itype === 'flight_visitor') {{
     const flt  = item.flight || item.id || '';
     const orig = item.origin || '';
     const dest = item.dest || item.destination || '';
@@ -647,6 +678,16 @@ function makeDetailCard(item, idx) {{
     statusHtml = `<div class="dc-status">${{stat}}</div>`;
     detailHtml = `<div class="row"><span>Departure</span><span>${{item.depart || '—'}}</span></div>
                   <div class="row"><span>Arrival</span><span>${{item.arrive || '—'}}</span></div>`;
+  }} else if ((item.sport || '').toLowerCase() === 'flight') {{
+    const airline = item.airline || '';
+    const num     = item.flight_number || item.flight || '';
+    const dest    = item.destination || item.dest || '';
+    const stat    = item.status || '';
+    teamsHtml  = `<div class="dc-teams">${{airline}} ${{num}}</div>`;
+    scoreHtml  = dest ? `<div class="dc-score" style="font-size:16px">→ ${{dest}}</div>` : '';
+    statusHtml = `<div class="dc-status">${{stat}}</div>`;
+    detailHtml = `<div class="row"><span>Gate</span><span>${{item.gate || '—'}}</span></div>
+                  <div class="row"><span>Time</span><span>${{item.time || item.scheduled || '—'}}</span></div>`;
   }} else {{
     // Game
     const away   = item.away   || item.away_name   || '';
@@ -666,7 +707,7 @@ function makeDetailCard(item, idx) {{
   }}
 
   return `<div class="dc" data-idx="${{idx}}" onclick="toggleCard(this,${{idx}})">
-    <div class="dc-badge" style="background:${{bgC}};color:${{color}};border:1px solid ${{color}}40">${{sport}}</div>
+    <div class="dc-badge" style="background:${{bgC}};color:${{color}};border:1px solid ${{color}}40">${{sport.slice(0,10)}}</div>
     ${{teamsHtml}}
     ${{scoreHtml}}
     ${{statusHtml}}
@@ -675,22 +716,16 @@ function makeDetailCard(item, idx) {{
 }}
 
 function updateDetailPanel() {{
-  const grid = document.getElementById('detail-grid');
+  const grid  = document.getElementById('detail-grid');
   const title = document.getElementById('detail-title');
-  const filtered = activeMode === 'ALL'
-    ? allItems
-    : allItems.filter(it => {{
-        const t = itemSportKey(it);
-        return t === activeMode || t.startsWith(activeMode);
-      }});
+  const label = document.querySelector('.mf-btn.active')?.textContent || currentApiMode.toUpperCase();
+  title.textContent = label + ' — ' + allItems.length + ' items';
 
-  title.textContent = (activeMode === 'ALL' ? 'All Items' : activeMode) + ' — ' + filtered.length + ' items';
-
-  if (!filtered.length) {{
-    grid.innerHTML = '<p style="color:#333;font-size:12px">No items for this filter.</p>';
+  if (!allItems.length) {{
+    grid.innerHTML = '<p style="color:#333;font-size:12px">No data for this mode.</p>';
     return;
   }}
-  grid.innerHTML = filtered.map((item, idx) => makeDetailCard(item, idx)).join('');
+  grid.innerHTML = allItems.map((item, idx) => makeDetailCard(item, idx)).join('');
 }}
 
 // ─── Card toggle ──────────────────────────────────────────────────────────────
@@ -739,10 +774,9 @@ document.getElementById('mode-filters').addEventListener('click', function(e) {{
   if (!btn) return;
   document.querySelectorAll('.mf-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  activeMode = btn.dataset.mode;
-  rebuildSegments();
+  currentApiMode = btn.dataset.mode;
   scrollLedX = 0;
-  updateDetailPanel();
+  fetchData(); // re-fetch for the new mode
 }});
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────

@@ -271,6 +271,11 @@ def api_state():
 
     current_mode = normalize_mode(response_settings.get('mode', 'sports'))
 
+    # Allow web dashboard to preview any mode without changing ticker state
+    _preview_mode = request.args.get('mode')
+    if _preview_mode:
+        current_mode = normalize_mode(_preview_mode)
+
     # Legacy app behavior: reflect pin by forcing sports_full mode in /api/state.
     # This keeps pinned detection compatible with clients that key off mode.
     if pinned_game and current_mode in SPORTS_MODE_FAMILY:
