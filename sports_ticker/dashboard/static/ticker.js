@@ -295,6 +295,11 @@ document.getElementById('mode-filters').addEventListener('click', function (e) {
   scrollSrcX = 0;
   showCtrlPanel(currentApiMode);
   if (currentApiMode === 'music') fetchNowPlaying();
+  fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: currentApiMode }),
+  }).catch(e => console.error('mode switch error', e));
   fetchAll();
 });
 
