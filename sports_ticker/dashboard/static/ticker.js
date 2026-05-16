@@ -93,11 +93,10 @@ function tick() {
 }
 
 async function fetchStrip() {
-  let browserRuntimeError = null;
-  try {
-    if (BROWSER_RT && typeof BROWSER_RT.renderStrip === 'function') {
+  if (BROWSER_RT && typeof BROWSER_RT.renderStrip === 'function') {
+    try {
       const strip = await BROWSER_RT.renderStrip(currentApiMode, TICKER_ID);
-      if (!strip || !strip.dataUrl) throw new Error('browser runtime returned no strip');
+      if (!strip || !strip.dataUrl) throw new Error('no strip data');
       const bmp = await createImageBitmap(await (await fetch(strip.dataUrl)).blob());
       stripBitmap = bmp;
       stripSrcW = strip.width || bmp.width;
@@ -105,8 +104,12 @@ async function fetchStrip() {
       lastFetchAt = Date.now();
       fetchStatus.textContent = 'Updated ' + new Date().toLocaleTimeString() + ' · browser runtime ' + stripSrcW + 'px';
       return;
+    } catch (e) {
+      console.warn('Browser runtime failed, falling back to server preview:', e);
     }
+  }
 
+  try {
     const url = '/api/preview/strip.png?mode=' + encodeURIComponent(currentApiMode);
     const resp = await fetch(url, { cache: 'no-store' });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);

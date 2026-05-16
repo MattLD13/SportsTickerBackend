@@ -424,7 +424,7 @@ def _partition_games(games, mode):
         sport = str(game.get('sport', '')).lower()
         game_type = str(game.get('type', ''))
         is_music = (game_type == 'music' or sport == 'music')
-        is_golf_fullscreen = (game_type in ('golf', 'masters') or sport in ('golf', 'masters')) and mode == 'golf'
+        is_golf_fullscreen = (game_type in ('golf', 'masters') or sport in ('golf', 'masters')) and mode in ('golf', 'masters')
 
         if game_type == 'weather' or sport.startswith('clock') or is_golf_fullscreen or is_music or game_type == 'flight_visitor' or game_type == 'flight_airport_hud':
             static_items.append(game)
@@ -489,6 +489,17 @@ def _placeholder_item_for_mode(mode):
         }
     if mode == 'clock':
         return {'type': 'clock', 'sport': 'clock', 'id': 'clk', 'is_shown': True}
+    if mode == 'weather':
+        return {
+            'type': 'weather', 'sport': 'weather', 'id': 'weather_blank', 'is_shown': True,
+            'away_abbr': 'NO CITY SET', 'home_abbr': '--', 'status': 'SET A CITY',
+            'situation': {'icon': 'cloud', 'stats': {}, 'forecast': []},
+        }
+    if mode in ('flights', 'flight_tracker'):
+        return {
+            'type': 'flight_airport_hud', 'sport': 'flight', 'id': 'airport_hud_blank', 'is_shown': True,
+            '_weather_item': None, '_arrivals': [], '_departures': [],
+        }
     return None
 
 
