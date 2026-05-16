@@ -4325,3 +4325,7 @@ weather state 200 shown 1 strip 200 image/png 300 xw 384
 clock state 200 shown 1 strip 200 image/png 381 xw 384
 [DEBUG][21:24:15] DEBUG        | get_airport_objects called - arrivals: 0, departures: 0
 flights state 200 shown 1 strip 200 image/png 244 xw 384
+📂 Found 21 saved tickers in 'ticker_data'
+📦 Loaded 31 cached games from game_cache.json
+[AIRLINE-DB] Could not fetch airline data (HTTPSConnectionPool(host='raw.githubusercontent.com', port=443): Max retries exceeded with url: /jpatokal/openflights/master/data/airlines.dat (Caused by NewConnectionError("HTTPSConnection(host='raw.githubusercontent.com', port=443): Failed to establish a new connection: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions"))), using 24 hardcoded entries
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.

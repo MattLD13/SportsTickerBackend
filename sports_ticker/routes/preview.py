@@ -5,6 +5,7 @@ import io
 import os
 import sys
 import threading
+import time
 
 from flask import request, Response
 from PIL import Image, ImageDraw
@@ -14,6 +15,8 @@ from ..core import (
     NON_SCOREBOARD_TYPES, HIDDEN_STATUS_KEYWORDS, _ACTIVE_STATES,
 )
 from ..workers import fetcher
+from ticker_controller.controller import TickerStreamer as _PreviewTickerStreamer
+from ticker_controller.fonts import load_display_font, load_monospace_font
 
 # ticker_controller lives at the repo root
 _repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,6 +24,7 @@ if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
 _renderer = None
+_preview_renderer = None
 _renderer_lock = threading.Lock()
 
 PANEL_W = 384
@@ -52,6 +56,62 @@ def _get_renderer():
     return _renderer
 
 
+def _get_preview_renderer():
+    global _preview_renderer
+    if _preview_renderer is not None:
+        return _preview_renderer
+    with _renderer_lock:
+        if _preview_renderer is not None:
+            return _preview_renderer
+        try:
+            renderer = _PreviewTickerStreamer.__new__(_PreviewTickerStreamer)
+            renderer.logo_cache = {}
+            renderer.stadium = _get_renderer()
+            renderer.font = load_monospace_font(10, bold=True)
+            renderer.medium_font = load_monospace_font(12, bold=True)
+            renderer.big_font = load_monospace_font(14, bold=True)
+            renderer.huge_font = load_display_font(20, bold=True)
+            renderer.clock_giant = load_display_font(28, bold=True)
+            renderer.tiny = load_monospace_font(9)
+            renderer.tiny_small = load_monospace_font(8)
+            renderer.micro = load_monospace_font(7)
+            renderer.nano = load_monospace_font(5)
+            renderer.score_default_font = load_display_font(12, bold=True)
+            renderer.brightness = 1.0
+            renderer.inverted = False
+            renderer.VINYL_SIZE = 51
+            renderer.COVER_SIZE = 42
+            renderer.vinyl_mask = Image.new('L', (renderer.COVER_SIZE, renderer.COVER_SIZE), 0)
+            ImageDraw.Draw(renderer.vinyl_mask).ellipse((0, 0, 41, 41), fill=255)
+            renderer.scratch_layer = Image.new('RGBA', (renderer.VINYL_SIZE, renderer.VINYL_SIZE), (0, 0, 0, 0))
+            renderer._init_vinyl_scratch()
+            renderer.vinyl_rotation = 0.0
+            renderer.text_scroll_pos = 0.0
+            renderer.last_frame_time = time.time()
+            renderer.dominant_color = (29, 185, 84)
+            renderer.spindle_color = 'black'
+            renderer.last_cover_url = ''
+            renderer.vinyl_cache = None
+            renderer.prev_vinyl_cache = None
+            renderer.prev_dominant_color = (29, 185, 84)
+            renderer.fade_alpha = 1.0
+            renderer.transitioning_out = False
+            renderer.viz_heights = [2.0] * 16
+            renderer.viz_phase = [0.0] * 16
+            renderer.C_BG = (5, 5, 8)
+            renderer.C_AMBER = (255, 170, 0)
+            renderer.C_BLUE_TXT = (80, 180, 255)
+            renderer.C_WHT = (220, 220, 230)
+            renderer.C_GRN = (80, 255, 80)
+            renderer.C_RED = (255, 60, 60)
+            renderer.C_GRY = (120, 120, 130)
+            _preview_renderer = renderer
+        except Exception as e:
+            print(f"[preview] preview renderer init failed: {e}")
+            _preview_renderer = False
+    return _preview_renderer
+
+
 def _pf(draw, text, x, y, color, sc=2):
     """Draw pixel-font string using the 3×5 PF glyph dict from stadium.py."""
     try:
@@ -75,60 +135,88 @@ def _pw(text, sc=2):
     return len(str(text)) * 4 * sc
 
 
-def _render_non_game(g: dict) -> Image.Image:
-    """Render a non-sports item as a PANEL_W×PANEL_H RGBA PIL image."""
-    itype = g.get('type', '').lower()
-    sport = g.get('sport', '').lower()
+def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
+    """Render a non-sports item using the real controller mixins."""
+    renderer = _get_preview_renderer()
+    if renderer:
+        try:
+            itype = str(g.get('type', '')).lower()
+            sport = str(g.get('sport', '')).lower()
+            renderer.mode = str(mode or 'sports')
+            if itype == 'weather':
+                return renderer.draw_weather_detailed(g)
+            if itype == 'stock_ticker' or sport.startswith('stock'):
+                return renderer.draw_stock_card(g)
+            if itype == 'music' or sport == 'music':
+                return renderer.draw_music_card(g)
+            if itype == 'clock' or sport.startswith('clock'):
+                return renderer.draw_clock_modern()
+            if itype == 'flight_visitor':
+                return renderer.draw_flight_visitor(g)
+            if itype == 'flight_airport_hud':
+                return renderer.draw_flight_airport(
+                    g.get('_weather_item'),
+                    g.get('_arrivals', []),
+                    g.get('_departures', []),
+                )
+            if sport == 'flight' or itype == 'flight':
+                return renderer.draw_flight_visitor(g)
+            if itype in ('golf', 'masters') or sport in ('golf', 'masters'):
+                if renderer.mode in ('golf', 'sports_full'):
+                    return renderer.draw_golf_mode(g)
+                return renderer.draw_golf_scroll_card(g)
+            if itype == 'leaderboard':
+                return renderer.draw_leaderboard_card(g)
+        except Exception as e:
+            print(f"[preview] real non-sports render failed for {g.get('id','?')}: {e}")
 
-    img  = Image.new('RGBA', (PANEL_W, PANEL_H), (0, 0, 0, 255))
+    # Last-resort fallback: compact but still mode-aware.
+    itype = str(g.get('type', '')).lower()
+    sport = str(g.get('sport', '')).lower()
+    img = Image.new('RGBA', (PANEL_W, PANEL_H), (0, 0, 0, 255))
     draw = ImageDraw.Draw(img)
-
     if itype == 'weather':
-        city  = (g.get('city') or g.get('location') or 'WEATHER').upper()[:14]
-        temp  = g.get('temp')
-        cond  = (g.get('condition') or g.get('description') or '').upper()[:14]
+        city = (g.get('city') or g.get('location') or 'WEATHER').upper()[:14]
+        temp = g.get('temp')
+        cond = (g.get('condition') or g.get('description') or '').upper()[:14]
         draw.rectangle([0, 0, PANEL_W - 1, 3], fill=(10, 40, 90, 255))
-        _pf(draw, city,  4, 6,  (100, 200, 255), sc=2)
+        _pf(draw, city, 4, 6, (100, 200, 255), sc=2)
         temp_str = f"{int(round(temp))}F" if temp is not None else '--F'
         x2 = _pf(draw, temp_str, 4, 20, (255, 255, 255), sc=2)
         _pf(draw, cond, x2 + 6, 20, (80, 170, 255), sc=2)
-
     elif itype == 'stock_ticker':
         symbol = (g.get('symbol') or '???').upper()[:6]
-        price  = g.get('price')
-        pct    = g.get('change_pct')
-        up     = float(pct or 0) >= 0
+        price = g.get('price')
+        pct = g.get('change_pct')
+        up = float(pct or 0) >= 0
         price_str = f"${float(price):.2f}" if price is not None else '$--'
-        pct_str   = ('+' if up else '') + f"{float(pct):.1f}%" if pct is not None else ''
-        clr_pct   = (50, 220, 100) if up else (255, 70, 70)
+        pct_str = ('+' if up else '') + f"{float(pct):.1f}%" if pct is not None else ''
+        clr_pct = (50, 220, 100) if up else (255, 70, 70)
         draw.rectangle([0, 0, PANEL_W - 1, 3], fill=((0, 80, 40) if up else (80, 0, 0)))
-        _pf(draw, symbol,    4, 6,  (180, 255, 180) if up else (255, 180, 180), sc=2)
+        _pf(draw, symbol, 4, 6, (180, 255, 180) if up else (255, 180, 180), sc=2)
         x2 = _pf(draw, price_str, 4, 20, (255, 255, 255), sc=2)
         arrow = '▲' if up else '▼'
         _pf(draw, arrow + pct_str, x2 + 6, 20, clr_pct, sc=2)
-
     elif itype == 'music':
         artist = (g.get('artist') or g.get('artist_name') or 'ARTIST').upper()[:18]
-        title  = (g.get('title')  or g.get('song') or '').upper()[:22]
+        title = (g.get('title') or g.get('song') or '').upper()[:22]
         draw.rectangle([0, 0, PANEL_W - 1, 3], fill=(60, 0, 100, 255))
-        _pf(draw, artist, 4, 6,  (200, 100, 255), sc=2)
-        _pf(draw, title,  4, 20, (220, 180, 255), sc=2)
-
+        _pf(draw, artist, 4, 6, (200, 100, 255), sc=2)
+        _pf(draw, title, 4, 20, (220, 180, 255), sc=2)
     elif itype == 'clock':
-        now      = datetime.datetime.now()
+        now = datetime.datetime.now()
         time_str = now.strftime('%I:%M:%S').lstrip('0') or '12:00:00'
         date_str = now.strftime('%a').upper() + ' ' + now.strftime('%b %d').upper()
         draw.rectangle([0, 0, PANEL_W - 1, 3], fill=(20, 20, 20, 255))
         tw = _pw(time_str, sc=4)
         _pf(draw, time_str, max(4, (PANEL_W - tw) // 2), 5, (180, 180, 180), sc=4)
         _pf(draw, date_str, 4, 27, (70, 70, 70), sc=1)
-
     elif itype == 'flight_visitor':
         flight = (g.get('flight') or g.get('id') or '').upper()
         origin = (g.get('origin') or '').upper()
-        dest   = (g.get('dest')   or '').upper()
+        dest = (g.get('dest') or '').upper()
         status = (g.get('status') or '').upper()[:10]
-        guest  = (g.get('guest_name') or '').upper()[:12]
+        guest = (g.get('guest_name') or '').upper()[:12]
         draw.rectangle([0, 0, PANEL_W - 1, 3], fill=(0, 50, 70, 255))
         x2 = _pf(draw, flight, 4, 6, (0, 220, 200), sc=2)
         if origin and dest:
@@ -137,13 +225,12 @@ def _render_non_game(g: dict) -> Image.Image:
         x2 = _pf(draw, lbl, 4, 20, (100, 200, 180), sc=2)
         if guest and status:
             _pf(draw, status, x2 + 6, 20, (200, 200, 80), sc=2)
-
     elif sport == 'flight' or itype == 'flight':
         airline = (g.get('airline') or '').upper()[:4]
-        flnum   = (g.get('flight_number') or g.get('flight') or '').upper()[:8]
-        dest    = (g.get('destination') or g.get('dest') or '').upper()[:12]
-        status  = (g.get('status') or '').upper()[:12]
-        gate    = (g.get('gate') or '').upper()
+        flnum = (g.get('flight_number') or g.get('flight') or '').upper()[:8]
+        dest = (g.get('destination') or g.get('dest') or '').upper()[:12]
+        status = (g.get('status') or '').upper()[:12]
+        gate = (g.get('gate') or '').upper()
         draw.rectangle([0, 0, PANEL_W - 1, 3], fill=(0, 50, 70, 255))
         x2 = _pf(draw, airline + flnum, 4, 6, (0, 220, 200), sc=2)
         _pf(draw, dest, x2 + 6, 6, (160, 160, 160), sc=2)
@@ -153,7 +240,6 @@ def _render_non_game(g: dict) -> Image.Image:
         if gate:
             gw = _pw('GATE ' + gate, sc=2)
             _pf(draw, 'GATE ' + gate, PANEL_W - gw - 4, 20, (140, 140, 140), sc=2)
-
     else:
         label = (g.get('label') or itype or 'ITEM').upper()[:20]
         _pf(draw, label, 4, 13, (100, 100, 100), sc=2)
@@ -161,10 +247,46 @@ def _render_non_game(g: dict) -> Image.Image:
     return img
 
 
+def _collapse_flight_airport_items(games: list) -> list:
+    """Match the controller/browser grouping for airport weather/arrival/departure rows."""
+    flight_weather = None
+    flight_arrivals = []
+    flight_departures = []
+    other_games = []
+
+    for g in games:
+        if not isinstance(g, dict):
+            continue
+        item_type = str(g.get('type', ''))
+        if item_type == 'flight_weather':
+            flight_weather = g
+        elif item_type == 'flight_arrival':
+            flight_arrivals.append(g)
+        elif item_type == 'flight_departure':
+            flight_departures.append(g)
+        else:
+            other_games.append(g)
+
+    if flight_weather or flight_arrivals or flight_departures:
+        other_games.append({
+            'type': 'flight_airport_hud',
+            'sport': 'flight',
+            'id': 'airport_hud',
+            'is_shown': True,
+            '_weather_item': flight_weather,
+            '_arrivals': flight_arrivals,
+            '_departures': flight_departures,
+        })
+
+    return other_games
+
+
 def _is_sports_game(g: dict) -> bool:
     itype = (g.get('type') or '').lower()
     sport = (g.get('sport') or '').lower()
-    if itype in ('weather', 'stock_ticker', 'music', 'clock', 'flight_visitor'):
+    if itype in ('weather', 'stock_ticker', 'music', 'clock', 'flight_visitor', 'flight_airport_hud', 'golf', 'masters'):
+        return False
+    if sport in ('golf', 'masters'):
         return False
     if sport == 'flight' or itype == 'flight':
         return False
@@ -245,6 +367,7 @@ def preview_strip():
         games = []
 
     games = _filter_preview_games(games, current_mode)
+    games = _collapse_flight_airport_items(games)
 
     renderer = _get_renderer()
 
@@ -260,7 +383,7 @@ def preview_strip():
                 if card is None:
                     continue
             else:
-                card = _render_non_game(g)
+                card = _render_non_game(g, current_mode)
 
             if card.mode != 'RGBA':
                 card = card.convert('RGBA')
