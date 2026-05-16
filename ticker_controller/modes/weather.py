@@ -14,32 +14,41 @@ class WeatherMixin:
         icon = str(icon_name).lower()
         SUN_Y = (255, 200, 0); CLOUD_W = (205, 210, 220); RAIN_B = (60, 130, 255); SNOW_W = (210, 235, 255)
         if 'sun' in icon or 'clear' in icon:
-            # Static core (no pulsing)
+            # Larger static core (no pulsing)
             cx_s = x + 7; cy_s = y + 7
-            core_r = 3
+            core_r = 5
             d.ellipse((cx_s-core_r, cy_s-core_r, cx_s+core_r, cy_s+core_r), fill=SUN_Y)
 
-            # Rotating outer rays whose length/brightness pulse over time
+            # Rotating outer rays: alternate rays swap between "long" and "short" lengths
             rays = 12
-            base_len = 6
-            amp = 3
             rot_speed = 1.1
-            pulse_speed = 3.2
+            swap_speed = 1.0
+            long_pulse_speed = 3.0
+            short_pulse_speed = 3.4
             for i in range(rays):
                 phase = (i / float(rays)) * (2 * math.pi)
                 angle = phase + t * rot_speed
-                # pulsing factor per-ray (creates the pulsing outer lines)
-                pulse = 0.5 + 0.5 * math.sin(t * pulse_speed + phase * 1.3)
-                length = base_len + int(amp * pulse)
+                # determine current assignment (alternating rays swap over time)
+                is_long_now = math.sin(t * swap_speed + i * math.pi) > 0
+                # per-category pulsing within desired ranges
+                if is_long_now:
+                    # long rays pulse between 4 and 5 pixels
+                    length_f = 4.0 + 0.5 * (1.0 + math.sin(t * long_pulse_speed + i * 0.4))
+                else:
+                    # short rays pulse between 2 and 3 pixels
+                    length_f = 2.0 + 0.5 * (1.0 + math.sin(t * short_pulse_speed + i * 0.4))
+                length = int(round(length_f))
                 r1 = core_r + 1
                 r2 = core_r + length
                 x1 = round(cx_s + math.cos(angle) * r1)
                 y1 = round(cy_s + math.sin(angle) * r1)
                 x2 = round(cx_s + math.cos(angle) * r2)
                 y2 = round(cy_s + math.sin(angle) * r2)
-                # color intensity varies with pulse
-                intensity = int(200 + 55 * pulse)
-                col = (min(255, intensity), min(255, int(intensity * 0.9)), min(255, int(intensity * 0.3)))
+                # color slightly brighter for long rays
+                base_int = 210 if is_long_now else 170
+                pulse_col_factor = 0.6 + 0.4 * (length_f - 2.0)
+                intensity = int(min(255, base_int * pulse_col_factor))
+                col = (intensity, int(intensity * 0.9), int(intensity * 0.35))
                 d.line([(x1, y1), (x2, y2)], fill=col, width=1)
 
             # subtle small highlights rotating with rays
