@@ -21,6 +21,7 @@ from .routes.state import api_pin_games, api_state, api_teams, check_my_teams, g
 from .routes.ticker import list_tickers, pair_ticker, pair_ticker_by_id, register_ticker, unpair
 from .routes.flight import api_airport_lookup, debug_flight_tracking, get_airlines, get_airports, get_flight_status
 from .routes.debug import api_debug, api_hardware, api_timezone_debug, get_logs
+from .routes.preview import preview_strip
 
 __all__ = [
     'app',
@@ -30,4 +31,5 @@ __all__ = [
     'list_tickers', 'pair_ticker', 'pair_ticker_by_id', 'register_ticker', 'unpair',
     'api_airport_lookup', 'debug_flight_tracking', 'get_airlines', 'get_airports', 'get_flight_status',
     'api_debug', 'api_hardware', 'api_timezone_debug', 'get_logs',
+    'preview_strip',
 ]

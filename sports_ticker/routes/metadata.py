@@ -312,35 +312,128 @@ a:hover{{text-decoration:underline}}
 'use strict';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const TICKER_ID    = '{first_ticker_id_js}';
-const LED_W        = 384;   // LED matrix width
-const LED_H        = 32;    // LED matrix height
-const SCALE        = 2;     // screen pixels per LED pixel
-const FPS_SCROLL   = 0.4;   // LED pixels scrolled per rAF frame
-const FETCH_EVERY  = 30000; // ms
+const TICKER_ID   = '{first_ticker_id_js}';
+const LED_W       = 384;
+const LED_H       = 32;
+const SCALE       = 2;        // screen pixels per LED pixel
+const SCROLL_SPD  = 0.5;      // LED source pixels per rAF frame
+const FETCH_EVERY = 20000;
 
-// ─── Bitmap Font ─────────────────────────────────────────────────────────────
-const FONT = {{
-  'A':[0x6,0x9,0xF,0x9,0x9],'B':[0xE,0x9,0xE,0x9,0xE],'C':[0x6,0x9,0x8,0x9,0x6],
-  'D':[0xE,0x9,0x9,0x9,0xE],'E':[0xF,0x8,0xE,0x8,0xF],'F':[0xF,0x8,0xE,0x8,0x8],
-  'G':[0x6,0x9,0xB,0x9,0x6],'H':[0x9,0x9,0xF,0x9,0x9],'I':[0xE,0x4,0x4,0x4,0xE],
-  'J':[0x7,0x2,0x2,0xA,0x4],'K':[0x9,0xA,0xC,0xA,0x9],'L':[0x8,0x8,0x8,0x8,0xF],
-  'M':[0x9,0xF,0xF,0x9,0x9],'N':[0x9,0xD,0xF,0xB,0x9],'O':[0x6,0x9,0x9,0x9,0x6],
-  'P':[0xE,0x9,0xE,0x8,0x8],'Q':[0x6,0x9,0x9,0xA,0x5],'R':[0xE,0x9,0xE,0xA,0x9],
-  'S':[0x7,0x8,0x6,0x1,0xE],'T':[0xF,0x4,0x4,0x4,0x4],'U':[0x9,0x9,0x9,0x9,0x6],
-  'V':[0x9,0x9,0x9,0xA,0x4],'W':[0x9,0x9,0xF,0xF,0x9],'X':[0x9,0x9,0x6,0x9,0x9],
-  'Y':[0x9,0x9,0x6,0x2,0x2],'Z':[0xF,0x1,0x6,0x8,0xF],
-  '0':[0x6,0x9,0x9,0x9,0x6],'1':[0x4,0xC,0x4,0x4,0xE],'2':[0xE,0x1,0x6,0x8,0xF],
-  '3':[0xE,0x1,0x6,0x1,0xE],'4':[0x9,0x9,0xF,0x1,0x1],'5':[0xF,0x8,0xE,0x1,0xE],
-  '6':[0x6,0x8,0xE,0x9,0x6],'7':[0xF,0x1,0x2,0x4,0x4],'8':[0x6,0x9,0x6,0x9,0x6],
-  '9':[0x6,0x9,0x7,0x1,0x6],
-  '-':[0x0,0x0,0xE,0x0,0x0],'.':[0x0,0x0,0x0,0x0,0x4],' ':[0x0,0x0,0x0,0x0,0x0],
-  ':':[0x0,0x4,0x0,0x4,0x0],'/':[0x1,0x2,0x4,0x8,0x0],"'":[0x4,0x4,0x0,0x0,0x0],
-  '+':[0x0,0x4,0xE,0x4,0x0],'%':[0x9,0x2,0x4,0x8,0x9],'!':[0x4,0x4,0x4,0x0,0x4],
-  '&':[0x4,0xA,0x5,0xA,0x5],'>':[0x4,0x2,0x1,0x2,0x4],'<':[0x1,0x2,0x4,0x2,0x1],
-}};
+// ─── Canvas + state ──────────────────────────────────────────────────────────
+const canvas      = document.getElementById('ticker-canvas');
+const ctx         = canvas.getContext('2d');
+const pauseBadge  = document.getElementById('pause-badge');
+const fetchStatus = document.getElementById('fetch-status');
 
-// ─── Sport Colors ─────────────────────────────────────────────────────────────
+ctx.imageSmoothingEnabled = false; // pixel-perfect nearest-neighbour upscale
+
+let stripBitmap   = null;  // ImageBitmap of the server-rendered strip
+let stripSrcW     = 0;     // source pixels wide
+let scrollSrcX    = 0;     // fractional source-pixel scroll offset
+let paused        = false;
+let currentApiMode = 'sports';
+let allItems      = [];    // from /api/state for the detail panel
+
+// ─── LED grid overlay ─────────────────────────────────────────────────────────
+function drawLedGrid() {{
+  // Dim dot at top-left corner of every 2×2 LED cell
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  for (let sy = 0; sy < LED_H * SCALE; sy += SCALE) {{
+    for (let sx = 0; sx < LED_W * SCALE; sx += SCALE) {{
+      ctx.fillRect(sx, sy, 1, 1);
+    }}
+  }}
+}}
+
+// ─── Render frame ─────────────────────────────────────────────────────────────
+function renderFrame() {{
+  ctx.fillStyle = '#060608';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (!stripBitmap || stripSrcW === 0) {{
+    // Show placeholder
+    ctx.fillStyle = '#1a1a1a';
+    for (let sy = 0; sy < LED_H * SCALE; sy += SCALE) {{
+      for (let sx = 0; sx < LED_W * SCALE; sx += SCALE) {{
+        ctx.fillRect(sx + 1, sy + 1, SCALE - 1, SCALE - 1);
+      }}
+    }}
+    drawLedGrid();
+    return;
+  }}
+
+  const sx = Math.floor(scrollSrcX) % stripSrcW;
+  const canvasW = LED_W * SCALE;
+  const canvasH = LED_H * SCALE;
+
+  // First slice (sx → end of strip, or full LED_W if no wrap)
+  const firstW = Math.min(stripSrcW - sx, LED_W);
+  ctx.drawImage(stripBitmap,
+    sx, 0, firstW, LED_H,          // src
+    0,  0, firstW * SCALE, canvasH  // dst
+  );
+
+  // Second slice (wrap from beginning) if needed
+  if (firstW < LED_W) {{
+    const remW = LED_W - firstW;
+    ctx.drawImage(stripBitmap,
+      0, 0, remW, LED_H,
+      firstW * SCALE, 0, remW * SCALE, canvasH
+    );
+  }}
+
+  drawLedGrid();
+}}
+
+// ─── Animation loop ───────────────────────────────────────────────────────────
+function tick() {{
+  if (!paused && stripBitmap && stripSrcW > LED_W) {{
+    scrollSrcX += SCROLL_SPD;
+    if (scrollSrcX >= stripSrcW) scrollSrcX -= stripSrcW;
+  }}
+  renderFrame();
+  requestAnimationFrame(tick);
+}}
+
+// ─── Strip fetching ───────────────────────────────────────────────────────────
+async function fetchStrip() {{
+  try {{
+    const url = '/api/preview/strip.png?mode=' + encodeURIComponent(currentApiMode);
+    const resp = await fetch(url, {{ cache: 'no-store' }});
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const blob  = await resp.blob();
+    const bmp   = await createImageBitmap(blob);
+    stripBitmap = bmp;
+    stripSrcW   = bmp.width;
+    scrollSrcX  = 0;
+    fetchStatus.textContent = 'Updated ' + new Date().toLocaleTimeString() +
+      '  ·  strip ' + bmp.width + '×' + bmp.height + 'px  ·  ' + allItems.length + ' items';
+  }} catch(e) {{
+    fetchStatus.textContent = 'Strip error: ' + e.message;
+  }}
+}}
+
+// ─── Detail panel data (separate /api/state call) ─────────────────────────────
+async function fetchItems() {{
+  try {{
+    const params = [];
+    if (TICKER_ID)      params.push('id='   + encodeURIComponent(TICKER_ID));
+    if (currentApiMode) params.push('mode=' + encodeURIComponent(currentApiMode));
+    const resp = await fetch('/api/state' + (params.length ? '?' + params.join('&') : ''));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    allItems = (data && Array.isArray(data.games)) ? data.games : [];
+    updateDetailPanel();
+  }} catch(e) {{
+    console.warn('Items fetch error:', e.message);
+  }}
+}}
+
+async function fetchAll() {{
+  await Promise.all([fetchStrip(), fetchItems()]);
+}}
+
+// ─── Sport color helper ───────────────────────────────────────────────────────
 const SPORT_COLORS = {{
   NFL:'#FF6B35', NBA:'#C9082A', NHL:'#00B2E3', MLB:'#003DA5',
   NCF_FBS:'#FF8C00', NCF_FCS:'#FF8C00',
@@ -353,374 +446,19 @@ const SPORT_COLORS = {{
   FLIGHT:'#00DDCC', FLIGHT_VISITOR:'#00AACC',
   DEFAULT:'#FF8C00'
 }};
-
 function sportColor(item) {{
-  const sport = (item.sport || '').toUpperCase();
-  const type  = (item.type  || '').toUpperCase();
-  // Prefer sport key, fall back to type key
-  if (SPORT_COLORS[sport]) return SPORT_COLORS[sport];
-  if (SPORT_COLORS[type])  return SPORT_COLORS[type];
-  // Soccer prefix match
-  if (sport.startsWith('SOCCER')) return '#4CAF50';
-  return SPORT_COLORS.DEFAULT;
+  const sp = (item.sport || '').toUpperCase();
+  const ty = (item.type  || '').toUpperCase();
+  return SPORT_COLORS[sp] || SPORT_COLORS[ty] ||
+    (sp.startsWith('SOCCER') ? '#4CAF50' : SPORT_COLORS.DEFAULT);
 }}
 
-// ─── Canvas setup ─────────────────────────────────────────────────────────────
-const canvas  = document.getElementById('ticker-canvas');
-const ctx     = canvas.getContext('2d');
-const pauseBadge = document.getElementById('pause-badge');
-const fetchStatus = document.getElementById('fetch-status');
-
-// ─── Font drawing helpers ─────────────────────────────────────────────────────
-/**
- * Draw one character at LED grid position (ledX, ledY).
- * Each glyph is 4 LED-pixels wide × 5 LED-pixels tall.
- * Returns LED pixels consumed (4 char + 1 gap = 5).
- */
-function drawChar(ctx, ch, ledX, ledY, color) {{
-  const rows = FONT[ch.toUpperCase()] || FONT[' '];
-  ctx.fillStyle = color;
-  ctx.shadowBlur  = 3;
-  ctx.shadowColor = color;
-  for (let row = 0; row < 5; row++) {{
-    const bits = rows[row];
-    for (let col = 0; col < 4; col++) {{
-      if (bits & (0x8 >> col)) {{
-        ctx.fillRect((ledX + col) * SCALE, (ledY + row) * SCALE, SCALE, SCALE);
-      }}
-    }}
-  }}
-  ctx.shadowBlur = 0;
-  return 5; // 4 wide + 1 gap
-}}
-
-/**
- * Draw a string. Returns total LED pixel width consumed.
- */
-function drawText(ctx, text, ledX, ledY, color) {{
-  let x = ledX;
-  for (const ch of text) {{
-    x += drawChar(ctx, ch, x, ledY, color);
-  }}
-  return x - ledX;
-}}
-
-/**
- * Measure text width in LED pixels without drawing.
- */
-function measureText(text) {{
-  return text.length * 5;
-}}
-
-// ─── State ───────────────────────────────────────────────────────────────────
-let allItems      = [];   // parsed from API
-let segments      = [];   // [{{text, color, item}}]
-let totalLedWidth = 0;
-let scrollLedX    = 0;    // fractional LED pixels scrolled
-let paused        = false;
-let currentApiMode = 'sports'; // matches active mode button data-mode
-let itemRects     = [];   // [{{item, startX, endX}}] in absolute LED coords each frame
-let selectedItem  = null;
-let rafId         = null;
-
-// ─── Data Fetching ────────────────────────────────────────────────────────────
-function buildApiUrl() {{
-  const params = [];
-  if (TICKER_ID)      params.push('id='   + encodeURIComponent(TICKER_ID));
-  if (currentApiMode) params.push('mode=' + encodeURIComponent(currentApiMode));
-  return '/api/state' + (params.length ? '?' + params.join('&') : '');
-}}
-
-function parseSports(data) {{
-  // /api/state returns {{ games: [...] }} — include all items (is_shown or not)
-  return (data && Array.isArray(data.games)) ? data.games : [];
-}}
-
-function itemToSegment(item) {{
-  const itype  = (item.type  || '').toLowerCase();
-  const sport  = (item.sport || '').toUpperCase();
-  const color  = sportColor(item);
-  let text = '';
-
-  if (itype === 'weather') {{
-    const city = (item.city || item.location || '').toUpperCase().slice(0, 12);
-    const temp = item.temp  != null ? Math.round(item.temp) + 'F' : '';
-    const cond = (item.condition || item.description || '').toUpperCase().slice(0, 10);
-    text = [city, temp, cond].filter(Boolean).join('  ');
-
-  }} else if (itype === 'stock_ticker') {{
-    const sym   = (item.symbol || '').toUpperCase();
-    const price = item.price != null ? '$' + (+item.price).toFixed(2) : '';
-    const pct   = item.change_pct != null
-      ? (item.change_pct >= 0 ? '+' : '') + (+item.change_pct).toFixed(1) + '%'
-      : '';
-    text = [sym, price, pct].filter(Boolean).join('  ');
-
-  }} else if (itype === 'music') {{
-    const artist = (item.artist || '').toUpperCase().slice(0, 12);
-    const title  = (item.title  || item.song || '').toUpperCase().slice(0, 16);
-    text = [artist, title].filter(Boolean).join('  ') || 'MUSIC';
-
-  }} else if (itype === 'clock') {{
-    const t = item.time || item.clock_str || '';
-    text = t ? t.toUpperCase() : 'CLOCK';
-
-  }} else if (itype === 'flight_visitor') {{
-    const flt  = (item.flight || item.id || '').toUpperCase();
-    const orig = (item.origin || '').toUpperCase();
-    const dest = (item.dest   || item.destination || '').toUpperCase();
-    const stat = (item.status || '').toUpperCase().slice(0, 8);
-    const route = (orig && dest) ? orig + '>' + dest : '';
-    text = [flt, route, stat].filter(Boolean).join('  ');
-
-  }} else if (sport === 'FLIGHT') {{
-    const airline = (item.airline || '').toUpperCase().slice(0, 4);
-    const num     = (item.flight_number || item.flight || '').toUpperCase().slice(0, 8);
-    const dest    = (item.destination || item.dest || '').toUpperCase().slice(0, 4);
-    const stat    = (item.status || '').toUpperCase().slice(0, 8);
-    text = [airline + num, dest, stat].filter(Boolean).join('  ');
-
-  }} else {{
-    // Sports game
-    const league = sport.slice(0, 5);
-    const away   = (item.away_abbr || item.away || '').toUpperCase().slice(0, 4);
-    const home   = (item.home_abbr || item.home || '').toUpperCase().slice(0, 4);
-    const aScore = item.away_score != null ? String(item.away_score) : '';
-    const hScore = item.home_score != null ? String(item.home_score) : '';
-    const score  = (aScore !== '' && hScore !== '') ? aScore + '-' + hScore : '';
-    const status = (item.status || item.clock || item.period || '').toUpperCase().slice(0, 8);
-    const parts  = [league];
-    if (away)   parts.push(away);
-    if (score)  parts.push(score);
-    if (home)   parts.push(home);
-    if (status) parts.push(status);
-    text = parts.join(' ');
-  }}
-
-  return {{ text, color, item }};
-}}
-
-function rebuildSegments() {{
-  // API already returned mode-specific data — show all items
-  segments = allItems.map(itemToSegment);
-
-  // Compute total scroll width: each segment + '  ·  ' divider
-  const DIV_W = measureText(' · ');
-  totalLedWidth = 0;
-  for (let i = 0; i < segments.length; i++) {{
-    totalLedWidth += measureText(segments[i].text);
-    if (i < segments.length - 1) totalLedWidth += DIV_W;
-  }}
-  totalLedWidth += DIV_W; // trailing gap before loop
-}}
-
-async function fetchData() {{
-  try {{
-    const resp = await fetch(buildApiUrl());
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
-    allItems = parseSports(data);
-    rebuildSegments();
-    const ts = new Date().toLocaleTimeString();
-    fetchStatus.textContent = 'Last fetch: ' + ts + '  ·  ' + allItems.length + ' items';
-    updateDetailPanel();
-  }} catch(e) {{
-    fetchStatus.textContent = 'Fetch error: ' + e.message;
-  }}
-}}
-
-// ─── LED Canvas rendering ─────────────────────────────────────────────────────
-function drawOffGrid() {{
-  ctx.fillStyle = '#111116';
-  for (let ly = 0; ly < LED_H; ly++) {{
-    for (let lx = 0; lx < LED_W; lx++) {{
-      // 1×1 dot centered in each 2×2 LED cell
-      ctx.fillRect(lx * SCALE, ly * SCALE, 1, 1);
-    }}
-  }}
-}}
-
-function renderFrame() {{
-  // Background
-  ctx.fillStyle = '#060608';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // Off-LED grid
-  drawOffGrid();
-
-  if (!segments.length) {{
-    // No data: draw placeholder
-    ctx.shadowBlur = 0;
-    drawText(ctx, 'NO DATA', 2, 13, '#333333');
-    return;
-  }}
-
-  // Build absolute-position item rects for this frame
-  const newRects = [];
-  const DIV_W = measureText(' · ');
-  const DIV_COLOR = '#333333';
-  const TEXT_Y = 13; // LED row to center 5-tall text in 32-tall display
-
-  // scrollLedX is how many LED pixels we've scrolled
-  // content starts at LED x=192 (center-right of 384-wide) and scrolls left
-  // visible LED range: 0..383
-  // "world" x of segment start = 192 - scrollLedX + offset_into_segments
-  // We need to iterate segments and wrap
-
-  // Calculate starting world-x for each segment
-  let segStarts = [];
-  let cur = 0;
-  for (let i = 0; i < segments.length; i++) {{
-    segStarts.push(cur);
-    cur += measureText(segments[i].text);
-    if (i < segments.length - 1) cur += DIV_W;
-  }}
-  cur += DIV_W; // trailing gap
-
-  // Origin on canvas: content starts scrolling in from right (LED x=192 at scroll=0)
-  // canvasLedX = 192 - scrollLedX + worldX
-  // We render 2 copies to cover wrap
-  for (let copy = 0; copy < 3; copy++) {{
-    const worldOffset = copy * totalLedWidth;
-
-    for (let i = 0; i < segments.length; i++) {{
-      const seg = segments[i];
-      const worldX = segStarts[i] + worldOffset;
-      const ledX   = Math.round(192 - scrollLedX + worldX);
-
-      // Cull: skip if entirely off-canvas
-      const segW = measureText(seg.text);
-      if (ledX + segW < -5 || ledX > LED_W + 5) {{
-        // Still track rect for hit-test
-        const cxStart = (ledX) * SCALE;
-        const cxEnd   = (ledX + segW) * SCALE;
-        newRects.push({{ item: seg.item, canvasStartX: cxStart, canvasEndX: cxEnd }});
-        continue;
-      }}
-
-      // Draw text
-      drawText(ctx, seg.text, ledX, TEXT_Y, seg.color);
-
-      const cxStart = ledX * SCALE;
-      const cxEnd   = (ledX + segW) * SCALE;
-      newRects.push({{ item: seg.item, canvasStartX: cxStart, canvasEndX: cxEnd }});
-
-      // Divider
-      if (i < segments.length - 1) {{
-        const divX = ledX + segW + 1;
-        drawText(ctx, '·', divX, TEXT_Y, DIV_COLOR);
-      }}
-    }}
-  }}
-
-  itemRects = newRects;
-}}
-
-// ─── Animation loop ───────────────────────────────────────────────────────────
-function tick() {{
-  if (!paused && totalLedWidth > 0) {{
-    scrollLedX += FPS_SCROLL;
-    if (scrollLedX >= totalLedWidth) scrollLedX -= totalLedWidth;
-  }}
-  renderFrame();
-  rafId = requestAnimationFrame(tick);
-}}
-
-// ─── Detail Panel ─────────────────────────────────────────────────────────────
-
-function makeDetailCard(item, idx) {{
-  const color  = sportColor(item);
-  const bgC    = color + '22';
-  const itype  = (item.type  || '').toLowerCase();
-  const sport  = (item.sport || itype || 'game').toUpperCase();
-
-  let teamsHtml = '', scoreHtml = '', statusHtml = '', detailHtml = '';
-
-  if (itype === 'weather') {{
-    const city  = item.city || item.location || 'N/A';
-    const temp  = item.temp != null ? Math.round(item.temp) + '°F' : '';
-    const cond  = item.condition || item.description || '';
-    teamsHtml  = `<div class="dc-teams">${{city}}</div>`;
-    scoreHtml  = temp ? `<div class="dc-score">${{temp}}</div>` : '';
-    statusHtml = `<div class="dc-status">${{cond}}</div>`;
-    detailHtml = `<div class="row"><span>Humidity</span><span>${{item.humidity != null ? item.humidity + '%' : '—'}}</span></div>
-                  <div class="row"><span>Wind</span><span>${{item.wind || '—'}}</span></div>`;
-  }} else if (itype === 'stock_ticker') {{
-    const sym      = item.symbol || '';
-    const price    = item.price != null ? '$' + (+item.price).toFixed(2) : '';
-    const pct      = item.change_pct != null ? (+item.change_pct).toFixed(2) + '%' : '';
-    const pctColor = (item.change_pct || 0) >= 0 ? '#44dd88' : '#ff4444';
-    teamsHtml  = `<div class="dc-teams">${{sym}}</div>`;
-    scoreHtml  = price ? `<div class="dc-score">${{price}}</div>` : '';
-    statusHtml = pct ? `<div class="dc-status" style="color:${{pctColor}}">${{pct}}</div>` : '';
-    detailHtml = `<div class="row"><span>Change</span><span style="color:${{pctColor}}">${{item.change || pct}}</span></div>
-                  <div class="row"><span>Volume</span><span>${{item.volume || '—'}}</span></div>`;
-  }} else if (itype === 'music') {{
-    const title  = item.title  || item.song   || '';
-    const artist = item.artist || item.artist_name || '';
-    const album  = item.album  || '';
-    teamsHtml  = `<div class="dc-teams">${{artist}}</div>`;
-    scoreHtml  = title ? `<div class="dc-score" style="font-size:15px">${{title}}</div>` : '';
-    statusHtml = album ? `<div class="dc-status">${{album}}</div>` : '';
-    detailHtml = `<div class="row"><span>Duration</span><span>${{item.duration ? Math.round(item.duration/1000) + 's' : '—'}}</span></div>`;
-  }} else if (itype === 'clock') {{
-    teamsHtml  = `<div class="dc-teams">Clock</div>`;
-    scoreHtml  = `<div class="dc-score" style="font-size:18px">${{item.time || item.clock_str || '—'}}</div>`;
-    statusHtml = '';
-    detailHtml = `<div class="row"><span>Type</span><span>Clock</span></div>`;
-  }} else if (itype === 'flight_visitor') {{
-    const flt  = item.flight || item.id || '';
-    const orig = item.origin || '';
-    const dest = item.dest || item.destination || '';
-    const stat = item.status || '';
-    teamsHtml  = `<div class="dc-teams">${{flt}}</div>`;
-    scoreHtml  = (orig && dest) ? `<div class="dc-score" style="font-size:16px">${{orig}} → ${{dest}}</div>` : '';
-    statusHtml = `<div class="dc-status">${{stat}}</div>`;
-    detailHtml = `<div class="row"><span>Departure</span><span>${{item.depart || '—'}}</span></div>
-                  <div class="row"><span>Arrival</span><span>${{item.arrive || '—'}}</span></div>`;
-  }} else if ((item.sport || '').toLowerCase() === 'flight') {{
-    const airline = item.airline || '';
-    const num     = item.flight_number || item.flight || '';
-    const dest    = item.destination || item.dest || '';
-    const stat    = item.status || '';
-    teamsHtml  = `<div class="dc-teams">${{airline}} ${{num}}</div>`;
-    scoreHtml  = dest ? `<div class="dc-score" style="font-size:16px">→ ${{dest}}</div>` : '';
-    statusHtml = `<div class="dc-status">${{stat}}</div>`;
-    detailHtml = `<div class="row"><span>Gate</span><span>${{item.gate || '—'}}</span></div>
-                  <div class="row"><span>Time</span><span>${{item.time || item.scheduled || '—'}}</span></div>`;
-  }} else {{
-    // Game
-    const away   = item.away   || item.away_name   || '';
-    const home   = item.home   || item.home_name   || '';
-    const aScore = item.away_score != null ? item.away_score : '';
-    const hScore = item.home_score != null ? item.home_score : '';
-    const status = item.status || item.clock || '';
-    const isFinal = /final|ft|full/i.test(status);
-    const isLive  = !isFinal && (item.period || item.clock);
-    const statusColor = isLive ? color : isFinal ? '#555' : '#888';
-    teamsHtml  = `<div class="dc-teams">${{away}} vs ${{home}}</div>`;
-    scoreHtml  = (aScore !== '' && hScore !== '')
-      ? `<div class="dc-score">${{aScore}} – ${{hScore}}</div>` : '';
-    statusHtml = `<div class="dc-status" style="color:${{statusColor}}">${{status}}</div>`;
-    detailHtml = `<div class="row"><span>League</span><span>${{item.league || sport}}</span></div>
-                  <div class="row"><span>Venue</span><span>${{item.venue || '—'}}</span></div>`;
-  }}
-
-  return `<div class="dc" data-idx="${{idx}}" onclick="toggleCard(this,${{idx}})">
-    <div class="dc-badge" style="background:${{bgC}};color:${{color}};border:1px solid ${{color}}40">${{sport.slice(0,10)}}</div>
-    ${{teamsHtml}}
-    ${{scoreHtml}}
-    ${{statusHtml}}
-    <div class="dc-detail">${{detailHtml}}</div>
-  </div>`;
-}}
-
+// ─── Detail panel ─────────────────────────────────────────────────────────────
 function updateDetailPanel() {{
   const grid  = document.getElementById('detail-grid');
   const title = document.getElementById('detail-title');
-  const label = document.querySelector('.mf-btn.active')?.textContent || currentApiMode.toUpperCase();
+  const label = document.querySelector('.mf-btn.active')?.textContent || currentApiMode;
   title.textContent = label + ' — ' + allItems.length + ' items';
-
   if (!allItems.length) {{
     grid.innerHTML = '<p style="color:#333;font-size:12px">No data for this mode.</p>';
     return;
@@ -728,44 +466,82 @@ function updateDetailPanel() {{
   grid.innerHTML = allItems.map((item, idx) => makeDetailCard(item, idx)).join('');
 }}
 
-// ─── Card toggle ──────────────────────────────────────────────────────────────
-window.toggleCard = function(el, idx) {{
-  const wasActive = el.classList.contains('active');
+window.toggleCard = function(el) {{
+  const was = el.classList.contains('active');
   document.querySelectorAll('.dc.active').forEach(c => c.classList.remove('active'));
-  if (!wasActive) el.classList.add('active');
+  if (!was) el.classList.add('active');
 }};
 
-// ─── Canvas click — pause + item selection ────────────────────────────────────
-document.getElementById('canvas-wrap').addEventListener('click', function(e) {{
-  const rect   = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const clickX = (e.clientX - rect.left) * scaleX; // canvas pixel x
+function makeDetailCard(item, idx) {{
+  const color = sportColor(item);
+  const bgC   = color + '22';
+  const itype = (item.type  || '').toLowerCase();
+  const sport = (item.sport || itype || 'game').toUpperCase();
+  let badge = sport.slice(0, 10);
+  let teams = '', score = '', status = '', detail = '';
 
-  // Find hit item
-  let hit = null;
-  for (const r of itemRects) {{
-    if (clickX >= r.canvasStartX && clickX <= r.canvasEndX) {{
-      hit = r.item;
-      break;
-    }}
-  }}
-
-  if (hit) {{
-    // Highlight matching card in detail panel
-    const idx = allItems.indexOf(hit);
-    if (idx !== -1) {{
-      const card = document.querySelector('.dc[data-idx="' + idx + '"]');
-      if (card) {{
-        document.querySelectorAll('.dc.active').forEach(c => c.classList.remove('active'));
-        card.classList.add('active');
-        card.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
-      }}
-    }}
+  if (itype === 'weather') {{
+    teams  = item.city || item.location || 'Weather';
+    score  = item.temp != null ? Math.round(item.temp) + '°F' : '';
+    status = item.condition || item.description || '';
+    detail = `<div class="row"><span>Humidity</span><span>${{item.humidity != null ? item.humidity+'%' : '—'}}</span></div>
+              <div class="row"><span>Wind</span><span>${{item.wind||'—'}}</span></div>`;
+  }} else if (itype === 'stock_ticker') {{
+    const pct      = item.change_pct != null ? (+item.change_pct).toFixed(2)+'%' : '';
+    const pctColor = (item.change_pct||0) >= 0 ? '#44dd88' : '#ff4444';
+    teams  = item.symbol || '';
+    score  = item.price != null ? '$'+(+item.price).toFixed(2) : '';
+    status = `<span style="color:${{pctColor}}">${{pct}}</span>`;
+    detail = `<div class="row"><span>Change</span><span style="color:${{pctColor}}">${{item.change||pct}}</span></div>`;
+  }} else if (itype === 'music') {{
+    teams  = item.artist || item.artist_name || 'Unknown Artist';
+    score  = item.title  || item.song || '';
+    status = item.album  || '';
+  }} else if (itype === 'clock') {{
+    teams  = 'Clock';
+    score  = item.time   || item.clock_str || '';
+  }} else if (itype === 'flight_visitor') {{
+    teams  = item.flight || item.id || '';
+    score  = (item.origin && item.dest) ? item.origin + ' → ' + item.dest : '';
+    status = item.status || '';
+    detail = `<div class="row"><span>Arrival</span><span>${{item.arrive||'—'}}</span></div>`;
+  }} else if ((item.sport||'').toLowerCase() === 'flight') {{
+    teams  = (item.airline||'') + ' ' + (item.flight_number||item.flight||'');
+    score  = item.destination || item.dest || '';
+    status = item.status || '';
+    detail = `<div class="row"><span>Gate</span><span>${{item.gate||'—'}}</span></div>
+              <div class="row"><span>Time</span><span>${{item.time||item.scheduled||'—'}}</span></div>`;
   }} else {{
-    // Toggle pause
-    paused = !paused;
-    pauseBadge.classList.toggle('visible', paused);
+    const away   = item.away || item.away_name || '';
+    const home   = item.home || item.home_name || '';
+    const aScore = item.away_score != null ? item.away_score : '';
+    const hScore = item.home_score != null ? item.home_score : '';
+    const isFinal = /final|ft|full/i.test(item.status||'');
+    const isLive  = !isFinal && (item.period || item.clock);
+    teams  = away + ' vs ' + home;
+    score  = (aScore !== '' && hScore !== '') ? aScore + ' – ' + hScore : '';
+    status = `<span style="color:${{isLive ? color : isFinal ? '#555' : '#888'}}">${{item.status||item.clock||''}}</span>`;
+    detail = `<div class="row"><span>League</span><span>${{item.league||sport}}</span></div>
+              <div class="row"><span>Venue</span><span>${{item.venue||'—'}}</span></div>`;
+    // Logos
+    const awayLogo = item.away_logo ? `<img src="${{item.away_logo}}" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-right:4px" onerror="this.style.display='none'">` : '';
+    const homeLogo = item.home_logo ? `<img src="${{item.home_logo}}" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-left:4px"  onerror="this.style.display='none'">` : '';
+    teams = awayLogo + away + ' vs ' + home + homeLogo;
   }}
+
+  return `<div class="dc" data-idx="${{idx}}" onclick="toggleCard(this)">
+    <div class="dc-badge" style="background:${{bgC}};color:${{color}};border:1px solid ${{color}}40">${{badge}}</div>
+    <div class="dc-teams">${{teams}}</div>
+    ${{score  ? `<div class="dc-score">${{score}}</div>` : ''}}
+    ${{status ? `<div class="dc-status">${{status}}</div>` : ''}}
+    ${{detail ? `<div class="dc-detail">${{detail}}</div>` : ''}}
+  </div>`;
+}}
+
+// ─── Canvas click — pause ─────────────────────────────────────────────────────
+document.getElementById('canvas-wrap').addEventListener('click', function() {{
+  paused = !paused;
+  pauseBadge.classList.toggle('visible', paused);
 }});
 
 // ─── Mode filter buttons ──────────────────────────────────────────────────────
@@ -775,13 +551,13 @@ document.getElementById('mode-filters').addEventListener('click', function(e) {{
   document.querySelectorAll('.mf-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   currentApiMode = btn.dataset.mode;
-  scrollLedX = 0;
-  fetchData(); // re-fetch for the new mode
+  scrollSrcX = 0;
+  fetchAll();
 }});
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-fetchData();
-setInterval(fetchData, FETCH_EVERY);
+fetchAll();
+setInterval(fetchAll, FETCH_EVERY);
 tick();
 
 }})();
