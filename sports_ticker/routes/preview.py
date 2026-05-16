@@ -9,7 +9,10 @@ import threading
 from flask import request, Response
 from PIL import Image, ImageDraw
 from ..routes_runtime import app
-from ..core import state, normalize_mode
+from ..core import (
+    state, normalize_mode,
+    NON_SCOREBOARD_TYPES, HIDDEN_STATUS_KEYWORDS, _ACTIVE_STATES,
+)
 from ..workers import fetcher
 
 # ticker_controller lives at the repo root
@@ -173,6 +176,54 @@ def _is_sports_game(g: dict) -> bool:
     return False
 
 
+def _sport_for_preview(sport_name: str) -> str:
+    sport_norm = str(sport_name or '').lower()
+    return 'mlb' if sport_norm == 'wbc' else sport_norm
+
+
+def _filter_preview_games(games: list, mode: str) -> list:
+    """Apply the same visible-mode filtering the web dashboard detail panel uses."""
+    active_sports = state.get('active_sports', {})
+    saved_teams = set(state.get('my_teams', []))
+    collision_abbrs = {'LV'}
+    visible = []
+
+    for g in games:
+        game = g.copy()
+        sport = _sport_for_preview(game.get('sport', ''))
+        g_type = game.get('type', '')
+        game['sport'] = sport
+        should_show = True
+
+        if mode in ('sports', 'live', 'my_teams'):
+            should_show = active_sports.get(sport, True)
+
+        if mode == 'my_teams':
+            h_ab = str(game.get('home_abbr', '')).upper()
+            a_ab = str(game.get('away_abbr', '')).upper()
+            in_home = f"{sport}:{h_ab}" in saved_teams or (h_ab in saved_teams and h_ab not in collision_abbrs)
+            in_away = f"{sport}:{a_ab}" in saved_teams or (a_ab in saved_teams and a_ab not in collision_abbrs)
+            should_show = should_show and (in_home or in_away)
+        elif mode == 'live':
+            should_show = should_show and game.get('state') in _ACTIVE_STATES
+        elif mode == 'sports':
+            if g_type in NON_SCOREBOARD_TYPES:
+                should_show = False
+            status_lower = str(game.get('status', '')).lower()
+            if any(k in status_lower for k in HIDDEN_STATUS_KEYWORDS):
+                should_show = False
+        elif mode == 'soccer_full':
+            should_show = str(sport).startswith('soccer_')
+        elif mode == 'masters':
+            should_show = g_type == 'masters' or sport == 'masters'
+
+        if should_show:
+            game['is_shown'] = True
+            visible.append(game)
+
+    return visible
+
+
 def _empty_png():
     img = Image.new('RGB', (PANEL_W, PANEL_H), (0, 0, 0))
     buf = io.BytesIO()
@@ -192,6 +243,8 @@ def preview_strip():
         games = fetcher.get_mode_snapshot(current_mode, 0)[:30]
     except Exception:
         games = []
+
+    games = _filter_preview_games(games, current_mode)
 
     renderer = _get_renderer()
 

@@ -24,7 +24,7 @@ let stripBitmap    = null;   // ImageBitmap from server-rendered PNG strip
 let stripSrcW      = 0;      // source pixels wide
 let scrollSrcX     = 0;      // fractional source-pixel scroll offset
 let paused         = false;
-let currentApiMode = 'sports';
+let currentApiMode = CFG.defaultMode || 'sports';
 let allItems       = [];
 let pinnedId       = null;
 window._scrollSpd  = SCROLL_SPD;
@@ -90,7 +90,7 @@ async function fetchStrip() {
     stripSrcW   = bmp.width;
     scrollSrcX  = 0;
     fetchStatus.textContent = 'Updated ' + new Date().toLocaleTimeString() +
-      '  ·  strip ' + bmp.width + 'px  ·  ' + allItems.length + ' items';
+      '  ·  strip ' + bmp.width + 'px';
   } catch (e) {
     fetchStatus.textContent = 'Strip error: ' + e.message;
   }
@@ -105,7 +105,9 @@ async function fetchItems() {
     const resp = await fetch('/api/state' + (params.length ? '?' + params.join('&') : ''));
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
-    allItems = (data && Array.isArray(data.games)) ? data.games : [];
+    allItems = (data && Array.isArray(data.games))
+      ? data.games.filter(item => item && item.is_shown !== false)
+      : [];
     updateDetailPanel();
   } catch (e) {
     console.warn('Items fetch error:', e.message);
@@ -460,7 +462,14 @@ setInterval(() => {
 }, 1000);
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-showCtrlPanel('sports');
+document.querySelectorAll('.mf-btn').forEach(b => {
+  b.classList.toggle('active', b.dataset.mode === currentApiMode);
+});
+if (!document.querySelector('.mf-btn.active')) {
+  currentApiMode = 'sports';
+  document.querySelector('.mf-btn[data-mode="sports"]')?.classList.add('active');
+}
+showCtrlPanel(currentApiMode);
 fetchAll();
 fetchNowPlaying();
 setInterval(fetchAll, FETCH_EVERY);

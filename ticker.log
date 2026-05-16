@@ -4287,3 +4287,41 @@ saved airport EWR KEWR
 [REFRESH] done reason=api_config took=4.57s
 [REFRESH] start reason=api_config
 [REFRESH] error reason=api_config: cannot schedule new futures after shutdown
+📂 Found 21 saved tickers in 'ticker_data'
+📦 Loaded 31 cached games from game_cache.json
+[AIRLINE-DB] Could not fetch airline data (HTTPSConnectionPool(host='raw.githubusercontent.com', port=443): Max retries exceeded with url: /jpatokal/openflights/master/data/airlines.dat (Caused by NewConnectionError("HTTPSConnection(host='raw.githubusercontent.com', port=443): Failed to establish a new connection: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions"))), using 24 hardcoded entries
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+/ 200 text/html; charset=utf-8 8050
+⚠️ Weather Connection Failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=40.7128&longitude=-74.006&current=temperature_2m,weather_code,apparent_temperature,wind_speed_10m,relative_humidity_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto (Caused by NewConnectionError("HTTPSConnection(host='api.open-meteo.com', port=443): Failed to establish a new connection: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions"))
+/api/state?mode=weather 200 application/json 26280
+  games 1 mode weather
+/api/state?mode=clock 200 application/json 26094
+  games 1 mode clock
+[preview] StadiumRenderer ready
+/api/preview/strip.png?mode=weather 200 image/png 300
+/api/preview/strip.png?mode=clock 200 image/png 373
+📂 Found 21 saved tickers in 'ticker_data'
+📦 Loaded 31 cached games from game_cache.json
+[AIRLINE-DB] Could not fetch airline data (HTTPSConnectionPool(host='raw.githubusercontent.com', port=443): Max retries exceeded with url: /jpatokal/openflights/master/data/airlines.dat (Caused by NewConnectionError("HTTPSConnection(host='raw.githubusercontent.com', port=443): Failed to establish a new connection: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions"))), using 24 hardcoded entries
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+[preview] StadiumRenderer ready
+sports state 200 shown 31 strip 200 image/png 5437
+live state 200 shown 23 strip 200 image/png 5437
+stocks state 200 shown 21 strip 200 image/png 1252
+music state 200 shown 0 strip 200 image/png 115
+[DEBUG][21:23:45] DEBUG        | get_airport_objects called - arrivals: 0, departures: 0
+flights state 200 shown 1 strip 200 image/png 244
+flight_tracker state 200 shown 0 strip 200 image/png 115
+📂 Found 21 saved tickers in 'ticker_data'
+📦 Loaded 31 cached games from game_cache.json
+[AIRLINE-DB] Could not fetch airline data (HTTPSConnectionPool(host='raw.githubusercontent.com', port=443): Max retries exceeded with url: /jpatokal/openflights/master/data/airlines.dat (Caused by NewConnectionError("HTTPSConnection(host='raw.githubusercontent.com', port=443): Failed to establish a new connection: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions"))), using 24 hardcoded entries
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+[preview] StadiumRenderer ready
+sports state 200 shown 31 strip 200 image/png 5437 xw 2516
+live state 200 shown 23 strip 200 image/png 4486 xw 1922
+stocks state 200 shown 21 strip 200 image/png 1252 xw 8104
+⚠️ Weather Connection Failed: HTTPSConnectionPool(host='api.open-meteo.com', port=443): Max retries exceeded with url: /v1/forecast?latitude=40.7128&longitude=-74.006&current=temperature_2m,weather_code,apparent_temperature,wind_speed_10m,relative_humidity_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto (Caused by NewConnectionError("HTTPSConnection(host='api.open-meteo.com', port=443): Failed to establish a new connection: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions"))
+weather state 200 shown 1 strip 200 image/png 300 xw 384
+clock state 200 shown 1 strip 200 image/png 381 xw 384
+[DEBUG][21:24:15] DEBUG        | get_airport_objects called - arrivals: 0, departures: 0
+flights state 200 shown 1 strip 200 image/png 244 xw 384

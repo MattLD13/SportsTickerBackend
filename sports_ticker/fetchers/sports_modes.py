@@ -781,5 +781,33 @@ class SportsModesMixin:
         if mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
             return self.get_snapshot_for_delay(delay_seconds)
         with self._mode_buffer_lock:
-            return list(self._mode_buffers.get(mode, []))
+            snapshot = list(self._mode_buffers.get(mode, []))
+
+        if snapshot:
+            return snapshot
+
+        # Web dashboard previews can ask for a mode that no paired ticker is
+        # currently using. Build those lightweight buffers on demand so the
+        # website behaves as an independent preview surface.
+        _dispatch = {
+            'stocks':         self._build_stocks_buffer,
+            'weather':        self._build_weather_buffer,
+            'music':          self._build_music_buffer,
+            'clock':          self._build_clock_buffer,
+            'golf':           self._build_golf_buffer,
+            'masters':        self._build_golf_buffer,
+            'flights':        self._build_flights_buffer,
+            'flight_tracker': self._build_flight_tracker_buffer,
+        }
+        builder = _dispatch.get(mode)
+        if not builder:
+            return []
+
+        try:
+            result = builder()
+            self._set_mode_buffer(mode, result)
+            return list(result)
+        except Exception as e:
+            print(f"[preview] on-demand buffer build failed for {mode}: {e}")
+            return []
 
