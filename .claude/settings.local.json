@@ -37,7 +37,11 @@
       "PowerShell(Select-String -Pattern \"    def \" \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\weather.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\golf.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\music.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\flight.py\", \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\\\\modes\\\\misc.py\" | ForEach-Object { \"$\\($_.Filename\\): $\\($_.Line.Trim\\(\\)\\)\" })",
       "Bash(git -C c:/Users/mld20/Documents/SportsTickerBackend remote -v)",
       "Bash(python3 -c \"import sys; sys.path.insert\\(0,'c:/Users/mld20/Documents/SportsTickerBackend'\\); import ticker_controller; print\\(type\\(ticker_controller\\)\\)\")",
-      "Bash(python3 -c \"import sys; sys.path.insert\\(0,'c:/Users/mld20/Documents/SportsTickerBackend'\\); import ticker_controller; print\\(ticker_controller.__file__\\)\")"
+      "Bash(python3 -c \"import sys; sys.path.insert\\(0,'c:/Users/mld20/Documents/SportsTickerBackend'\\); import ticker_controller; print\\(ticker_controller.__file__\\)\")",
+      "Bash(python -c \"import py_compile; py_compile.compile\\('sports_ticker/routes/metadata.py', doraise=True\\); print\\('OK'\\)\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

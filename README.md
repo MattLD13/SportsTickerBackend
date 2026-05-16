@@ -26,7 +26,7 @@ A custom sports ticker built on 6× chained 64×32 HUB75 RGB LED panels (384×32
  GitHub Actions ──► Ubuntu VPS (Flask backend)
                          │  /data polling every 5s
                          ▼
-                   Raspberry Pi 4
+                   Raspberry Pi Zero 2 W
                          │
                          ▼
               ⬛⬛⬛⬛⬛⬛  384×32 LED Matrix
@@ -287,6 +287,5 @@ GET  /errors
 
 ## Notes
 
-- `poop_fetcher` mode is gracefully migrated to `sports`. You're welcome.
 - `[DEBUG]` prefixed log lines go to `ticker.log` only — console stays clean
 - Backend runs on Ubuntu, controller on Pi — they're the same repo, deployed independently
