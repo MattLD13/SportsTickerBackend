@@ -3,98 +3,170 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sports Ticker Emulator</title>
+<title>Sports Ticker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('dashboard.static', filename='style.css') }}">
 </head>
 <body>
-<div class="shell">
-  <header class="header">
-    <div class="brand">
-      <div class="brand-mark" aria-hidden="true">
-        <span></span><span></span><span></span><span></span><span></span><span></span>
-      </div>
-      <div>
-        <div class="brand-title">Sports Ticker Emulator</div>
-        <div class="brand-subtitle">Browser preview of the real controller output</div>
-      </div>
+
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-led">
+      <div class="led"></div><div class="led"></div><div class="led"></div>
+      <div class="led"></div><div class="led"></div><div class="led"></div>
     </div>
-    <div class="meta">
-      <a href="https://github.com/MattLD13/SportsTickerBackend/commit/{{ version_hash }}" target="_blank">{{ version_hash }}</a>
-      <span>{{ server_version }}</span>
-      <span>{{ uptime_str }}</span>
+    Sports Ticker
+  </div>
+  <div class="build">
+    <a href="https://github.com/MattLD13/SportsTickerBackend/commit/{{ version_hash }}" target="_blank">{{ version_hash }}</a>
+    &nbsp;·&nbsp; {{ server_version }}
+  </div>
+</div>
+
+<div class="content">
+
+  <div class="led-section">
+    <div class="led-section-title">
+      Live Ticker Preview
+      <span>&#9632; 384×32 LED Matrix · 2× scale</span>
     </div>
-  </header>
 
-  <main class="stage">
-    <section class="monitor">
-      <div class="monitor-top">
-        <div class="monitor-label">Virtual Panel</div>
-        <div class="monitor-status" id="status-text">connecting…</div>
-      </div>
+    <div class="canvas-wrap" id="canvas-wrap">
+      <canvas id="ticker-canvas" width="768" height="64"></canvas>
+      <div class="pause-badge" id="pause-badge">&#9646;&#9646;</div>
+    </div>
+    <div class="fetch-status" id="fetch-status">fetching…</div>
 
-      <div class="canvas-shell" id="canvas-wrap" title="Click to pause or resume">
-        <canvas id="ticker-canvas" width="384" height="32"></canvas>
-        <div class="grid-overlay" id="grid-overlay" aria-hidden="true"></div>
-        <div class="pause-badge" id="pause-badge">PAUSED</div>
-      </div>
+    <div class="mode-filters" id="mode-filters">
+      <button class="mf-btn active" data-mode="sports"         style="--c:#FF8C00">ALL SPORTS</button>
+      <button class="mf-btn"        data-mode="live"           style="--c:#FF4444">LIVE</button>
+      <button class="mf-btn"        data-mode="stocks"         style="--c:#44DD88">STOCKS</button>
+      <button class="mf-btn"        data-mode="music"          style="--c:#CC44FF">MUSIC</button>
+      <button class="mf-btn"        data-mode="flights"        style="--c:#00DDCC">FLIGHTS</button>
+      <button class="mf-btn"        data-mode="flight_tracker" style="--c:#00AACC">TRACKER</button>
+      <button class="mf-btn"        data-mode="weather"        style="--c:#44AAFF">WEATHER</button>
+      <button class="mf-btn"        data-mode="clock"          style="--c:#888888">CLOCK</button>
+    </div>
 
-      <div class="monitor-foot">
-        <div class="fetch-status" id="fetch-status">fetching…</div>
-        <div class="frame-info" id="frame-info">384×32 panel · 4x zoom</div>
-      </div>
-    </section>
-
-    <section class="controls">
-      <div class="control-row">
-        <div class="control-block">
-          <span class="control-label">Mode</span>
-          <select id="mode-select" class="control-select"></select>
+    <div class="ctrl-bar">
+      <div class="ctrl-row">
+        <span class="ctrl-label">Speed</span>
+        <div class="speed-wrap">
+          <input type="range" id="speed-range" min="1" max="10" step="1" value="5">
+          <span class="speed-num" id="speed-val">5</span>
         </div>
+      </div>
+      <div class="ctrl-sep"></div>
 
-        <div class="control-block">
-          <span class="control-label">Speed</span>
-          <div class="speed-wrap">
-            <input type="range" id="speed-range" min="1" max="10" step="1" value="5">
-            <span class="speed-num" id="speed-val">5</span>
+      <div class="ctrl-panel" id="ctrl-sports">
+        <span class="ctrl-label">Click a game below to pin it on the ticker</span>
+        <button class="ctrl-btn danger" id="unpin-btn" onclick="unpinGame()" style="display:none">✕ Unpin</button>
+      </div>
+
+      <div class="ctrl-panel" id="ctrl-weather">
+        <span class="ctrl-label">City</span>
+        <input class="ctrl-input sm" id="weather-city" placeholder="New York" value="{{ weather_city }}">
+        <button class="ctrl-btn primary" onclick="setWeather()">Set</button>
+      </div>
+
+      <div class="ctrl-panel" id="ctrl-flights">
+        <span class="ctrl-label">Airport</span>
+        <input class="ctrl-input sm" id="airport-code" placeholder="EWR" maxlength="4" value="{{ airport_iata }}">
+        <button class="ctrl-btn primary" onclick="setAirport()">Set</button>
+      </div>
+
+      <div class="ctrl-panel" id="ctrl-flight_tracker">
+        <span class="ctrl-label">Flight</span>
+        <input class="ctrl-input sm" id="flight-id" placeholder="UA123" value="{{ track_flight_id }}">
+        <span class="ctrl-label">Guest</span>
+        <input class="ctrl-input sm" id="guest-name" placeholder="Name">
+        <button class="ctrl-btn primary" onclick="setFlightTracker()">Track</button>
+        <button class="ctrl-btn danger"  onclick="clearFlight()">Clear</button>
+      </div>
+
+      <div class="ctrl-panel" id="ctrl-music">
+        <div class="now-playing" id="now-playing">
+          <img class="np-art" id="np-art" src="" alt="">
+          <div class="np-info">
+            <div class="np-title"  id="np-title">Loading…</div>
+            <div class="np-artist" id="np-artist"></div>
+            <div class="np-bar">
+              <div class="np-prog"><div class="np-fill" id="np-fill" style="width:0%"></div></div>
+              <span class="np-time" id="np-time">0:00</span>
+            </div>
           </div>
         </div>
-
-        <div class="control-block">
-          <span class="control-label">Zoom</span>
-          <div class="zoom-group">
-            <button type="button" class="control-btn" id="zoom-out">−</button>
-            <span class="zoom-value" id="zoom-val">4x</span>
-            <button type="button" class="control-btn" id="zoom-in">+</button>
-          </div>
-        </div>
-
-        <div class="control-block control-actions">
-          <button type="button" class="control-btn primary" id="pause-btn">Pause</button>
-          <button type="button" class="control-btn" id="grid-btn">Grid</button>
-          <button type="button" class="control-btn" id="shot-btn">Screenshot</button>
-        </div>
       </div>
 
-      <div class="hint-row">
-        <span>Click the panel to pause</span>
-        <span>M / Shift+M cycles mode</span>
-        <span>Space, G, and S control pause, grid, and screenshot</span>
+      <div class="ctrl-panel" id="ctrl-stocks">
+        <span class="ctrl-label">Live market data · refreshes every 20s</span>
       </div>
-    </section>
-  </main>
+
+      <div class="ctrl-panel" id="ctrl-clock">
+        <span class="ctrl-label" id="clock-display" style="font-family:var(--font-mono);font-size:15px;color:var(--text-hi)">--:--:--</span>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="detail-panel">
+    <div class="section-title" id="detail-title">Live Items</div>
+    <div class="detail-grid"   id="detail-grid">
+      <p style="color:var(--text-mute);font-size:13px">Loading data…</p>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="val">{{ uptime_str }}</div>
+      <div class="lbl">Uptime</div>
+    </div>
+    <div class="stat">
+      <div class="val">{{ named_paired_count }}</div>
+      <div class="lbl">Paired</div>
+    </div>
+    <div class="stat">
+      <div class="val" style="text-transform:uppercase">{{ global_mode.replace('_', ' ') }}</div>
+      <div class="lbl">Mode</div>
+    </div>
+    <div class="stat">
+      <div class="val">{{ weather_city }}</div>
+      <div class="lbl">Weather City</div>
+    </div>
+    <div class="stat">
+      <div class="val">{{ enabled_sports_count }}</div>
+      <div class="lbl">Active Feeds</div>
+    </div>
+  </div>
+
+  <div class="section-title">Active Ticker</div>
+  <div class="ticker-grid">{{ ticker_cards_html | safe }}</div>
+
+  <div class="section-title">Active Sports &amp; Features</div>
+  <div class="sports-grid">{{ sport_html | safe }}</div>
+
+</div>
+
+<div class="footer">
+  Data refreshes every 30s &nbsp;·&nbsp;
+  <a href="/api/state">api/state</a> &nbsp;·&nbsp;
+  <a href="/api/debug">api/debug</a>
 </div>
 
 <script>
 window._CFG = {
-  tickerId: {{ ticker_id | tojson }},
-  defaultMode: {{ global_mode | tojson }},
+  tickerId:      {{ ticker_id | tojson }},
+  defaultMode:   {{ global_mode | tojson }},
+  weatherCity:   {{ weather_city | tojson }},
+  airportIata:   {{ airport_iata | tojson }},
+  trackFlightId: {{ track_flight_id | tojson }},
   browserBundleUrl: {{ url_for('dashboard.browser_ticker_bundle') | tojson }},
 };
 </script>
 <script src="{{ url_for('dashboard.static', filename='browser-runtime.js') }}"></script>
 <script src="{{ url_for('dashboard.static', filename='ticker.js') }}"></script>
+
 </body>
 </html>
