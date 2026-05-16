@@ -44,8 +44,14 @@ def get_ticker_data():
 
     t_settings = rec['settings']
 
-    # Per-ticker mode: use the ticker's own mode setting, fall back to global
-    current_mode = normalize_mode(t_settings.get('mode') or state.get('mode', 'sports'), state.get('mode', 'sports'))
+    # Per-ticker mode: use the ticker's own mode setting, fall back to global.
+    # Dashboard previews may request any mode without persisting a ticker/global
+    # mode change, matching /api/state and /api/preview/strip.png behavior.
+    preview_mode = request.args.get('mode')
+    if preview_mode:
+        current_mode = normalize_mode(preview_mode)
+    else:
+        current_mode = normalize_mode(t_settings.get('mode') or state.get('mode', 'sports'), state.get('mode', 'sports'))
     
     # --- FORCE SPORTS_FULL IF TICKER HAS A PIN ---
     t_pinned_game = str(rec.get('settings', {}).get('pinned_game', '')).strip()
