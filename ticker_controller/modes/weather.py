@@ -54,7 +54,7 @@ class WeatherMixin:
             # subtle small highlights rotating with rays
             for j in range(3):
                 ang = t * (1.6 + j * 0.5) + j * 1.1
-                rr = core_r + base_len + 1 + j * 1
+                rr = core_r + 6 + j * 1
                 sx = round(cx_s + math.cos(ang) * rr)
                 sy = round(cy_s + math.sin(ang) * rr)
                 d.ellipse((sx - 1, sy - 1, sx + 1, sy + 1), fill=(255, 230, 120))
