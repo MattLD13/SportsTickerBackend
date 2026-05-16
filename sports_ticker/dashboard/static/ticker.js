@@ -81,423 +81,345 @@ function tick() {
 }
 
 // ─── Strip fetching ───────────────────────────────────────────────────────────
-async function fetchStrip() {
-  try {
-    if (BROWSER_RT && typeof BROWSER_RT.renderStrip === 'function') {
-      try {
-        const strip = await BROWSER_RT.renderStrip(currentApiMode, TICKER_ID);
-        if (!strip || !strip.dataUrl) throw new Error('browser runtime returned no strip');
-        const bmp = await createImageBitmap(await (await fetch(strip.dataUrl)).blob());
-        stripBitmap = bmp;
-        stripSrcW   = strip.width || bmp.width;
-        scrollSrcX  = 0;
-        fetchStatus.textContent = 'Updated ' + new Date().toLocaleTimeString() +
-          '  ·  browser runtime ' + stripSrcW + 'px';
-        return;
-      } catch (browserErr) {
-        console.warn('Browser runtime strip failed; falling back to server preview.', browserErr);
-      }
-    }
+(function () {
+'use strict';
 
-    const url  = '/api/preview/strip.png?mode=' + encodeURIComponent(currentApiMode);
-    const resp = await fetch(url, { cache: 'no-store' });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const bmp  = await createImageBitmap(await resp.blob());
-    stripBitmap = bmp;
-    stripSrcW   = bmp.width;
-    scrollSrcX  = 0;
-    fetchStatus.textContent = 'Updated ' + new Date().toLocaleTimeString() +
-      '  ·  strip ' + bmp.width + 'px';
-  } catch (e) {
-    fetchStatus.textContent = 'Strip error: ' + e.message;
-  }
-}
+const CFG = window._CFG || {};
+const TICKER_ID = CFG.tickerId || '';
+const BROWSER_RT = window.__tickerBrowserRuntime || null;
 
-// ─── Detail panel data ────────────────────────────────────────────────────────
-async function fetchItems() {
-  try {
-    const params = [];
-    if (TICKER_ID)      params.push('id='   + encodeURIComponent(TICKER_ID));
-    if (currentApiMode) params.push('mode=' + encodeURIComponent(currentApiMode));
-    const resp = await fetch('/api/state' + (params.length ? '?' + params.join('&') : ''));
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
-    allItems = (data && Array.isArray(data.games))
-      ? data.games.filter(item => item && item.is_shown !== false)
-      : [];
-    updateDetailPanel();
-  } catch (e) {
-    console.warn('Items fetch error:', e.message);
-  }
-}
+const LED_W = 384;
+const LED_H = 32;
+const MODE_OPTIONS = [
+  'sports',
+  'live',
+  'my_teams',
+  'sports_full',
+  'soccer_full',
+  'golf',
+  'stocks',
+  'weather',
+  'music',
+  'clock',
+  'flights',
+  'flight_tracker',
+];
+const SCALE_OPTIONS = [2, 3, 4, 5, 6, 8];
+const FETCH_EVERY = 20000;
+const SPEED_MULT = 0.1;
 
-async function fetchAll() {
-  await Promise.all([fetchStrip(), fetchItems()]);
-}
-
-// ─── Sport color helper ───────────────────────────────────────────────────────
-const SPORT_COLORS = {
-  NFL: '#FF6B35', NBA: '#C9082A', NHL: '#00B2E3', MLB: '#003DA5',
-  NCF_FBS: '#FF8C00', NCF_FCS: '#FF8C00',
-  SOCCER_EPL: '#3D195B', SOCCER_FA_CUP: '#3D195B', SOCCER_CHAMP: '#003DA5',
-  SOCCER_CHAMPIONS_LEAGUE: '#003366', SOCCER_EUROPA_LEAGUE: '#FF6B00',
-  SOCCER_MLS: '#C0392B', SOCCER_WC: '#C09A2A',
-  GOLF: '#66BB44', MASTERS: '#FFDD00',
-  WEATHER: '#44AAFF', STOCK_TICKER: '#44DD88',
-  MUSIC: '#CC44FF', CLOCK: '#888888',
-  FLIGHT: '#00DDCC', FLIGHT_VISITOR: '#00AACC',
-  DEFAULT: '#FF8C00',
+const MODE_LABELS = {
+  sports: 'ALL SPORTS',
+  live: 'LIVE',
+  my_teams: 'MY TEAMS',
+  sports_full: 'SPORTS FULL',
+  soccer_full: 'SOCCER FULL',
+  golf: 'GOLF',
+  stocks: 'STOCKS',
+  weather: 'WEATHER',
+  music: 'MUSIC',
+  clock: 'CLOCK',
+  flights: 'FLIGHTS',
+  flight_tracker: 'TRACKER',
 };
 
-function sportColor(item) {
-  const sp = (item.sport || '').toUpperCase();
-  const ty = (item.type  || '').toUpperCase();
-  return SPORT_COLORS[sp] || SPORT_COLORS[ty] ||
-    (sp.startsWith('SOCCER') ? '#4CAF50' : SPORT_COLORS.DEFAULT);
+const canvas = document.getElementById('ticker-canvas');
+const ctx = canvas.getContext('2d');
+const canvasWrap = document.getElementById('canvas-wrap');
+const gridOverlay = document.getElementById('grid-overlay');
+const pauseBadge = document.getElementById('pause-badge');
+const fetchStatus = document.getElementById('fetch-status');
+const statusText = document.getElementById('status-text');
+const frameInfo = document.getElementById('frame-info');
+const modeSelect = document.getElementById('mode-select');
+const speedRange = document.getElementById('speed-range');
+const speedVal = document.getElementById('speed-val');
+const zoomVal = document.getElementById('zoom-val');
+const pauseBtn = document.getElementById('pause-btn');
+const gridBtn = document.getElementById('grid-btn');
+const shotBtn = document.getElementById('shot-btn');
+const zoomInBtn = document.getElementById('zoom-in');
+const zoomOutBtn = document.getElementById('zoom-out');
+
+ctx.imageSmoothingEnabled = false;
+
+let stripBitmap = null;
+let stripSrcW = 0;
+let scrollSrcX = 0;
+let paused = false;
+let showGrid = false;
+let currentMode = MODE_OPTIONS.includes(String(CFG.defaultMode || 'sports')) ? String(CFG.defaultMode || 'sports') : 'sports';
+let currentScale = 4;
+let scrollSpeed = 0.5;
+let lastFetchAt = 0;
+let lastRenderAt = 0;
+let refreshPending = null;
+
+function formatMode(mode) {
+  return MODE_LABELS[mode] || String(mode || '').toUpperCase().replace(/_/g, ' ');
 }
 
-function isSportsGame(item) {
-  const itype = (item.type  || '').toLowerCase();
-  const sport = (item.sport || '').toLowerCase();
-  if (['weather', 'stock_ticker', 'music', 'clock', 'flight_visitor', 'flight'].includes(itype)) return false;
-  if (sport === 'flight') return false;
-  return !!(item.home || item.away || item.home_name || item.away_name || item.id);
+function updateCanvasSize() {
+  const width = LED_W * currentScale;
+  const height = LED_H * currentScale;
+  canvasWrap.style.width = width + 'px';
+  canvasWrap.style.height = height + 'px';
+  canvas.style.width = width + 'px';
+  canvas.style.height = height + 'px';
+  zoomVal.textContent = currentScale + 'x';
+  frameInfo.textContent = LED_W + '×' + LED_H + ' panel · ' + currentScale + 'x zoom';
+  gridOverlay.style.display = showGrid && currentScale >= 4 ? 'block' : 'none';
+  gridOverlay.style.backgroundSize = currentScale + 'px ' + currentScale + 'px';
 }
 
-// ─── Detail panel ─────────────────────────────────────────────────────────────
-function updateDetailPanel() {
-  const grid  = document.getElementById('detail-grid');
-  const title = document.getElementById('detail-title');
-  const label = document.querySelector('.mf-btn.active')?.textContent || currentApiMode;
-  title.textContent = label + ' — ' + allItems.length + ' item' + (allItems.length !== 1 ? 's' : '');
+function updateModeSelect() {
+  if (!modeSelect.options.length) {
+    for (const mode of MODE_OPTIONS) {
+      const opt = document.createElement('option');
+      opt.value = mode;
+      opt.textContent = formatMode(mode);
+      modeSelect.appendChild(opt);
+    }
+  }
+  modeSelect.value = currentMode;
+}
 
-  if (!allItems.length) {
-    grid.innerHTML = '<p style="color:var(--text-mute);font-size:13px">No data for this mode.</p>';
+function updateStatusLine(message) {
+  const ageMs = lastFetchAt ? (Date.now() - lastFetchAt) : Infinity;
+  let connection = 'connecting…';
+  if (lastFetchAt) {
+    connection = ageMs > 3000 ? 'stale ' + Math.round(ageMs / 1000) + 's ago' : 'live';
+  }
+
+  const parts = [
+    'mode=' + currentMode,
+    'speed=' + scrollSpeed.toFixed(1),
+    'scale=' + currentScale + 'x',
+    'source=' + (stripSrcW || '?') + 'px',
+    connection,
+  ];
+
+  if (paused) parts.push('paused');
+  statusText.textContent = parts.join('  ·  ');
+  fetchStatus.textContent = message || fetchStatus.textContent;
+  document.title = 'Ticker Emulator - ' + currentMode + ' - ' + connection;
+}
+
+function renderFallback() {
+  ctx.fillStyle = '#040406';
+  ctx.fillRect(0, 0, LED_W, LED_H);
+  ctx.fillStyle = '#15161d';
+  for (let y = 0; y < LED_H; y++) {
+    for (let x = 0; x < LED_W; x++) {
+      if (((x + y) % 4) === 0) {
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+}
+
+function renderFrame() {
+  ctx.fillStyle = '#040406';
+  ctx.fillRect(0, 0, LED_W, LED_H);
+
+  if (!stripBitmap || !stripSrcW) {
+    renderFallback();
     return;
   }
-  grid.innerHTML = allItems.map((item, idx) => makeDetailCard(item, idx)).join('');
 
-  // Restore pinned highlight if still present
-  if (pinnedId) {
-    document.querySelectorAll('.dc[data-game-id="' + pinnedId + '"]')
-      .forEach(el => el.classList.add('pinned'));
+  let dstX = 0;
+  let srcX = Math.floor(scrollSrcX) % stripSrcW;
+  while (dstX < LED_W) {
+    const remainSrc = stripSrcW - srcX;
+    const remainDst = LED_W - dstX;
+    const drawSrcW = Math.min(remainSrc, remainDst);
+    if (drawSrcW <= 0) break;
+    ctx.drawImage(stripBitmap, srcX, 0, drawSrcW, LED_H, dstX, 0, drawSrcW, LED_H);
+    dstX += drawSrcW;
+    srcX = 0;
   }
 }
 
-window.toggleCard = function (el) {
-  const was = el.classList.contains('active');
-  document.querySelectorAll('.dc.active').forEach(c => c.classList.remove('active'));
-  if (!was) el.classList.add('active');
-};
+async function fetchStrip() {
+  if (refreshPending) return refreshPending;
 
-function makeDetailCard(item, idx) {
-  const color = sportColor(item);
-  const bgC   = color + '1a';
-  const itype = (item.type  || '').toLowerCase();
-  const sport = (item.sport || itype || 'game').toUpperCase();
-  let badge = sport.slice(0, 10);
-  let teams = '', score = '', status = '', detail = '';
+  refreshPending = (async function () {
+    try {
+      if (!BROWSER_RT || typeof BROWSER_RT.renderStrip !== 'function') {
+        throw new Error('browser runtime unavailable');
+      }
 
-  const gameId   = item.id || '';
-  const isGame   = isSportsGame(item);
-  const clickFn  = isGame && gameId
-    ? `pinCardGame(this, '${gameId}')`
-    : 'toggleCard(this)';
-  const gameAttr = gameId ? ` data-game-id="${gameId}"` : '';
+      const strip = await BROWSER_RT.renderStrip(currentMode, TICKER_ID);
+      if (!strip || !strip.dataUrl) {
+        throw new Error('browser runtime returned no strip');
+      }
 
-  if (itype === 'weather') {
-    badge  = 'WEATHER';
-    teams  = item.city || item.location || 'Weather';
-    score  = item.temp != null ? Math.round(item.temp) + '°F' : '';
-    status = item.condition || item.description || '';
-    detail = `<div class="row"><span>Humidity</span><span>${item.humidity != null ? item.humidity + '%' : '—'}</span></div>
-              <div class="row"><span>Wind</span><span>${item.wind || '—'}</span></div>`;
-  } else if (itype === 'stock_ticker') {
-    badge = 'STOCK';
-    const pct      = item.change_pct != null ? (+item.change_pct).toFixed(2) + '%' : '';
-    const pctColor = (item.change_pct || 0) >= 0 ? '#44dd88' : '#ff4444';
-    teams  = item.symbol || '';
-    score  = item.price != null ? '$' + (+item.price).toFixed(2) : '';
-    status = `<span style="color:${pctColor}">${pct}</span>`;
-    detail = `<div class="row"><span>Change</span><span style="color:${pctColor}">${item.change || pct}</span></div>`;
-  } else if (itype === 'music') {
-    badge  = 'MUSIC';
-    teams  = item.artist || item.artist_name || 'Unknown Artist';
-    score  = item.title  || item.song || '';
-    status = item.album  || '';
-  } else if (itype === 'clock') {
-    badge  = 'CLOCK';
-    teams  = 'Clock';
-    score  = item.time || item.clock_str || '';
-  } else if (itype === 'flight_visitor') {
-    badge  = 'FLIGHT';
-    teams  = item.flight || item.id || '';
-    score  = (item.origin && item.dest) ? item.origin + ' → ' + item.dest : '';
-    status = item.status || '';
-    detail = `<div class="row"><span>Arrival</span><span>${item.arrive || '—'}</span></div>`;
-  } else if ((item.sport || '').toLowerCase() === 'flight' || itype === 'flight') {
-    badge  = 'FLIGHT';
-    teams  = (item.airline || '') + ' ' + (item.flight_number || item.flight || '');
-    score  = item.destination || item.dest || '';
-    status = item.status || '';
-    detail = `<div class="row"><span>Gate</span><span>${item.gate || '—'}</span></div>
-              <div class="row"><span>Time</span><span>${item.time || item.scheduled || '—'}</span></div>`;
-  } else {
-    const away   = item.away || item.away_name || '';
-    const home   = item.home || item.home_name || '';
-    const aScore = item.away_score != null ? item.away_score : '';
-    const hScore = item.home_score != null ? item.home_score : '';
-    const isFinal = /final|ft|full/i.test(item.status || '');
-    const isLive  = !isFinal && (item.period || item.clock);
-    score  = (aScore !== '' && hScore !== '') ? aScore + ' – ' + hScore : '';
-    status = `<span style="color:${isLive ? color : isFinal ? '#555' : '#888'}">${item.status || item.clock || ''}</span>`;
-    detail = `<div class="row"><span>League</span><span>${item.league || sport}</span></div>
-              <div class="row"><span>Venue</span><span>${item.venue || '—'}</span></div>`;
-    const awayLogo = item.away_logo ? `<img src="${item.away_logo}" style="width:18px;height:18px;object-fit:contain;vertical-align:middle;margin-right:4px" onerror="this.style.display='none'">` : '';
-    const homeLogo = item.home_logo ? `<img src="${item.home_logo}" style="width:18px;height:18px;object-fit:contain;vertical-align:middle;margin-left:4px"  onerror="this.style.display='none'">` : '';
-    teams = awayLogo + away + ' vs ' + home + homeLogo;
-    if (isGame) {
-      detail += `<div class="row" style="margin-top:6px;color:var(--text-dim);font-size:11px">
-        <span>Click to pin on ticker · click again to unpin</span></div>`;
+      const blob = await (await fetch(strip.dataUrl)).blob();
+      const bmp = await createImageBitmap(blob);
+      stripBitmap = bmp;
+      stripSrcW = strip.width || bmp.width || 0;
+      scrollSrcX = 0;
+      lastFetchAt = Date.now();
+      fetchStatus.textContent = 'Updated ' + new Date().toLocaleTimeString() + ' · strip ' + stripSrcW + 'px';
+      updateStatusLine(fetchStatus.textContent);
+      renderFrame();
+    } catch (err) {
+      console.warn('Browser ticker render failed; trying server preview.', err);
+      try {
+        const url = '/api/preview/strip.png?mode=' + encodeURIComponent(currentMode);
+        const resp = await fetch(url, { cache: 'no-store' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const bmp = await createImageBitmap(await resp.blob());
+        stripBitmap = bmp;
+        stripSrcW = bmp.width || 0;
+        scrollSrcX = 0;
+        lastFetchAt = Date.now();
+        fetchStatus.textContent = 'Server preview ' + new Date().toLocaleTimeString() + ' · strip ' + stripSrcW + 'px';
+      } catch (fallbackErr) {
+        fetchStatus.textContent = 'Render error: ' + err.message;
+        lastFetchAt = 0;
+        stripBitmap = null;
+        stripSrcW = 0;
+        console.warn('Server preview fallback failed:', fallbackErr);
+      }
+      renderFrame();
+      updateStatusLine(fetchStatus.textContent);
+    } finally {
+      refreshPending = null;
     }
-  }
+  })();
 
-  return `<div class="dc" data-idx="${idx}"${gameAttr} onclick="${clickFn}">
-    <div class="dc-badge" style="background:${bgC};color:${color};border:1px solid ${color}30">${badge}</div>
-    <div class="dc-teams">${teams}</div>
-    ${score  ? `<div class="dc-score">${score}</div>`   : ''}
-    ${status ? `<div class="dc-status">${status}</div>` : ''}
-    ${detail ? `<div class="dc-detail">${detail}</div>` : ''}
-  </div>`;
+  return refreshPending;
 }
 
-// ─── Canvas click — pause ─────────────────────────────────────────────────────
-document.getElementById('canvas-wrap').addEventListener('click', function () {
+function saveScreenshot() {
+  const link = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  link.download = 'ticker_screenshot_' + stamp + '.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+function applyScale(nextScale) {
+  const clamped = Math.max(SCALE_OPTIONS[0], Math.min(SCALE_OPTIONS[SCALE_OPTIONS.length - 1], nextScale));
+  currentScale = SCALE_OPTIONS.reduce(function (best, value) {
+    return Math.abs(value - clamped) < Math.abs(best - clamped) ? value : best;
+  }, SCALE_OPTIONS[0]);
+  updateCanvasSize();
+  renderFrame();
+  updateStatusLine();
+}
+
+function stepMode(delta) {
+  let index = MODE_OPTIONS.indexOf(currentMode);
+  if (index < 0) index = 0;
+  index = (index + delta + MODE_OPTIONS.length) % MODE_OPTIONS.length;
+  currentMode = MODE_OPTIONS[index];
+  updateModeSelect();
+  scrollSrcX = 0;
+  fetchStrip();
+}
+
+function togglePause() {
   paused = !paused;
   pauseBadge.classList.toggle('visible', paused);
+  pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+  updateStatusLine();
+}
+
+function toggleGrid() {
+  showGrid = !showGrid;
+  gridBtn.textContent = showGrid ? 'Grid On' : 'Grid';
+  updateCanvasSize();
+}
+
+canvasWrap.addEventListener('click', function () {
+  togglePause();
 });
 
-// ─── Mode filter buttons ──────────────────────────────────────────────────────
-document.getElementById('mode-filters').addEventListener('click', function (e) {
-  const btn = e.target.closest('.mf-btn');
-  if (!btn) return;
-  document.querySelectorAll('.mf-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  currentApiMode = btn.dataset.mode;
+modeSelect.addEventListener('change', function () {
+  currentMode = this.value;
   scrollSrcX = 0;
-  showCtrlPanel(currentApiMode);
-  if (currentApiMode === 'music') fetchNowPlaying();
-  fetchAll();
+  fetchStrip();
 });
 
-// ─── Speed slider (1–10 integer, maps to 0.1–1.0 px/frame) ───────────────────
-const speedRange = document.getElementById('speed-range');
-const speedVal   = document.getElementById('speed-val');
 speedRange.addEventListener('input', function () {
-  const v = parseInt(this.value, 10);
-  window._scrollSpd = v * 0.1;
-  speedVal.textContent = v;
+  const value = parseInt(this.value, 10) || 5;
+  speedVal.textContent = String(value);
+  scrollSpeed = value * SPEED_MULT;
+  updateStatusLine();
 });
 
-// ─── Controls panel visibility ────────────────────────────────────────────────
-function showCtrlPanel(mode) {
-  document.querySelectorAll('.ctrl-panel').forEach(p => p.classList.remove('active'));
-  const map = {
-    sports: 'ctrl-sports', live: 'ctrl-sports',
-    weather: 'ctrl-weather',
-    flights: 'ctrl-flights', flight_tracker: 'ctrl-flight_tracker',
-    music: 'ctrl-music',
-    stocks: 'ctrl-stocks',
-    clock: 'ctrl-clock',
-  };
-  const id = map[mode];
-  if (id) document.getElementById(id)?.classList.add('active');
-}
-
-// ─── Pin game on card click ───────────────────────────────────────────────────
-window.pinCardGame = async function (el, gameId) {
-  const wasPinned = pinnedId === gameId;
-  document.querySelectorAll('.dc.pinned').forEach(c => c.classList.remove('pinned'));
-
-  if (wasPinned) {
-    pinnedId = null;
-    document.getElementById('unpin-btn').style.display = 'none';
-  } else {
-    pinnedId = gameId;
-    el.classList.add('pinned');
-    document.getElementById('unpin-btn').style.display = '';
-  }
-
-  try {
-    const payload = { game_ids: pinnedId ? [pinnedId] : [] };
-    if (TICKER_ID) payload.ticker_id = TICKER_ID;
-    await fetch('/api/pin_games', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    fetchAll();
-  } catch (e) { console.error(e); }
-};
-
-window.unpinGame = async function () {
-  pinnedId = null;
-  document.querySelectorAll('.dc.pinned').forEach(c => c.classList.remove('pinned'));
-  document.getElementById('unpin-btn').style.display = 'none';
-  try {
-    const payload = { game_ids: [] };
-    if (TICKER_ID) payload.ticker_id = TICKER_ID;
-    await fetch('/api/pin_games', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    fetchAll();
-  } catch (e) { console.error(e); }
-};
-
-// ─── Weather ──────────────────────────────────────────────────────────────────
-window.setWeather = async function () {
-  const city = document.getElementById('weather-city').value.trim();
-  if (!city) return;
-  try {
-    await fetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ weather_city: city, mode: 'weather' }),
-    });
-    fetchAll();
-  } catch (e) { console.error(e); }
-};
-
-// ─── Airport ──────────────────────────────────────────────────────────────────
-window.setAirport = async function () {
-  const code = document.getElementById('airport-code').value.trim().toUpperCase();
-  if (!code) return;
-  try {
-    await fetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ airport_code_iata: code, mode: 'flights', flight_submode: 'airport' }),
-    });
-    fetchAll();
-  } catch (e) { console.error(e); }
-};
-
-// ─── Flight tracker ───────────────────────────────────────────────────────────
-window.setFlightTracker = async function () {
-  const flt   = document.getElementById('flight-id').value.trim().toUpperCase();
-  const guest = document.getElementById('guest-name').value.trim();
-  if (!flt) return;
-  try {
-    await fetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ track_flight_id: flt, track_guest_name: guest, mode: 'flight_tracker', flight_submode: 'track' }),
-    });
-    fetchAll();
-  } catch (e) { console.error(e); }
-};
-
-window.clearFlight = async function () {
-  document.getElementById('flight-id').value  = '';
-  document.getElementById('guest-name').value = '';
-  try {
-    await fetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ track_flight_id: '', track_guest_name: '' }),
-    });
-  } catch (e) { console.error(e); }
-};
-
-// ─── Music: Spotify → iTunes fallback ────────────────────────────────────────
-let _npStart    = 0;
-let _npDuration = 210;
-
-async function fetchNowPlaying() {
-  try {
-    const r = await fetch('/api/spotify/now');
-    if (r.ok) {
-      const d = await r.json();
-      if (d && d.title) {
-        _npDuration = (d.duration || 210000) / 1000;
-        _npStart    = Date.now() / 1000 - (d.progress || 0) / 1000;
-        renderNowPlaying(d.title, d.artist, d.album_art || '', (d.progress || 0) / 1000, _npDuration);
-        return;
-      }
-    }
-  } catch (_) { /* fall through */ }
-
-  try {
-    const r = await fetch('https://itunes.apple.com/us/rss/topsongs/limit=10/json');
-    if (r.ok) {
-      const d       = await r.json();
-      const entries = d?.feed?.entry || [];
-      if (entries.length) {
-        const song   = entries[Math.floor(Math.random() * Math.min(5, entries.length))];
-        const title  = song['im:name']?.label   || 'Unknown';
-        const artist = song['im:artist']?.label || '';
-        const art    = song['im:image']?.[2]?.label || '';
-        _npDuration  = 200 + Math.floor(Math.random() * 60);
-        _npStart     = Date.now() / 1000 - Math.floor(Math.random() * _npDuration * 0.8);
-        renderNowPlaying(title, artist, art, Date.now() / 1000 - _npStart, _npDuration);
-        return;
-      }
-    }
-  } catch (_) { /* fall through */ }
-
-  renderNowPlaying('No song data', '', '', 0, 1);
-}
-
-function renderNowPlaying(title, artist, art, progressSec, durationSec) {
-  document.getElementById('np-title').textContent  = title;
-  document.getElementById('np-artist').textContent = artist;
-  const artEl = document.getElementById('np-art');
-  if (art) { artEl.src = art; artEl.style.display = ''; } else { artEl.style.display = 'none'; }
-  updateNpProgress(progressSec, durationSec);
-}
-
-function updateNpProgress(progressSec, durationSec) {
-  const pct = durationSec > 0 ? Math.min(100, progressSec / durationSec * 100) : 0;
-  document.getElementById('np-fill').style.width = pct + '%';
-  const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
-  document.getElementById('np-time').textContent = fmt(progressSec) + ' / ' + fmt(durationSec);
-}
-
-setInterval(() => {
-  if (_npStart > 0 && document.getElementById('ctrl-music').classList.contains('active')) {
-    const elapsed = Date.now() / 1000 - _npStart;
-    updateNpProgress(Math.min(elapsed, _npDuration), _npDuration);
-  }
-}, 1000);
-
-// ─── Clock display ────────────────────────────────────────────────────────────
-setInterval(() => {
-  const el = document.getElementById('clock-display');
-  if (el && document.getElementById('ctrl-clock').classList.contains('active')) {
-    el.textContent = new Date().toLocaleTimeString();
-  }
-}, 1000);
-
-// ─── Boot ─────────────────────────────────────────────────────────────────────
-document.querySelectorAll('.mf-btn').forEach(b => {
-  b.classList.toggle('active', b.dataset.mode === currentApiMode);
+pauseBtn.addEventListener('click', togglePause);
+gridBtn.addEventListener('click', toggleGrid);
+shotBtn.addEventListener('click', saveScreenshot);
+zoomInBtn.addEventListener('click', function () {
+  const index = SCALE_OPTIONS.indexOf(currentScale);
+  applyScale(SCALE_OPTIONS[Math.min(SCALE_OPTIONS.length - 1, index + 1)] || currentScale);
 });
-if (!document.querySelector('.mf-btn.active')) {
-  currentApiMode = 'sports';
-  document.querySelector('.mf-btn[data-mode="sports"]')?.classList.add('active');
-}
-showCtrlPanel(currentApiMode);
-fetchAll();
-fetchNowPlaying();
-setInterval(fetchAll, FETCH_EVERY);
-setInterval(fetchNowPlaying, 30000);
-setInterval(() => {
-  if (currentApiMode === 'music') {
-    fetchAll();
+zoomOutBtn.addEventListener('click', function () {
+  const index = SCALE_OPTIONS.indexOf(currentScale);
+  applyScale(SCALE_OPTIONS[Math.max(0, index - 1)] || currentScale);
+});
+
+window.addEventListener('keydown', function (event) {
+  if (event.target && /input|select|textarea/i.test(event.target.tagName || '')) return;
+  if (event.key === ' ' || event.key === 'Spacebar') {
+    event.preventDefault();
+    togglePause();
+    return;
   }
-}, 1000);
+  if (event.key === 'g' || event.key === 'G') {
+    toggleGrid();
+    return;
+  }
+  if (event.key === 's' || event.key === 'S') {
+    saveScreenshot();
+    return;
+  }
+  if (event.key === 'm') {
+    stepMode(1);
+    return;
+  }
+  if (event.key === 'M' || (event.shiftKey && event.key === 'm')) {
+    stepMode(-1);
+    return;
+  }
+  if (event.key === '+' || event.key === '=' || event.key === 'Add') {
+    zoomInBtn.click();
+    return;
+  }
+  if (event.key === '-' || event.key === '_' || event.key === 'Subtract') {
+    zoomOutBtn.click();
+    return;
+  }
+});
+
+function tick() {
+  if (!paused && stripBitmap && stripSrcW > 0) {
+    scrollSrcX = (scrollSrcX + scrollSpeed) % stripSrcW;
+    renderFrame();
+    lastRenderAt = performance.now();
+  }
+  requestAnimationFrame(tick);
+}
+
+function refreshStatusLoop() {
+  updateStatusLine();
+  window.setTimeout(refreshStatusLoop, 1000);
+}
+
+modeSelect.innerHTML = '';
+updateModeSelect();
+speedVal.textContent = speedRange.value;
+scrollSpeed = parseInt(speedRange.value, 10) * SPEED_MULT;
+updateCanvasSize();
+updateStatusLine('fetching…');
+renderFrame();
+fetchStrip();
+setInterval(fetchStrip, FETCH_EVERY);
 tick();
+refreshStatusLoop();
 
 })();
+};
