@@ -86,7 +86,9 @@ def root():
         ticker_list = list(tickers.items())
         active_sports = dict(state.get('active_sports', {}))
         global_mode = state.get('mode', 'sports')
-        weather_city = state.get('weather_city', '—')
+        weather_city = state.get('weather_city', 'New York')
+        airport_iata = state.get('airport_code_iata', 'EWR')
+        track_flight_id = state.get('track_flight_id', '')
 
     # Only show named tickers — unnamed ones are transient/anonymous
     named_paired   = [(tid, rec) for tid, rec in ticker_list if rec.get('paired') and (rec.get('name') or '').strip()]
@@ -185,6 +187,36 @@ a:hover{{text-decoration:underline}}
 .mf-btn:hover{{border-color:#2d2d35;color:#888}}
 .mf-btn.active{{border-color:var(--c);color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);box-shadow:0 0 8px color-mix(in srgb,var(--c) 20%,transparent)}}
 
+/* ── Controls Bar ── */
+.ctrl-bar{{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:12px;padding:10px 12px;background:#0d0d10;border:1px solid #1c1c1f;border-radius:6px}}
+.ctrl-label{{font-size:10px;font-weight:600;color:#52525b;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}}
+.ctrl-row{{display:flex;align-items:center;gap:8px;flex-wrap:wrap}}
+.ctrl-input{{background:#111;border:1px solid #1c1c1f;border-radius:4px;color:#e4e4e7;font-size:12px;padding:4px 8px;outline:none;transition:border-color .15s;width:160px}}
+.ctrl-input:focus{{border-color:#3f3f46}}
+.ctrl-input.sm{{width:100px}}
+.ctrl-btn{{font-size:10px;font-weight:700;letter-spacing:.5px;padding:4px 12px;border-radius:4px;border:1px solid #1c1c1f;background:#111;color:#a1a1aa;cursor:pointer;transition:all .15s;text-transform:uppercase}}
+.ctrl-btn:hover{{border-color:#52525b;color:#fff}}
+.ctrl-btn.primary{{border-color:#3f3f46;color:#fff}}
+.ctrl-btn.primary:hover{{border-color:#60a5fa;color:#60a5fa}}
+.ctrl-btn.danger{{border-color:#7f1d1d;color:#ef4444}}
+.ctrl-btn.danger:hover{{border-color:#ef4444}}
+.speed-wrap{{display:flex;align-items:center;gap:8px}}
+input[type=range]{{-webkit-appearance:none;width:100px;height:3px;background:#1c1c1f;border-radius:2px;outline:none}}
+input[type=range]::-webkit-slider-thumb{{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#60a5fa;cursor:pointer}}
+.ctrl-sep{{width:1px;height:20px;background:#1c1c1f;flex-shrink:0}}
+.ctrl-panel{{display:none}}.ctrl-panel.active{{display:flex;align-items:center;gap:8px;flex-wrap:wrap}}
+.now-playing{{display:flex;align-items:center;gap:10px;padding:6px 10px;background:#120018;border:1px solid #4a1a6a;border-radius:6px}}
+.np-art{{width:32px;height:32px;border-radius:3px;object-fit:cover;flex-shrink:0;background:#1a1a1a}}
+.np-info{{line-height:1.3}}
+.np-title{{font-size:12px;font-weight:600;color:#e4e4e7}}
+.np-artist{{font-size:11px;color:#a855f7}}
+.np-bar{{display:flex;align-items:center;gap:6px;margin-top:4px}}
+.np-prog{{flex:1;height:3px;background:#1c1c1f;border-radius:2px;overflow:hidden}}
+.np-fill{{height:100%;background:#a855f7;border-radius:2px;transition:width .5s linear}}
+.np-time{{font-size:10px;color:#52525b;font-family:monospace}}
+.pin-badge{{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:#1a1500;color:#ffdd00;border:1px solid #3a2e00;margin-left:6px;cursor:pointer}}
+.pin-badge:hover{{background:#2a2000}}
+
 /* ── Detail Panel ── */
 .detail-panel{{margin-bottom:24px}}
 .detail-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}}
@@ -225,6 +257,22 @@ a:hover{{text-decoration:underline}}
 .sp.off{{background:#111;color:#3f3f46;border:1px solid #1c1c1f}}
 
 .footer{{font-size:11px;color:#27272a;text-align:center;padding:16px}}
+
+/* ── Mobile responsive ── */
+@media(max-width:640px){{
+  .content{{padding:12px}}
+  .topbar{{padding:12px 16px}}
+  #ticker-canvas{{height:48px}}
+  .canvas-wrap canvas{{height:48px}}
+  .stats{{grid-template-columns:repeat(2,1fr);gap:8px}}
+  .detail-grid{{grid-template-columns:1fr}}
+  .ticker-grid{{grid-template-columns:1fr}}
+  .ctrl-bar{{flex-direction:column;align-items:flex-start;gap:8px}}
+  .ctrl-input{{width:130px}}
+  .ctrl-input.sm{{width:80px}}
+  .mode-filters{{gap:4px}}
+  .mf-btn{{font-size:9px;padding:3px 7px}}
+}}
 </style>
 </head>
 <body>
@@ -267,6 +315,73 @@ a:hover{{text-decoration:underline}}
       <button class="mf-btn"        data-mode="flight_tracker" style="--c:#00AACC">TRACKER</button>
       <button class="mf-btn"        data-mode="weather"        style="--c:#44AAFF">WEATHER</button>
       <button class="mf-btn"        data-mode="clock"          style="--c:#888888">CLOCK</button>
+    </div>
+
+    <div class="ctrl-bar">
+      <!-- Speed: always visible -->
+      <div class="ctrl-row">
+        <span class="ctrl-label">Speed</span>
+        <div class="speed-wrap">
+          <input type="range" id="speed-range" min="0.1" max="4" step="0.1" value="0.5">
+          <span class="ctrl-label" id="speed-val">0.5×</span>
+        </div>
+      </div>
+      <div class="ctrl-sep"></div>
+
+      <!-- Sports / Live: pin game -->
+      <div class="ctrl-panel" id="ctrl-sports">
+        <span class="ctrl-label">Click a game card below to pin it</span>
+        <button class="ctrl-btn danger" id="unpin-btn" onclick="unpinGame()" style="display:none">✕ Unpin</button>
+      </div>
+
+      <!-- Weather -->
+      <div class="ctrl-panel" id="ctrl-weather">
+        <span class="ctrl-label">City</span>
+        <input class="ctrl-input sm" id="weather-city" placeholder="New York" value="{weather_city}">
+        <button class="ctrl-btn primary" onclick="setWeather()">Set</button>
+      </div>
+
+      <!-- Flights airport -->
+      <div class="ctrl-panel" id="ctrl-flights">
+        <span class="ctrl-label">Airport</span>
+        <input class="ctrl-input sm" id="airport-code" placeholder="EWR" maxlength="4" value="{airport_iata}">
+        <button class="ctrl-btn primary" onclick="setAirport()">Set</button>
+      </div>
+
+      <!-- Flight tracker -->
+      <div class="ctrl-panel" id="ctrl-flight_tracker">
+        <span class="ctrl-label">Flight ID</span>
+        <input class="ctrl-input sm" id="flight-id" placeholder="UA123" value="{track_flight_id}">
+        <span class="ctrl-label">Guest</span>
+        <input class="ctrl-input sm" id="guest-name" placeholder="John">
+        <button class="ctrl-btn primary" onclick="setFlightTracker()">Track</button>
+        <button class="ctrl-btn danger" onclick="clearFlight()">Clear</button>
+      </div>
+
+      <!-- Music: now-playing card -->
+      <div class="ctrl-panel" id="ctrl-music">
+        <div class="now-playing" id="now-playing">
+          <img class="np-art" id="np-art" src="" alt="">
+          <div class="np-info">
+            <div class="np-title" id="np-title">Loading…</div>
+            <div class="np-artist" id="np-artist"></div>
+            <div class="np-bar">
+              <div class="np-prog"><div class="np-fill" id="np-fill" style="width:0%"></div></div>
+              <span class="np-time" id="np-time">0:00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stocks: no extra controls needed -->
+      <div class="ctrl-panel" id="ctrl-stocks">
+        <span class="ctrl-label">Live market data · refreshes every 20s</span>
+      </div>
+
+      <!-- Clock: no controls needed -->
+      <div class="ctrl-panel" id="ctrl-clock">
+        <span class="ctrl-label" id="clock-display">--:--:--</span>
+      </div>
     </div>
   </div>
 
@@ -386,9 +501,10 @@ function renderFrame() {{
 }}
 
 // ─── Animation loop ───────────────────────────────────────────────────────────
+window._scrollSpd = SCROLL_SPD;
 function tick() {{
   if (!paused && stripBitmap && stripSrcW > LED_W) {{
-    scrollSrcX += SCROLL_SPD;
+    scrollSrcX += window._scrollSpd || SCROLL_SPD;
     if (scrollSrcX >= stripSrcW) scrollSrcX -= stripSrcW;
   }}
   renderFrame();
@@ -518,15 +634,14 @@ function makeDetailCard(item, idx) {{
     const hScore = item.home_score != null ? item.home_score : '';
     const isFinal = /final|ft|full/i.test(item.status||'');
     const isLive  = !isFinal && (item.period || item.clock);
-    teams  = away + ' vs ' + home;
     score  = (aScore !== '' && hScore !== '') ? aScore + ' – ' + hScore : '';
     status = `<span style="color:${{isLive ? color : isFinal ? '#555' : '#888'}}">${{item.status||item.clock||''}}</span>`;
     detail = `<div class="row"><span>League</span><span>${{item.league||sport}}</span></div>
               <div class="row"><span>Venue</span><span>${{item.venue||'—'}}</span></div>`;
-    // Logos
-    const awayLogo = item.away_logo ? `<img src="${{item.away_logo}}" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-right:4px" onerror="this.style.display='none'">` : '';
-    const homeLogo = item.home_logo ? `<img src="${{item.home_logo}}" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-left:4px"  onerror="this.style.display='none'">` : '';
+    const awayLogo = item.away_logo ? `<img src="${{item.away_logo}}" style="width:18px;height:18px;object-fit:contain;vertical-align:middle;margin-right:4px" onerror="this.style.display='none'">` : '';
+    const homeLogo = item.home_logo ? `<img src="${{item.home_logo}}" style="width:18px;height:18px;object-fit:contain;vertical-align:middle;margin-left:4px"  onerror="this.style.display='none'">` : '';
     teams = awayLogo + away + ' vs ' + home + homeLogo;
+    if (item.id) teams += `<span class="pin-badge" onclick="event.stopPropagation();pinGame('${{item.id}}')" title="Pin this game">📌</span>`;
   }}
 
   return `<div class="dc" data-idx="${{idx}}" onclick="toggleCard(this)">
@@ -552,12 +667,185 @@ document.getElementById('mode-filters').addEventListener('click', function(e) {{
   btn.classList.add('active');
   currentApiMode = btn.dataset.mode;
   scrollSrcX = 0;
+  showCtrlPanel(currentApiMode);
+  if (currentApiMode === 'music') fetchNowPlaying();
   fetchAll();
 }});
 
+// ─── Speed slider ─────────────────────────────────────────────────────────────
+const speedRange = document.getElementById('speed-range');
+const speedVal   = document.getElementById('speed-val');
+speedRange.addEventListener('input', function() {{
+  const v = parseFloat(this.value);
+  window._scrollSpd = v;
+  speedVal.textContent = v.toFixed(1) + '×';
+}});
+
+// ─── Controls panel visibility ────────────────────────────────────────────────
+function showCtrlPanel(mode) {{
+  document.querySelectorAll('.ctrl-panel').forEach(p => p.classList.remove('active'));
+  const map = {{
+    sports: 'ctrl-sports', live: 'ctrl-sports',
+    weather: 'ctrl-weather',
+    flights: 'ctrl-flights', flight_tracker: 'ctrl-flight_tracker',
+    music: 'ctrl-music',
+    stocks: 'ctrl-stocks',
+    clock: 'ctrl-clock',
+  }};
+  const id = map[mode];
+  if (id) document.getElementById(id)?.classList.add('active');
+}}
+
+// ─── Weather ──────────────────────────────────────────────────────────────────
+window.setWeather = async function() {{
+  const city = document.getElementById('weather-city').value.trim();
+  if (!city) return;
+  try {{
+    await fetch('/api/config', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ weather_city: city, mode: 'weather' }})
+    }});
+    fetchAll();
+  }} catch(e) {{ console.error(e); }}
+}};
+
+// ─── Airport ─────────────────────────────────────────────────────────────────
+window.setAirport = async function() {{
+  const code = document.getElementById('airport-code').value.trim().toUpperCase();
+  if (!code) return;
+  try {{
+    await fetch('/api/config', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ airport_code_iata: code, mode: 'flights', flight_submode: 'airport' }})
+    }});
+    fetchAll();
+  }} catch(e) {{ console.error(e); }}
+}};
+
+// ─── Flight tracker ───────────────────────────────────────────────────────────
+window.setFlightTracker = async function() {{
+  const flt   = document.getElementById('flight-id').value.trim().toUpperCase();
+  const guest = document.getElementById('guest-name').value.trim();
+  if (!flt) return;
+  try {{
+    await fetch('/api/config', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ track_flight_id: flt, track_guest_name: guest, mode: 'flight_tracker', flight_submode: 'track' }})
+    }});
+    fetchAll();
+  }} catch(e) {{ console.error(e); }}
+}};
+window.clearFlight = async function() {{
+  document.getElementById('flight-id').value = '';
+  document.getElementById('guest-name').value = '';
+  try {{
+    await fetch('/api/config', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{ track_flight_id: '', track_guest_name: '' }})
+    }});
+  }} catch(e) {{ console.error(e); }}
+}};
+
+// ─── Pin game ─────────────────────────────────────────────────────────────────
+window.pinGame = async function(gameId) {{
+  try {{
+    const payload = {{ game_ids: gameId ? [gameId] : [] }};
+    if ('{first_ticker_id_js}') payload.ticker_id = '{first_ticker_id_js}';
+    await fetch('/api/pin_games', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify(payload)
+    }});
+    document.getElementById('unpin-btn').style.display = gameId ? '' : 'none';
+    fetchAll();
+  }} catch(e) {{ console.error(e); }}
+}};
+window.unpinGame = function() {{ window.pinGame(''); }};
+
+// ─── Music: iTunes top chart + fake progress ──────────────────────────────────
+let _npSong = null;
+let _npStart = 0;
+let _npDuration = 210;  // default 3:30
+
+async function fetchNowPlaying() {{
+  // First try Spotify
+  try {{
+    const r = await fetch('/api/spotify/now');
+    if (r.ok) {{
+      const d = await r.json();
+      if (d && d.title) {{
+        _npSong = d;
+        _npDuration = (d.duration || 210000) / 1000;
+        _npStart = Date.now() / 1000 - (d.progress || 0) / 1000;
+        renderNowPlaying(d.title, d.artist, d.album_art || '', d.progress/1000, _npDuration);
+        return;
+      }}
+    }}
+  }} catch(e) {{}}
+
+  // Fallback: iTunes top songs RSS
+  try {{
+    const r = await fetch('https://itunes.apple.com/us/rss/topsongs/limit=10/json');
+    if (r.ok) {{
+      const d = await r.json();
+      const entries = d?.feed?.entry || [];
+      if (entries.length) {{
+        const song = entries[Math.floor(Math.random() * Math.min(5, entries.length))];
+        const title  = song['im:name']?.label || 'Unknown';
+        const artist = song['im:artist']?.label || '';
+        const art    = song['im:image']?.[2]?.label || '';
+        _npDuration = 200 + Math.floor(Math.random() * 60);
+        _npStart = Date.now() / 1000 - Math.floor(Math.random() * _npDuration * 0.8);
+        renderNowPlaying(title, artist, art, Date.now()/1000 - _npStart, _npDuration);
+        return;
+      }}
+    }}
+  }} catch(e) {{}}
+
+  renderNowPlaying('No song data', '', '', 0, 1);
+}}
+
+function renderNowPlaying(title, artist, art, progressSec, durationSec) {{
+  document.getElementById('np-title').textContent  = title;
+  document.getElementById('np-artist').textContent = artist;
+  const artEl = document.getElementById('np-art');
+  if (art) {{ artEl.src = art; artEl.style.display=''; }} else {{ artEl.style.display='none'; }}
+  updateNpProgress(progressSec, durationSec);
+}}
+
+function updateNpProgress(progressSec, durationSec) {{
+  const pct = durationSec > 0 ? Math.min(100, progressSec / durationSec * 100) : 0;
+  document.getElementById('np-fill').style.width = pct + '%';
+  const fmt = s => Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0');
+  document.getElementById('np-time').textContent = fmt(progressSec) + ' / ' + fmt(durationSec);
+}}
+
+// Progress ticker for now-playing bar
+setInterval(() => {{
+  if (_npStart > 0 && document.getElementById('ctrl-music').classList.contains('active')) {{
+    const elapsed = Date.now() / 1000 - _npStart;
+    updateNpProgress(Math.min(elapsed, _npDuration), _npDuration);
+  }}
+}}, 1000);
+
+// ─── Clock display ────────────────────────────────────────────────────────────
+setInterval(() => {{
+  const el = document.getElementById('clock-display');
+  if (el && document.getElementById('ctrl-clock').classList.contains('active')) {{
+    el.textContent = new Date().toLocaleTimeString();
+  }}
+}}, 1000);
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
+showCtrlPanel('sports');
 fetchAll();
+fetchNowPlaying();
 setInterval(fetchAll, FETCH_EVERY);
+setInterval(fetchNowPlaying, 30000);
 tick();
 
 }})();
