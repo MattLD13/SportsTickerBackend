@@ -1,0 +1,12 @@
+# HTTP (backend polling, album art)
+requests
+
+# Image rendering (LED matrix frames)
+Pillow
+
+# Wi-Fi portal web UI
+flask
+
+# LED matrix driver — only available on Raspberry Pi hardware
+# Install separately: https://github.com/hzeller/rpi-rgb-led-matrix
+# rgbmatrix

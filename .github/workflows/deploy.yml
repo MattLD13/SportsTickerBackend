@@ -85,7 +85,8 @@ jobs:
             # ── Install deps ──────────────────────────────────────────────
             pip3 install -r requirements.txt --break-system-packages 2>/dev/null \
               || pip3 install -r requirements.txt
-            pip3 install librespot protobuf google-generativeai google-genai spotipy \
+            # librespot / protobuf not on PyPI as clean packages; install best-effort
+            pip3 install librespot protobuf \
               --break-system-packages 2>/dev/null || true
 
             # ── Restart backend ───────────────────────────────────────────

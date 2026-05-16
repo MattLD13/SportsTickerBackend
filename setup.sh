@@ -6,11 +6,12 @@
 set -e
 
 REPO_URL="https://github.com/MattLD13/SportsTickerBackend.git"
-INSTALL_DIR="/home/pi"
+INSTALL_DIR="/home/mld"
 PROJECT_DIR="$INSTALL_DIR"   # repo cloned directly into home dir (matches deploy)
 SERVICE_SRC="$PROJECT_DIR/ticker-controller.service"
 SERVICE_DST="/etc/systemd/system/ticker-controller.service"
 PYTHON="python3"
+USER="mld"
 
 echo ""
 echo "═══════════════════════════════════════════════"
@@ -32,15 +33,14 @@ else
     git clone "$REPO_URL" "$PROJECT_DIR"
 fi
 
-# ── 3. Python dependencies ───────────────────────────────────────────────────
-echo "[3/7] Installing Python requirements..."
-cd "$PROJECT_DIR"
-$PYTHON -m pip install -r requirements.txt --break-system-packages 2>/dev/null \
-    || $PYTHON -m pip install -r requirements.txt
+# Allow root to run git in this directory (service runs as root)
+git config --global --add safe.directory "$PROJECT_DIR"
 
-# Optional extras (best-effort — don't fail if unavailable)
-$PYTHON -m pip install librespot protobuf google-genai spotipy Pillow flask flask-cors \
-    --break-system-packages 2>/dev/null || true
+# ── 3. Python dependencies ───────────────────────────────────────────────────
+echo "[3/7] Installing Python requirements (ticker controller)..."
+cd "$PROJECT_DIR"
+$PYTHON -m pip install -r ticker_controller/requirements.txt --break-system-packages 2>/dev/null \
+    || $PYTHON -m pip install -r ticker_controller/requirements.txt
 
 # ── 4. RGB Matrix library ─────────────────────────────────────────────────────
 echo "[4/7] Installing rpi-rgb-led-matrix Python bindings..."
@@ -59,7 +59,7 @@ fi
 
 # ── 5. Sudoers entry so updater can restart services without a password ───────
 echo "[5/7] Configuring sudoers for service restart..."
-SUDOERS_LINE="pi ALL=(root) NOPASSWD: /bin/systemctl restart ticker-controller, /bin/systemctl restart ticker, /sbin/reboot"
+SUDOERS_LINE="$USER ALL=(root) NOPASSWD: /bin/systemctl restart ticker-controller, /bin/systemctl restart ticker, /sbin/reboot"
 SUDOERS_FILE="/etc/sudoers.d/ticker"
 echo "$SUDOERS_LINE" > "$SUDOERS_FILE"
 chmod 440 "$SUDOERS_FILE"
@@ -67,6 +67,8 @@ echo "  Sudoers entry written to $SUDOERS_FILE"
 
 # ── 6. Install & enable systemd service ──────────────────────────────────────
 echo "[6/7] Installing systemd service..."
+# Patch service file to use the actual home directory
+sed -i "s|/home/pi|/home/$USER|g" "$SERVICE_SRC"
 cp "$SERVICE_SRC" "$SERVICE_DST"
 systemctl daemon-reload
 systemctl enable ticker-controller
@@ -82,6 +84,6 @@ echo ""
 echo "═══════════════════════════════════════════════"
 echo "   Setup complete!"
 echo "   Logs:    journalctl -u ticker-controller -f"
-echo "   Or:      tail -f /home/pi/ticker.log"
+echo "   Or:      tail -f /home/$USER/ticker.log"
 echo "═══════════════════════════════════════════════"
 echo ""

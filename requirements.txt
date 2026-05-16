@@ -1,6 +1,21 @@
+# Web server
 flask
 flask-cors
+
+# HTTP
 requests
+
+# Environment / config
 python-dotenv
 
+# Airport code lookup (flight tracker)
+airportsdata
 
+# Spotify integration
+spotipy
+
+# AI / Gemini (golf caddie commentary)
+google-genai
+
+# Logo image processing
+Pillow
