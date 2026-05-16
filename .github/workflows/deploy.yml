@@ -101,7 +101,11 @@ jobs:
       - name: Send update signal to all tickers
         run: |
           echo "Controller code changed — signalling fleet..."
+          COUNT=$(git rev-list --count HEAD)
+          SHA=$(git rev-parse --short HEAD)
+          VERSION="r${COUNT}+${SHA}"
+          echo "New version: ${VERSION}"
           curl -s -o /dev/null -w "HTTP %{http_code}\n" \
             -X POST https://ticker.mattdicks.org/api/hardware \
             -H "Content-Type: application/json" \
-            -d '{"action":"update","ticker_id":"all"}'
+            -d "{\"action\":\"update\",\"ticker_id\":\"all\",\"version\":\"${VERSION}\"}"

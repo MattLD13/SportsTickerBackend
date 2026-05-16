@@ -137,6 +137,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
 
         self.is_updating = False
         self._update_step = "Updating..."
+        self._update_version = ""
 
         threading.Thread(target=self.poll_backend, daemon=True).start()
 
@@ -565,7 +566,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         while self.running:
             try:
                 if self.is_updating:
-                    frame = self.draw_update_screen(self._update_step)
+                    frame = self.draw_update_screen(self._update_step, version=self._update_version)
                     self.update_display(frame)
                     time.sleep(0.033)
                     continue
@@ -753,7 +754,8 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
 
                 g_config = data.get('global_config') or {}
                 if g_config.get('update') and not self.is_updating:
-                    print("OTA update requested by server.")
+                    self._update_version = g_config.get('update_version', '')
+                    print(f"OTA update requested by server. Target: {self._update_version or 'unknown'}")
                     self.is_updating = True
                     threading.Thread(target=self._run_update, daemon=True).start()
 

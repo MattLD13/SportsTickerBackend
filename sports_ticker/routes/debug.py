@@ -124,10 +124,14 @@ def api_hardware():
         
         # NEW: Handle Update Action
         if action == 'update':
+            new_version = str(data.get('version') or '')
             with data_lock:
-                for t in tickers.values(): t['update_requested'] = True
-            threading.Timer(60, lambda: [t.update({'update_requested':False}) for t in tickers.values()]).start()
-            return jsonify({"status": "ok", "message": "Updating Fleet"})
+                for t in tickers.values():
+                    t['update_requested'] = True
+                    if new_version:
+                        t['update_version'] = new_version
+            threading.Timer(60, lambda: [t.update({'update_requested': False, 'update_version': ''}) for t in tickers.values()]).start()
+            return jsonify({"status": "ok", "message": "Updating Fleet", "version": new_version})
 
         if action == 'reboot':
             if ticker_id and ticker_id in tickers:

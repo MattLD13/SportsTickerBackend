@@ -217,7 +217,10 @@ def get_ticker_data():
     # pin overrides here, otherwise global_config.mode appears to change.
     g_config = { "mode": state.get('mode', 'sports') }
     if rec.get('reboot_requested'): g_config['reboot'] = True
-    if rec.get('update_requested'): g_config['update'] = True
+    if rec.get('update_requested'):
+        g_config['update'] = True
+        if rec.get('update_version'):
+            g_config['update_version'] = rec['update_version']
         
     return jsonify({
         "status": "sleep" if is_sleep else "ok",

@@ -78,7 +78,7 @@ class MiscMixin:
             pass
         return img
 
-    def draw_update_screen(self, step="Updating...", progress=None):
+    def draw_update_screen(self, step="Updating...", progress=None, version=""):
         """LED display shown while the ticker is pulling a code update."""
         img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
@@ -100,30 +100,34 @@ class MiscMixin:
             dot_y = int(cy + math.sin(angle) * 7)
             brightness = int(100 + 155 * ((math.sin(angle - t * 3) + 1) / 2))
             d.point((dot_x, dot_y), fill=(0, brightness, brightness))
-        # Inner dot
         d.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=(0, 180, 180))
 
-        # Step label
+        # Step label (top line)
         label = str(step).upper()
         lw = d.textlength(label, font=self.font)
-        lx = int((PANEL_W - lw) / 2)
-        d.text((lx, 1), label, font=self.font, fill=(200, 220, 220))
+        d.text((int((PANEL_W - lw) / 2), 1), label, font=self.font, fill=(200, 220, 220))
 
-        # Animated bouncing dots below text
-        dots_y = 20
-        for i in range(5):
-            phase = t * 4 + i * 0.6
-            dy = int(math.sin(phase) * 3)
-            bx = PANEL_W // 2 - 12 + i * 6
-            d.ellipse((bx, dots_y + dy, bx + 2, dots_y + dy + 2), fill=(0, 200, 255))
+        # Version string (second line) or bouncing dots if no version
+        if version:
+            ver_label = f"→ {version}"
+            vw = d.textlength(ver_label, font=self.tiny)
+            # Pulse brightness so it draws the eye
+            pulse = int(150 + 80 * math.sin(t * 2))
+            d.text((int((PANEL_W - vw) / 2), 13), ver_label, font=self.tiny, fill=(0, pulse, pulse))
+        else:
+            dots_y = 20
+            for i in range(5):
+                phase = t * 4 + i * 0.6
+                dy = int(math.sin(phase) * 3)
+                bx = PANEL_W // 2 - 12 + i * 6
+                d.ellipse((bx, dots_y + dy, bx + 2, dots_y + dy + 2), fill=(0, 200, 255))
 
-        # Progress bar at bottom (if provided)
+        # Progress bar at bottom
         d.rectangle((0, 31, PANEL_W - 1, 31), fill=(20, 20, 20))
         if progress is not None:
             fill_w = int(max(0, min(1.0, progress)) * PANEL_W)
             d.rectangle((0, 31, fill_w, 31), fill=(0, 200, 100))
         else:
-            # Indeterminate pulse
             pulse_w = 80
             px = int((t * 100) % (PANEL_W + pulse_w)) - pulse_w
             for bx in range(px, px + pulse_w):

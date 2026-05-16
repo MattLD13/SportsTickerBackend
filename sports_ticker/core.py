@@ -48,7 +48,30 @@ except ImportError:
 load_dotenv()
 
 # ================= SERVER VERSION =================
-SERVER_VERSION = "v0.10 - Optimized"
+def _compute_version():
+    import subprocess as _sp
+    try:
+        count = _sp.check_output(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=os.path.dirname(os.path.dirname(__file__)),
+            stderr=_sp.DEVNULL, text=True,
+        ).strip()
+        sha = _sp.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.dirname(__file__)),
+            stderr=_sp.DEVNULL, text=True,
+        ).strip()
+        date = _sp.check_output(
+            ["git", "log", "-1", "--format=%cd", "--date=format:%Y.%m.%d"],
+            cwd=os.path.dirname(os.path.dirname(__file__)),
+            stderr=_sp.DEVNULL, text=True,
+        ).strip()
+        return f"r{count}+{sha}", date, int(count), sha
+    except Exception:
+        return "r0+unknown", "unknown", 0, "unknown"
+
+_VERSION_SHORT, _VERSION_DATE, _VERSION_BUILD, _VERSION_HASH = _compute_version()
+SERVER_VERSION = f"{_VERSION_DATE} · build {_VERSION_SHORT}"
 
 # ── Section A: Logging ──
 class Tee(object):
