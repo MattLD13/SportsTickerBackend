@@ -297,8 +297,8 @@ document.getElementById('mode-filters').addEventListener('click', function (e) {
   if (currentApiMode === 'music') fetchNowPlaying();
   fetch('/api/config', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode: currentApiMode }),
+    headers: _tickerHeaders(),
+    body: _tickerBody({ mode: currentApiMode }),
   }).catch(e => console.error('mode switch error', e));
   fetchAll();
 });
@@ -370,14 +370,25 @@ window.unpinGame = async function () {
   }
 };
 
+function _tickerHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (TICKER_ID) h['X-Client-ID'] = TICKER_ID;
+  return h;
+}
+function _tickerBody(extra) {
+  const b = Object.assign({}, extra);
+  if (TICKER_ID) b.ticker_id = TICKER_ID;
+  return JSON.stringify(b);
+}
+
 window.setWeather = async function () {
   const city = document.getElementById('weather-city').value.trim();
   if (!city) return;
   try {
     await fetch('/api/config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ weather_city: city, mode: 'weather' }),
+      headers: _tickerHeaders(),
+      body: _tickerBody({ weather_city: city, mode: 'weather' }),
     });
     fetchAll();
   } catch (e) {
@@ -391,8 +402,8 @@ window.setAirport = async function () {
   try {
     await fetch('/api/config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ airport_code_iata: code, mode: 'flights', flight_submode: 'airport' }),
+      headers: _tickerHeaders(),
+      body: _tickerBody({ airport_code_iata: code, mode: 'flights', flight_submode: 'airport' }),
     });
     fetchAll();
   } catch (e) {
@@ -407,8 +418,8 @@ window.setFlightTracker = async function () {
   try {
     await fetch('/api/config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ track_flight_id: flt, track_guest_name: guest, mode: 'flight_tracker', flight_submode: 'track' }),
+      headers: _tickerHeaders(),
+      body: _tickerBody({ track_flight_id: flt, track_guest_name: guest, mode: 'flight_tracker', flight_submode: 'track' }),
     });
     fetchAll();
   } catch (e) {
@@ -422,8 +433,8 @@ window.clearFlight = async function () {
   try {
     await fetch('/api/config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ track_flight_id: '', track_guest_name: '' }),
+      headers: _tickerHeaders(),
+      body: _tickerBody({ track_flight_id: '', track_guest_name: '' }),
     });
   } catch (e) {
     console.error(e);
