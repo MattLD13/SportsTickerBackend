@@ -4,6 +4,7 @@
 // ─── Config injected by server ────────────────────────────────────────────────
 const CFG        = window._CFG || {};
 const TICKER_ID  = CFG.tickerId || '';
+const BROWSER_RT = window.__tickerBrowserRuntime || null;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const LED_W       = 384;
@@ -82,6 +83,22 @@ function tick() {
 // ─── Strip fetching ───────────────────────────────────────────────────────────
 async function fetchStrip() {
   try {
+    if (BROWSER_RT && typeof BROWSER_RT.renderStrip === 'function') {
+      try {
+        const strip = await BROWSER_RT.renderStrip(currentApiMode, TICKER_ID);
+        if (!strip || !strip.dataUrl) throw new Error('browser runtime returned no strip');
+        const bmp = await createImageBitmap(await (await fetch(strip.dataUrl)).blob());
+        stripBitmap = bmp;
+        stripSrcW   = strip.width || bmp.width;
+        scrollSrcX  = 0;
+        fetchStatus.textContent = 'Updated ' + new Date().toLocaleTimeString() +
+          '  ·  browser runtime ' + stripSrcW + 'px';
+        return;
+      } catch (browserErr) {
+        console.warn('Browser runtime strip failed; falling back to server preview.', browserErr);
+      }
+    }
+
     const url  = '/api/preview/strip.png?mode=' + encodeURIComponent(currentApiMode);
     const resp = await fetch(url, { cache: 'no-store' });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);

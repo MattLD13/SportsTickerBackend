@@ -1,7 +1,10 @@
 """Root dashboard route."""
 
 import time
-from flask import render_template
+from pathlib import Path
+
+import requests
+from flask import Response, jsonify, render_template, request
 from . import dashboard
 from ..core import (
     state, tickers, data_lock,
@@ -26,6 +29,9 @@ _MODE_COLORS = {
     'flights':        ('#00ddcc', '#001a18'),
     'flight_tracker': ('#00ddcc', '#001a18'),
 }
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_TICKER_CONTROLLER_ROOT = _REPO_ROOT / 'ticker_controller'
 
 
 @dashboard.route('/')
@@ -114,3 +120,32 @@ def root():
         ticker_cards_html = ticker_cards_html,
         sport_html        = sport_html,
     )
+
+
+@dashboard.route('/api/browser/ticker_controller_bundle')
+def browser_ticker_bundle():
+    files = {}
+    if _TICKER_CONTROLLER_ROOT.exists():
+        for path in sorted(_TICKER_CONTROLLER_ROOT.rglob('*.py')):
+            rel_path = path.relative_to(_REPO_ROOT).as_posix()
+            files[rel_path] = path.read_text(encoding='utf-8')
+    return jsonify({
+        'root': 'ticker_controller',
+        'files': files,
+    })
+
+
+@dashboard.route('/api/browser/image_proxy')
+def browser_image_proxy():
+    url = request.args.get('url', '').strip()
+    if not url:
+        return Response(status=400)
+
+    try:
+        resp = requests.get(url, timeout=8, verify=False)
+        content_type = resp.headers.get('Content-Type', 'application/octet-stream')
+        proxy = Response(resp.content, mimetype=content_type)
+        proxy.headers['Cache-Control'] = 'no-store'
+        return proxy
+    except Exception:
+        return Response(status=502)
