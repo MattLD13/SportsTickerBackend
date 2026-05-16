@@ -362,6 +362,26 @@ class BrowserTickerStreamer(TickerStreamer):
         self.C_RED = (255, 60, 60)
         self.C_GRY = (120, 120, 130)
 
+    def get_logo(self, url, size=(24, 24)):
+        if not url:
+            return None
+        cached = self.logo_cache.get(f"{url}_{size}") or self.logo_cache.get(f"{url}_{size[0]}x{size[1]}")
+        if cached:
+            return cached
+        if not str(url).startswith('data:'):
+            return None
+        try:
+            import requests
+            raw = Image.open(io.BytesIO(requests.get(url, timeout=1).content)).convert('RGBA')
+            raw.thumbnail(size, Image.Resampling.LANCZOS)
+            final = Image.new('RGBA', size, (0, 0, 0, 0))
+            final.paste(raw, ((size[0] - raw.width) // 2, (size[1] - raw.height) // 2), raw)
+            self.logo_cache[f"{url}_{size}"] = final
+            self.logo_cache[f"{url}_{size[0]}x{size[1]}"] = final
+            return final
+        except Exception:
+            return None
+
 
 _RENDERER = BrowserTickerStreamer()
 _STATIC_INDEX = 0

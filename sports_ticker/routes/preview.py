@@ -195,6 +195,9 @@ def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
             if itype == 'weather':
                 return renderer.draw_weather_detailed(g)
             if itype == 'stock_ticker' or sport.startswith('stock'):
+                logo_url = g.get('home_logo')
+                if logo_url:
+                    renderer.download_and_process_logo(logo_url, (24, 24))
                 return renderer.draw_stock_card(g)
             if itype == 'music' or sport == 'music':
                 return renderer.draw_music_card(g)
