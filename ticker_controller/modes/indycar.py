@@ -111,6 +111,27 @@ def _display_flag(flag, state):
     return str(flag or '').strip().upper() or 'GREEN'
 
 
+def _key_background(img):
+    if img is None:
+        return None
+    try:
+        rgba = img.convert('RGBA')
+        pixels = rgba.load()
+        width, height = rgba.size
+        corners = [pixels[0, 0], pixels[max(0, width - 1), 0], pixels[0, max(0, height - 1)], pixels[max(0, width - 1), max(0, height - 1)]]
+        bg = max(corners, key=corners.count)
+        for y in range(height):
+            for x in range(width):
+                r, g, b, a = pixels[x, y]
+                if a == 0:
+                    continue
+                if abs(r - bg[0]) <= 18 and abs(g - bg[1]) <= 18 and abs(b - bg[2]) <= 18:
+                    pixels[x, y] = (r, g, b, 0)
+        return rgba
+    except Exception:
+        return img
+
+
 class IndycarMixin:
 
     # ── helpers ──────────────────────────────────────────────────────────────
@@ -126,6 +147,7 @@ class IndycarMixin:
         if logo is not None:
             try:
                 cleaned = logo.convert('RGBA')
+                cleaned = _key_background(cleaned)
                 cleaned = ImageOps.autocontrast(cleaned)
                 cleaned = cleaned.filter(ImageFilter.MedianFilter(3)).filter(ImageFilter.SHARPEN)
                 return cleaned
@@ -140,6 +162,7 @@ class IndycarMixin:
             return None
         try:
             cleaned = logo.convert('RGBA')
+            cleaned = _key_background(cleaned)
             cleaned = ImageOps.autocontrast(cleaned)
             cleaned = cleaned.filter(ImageFilter.MedianFilter(3)).filter(ImageFilter.SHARPEN)
             return cleaned
@@ -228,16 +251,16 @@ class IndycarMixin:
 
             # Position number
             pos_color = (255, 215, 0) if pos == '1' else (200, 200, 200)
-            draw_tiny_text(d, 1, y, pos, pos_color)
+            draw_tiny_text(d, 0, y, pos, pos_color)
 
             # Put the number art to the left of the driver code.
-            badge = self._ic_load_logo(team_logo, (8, 8)) if team_logo else _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=1)
+            badge = self._ic_load_logo(team_logo, (6, 6)) if team_logo else _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=1)
             name_w = _tiny_text_width(abbr, self.font)
             badge_w = badge.width if badge else 0
             total_w = badge_w + (2 if badge else 0) + name_w
-            start_x = max(10, int(round(58 - total_w / 2)))
+            start_x = max(8, int(round(50 - total_w / 2)))
             if badge:
-                badge_y = max(0, y - 2)
+                badge_y = max(0, y - 1)
                 img.paste(badge, (start_x, badge_y), badge)
                 text_x = start_x + badge_w + 2
             else:
