@@ -45,6 +45,56 @@ def _draw_mini_flag(d, x, y, flag):
         d.rectangle([x, y + 1, x + 8, y + 6], fill=fill, outline=(35, 35, 35))
 
 
+def _draw_flag(d, x, y, flag, w=15, h=10):
+    fill = _ic_flag_color(flag)
+    flag_name = str(flag or '').strip().upper()
+    d.rectangle([x - 1, y - 1, x + w, y + h], fill=(6, 8, 12), outline=(120, 130, 145))
+    if flag_name == 'CHECKERED':
+        d.rectangle([x, y, x + w - 1, y + h - 1], fill=(240, 240, 240), outline=(35, 35, 35))
+        cell = 2
+        for yy in range(y + 1, y + h - 1):
+            for xx in range(x + 1, x + w - 1):
+                if (((xx - x) // cell) + ((yy - y) // cell)) % 2 == 0:
+                    d.point((xx, yy), fill=(45, 45, 45))
+    else:
+        d.rectangle([x, y, x + w - 1, y + h - 1], fill=fill, outline=(35, 35, 35))
+
+
+def _ordinal_place(value):
+    text = str(value or '').strip()
+    try:
+        num = int(text.lstrip('T'))
+    except Exception:
+        return f"{text} place" if text else ''
+    if 10 <= (num % 100) <= 20:
+        suffix = 'th'
+    else:
+        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(num % 10, 'th')
+    return f"{num}{suffix} place"
+
+
+def _text_size(draw, text, font):
+    try:
+        bbox = draw.textbbox((0, 0), str(text), font=font)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1]
+    except Exception:
+        try:
+            return draw.textlength(str(text), font=font), 8
+        except Exception:
+            return len(str(text)) * 6, 8
+
+
+def _trim_transparent_padding(img):
+    if img is None:
+        return None
+    try:
+        rgba = img.convert('RGBA')
+        bbox = rgba.getbbox()
+        return rgba.crop(bbox) if bbox else rgba
+    except Exception:
+        return img
+
+
 def _render_number_badge(text, font, fg=(235, 235, 235), scale=2):
     text = str(text or '').strip()
     if not text:
@@ -346,8 +396,8 @@ class IndycarMixin:
 
         W = PANEL_W   # 384
         H = PANEL_H   # 32
-        INFO_W = W // 4          # 96 px
-        RACE_W = W - INFO_W      # 288 px
+        INFO_W = 84
+        RACE_W = W - INFO_W
 
         img = Image.new("RGBA", (W, H), (0, 0, 0, 255))
         d   = ImageDraw.Draw(img)
@@ -416,7 +466,13 @@ class IndycarMixin:
         bar_color = (255, 200, 0) if caution else (0, 80, 200)
         d.rectangle([0, 0, 2, H], fill=bar_color)
 
-        max_chars = (panel_w - 6) // 4
+        flag_name = _display_flag(flag, state)
+        show_flag = bool(flag_name)
+        if show_flag:
+            _draw_flag(d, panel_w - 17, 1, flag_name, w=15, h=10)
+
+        title_w = panel_w - (24 if show_flag else 6)
+        max_chars = max(4, title_w // 4)
         line1 = short_name[:max_chars]
         line2 = short_name[max_chars:max_chars * 2] if len(short_name) > max_chars else ''
 
@@ -446,11 +502,6 @@ class IndycarMixin:
             info_str = 'STARTS SOON' if state == 'pre' else str(game.get('status', '')).upper()[:max_chars]
 
         draw_tiny_text(d, 4, y_info, info_str, (255, 255, 255))
-
-        # Flag indicator
-        y_flag = y_info + 7
-        if y_flag + 5 <= H and flag and flag not in ('GREEN', ''):
-            _draw_mini_flag(d, 0, y_flag, _display_flag(flag, state))
 
     def _ic_draw_driver_panel(self, img, d, drivers, x_off, panel_w, H, is_qual=False):
         """Draw the scrolling driver leaderboard into the right 3/4 panel."""
@@ -485,18 +536,24 @@ class IndycarMixin:
 
         visible.sort(key=_pos_sort_key)
 
-        card_w = 100
-        card_h = H - 4
+        min_card_w = 132
+        card_h = H - 2
         gap = 6
-        row_speed = 8.0 if len(visible) > 6 else 6.0
+        ticker_sleep = float(getattr(self, 'scroll_sleep', 0.05) or 0.05)
+        row_speed = 1.0 / max(0.001, ticker_sleep)
 
         cards = []
         for driver in visible:
-            card = Image.new('RGBA', (card_w, card_h), (0, 0, 0, 0))
-            cd = ImageDraw.Draw(card)
             pos = str(driver.get('pos') or '')
             name = str(driver.get('name') or driver.get('abbr') or '???').strip()
             car_num = str(driver.get('car') or '').strip()
+            place_text = _ordinal_place(pos)
+            name_w, _ = _text_size(pd, name, self.font)
+            place_w, _ = _text_size(pd, place_text, self.font)
+            num_w, _ = _text_size(pd, car_num, self.font)
+            card_w = max(min_card_w, int(name_w) + 24, int(place_w + num_w) + 18)
+            card = Image.new('RGBA', (card_w, card_h), (0, 0, 0, 0))
+            cd = ImageDraw.Draw(card)
             team_logo = str(driver.get('team_logo') or '').strip()
             car_image = str(driver.get('car_illustration') or '').strip()
             gap_val = str(driver.get('gap') or '').strip()
@@ -506,29 +563,26 @@ class IndycarMixin:
                 cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(255, 215, 0), width=1)
 
             pos_color = (255, 215, 0) if pos == '1' else (180, 180, 180)
-            draw_tiny_text(cd, 3, 2, pos, pos_color)
+            cd.text((4, 0), place_text, font=self.font, fill=pos_color)
 
-            name = name[:12]
-            name_width = _tiny_text_width(name, self.font)
-            badge = self._ic_load_logo(team_logo, (12, 12)) if team_logo else _render_number_badge(car_num, self.font, fg=(205, 225, 255), scale=1)
-            badge_w = badge.width if badge else 0
-            group_w = name_width + (2 if badge else 0) + badge_w
-            group_x = max(4, int((card_w - group_w) / 2))
-            if badge:
-                card.paste(badge, (group_x, 1), badge)
-                text_x = group_x + badge_w + 2
-            else:
-                text_x = group_x
-            draw_tiny_text(cd, text_x, 2, name, (255, 255, 255))
+            if car_num:
+                num_fill, _num_outline = _ic_sample_colors(self._ic_load_logo(team_logo, (18, 18)))
+                num_w, _ = _text_size(cd, car_num, self.font)
+                cd.text((card_w - int(num_w) - 5, 0), car_num, font=self.font, fill=num_fill)
+
+            name_w, _ = _text_size(cd, name, self.font)
+            name_x = max(4, card_w - int(name_w) - 5)
+            cd.text((name_x, 9), name, font=self.font, fill=(255, 255, 255))
 
             if car_image:
-                car_img = self._ic_load_logo(car_image, (34, 12))
+                car_img = self._ic_load_logo(car_image, (120, 16))
                 if car_img:
-                    car_x = max(4, int((card_w - car_img.width) / 2))
-                    car_y = 11
+                    car_img = _trim_transparent_padding(car_img)
+                    car_x = 1
+                    car_y = max(13, card_h - car_img.height - 1)
                     card.paste(car_img, (car_x, car_y), car_img)
             elif car_num:
-                draw_tiny_text(cd, max(2, int((card_w - _tiny_text_width(car_num, self.font)) / 2)), 13, car_num, (110, 110, 122))
+                draw_tiny_text(cd, 5, 19, car_num, (110, 110, 122))
 
             if is_qual:
                 right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:8]
@@ -536,7 +590,7 @@ class IndycarMixin:
                 right_val = gap_val[:10]
             if right_val:
                 rv_w = _tiny_text_width(right_val, self.font)
-                draw_tiny_text(cd, max(4, card_w - rv_w - 4), 21, right_val, (140, 190, 255) if pos != '1' else (255, 255, 255))
+                draw_tiny_text(cd, max(4, card_w - rv_w - 4), 23, right_val, (140, 190, 255) if pos != '1' else (255, 255, 255))
 
             cards.append(card)
 

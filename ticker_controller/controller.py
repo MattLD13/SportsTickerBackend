@@ -886,10 +886,12 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                                 tl = drv.get('team_logo') or ''
                                 ci = drv.get('car_illustration') or ''
                                 if tl:
+                                    logos_to_fetch.append((tl, (18, 18)))
                                     logos_to_fetch.append((tl, (10, 10)))
                                     logos_to_fetch.append((tl, (7, 7)))
                                 if ci:
                                     logos_to_fetch.append((ci, (36, 12)))
+                                    logos_to_fetch.append((ci, (120, 16)))
                         else:
                             if g.get('home_logo'):
                                 logos_to_fetch.append((g.get('home_logo'), (22, 22)))
