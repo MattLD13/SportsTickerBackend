@@ -599,7 +599,7 @@ class IndycarMixin:
 
                 name_w, _ = _text_size(cd, name, name_font)
                 name_x = max(4, card_w - int(name_w) - 5)
-                cd.text((name_x, 8), name, font=name_font, fill=(255, 255, 255))
+                cd.text((name_x, 10), name, font=name_font, fill=(255, 255, 255))
 
                 if car_image:
                     car_img = self._ic_load_logo(car_image, (120, 16))
