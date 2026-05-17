@@ -34,7 +34,7 @@ from .modes.golf import GolfMixin
 from .modes.music import MusicMixin
 from .modes.flight import FlightMixin
 from .modes.misc import MiscMixin
-from .modes.indycar import IndycarMixin
+from .modes.indycar import IndycarMixin, _load_nascar_car, _nascar_purge_old_cars
 from .modes.f1 import F1Mixin
 from .modes.nascar import NascarMixin
 
@@ -891,16 +891,25 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                                 if nurl:
                                     logos_to_fetch.append((nurl, (42, 42)))
                         elif g_type == 'racing' or sport in ('indycar', 'f1', 'nascar'):
-                            # Prefetch team logos for top drivers
                             ic = g.get('indycar') or g.get('f1') or g.get('nascar') or {}
-                            for drv in (ic.get('drivers') or [])[:10]:
+                            # Purge stale NASCAR car PNGs when the race week changes
+                            if sport == 'nascar':
+                                nascar_race_id = ic.get('race_id')
+                                if nascar_race_id:
+                                    _nascar_purge_old_cars(ASSETS_DIR, str(nascar_race_id))
+                            # Prefetch ALL drivers' logos and car illustrations
+                            for drv in (ic.get('drivers') or []):
                                 tl = drv.get('team_logo') or ''
                                 ci = drv.get('car_illustration') or ''
                                 if tl:
                                     logos_to_fetch.append((tl, (18, 18)))
                                     logos_to_fetch.append((tl, (10, 10)))
                                     logos_to_fetch.append((tl, (7, 7)))
-                                if ci:
+                                if ci and 'nascar.com' in ci:
+                                    # NASCAR car images need flood-fill BG removal — submit
+                                    # directly to _NASCAR_CAR_CACHE (same cache the renderer uses)
+                                    self.executor.submit(_load_nascar_car, ci, (120, 14))
+                                elif ci:
                                     logos_to_fetch.append((ci, (36, 12)))
                                     logos_to_fetch.append((ci, (120, 16)))
                         else:

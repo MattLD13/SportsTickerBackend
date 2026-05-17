@@ -238,6 +238,7 @@ class SportsNascarMixin:
                 'away_score': '',
                 'home_score': '',
                 'nascar': {
+                    'race_id': race_id,
                     'event_name': run_name,
                     'short_name': short_name,
                     'track_name': track_name,

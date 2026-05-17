@@ -191,8 +191,43 @@ def _load_nascar_car(url, target_size):
         except Exception:
             pass
         return full
-    except Exception:
+    except Exception as _nascar_exc:
+        import logging
+        logging.getLogger(__name__).warning("[NASCAR] car image failed %s: %s", url, _nascar_exc)
         return None
+
+
+_NASCAR_RACE_ID_FILE = 'nascar_race_id.txt'
+
+
+def _nascar_purge_old_cars(assets_dir, race_id):
+    """Delete disk-cached car images when race_id changes (new race week)."""
+    race_id = str(race_id or '').strip()
+    if not race_id or not assets_dir:
+        return
+    id_file = os.path.join(assets_dir, _NASCAR_RACE_ID_FILE)
+    try:
+        stored = open(id_file).read().strip() if os.path.exists(id_file) else ''
+    except Exception:
+        stored = ''
+    if stored == race_id:
+        return
+    # Race week changed — purge stale car PNGs and memory cache
+    import logging
+    logging.getLogger(__name__).info("[NASCAR] race_id changed %s→%s, purging car cache", stored, race_id)
+    try:
+        for fname in os.listdir(assets_dir):
+            if fname.startswith('nascar_') and fname.endswith('.png'):
+                try:
+                    os.remove(os.path.join(assets_dir, fname))
+                except Exception:
+                    pass
+        _NASCAR_CAR_CACHE.clear()
+        os.makedirs(assets_dir, exist_ok=True)
+        with open(id_file, 'w') as f:
+            f.write(race_id)
+    except Exception:
+        pass
 
 
 def _wind_compass(value):
@@ -826,7 +861,8 @@ class IndycarMixin:
                 if car_image:
                     is_nascar_img = 'nascar.com' in car_image
                     if is_nascar_img:
-                        car_img = _load_nascar_car(car_image, (card_w - 2, 14))
+                        # Use the same size as the pre-fetch so _NASCAR_CAR_CACHE hits
+                        car_img = _load_nascar_car(car_image, (120, 14))
                     else:
                         car_img = self._ic_load_logo(car_image, (120, 19))
                     if car_img:
