@@ -5,6 +5,7 @@ Full screen (384 × 32):  left 1/4 = race info, right 3/4 = scrolling driver lis
 """
 
 import time
+from datetime import datetime
 from PIL import Image, ImageDraw
 from ..config import PANEL_W, PANEL_H
 from ..fonts import draw_tiny_text, draw_hybrid_text
@@ -35,13 +36,43 @@ def _draw_mini_flag(d, x, y, flag):
     fill = _ic_flag_color(flag)
     flag_name = str(flag or '').strip().upper()
     if flag_name == 'CHECKERED':
-        d.rectangle([x, y + 1, x + 6, y + 5], fill=(240, 240, 240), outline=(35, 35, 35))
-        for yy in range(1, 5):
-            for xx in range(0, 7):
+        d.rectangle([x, y + 1, x + 8, y + 6], fill=(240, 240, 240), outline=(35, 35, 35))
+        for yy in range(1, 6):
+            for xx in range(0, 9):
                 if (xx + yy) % 2 == 0:
                     d.point((x + xx, y + yy), fill=(45, 45, 45))
     else:
-        d.rectangle([x, y + 1, x + 6, y + 5], fill=fill, outline=(35, 35, 35))
+        d.rectangle([x, y + 1, x + 8, y + 6], fill=fill, outline=(35, 35, 35))
+
+
+def _render_number_badge(text, font, fg=(235, 235, 235), scale=2):
+    text = str(text or '').strip()
+    if not text:
+        return None
+    try:
+        bbox = font.getbbox(text)
+        text_w = bbox[2] - bbox[0]
+    except Exception:
+        text_w = max(4, len(text) * 4)
+    base_w = max(8, text_w + 2)
+    badge = Image.new("RGBA", (base_w, 7), (0, 0, 0, 0))
+    bd = ImageDraw.Draw(badge)
+    draw_tiny_text(bd, max(0, (base_w - text_w) // 2), 0, text, fg)
+    if scale > 1:
+        badge = badge.resize((base_w * scale, 7 * scale), Image.Resampling.NEAREST)
+    return badge
+
+
+def _format_indycar_time(value):
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    try:
+        cleaned = text.replace('Z', '+00:00')
+        dt = datetime.fromisoformat(cleaned)
+        return dt.strftime('%I:%M %p').lstrip('0')
+    except Exception:
+        return text
 
 
 def _draw_centered_tiny_text(draw, center_x, y, text, color, font):
@@ -56,6 +87,12 @@ def _draw_centered_tiny_text(draw, center_x, y, text, color, font):
     draw_tiny_text(draw, int(round(center_x - (text_w / 2))), y, text, color)
 
 
+def _group_width(text, badge_text, font, badge_scale=2):
+    txt = str(text or '').strip()
+    badge = _render_number_badge(badge_text, font, scale=badge_scale)
+    return _tiny_text_width(txt, font) + (2 if badge else 0) + (badge.width if badge else 0)
+
+
 def _tiny_text_width(text, font):
     text = str(text or '').strip()
     if not text:
@@ -65,6 +102,13 @@ def _tiny_text_width(text, font):
         return bbox[2] - bbox[0]
     except Exception:
         return len(text) * 4
+
+
+def _display_flag(flag, state):
+    state = str(state or '').lower()
+    if state in ('pre', 'post'):
+        return 'CHECKERED'
+    return str(flag or '').strip().upper() or 'GREEN'
 
 
 class IndycarMixin:
@@ -121,7 +165,8 @@ class IndycarMixin:
         draw_hybrid_text(d, 1,     1,     header, (255, 220, 50, 255))
 
         # Mini flag on the right edge
-        _draw_mini_flag(d, W - 9, 0, ic.get('flag'))
+        state = str(game.get('state', 'pre')).lower()
+        _draw_mini_flag(d, W - 8, 0, _display_flag(ic.get('flag'), state))
 
         # Separator
         d.line([(0, 7), (W - 1, 7)], fill=(40, 60, 120))
@@ -156,12 +201,15 @@ class IndycarMixin:
             pos_color = (255, 215, 0) if pos == '1' else (200, 200, 200)
             draw_tiny_text(d, 1, y, pos, pos_color)
 
-            # Inline 3-letter driver code with the car number immediately after it.
-            name_x = 26
-            draw_tiny_text(d, name_x, y, abbr, (255, 255, 255))
-            if car_num:
-                car_x = name_x + _tiny_text_width(abbr, self.font) + 2
-                draw_tiny_text(d, car_x, y, car_num, (180, 210, 255))
+            # Center the 3-letter code and badge as one unit.
+            badge = _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=2)
+            group_w = _group_width(abbr, car_num, self.font, badge_scale=2)
+            start_x = max(24, int(round(58 - group_w / 2)))
+            draw_tiny_text(d, start_x, y, abbr, (255, 255, 255))
+            if badge:
+                badge_x = start_x + _tiny_text_width(abbr, self.font) + 2
+                badge_y = max(0, y - 1)
+                img.paste(badge, (badge_x, badge_y), badge)
 
             # Right column value
             if right_val:
@@ -265,13 +313,7 @@ class IndycarMixin:
         elif state == 'in' and lap > 0:
             info_str = f"LAP {lap}"
         elif state == 'pre' and start_utc:
-            start_txt = start_utc
-            try:
-                start_dt = parse_iso(start_utc)
-                if start_dt:
-                    start_txt = start_dt.strftime('%I:%M %p').lstrip('0')
-            except Exception:
-                pass
+            start_txt = _format_indycar_time(start_utc)
             info_str = f"STARTS {start_txt}"[:max_chars]
         elif time_to_go:
             info_str = time_to_go[:max_chars]
@@ -283,101 +325,107 @@ class IndycarMixin:
         # Flag indicator
         y_flag = y_info + 7
         if y_flag + 5 <= H and flag and flag not in ('GREEN', ''):
-            flag_colors = {
-                'YELLOW':    (255, 220, 0),
-                'RED':       (255, 50, 50),
-                'CHECKERED': (255, 255, 255),
-                'WHITE':     (255, 255, 255),
-            }
-            flag_col = flag_colors.get(flag, (180, 180, 180))
-            flag_txt = flag[:5]
-            d.rectangle([4, y_flag, 7, y_flag + 4], fill=flag_col)
-            draw_tiny_text(d, 9, y_flag, flag_txt, flag_col)
+            _draw_mini_flag(d, 4, y_flag, _display_flag(flag, state))
 
     def _ic_draw_driver_panel(self, img, d, drivers, x_off, panel_w, H, is_qual=False):
         """Draw the scrolling driver leaderboard into the right 3/4 panel."""
-        SCROLL_INTERVAL = 3.5   # seconds per page
-
-        n_drivers    = len(drivers)
-        n_per_page   = 4        # rows that fit in 32px at 8px/row
-        n_pages      = max(1, -(-n_drivers // n_per_page))  # ceil division
-
         now = time.time()
-        if now - self._ic_scroll_ts >= SCROLL_INTERVAL:
-            self._ic_scroll_idx = (self._ic_scroll_idx + 1) % n_pages
-            self._ic_scroll_ts  = now
+        if not hasattr(self, '_ic_hscroll_x'):
+            self._ic_hscroll_x = 0.0
+            self._ic_hscroll_ts = now
 
-        start_idx = self._ic_scroll_idx * n_per_page
-        page_drivers = drivers[start_idx: start_idx + n_per_page]
+        elapsed = max(0.0, now - self._ic_hscroll_ts)
+        self._ic_hscroll_ts = now
 
-        # Column offsets (relative to x_off)
-        POS_X   = 3
-        LOGO_X  = 14
-        LIVERY_X = 25
-        ABBR_X  = 30
-        CAR_X   = 46    # car number
-        GAP_X   = 58
+        panel = Image.new('RGBA', (panel_w, H), (0, 0, 0, 0))
+        pd = ImageDraw.Draw(panel)
 
-        LOGO_SZ  = 7
-        ROW_H    = 8
+        visible = [dict(drv) for drv in drivers if isinstance(drv, dict)]
+        if not visible:
+            pd.rectangle([0, 0, panel_w - 1, H - 1], fill=(8, 8, 16))
+            draw_tiny_text(pd, 8, 12, 'LOADING', (120, 120, 120))
+            img.paste(panel, (x_off, 0), panel)
+            return
 
-        for row_i, driver in enumerate(page_drivers):
-            y = row_i * ROW_H
+        # Sort by race position when available.
+        def _pos_sort_key(drv):
+            try:
+                return int(str(drv.get('pos') or 999).lstrip('T'))
+            except Exception:
+                return 999
 
-            pos   = str(driver.get('pos') or '')
-            abbr  = str(driver.get('abbr') or '???').upper()[:3]
-            car   = str(driver.get('car') or '').strip()
-            gap   = str(driver.get('gap') or '').strip()
-            logo_url = driver.get('team_logo') or ''
-            pri_hex  = driver.get('livery_primary', '#888888')
-            sec_hex  = driver.get('livery_secondary', '#333333')
+        visible.sort(key=_pos_sort_key)
 
-            # Row background for P1
+        card_w = 88
+        card_h = H - 2
+        gap = 4
+        row_speed = 16.0 if len(visible) > 6 else 12.0
+
+        cards = []
+        for driver in visible:
+            card = Image.new('RGBA', (card_w, card_h), (0, 0, 0, 0))
+            cd = ImageDraw.Draw(card)
+            pos = str(driver.get('pos') or '')
+            abbr = str(driver.get('abbr') or '???').upper()[:3]
+            car = str(driver.get('car') or '').strip()
+            gap_val = str(driver.get('gap') or '').strip()
+            pri_hex = driver.get('livery_primary', '#888888')
+            sec_hex = driver.get('livery_secondary', '#333333')
+
+            pri = _hex_to_rgb(pri_hex, (26, 26, 40))
+            sec = _hex_to_rgb(sec_hex, (58, 58, 72))
+            cd.rectangle([0, 0, card_w - 1, card_h - 1], fill=(14, 14, 22))
+            cd.rectangle([0, 0, card_w - 1, 4], fill=pri)
+            cd.rectangle([0, card_h - 4, card_w - 1, card_h - 1], fill=sec)
             if pos == '1':
-                d.rectangle([x_off, y, x_off + panel_w - 1, y + ROW_H - 2],
-                            fill=(10, 10, 30))
+                cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(255, 215, 0), width=1)
 
-            # Position
             pos_color = (255, 215, 0) if pos == '1' else (180, 180, 180)
-            draw_tiny_text(d, x_off + POS_X, y + 1, pos, pos_color)
+            draw_tiny_text(cd, 3, 2, pos, pos_color)
 
-            # Team logo
-            logo_img = self.get_logo(logo_url, (LOGO_SZ, LOGO_SZ))
-            if logo_img:
-                logo_img = logo_img.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
-                img.paste(logo_img, (x_off + LOGO_X, y), logo_img)
+            name_width = _tiny_text_width(abbr, self.font)
+            badge = _render_number_badge(car, self.font, fg=(205, 225, 255), scale=3)
+            group_w = name_width + (2 if badge else 0) + (badge.width if badge else 0)
+            group_x = max(6, int((card_w - group_w) / 2))
+            draw_tiny_text(cd, group_x, 10, abbr, (255, 255, 255))
+            if badge:
+                card.paste(badge, (group_x + name_width + 2, 9), badge)
 
-            # Livery bar (3 × 5)
-            self._ic_draw_livery_bar(d, x_off + LIVERY_X, y + 1, 3, 5, pri_hex, sec_hex)
-
-            # Driver abbreviation
-            draw_tiny_text(d, x_off + ABBR_X, y + 1, abbr, (255, 255, 255))
-
-            # Car number (dim)
-            if car:
-                draw_tiny_text(d, x_off + CAR_X, y + 1, f"#{car}"[:4], (90, 90, 90))
-
-            # Right column: speed for qualifying, gap for race
             if is_qual:
-                right_val = str(driver.get('speed') or '').strip()[:8]
+                right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:8]
             else:
-                right_val = str(driver.get('gap') or '').strip()[:16]
+                right_val = gap_val[:10]
             if right_val:
-                right_color = (255, 255, 255) if pos == '1' else (140, 190, 255)
-                draw_tiny_text(d, x_off + GAP_X, y + 1, right_val, right_color)
+                rv_w = _tiny_text_width(right_val, self.font)
+                draw_tiny_text(cd, max(4, (card_w - rv_w) // 2), 22, right_val, (140, 190, 255) if pos != '1' else (255, 255, 255))
 
-            # Row separator
-            if row_i < len(page_drivers) - 1:
-                d.line([(x_off + 1, y + ROW_H - 1), (x_off + panel_w - 2, y + ROW_H - 1)],
-                       fill=(25, 35, 60))
+            cards.append(card)
 
-        # Page dots
-        if n_pages > 1:
-            dot_y   = H - 2
-            dot_step = 3
-            track_w  = (n_pages - 1) * dot_step + 2
-            dot_x0   = x_off + panel_w - track_w - 2
-            for i in range(n_pages):
-                color = (0, 120, 255) if i == self._ic_scroll_idx else (40, 40, 60)
-                d.rectangle([dot_x0 + i * dot_step, dot_y,
-                              dot_x0 + i * dot_step + 1, dot_y + 1], fill=color)
+        strip_w = sum(card.width for card in cards) + gap * len(cards)
+        if strip_w <= 0:
+            img.paste(panel, (x_off, 0), panel)
+            return
+
+        if len(cards) == 1:
+            # Keep a single card centered instead of scrolling pointlessly.
+            x = max(0, (panel_w - cards[0].width) // 2)
+            panel.paste(cards[0], (x, 1), cards[0])
+            img.paste(panel, (x_off, 0), panel)
+            return
+
+        # Advance the horizontal scroll and crop a continuous strip.
+        self._ic_hscroll_x = (self._ic_hscroll_x + elapsed * row_speed) % strip_w
+
+        strip = Image.new('RGBA', (strip_w + panel_w, H), (0, 0, 0, 0))
+        sx = 0
+        i = 0
+        while sx < strip.width:
+            card = cards[i % len(cards)]
+            strip.paste(card, (sx, 1), card)
+            sx += card.width + gap
+            i += 1
+
+        view_x = int(self._ic_hscroll_x)
+        view = strip.crop((view_x, 0, view_x + panel_w, H))
+        panel.alpha_composite(view)
+        img.paste(panel, (x_off, 0), panel)
