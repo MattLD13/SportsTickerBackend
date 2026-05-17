@@ -176,6 +176,17 @@ def get_ticker_data():
             g_copy['is_shown'] = True
             visible_items.append(g_copy)
 
+    elif current_mode == 'golf':
+        for g in raw_games:
+            g_type = str(g.get('type', '')).lower()
+            sport = str(g.get('sport', '')).lower()
+            if g_type not in ('golf', 'masters') and sport not in ('golf', 'masters'):
+                continue
+            g_copy = g.copy()
+            g_copy['sport'] = 'golf'
+            g_copy['is_shown'] = True
+            visible_items.append(g_copy)
+
     elif current_mode == 'sports':
         for g in raw_games:
             sport = _sport_for_data_mode(g.get('sport', ''))
@@ -353,6 +364,9 @@ def api_state():
                     should_show = False
         elif current_mode == 'soccer_full':
             if not str(sport).startswith('soccer_'):
+                should_show = False
+        elif current_mode == 'golf':
+            if g_type not in ('golf', 'masters') and str(sport).lower() not in ('golf', 'masters'):
                 should_show = False
         elif current_mode == 'music':
             if g_type != 'music':

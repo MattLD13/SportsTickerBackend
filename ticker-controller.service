@@ -8,8 +8,8 @@ StartLimitBurst=5
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/home/pi
-ExecStart=/usr/bin/python3 -m ticker_controller
+WorkingDirectory=/home/mld
+ExecStart=/usr/bin/env python3 -m ticker_controller
 Restart=always
 RestartSec=5
 StandardOutput=append:/home/pi/ticker.log
