@@ -145,22 +145,66 @@ def draw_hybrid_text(draw, x, y, text_str, color):
     return x_cursor
 
 
-def load_monospace_font(size, bold=False):
-    font_candidates = ["DejaVuSansMono-Bold.ttf", "DejaVuSansMono.ttf"] if bold else ["DejaVuSansMono.ttf"]
-    for font_name in font_candidates:
+def _font_search_dirs():
+    """Return a list of directories to search for TTF fonts, platform-aware."""
+    import os, sys
+    dirs = ["."]
+    if sys.platform == "win32":
+        win_fonts = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "Fonts")
+        dirs.append(win_fonts)
+        local_fonts = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "Windows", "Fonts")
+        dirs.append(local_fonts)
+    else:
+        dirs += ["/usr/share/fonts/truetype/dejavu", "/usr/share/fonts/truetype",
+                 "/usr/share/fonts", "/usr/local/share/fonts"]
+    return dirs
+
+
+def _try_load(candidates, size):
+    """Try each (name, dir) combination and return the first font that loads."""
+    import os
+    for name in candidates:
+        if os.path.isabs(name):
+            try:
+                return ImageFont.truetype(name, size)
+            except Exception:
+                continue
+        # bare filename — try PIL's built-in search first, then our dirs
         try:
-            return ImageFont.truetype(font_name, size)
+            return ImageFont.truetype(name, size)
         except Exception:
-            continue
+            pass
+        for d in _font_search_dirs():
+            path = os.path.join(d, name)
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    return None
+
+
+def load_monospace_font(size, bold=False):
+    candidates = (
+        ["DejaVuSansMono-Bold.ttf", "UbuntuMono-Bold.ttf", "consolab.ttf", "courbd.ttf", "DejaVuSansMono.ttf"]
+        if bold else
+        ["DejaVuSansMono.ttf", "UbuntuMono-Regular.ttf", "consola.ttf", "cour.ttf"]
+    )
+    font = _try_load(candidates, size)
+    if font is not None:
+        return font
     return ImageFont.load_default()
 
 
 def load_display_font(size, bold=False):
-    # Prefer non-monospace display fonts to avoid dotted-zero glyphs in large number rendering.
-    font_candidates = ["DejaVuSans-Bold.ttf", "DejaVuSans.ttf"] if bold else ["DejaVuSans.ttf"]
-    for font_name in font_candidates:
-        try:
-            return ImageFont.truetype(font_name, size)
-        except Exception:
-            continue
+    # Prefer proportional display fonts (cleaner large glyphs, no dotted zeros).
+    candidates = (
+        ["DejaVuSans-Bold.ttf", "arialbd.ttf", "ARIALBD.TTF", "Arial Bold.ttf",
+         "DejaVuSansMono-Bold.ttf", "UbuntuMono-Bold.ttf", "consolab.ttf"]
+        if bold else
+        ["DejaVuSans.ttf", "arial.ttf", "ARIAL.TTF",
+         "DejaVuSansMono.ttf", "UbuntuMono-Regular.ttf", "consola.ttf"]
+    )
+    font = _try_load(candidates, size)
+    if font is not None:
+        return font
     return load_monospace_font(size, bold=bold)

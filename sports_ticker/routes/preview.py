@@ -38,7 +38,7 @@ _SPORTS_TYPES = {
     'soccer_europa_league', 'soccer_mls', 'soccer_wc', 'golf', 'masters',
 }
 
-_STATIC_PREVIEW_MODES = {'music', 'weather', 'clock', 'flights', 'flight_tracker', 'golf', 'masters'}
+_STATIC_PREVIEW_MODES = {'music', 'weather', 'clock', 'flights', 'flight_tracker', 'golf', 'masters', 'sports_full'}
 
 
 def _get_renderer():
@@ -435,11 +435,57 @@ def _single_card_png(card: Image.Image):
 @app.route('/api/preview/strip.png')
 def preview_strip():
     mode_str = request.args.get('mode', state.get('mode', 'sports'))
+    pin_id   = request.args.get('pin_id', '')
     try:
         current_mode = normalize_mode(mode_str)
-        games = fetcher.get_mode_snapshot(current_mode, 0)[:30]
+        # sports_full uses the sports snapshot — just filter to a single pinned game
+        fetch_mode = 'sports' if current_mode == 'sports_full' else current_mode
+        games = fetcher.get_mode_snapshot(fetch_mode, 0)[:30]
     except Exception:
         games = []
+
+    # sports_full: render the pinned game fullscreen
+    if current_mode == 'sports_full' and pin_id:
+        all_games = games
+        # pin_id from JS is "sport:raw_id" (e.g. "nfl:401548409")
+        if ':' in pin_id:
+            pin_sport, _, pin_raw_id = pin_id.partition(':')
+        else:
+            pin_sport, pin_raw_id = '', pin_id
+
+        def _matches(g):
+            g_id = str(g.get('id', ''))
+            if pin_sport:
+                return g_id == pin_raw_id and str(g.get('sport', '')).lower() == pin_sport
+            return g_id == pin_id
+
+        pinned = next((g for g in all_games if _matches(g)), None)
+        if pinned is None:
+            # fallback: any sports game
+            pinned = next((g for g in all_games if _is_sports_game(g)), None)
+        if pinned:
+            preview = _get_preview_renderer()
+            if preview:
+                try:
+                    # Pre-warm the logo cache so get_logo() finds them
+                    for logo_url in (pinned.get('home_logo'), pinned.get('away_logo')):
+                        if logo_url:
+                            preview.download_and_process_logo(logo_url, (24, 24))
+                    card = preview.draw_sport_full_bleed(pinned)
+                    return _single_card_png(card)
+                except Exception as e:
+                    print(f"[preview] draw_sport_full_bleed failed: {e}")
+            # fallback to stadium renderer
+            renderer = _get_renderer()
+            if renderer:
+                try:
+                    result = renderer.render(pinned)
+                    card = result[0] if isinstance(result, tuple) else result
+                    if card:
+                        return _single_card_png(card)
+                except Exception as e:
+                    print(f"[preview] stadium fallback failed: {e}")
+        return _empty_png()
 
     games = _filter_preview_games(games, current_mode)
     games = _collapse_flight_airport_items(games)

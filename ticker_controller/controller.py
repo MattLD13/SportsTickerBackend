@@ -410,7 +410,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             return self.draw_clock_modern()
 
         if game.get('type') in ('golf', 'masters') or str(game.get('sport', '')).lower() in ('golf', 'masters'):
-            if self.mode in ('golf', 'masters', 'sports_full'):
+            if self.mode in ('golf', 'masters'):
                 return self.draw_golf_mode(game)
             return self.draw_golf_scroll_card(game)
 
@@ -841,10 +841,11 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                                 logos_to_fetch.append((g.get('away_logo'), (24, 24)))
                                 logos_to_fetch.append((g.get('away_logo'), (16, 16)))
 
-                        is_golf_fullscreen = (g_type in ('golf', 'masters') or sport in ('golf', 'masters')) and self.mode in ('golf', 'masters')
+                        is_golf = g_type in ('golf', 'masters') or sport in ('golf', 'masters')
+                        is_golf_fullscreen = is_golf and self.mode in ('golf', 'masters')
                         if g_type == 'weather' or sport.startswith('clock') or is_golf_fullscreen or is_music or g_type == 'flight_visitor' or g_type == 'flight_airport_hud':
                             static_items.append(g)
-                        elif self.mode in ('sports_full', 'soccer_full') and g_type not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(g_type):
+                        elif self.mode in ('sports_full', 'soccer_full') and g_type not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(g_type) and not is_golf:
                             static_items.append(g)
                         else:
                             scrolling_items.append(g)

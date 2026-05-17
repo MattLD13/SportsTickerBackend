@@ -72,7 +72,20 @@
       "PowerShell(Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force -Confirm:$false; Start-Sleep -Seconds 1; Start-Process -FilePath \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\.venv\\\\Scripts\\\\python.exe\" -ArgumentList \"-m\",\"ticker_controller.demo_server\" -WorkingDirectory \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\" -WindowStyle Hidden; Start-Sleep -Seconds 3; $r=Invoke-RestMethod -Uri \"http://localhost:5001/api/data\" -TimeoutSec 5; \"OK: $\\($r.status\\), mode=$\\($r.local_config.mode\\), items=$\\($r.content.sports.Count\\)\")",
       "PowerShell(Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force -Confirm:$false; Start-Sleep -Seconds 1; Start-Process -FilePath \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\.venv\\\\Scripts\\\\python.exe\" -ArgumentList \"-m\",\"ticker_controller.demo_server\" -WorkingDirectory \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\" -WindowStyle Hidden; Start-Sleep -Seconds 3; $r=Invoke-RestMethod -Uri \"http://localhost:5001/api/data\" -TimeoutSec 5; \"Server OK: $\\($r.status\\)\")",
       "Bash(.venv/Scripts/python.exe -c \"import sys; print\\(sys.executable\\)\")",
-      "Bash(.venv/Scripts/python.exe -c \"import ticker_controller.matrix as m; m.get_device_id = lambda: 'test'; from ticker_controller import TickerStreamer; print\\('import OK'\\)\")"
+      "Bash(.venv/Scripts/python.exe -c \"import ticker_controller.matrix as m; m.get_device_id = lambda: 'test'; from ticker_controller import TickerStreamer; print\\('import OK'\\)\")",
+      "Bash(find /c/Windows/Fonts -iname \"dejaVu*\" 2>/dev/null | head -20)",
+      "Read(//c/Windows/Fonts/**)",
+      "Bash(python -c \"from PIL import ImageFont; f = ImageFont.truetype\\('DejaVuSansMono-Bold.ttf', 10\\); print\\('found'\\)\")",
+      "PowerShell(ls \"C:\\\\Windows\\\\Fonts\" | Where-Object { $_.Name -match \"cour|consol|mono|deja|luci\" -and $_.Name -match \"\\\\.ttf$\" } | Select-Object Name)",
+      "PowerShell(ls \"C:\\\\Windows\\\\Fonts\" | Where-Object { $_.Name -match \"\\\\.ttf$\" } | Where-Object { $_.Name -match \"cour|consol|mono|deja|luci\" } | Select-Object Name, FullName)",
+      "PowerShell(ls \"C:\\\\Windows\\\\Fonts\" | Where-Object { $_.Extension -eq \".ttf\" } | Select-Object Name | Sort-Object Name | Select-Object -First 40)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\mld20\\\\Documents\\\\\" -Directory | Select-Object Name)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('ticker_controller/demo_server.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('ticker_controller/demo_server.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import yt_dlp; print\\('yt-dlp', yt_dlp.version.__version__\\)\")",
+      "Bash(.venv/Scripts/pip install *)",
+      "Bash(python -c \"import yt_dlp; print\\('ok', yt_dlp.version.__version__\\)\")",
+      "Bash(python -m pip install yt-dlp -q)"
     ]
   }
 }

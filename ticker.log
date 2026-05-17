@@ -1,0 +1,1411 @@
+--- Log Started ---
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+  Started worker: sports_worker
+  Started worker: stocks_worker
+  Started worker: music_worker
+  Started worker: flights_worker
+⚠️ Spotify: no API keys or test mode active — starting MUSIC SIMULATION.
+Starting Flask on port 5000...
+[DEBUG][REFRESH] start reason=startup
+ * Serving Flask app 'sports_ticker.routes_runtime'
+ * Debug mode: off
+[preview] StadiumRenderer ready
+[DEBUG][REFRESH] done reason=startup took=23.14s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.18s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.33s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.75s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.51s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=2.85s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.29s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.13s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=0.00s
+Stock worker error: name 'math' is not defined
+[DEBUG][REFRESH] start reason=stocks_sector_change
+[DEBUG][REFRESH] done reason=stocks_sector_change took=0.00s
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+Stock worker error: name 'math' is not defined
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][20:25:06] DEBUG        | get_airport_objects called - arrivals: 0, departures: 0
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][20:25:06] DEBUG        | get_airport_objects called - arrivals: 0, departures: 0
+[DEBUG][20:25:06] DEBUG        | Starting airport fetch for EWR
+[DEBUG][20:25:06] DEBUG        | get_airport_objects called - arrivals: 0, departures: 0
+[DEBUG][REFRESH] done reason=api_config took=0.00s
+[DEBUG][20:25:06] WEATHER      | No coordinates for EWR
+[DEBUG][20:25:06] AIRPORT      | EWR: 0 arr, 0 dep | Weather: --
+[DEBUG][REFRESH] start reason=flights_worker
+[DEBUG][20:25:06] DEBUG        | get_airport_objects called - arrivals: 0, departures: 0
+[DEBUG][REFRESH] done reason=flights_worker took=0.00s
+[DEBUG][20:25:10] DEBUG        | Starting airport fetch for EWR
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=0.00s
+[DEBUG][20:25:10] WEATHER      | No coordinates for EWR
+[DEBUG][20:25:10] AIRPORT      | EWR: 0 arr, 0 dep | Weather: --
+[DEBUG][REFRESH] start reason=flights_worker
+[DEBUG][REFRESH] done reason=flights_worker took=0.00s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.72s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=0.00s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=11.69s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.29s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.40s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.05s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.33s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.33s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.50s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.78s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.29s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=5.76s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.38s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.34s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=2.63s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.49s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=5.26s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.75s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.04s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.48s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.03s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.45s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.44s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.80s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.27s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.80s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.84s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.25s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=7.92s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.85s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.55s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.59s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.99s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.60s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.58s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.58s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.55s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.37s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.05s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.51s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.84s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=7.45s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.61s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.26s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.05s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.32s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.53s
+[DEBUG][REFRESH] start reason=sports_worker
+Exception ignored on threading shutdown:
+Traceback (most recent call last):
+  File "C:\Python313\Lib\threading.py", line 1534, in _shutdown
+[DEBUG][REFRESH] done reason=sports_worker took=6.19s
+[DEBUG][REFRESH] start reason=sports_worker
+[REFRESH] error reason=sports_worker: cannot schedule new futures after shutdown
+    atexit_call()
+  File "C:\Python313\Lib\threading.py", line 1505, in <lambda>
+    _threading_atexits.append(lambda: func(*arg, **kwargs))
+  File "C:\Python313\Lib\concurrent\futures\thread.py", line 31, in _python_exit
+    t.join()
+  File "C:\Python313\Lib\threading.py", line 1092, in join
+    self._handle.join(timeout)
+KeyboardInterrupt: 
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+  Started worker: sports_worker
+  Started worker: stocks_worker
+  Started worker: music_worker
+  Started worker: flights_worker
+⚠️ Spotify: no API keys or test mode active — starting MUSIC SIMULATION.
+Starting Flask on port 5000...
+[DEBUG][REFRESH] start reason=startup
+ * Serving Flask app 'sports_ticker.routes_runtime'
+ * Debug mode: off
+[preview] StadiumRenderer ready
+[DEBUG][REFRESH] done reason=startup took=22.93s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.94s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.08s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.66s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.47s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.30s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=0.00s
+[DEBUG][REFRESH] start reason=stocks_sector_change
+[DEBUG][REFRESH] done reason=stocks_sector_change took=0.00s
+[DEBUG][REFRESH] start reason=stocks_market_update
+[DEBUG][REFRESH] done reason=stocks_market_update took=0.00s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=2.00s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.18s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.18s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=2.89s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.26s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.18s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.23s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=3.02s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.90s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.92s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=6.67s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.18s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.39s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=0.00s
+[DEBUG][REFRESH] start reason=stocks_market_update
+[DEBUG][REFRESH] done reason=stocks_market_update took=0.00s
+[DEBUG][REFRESH] start reason=stocks_market_update
+[DEBUG][REFRESH] done reason=stocks_market_update took=0.00s
+[DEBUG][REFRESH] start reason=stocks_market_update
+[DEBUG][REFRESH] done reason=stocks_market_update took=0.00s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=0.00s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=13.92s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.61s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.21s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.30s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.34s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.71s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.24s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.81s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.24s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.33s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.26s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.30s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.82s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=5.26s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.75s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.21s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.64s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.72s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.52s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.35s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.59s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.21s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.41s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.04s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.29s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.50s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=7.39s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.93s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.32s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.91s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.38s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.53s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.74s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.39s
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+  Started worker: sports_worker
+  Started worker: stocks_worker
+  Started worker: music_worker
+  Started worker: flights_worker
+⚠️ Spotify: no API keys or test mode active — starting MUSIC SIMULATION.
+Starting Flask on port 5000...
+[DEBUG][REFRESH] start reason=startup
+ * Serving Flask app 'sports_ticker.routes_runtime'
+ * Debug mode: off
+[preview] StadiumRenderer ready
+[DEBUG][REFRESH] done reason=startup took=23.19s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.72s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.31s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.13s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=2.92s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.23s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.46s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.95s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.50s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.45s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.92s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.10s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=3.09s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.38s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.99s
+[DEBUG][REFRESH] start reason=stocks_market_update
+[DEBUG][REFRESH] done reason=stocks_market_update took=0.00s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=4.91s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.73s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.43s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.13s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.75s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=6.56s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.85s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.82s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.70s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.59s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.20s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.68s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.20s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.38s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.86s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=5.85s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.23s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.64s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.20s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.42s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.59s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.99s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.23s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.87s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.78s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.51s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.83s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=6.13s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.38s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.28s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.15s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.14s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.33s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.42s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.93s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.74s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=5.04s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.48s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.19s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.43s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.46s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.41s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=6.64s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.56s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.21s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.49s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.19s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.33s
+[DEBUG][REFRESH] start reason=sports_worker
+Exception ignored on threading shutdown:
+Traceback (most recent call last):
+  File "C:\Python313\Lib\threading.py", line 1534, in _shutdown
+    atexit_call()
+  File "C:\Python313\Lib\threading.py", line 1505, in <lambda>
+    _threading_atexits.append(lambda: func(*arg, **kwargs))
+  File "C:\Python313\Lib\concurrent\futures\thread.py", line 31, in _python_exit
+[DEBUG][REFRESH] done reason=sports_worker took=3.39s
+    t.join()
+  File "C:\Python313\Lib\threading.py", line 1092, in join
+    self._handle.join(timeout)
+KeyboardInterrupt: 
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+  Started worker: sports_worker
+  Started worker: stocks_worker
+  Started worker: music_worker
+  Started worker: flights_worker
+⚠️ Spotify: no API keys or test mode active — starting MUSIC SIMULATION.
+Starting Flask on port 5000...
+[DEBUG][REFRESH] start reason=startup
+ * Serving Flask app 'sports_ticker.routes_runtime'
+ * Debug mode: off
+[preview] StadiumRenderer ready
+[DEBUG][REFRESH] done reason=startup took=27.54s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.04s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.98s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.35s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.19s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=3.49s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.29s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.25s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.41s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=3.46s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.21s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.19s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.17s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.11s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.13s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.13s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=7.84s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.89s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.78s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=5.45s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.36s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.13s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.43s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.67s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.12s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.27s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=5.52s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.52s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.17s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.49s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.76s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.27s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=6.96s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.68s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.18s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=5.14s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.80s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.39s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.31s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.42s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.49s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.57s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.46s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.82s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.78s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.80s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.20s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.55s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.11s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.31s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.77s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.24s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.13s
+[DEBUG][REFRESH] start reason=sports_worker
+Exception ignored on threading shutdown:
+Traceback (most recent call last):
+  File "C:\Python313\Lib\threading.py", line 1534, in _shutdown
+    atexit_call()
+  File "C:\Python313\Lib\threading.py", line 1505, in <lambda>
+    _threading_atexits.append(lambda: func(*arg, **kwargs))
+  File "C:\Python313\Lib\concurrent\futures\thread.py", line 31, in _python_exit
+[DEBUG][REFRESH] done reason=sports_worker took=3.91s
+    t.join()
+  File "C:\Python313\Lib\threading.py", line 1092, in join
+    self._handle.join(timeout)
+KeyboardInterrupt: 
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+  Started worker: sports_worker
+  Started worker: stocks_worker
+  Started worker: music_worker
+  Started worker: flights_worker
+⚠️ Spotify: no API keys or test mode active — starting MUSIC SIMULATION.
+Starting Flask on port 5000...
+[DEBUG][REFRESH] start reason=startup
+ * Serving Flask app 'sports_ticker.routes_runtime'
+ * Debug mode: off
+[preview] StadiumRenderer ready
+[DEBUG][REFRESH] done reason=startup took=28.00s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.25s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.19s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.25s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.27s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.10s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.40s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.43s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.56s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=2.25s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.19s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.20s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.11s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.49s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.07s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.14s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.11s
+[DEBUG][20:46:15] DEBUG        | Starting airport fetch for EWR
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][20:46:15] DEBUG        | get_airport_objects called - arrivals: 0, departures: 0
+[DEBUG][REFRESH] done reason=api_config took=0.00s
+[DEBUG][20:46:15] WEATHER      | No coordinates for EWR
+[DEBUG][20:46:15] AIRPORT      | EWR: 0 arr, 0 dep | Weather: --
+[DEBUG][REFRESH] start reason=flights_worker
+[DEBUG][20:46:15] DEBUG        | get_airport_objects called - arrivals: 0, departures: 0
+[DEBUG][REFRESH] done reason=flights_worker took=0.00s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=4.74s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.92s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.15s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=7.61s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.34s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.26s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.81s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.49s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.19s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.65s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.18s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.13s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.53s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.22s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.58s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=5.90s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.70s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.26s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.73s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.40s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.19s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.59s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.26s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.28s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=5.02s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.21s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.24s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=6.49s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.80s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.37s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.99s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.46s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.59s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=6.06s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.21s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.26s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.30s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.53s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.19s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.02s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.70s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.43s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=4.05s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.00s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.18s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.90s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.87s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.20s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=6.30s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.82s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.24s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.62s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.11s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.21s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.46s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.72s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.21s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.76s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.36s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.16s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.34s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.97s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.95s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.84s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.32s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=3.99s
+[DEBUG][REFRESH] start reason=sports_worker
+Exception ignored on threading shutdown:
+Traceback (most recent call last):
+  File "C:\Python313\Lib\threading.py", line 1534, in _shutdown
+    atexit_call()
+  File "C:\Python313\Lib\threading.py", line 1505, in <lambda>
+    _threading_atexits.append(lambda: func(*arg, **kwargs))
+  File "C:\Python313\Lib\concurrent\futures\thread.py", line 31, in _python_exit
+[DEBUG][REFRESH] done reason=sports_worker took=4.17s
+    t.join()
+  File "C:\Python313\Lib\threading.py", line 1092, in join
+    self._handle.join(timeout)
+KeyboardInterrupt: 
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+  Started worker: sports_worker
+  Started worker: stocks_worker
+  Started worker: music_worker
+  Started worker: flights_worker
+⚠️ Spotify: no API keys or test mode active — starting MUSIC SIMULATION.
+Starting Flask on port 5000...
+[DEBUG][REFRESH] start reason=startup
+ * Serving Flask app 'sports_ticker.routes_runtime'
+ * Debug mode: off
+[preview] StadiumRenderer ready
+[DEBUG][REFRESH] done reason=startup took=26.52s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.68s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.28s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.05s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.33s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=2.27s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.36s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.23s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=2.63s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=1.86s
+[DEBUG][REFRESH] start reason=pin_update
+[DEBUG][REFRESH] done reason=pin_update took=1.22s
+[DEBUG][REFRESH] start reason=sports_worker
+[DEBUG][REFRESH] done reason=sports_worker took=1.21s
+[DEBUG][REFRESH] start reason=api_config
+[DEBUG][REFRESH] done reason=api_config took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+  Started worker: sports_worker
+  Started worker: stocks_worker
+  Started worker: music_worker
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+  Started worker: flights_worker
+⚠️ Spotify: no API keys or test mode active — starting MUSIC SIMULATION.
+[DEBUG][REFRESH] start reason=startup
+[DEBUG][REFRESH] done reason=startup took=0.00s
+Starting Flask on port 5000...
+ * Serving Flask app 'sports_ticker.routes_runtime'
+ * Debug mode: off
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=api_config
+[preview] StadiumRenderer ready
+[DEBUG][20:56:50] DEBUG        | get_airport_objects called - arrivals: 0, departures: 0
+[DEBUG][20:56:50] DEBUG        | Starting airport fetch for EWR
+[DEBUG][20:56:50] DEBUG        | get_airport_objects called - arrivals: 0, departures: 0
+[DEBUG][20:56:50] WEATHER      | No coordinates for EWR
+[DEBUG][20:56:50] AIRPORT      | EWR: 0 arr, 0 dep | Weather: --
+[DEBUG][20:56:51] DEBUG        | Starting airport fetch for EWR
+[DEBUG][20:56:51] WEATHER      | No coordinates for EWR
+[DEBUG][20:56:51] AIRPORT      | EWR: 0 arr, 0 dep | Weather: --
+[DEBUG][20:57:04] DEBUG        | Starting airport fetch for EWR
+[DEBUG][20:57:04] WEATHER      | No coordinates for EWR
+[DEBUG][20:57:04] AIRPORT      | EWR: 0 arr, 0 dep | Weather: --
+[DEBUG][REFRESH] done reason=api_config took=23.49s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s
+[DEBUG][REFRESH] start reason=music_worker
+[DEBUG][REFRESH] done reason=music_worker took=0.00s

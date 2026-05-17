@@ -737,6 +737,219 @@ function renderFlightCard(g){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// WEATHER ICON — simple static pixel art
+// ═══════════════════════════════════════════════════════════════════════════════
+function drawWeatherIcon(ctx, icon, x, y){
+  icon=String(icon||'cloud').toLowerCase();
+  if(icon.includes('sun')||icon.includes('clear')){
+    fi(ctx,x+3,y+2,3,1,255,200,0); fi(ctx,x+2,y+3,5,1,255,200,0);
+    fi(ctx,x+1,y+4,7,1,255,200,0); fi(ctx,x+2,y+5,5,1,255,200,0); fi(ctx,x+3,y+6,3,1,255,200,0);
+    [[x+4,y],[x,y+4],[x+8,y+4],[x+4,y+8]].forEach(([px,py])=>fi(ctx,px,py,1,1,255,200,0));
+  } else if(icon.includes('rain')||icon.includes('drizzle')||icon.includes('shower')){
+    fi(ctx,x+1,y+1,7,3,140,145,162); fi(ctx,x,y+2,9,3,165,170,185);
+    for(let i=0;i<4;i++) fi(ctx,x+1+i*2,y+6,1,2,60,130,255);
+  } else if(icon.includes('snow')||icon.includes('blizzard')){
+    fi(ctx,x+1,y+1,7,3,185,195,210); fi(ctx,x,y+2,9,3,195,205,220);
+    for(let i=0;i<5;i++){fi(ctx,x+i*2,y+6,1,1,210,235,255);fi(ctx,x+1+i*2,y+7,1,1,210,235,255);}
+  } else if(icon.includes('storm')||icon.includes('thunder')||icon.includes('lightning')){
+    fi(ctx,x+1,y+1,7,3,75,80,100); fi(ctx,x,y+2,9,3,85,90,110);
+    fi(ctx,x+4,y+5,2,3,255,220,0); fi(ctx,x+3,y+7,3,2,255,220,0);
+  } else if(icon.includes('fog')||icon.includes('mist')||icon.includes('haze')){
+    for(let i=0;i<4;i++) fi(ctx,x+1,y+2+i*2,7,1,170,175,195);
+  } else {
+    fi(ctx,x,y+3,6,4,100,105,122); fi(ctx,x+3,y+2,7,5,165,170,185); fi(ctx,x+2,y+1,6,5,215,218,230);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WEATHER CARD — port of WeatherMixin.draw_weather_detailed
+// ═══════════════════════════════════════════════════════════════════════════════
+function renderWeatherCard(g){
+  const oc=document.createElement('canvas'); oc.width=PW; oc.height=PH;
+  const ctx=oc.getContext('2d');
+  const sit=g.situation||{}, stats=sit.stats||{}, forecast=sit.forecast||[];
+  const icon=String(sit.icon||g.status||'cloud').toLowerCase();
+  const location=String(g.away_abbr||'CITY').toUpperCase().slice(0,15);
+  const tempF=String(g.home_abbr||'--').replace('°','').trim();
+  const cond=String(g.status||'').toUpperCase();
+  const DEEP=[18,45,95];
+
+  function skyTint(ic){
+    if(ic.includes('sun')||ic.includes('clear')) return [8,4,0];
+    if(ic.includes('storm')||ic.includes('thunder')) return [6,0,12];
+    if(ic.includes('snow')) return [1,3,10];
+    if(ic.includes('rain')||ic.includes('drizzle')) return [0,4,14];
+    return [2,2,7];
+  }
+  function skyTintMain(ic,h){
+    if(ic.includes('storm')) return [5,0,10];
+    if(ic.includes('rain')) return [0,3,12];
+    if(ic.includes('snow')) return [2,4,14];
+    if(h<5||h>=22) return [0,1,10];
+    if(h<8) return [14,5,1];
+    if(h<14) return [1,7,20];
+    if(h<17) return [2,6,15];
+    if(h<20) return [16,5,1];
+    return [7,1,9];
+  }
+  function tempCol(v){
+    const n=parseInt(v);
+    if(isNaN(n)) return [240,240,245];
+    if(n>=90) return [255,90,35]; if(n>=75) return [255,185,40];
+    if(n>=55) return [95,225,105]; if(n>=35) return [95,190,255];
+    return [190,230,255];
+  }
+
+  const nowH=new Date().getHours();
+  fi(ctx,0,0,PW,PH,...skyTint(icon));
+  const leftW=124;
+  fi(ctx,0,0,leftW,PH,...skyTintMain(icon,nowH));
+  fi(ctx,0,0,PW,1,...DEEP);
+  drawTinyText(ctx,4,2,location,[125,170,230]);
+  drawWeatherIcon(ctx,icon,3,11);
+
+  ctx.font='bold 8px "Courier New",monospace';
+  ctx.fillStyle=`rgb(${tempCol(tempF).join(',')})`;
+  ctx.textBaseline='top';
+  ctx.fillText((tempF||'--')+'°F',24,10);
+
+  const feelsV=String(stats.feels||'').trim();
+  if(feelsV&&feelsV!=='--') drawTinyText(ctx,24,25,`FEELS ${feelsV}F`,tempCol(feelsV));
+  else if(cond) drawTinyText(ctx,24,25,cond.slice(0,13),[105,145,190]);
+
+  fi(ctx,leftW,0,1,PH,...DEEP);
+
+  function aqiCol(v){
+    const n=parseInt(v); if(isNaN(n)) return [100,100,100];
+    if(n<=50) return [0,255,0]; if(n<=100) return [255,255,0];
+    if(n<=150) return [255,126,0]; return [255,0,0];
+  }
+  const aqiV=String(stats.aqi||'--').slice(0,4);
+  const statBoxes=[
+    [74,1,121,7,'AQI',aqiV,[95,120,160],aqiCol(aqiV)],
+    [74,9,121,15,'UV',String(stats.uv||'--').slice(0,4),[95,120,160],[210,155,255]],
+    [74,17,121,23,'HUM',String(stats.humidity||'--').slice(0,3)+'%',[95,120,160],[90,200,255]],
+    [74,25,121,31,'WIND',String(stats.wind||'--').slice(0,3),[95,120,160],[90,200,255]],
+  ];
+  for(const [x1,y1,x2,y2,lbl,val,lblC,valC] of statBoxes){
+    fi(ctx,x1,y1,x2-x1+1,y2-y1+1,2,6,14);
+    ctx.strokeStyle=`rgb(${DEEP.join(',')})`; ctx.lineWidth=1;
+    ctx.strokeRect(x1+0.5,y1+0.5,x2-x1,y2-y1);
+    const mid=Math.floor((x1+x2)/2), ty=y1+Math.floor(((y2-y1+1)-5)/2);
+    drawTinyText(ctx,x1+Math.max(0,Math.floor((mid-x1-lbl.length*5)/2)),ty,lbl,lblC);
+    drawTinyText(ctx,mid+Math.max(0,Math.floor((x2-mid+1-val.length*5)/2)),ty,val,valC);
+  }
+
+  const fData=forecast.length?forecast:[
+    {day:'MON',icon:'sun',high:80,low:70},{day:'TUE',icon:'rain',high:75,low:65},
+    {day:'WED',icon:'cloud',high:78,low:68},{day:'THU',icon:'storm',high:72,low:60},
+    {day:'FRI',icon:'sun',high:82,low:72},
+  ];
+  const rs=leftW+1, rw=PW-rs, cw=Math.floor(rw/5);
+  for(let i=0;i<5;i++){
+    const day=fData[i]||{}, cx=rs+i*cw, cr=i===4?PW-1:cx+cw-1;
+    const ci=String(day.icon||'cloud').toLowerCase();
+    fi(ctx,cx,0,cr-cx+1,PH,...skyTint(ci));
+    if(i<4) fi(ctx,cr,3,1,PH-6,...DEEP);
+    const ds=i===0?'TODAY':(day.day||'').slice(0,3).toUpperCase();
+    const dw=ds.length*5, dx=cx+Math.max(0,Math.floor((cr-cx+1-dw)/2));
+    drawTinyText(ctx,dx,2,ds,i===0?[255,255,255]:[110,160,220]);
+    fi(ctx,cx+4,8,cr-cx-7,1,...DEEP);
+    drawWeatherIcon(ctx,ci,cx+Math.max(0,Math.floor((cr-cx+1-9)/2)),9);
+    const hi=String(day.high||'--'), lo=String(day.low||'--');
+    const tot=hi.length*5+5+lo.length*5, tx=cx+Math.max(0,Math.floor((cr-cx+1-tot)/2));
+    drawTinyText(ctx,tx,26,hi,[255,115,75]);
+    drawTinyText(ctx,tx+hi.length*5,26,'/',[70,88,120]);
+    drawTinyText(ctx,tx+hi.length*5+5,26,lo,[90,165,255]);
+  }
+  return oc;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MUSIC CARD — port of MusicMixin.draw_music_card
+// ═══════════════════════════════════════════════════════════════════════════════
+function renderMusicCard(g){
+  const oc=document.createElement('canvas'); oc.width=PW; oc.height=PH;
+  const ctx=oc.getContext('2d');
+  fi(ctx,0,0,PW,PH,0,0,0);
+  const sit=g.situation||{};
+  const artist=String(g.home_abbr||'Unknown');
+  const song=String(g.away_abbr||'Unknown');
+  const isPlaying=!!sit.is_playing;
+  const totalDur=Math.max(1,parseFloat(sit.duration||1));
+  const srvProg=parseFloat(sit.progress||0);
+  const fetchTs=parseFloat(sit.fetch_ts||Date.now()/1000);
+  const localProg=isPlaying?Math.min(srvProg+(Date.now()/1000-fetchTs),totalDur):srvProg;
+  const pct=Math.max(0,Math.min(1,localProg/totalDur));
+
+  const logo=logoCache[g.home_logo]||null;
+  if(logo){
+    ctx.save(); ctx.beginPath(); ctx.arc(16,16,14,0,Math.PI*2); ctx.clip();
+    ctx.drawImage(logo,2,2,28,28); ctx.restore();
+    fi(ctx,14,14,4,4,20,20,20); fi(ctx,15,15,2,2,180,180,180);
+  } else {
+    ctx.beginPath(); ctx.arc(16,16,14,0,Math.PI*2);
+    ctx.fillStyle='rgb(30,30,30)'; ctx.fill();
+    fi(ctx,14,14,4,4,50,50,50); fi(ctx,15,15,2,2,160,160,160);
+  }
+
+  const TX=35, maxW=PW-TX-52;
+  ctx.textBaseline='top';
+  ctx.font='bold 7px "Courier New",monospace'; ctx.fillStyle='white';
+  let sd=song; while(ctx.measureText(sd).width>maxW&&sd.length>3) sd=sd.slice(0,-1);
+  if(sd!==song) sd=sd.slice(0,-2)+'..';
+  ctx.fillText(sd,TX,1);
+  ctx.font='6px "Courier New",monospace'; ctx.fillStyle='rgb(180,180,180)';
+  let ad=artist; while(ctx.measureText(ad).width>maxW&&ad.length>3) ad=ad.slice(0,-1);
+  if(ad!==artist) ad=ad.slice(0,-2)+'..';
+  ctx.fillText(ad,TX,10);
+
+  const t=Date.now()/1000, barCnt=12, bW=2, gap=2, vizX=248, vizY=6, vizH=18;
+  for(let i=0;i<barCnt;i++){
+    const h=isPlaying?Math.max(2,Math.round(Math.abs(Math.sin(t*4+i*0.7))*vizH*0.8)):2;
+    const br=Math.min(255,80+i*14);
+    fi(ctx,vizX+i*(bW+gap),vizY+vizH-h,bW,h,0,br,br>>1);
+  }
+
+  const rem=totalDur-localProg;
+  const rm=Math.floor(Math.max(0,rem)/60), rs=Math.floor(Math.max(0,rem)%60);
+  const remStr=`-${rm}:${String(rs).padStart(2,'0')}`;
+  ctx.font='6px "Courier New",monospace'; ctx.fillStyle='white';
+  ctx.fillText(remStr,PW-ctx.measureText(remStr).width-3,10);
+
+  fi(ctx,0,31,PW,1,30,30,30);
+  fi(ctx,0,31,Math.round(PW*pct),1,100,200,255);
+  return oc;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LEADERBOARD CARD — port of MiscMixin.draw_leaderboard_card
+// ═══════════════════════════════════════════════════════════════════════════════
+function renderLeaderboardCard(g){
+  const oc=document.createElement('canvas'); oc.width=64; oc.height=PH;
+  const ctx=oc.getContext('2d');
+  fi(ctx,0,0,64,PH,0,0,0);
+  const sport=String(g.sport||'').toLowerCase();
+  const accent=sport.includes('f1')?[255,0,0]:sport.includes('nascar')?[255,215,0]:sport.includes('indy')?[0,144,255]:[100,100,100];
+  fi(ctx,0,0,64,8,20,20,20);
+  fi(ctx,0,8,64,1,...accent);
+  const tName=String(g.tourney_name||g.home_abbr||'').toUpperCase().replace('GRAND PRIX','GP').trim().slice(0,14);
+  drawTinyText(ctx,Math.max(0,Math.floor((64-tName.length*5)/2)),1,tName,[220,220,220]);
+  const leaders=Array.isArray(g.leaders)?g.leaders:[];
+  const rC=[[255,215,0],[192,192,192],[205,127,50]];
+  for(let i=0;i<Math.min(3,leaders.length);i++){
+    const p=leaders[i], y=10+i*8;
+    const acronym=String(p.name||'UNK').slice(0,3).toUpperCase();
+    const score=String(p.score||'').replace(/LEADER/i,'LDR').slice(0,6);
+    drawTinyText(ctx,1,y,String(i+1),rC[i]);
+    drawTinyText(ctx,8,y,acronym,[255,255,255]);
+    drawTinyText(ctx,63-score.length*5,y,score,[255,100,100]);
+  }
+  if(!leaders.length) drawTinyText(ctx,8,14,'NO DATA',[80,80,80]);
+  return oc;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ROUTING
 // ═══════════════════════════════════════════════════════════════════════════════
 const FULL_MODES=new Set(['sports_full','soccer_full','nhl_full','mlb_full','nfl_full','nba_full']);
@@ -771,12 +984,16 @@ function routeItems(items, mode){
 
 function isLiveCard(g){
   const t=g.type||'', s=(g.sport||'').toLowerCase();
-  return t==='music'||s==='music'||s.startsWith('clock')||t==='weather';
+  // music and clock must re-render every frame (EQ animation, real-time clock)
+  return t==='music'||s==='music'||s.startsWith('clock');
 }
 
 function renderItem(g, mode){
   const t=g.type||'', s=(g.sport||'').toLowerCase();
   if(s.startsWith('clock')) return renderClockCard();
+  if(t==='music'||s==='music') return renderMusicCard(g);
+  if(t==='weather') return renderWeatherCard(g);
+  if(t==='leaderboard') return renderLeaderboardCard(g);
   if(t==='stock_ticker'||s.startsWith('stock')) return renderStockCard(g);
   if(t==='flight_visitor'||t==='flight_airport_hud') return renderFlightCard(g);
   if(FULL_MODES.has(mode)) return renderFullBleedCard(g);
@@ -808,7 +1025,7 @@ function renderFullBleedCard(g){
   const sx=Math.round(PW/2-totSW/2);
   pfText(ctx,aS,sx,11,255,255,255,2);
   pfText(ctx,'-',sx+aSW,11,255,255,255,2);
-  pfText(ctx,ng.hs,sx+aSW+dSW,11,255,255,255,2);
+  pfText(ctx,hS,sx+aSW+dSW,11,255,255,255,2);
   // Status
   const status=String(ng.status||'').slice(0,12);
   const tw=hfW(status.toUpperCase().slice(0,9));

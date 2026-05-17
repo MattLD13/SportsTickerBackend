@@ -59,11 +59,12 @@ def _compute_version():
         pass
     # 2. Fall back to live git (dev/Pi environment)
     import subprocess as _sp
+    _GIT_KW = dict(cwd=os.path.dirname(os.path.dirname(__file__)),
+                   stderr=_sp.DEVNULL, encoding='utf-8', timeout=5)
     try:
-        root = os.path.dirname(os.path.dirname(__file__))
-        count = _sp.check_output(["git", "rev-list", "--count", "HEAD"], cwd=root, stderr=_sp.DEVNULL, text=True).strip()
-        sha   = _sp.check_output(["git", "rev-parse", "--short", "HEAD"],  cwd=root, stderr=_sp.DEVNULL, text=True).strip()
-        date  = _sp.check_output(["git", "log", "-1", "--format=%cd", "--date=format:%Y.%m.%d"], cwd=root, stderr=_sp.DEVNULL, text=True).strip()
+        count = _sp.check_output(["git", "rev-list", "--count", "HEAD"], **_GIT_KW).strip()
+        sha   = _sp.check_output(["git", "rev-parse", "--short", "HEAD"],  **_GIT_KW).strip()
+        date  = _sp.check_output(["git", "log", "-1", "--format=%cd", "--date=format:%Y.%m.%d"], **_GIT_KW).strip()
         return f"r{count}+{sha}", date, int(count), sha
     except Exception:
         return "r0+unknown", "unknown", 0, "unknown"
