@@ -1485,3 +1485,690 @@ Starting Flask on port 5000...
 [DEBUG][REFRESH] done reason=music_worker took=0.00s
 [DEBUG][REFRESH] start reason=music_worker
 [DEBUG][REFRESH] done reason=music_worker took=0.00s
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=22 panel_w=300
+Saved f1_pin_direct.png (384x32)
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Drivers: 22
+  pos=1 car=12 abbr=ANT livery=#00D7B6
+  pos=2 car=1 abbr=NOR livery=#F47600
+  pos=3 car=81 abbr=PIA livery=#F47600
+INDYCAR_SCROLL: drivers_count=22
+saved f1_scroll_card.png
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=22 panel_w=300
+Saved f1_pin_direct.png (384x32)
+saved
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Event: 'NASCAR All-Star Race - Final Segment'
+Track: 'Dover Motor Speedway'  Lap: 200/200  Flag: CHECKERED
+Drivers: 26
+  P1 #11 Denny Hamlin         Tyt #CC0000 gap='Leader'
+  P2 #19 Chase Briscoe        Tyt #CC0000 gap='+0.887s'
+  P3 #43 Erik Jones           Tyt #CC0000 gap='+8.275s'
+  P4 #3 Austin Dillon        Chv #F5A623 gap='+8.422s'
+  P5 #88 Connor Zilisch #     Chv #F5A623 gap='+9.051s'
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_SCROLL: drivers_count=26
+Saved nascar_pin.png (128x32)
+Saved nascar_pin.png
+INDYCAR_SCROLL: drivers_count=26
+Saved nascar_scroll_card.png
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin.png (384x32)
+Pin size: (384, 32)
+INDYCAR_SCROLL: drivers_count=26
+Card size: (128, 32)
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+  Denny Hamlin              -> HAM
+  Chase Briscoe             -> BRI
+  Erik Jones                -> JON
+  Austin Dillon             -> DIL
+  Connor Zilisch            -> ZIL
+  Austin Cindric            -> CIN
+  Kyle Larson               -> LAR
+  Christopher Bell          -> BEL
+  Ryan Blaney               -> BLA
+  William Byron             -> BYR
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Watkins Glen match: True
+  got:       https://www.nascar.com/wp-content/uploads/sites/7/2026/05/05/26_NCS_13Watkinsglen_1-922x400.jpg
+  expected:  https://www.nascar.com/wp-content/uploads/sites/7/2026/05/05/26_NCS_13Watkinsglen_1-922x400.jpg
+
+Dover match: True
+  got:       https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_1-922x400.jpg
+  expected:  https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_1-922x400.jpg
+
+  Race  1: 26_NCS_1Bowmangray_1-922x400.jpg
+  Race  2: 26_NCS_2Daytona_1-922x400.jpg
+  Race  3: 26_NCS_3Atlanta_1-922x400.jpg
+  Race  4: 26_NCS_4Cota_1-922x400.jpg
+  Race  5: 26_NCS_5Phoenix_1-922x400.jpg
+  Race  6: 26_NCS_6Lasvegas_1-922x400.jpg
+  Race  7: 26_NCS_7Darlington_1-922x400.jpg
+  Race  8: 26_NCS_8Martinsville_1-922x400.jpg
+  Race  9: 26_NCS_9Bristol_1-922x400.jpg
+  Race 10: 26_NCS_10Kansas_1-922x400.jpg
+  Race 11: 26_NCS_11Talladega_1-922x400.jpg
+  Race 12: 26_NCS_12Texas_1-922x400.jpg
+  Race 13: 26_NCS_13Watkinsglen_1-922x400.jpg
+  Race 14: 26_NCS_14Dover_1-922x400.jpg
+  Race 15: 26_NCS_15Charlotte_1-922x400.jpg
+  Race 16: 26_NCS_16Nashville_1-922x400.jpg
+  Race 17: 26_NCS_17Michigan_1-922x400.jpg
+  Race 18: 26_NCS_18Pocono_1-922x400.jpg
+  Race 19: 26_NCS_19Sandiego_1-922x400.jpg
+  Race 20: 26_NCS_20Sonoma_1-922x400.jpg
+  Race 21: 26_NCS_21Chicagoland_1-922x400.jpg
+  Race 22: 26_NCS_22Atlanta_1-922x400.jpg
+  Race 23: 26_NCS_23Northwilkesboro_1-922x400.jpg
+  Race 24: 26_NCS_24Indianapolis_1-922x400.jpg
+  Race 25: 26_NCS_25Iowa_1-922x400.jpg
+  Race 26: 26_NCS_26Richmond_1-922x400.jpg
+  Race 27: 26_NCS_27Newhampshire_1-922x400.jpg
+  Race 28: 26_NCS_28Daytona_1-922x400.jpg
+  Race 29: 26_NCS_29Darlington_1-922x400.jpg
+  Race 30: 26_NCS_30Worldwidetechnology_1-922x400.jpg
+  Race 31: 26_NCS_31Bristol_1-922x400.jpg
+  Race 32: 26_NCS_32Kansas_1-922x400.jpg
+  Race 33: 26_NCS_33Lasvegas_1-922x400.jpg
+  Race 34: 26_NCS_34Charlotte_1-922x400.jpg
+  Race 35: 26_NCS_35Phoenix_1-922x400.jpg
+  Race 36: 26_NCS_36Talladega_1-922x400.jpg
+  Race 37: 26_NCS_37Martinsville_1-922x400.jpg
+  Race 38: 26_NCS_38Homesteadmiami_1-922x400.jpg
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+  P1 #11  HAM #CC0000  img=26_NCS_14Dover_11-922x400.jpg
+  P2 #19  BRI #CC0000  img=26_NCS_14Dover_19-922x400.jpg
+  P3 #43  JON #CC0000  img=26_NCS_14Dover_43-922x400.jpg
+  P4 #3   DIL #F5A623  img=26_NCS_14Dover_3-922x400.jpg
+  P5 #88  # #F5A623  img=26_NCS_14Dover_88-922x400.jpg
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin.png (384x32)
+Saved nascar_pin.png (384, 32)
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin.png (384x32)
+Saved (384, 32)
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Removed 25 stale cached car images
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin.png (384x32)
+Saved (384, 32)
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin.png (384x32)
+Saved (384, 32)
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+P1 #11  HAM badge=11.png  #CC0000
+P2 #19  BRI badge=19.png  #CC0000
+P3 #43  JON badge=43.png  #CC0000
+P4 #3   DIL badge=3.png  #F5A623
+P5 #88  # badge=88.png  #F5A623
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin.png (384x32)
+Saved (384, 32)
+INDYCAR_SCROLL: drivers_count=26
+Scroll (128, 32)
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin.png (384x32)
+INDYCAR_SCROLL: drivers_count=26
+done
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin.png (384x32)
+done
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+run_name: 'NASCAR All-Star Race - Final Segment'
+short_name: 'NASCAR All-Star Race - Final Segment'
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin.png (384x32)
+saved
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin.png (384x32)
+saved
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin_f0.png (384x32)
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin_f1.png (384x32)
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved nascar_pin_f2.png (384x32)
+done
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_SCROLL: drivers_count=22
+Saved .\f1_scroll.png (513x32)
+INDYCAR_PANEL: visible_count=22 panel_w=300
+Saved .\f1_pin.png (384x32)
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+event: NASCAR All-Star Race - Final Segment
+short: NASCAR All-Star Race - Final Segment
+lap: 200 / 200
+flag: CHECKERED
+state: post
+drivers: ['Denny Hamlin', 'Chase Briscoe', 'Erik Jones', 'Austin Dillon', 'Connor Zilisch #']
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved previews/allstar_scroll.gif
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved previews/allstar_pin.png (384x32)
+Saved previews/allstar_pin.png
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+Saved previews/allstar_scroll.gif
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+NASCAR: state=post event='NASCAR All-Star Race - Final Segment' drivers=26
+F1: state=post event='Miami Grand Prix' drivers=22
+IndyCar: state=pre event='Indy 500' drivers=6
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+
+=== NASCAR ===
+INDYCAR_PANEL: visible_count=26 panel_w=300
+  Pin: previews/nascar/pin.png
+INDYCAR_SCROLL: drivers_count=26
+  Scroll: previews/nascar/scroll.png
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+INDYCAR_PANEL: visible_count=26 panel_w=300
+  GIF: previews/nascar/pin_animated.gif
+
+=== F1 ===
+INDYCAR_PANEL: visible_count=22 panel_w=300
+  Pin: previews/f1/pin.png
+INDYCAR_SCROLL: drivers_count=22
+  Scroll: previews/f1/scroll.png
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+INDYCAR_PANEL: visible_count=22 panel_w=300
+  GIF: previews/f1/pin_animated.gif
+
+=== IndyCar ===
+INDYCAR_PANEL: visible_count=6 panel_w=300
+  Pin: previews/indycar/pin.png
+INDYCAR_SCROLL: drivers_count=6
+  Scroll: previews/indycar/scroll.png
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_PANEL: visible_count=6 panel_w=300
+  GIF: previews/indycar/pin_animated.gif
+
+Done.
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+state: pre
+status: Starts Soon
+session_type: Fast 6
+session_name: Fast 6
+lap: 5
+laps_remaining: 0
+time_to_go: 
+
+Top 3 drivers:
+  P1 #10 Alex Palou: gap='Leader' speed='232.248' best_time='38.6518'
+  P2 #20 Alexander Rossi: gap='0.1726' speed='231.990' best_time='38.6984'
+  P3 #12 David Malukas: gap='0.2483' speed='231.877' best_time='38.7809'
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+state: post
+status: FINAL
+session_type: Fast 6
+
+Top 6 drivers (gap should be MPH now):
+  P1 #10 Alex Palou             gap=   '232.248'  speed='232.248'
+  P2 #20 Alexander Rossi        gap=   '231.990'  speed='231.990'
+  P3 #12 David Malukas          gap=   '231.877'  speed='231.877'
+  P4 #60 Felix Rosenqvist       gap=   '231.375'  speed='231.375'
+  P5 #14 Santino Ferrucci       gap=   '230.846'  speed='230.846'
+  P6 # 5 Pato O'Ward            gap=   '230.442'  speed='230.442'
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_PANEL: visible_count=6 panel_w=300
+INDYCAR_SCROLL: drivers_count=6
+Done

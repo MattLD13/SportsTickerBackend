@@ -26,6 +26,10 @@ class SportsModesMixin:
             golf_game = self._fetch_golf_game(force=True)
             return [golf_game] if golf_game else []
 
+        if league_key == 'f1':
+            f1_game = self._fetch_f1(force=True)
+            return [f1_game] if f1_game else []
+
         # 0. NHL Native Pinned Game (handles NHL gamecenter IDs like 2025020978)
         if league_key == 'nhl':
             try:
@@ -548,6 +552,12 @@ class SportsModesMixin:
             if not golf_needed:
                 golf_needed = any(str(p).strip().lower().startswith(('golf:', 'masters:')) for p in active_pins)
             indycar_needed = bool(conf.get('active_sports', {}).get('indycar', False))
+            f1_needed = bool(conf.get('active_sports', {}).get('f1', False))
+            if not f1_needed:
+                f1_needed = any(str(p).strip().lower().startswith('f1:') for p in active_pins)
+            nascar_needed = bool(conf.get('active_sports', {}).get('nascar', False))
+            if not nascar_needed:
+                nascar_needed = any(str(p).strip().lower().startswith('nascar:') for p in active_pins)
             
         all_games = []
         utc_offset = conf.get('utc_offset', -5)
@@ -579,7 +589,7 @@ class SportsModesMixin:
             futures[f] = 'nhl_native'
 
         for league_key, config in self.leagues.items():
-            if league_key in ('nhl', 'golf', 'indycar') or league_key.startswith('soccer_'): continue
+            if league_key in ('nhl', 'golf', 'indycar', 'f1') or league_key.startswith('soccer_'): continue
             f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
             futures[f] = league_key
         
@@ -630,6 +640,32 @@ class SportsModesMixin:
                         break
                 if not replaced:
                     all_games.append(indycar_game)
+
+        if f1_needed:
+            f1_game = self._fetch_f1()
+            if f1_game:
+                f1_key = (str(f1_game.get('sport', '')), str(f1_game.get('id', '')))
+                replaced = False
+                for idx, existing in enumerate(all_games):
+                    if (str(existing.get('sport', '')), str(existing.get('id', ''))) == f1_key:
+                        all_games[idx] = f1_game
+                        replaced = True
+                        break
+                if not replaced:
+                    all_games.append(f1_game)
+
+        if nascar_needed:
+            nascar_game = self._fetch_nascar()
+            if nascar_game:
+                nc_key = (str(nascar_game.get('sport', '')), str(nascar_game.get('id', '')))
+                replaced = False
+                for idx, existing in enumerate(all_games):
+                    if (str(existing.get('sport', '')), str(existing.get('id', ''))) == nc_key:
+                        all_games[idx] = nascar_game
+                        replaced = True
+                        break
+                if not replaced:
+                    all_games.append(nascar_game)
 
         # Pinned refresh merge: poll only pinned games and merge them into the
         # normal sports feed so sports_full gets a fresh focused game while
@@ -732,6 +768,63 @@ class SportsModesMixin:
             },
         }]
 
+    def _build_f1_buffer(self):
+        obj = self._fetch_f1()
+        if obj:
+            return [obj]
+        return [{
+            'id': 'f1_loading',
+            'type': 'racing',
+            'sport': 'f1',
+            'state': 'pre',
+            'status': 'Loading',
+            'is_shown': True,
+            'startTimeUTC': '',
+            'away_abbr': 'Formula 1',
+            'home_abbr': 'Race',
+            'away_score': '',
+            'home_score': '',
+            'f1': {
+                'event_name': 'Formula 1',
+                'short_name': 'Formula 1',
+                'session_type': 'Race',
+                'flag': 'GREEN',
+                'drivers': [],
+                'weather': {},
+            },
+        }]
+
+    def _build_nascar_buffer(self):
+        obj = self._fetch_nascar()
+        if obj:
+            return [obj]
+        return [{
+            'id': 'nascar_loading',
+            'type': 'racing',
+            'sport': 'nascar',
+            'state': 'pre',
+            'status': 'Loading',
+            'is_shown': True,
+            'startTimeUTC': '',
+            'away_abbr': 'NASCAR',
+            'home_abbr': 'Cup Series',
+            'away_score': '',
+            'home_score': '',
+            'nascar': {
+                'event_name': 'NASCAR',
+                'short_name': 'NASCAR',
+                'track_name': '',
+                'session_type': 'Cup Series',
+                'flag': 'GREEN',
+                'lap': 0,
+                'total_laps': 0,
+                'laps_remaining': 0,
+                'caution': False,
+                'drivers': [],
+                'weather': {},
+            },
+        }]
+
     def _build_flights_buffer(self):
         if not flight_tracker:
             return []
@@ -765,7 +858,9 @@ class SportsModesMixin:
                         if m and m in VALID_MODES:
                             needed.add(m)
 
-                        # If any ticker has a golf pin, ensure golf buffer is built
+                        # If any ticker has a special racing/golf pin, ensure the
+                        # dedicated buffer is built even when that ticker is in
+                        # another mode (e.g. clock).
                         # even when that ticker is currently in another mode (e.g. clock).
                         t_settings = t.get('settings', {})
                         t_single_pin, t_pin_list = _normalize_single_pin(
@@ -783,6 +878,9 @@ class SportsModesMixin:
                             if pin_league in ('golf', 'masters'):
                                 needed.add('golf')
                                 break
+                            if pin_league == 'f1':
+                                needed.add('f1')
+                                break
 
                 _dispatch = {
                     'sports':         self._build_sports_buffer,
@@ -799,6 +897,10 @@ class SportsModesMixin:
                     'flight_tracker': self._build_flight_tracker_buffer,
                     'indycar':        self._build_indycar_buffer,
                     'indycar_full':   self._build_indycar_buffer,
+                    'f1':             self._build_f1_buffer,
+                    'f1_full':        self._build_f1_buffer,
+                    'nascar':         self._build_nascar_buffer,
+                    'nascar_full':    self._build_nascar_buffer,
                 }
 
                 sports_built = False
@@ -913,6 +1015,8 @@ class SportsModesMixin:
             'flight_tracker': self._build_flight_tracker_buffer,
             'indycar':        self._build_indycar_buffer,
             'indycar_full':   self._build_indycar_buffer,
+            'f1':             self._build_f1_buffer,
+            'f1_full':        self._build_f1_buffer,
         }
         builder = _dispatch.get(mode)
         if not builder:

@@ -212,6 +212,9 @@ def get_ticker_data():
             elif current_mode == 'masters' and (g_type == 'masters' or str(g_sport).lower() == 'masters'): match = True
             elif current_mode == 'flights' and g_sport == 'flight': match = True
             elif current_mode == 'flight_tracker' and g_type == 'flight_visitor': match = True
+            elif current_mode in ('indycar', 'indycar_full') and str(g_sport).lower() == 'indycar': match = True
+            elif current_mode in ('f1', 'f1_full') and str(g_sport).lower() == 'f1': match = True
+            elif current_mode in ('nascar', 'nascar_full') and str(g_sport).lower() == 'nascar': match = True
 
             if match:
                 g['is_shown'] = True
@@ -391,6 +394,15 @@ def api_state():
                 should_show = False
         elif current_mode == 'flight_tracker':
             if g_type != 'flight_visitor':
+                should_show = False
+        elif current_mode in ('indycar', 'indycar_full'):
+            if str(sport).lower() != 'indycar':
+                should_show = False
+        elif current_mode in ('f1', 'f1_full'):
+            if str(sport).lower() != 'f1':
+                should_show = False
+        elif current_mode in ('nascar', 'nascar_full'):
+            if str(sport).lower() != 'nascar':
                 should_show = False
 
         game_copy['is_shown'] = should_show

@@ -256,7 +256,8 @@ class SportsIndycarMixin:
         flag_status    = str(hb.get('currentFlag') or hb.get('SessionStatus') or '').strip().upper()
         session_status = str(hb.get('SessionStatus') or '').strip().upper()
 
-        if session_status in ('FINAL', 'ENDED', 'UNOFFICIAL', 'OFFICIAL', 'CHKD'):
+        _POST_STATUSES = {'FINAL', 'ENDED', 'UNOFFICIAL', 'OFFICIAL', 'CHKD', 'COLD'}
+        if session_status in _POST_STATUSES or flag_status in _POST_STATUSES:
             state = 'post'
         elif flag_status in _LIVE_FLAGS or session_status in _LIVE_FLAGS:
             state = 'in'
@@ -324,25 +325,30 @@ class SportsIndycarMixin:
 
             abbr = _build_abbr(first, last)
 
-            # Gap / diff
-            raw_gap = str(item.get('diff') or item.get('gap') or '').strip()
-            if not raw_gap or raw_gap in ('0', '0.0000', '0.000', '--'):
-                gap = 'Leader' if position == 1 else ''
-            else:
-                gap = raw_gap
-
             laps_completed = str(item.get('laps') or '').strip()
             driver_status  = str(item.get('status') or 'Active').strip()
             on_track       = str(item.get('onTrack') or '').strip().lower() == 'true'
 
-            # Speed — qualSpeed for Q sessions, LastSpeed for race
+            # Speed and gap — qualifying shows MPH, race shows time gap
             if session_raw == 'Q':
-                speed = str(item.get('qualSpeed') or item.get('BestSpeed') or '').strip()
+                speed     = str(item.get('qualSpeed') or item.get('BestSpeed') or '').strip()
                 best_time = str(item.get('bestLapTime') or '').strip()
-                # For qualifying, gap is usually shown as time diff
+                # For qualifying all positions show their speed in mph
+                if speed:
+                    try:
+                        gap = f"{float(speed):.3f}"
+                    except Exception:
+                        gap = speed
+                else:
+                    gap = ''
             else:
                 speed     = str(item.get('LastSpeed') or item.get('BestSpeed') or '').strip()
                 best_time = str(item.get('bestLapTime') or '').strip()
+                raw_gap = str(item.get('diff') or item.get('gap') or '').strip()
+                if not raw_gap or raw_gap in ('0', '0.0000', '0.000', '--'):
+                    gap = 'Leader' if position == 1 else ''
+                else:
+                    gap = raw_gap
 
             # Cross-reference driver feed for enriched data
             drv_feed = drivers_index.get(car_num, {})

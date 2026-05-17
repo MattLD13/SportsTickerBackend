@@ -35,9 +35,11 @@ from .modes.music import MusicMixin
 from .modes.flight import FlightMixin
 from .modes.misc import MiscMixin
 from .modes.indycar import IndycarMixin
+from .modes.f1 import F1Mixin
+from .modes.nascar import NascarMixin
 
 
-class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin, IndycarMixin):
+class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin, IndycarMixin, F1Mixin, NascarMixin):
     def __init__(self):
         print("Starting Ticker System...")
         self.device_id = get_device_id()
@@ -422,17 +424,26 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         if game.get('sport') == 'clock':
             return self.draw_clock_modern()
 
-        if game.get('type') == 'racing' or str(game.get('sport', '')).lower() == 'indycar':
+        if game.get('type') == 'racing' or str(game.get('sport', '')).lower() in ('indycar', 'f1', 'nascar'):
             try:
+                sport = str(game.get('sport', '')).lower()
+                if sport == 'f1':
+                    if self.mode in ('f1', 'f1_full', 'sports_full'):
+                        return self.draw_f1_full(game)
+                    return self.draw_f1_scroll_card(game)
+                if sport == 'nascar':
+                    if self.mode in ('nascar', 'nascar_full', 'sports_full'):
+                        return self.draw_nascar_full(game)
+                    return self.draw_nascar_scroll_card(game)
                 if self.mode in ('indycar', 'indycar_full', 'sports_full'):
                     return self.draw_indycar_full(game)
                 return self.draw_indycar_scroll_card(game)
             except Exception as e:
-                print(f"IndyCar render error: {e}")
+                print(f"Racing render error: {e}")
                 fallback = Image.new("RGBA", (128, 32), (0, 0, 0, 255))
                 draw = ImageDraw.Draw(fallback)
-                ic = game.get('indycar') or {}
-                short_name = str(ic.get('short_name') or ic.get('event_name') or game.get('away_abbr') or 'IndyCar').strip()[:18]
+                ic = game.get('indycar') or game.get('nascar') or game.get('f1') or {}
+                short_name = str(ic.get('short_name') or ic.get('event_name') or game.get('away_abbr') or 'Racing').strip()[:18]
                 session_name = str(ic.get('session_type') or game.get('home_abbr') or 'Race').strip()[:18]
                 draw.text((4, 4), short_name, fill=(255, 220, 50, 255), font=self.font)
                 draw.text((4, 18), session_name, fill=(220, 220, 220, 255), font=self.font)
@@ -525,8 +536,8 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         s = game.get('sport', '')
         if self.mode in ('sports_full', 'soccer_full') and t not in ['music', 'weather', 'leaderboard', 'stock_ticker'] and 'flight' not in str(t):
             return PANEL_W
-        if t == 'racing' or str(s).lower() == 'indycar':
-            return PANEL_W if self.mode in ('indycar', 'indycar_full', 'sports_full') else 128 + GAME_SEPARATOR_W
+        if t == 'racing' or str(s).lower() in ('indycar', 'f1', 'nascar'):
+            return PANEL_W if self.mode in ('indycar', 'indycar_full', 'f1', 'f1_full', 'nascar', 'nascar_full', 'sports_full') else 128 + GAME_SEPARATOR_W
         if t in ('golf', 'masters') or str(s).lower() in ('golf', 'masters'):
             return PANEL_W if self.mode in ('golf', 'sports_full') else 128 + GAME_SEPARATOR_W
         if t == 'music' or s == 'music':
@@ -647,7 +658,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                         game_type = str(self.static_current_game.get('type', ''))
                         sport = str(self.static_current_game.get('sport', '')).lower()
 
-                        if sport.startswith('clock') or game_type in ('music', 'golf', 'masters', 'weather', 'racing') or sport in ('music', 'golf', 'masters', 'indycar'):
+                        if sport.startswith('clock') or game_type in ('music', 'golf', 'masters', 'weather', 'racing') or sport in ('music', 'golf', 'masters', 'indycar', 'f1', 'nascar'):
                             if game_type == 'music' or sport == 'music':
                                 if spotify_data:
                                     self.static_current_game = spotify_data
@@ -879,9 +890,9 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                             for nurl in g.get('next_logos', []):
                                 if nurl:
                                     logos_to_fetch.append((nurl, (42, 42)))
-                        elif g_type == 'racing' or sport == 'indycar':
+                        elif g_type == 'racing' or sport in ('indycar', 'f1', 'nascar'):
                             # Prefetch team logos for top drivers
-                            ic = g.get('indycar') or {}
+                            ic = g.get('indycar') or g.get('f1') or g.get('nascar') or {}
                             for drv in (ic.get('drivers') or [])[:10]:
                                 tl = drv.get('team_logo') or ''
                                 ci = drv.get('car_illustration') or ''
@@ -904,8 +915,8 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
 
                         is_golf = g_type in ('golf', 'masters') or sport in ('golf', 'masters')
                         is_golf_fullscreen = is_golf and self.mode in ('golf', 'masters')
-                        is_indycar = g_type == 'racing' or sport == 'indycar'
-                        is_indycar_fullscreen = is_indycar and self.mode in ('indycar', 'indycar_full', 'sports_full')
+                        is_indycar = g_type == 'racing' or sport in ('indycar', 'f1', 'nascar')
+                        is_indycar_fullscreen = is_indycar and self.mode in ('indycar', 'indycar_full', 'f1', 'f1_full', 'nascar', 'nascar_full', 'sports_full')
                         if g_type == 'weather' or sport.startswith('clock') or is_golf_fullscreen or is_indycar_fullscreen or is_music or g_type == 'flight_visitor' or g_type == 'flight_airport_hud':
                             static_items.append(g)
                         elif self.mode in ('sports_full', 'soccer_full') and g_type not in ['leaderboard', 'stock_ticker', 'racing'] and 'flight' not in str(g_type) and not is_golf:

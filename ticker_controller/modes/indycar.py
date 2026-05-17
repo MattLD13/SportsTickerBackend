@@ -4,6 +4,7 @@ Scroll card (128 × 32):  race name + session on top, top-3 drivers below.
 Full screen (384 × 32):  left 1/4 = race info, right 3/4 = scrolling driver list.
 """
 
+import io
 import os
 import time
 from datetime import datetime
@@ -97,6 +98,88 @@ def _trim_transparent_padding(img):
         return img
 
 
+def _flood_remove_background(img, tolerance=35):
+    """BFS flood-fill from all four edges to remove the connected background."""
+    if img is None:
+        return img
+    try:
+        rgba = img.convert('RGBA')
+        w, h = rgba.size
+        pixels = rgba.load()
+
+        # Sample the dominant edge color as background reference
+        edge_samples = []
+        for x in range(w):
+            edge_samples.append(pixels[x, 0][:3])
+            edge_samples.append(pixels[x, h - 1][:3])
+        for y in range(h):
+            edge_samples.append(pixels[0, y][:3])
+            edge_samples.append(pixels[w - 1, y][:3])
+        # Use the most common edge color as background
+        bg = max(set(edge_samples), key=edge_samples.count)
+
+        def _similar(px):
+            return (abs(int(px[0]) - bg[0]) <= tolerance and
+                    abs(int(px[1]) - bg[1]) <= tolerance and
+                    abs(int(px[2]) - bg[2]) <= tolerance)
+
+        visited = [[False] * h for _ in range(w)]
+        queue = []
+        for x in range(w):
+            if not visited[x][0] and _similar(pixels[x, 0]):
+                queue.append((x, 0))
+                visited[x][0] = True
+            if not visited[x][h - 1] and _similar(pixels[x, h - 1]):
+                queue.append((x, h - 1))
+                visited[x][h - 1] = True
+        for y in range(h):
+            if not visited[0][y] and _similar(pixels[0, y]):
+                queue.append((0, y))
+                visited[0][y] = True
+            if not visited[w - 1][y] and _similar(pixels[w - 1, y]):
+                queue.append((w - 1, y))
+                visited[w - 1][y] = True
+
+        while queue:
+            x, y = queue.pop()
+            r, g, b, a = pixels[x, y]
+            pixels[x, y] = (r, g, b, 0)
+            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < w and 0 <= ny < h and not visited[nx][ny]:
+                    if _similar(pixels[nx, ny]):
+                        visited[nx][ny] = True
+                        queue.append((nx, ny))
+
+        return rgba
+    except Exception:
+        return img
+
+
+_NASCAR_CAR_CACHE: dict = {}   # url → PIL RGBA (bg removed, mirrored, not yet resized)
+_NASCAR_CAR_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
+
+def _load_nascar_car(url, target_size):
+    """Download at full resolution, remove white bg via flood-fill, then thumbnail."""
+    if not url:
+        return None
+    cache_key = f"{url}_{target_size[0]}x{target_size[1]}"
+    if cache_key in _NASCAR_CAR_CACHE:
+        return _NASCAR_CAR_CACHE[cache_key]
+    try:
+        r = requests.get(url, headers=_NASCAR_CAR_HEADERS, timeout=8)
+        r.raise_for_status()
+        full = Image.open(io.BytesIO(r.content)).convert('RGBA')
+        full = _flood_remove_background(full, tolerance=40)
+        full = _trim_transparent_padding(full)
+        full.thumbnail(target_size, Image.Resampling.LANCZOS)
+        _NASCAR_CAR_CACHE[cache_key] = full
+        return full
+    except Exception:
+        return None
+
+
 def _wind_compass(value):
     try:
         deg = float(value)
@@ -154,15 +237,12 @@ def _group_width(text, badge_text, font, badge_scale=2):
     return _tiny_text_width(txt, font) + (2 if badge else 0) + (badge.width if badge else 0)
 
 
-def _tiny_text_width(text, font):
-    text = str(text or '').strip()
+def _tiny_text_width(text, font=None):
+    from ..fonts import normalize_special_chars
+    text = normalize_special_chars(str(text or '').strip()).upper()
     if not text:
         return 0
-    try:
-        bbox = font.getbbox(text)
-        return bbox[2] - bbox[0]
-    except Exception:
-        return len(text) * 4
+    return sum(2 if ch == '~' else 5 for ch in text)
 
 
 def _display_flag(flag, state):
@@ -172,7 +252,7 @@ def _display_flag(flag, state):
     return str(flag or '').strip().upper() or 'GREEN'
 
 
-def _key_background(img):
+def _key_background(img, tolerance=18):
     if img is None:
         return None
     try:
@@ -186,7 +266,7 @@ def _key_background(img):
                 r, g, b, a = pixels[x, y]
                 if a == 0:
                     continue
-                if abs(r - bg[0]) <= 18 and abs(g - bg[1]) <= 18 and abs(b - bg[2]) <= 18:
+                if abs(r - bg[0]) <= tolerance and abs(g - bg[1]) <= tolerance and abs(b - bg[2]) <= tolerance:
                     pixels[x, y] = (r, g, b, 0)
         return rgba
     except Exception:
@@ -250,9 +330,15 @@ def _draw_condition_icon(draw, x, y, kind, color):
         draw.point((x, y + 3), fill=color)
         draw.point((x + 6, y + 3), fill=color)
     elif kind == 'wind':
-        draw.arc([x, y + 1, x + 6, y + 5], start=180, end=350, fill=color)
-        draw.line([(x + 1, y + 5), (x + 7, y + 5)], fill=color)
-        draw.point((x + 6, y + 3), fill=color)
+        soft = (75, 130, 185)
+        draw.line([(x, y + 1), (x + 5, y + 1)], fill=color)
+        draw.point((x + 6, y + 2), fill=color)
+        draw.point((x + 5, y + 3), fill=color)
+        draw.line([(x + 1, y + 3), (x + 8, y + 3)], fill=soft)
+        draw.line([(x, y + 5), (x + 4, y + 5)], fill=color)
+        draw.point((x + 5, y + 4), fill=color)
+        draw.point((x + 6, y + 5), fill=color)
+        draw.point((x + 5, y + 6), fill=color)
 
 
 def _round_weather_value(value):
@@ -295,7 +381,7 @@ class IndycarMixin:
             self._ic_render_weather_cache = {'ts': now, 'data': {}}
             return {}
 
-    def _ic_load_logo(self, url, size):
+    def _ic_load_logo(self, url, size, bg_tolerance=18):
         url = str(url or '').strip()
         if not url:
             return None
@@ -303,7 +389,7 @@ class IndycarMixin:
         if logo is not None:
             try:
                 cleaned = logo.convert('RGBA')
-                cleaned = _key_background(cleaned)
+                cleaned = _key_background(cleaned, bg_tolerance)
                 cleaned = ImageOps.autocontrast(cleaned)
                 cleaned = cleaned.filter(ImageFilter.MedianFilter(3)).filter(ImageFilter.SHARPEN)
                 return cleaned
@@ -318,7 +404,7 @@ class IndycarMixin:
             return None
         try:
             cleaned = logo.convert('RGBA')
-            cleaned = _key_background(cleaned)
+            cleaned = _key_background(cleaned, bg_tolerance)
             cleaned = ImageOps.autocontrast(cleaned)
             cleaned = cleaned.filter(ImageFilter.MedianFilter(3)).filter(ImageFilter.SHARPEN)
             return cleaned
@@ -414,17 +500,29 @@ class IndycarMixin:
             pos_color = (255, 215, 0) if pos == '1' else (200, 200, 200)
             draw_tiny_text(d, 0, y, pos, pos_color)
 
-            # Put the number text to the left of the driver code.
-            num_fill, _num_outline = _ic_sample_colors(self._ic_load_logo(team_logo, (18, 18)))
+            # Number color: badge image takes priority (team-specific), then livery_primary (F1), then grey
+            if team_logo:
+                num_fill, _ = _ic_sample_colors(self._ic_load_logo(team_logo, (18, 18)))
+            else:
+                livery_hex = str(driver.get('livery_primary') or '').strip()
+                num_fill = _hex_to_rgb(livery_hex, (128, 128, 128)) if livery_hex else (180, 180, 180)
+
             num_text = car_num or abbr
             num_w = _tiny_text_width(num_text, self.font)
             name_w = _tiny_text_width(abbr, self.font)
             total_w = num_w + 2 + name_w
-            # Center the (number + name) group on the DRIVER label's center
             DRIVER_LABEL_X = 34
             driver_label_w = _tiny_text_width('DRIVER', self.font)
             center_x = DRIVER_LABEL_X + (driver_label_w / 2)
             start_x = max(5, int(round(center_x - total_w / 2)))
+
+            # White outline on dark colors (luminance < 80)
+            r_c, g_c, b_c = num_fill[:3]
+            luma = 0.299 * r_c + 0.587 * g_c + 0.114 * b_c
+            if luma < 80:
+                outline = (255, 255, 255, 200)
+                for ox, oy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    draw_tiny_text(d, start_x + ox, y + oy, num_text, outline)
             draw_tiny_text(d, start_x, y, num_text, num_fill)
             draw_tiny_text(d, start_x + num_w + 2, y, abbr, (255, 255, 255))
 
@@ -507,8 +605,19 @@ class IndycarMixin:
                       .replace('GRAND PRIX', 'GP')
                       .replace('CHAMPIONSHIP', 'CHAMP')
                       .replace('PRESENTED BY', '')
+                      .replace('NASCAR CUP SERIES', '')
+                      .replace('NASCAR XFINITY SERIES', '')
+                      .replace('NASCAR CRAFTSMAN TRUCK SERIES', '')
+                      .replace('NASCAR ', '')
                       .replace('  ', ' ')
                       .strip())
+        # Pull " - FINAL SEGMENT" / " - FINAL" out of the name so it can be placed separately
+        _final_suffix = ''
+        for _fs in (' - FINAL SEGMENT', ' - FINAL', ' FINAL SEGMENT', ' FINAL'):
+            if short_name.endswith(_fs):
+                short_name = short_name[:-len(_fs)].strip()
+                _final_suffix = 'FINAL'
+                break
 
         session    = str(ic.get('session_type') or 'RACE').upper()
         lap        = ic.get('lap', 0) or 0
@@ -530,13 +639,37 @@ class IndycarMixin:
         if show_flag:
             _draw_flag(d, panel_w - 17, 1, flag_name, w=15, h=10)
 
+        # Available width: leave gap before the flag (or right edge)
+        avail_w = panel_w - (21 if show_flag else 5) - 4   # 4px left margin
+        name_px  = _tiny_text_width(short_name, self.font)
+
+        # Draw race name at y=1 — scroll if too wide, static if it fits
+        if name_px <= avail_w:
+            draw_tiny_text(d, 4, 1, short_name, (255, 220, 50))
+        else:
+            now_t = time.time()
+            if not hasattr(self, '_ic_info_scroll_x'):
+                self._ic_info_scroll_x  = 0.0
+                self._ic_info_scroll_ts = now_t
+            dt = max(0.0, now_t - self._ic_info_scroll_ts)
+            self._ic_info_scroll_ts = now_t
+            GAP = 18
+            total_loop = name_px + GAP
+            self._ic_info_scroll_x = (self._ic_info_scroll_x + dt * 14.0) % total_loop
+            offset = int(self._ic_info_scroll_x)
+            tmp = Image.new('RGBA', (name_px * 2 + GAP + avail_w, 7), (0, 0, 0, 0))
+            td  = ImageDraw.Draw(tmp)
+            draw_tiny_text(td, 0,             0, short_name, (255, 220, 50))
+            draw_tiny_text(td, name_px + GAP, 0, short_name, (255, 220, 50))
+            clip = tmp.crop((offset, 0, offset + avail_w, 7))
+            d._image.paste(clip, (4, 1), clip)
+
         variant = str(os.environ.get('INDYCAR_INFO_VARIANT') or 'conditions').strip().lower()
         if variant in ('track_map', 'conditions'):
             weather = self._ic_conditions_weather(ic.get('weather'))
             air = str(weather.get('air_temp') or '--').strip()
             wind = str(weather.get('wind_mph') or '--').strip()
             wind_dir = _wind_compass(weather.get('wind_dir')) or '--'
-            draw_tiny_text(d, 4, 1, short_name[:max(4, (panel_w - 26) // 4)], (255, 220, 50))
             draw_tiny_text(d, 4, 8, session[:11], (180, 210, 255))
             _draw_condition_icon(d, 5, 17, 'air', (255, 220, 50))
             draw_tiny_text(d, 15, 16, f"{air}F", (255, 255, 255))
@@ -551,32 +684,23 @@ class IndycarMixin:
             lead_car = str((leader or {}).get('car') or '').strip()
             lead_abbr = str((leader or {}).get('abbr') or '').strip().upper()
             lead_speed = str((leader or {}).get('speed') or (leader or {}).get('gap') or '').strip()
-            draw_tiny_text(d, 4, 1, 'P1', (255, 220, 50))
+            draw_tiny_text(d, 4, 8, 'P1', (255, 220, 50))
             if lead_car:
-                d.text((4, 6), lead_car, font=getattr(self, 'medium_font', self.font), fill=(255, 255, 255))
+                d.text((4, 13), lead_car, font=getattr(self, 'medium_font', self.font), fill=(255, 255, 255))
             if lead_abbr:
-                draw_tiny_text(d, 37, 8, lead_abbr[:3], (180, 210, 255))
+                draw_tiny_text(d, 37, 15, lead_abbr[:3], (180, 210, 255))
             metric = lead_speed[:10] if lead_speed else session[:10]
             draw_tiny_text(d, 4, 24, metric, (255, 255, 255))
             return
 
-        title_w = panel_w - (24 if show_flag else 6)
-        max_chars = max(4, title_w // 4)
-        line1 = short_name[:max_chars]
-        line2 = short_name[max_chars:max_chars * 2] if len(short_name) > max_chars else ''
-
-        draw_tiny_text(d, 4, 1, line1, (255, 220, 50))
-        if line2:
-            draw_tiny_text(d, 4, 7, line2.strip(), (255, 220, 50))
-
-        y_session = 7 if not line2 else 13
+        y_session = 7
         draw_tiny_text(d, 4, y_session, session, (180, 210, 255))
 
         y_info = y_session + 7
-        if state == 'post':
+        max_chars = max(4, avail_w // 5)
+        if state == 'post' or _final_suffix:
             info_str = 'FINAL'
         elif is_qual and time_to_go:
-            # Qualifying: show time remaining
             info_str = time_to_go[:max_chars]
         elif state == 'in' and total > 0:
             info_str = f"L{lap}/{total}"
@@ -590,7 +714,8 @@ class IndycarMixin:
         else:
             info_str = 'STARTS SOON' if state == 'pre' else str(game.get('status', '')).upper()[:max_chars]
 
-        draw_tiny_text(d, 4, y_info, info_str, (255, 255, 255))
+        if info_str:
+            draw_tiny_text(d, 4, y_info, info_str, (255, 255, 255))
 
     def _ic_draw_driver_panel(self, img, d, drivers, x_off, panel_w, H, is_qual=False):
         """Draw the scrolling driver leaderboard into the right 3/4 panel."""
@@ -676,32 +801,50 @@ class IndycarMixin:
                 team_logo = str(driver.get('team_logo') or '').strip()
                 car_image = str(driver.get('car_illustration') or '').strip()
                 gap_val = str(driver.get('gap') or '').strip()
+                primary = _hex_to_rgb(driver.get('livery_primary'), (120, 120, 130))
+                secondary = _hex_to_rgb(driver.get('livery_secondary'), (20, 20, 24))
                 cd.rectangle([0, 0, card_w - 1, card_h - 1], fill=(12, 12, 18))
                 cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(60, 60, 72), width=1)
                 if pos == '1':
                     cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(255, 215, 0), width=1)
 
+                if car_image:
+                    is_nascar_img = 'nascar.com' in car_image
+                    if is_nascar_img:
+                        car_img = _load_nascar_car(car_image, (card_w - 2, 14))
+                    else:
+                        car_img = self._ic_load_logo(car_image, (120, 19))
+                    if car_img:
+                        car_img = _trim_transparent_padding(car_img)
+                        car_x = 1
+                        car_y = max(0, card_h - car_img.height - 1)
+                        card.paste(car_img, (car_x, car_y), car_img)
+                elif hasattr(self, '_draw_f1_generated_car') and str(driver.get('team') or ''):
+                    fallback_w = min(120, card_w - 2)
+                    self._draw_f1_generated_car(card, 1, 14, fallback_w, 15, primary + (255,), secondary + (255,))
+                elif car_num:
+                    draw_tiny_text(cd, 5, 19, car_num, (110, 110, 122))
+
                 pos_color = (255, 215, 0) if pos == '1' else (180, 180, 180)
                 cd.text((4, 0), place_text, font=self.font, fill=pos_color)
 
                 if car_num:
-                    num_fill, _num_outline = _ic_sample_colors(self._ic_load_logo(team_logo, (18, 18)))
+                    if team_logo:
+                        num_fill, _num_outline = _ic_sample_colors(self._ic_load_logo(team_logo, (18, 18)))
+                    else:
+                        num_fill = primary
                     num_w, _ = _text_size(cd, car_num, self.font)
-                    cd.text((card_w - int(num_w) - 5, 0), car_num, font=self.font, fill=num_fill)
+                    num_x = card_w - int(num_w) - 5
+                    r_c, g_c, b_c = num_fill[:3]
+                    if 0.299 * r_c + 0.587 * g_c + 0.114 * b_c < 80:
+                        outline_col = (255, 255, 255, 200)
+                        for ox, oy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                            cd.text((num_x + ox, oy), car_num, font=self.font, fill=outline_col)
+                    cd.text((num_x, 0), car_num, font=self.font, fill=num_fill)
 
                 name_w, _ = _text_size(cd, name, name_font)
                 name_x = max(4, card_w - int(name_w) - 5)
                 cd.text((name_x, 10), name, font=name_font, fill=(255, 255, 255))
-
-                if car_image:
-                    car_img = self._ic_load_logo(car_image, (120, 16))
-                    if car_img:
-                        car_img = _trim_transparent_padding(car_img)
-                        car_x = 1
-                        car_y = max(14, card_h - car_img.height - 1)
-                        card.paste(car_img, (car_x, car_y), car_img)
-                elif car_num:
-                    draw_tiny_text(cd, 5, 19, car_num, (110, 110, 122))
 
                 if is_qual:
                     right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:8]

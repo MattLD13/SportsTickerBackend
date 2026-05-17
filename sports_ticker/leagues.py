@@ -63,7 +63,7 @@ LEAGUE_OPTIONS = [
     {'id': 'soccer_europa_league', 'label': 'Europa League', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/uefa.europa', 'team_params': {'limit': 200}, 'type': 'scoreboard'}},
     {'id': 'soccer_mls', 'label': 'MLS', 'type': 'sport', 'default': True, 'fetch': {'path': 'soccer/usa.1', 'team_params': {'limit': 100}, 'type': 'scoreboard'}},
     #{'id': 'wbc', 'label': 'WBC', 'type': 'sport', 'default': True, 'fetch': {'path': 'baseball/world-baseball-classic', 'type': 'scoreboard'}},
-    #{'id': 'f1', 'label': 'Formula 1', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
+    {'id': 'f1', 'label': 'Formula 1', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/f1', 'type': 'racing'}},
     #{'id': 'nascar', 'label': 'NASCAR', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
     {'id': 'indycar', 'label': 'IndyCar', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/irl', 'type': 'racing'}},
     {'id': 'weather', 'label': 'Weather', 'type': 'util', 'default': True},
@@ -104,7 +104,7 @@ VALID_MODES = {
     'stocks', 'weather', 'music', 'clock',
     'golf', 'masters',  # 'masters' kept as recognized alias (migrated → 'golf')
     'flights', 'flight_tracker',
-    'indycar', 'indycar_full',
+    'indycar', 'indycar_full', 'f1', 'f1_full',
 }
 
 # Legacy mode migration applied at load time and on /api/config writes

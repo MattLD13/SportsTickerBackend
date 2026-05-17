@@ -51,7 +51,7 @@ STATIC_TYPES = {
     "flight_visitor",
     "flight_airport_hud",
 }
-FULLSCREEN_MODES = {"sports_full", "soccer_full", "golf", "masters", "indycar", "indycar_full"}
+FULLSCREEN_MODES = {"sports_full", "soccer_full", "golf", "masters", "indycar", "indycar_full", "f1", "f1_full", "nascar", "nascar_full"}
 
 
 @dataclass
@@ -253,8 +253,9 @@ def prefetch_logos(renderer: TickerStreamer, games: list[dict]) -> None:
             for url in game.get("next_logos", []):
                 if url:
                     logo_jobs.append((url, (42, 42)))
-        elif item_type == "racing" or sport == "indycar":
-            for driver in (game.get("indycar") or {}).get("drivers", [])[:10]:
+        elif item_type == "racing" or sport in ("indycar", "f1", "nascar"):
+            payload = game.get("indycar") or game.get("f1") or game.get("nascar") or {}
+            for driver in payload.get("drivers", [])[:10]:
                 if driver.get("team_logo"):
                     logo_jobs.append((driver["team_logo"], (18, 18)))
                     logo_jobs.append((driver["team_logo"], (10, 10)))
@@ -320,8 +321,8 @@ def render_pin(renderer: TickerStreamer, game: dict | None) -> Image.Image:
     item_type = str(game.get("type", "")).lower()
     if item_type in ("golf", "masters") or sport in ("golf", "masters"):
         renderer.mode = "golf"
-    elif item_type == "racing" or sport == "indycar":
-        renderer.mode = "indycar"
+    elif item_type == "racing" or sport in ("indycar", "f1", "nascar"):
+        renderer.mode = {"f1": "f1", "nascar": "nascar"}.get(sport, "indycar")
     elif item_type not in STATIC_TYPES:
         renderer.mode = "sports_full"
     try:
@@ -438,7 +439,7 @@ class PreviewWindow:
             width=14,
             values=[
                 "sports", "live", "my_teams", "sports_full", "soccer_full",
-                "golf", "masters", "indycar", "stocks", "weather", "music",
+                "golf", "masters", "indycar", "f1", "stocks", "weather", "music",
                 "clock", "flights", "flight_tracker",
             ],
         )

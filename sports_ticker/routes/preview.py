@@ -38,7 +38,7 @@ _SPORTS_TYPES = {
     'soccer_europa_league', 'soccer_mls', 'soccer_wc', 'golf', 'masters',
 }
 
-_STATIC_PREVIEW_MODES = {'music', 'weather', 'clock', 'flights', 'flight_tracker', 'golf', 'masters', 'sports_full'}
+_STATIC_PREVIEW_MODES = {'music', 'weather', 'clock', 'flights', 'flight_tracker', 'golf', 'masters', 'sports_full', 'indycar', 'indycar_full', 'f1', 'f1_full'}
 
 
 def _get_renderer():
@@ -224,7 +224,11 @@ def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
                 )
             if sport == 'flight' or itype == 'flight':
                 return renderer.draw_flight_visitor(g)
-            if itype == 'racing' or sport == 'indycar':
+            if itype == 'racing' or sport in ('indycar', 'f1'):
+                if sport == 'f1':
+                    if renderer.mode in ('f1', 'f1_full', 'sports_full'):
+                        return renderer.draw_f1_full(g)
+                    return renderer.draw_f1_scroll_card(g)
                 if renderer.mode in ('indycar', 'indycar_full', 'sports_full'):
                     return renderer.draw_indycar_full(g)
                 return renderer.draw_indycar_scroll_card(g)
@@ -353,7 +357,7 @@ def _is_sports_game(g: dict) -> bool:
     sport = (g.get('sport') or '').lower()
     if itype in ('weather', 'stock_ticker', 'music', 'clock', 'flight_visitor', 'flight_airport_hud', 'golf', 'masters', 'racing'):
         return False
-    if sport in ('golf', 'masters', 'indycar'):
+    if sport in ('golf', 'masters', 'indycar', 'f1'):
         return False
     if sport == 'flight' or itype == 'flight':
         return False
@@ -479,8 +483,8 @@ def preview_strip():
                             preview.download_and_process_logo(logo_url, (24, 24))
                     sport = str(pinned.get('sport', '')).lower()
                     g_type = str(pinned.get('type', '')).lower()
-                    if g_type == 'racing' or sport == 'indycar':
-                        card = preview.draw_indycar_full(pinned)
+                    if g_type == 'racing' or sport in ('indycar', 'f1'):
+                        card = preview.draw_f1_full(pinned) if sport == 'f1' else preview.draw_indycar_full(pinned)
                     else:
                         card = preview.draw_sport_full_bleed(pinned)
                     return _single_card_png(card)
