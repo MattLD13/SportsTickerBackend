@@ -225,7 +225,7 @@ def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
             if sport == 'flight' or itype == 'flight':
                 return renderer.draw_flight_visitor(g)
             if itype == 'racing' or sport == 'indycar':
-                if renderer.mode in ('indycar', 'indycar_full'):
+                if renderer.mode in ('indycar', 'indycar_full', 'sports_full'):
                     return renderer.draw_indycar_full(g)
                 return renderer.draw_indycar_scroll_card(g)
             if itype in ('golf', 'masters') or sport in ('golf', 'masters'):

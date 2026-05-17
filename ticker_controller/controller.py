@@ -411,9 +411,37 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             return self.draw_clock_modern()
 
         if game.get('type') == 'racing' or str(game.get('sport', '')).lower() == 'indycar':
-            if self.mode in ('indycar', 'indycar_full'):
-                return self.draw_indycar_full(game)
-            return self.draw_indycar_scroll_card(game)
+            try:
+                if self.mode in ('indycar', 'indycar_full', 'sports_full'):
+                    return self.draw_indycar_full(game)
+                return self.draw_indycar_scroll_card(game)
+            except Exception as e:
+                print(f"IndyCar render error: {e}")
+                fallback = Image.new("RGBA", (128, 32), (0, 0, 0, 255))
+                draw = ImageDraw.Draw(fallback)
+                ic = game.get('indycar') or {}
+                short_name = str(ic.get('short_name') or ic.get('event_name') or game.get('away_abbr') or 'IndyCar').strip()[:18]
+                session_name = str(ic.get('session_type') or game.get('home_abbr') or 'Race').strip()[:18]
+                draw.text((4, 4), short_name, fill=(255, 220, 50, 255), font=self.font)
+                draw.text((4, 18), session_name, fill=(220, 220, 220, 255), font=self.font)
+                flag = str(ic.get('flag') or '').strip().upper()
+                fill = {
+                    'GREEN': (55, 190, 90, 255),
+                    'RED': (230, 70, 70, 255),
+                    'YELLOW': (255, 215, 0, 255),
+                    'CHECKERED': (235, 235, 235, 255),
+                    'WHITE': (230, 230, 230, 255),
+                }.get(flag, (0, 80, 180, 255))
+                draw.line([(119, 1), (119, 8)], fill=(120, 120, 120, 255))
+                if flag == 'CHECKERED':
+                    draw.rectangle([120, 1, 126, 5], fill=(240, 240, 240, 255), outline=(35, 35, 35, 255))
+                    for yy in range(1, 5):
+                        for xx in range(1, 7):
+                            if (xx + yy) % 2 == 0:
+                                draw.point((119 + xx, yy), fill=(45, 45, 45, 255))
+                else:
+                    draw.rectangle([120, 1, 126, 5], fill=fill, outline=(35, 35, 35, 255))
+                return fallback
 
         if game.get('type') in ('golf', 'masters') or str(game.get('sport', '')).lower() in ('golf', 'masters'):
             if self.mode in ('golf', 'masters'):
@@ -486,7 +514,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         if self.mode in ('sports_full', 'soccer_full') and t not in ['music', 'weather', 'leaderboard', 'stock_ticker'] and 'flight' not in str(t):
             return PANEL_W
         if t == 'racing' or str(s).lower() == 'indycar':
-            return PANEL_W if self.mode in ('indycar', 'indycar_full') else 128 + GAME_SEPARATOR_W
+            return PANEL_W if self.mode in ('indycar', 'indycar_full', 'sports_full') else 128 + GAME_SEPARATOR_W
         if t in ('golf', 'masters') or str(s).lower() in ('golf', 'masters'):
             return PANEL_W if self.mode in ('golf', 'sports_full') else 128 + GAME_SEPARATOR_W
         if t == 'music' or s == 'music':
@@ -860,7 +888,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                         is_golf = g_type in ('golf', 'masters') or sport in ('golf', 'masters')
                         is_golf_fullscreen = is_golf and self.mode in ('golf', 'masters')
                         is_indycar = g_type == 'racing' or sport == 'indycar'
-                        is_indycar_fullscreen = is_indycar and self.mode in ('indycar', 'indycar_full')
+                        is_indycar_fullscreen = is_indycar and self.mode in ('indycar', 'indycar_full', 'sports_full')
                         if g_type == 'weather' or sport.startswith('clock') or is_golf_fullscreen or is_indycar_fullscreen or is_music or g_type == 'flight_visitor' or g_type == 'flight_airport_hud':
                             static_items.append(g)
                         elif self.mode in ('sports_full', 'soccer_full') and g_type not in ['leaderboard', 'stock_ticker', 'racing'] and 'flight' not in str(g_type) and not is_golf:

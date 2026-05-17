@@ -20,6 +20,55 @@ def _hex_to_rgb(h, fallback=(128, 128, 128)):
     return fallback
 
 
+def _ic_flag_color(flag):
+    flag = str(flag or '').strip().upper()
+    return {
+        'GREEN': (55, 190, 90),
+        'RED': (230, 70, 70),
+        'YELLOW': (255, 215, 0),
+        'CHECKERED': (235, 235, 235),
+        'WHITE': (230, 230, 230),
+    }.get(flag, (0, 80, 180))
+
+
+def _draw_mini_flag(d, x, y, flag):
+    pole_col = (120, 120, 120)
+    fill = _ic_flag_color(flag)
+    flag_name = str(flag or '').strip().upper()
+    d.line([(x, y + 1), (x, y + 8)], fill=pole_col)
+    if flag_name == 'CHECKERED':
+        d.rectangle([x + 1, y + 1, x + 7, y + 5], fill=(240, 240, 240), outline=(35, 35, 35))
+        for yy in range(1, 5):
+            for xx in range(1, 7):
+                if (xx + yy) % 2 == 0:
+                    d.point((x + xx, y + yy), fill=(45, 45, 45))
+    else:
+        d.rectangle([x + 1, y + 1, x + 7, y + 5], fill=fill, outline=(35, 35, 35))
+
+
+def _draw_centered_tiny_text(draw, center_x, y, text, color, font):
+    text = str(text or '').strip()
+    if not text:
+        return
+    try:
+        bbox = font.getbbox(text)
+        text_w = bbox[2] - bbox[0]
+    except Exception:
+        text_w = len(text) * 4
+    draw_tiny_text(draw, int(round(center_x - (text_w / 2))), y, text, color)
+
+
+def _tiny_text_width(text, font):
+    text = str(text or '').strip()
+    if not text:
+        return 0
+    try:
+        bbox = font.getbbox(text)
+        return bbox[2] - bbox[0]
+    except Exception:
+        return len(text) * 4
+
+
 class IndycarMixin:
 
     # ── helpers ──────────────────────────────────────────────────────────────
@@ -73,8 +122,8 @@ class IndycarMixin:
         draw_hybrid_text(d, 1 + 1, 1 + 1, header, (8, 8, 8, 180))
         draw_hybrid_text(d, 1,     1,     header, (255, 220, 50, 255))
 
-        # IndyCar logo/accent bar on right edge
-        d.rectangle([W - 3, 0, W - 1, 6], fill=(0, 80, 180))
+        # Mini flag on the right edge
+        _draw_mini_flag(d, W - 9, 0, ic.get('flag'))
 
         # Separator
         d.line([(0, 7), (W - 1, 7)], fill=(40, 60, 120))
@@ -85,21 +134,24 @@ class IndycarMixin:
         # ── Column labels ────────────────────────────────────────────────────
         LABEL_COL = (70, 90, 140)
         draw_tiny_text(d, 1,  8, 'P',      LABEL_COL)
-        draw_tiny_text(d, 18, 8, 'DRIVER', LABEL_COL)
+        draw_tiny_text(d, 34, 8, 'DRIVER', LABEL_COL)
         right_label = 'MPH' if is_qual else 'GAP'
         draw_tiny_text(d, 90, 8, right_label, LABEL_COL)
 
         # ── Driver rows (top 3) ──────────────────────────────────────────────
-        row_ys = [14, 20, 26]
+        row_ys = [13, 20, 27]
         top3 = drivers[:3]
 
         for i, driver in enumerate(top3):
             y = row_ys[i]
             pos    = str(driver.get('pos') or i + 1)
-            abbr   = str(driver.get('abbr') or '???').upper()[:3]
-            logo_url = driver.get('team_logo') or ''
-            pri_hex  = driver.get('livery_primary', '#888888')
-            sec_hex  = driver.get('livery_secondary', '#333333')
+            name   = str(driver.get('name') or 'Unknown').strip()
+            if len(name) > 12:
+                pieces = name.split()
+                name = pieces[-1] if pieces else name
+            name = name[:11]
+            car_num = str(driver.get('car') or '').strip()
+            car_num = f"#{car_num}" if car_num else ''
 
             # Right column: speed for qualifying, gap for race
             if is_qual:
@@ -111,20 +163,12 @@ class IndycarMixin:
             pos_color = (255, 215, 0) if pos == '1' else (200, 200, 200)
             draw_tiny_text(d, 1, y, pos, pos_color)
 
-            # Team logo (10 × 10 at x=10)
-            LOGO_SZ = 10
-            LOGO_X  = 10
-            logo_img = self.get_logo(logo_url, (LOGO_SZ, LOGO_SZ))
-            if logo_img:
-                logo_img = logo_img.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
-                logo_top = y - 2
-                img.paste(logo_img, (LOGO_X, logo_top), logo_img)
-
-            # Livery bar (3 × 5 at x=21)
-            self._ic_draw_livery_bar(d, 21, y, 3, 5, pri_hex, sec_hex)
-
-            # Driver abbreviation
-            draw_tiny_text(d, 26, y, abbr, (255, 255, 255))
+            # Inline driver name with the car number immediately after it.
+            name_x = 26
+            draw_tiny_text(d, name_x, y, name, (255, 255, 255))
+            if car_num:
+                car_x = name_x + _tiny_text_width(name, self.font) + 2
+                draw_tiny_text(d, car_x, y, car_num, (180, 210, 255))
 
             # Right column value
             if right_val:

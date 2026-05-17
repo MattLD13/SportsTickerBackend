@@ -718,8 +718,8 @@ class SportsModesMixin:
             'startTimeUTC': '',
             'away_abbr': 'IndyCar',
             'home_abbr': 'Race',
-            'away_score': 'IndyCar',
-            'home_score': 'Race',
+            'away_score': '',
+            'home_score': '',
             'indycar': {
                 'event_name': 'IndyCar',
                 'short_name': 'IndyCar',

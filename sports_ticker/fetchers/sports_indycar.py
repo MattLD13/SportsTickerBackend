@@ -316,8 +316,8 @@ class SportsIndycarMixin:
             'startTimeUTC': '',
             'away_abbr':    away_abbr,
             'home_abbr':    home_abbr,
-            'away_score':   track_name or short_event_name or '',
-            'home_score':   short_session_name or '',
+            'away_score':   '',
+            'home_score':   '',
             'indycar': {
                 'event_name':   short_event_name,
                 'short_name':   short_event_name,
