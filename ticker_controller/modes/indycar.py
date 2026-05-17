@@ -4,13 +4,14 @@ Scroll card (128 × 32):  race name + session on top, top-3 drivers below.
 Full screen (384 × 32):  left 1/4 = race info, right 3/4 = scrolling driver list.
 """
 
+import hashlib
 import io
 import os
 import time
 from datetime import datetime
 import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
-from ..config import PANEL_W, PANEL_H
+from ..config import PANEL_W, PANEL_H, ASSETS_DIR
 from ..fonts import draw_tiny_text, draw_hybrid_text
 
 
@@ -161,12 +162,21 @@ _NASCAR_CAR_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
 
 
 def _load_nascar_car(url, target_size):
-    """Download at full resolution, remove white bg via flood-fill, then thumbnail."""
+    """Download at full resolution, remove white bg via flood-fill, then thumbnail. Disk-cached."""
     if not url:
         return None
     cache_key = f"{url}_{target_size[0]}x{target_size[1]}"
     if cache_key in _NASCAR_CAR_CACHE:
         return _NASCAR_CAR_CACHE[cache_key]
+    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}.png"
+    disk_path = os.path.join(ASSETS_DIR, disk_name)
+    try:
+        if os.path.exists(disk_path):
+            img = Image.open(disk_path).convert('RGBA')
+            _NASCAR_CAR_CACHE[cache_key] = img
+            return img
+    except Exception:
+        pass
     try:
         r = requests.get(url, headers=_NASCAR_CAR_HEADERS, timeout=8)
         r.raise_for_status()
@@ -175,6 +185,11 @@ def _load_nascar_car(url, target_size):
         full = _trim_transparent_padding(full)
         full.thumbnail(target_size, Image.Resampling.LANCZOS)
         _NASCAR_CAR_CACHE[cache_key] = full
+        try:
+            os.makedirs(ASSETS_DIR, exist_ok=True)
+            full.save(disk_path, 'PNG')
+        except Exception:
+            pass
         return full
     except Exception:
         return None

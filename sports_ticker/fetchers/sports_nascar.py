@@ -1,5 +1,6 @@
 """NASCAR live data fetcher using cf.nascar.com public feeds."""
 
+import re
 from datetime import date, timedelta
 
 from .. import core as _core
@@ -106,6 +107,10 @@ def _nascar_compact_gap(delta, pos):
         s = float(delta)
         if s == 0:
             return ''
+        if s < 0:
+            # Negative delta = laps down (e.g. -1.0 → "-1L")
+            laps = int(abs(s))
+            return f"-{laps}L" if laps > 0 else ''
         return f"+{s:.3f}s"
     except Exception:
         return ''
@@ -122,10 +127,12 @@ def _nascar_make_color(manufacturer):
 
 
 def _nascar_abbr(full_name):
-    parts = str(full_name or '').strip().split()
+    # Strip rookie "#" suffix and any non-alpha trailing tokens from the NASCAR feed
+    name = re.sub(r'\s*#\w*\s*$', '', str(full_name or '').strip()).strip()
+    parts = name.split()
     if len(parts) >= 2:
         return parts[-1][:3].upper()   # first 3 of last name: HAMlin, BRIscoe, etc.
-    return str(full_name or '')[:3].upper()
+    return name[:3].upper()
 
 
 class SportsNascarMixin:
@@ -182,7 +189,7 @@ class SportsNascarMixin:
                 car_num  = str(v.get('vehicle_number') or '').strip()
                 make     = str(v.get('vehicle_manufacturer') or '').strip()
                 drv_info = v.get('driver') or {}
-                full_name = str(drv_info.get('full_name') or '').strip()
+                full_name = re.sub(r'\s*#\w*\s*$', '', str(drv_info.get('full_name') or '').strip()).strip()
                 delta    = v.get('delta', 0.0)
                 on_track = bool(v.get('is_on_track', True))
                 sponsor  = str(v.get('sponsor_name') or '').strip()
