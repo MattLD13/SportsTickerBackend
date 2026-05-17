@@ -6,7 +6,7 @@ Full screen (384 × 32):  left 1/4 = race info, right 3/4 = scrolling driver lis
 
 import time
 from datetime import datetime
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
 from ..config import PANEL_W, PANEL_H
 from ..fonts import draw_tiny_text, draw_hybrid_text
 
@@ -124,12 +124,27 @@ class IndycarMixin:
             return None
         logo = self.get_logo(url, size)
         if logo is not None:
-            return logo
+            try:
+                cleaned = logo.convert('RGBA')
+                cleaned = ImageOps.autocontrast(cleaned)
+                cleaned = cleaned.filter(ImageFilter.MedianFilter(3)).filter(ImageFilter.SHARPEN)
+                return cleaned
+            except Exception:
+                return logo
         try:
             self.download_and_process_logo(url, size)
         except Exception:
             pass
-        return self.get_logo(url, size)
+        logo = self.get_logo(url, size)
+        if logo is None:
+            return None
+        try:
+            cleaned = logo.convert('RGBA')
+            cleaned = ImageOps.autocontrast(cleaned)
+            cleaned = cleaned.filter(ImageFilter.MedianFilter(3)).filter(ImageFilter.SHARPEN)
+            return cleaned
+        except Exception:
+            return logo
 
     def _ic_draw_livery_bar(self, d, x, y, w, h, primary_hex, secondary_hex):
         """Draw a vertical livery bar split primary (top) / secondary (bottom)."""
@@ -215,15 +230,19 @@ class IndycarMixin:
             pos_color = (255, 215, 0) if pos == '1' else (200, 200, 200)
             draw_tiny_text(d, 1, y, pos, pos_color)
 
-            # Center the 3-letter code and number image as one unit.
-            badge = self._ic_load_logo(team_logo, (10, 10)) if team_logo else _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=1)
-            group_w = _tiny_text_width(abbr, self.font) + (2 if badge else 0) + (badge.width if badge else 0)
-            start_x = max(20, int(round(58 - group_w / 2)))
-            draw_tiny_text(d, start_x, y, abbr, (255, 255, 255))
+            # Put the number art to the left of the driver code.
+            badge = self._ic_load_logo(team_logo, (12, 12)) if team_logo else _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=1)
+            name_w = _tiny_text_width(abbr, self.font)
+            badge_w = badge.width if badge else 0
+            total_w = badge_w + (2 if badge else 0) + name_w
+            start_x = max(18, int(round(61 - total_w / 2)))
             if badge:
-                badge_x = start_x + _tiny_text_width(abbr, self.font) + 2
-                badge_y = max(0, y)
-                img.paste(badge, (badge_x, badge_y), badge)
+                badge_y = max(0, y - 1)
+                img.paste(badge, (start_x, badge_y), badge)
+                text_x = start_x + badge_w + 2
+            else:
+                text_x = start_x
+            draw_tiny_text(d, text_x, y, abbr, (255, 255, 255))
 
             # Right column value
             if right_val:
@@ -370,7 +389,7 @@ class IndycarMixin:
 
         visible.sort(key=_pos_sort_key)
 
-        card_w = 96
+        card_w = 100
         card_h = H - 4
         gap = 6
         row_speed = 8.0 if len(visible) > 6 else 6.0
@@ -393,18 +412,21 @@ class IndycarMixin:
             pos_color = (255, 215, 0) if pos == '1' else (180, 180, 180)
             draw_tiny_text(cd, 3, 2, pos, pos_color)
 
-            name = name[:14]
+            name = name[:12]
             name_width = _tiny_text_width(name, self.font)
-            badge = self._ic_load_logo(team_logo, (11, 11)) if team_logo else _render_number_badge(car_num, self.font, fg=(205, 225, 255), scale=1)
+            badge = self._ic_load_logo(team_logo, (12, 12)) if team_logo else _render_number_badge(car_num, self.font, fg=(205, 225, 255), scale=1)
             badge_w = badge.width if badge else 0
             group_w = name_width + (2 if badge else 0) + badge_w
-            group_x = max(5, int((card_w - group_w) / 2))
-            draw_tiny_text(cd, group_x, 2, name, (255, 255, 255))
+            group_x = max(4, int((card_w - group_w) / 2))
             if badge:
-                card.paste(badge, (group_x + name_width + 2, 1), badge)
+                card.paste(badge, (group_x, 1), badge)
+                text_x = group_x + badge_w + 2
+            else:
+                text_x = group_x
+            draw_tiny_text(cd, text_x, 2, name, (255, 255, 255))
 
             if car_image:
-                car_img = self._ic_load_logo(car_image, (36, 12))
+                car_img = self._ic_load_logo(car_image, (34, 12))
                 if car_img:
                     car_x = max(4, int((card_w - car_img.width) / 2))
                     car_y = 11
