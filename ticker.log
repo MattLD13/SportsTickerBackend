@@ -2172,3 +2172,30 @@ Top 6 drivers (gap should be MPH now):
 INDYCAR_PANEL: visible_count=6 panel_w=300
 INDYCAR_SCROLL: drivers_count=6
 Done
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+NASCAR: state=post is_shown=True event='NASCAR All-Star Race - Final Segment' status=FINAL
+F1: state=post is_shown=True event='Miami Grand Prix' status=FINAL
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Traceback (most recent call last):
+  File "<stdin>", line 6, in <module>
+AttributeError: 'SportsFetcher' object has no attribute 'get_games_with_mode'
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Traceback (most recent call last):
+  File "<stdin>", line 6, in <module>
+AttributeError: 'SportsFetcher' object has no attribute 'fetch_games'
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Racing in sports feed: 2
+  indycar    state=post   status=FINAL      is_shown=True event='Indy 500'
+  nascar     state=post   status=FINAL      is_shown=True event='NASCAR All-Star Race - Final Segment'
