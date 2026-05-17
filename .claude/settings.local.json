@@ -89,7 +89,27 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\" -Force)",
       "Bash(Select-Object Name, FullName)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\" -Recurse)",
-      "Bash(dir \"c:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\sports_ticker\\\\dashboard\\\\static\\\\\")"
+      "Bash(dir \"c:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\sports_ticker\\\\dashboard\\\\static\\\\\")",
+      "WebFetch(domain:livetiming.azurewebsites.net)",
+      "Bash(curl -s -L -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120\" \"https://livetiming.azurewebsites.net/event=50?config=w3\")",
+      "Bash(curl -s -o /dev/null -w \"STATUS:%{http_code}\\\\nCONTENT-TYPE:%{content_type}\\\\nURL:%{url_effective}\\\\n\" \"https://livetiming.azurewebsites.net/api/Event/50/Standings\" -A \"Mozilla/5.0\")",
+      "Bash(curl -s -o /dev/null -w \"STATUS:%{http_code}\\\\nCONTENT-TYPE:%{content_type}\\\\n\" \"https://livetiming.azurewebsites.net/api/event/50/standings\" -A \"Mozilla/5.0\")",
+      "Bash(curl -s -o /dev/null -w \"STATUS:%{http_code}\\\\nCONTENT-TYPE:%{content_type}\\\\n\" \"https://livetiming.azurewebsites.net/api/Event/50\" -A \"Mozilla/5.0\")",
+      "Bash(curl -s -o /dev/null -w \"STATUS:%{http_code}\\\\nCONTENT-TYPE:%{content_type}\\\\n\" \"https://livetiming.azurewebsites.net/api/Event/50/RaceControl\" -A \"Mozilla/5.0\")",
+      "Bash(curl -s -o /dev/null -w \"STATUS:%{http_code}\\\\nCONTENT-TYPE:%{content_type}\\\\n\" \"https://livetiming.azurewebsites.net/hubs/timing/negotiate?negotiateVersion=1\" -A \"Mozilla/5.0\")",
+      "Bash(curl -s \"https://livetiming.azurewebsites.net/leaderboard.e24a.bundle.js\")",
+      "Bash(curl -v -L -A \"Mozilla/5.0\" \"https://livetiming.azurewebsites.net/api/Event/50/Standings\")",
+      "Read(//tmp/**)",
+      "Bash(curl -s \"https://livetiming.azurewebsites.net/vendor.aec0.bundle.js\" > /tmp/vendor.bundle.js *)",
+      "Bash(grep -oE '\"\\(/[^\"]{2,60}|https?://[^\"]{5,80}\\)\"' /tmp/leaderboard.bundle.js)",
+      "Bash(curl -s \"https://livetiming.azurewebsites.net/leaderboard.e24a.bundle.js\" -o /tmp/lb.js)",
+      "Bash(python3)",
+      "Bash(pip install *)",
+      "Bash(python3 -m pip install websocket-client)",
+      "Bash(python3 -c \"import websocket; print\\('websocket-client version:', websocket.__version__\\)\")"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
     ]
   }
 }

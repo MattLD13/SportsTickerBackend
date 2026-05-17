@@ -442,6 +442,11 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             self.game_render_cache[game_hash] = img
             return img
 
+        if game.get('type') == 'n24_rc':
+            img = self.draw_n24_racecontrol_card(game)
+            self.game_render_cache[game_hash] = img
+            return img
+
         if game.get('type') == 'n24_car' or game.get('sport') == 'n24':
             img = self.draw_n24_car_compact(game) if game.get('compact') else self.draw_n24_car_card(game)
             self.game_render_cache[game_hash] = img
@@ -489,6 +494,8 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             return PANEL_W if self.mode in ('golf', 'sports_full') else 128 + GAME_SEPARATOR_W
         if t == 'music' or s == 'music':
             return PANEL_W
+        if t == 'n24_rc':
+            return 192
         if t == 'n24_car' or s == 'n24':
             return 96 if game.get('compact') else 128
         if t == 'stock_ticker' or (s and str(s).startswith('stock')):

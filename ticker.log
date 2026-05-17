@@ -1517,3 +1517,36 @@ NO DATA returned
 manual_event_id attr: None
 _KNOWN_EVENT_IDS: {2023: '126489', 2024: '131229', 2025: '136000', 2026: '140000'}
 all ok
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+imports ok
+connected: False
+all renderers ok
+{'code': '0', 'key': 'green', 'name': 'GREEN FLAG', 'color': '#00C040'}
+{'code': '60', 'key': 'unknown', 'name': 'UNKNOWN', 'color': '#666666'}
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+    0 -> green           GREEN FLAG
+    1 -> yellow          YELLOW FLAG
+    2 -> safety_car      SAFETY CAR
+    3 -> red             RED FLAG
+    4 -> vsc             VIRTUAL SAFETY CAR
+    5 -> fcy             FULL COURSE YELLOW
+   60 -> code60          CODE 60
+    7 -> code60          CODE 60
+    8 -> noz             NO OVERTAKING
+   10 -> pit_closed      PIT LANE CLOSED
+   11 -> medical_car     MEDICAL CAR
+
+  code60          <- Code 60 Zone activated Sector 3-5
+  safety_car      <- Safety Car deployed
+  red             <- Red Flag, race stopped
+  code60          <- CODE 60 cancelled Sector 3
+  noz             <- No Overtaking zone activated
+  green           <- Green Flag, track clear
+
+Sector flags: {3: {'key': 'code60', 'color': '#00BBFF'}, 4: {'key': 'code60', 'color': '#00BBFF'}, 5: {'key': 'code60', 'color': '#00BBFF'}, 7: {'key': 'yellow', 'color': '#FFD000'}}

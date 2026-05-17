@@ -1,9 +1,16 @@
-"""Nürburgring 24h live timing fetcher (Race Result API)."""
+"""Nürburgring 24h live timing fetcher — Azure WebSocket timing system."""
 
+import json
 import re
+import threading
 import time
-import requests
-from datetime import datetime
+
+try:
+    import websocket as _websocket_lib
+    _WS_AVAILABLE = True
+except ImportError:
+    _WS_AVAILABLE = False
+    print('[N24] websocket-client not installed; run: pip install websocket-client')
 
 from ..lookups import (
     RACING_MANUFACTURER_COLORS as MANUFACTURER_COLORS,
@@ -12,42 +19,85 @@ from ..lookups import (
     _RACING_DEFAULT_CLASS,
 )
 
-_HEADERS = {
-    'User-Agent': (
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) '
-        'Chrome/124.0.0.0 Safari/537.36'
-    ),
-    'Accept': 'application/json, text/html, */*',
-    'Accept-Language': 'en-US,en;q=0.9,de;q=0.8',
+# ---------------------------------------------------------------------------
+# Track state mapping  (N24 / Nürburgring-specific codes included)
+# ---------------------------------------------------------------------------
+
+_TRACK_STATES = {
+    # Standard codes
+    '0':  ('green',       'GREEN FLAG',         '#00C040'),
+    '1':  ('yellow',      'YELLOW FLAG',        '#FFD000'),
+    '2':  ('safety_car',  'SAFETY CAR',         '#2060FF'),
+    '3':  ('red',         'RED FLAG',           '#FF2020'),
+    '4':  ('vsc',         'VIRTUAL SAFETY CAR', '#8888FF'),
+    '5':  ('fcy',         'FULL COURSE YELLOW', '#FFB000'),
+    '6':  ('chequered',   'CHEQUERED FLAG',     '#CCCCCC'),
+    # Nürburgring-specific
+    '60': ('code60',      'CODE 60',            '#00BBFF'),  # slow-zone 60 km/h
+    '7':  ('code60',      'CODE 60',            '#00BBFF'),  # alt numeric code
+    '8':  ('noz',         'NO OVERTAKING',      '#FF8C00'),  # no-overtaking zone
+    '9':  ('caution',     'CAUTION',            '#FFCC00'),
+    '10': ('pit_closed',  'PIT LANE CLOSED',    '#FF6600'),
+    '11': ('medical_car', 'MEDICAL CAR',        '#FF4488'),
 }
+
+def track_state_info(code: str) -> dict:
+    key, name, color = _TRACK_STATES.get(str(code), ('unknown', f'STATE {code}', '#666666'))
+    return {'code': code, 'key': key, 'name': name, 'color': color}
+
+
+# Sector-level flag parsing from RC message text
+_SECTOR_PATTERNS = [
+    # "CODE 60 ZONE SECTOR 3-5" / "CODE 60 S4" / "SC60 SECTORS 2,3"
+    (r'(?:code\s*60|sc\s*60)\s+(?:zone\s+)?(?:sector[s]?\s*)?([0-9][0-9\-,\s]*)',
+     'code60', '#00BBFF'),
+    # "DOUBLE WAVED YELLOW S4-S5" / "YELLOW FLAG SECTOR 3"
+    (r'(?:double\s+waved\s+yellow|yellow\s+flag)\s+(?:sector[s]?\s*)?([0-9][0-9\-,\s]*)',
+     'yellow', '#FFD000'),
+    # "SECTOR 6 CLEAR" / "CODE 60 CANCELLED SECTOR 3"
+    (r'(?:code\s*60\s+cancel|sector\s+clear)\s+(?:sector[s]?\s*)?([0-9][0-9\-,\s]*)',
+     'green', '#00C040'),
+]
+
+def parse_sector_flags(messages: list) -> dict:
+    """Return a dict mapping sector numbers 1-9 to flag info dicts.
+
+    Processes RC messages newest-first to build current sector state.
+    """
+    import re
+    sector_state = {}   # sector_num → flag_info_dict
+
+    for msg_obj in messages:
+        text = str(msg_obj.get('MESSAGE', '') or '').lower()
+        for pattern, flag_key, color in _SECTOR_PATTERNS:
+            m = re.search(pattern, text, re.IGNORECASE)
+            if m:
+                # Extract sector numbers from the match group
+                raw = m.group(1)
+                nums = re.findall(r'\d+', raw)
+                if len(nums) == 2 and int(nums[0]) <= 9 and int(nums[1]) <= 9:
+                    sectors = list(range(int(nums[0]), int(nums[1]) + 1))
+                elif len(nums) == 1:
+                    sectors = [int(nums[0])]
+                else:
+                    sectors = [int(n) for n in nums if 1 <= int(n) <= 9]
+                for s in sectors:
+                    if s not in sector_state:   # newest message wins
+                        sector_state[s] = {'key': flag_key, 'color': color}
+                break
+
+    return sector_state
 
 
 # ---------------------------------------------------------------------------
 # Helper utilities
 # ---------------------------------------------------------------------------
 
-def _pick_current_driver(drivers: list, hint: str = '') -> str | None:
-    """Return the name of the driver currently at the wheel.
-
-    Race Result sometimes marks the active driver with an asterisk prefix or
-    supplies an explicit field.  Fall back to the first driver listed.
-    """
-    if hint:
-        clean = hint.lstrip('*').strip()
-        if clean:
-            return clean
-    for d in drivers:
-        if d.startswith('*'):
-            return d.lstrip('*').strip()
-    return drivers[0] if drivers else None
-
-
 def make_driver_acronym(name: str) -> str:
-    """Return the 3-letter racing acronym for a driver name.
+    """Return a 3-letter racing acronym for a driver name.
 
-    FIA/endurance convention: first letter of first name + first two letters
-    of last name  (e.g. 'Dennis Olsen' → 'DOL').
+    Single surname (as in the timing feed): first 3 letters.
+    Full name 'First Last': first letter of first + first two of last.
     """
     name = name.strip()
     if not name:
@@ -59,7 +109,6 @@ def make_driver_acronym(name: str) -> str:
 
 
 def extract_manufacturer(text: str) -> str | None:
-    """Infer manufacturer key from car model / team name string."""
     if not text:
         return None
     low = text.lower()
@@ -87,261 +136,228 @@ def get_class_colors(class_name: str | None) -> dict:
     return _RACING_DEFAULT_CLASS
 
 
+def _parse_rc_flag(message: str) -> str:
+    """Infer a flag key from a race control message string."""
+    low = message.lower()
+    if 'code 60' in low or 'sc60' in low or 'code60' in low:
+        return 'code60'
+    if 'virtual safety car' in low or ' vsc ' in low:
+        return 'vsc'
+    if 'safety car' in low or 'sc deployed' in low:
+        return 'safety_car'
+    if 'red flag' in low or 'race stopped' in low:
+        return 'red'
+    if 'full course yellow' in low or ' fcy' in low:
+        return 'fcy'
+    if 'pit lane closed' in low or 'pit closed' in low:
+        return 'pit_closed'
+    if 'no overtaking' in low or 'noz' in low:
+        return 'noz'
+    if 'medical car' in low:
+        return 'medical_car'
+    if 'double waved yellow' in low or 'double yellow' in low:
+        return 'yellow'
+    if 'yellow flag' in low:
+        return 'yellow'
+    if 'green flag' in low or 'track clear' in low or 'safety car in this lap' in low:
+        return 'green'
+    return ''
+
+
 # ---------------------------------------------------------------------------
 # Fetcher
 # ---------------------------------------------------------------------------
 
 class NurburgringFetcher:
-    """Fetches live standings from the Nürburgring 24h via Race Result."""
+    """Live timing via the Azure WebSocket push system at livetiming.azurewebsites.net."""
 
-    # Known N24 Race Result event IDs by year (update each May when the race runs).
-    # Used as fallback when auto-discovery fails.
-    _KNOWN_EVENT_IDS = {
-        2023: '126489',
-        2024: '131229',
-        2025: '136000',  # estimated; update if wrong
-        2026: '140000',  # estimated; update if wrong
-    }
-
-    _SEARCH_URLS = [
-        'https://www.raceresult.com/en-us/results.php',
-        'https://www.raceresult.com/en/results.php',
-        'https://raceresult.com/en-us/results.php',
-    ]
-    _LIVE_BASE  = 'https://livetiming.raceresult.com'
-    _EVENT_TTL  = 1800   # re-discover event ID every 30 min
-    _DATA_TTL   = 30     # refresh timing data every 30 s
+    _WS_URL   = 'wss://livetiming.azurewebsites.net'
+    _EVENT_ID = '50'   # 2026 54. ADAC RAVENOL 24h Nürburgring
+    _PIDS     = [0, 3, 4]  # standings, race control messages, track state
 
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update(_HEADERS)
-        self._event_id: str | None = None
-        self._event_id_ts: float   = 0.0
-        self._cache: dict | None   = None
-        self._cache_ts: float      = 0.0
-        # Can be set externally (e.g. from server config) to skip discovery
+        self._lock      = threading.Lock()
+        self._cache: dict | None = None
+        self._entries: list = []
+        self._rc_messages: list = []
+        self._track_state_code: str = '0'
+        self._event_name: str = '54. ADAC RAVENOL 24h Nürburgring'
+        self._connected: bool = False
+        self._ws_thread: threading.Thread | None = None
+        # External override for event ID (set by /api/n24/event endpoint)
         self.manual_event_id: str | None = None
+        if _WS_AVAILABLE:
+            self._start_ws()
 
     # ------------------------------------------------------------------
-    # Event discovery
+    # WebSocket connection management
     # ------------------------------------------------------------------
 
-    def _discover_event_id(self) -> str | None:
-        now  = time.time()
-        year = datetime.now().year
+    @property
+    def _active_event_id(self) -> str:
+        return self.manual_event_id or self._EVENT_ID
 
-        # 1. Manual override wins — no TTL check needed
-        if self.manual_event_id:
-            self._event_id    = self.manual_event_id
-            self._event_id_ts = now
-            return self._event_id
+    def _start_ws(self):
+        if self._ws_thread and self._ws_thread.is_alive():
+            return
+        self._ws_thread = threading.Thread(
+            target=self._ws_loop, daemon=True, name='n24_ws')
+        self._ws_thread.start()
 
-        # 2. Return cached ID if still fresh
-        if self._event_id and (now - self._event_id_ts) < self._EVENT_TTL:
-            return self._event_id
-
-        # 3. Try the Race Result search page with multiple URL variants
-        queries = [
-            f'Nurburgring 24 {year}',
-            f'Nuerburgring 24 {year}',
-            f'N24 {year}',
-            '24h Nurburgring',
-        ]
-        id_patterns = [
-            r'/(?:en(?:-us)?/)?results/(\d{5,7})',
-            r'livetiming\.raceresult\.com/(\d{5,7})',
-            r'eventId["\s:=]+(\d{5,7})',
-            r'"id"\s*:\s*(\d{5,7})',
-        ]
-        for url in self._SEARCH_URLS:
-            for query in queries:
-                try:
-                    resp = self.session.get(url, params={'search': query}, timeout=10)
-                    if not resp.ok:
-                        continue
-                    html = resp.text
-                    ids = []
-                    for pat in id_patterns:
-                        ids.extend(re.findall(pat, html))
-                    # Keep only IDs that look plausibly like N24 event IDs (>= 100000)
-                    ids = [i for i in ids if int(i) >= 100000]
-                    if ids:
-                        eid = max(ids, key=int)
-                        self._event_id    = eid
-                        self._event_id_ts = now
-                        print(f'[N24] discovered event ID {eid} via search ({query})')
-                        return eid
-                except Exception as exc:
-                    print(f'[N24] search failed ({url!r}, {query!r}): {exc}')
-
-        # 4. Probe estimated + known IDs for this year — try each until one responds
-        candidates = []
-        if year in self._KNOWN_EVENT_IDS:
-            base = int(self._KNOWN_EVENT_IDS[year])
-            # Try ±200 around the estimate (IDs increase ~4000-6000 per year)
-            candidates = [str(base + d) for d in range(0, 201, 25)]
-        # Also try the known exact IDs from nearby years as sanity anchors
-        for y in sorted(self._KNOWN_EVENT_IDS, reverse=True):
-            candidates.append(self._KNOWN_EVENT_IDS[y])
-
-        for eid in candidates:
+    def _ws_loop(self):
+        while True:
             try:
-                resp = self.session.get(
-                    f'{self._LIVE_BASE}/{eid}/RRHMI/data',
-                    params={'l': 0, 'p': 1, 't': 0, 's': '', 'f': 'L', 'r': 0, 'm': ''},
-                    timeout=5,
+                ws = _websocket_lib.WebSocketApp(
+                    self._WS_URL,
+                    on_open=self._on_open,
+                    on_message=self._on_message,
+                    on_error=self._on_error,
+                    on_close=self._on_close,
                 )
-                if resp.ok and resp.content:
-                    parsed = resp.json()
-                    rows = self._extract_rows(parsed)
-                    if rows:
-                        self._event_id    = eid
-                        self._event_id_ts = now
-                        print(f'[N24] found live event ID {eid} via probe')
-                        return eid
-            except Exception:
+                ws.run_forever(ping_interval=30, ping_timeout=10)
+            except Exception as exc:
+                print(f'[N24] WS loop error: {exc}')
+            self._connected = False
+            time.sleep(5)
+
+    def _on_open(self, ws):
+        self._connected = True
+        print(f'[N24] WebSocket connected (event {self._active_event_id})')
+        ws.send(json.dumps({
+            'eventId':        self._active_event_id,
+            'eventPid':       self._PIDS,
+            'clientLocalTime': int(time.time() * 1000),
+        }))
+
+    def _on_message(self, ws, message):
+        try:
+            data = json.loads(message)
+            pid  = str(data.get('PID', ''))
+            if pid == 'LTS_TIMESYNC':
                 pass
+            elif pid == 'LTS_NOT_FOUND':
+                print(f'[N24] event {self._active_event_id} not found on server')
+            elif pid == '0':
+                self._ingest_standings(data)
+            elif pid == '3':
+                self._ingest_racecontrol(data)
+            elif pid == '4':
+                self._ingest_trackstate(data)
+        except Exception as exc:
+            print(f'[N24] message error: {exc}')
 
-        print(f'[N24] event discovery failed for {year}; using stale ID {self._event_id!r}')
-        return self._event_id
+    def _on_error(self, ws, error):
+        print(f'[N24] WS error: {error}')
 
-    # ------------------------------------------------------------------
-    # Timing data fetch
-    # ------------------------------------------------------------------
-
-    def _fetch_timing(self, event_id: str) -> object:
-        endpoints = [
-            (f'{self._LIVE_BASE}/{event_id}/RRHMI/data',
-             {'l': 0, 'p': 1, 't': 0, 's': '', 'f': 'L', 'r': 0, 'm': ''}),
-            (f'{self._LIVE_BASE}/{event_id}/data',
-             {'type': 'leaderboard', 'format': 'json'}),
-            (f'{self._LIVE_BASE}/{event_id}/results.json', {}),
-        ]
-        for url, params in endpoints:
-            try:
-                resp = self.session.get(url, params=params, timeout=10)
-                if resp.ok and resp.content:
-                    try:
-                        return resp.json()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-        return None
+    def _on_close(self, ws, code, msg):
+        self._connected = False
+        print(f'[N24] WS closed (code={code})')
 
     # ------------------------------------------------------------------
-    # Parsing
+    # PID processors
     # ------------------------------------------------------------------
 
-    def _parse(self, raw: object, event_id: str) -> dict | None:
-        rows = self._extract_rows(raw)
-        if not rows:
+    def _ingest_standings(self, data: dict):
+        raw_entries = data.get('RESULT', [])
+        if not raw_entries:
+            return
+
+        parsed = [self._parse_entry(e) for e in raw_entries]
+        parsed = [e for e in parsed if e]
+
+        # Enrich with colour data
+        for entry in parsed:
+            mfr = entry.get('manufacturer')
+            entry['manufacturer_colors'] = get_manufacturer_colors(mfr)
+            entry['class_colors']        = get_class_colors(entry.get('class_name', ''))
+
+        leader_laps = parsed[0].get('laps', 0) if parsed else 0
+        event_name  = data.get('CUP') or self._event_name
+        if event_name:
+            self._event_name = event_name
+
+        with self._lock:
+            self._entries = parsed
+            self._cache = self._build_cache(leader_laps)
+
+    def _ingest_racecontrol(self, data: dict):
+        messages = data.get('MESSAGES', [])
+        if not isinstance(messages, list):
+            return
+        with self._lock:
+            self._rc_messages = messages  # server sends full history
+            if self._cache is not None:
+                self._cache['race_control'] = self._recent_rc()
+
+    def _ingest_trackstate(self, data: dict):
+        with self._lock:
+            self._track_state_code = str(data.get('TRACKSTATE', '0'))
+            if self._cache is not None:
+                ts = track_state_info(self._track_state_code)
+                self._cache['track_state']      = self._track_state_code
+                self._cache['track_state_name'] = ts['name']
+                self._cache['track_state_color'] = ts['color']
+
+    # ------------------------------------------------------------------
+    # Entry parser
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_entry(e: dict) -> dict | None:
+        if not e:
             return None
-        entries = [e for e in (self._parse_row(r) for r in rows) if e]
-        if not entries:
-            return None
-        leader_laps = entries[0].get('laps', 0)
+        car     = str(e.get('CAR', '') or '')
+        surname = str(e.get('NAME', '') or '').strip()
         return {
-            'source':      'race_result',
-            'event_id':    event_id,
-            'event_name':  'ADAC TOTAL 24h-Rennen Nürburgring',
-            'status':      'live',
-            'leader_laps': leader_laps,
-            'entries':     entries,
-            'fetched_at':  time.time(),
+            'pos':                    str(e.get('POSITION', '?') or '?'),
+            'car_num':                str(e.get('STNR',     '?') or '?'),
+            'class_name':             str(e.get('CLASSNAME','') or ''),
+            'team':                   str(e.get('TEAM',     '') or ''),
+            'car':                    car,
+            'drivers':                [surname] if surname else [],
+            'driver_acronyms':        [make_driver_acronym(surname)] if surname else ['???'],
+            'current_driver':         surname,
+            'current_driver_acronym': make_driver_acronym(surname),
+            'laps':                   int(e.get('LAPS', 0)         or 0),
+            'gap':                    str(e.get('GAP',  '')        or ''),
+            'last_lap':               str(e.get('LASTLAPTIME', '') or ''),
+            'best_lap':               str(e.get('FASTESTLAP',  '') or ''),
+            'manufacturer':           extract_manufacturer(car),
+            'pit_stops':              int(e.get('PITSTOPCOUNT', 0) or 0),
+            'pro_am':                 str(e.get('PRO', '')         or ''),
         }
 
-    @staticmethod
-    def _extract_rows(raw: object) -> list:
-        if isinstance(raw, list):
-            return raw
-        if isinstance(raw, dict):
-            for key in ('data', 'entries', 'results', 'rows', 'timing'):
-                val = raw.get(key)
-                if isinstance(val, list) and val:
-                    return val
-            if all(str(k).isdigit() for k in raw):
-                return list(raw.values())
-        return []
+    # ------------------------------------------------------------------
+    # Cache builder
+    # ------------------------------------------------------------------
 
-    def _parse_row(self, raw) -> dict | None:
-        if isinstance(raw, list):
-            return self._parse_row_list(raw)
-        if isinstance(raw, dict):
-            return self._parse_row_dict(raw)
-        return None
+    def _recent_rc(self) -> list:
+        """Return the 50 most recent RC messages, newest first."""
+        msgs = self._rc_messages
+        try:
+            msgs = sorted(msgs, key=lambda m: int(m.get('ID', 0)), reverse=True)
+        except Exception:
+            msgs = list(reversed(msgs))
+        return msgs[:50]
 
-    @staticmethod
-    def _parse_row_list(r: list) -> dict | None:
-        if len(r) < 3:
-            return None
-        def _s(i): return str(r[i]).strip() if i < len(r) else ''
-        def _i(i):
-            try: return int(r[i])
-            except Exception: return 0
-        car_text = _s(4) or _s(3)
-        drivers  = [d for d in [_s(8)] if d]
-        current  = _pick_current_driver(drivers, _s(9))
+    def _build_cache(self, leader_laps: int) -> dict:
+        ts      = track_state_info(self._track_state_code)
+        rc      = self._recent_rc()
+        sec_map = parse_sector_flags(rc)
         return {
-            'pos':                    _s(0) or '?',
-            'car_num':                _s(1) or '?',
-            'class_name':             _s(2),
-            'team':                   _s(3),
-            'car':                    _s(4),
-            'drivers':                drivers,
-            'driver_acronyms':        [make_driver_acronym(d) for d in drivers],
-            'current_driver':         current,
-            'current_driver_acronym': make_driver_acronym(current) if current else '???',
-            'laps':                   _i(5),
-            'gap':                    _s(6),
-            'last_lap':               _s(7),
-            'best_lap':               '',
-            'manufacturer':           extract_manufacturer(car_text),
-        }
-
-    @staticmethod
-    def _parse_row_dict(r: dict) -> dict | None:
-        def _g(*keys):
-            for k in keys:
-                v = r.get(k)
-                if v is not None: return str(v).strip()
-            return ''
-        def _gi(*keys):
-            for k in keys:
-                v = r.get(k)
-                try: return int(v)
-                except Exception: pass
-            return 0
-
-        car_text  = _g('Car', 'car', 'vehicle', 'Vehicle')
-        team_text = _g('Name', 'name', 'Team', 'team')
-        drivers   = []
-        for i in range(1, 5):
-            d = _g(f'Driver{i}', f'driver{i}', f'Driver_{i}')
-            if d: drivers.append(d)
-        if not drivers:
-            combined = _g('Drivers', 'drivers', 'driver_names')
-            if combined:
-                drivers = [d.strip() for d in re.split(r'[/,;]', combined) if d.strip()]
-
-        current_raw = _g('CurrentDriver', 'current_driver', 'Driving', 'driving', 'ActiveDriver')
-        current     = _pick_current_driver(drivers, current_raw)
-        car_num     = _g('BIB', 'Bib', 'bib', 'Num', 'num', 'No', 'no', 'car_num', 'number')
-        return {
-            'pos':                    _g('Pos', 'pos', 'Position', 'position') or '?',
-            'car_num':                car_num or '?',
-            'class_name':             _g('Class', 'class', 'class_name', 'Category'),
-            'team':                   team_text,
-            'car':                    car_text,
-            'drivers':                drivers,
-            'driver_acronyms':        [make_driver_acronym(d) for d in drivers],
-            'current_driver':         current,
-            'current_driver_acronym': make_driver_acronym(current) if current else '???',
-            'laps':                   _gi('Laps', 'laps', 'LapCount', 'lap_count', 'Lap'),
-            'gap':                    _g('Gap', 'gap', 'Diff', 'diff'),
-            'last_lap':               _g('LastLap', 'last_lap', 'LastLapTime', 'last_lap_time'),
-            'best_lap':               _g('BestLap', 'best_lap', 'BestLapTime'),
-            'manufacturer':           extract_manufacturer(car_text or team_text),
+            'source':            'n24_livetiming_ws',
+            'event_id':          self._active_event_id,
+            'event_name':        self._event_name,
+            'status':            'live',
+            'leader_laps':       leader_laps,
+            'entries':           self._entries,
+            'race_control':      rc,
+            'track_state':       self._track_state_code,
+            'track_state_name':  ts['name'],
+            'track_state_color': ts['color'],
+            'track_state_key':   ts['key'],
+            'sector_flags':      sec_map,  # {1: {key, color}, ...}
+            'fetched_at':        time.time(),
         }
 
     # ------------------------------------------------------------------
@@ -349,40 +365,57 @@ class NurburgringFetcher:
     # ------------------------------------------------------------------
 
     def fetch(self) -> dict | None:
-        now = time.time()
-        if self._cache and (now - self._cache_ts) < self._DATA_TTL:
+        if _WS_AVAILABLE:
+            self._start_ws()  # no-op if thread already alive
+        with self._lock:
             return self._cache
-
-        event_id = self._discover_event_id()
-        if not event_id:
-            return self._cache
-
-        raw = self._fetch_timing(event_id)
-        if raw is None:
-            return self._cache
-
-        parsed = self._parse(raw, event_id)
-        if parsed:
-            self._cache    = parsed
-            self._cache_ts = now
-
-        return self._cache
 
     def enrich(self, data: dict) -> dict:
-        """Add colour + logo data to every entry in-place."""
+        """Add colour data to entries in-place (already done by _ingest_standings)."""
         for entry in data.get('entries', []):
-            mfr = entry.get('manufacturer')
-            entry['manufacturer_colors'] = get_manufacturer_colors(mfr)
-            entry['class_colors']        = get_class_colors(entry.get('class_name', ''))
+            if 'manufacturer_colors' not in entry:
+                entry['manufacturer_colors'] = get_manufacturer_colors(entry.get('manufacturer'))
+            if 'class_colors' not in entry:
+                entry['class_colors'] = get_class_colors(entry.get('class_name', ''))
         return data
 
     def format_for_ticker(self, data: dict | None) -> list[dict]:
-        """Convert fetched N24 data into a list of controller-ready game objects."""
-        if not data or not data.get('entries'):
+        """Return controller-ready game objects from fetched data.
+
+        Prepends a single 'n24_rc' track-state card so the LED feed always
+        shows the current flag status before the car standings.
+        """
+        if not data:
             return []
-        enriched = self.enrich(data)
+
         games = []
-        for entry in enriched.get('entries', []):
+
+        # ── Track-state / race-control card ─────────────────────────────
+        rc_msgs   = data.get('race_control', [])
+        latest_rc = rc_msgs[0].get('MESSAGE', '') if rc_msgs else ''
+        ts_name   = data.get('track_state_name', 'GREEN FLAG')
+        ts_color  = data.get('track_state_color', '#00C040')
+        ts_key    = data.get('track_state_key', 'green')
+        games.append({
+            'id':               'n24_rc',
+            'type':             'n24_rc',
+            'sport':            'n24',
+            'event_name':       data.get('event_name', 'N24'),
+            'track_state':      data.get('track_state', '0'),
+            'track_state_name': ts_name,
+            'track_state_color': ts_color,
+            'track_state_key':  ts_key,
+            'latest_message':   latest_rc,
+            'messages':         [m.get('MESSAGE', '') for m in rc_msgs[:5]],
+            'leader_laps':      data.get('leader_laps', 0),
+            # Compatibility
+            'home_abbr': 'N24', 'away_abbr': 'RC',
+            'home_score': ts_key.upper()[:4], 'away_score': '',
+            'status': ts_name,
+        })
+
+        # ── Car entries ──────────────────────────────────────────────────
+        for entry in data.get('entries', []):
             games.append({
                 'id':                     f"n24_{entry.get('car_num', '?')}",
                 'type':                   'n24_car',
@@ -395,7 +428,7 @@ class NurburgringFetcher:
                 'car':                    entry.get('car', ''),
                 'drivers':                entry.get('drivers', []),
                 'driver_acronyms':        entry.get('driver_acronyms', []),
-                'current_driver':         entry.get('current_driver'),
+                'current_driver':         entry.get('current_driver', ''),
                 'current_driver_acronym': entry.get('current_driver_acronym', '???'),
                 'laps':                   entry.get('laps', 0),
                 'gap':                    entry.get('gap', ''),
@@ -404,7 +437,9 @@ class NurburgringFetcher:
                 'manufacturer':           entry.get('manufacturer'),
                 'manufacturer_colors':    entry.get('manufacturer_colors', _RACING_DEFAULT_MFR),
                 'class_colors':           entry.get('class_colors', _RACING_DEFAULT_CLASS),
-                # Compatibility fields used by the generic strip builder
+                'pit_stops':              entry.get('pit_stops', 0),
+                'pro_am':                 entry.get('pro_am', ''),
+                # Compatibility
                 'home_abbr':  entry.get('team', '')[:8],
                 'away_abbr':  entry.get('car_num', '?'),
                 'home_score': str(entry.get('laps', 0)),

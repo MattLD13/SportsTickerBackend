@@ -22,8 +22,84 @@ _DIM    = (100, 110, 120)
 _LEAD   = (255, 215, 0)   # gap colour for the race leader
 
 
+_FLAG_COLORS = {
+    'green':      ((0,   180,  50),  'GRN'),
+    'yellow':     ((220, 190,   0),  'YLW'),
+    'safety_car': ((20,   80, 220),  'SC '),
+    'vsc':        ((130, 130, 220),  'VSC'),
+    'red':        ((220,  20,  20),  'RED'),
+    'fcy':        ((200, 140,   0),  'FCY'),
+    'chequered':  ((200, 200, 200),  'CHQ'),
+    # Nürburgring-specific
+    'code60':     ((0,  180, 220),   'C60'),  # Code 60 slow zone
+    'noz':        ((255, 130,  0),   'NOZ'),  # No Overtaking Zone
+    'caution':    ((220, 190,  0),   'CAU'),
+    'pit_closed': ((255, 100,  0),   'PIT'),  # Pit lane closed
+    'medical_car':((220,  60, 130),  'MED'),
+    'unknown':    ((80,   90, 100),  '???'),
+}
+
+
 class RacingMixin:
-    """Provides draw_n24_car_card() and draw_n24_car_compact() for the LED matrix strip."""
+    """Provides N24 card renderers for the LED matrix strip."""
+
+    # ------------------------------------------------------------------
+    # Race-control / track-state card  (192 × 32 px)
+    # ------------------------------------------------------------------
+
+    def draw_n24_racecontrol_card(self, game: dict) -> Image.Image:
+        """192×32 race-control card showing track state + latest message.
+
+        Layout:
+          y=0-4   thick colored flag-status bar
+          y=6-12  [FLAG badge] track state name
+          y=14    separator
+          y=16-22 latest race control message text (truncated)
+          y=24-30 second message line if text wraps
+        """
+        W = 192
+        img = Image.new('RGBA', (W, PANEL_H), (0, 0, 0, 255))
+        d   = ImageDraw.Draw(img)
+
+        try:
+            ts_key   = game.get('track_state_key', 'green')
+            ts_name  = game.get('track_state_name', 'GREEN FLAG')
+            ts_color_hex = game.get('track_state_color', '#00C040')
+            flag_rgb, flag_abbr = _FLAG_COLORS.get(ts_key, ((80, 80, 80), '???'))
+
+            # ── Thick status bar across top ──────────────────────────────
+            for py in range(5):
+                d.line([(0, py), (W - 1, py)], fill=flag_rgb)
+
+            # ── Flag badge + state name ──────────────────────────────────
+            bw = len(flag_abbr) * 5 + 6
+            d.rectangle((2, 6, 2 + bw, 14), fill=flag_rgb)
+            draw_tiny_text(d, 4, 7, flag_abbr, (0, 0, 0))
+
+            state_text = ts_name[:24]
+            draw_tiny_text(d, 2 + bw + 4, 7, state_text, flag_rgb)
+
+            # ── Separator ────────────────────────────────────────────────
+            d.line([(0, 15), (W - 1, 15)], fill=(30, 40, 50))
+
+            # ── Latest RC message (wrapped into 2 lines) ─────────────────
+            msg = str(game.get('latest_message', '') or '').strip()
+            if not msg:
+                msgs = game.get('messages', [])
+                msg  = msgs[0] if msgs else 'NO RECENT MESSAGES'
+
+            max_chars = (W - 4) // 6  # ~5px per char + 1px spacing
+            line1 = msg[:max_chars]
+            line2 = msg[max_chars: max_chars * 2] if len(msg) > max_chars else ''
+
+            draw_tiny_text(d, 2, 17, line1, (190, 200, 210))
+            if line2:
+                draw_tiny_text(d, 2, 25, line2, (130, 145, 160))
+
+        except Exception as exc:
+            print(f'[N24 RC render] {exc}')
+
+        return img
 
     # ------------------------------------------------------------------
     # Compact card  (96 × 32 px) — used in sports / live feed

@@ -19,3 +19,6 @@ google-genai
 
 # Logo image processing
 Pillow
+
+# WebSocket client (N24 live timing)
+websocket-client
