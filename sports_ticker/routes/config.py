@@ -303,8 +303,43 @@ def update_settings(tid):
         request_refresh('ticker_mode_update')
 
     save_specific_ticker(tid)
-    
-    print(f"✅ Updated Settings for {tid}: {data}") 
+
+    print(f"✅ Updated Settings for {tid}: {data}")
     return jsonify({"success": True})
+
+
+@app.route('/api/indycar/event', methods=['GET', 'POST'])
+@app.route('/api/n24/event', methods=['GET', 'POST'])  # legacy alias
+def indycar_event_config():
+    """GET/POST IndyCar scoring URL override.
+
+    POST body: {"scoring_url": "https://..."}
+    Set scoring_url to "" to restore the default endpoint.
+    """
+    from ..fetchers.racing_indycar import indycar_fetcher as _f
+    from ..core import save_global_config
+
+    if request.method == 'GET':
+        return jsonify({
+            'scoring_url':        _f._scoring_url,
+            'manual_scoring_url': _f.manual_scoring_url,
+            'has_data':           _f._cache is not None,
+            'entries':            len((_f._cache or {}).get('entries', [])),
+        })
+
+    payload  = request.json or {}
+    raw_url  = str(payload.get('scoring_url', '')).strip()
+    with data_lock:
+        state['indycar_scoring_url'] = raw_url
+    save_global_config()
+    _f.manual_scoring_url = raw_url or None
+    _f._cache = None
+    data = _f.fetch()
+    return jsonify({
+        'status':    'ok',
+        'scoring_url': raw_url or '(default)',
+        'has_data':  data is not None,
+        'entries':   len((data or {}).get('entries', [])),
+    })
 
 
