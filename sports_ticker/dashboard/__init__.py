@@ -10,4 +10,4 @@ dashboard = Blueprint(
     template_folder='templates',
 )
 
-from . import routes  # noqa: F401, E402 — registers routes onto the blueprint
+from . import routes  # noqa: F401, E402

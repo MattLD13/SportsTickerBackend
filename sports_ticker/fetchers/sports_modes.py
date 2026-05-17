@@ -547,6 +547,7 @@ class SportsModesMixin:
             golf_needed = bool(conf.get('active_sports', {}).get('golf', False))
             if not golf_needed:
                 golf_needed = any(str(p).strip().lower().startswith(('golf:', 'masters:')) for p in active_pins)
+            indycar_needed = bool(conf.get('active_sports', {}).get('indycar', False))
             
         all_games = []
         utc_offset = conf.get('utc_offset', -5)
@@ -578,7 +579,7 @@ class SportsModesMixin:
             futures[f] = 'nhl_native'
 
         for league_key, config in self.leagues.items():
-            if league_key in ('nhl', 'golf') or league_key.startswith('soccer_'): continue
+            if league_key in ('nhl', 'golf', 'indycar') or league_key.startswith('soccer_'): continue
             f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
             futures[f] = league_key
         
@@ -616,6 +617,19 @@ class SportsModesMixin:
                         break
                 if not replaced:
                     all_games.append(golf_game)
+
+        if indycar_needed:
+            indycar_game = self._fetch_indycar()
+            if indycar_game:
+                ic_key = (str(indycar_game.get('sport', '')), str(indycar_game.get('id', '')))
+                replaced = False
+                for idx, existing in enumerate(all_games):
+                    if (str(existing.get('sport', '')), str(existing.get('id', ''))) == ic_key:
+                        all_games[idx] = indycar_game
+                        replaced = True
+                        break
+                if not replaced:
+                    all_games.append(indycar_game)
 
         # Pinned refresh merge: poll only pinned games and merge them into the
         # normal sports feed so sports_full gets a fresh focused game while
@@ -690,6 +704,30 @@ class SportsModesMixin:
             return [obj]
         return [self._golf_placeholder_game()]
 
+    def _build_indycar_buffer(self):
+        obj = self._fetch_indycar()
+        if obj:
+            return [obj]
+        return [{
+            'id': 'indycar_loading',
+            'type': 'racing',
+            'sport': 'indycar',
+            'state': 'pre',
+            'status': 'Loading',
+            'is_shown': True,
+            'startTimeUTC': '',
+            'indycar': {
+                'event_name': 'IndyCar',
+                'short_name': 'IndyCar',
+                'session_type': 'Race',
+                'lap': 0,
+                'total_laps': 0,
+                'laps_remaining': 0,
+                'caution': False,
+                'drivers': [],
+            },
+        }]
+
     def _build_flights_buffer(self):
         if not flight_tracker:
             return []
@@ -755,6 +793,8 @@ class SportsModesMixin:
                     'masters':        self._build_golf_buffer,   # legacy alias
                     'flights':        self._build_flights_buffer,
                     'flight_tracker': self._build_flight_tracker_buffer,
+                    'indycar':        self._build_indycar_buffer,
+                    'indycar_full':   self._build_indycar_buffer,
                 }
 
                 sports_built = False
@@ -867,6 +907,8 @@ class SportsModesMixin:
             'masters':        self._build_golf_buffer,
             'flights':        self._build_flights_buffer,
             'flight_tracker': self._build_flight_tracker_buffer,
+            'indycar':        self._build_indycar_buffer,
+            'indycar_full':   self._build_indycar_buffer,
         }
         builder = _dispatch.get(mode)
         if not builder:

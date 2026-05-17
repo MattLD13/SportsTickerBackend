@@ -34,9 +34,10 @@ from .modes.golf import GolfMixin
 from .modes.music import MusicMixin
 from .modes.flight import FlightMixin
 from .modes.misc import MiscMixin
+from .modes.indycar import IndycarMixin
 
 
-class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin):
+class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin, IndycarMixin):
     def __init__(self):
         print("Starting Ticker System...")
         self.device_id = get_device_id()
@@ -409,6 +410,11 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         if game.get('sport') == 'clock':
             return self.draw_clock_modern()
 
+        if game.get('type') == 'racing' or str(game.get('sport', '')).lower() == 'indycar':
+            if self.mode in ('indycar', 'indycar_full'):
+                return self.draw_indycar_full(game)
+            return self.draw_indycar_scroll_card(game)
+
         if game.get('type') in ('golf', 'masters') or str(game.get('sport', '')).lower() in ('golf', 'masters'):
             if self.mode in ('golf', 'masters'):
                 return self.draw_golf_mode(game)
@@ -479,6 +485,8 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         s = game.get('sport', '')
         if self.mode in ('sports_full', 'soccer_full') and t not in ['music', 'weather', 'leaderboard', 'stock_ticker'] and 'flight' not in str(t):
             return PANEL_W
+        if t == 'racing' or str(s).lower() == 'indycar':
+            return PANEL_W if self.mode in ('indycar', 'indycar_full') else 128 + GAME_SEPARATOR_W
         if t in ('golf', 'masters') or str(s).lower() in ('golf', 'masters'):
             return PANEL_W if self.mode in ('golf', 'sports_full') else 128 + GAME_SEPARATOR_W
         if t == 'music' or s == 'music':
@@ -599,7 +607,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                         game_type = str(self.static_current_game.get('type', ''))
                         sport = str(self.static_current_game.get('sport', '')).lower()
 
-                        if sport.startswith('clock') or game_type in ('music', 'golf', 'masters', 'weather') or sport in ('music', 'golf', 'masters'):
+                        if sport.startswith('clock') or game_type in ('music', 'golf', 'masters', 'weather', 'racing') or sport in ('music', 'golf', 'masters', 'indycar'):
                             if game_type == 'music' or sport == 'music':
                                 if spotify_data:
                                     self.static_current_game = spotify_data
@@ -831,6 +839,14 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                             for nurl in g.get('next_logos', []):
                                 if nurl:
                                     logos_to_fetch.append((nurl, (42, 42)))
+                        elif g_type == 'racing' or sport == 'indycar':
+                            # Prefetch team logos for top drivers
+                            ic = g.get('indycar') or {}
+                            for drv in (ic.get('drivers') or [])[:10]:
+                                tl = drv.get('team_logo') or ''
+                                if tl:
+                                    logos_to_fetch.append((tl, (10, 10)))
+                                    logos_to_fetch.append((tl, (7, 7)))
                         else:
                             if g.get('home_logo'):
                                 logos_to_fetch.append((g.get('home_logo'), (22, 22)))
@@ -843,9 +859,11 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
 
                         is_golf = g_type in ('golf', 'masters') or sport in ('golf', 'masters')
                         is_golf_fullscreen = is_golf and self.mode in ('golf', 'masters')
-                        if g_type == 'weather' or sport.startswith('clock') or is_golf_fullscreen or is_music or g_type == 'flight_visitor' or g_type == 'flight_airport_hud':
+                        is_indycar = g_type == 'racing' or sport == 'indycar'
+                        is_indycar_fullscreen = is_indycar and self.mode in ('indycar', 'indycar_full')
+                        if g_type == 'weather' or sport.startswith('clock') or is_golf_fullscreen or is_indycar_fullscreen or is_music or g_type == 'flight_visitor' or g_type == 'flight_airport_hud':
                             static_items.append(g)
-                        elif self.mode in ('sports_full', 'soccer_full') and g_type not in ['leaderboard', 'stock_ticker'] and 'flight' not in str(g_type) and not is_golf:
+                        elif self.mode in ('sports_full', 'soccer_full') and g_type not in ['leaderboard', 'stock_ticker', 'racing'] and 'flight' not in str(g_type) and not is_golf:
                             static_items.append(g)
                         else:
                             scrolling_items.append(g)

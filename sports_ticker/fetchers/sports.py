@@ -13,6 +13,7 @@ from .sports_espn import SportsEspnMixin
 from .sports_golf import SportsGolfMixin
 from .sports_mlb import SportsMlbMixin
 from .sports_modes import SportsModesMixin
+from .sports_indycar import SportsIndycarMixin
 
 
 class SportsFetcher(
@@ -23,6 +24,7 @@ class SportsFetcher(
     SportsSoccerMixin,
     SportsNhlMixin,
     SportsGeneralMixin,
+    SportsIndycarMixin,
 ):
     def __init__(self, initial_city, initial_lat, initial_lon):
         self.weather = WeatherFetcher(initial_lat=initial_lat, initial_lon=initial_lon, city=initial_city)

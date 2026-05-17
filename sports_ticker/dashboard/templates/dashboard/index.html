@@ -11,7 +11,6 @@
 </head>
 <body>
 
-<!-- ── HEADER ── -->
 <header class="header">
   <div class="header-inner">
     <div class="header-left">
@@ -26,100 +25,15 @@
       <span class="ver-chip">v{{ server_version }}&thinsp;<span class="ver-hash">#{{ version_hash[:7] }}</span></span>
     </div>
     <div class="header-right">
-      <span class="mode-badge" id="mode-badge">{{ global_mode.upper().replace('_',' ') }}</span>
+      <span class="mode-badge">{{ global_mode.upper().replace('_',' ') }}</span>
     </div>
   </div>
 </header>
 
 <main>
 
-  
-
-  <!-- ── 2. SETTINGS ── -->
-  <section class="settings-section">
-    <div class="container">
-      <div class="settings-card">
-
-        <!-- Mode selector and preview speed removed -->
-
-        <!-- Control panels (JS shows one at a time via .active) -->
-
-        <!-- sports preview controls removed -->
-
-        <div class="ctrl-panel" id="ctrl-weather">
-          <div class="ctrl-row">
-            <input id="weather-city" class="ctrl-input" type="text"
-                   placeholder="City name" value="{{ weather_city }}">
-            <button class="btn btn-primary" onclick="setWeather()">Set City</button>
-          </div>
-        </div>
-
-        <div class="ctrl-panel" id="ctrl-flights">
-          <div class="ctrl-row">
-            <input id="airport-code" class="ctrl-input" type="text"
-                   placeholder="Airport code  (e.g. JFK)" maxlength="4" value="{{ airport_iata }}">
-            <button class="btn btn-primary" onclick="setAirport()">Set Airport</button>
-          </div>
-        </div>
-
-        <div class="ctrl-panel" id="ctrl-flight_tracker">
-          <div class="ctrl-row">
-            <input id="flight-id" class="ctrl-input" type="text"
-                   placeholder="Flight  (e.g. AA123)" value="{{ track_flight_id }}">
-            <input id="guest-name" class="ctrl-input" type="text"
-                   placeholder="Guest name  (optional)">
-          </div>
-          <div class="ctrl-row">
-            <button class="btn btn-primary" onclick="setFlightTracker()">Track Flight</button>
-            <button class="btn btn-danger"  onclick="clearFlight()">Clear</button>
-          </div>
-        </div>
-
-        <div class="ctrl-panel" id="ctrl-music">
-          <div class="now-playing" id="now-playing">
-            <img id="np-art" class="np-art" src="" alt="" style="display:none">
-            <div class="np-info">
-              <div class="np-title"  id="np-title">—</div>
-              <div class="np-artist" id="np-artist"></div>
-              <div class="np-bar">
-                <div class="np-prog"><div class="np-fill" id="np-fill" style="width:0%"></div></div>
-                <span class="np-time" id="np-time">0:00</span>
-              </div>
-            </div>
-          </div>
-          <div class="ctrl-row">
-            <input class="ctrl-input" id="music-search-input"
-                   placeholder="Search song or artist…"
-                   onkeydown="if(event.key==='Enter')musicSearch()">
-            <button class="btn btn-primary" onclick="musicSearch()">Search</button>
-            <button class="btn btn-danger" id="music-clear-btn"
-                    onclick="clearCustomMusic()" style="display:none">✕ Clear</button>
-          </div>
-          <div class="music-results" id="music-results"></div>
-        </div>
-
-        <div class="ctrl-panel" id="ctrl-stocks">
-          <div class="ctrl-hint">Select a list to display on the ticker:</div>
-          <div class="stock-list-row">
-            <button class="sl-btn" data-list="stock_tech_ai"  onclick="setStockList('stock_tech_ai')">Tech / AI</button>
-            <button class="sl-btn" data-list="stock_momentum" onclick="setStockList('stock_momentum')">Momentum</button>
-            <button class="sl-btn" data-list="stock_energy"   onclick="setStockList('stock_energy')">Energy</button>
-            <button class="sl-btn" data-list="stock_finance"  onclick="setStockList('stock_finance')">Financial</button>
-            <button class="sl-btn" data-list="stock_consumer" onclick="setStockList('stock_consumer')">Consumer</button>
-          </div>
-        </div>
-
-        <div class="ctrl-panel" id="ctrl-clock">
-          <div class="clock-live" id="clock-display">--:--:--</div>
-        </div>
-
-      </div><!-- /settings-card -->
-    </div>
-  </section>
-
-  
-  <!-- ── 4. SYSTEM INFO ── -->
-  <section class="info-section">
+  <!-- ── SYSTEM STATS ── -->
+  <section class="info-section" style="padding-top:32px;">
     <div class="container">
 
       <h2 class="section-heading">System</h2>
@@ -134,35 +48,58 @@
           <div class="stat-value">{{ enabled_sports_count }}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Server</div>
+          <div class="stat-label">Version</div>
           <div class="stat-value mono">v{{ server_version }}</div>
         </div>
       </div>
 
       <div class="subsection">
         <h3 class="subsection-title">Active Sports</h3>
-        <div id="sport-pills" class="sport-pills">
+        <div class="sport-pills">
           {{ sport_html | safe }}
         </div>
       </div>
 
+      <!-- ── DISPLAY MODES ── -->
+      <div class="subsection">
+        <h3 class="subsection-title">Display Modes</h3>
+        <div class="mode-table">
+          <div class="mode-row"><span class="mode-key">sports</span><span class="mode-desc">All active sports rotating</span></div>
+          <div class="mode-row"><span class="mode-key">sports_full</span><span class="mode-desc">Full-bleed scoreboard for a pinned game</span></div>
+          <div class="mode-row"><span class="mode-key">soccer_full</span><span class="mode-desc">Full-bleed soccer scoreboard</span></div>
+          <div class="mode-row"><span class="mode-key">live</span><span class="mode-desc">Only show games currently in progress</span></div>
+          <div class="mode-row"><span class="mode-key">my_teams</span><span class="mode-desc">Only show your saved teams</span></div>
+          <div class="mode-row"><span class="mode-key">golf</span><span class="mode-desc">PGA leaderboard scroll</span></div>
+          <div class="mode-row"><span class="mode-key">stocks</span><span class="mode-desc">Stock ticker scroll</span></div>
+          <div class="mode-row"><span class="mode-key">weather</span><span class="mode-desc">Detailed weather card</span></div>
+          <div class="mode-row"><span class="mode-key">music</span><span class="mode-desc">Spotify now playing</span></div>
+          <div class="mode-row"><span class="mode-key">clock</span><span class="mode-desc">Full-screen clock</span></div>
+          <div class="mode-row"><span class="mode-key">flights</span><span class="mode-desc">Airport arrivals / departures board</span></div>
+          <div class="mode-row"><span class="mode-key">flight_tracker</span><span class="mode-desc">Single tracked flight (guest / visitor mode)</span></div>
+        </div>
+      </div>
+
+      <!-- ── ABOUT ── -->
       <div class="subsection">
         <h3 class="subsection-title">About</h3>
         <p class="about-text">
-          SportsTicker streams live scores, weather, stocks, flights, and music
-          to 32×384 LED matrix displays. This dashboard lets you control the
-          display mode.
+          A custom sports ticker built on 6&times; chained 64&times;32 HUB75 RGB LED panels
+          (384&times;32 total). A Flask server runs on an Ubuntu VPS, aggregates live data from
+          a dozen sources, and serves display payloads to one or more Raspberry Pi controllers
+          over the network.
         </p>
         <div class="about-tags">
           <span class="about-tag">Flask</span>
           <span class="about-tag">Python</span>
+          <span class="about-tag">Raspberry Pi</span>
+          <span class="about-tag">384&times;32 LED Matrix</span>
           <span class="about-tag">Pillow</span>
-          <span class="about-tag">Pyodide</span>
-          <span class="about-tag">LED Matrix</span>
+          <span class="about-tag">HUB75</span>
         </div>
         <div class="footer-links">
           <a href="/api/state" class="footer-link">api/state</a>
           <a href="/api/debug" class="footer-link">api/debug</a>
+          <a href="/leagues" class="footer-link">leagues</a>
         </div>
       </div>
 
@@ -170,16 +107,6 @@
   </section>
 
 </main>
-
-<script>
-window._CFG = {
-  defaultMode:   {{ global_mode | tojson }},
-  weatherCity:   {{ weather_city | tojson }},
-  airportIata:   {{ airport_iata | tojson }},
-  trackFlightId: {{ track_flight_id | tojson }},
-};
-</script>
- 
 
 </body>
 </html>
