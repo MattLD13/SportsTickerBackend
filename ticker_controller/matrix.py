@@ -8,6 +8,13 @@ import time
 import uuid
 
 from PIL import Image, ImageDraw
+try:
+    # optional for emulator
+    from PIL import ImageTk
+    import tkinter as tk
+except Exception:
+    ImageTk = None
+    tk = None
 from flask import Flask, request, render_template_string
 
 from .config import (
@@ -37,6 +44,71 @@ class NullMatrix:
 
     def Fill(self, r, g, b):
         self._last_image = Image.new("RGB", (self.width, self.height), (int(r), int(g), int(b)))
+
+
+class EmulatedMatrix:
+    """Simple Tkinter-based emulator for the RGB matrix.
+
+    It opens a small window and updates frames via `SetImage`. Set environment
+    variable `TICKER_EMULATOR` to `1` to use this emulator.
+    """
+    def __init__(self, width=PANEL_W, height=PANEL_H, scale=3):
+        self.width = width
+        self.height = height
+        self.scale = int(scale) if scale and int(scale) > 0 else 3
+        self.brightness = 100
+        self._last_image = None
+        self._photo = None
+        self._root = None
+        self._canvas = None
+        if tk is None or ImageTk is None:
+            # fallback to NullMatrix behavior if tkinter not available
+            return
+        try:
+            # run Tk in a separate thread
+            import threading
+            self._root = tk.Tk()
+            self._root.title('Ticker Emulator')
+            self._root.protocol('WM_DELETE_WINDOW', lambda: None)
+            self._canvas = tk.Canvas(self._root, width=self.width * self.scale, height=self.height * self.scale)
+            self._canvas.pack()
+
+            def _tk_loop():
+                try:
+                    self._root.mainloop()
+                except Exception:
+                    pass
+
+            t = threading.Thread(target=_tk_loop, daemon=True)
+            t.start()
+        except Exception:
+            self._root = None
+            self._canvas = None
+
+    def SetImage(self, img):
+        if img is None:
+            return
+        # store last image
+        self._last_image = img
+        if self._root is None or self._canvas is None:
+            return
+        try:
+            resized = img.resize((self.width * self.scale, self.height * self.scale), Image.NEAREST).convert('RGB')
+            self._photo = ImageTk.PhotoImage(resized)
+            # clear and draw
+            self._canvas.create_image(0, 0, anchor='nw', image=self._photo)
+            # force update of the canvas
+            try:
+                self._canvas.update_idletasks()
+                self._canvas.update()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def Fill(self, r, g, b):
+        img = Image.new("RGB", (self.width, self.height), (int(r), int(g), int(b)))
+        self.SetImage(img)
 
 
 def get_device_id():

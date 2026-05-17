@@ -49,7 +49,14 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         self.mode_override = None
         self.running = True
 
-        if RGBMatrix is not None and RGBMatrixOptions is not None:
+        # If TICKER_EMULATOR=1 is set in the environment, use the Tkinter emulator.
+        use_emulator = os.environ.get('TICKER_EMULATOR', '') in ('1', 'true', 'True')
+        if use_emulator:
+            try:
+                from .matrix import EmulatedMatrix
+            except Exception:
+                EmulatedMatrix = None
+        if not use_emulator and RGBMatrix is not None and RGBMatrixOptions is not None:
             options = RGBMatrixOptions()
             options.rows = 32
             options.cols = 64
@@ -61,8 +68,13 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             options.drop_privileges = False
             self.matrix = RGBMatrix(options=options)
         else:
-            print("  rgbmatrix not available; using NullMatrix fallback.")
-            self.matrix = NullMatrix()
+            if use_emulator and 'EmulatedMatrix' in locals() and EmulatedMatrix is not None:
+                print("  Using EmulatedMatrix (Tkinter) for local display.")
+                scale = int(os.environ.get('TICKER_EMULATOR_SCALE') or 3)
+                self.matrix = EmulatedMatrix(width=PANEL_W, height=PANEL_H, scale=scale)
+            else:
+                print("  rgbmatrix not available; using NullMatrix fallback.")
+                self.matrix = NullMatrix()
 
         self.logo_cache = {}
         self.stadium = StadiumRenderer(logo_cache=self.logo_cache)

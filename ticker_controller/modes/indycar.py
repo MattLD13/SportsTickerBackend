@@ -227,7 +227,8 @@ class IndycarMixin:
     def _ic_header_label(self, ic):
         """Build a compact header string: short race name + session."""
         short = str(ic.get('short_name') or ic.get('event_name') or 'IndyCar').strip()
-        session = str(ic.get('session_type') or 'Race').strip()
+        # Prefer explicit session_name when provided (e.g., "Qualifying - Round 1")
+        session = str(ic.get('session_name') or ic.get('session_type') or 'Race').strip()
         # Shorten common words so it fits
         short = (short
                  .replace('GRAND PRIX', 'GP')
@@ -252,6 +253,10 @@ class IndycarMixin:
         drivers = ic.get('drivers', [])
         if not isinstance(drivers, list):
             drivers = []
+        try:
+            print(f"INDYCAR_SCROLL: drivers_count={len(drivers)}")
+        except Exception:
+            pass
 
         # ── Header ──────────────────────────────────────────────────────────
         header = self._ic_header_label(ic)
@@ -303,10 +308,10 @@ class IndycarMixin:
             num_w = _tiny_text_width(num_text, self.font)
             name_w = _tiny_text_width(abbr, self.font)
             total_w = num_w + 2 + name_w
-            # Center the (number + name) group in the DRIVER column
-            DRIVER_COL_LEFT = 34
-            DRIVER_COL_RIGHT = 90
-            center_x = (DRIVER_COL_LEFT + DRIVER_COL_RIGHT) / 2
+            # Center the (number + name) group on the DRIVER label's center
+            DRIVER_LABEL_X = 34
+            driver_label_w = _tiny_text_width('DRIVER', self.font)
+            center_x = DRIVER_LABEL_X + (driver_label_w / 2)
             start_x = max(5, int(round(center_x - total_w / 2)))
             draw_tiny_text(d, start_x, y, num_text, num_fill)
             draw_tiny_text(d, start_x + num_w + 2, y, abbr, (255, 255, 255))
@@ -318,7 +323,15 @@ class IndycarMixin:
                 draw_tiny_text(d, val_x, y, right_val, val_color)
 
         if not top3:
-            draw_tiny_text(d, 18, 18, 'LOADING', (120, 120, 120))
+            # Show session starting info when drivers have not yet run
+            start_utc = str(game.get('startTimeUTC') or '').strip()
+            start_txt = _format_indycar_time(start_utc) if start_utc else ''
+            session_label = self._ic_header_label(ic)
+            # Draw the session label and starts text centered in the driver area
+            draw_tiny_text(d, max(2, int((W - _tiny_text_width(session_label, self.font)) / 2)), 16, session_label, (180, 210, 255))
+            if start_txt:
+                starts = f"STARTS {start_txt}"
+                draw_tiny_text(d, max(2, int((W - _tiny_text_width(starts, self.font)) / 2)), 23, starts, (200, 200, 200))
 
         return img
 
@@ -359,9 +372,21 @@ class IndycarMixin:
         # ── Left panel: race info ────────────────────────────────────────────
         self._ic_draw_info_panel(d, ic, game, INFO_W, H)
 
-        # ── Right panel: scrolling driver list ───────────────────────────────
+        # ── Right panel: scrolling driver list or session info ─────────────
         if drivers:
             self._ic_draw_driver_panel(img, d, drivers, INFO_W, RACE_W, H, is_qual=is_qual)
+        else:
+            # No drivers yet: present session label and start time centered
+            start_utc = str(game.get('startTimeUTC') or '').strip()
+            start_txt = _format_indycar_time(start_utc) if start_utc else ''
+            session_label = self._ic_header_label(ic)
+            # draw into right panel area
+            text_x = INFO_W + max(4, int((RACE_W - _tiny_text_width(session_label, self.font)) / 2))
+            draw_tiny_text(d, text_x, 10, session_label, (180, 210, 255))
+            if start_txt:
+                starts = f"STARTS {start_txt}"
+                text_x2 = INFO_W + max(4, int((RACE_W - _tiny_text_width(starts, self.font)) / 2))
+                draw_tiny_text(d, text_x2, 18, starts, (200, 200, 200))
 
         return img
 
@@ -441,6 +466,10 @@ class IndycarMixin:
         pd = ImageDraw.Draw(panel)
 
         visible = [dict(drv) for drv in drivers if isinstance(drv, dict)]
+        try:
+            print(f"INDYCAR_PANEL: visible_count={len(visible)} panel_w={panel_w}")
+        except Exception:
+            pass
         if not visible:
             pd.rectangle([0, 0, panel_w - 1, H - 1], fill=(8, 8, 16))
             draw_tiny_text(pd, 8, 12, 'LOADING', (120, 120, 120))
