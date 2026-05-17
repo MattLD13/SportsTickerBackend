@@ -7,8 +7,10 @@ Endpoint URL can be overridden via the /api/indycar/event admin route.
 """
 
 import json
+import re
 import threading
 import time
+import urllib.parse
 import urllib.request
 
 from ..lookups import (
@@ -72,8 +74,171 @@ _ENGINE_DEFAULT = {
     'primary': '#2A3A4A', 'secondary': '#4A6A8A', 'accent': '#AABBCC',
 }
 
-# Default scoring endpoint — updated each season as needed
-_DEFAULT_SCORING_URL = 'https://racecontrol.indycar.com/scoring/live'
+# Default scoring endpoint — livetiming.net PKT feed
+# The `ts` query parameter is refreshed automatically on every poll to bust the cache.
+_DEFAULT_SCORING_URL = 'https://livetiming.net/indycar/LoadPKT.asp?filename=leader.PKT&Refresh=1000'
+
+# ---------------------------------------------------------------------------
+# PKT (pipe-delimited) format support  — LiveTiming.net
+# ---------------------------------------------------------------------------
+# Header line:  <!EventName|SessionCode|…|Flag|…|>|
+#   field 0 = event name
+#   field 1 = session code (QC=qualifying, RC=race, P=practice, …)
+#   field 5 = flag state  (G=green, Y/C=yellow, R=red, W=white, F=checkered)
+#   field 9 = total race laps
+#
+# Driver lines: pos|car#|name|laps|lastLap|lapsBack|FTime|diff|interval|…|status|lastSpeed|bestSpeed|…|D/H/F or D/C/F|…
+#   field  0 = position (may have +/- suffix)
+#   field  1 = car number
+#   field  2 = driver full name
+#   field  3 = laps completed
+#   field  4 = last lap time
+#   field  6 = fastest time (FTime)
+#   field  7 = diff from leader (for leader row this is their FTime — detect by value > 10)
+#   field 13 = status (e.g. "In Pit", "On Track")
+#   field 14 = last lap speed
+#   field 15 = best speed
+#   field 31 = compound string "D/H/F" or "D/C/F" (chassis/engine/tire)
+
+_PKT_FLAG = {
+    'G': 'green',   'Y': 'yellow',  'C': 'yellow',
+    'R': 'red',     'W': 'white',   'F': 'checkered',
+    'CH': 'checkered',
+}
+
+
+def _pkt_session_type(code: str) -> str:
+    c = str(code).strip().upper()
+    if 'Q' in c:
+        return 'qualifying2' if ('2' in c or 'BUMP' in c) else 'qualifying'
+    if c.startswith(('P', 'W')) or 'PRAC' in c or 'WARM' in c:
+        return 'practice'
+    return 'race'
+
+
+def _pkt_engine(compound: str) -> str:
+    """'D/H/F' → 'honda',  'D/C/F' → 'chevrolet'."""
+    parts = str(compound).strip().upper().split('/')
+    if len(parts) >= 2:
+        return 'honda' if parts[1] == 'H' else 'chevrolet' if parts[1] == 'C' else ''
+    return ''
+
+
+def _clean_timing(s: str) -> str:
+    """Strip trailing direction indicators (/+) from timing values."""
+    return re.sub(r'[/+\s]+$', '', str(s).strip())
+
+
+def _parse_pkt(text: str) -> tuple:
+    """Parse LiveTiming.net pipe-delimited PKT text.
+
+    Returns (entries, flag_info, session_type, event_name).
+    """
+    entries = []
+    event_name  = 'IndyCar'
+    session_type = 'race'
+    flag_info   = flag_state_info('0')
+    total_laps  = 200
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        if line.startswith('<!'):
+            # Session header
+            content = line[2:].rstrip('|').rstrip('>')
+            parts = [p.strip() for p in content.split('|')]
+            if parts:
+                event_name = parts[0] or 'IndyCar'
+            if len(parts) > 1:
+                session_type = _pkt_session_type(parts[1])
+            if len(parts) > 5:
+                flag_key = _PKT_FLAG.get(parts[5].upper(), 'green')
+                flag_info = flag_state_info(flag_key)
+            if len(parts) > 9:
+                try:
+                    total_laps = int(re.sub(r'[^0-9]', '', parts[9]) or '200')
+                except ValueError:
+                    pass
+            continue
+
+        if '|' not in line:
+            continue
+
+        parts = [p.strip() for p in line.split('|')]
+        if len(parts) < 8:
+            continue
+
+        pos_raw = re.sub(r'[^0-9]', '', parts[0])
+        if not pos_raw:
+            continue
+
+        car_num = parts[1]
+        driver  = parts[2]
+        if not car_num:
+            continue
+
+        try:
+            laps = int(re.sub(r'[^0-9]', '', parts[3]) or '0')
+        except ValueError:
+            laps = 0
+
+        last_lap  = _clean_timing(parts[4]) if len(parts) > 4 else ''
+        best_lap  = _clean_timing(parts[6]) if len(parts) > 6 else ''
+
+        # field 7: cumulative gap from leader — but the leader's row stores their
+        # best time here instead of 0.000.  Values > 10 s are lap times, not gaps.
+        raw_gap = _clean_timing(parts[7]) if len(parts) > 7 else ''
+        try:
+            gap = raw_gap if raw_gap and 0.0001 <= float(raw_gap) <= 10.0 else ''
+        except ValueError:
+            gap = ''
+
+        status     = parts[13] if len(parts) > 13 else ''
+        last_speed = _clean_timing(parts[14]) if len(parts) > 14 else ''
+        best_speed = _clean_timing(parts[15]) if len(parts) > 15 else ''
+        engine     = _pkt_engine(parts[31]) if len(parts) > 31 else ''
+
+        # Skip cars that haven't turned a lap and have no useful data
+        if not best_lap or best_lap.lower() in ('no time', '--', '---', ''):
+            if not driver:
+                continue
+            best_lap = ''
+
+        engine_colors = get_engine_colors(engine)
+        entries.append({
+            'pos':                    pos_raw,
+            'car_num':                car_num,
+            'driver':                 driver,
+            'current_driver':         driver,
+            'current_driver_acronym': _driver_acronym(driver),
+            'driver_acronyms':        [_driver_acronym(driver)],
+            'drivers':                [driver] if driver else [],
+            'team':                   '',
+            'car':                    '',
+            'engine':                 engine,
+            'class_name':             engine.upper() if engine else '',
+            'laps':                   laps,
+            'gap':                    gap,
+            'last_lap':               last_lap,
+            'best_lap':               best_lap,
+            'best_speed':             best_speed,
+            'last_speed':             last_speed,
+            'pit_stops':              0,
+            'status':                 status,
+            'manufacturer':           engine.lower() if engine else None,
+            'manufacturer_colors':    engine_colors,
+            'class_colors': {
+                'bg':    engine_colors['bg'],
+                'text':  engine_colors['text'],
+                'label': engine_colors['label'],
+            },
+            'current_lap': 0,
+            'total_laps':  total_laps,
+        })
+
+    return entries, flag_info, session_type, event_name
 
 
 def flag_state_info(raw: str) -> dict:
@@ -252,27 +417,63 @@ class IndyCarFetcher:
             target=self._poll_loop, daemon=True, name='indycar_poll')
         self._poll_thread.start()
 
+    @staticmethod
+    def _is_pkt_url(url: str) -> bool:
+        return 'LoadPKT' in url or '.PKT' in url.upper()
+
+    @staticmethod
+    def _add_ts(url: str) -> str:
+        """Inject/refresh the cache-busting ts= parameter."""
+        base = re.sub(r'[&?]ts=[^&]*', '', url)
+        sep  = '&' if '?' in base else '?'
+        return f'{base}{sep}ts={int(time.time())}'
+
     def _poll_loop(self):
         while True:
             try:
+                url    = self._scoring_url
+                is_pkt = self._is_pkt_url(url)
+                if is_pkt:
+                    url = self._add_ts(url)
+
                 req = urllib.request.Request(
-                    self._scoring_url,
+                    url,
                     headers={
-                        'Accept':     'application/json',
+                        'Accept':     '*/*',
                         'User-Agent': 'SportsTickerBot/1.0',
+                        'Referer':    'https://livetiming.net/',
                     }
                 )
                 with urllib.request.urlopen(req, timeout=8) as r:
                     raw = r.read()
-                data = json.loads(raw)
-                self._ingest(data)
+
+                if is_pkt:
+                    text = raw.decode('utf-8', errors='replace')
+                    if not text.strip().startswith('<!') or '|' not in text[:100]:
+                        # HTML error page or no active session
+                        self._connected = False
+                        time.sleep(self._IDLE_INTERVAL)
+                        continue
+                    entries, flag_info, session_type, event_name = _parse_pkt(text)
+                    self._ingest_pkt(entries, flag_info, session_type, event_name)
+                else:
+                    stripped = raw.strip()
+                    if not stripped or stripped[:1] in (b'<',):
+                        self._connected = False
+                        time.sleep(self._IDLE_INTERVAL)
+                        continue
+                    data = json.loads(raw)
+                    self._ingest(data)
+
                 self._connected = True
                 interval = self._POLL_INTERVAL
+
             except urllib.error.HTTPError as e:
-                if e.code == 404:
-                    pass  # No active session
-                else:
+                if e.code not in (404, 503):
                     print(f'[IndyCar] HTTP {e.code}: {e.url}')
+                self._connected = False
+                interval = self._IDLE_INTERVAL
+            except (json.JSONDecodeError, ValueError):
                 self._connected = False
                 interval = self._IDLE_INTERVAL
             except Exception as exc:
@@ -280,6 +481,22 @@ class IndyCarFetcher:
                 self._connected = False
                 interval = self._IDLE_INTERVAL
             time.sleep(interval)
+
+    def _ingest_pkt(self, entries: list, flag_info: dict,
+                    session_type: str, event_name: str):
+        try:
+            if not entries:
+                return
+            leader_laps = entries[0].get('laps', 0)
+            with self._lock:
+                self._entries     = entries
+                self._flag_state  = flag_info
+                self._session_type = session_type
+                if event_name:
+                    self._event_name = event_name
+                self._cache = self._build_cache(leader_laps)
+        except Exception as exc:
+            print(f'[IndyCar] PKT ingest error: {exc}')
 
     def _ingest(self, data: dict):
         try:

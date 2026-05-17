@@ -422,19 +422,26 @@ class RacingMixin:
                 engine_fg    = _hex(cc.get('text', '#CCCCDD'))
 
                 laps = str(entry.get('laps', 0))
-                if session_type in ('practice', 'qualifying', 'qualifying2'):
-                    speed = str(entry.get('best_speed', '')).strip()
-                    display_right = speed[:6] if speed else laps
-                    right_col = (200, 220, 180) if speed else (140, 165, 185)
+                is_quali = session_type in ('practice', 'qualifying', 'qualifying2')
+
+                if is_quali:
+                    # Right column: FTime (best lap) — mirrors the FTime column in the web table
+                    best = str(entry.get('best_lap', '')).strip()
+                    display_right = best[:8] if best else laps
+                    right_col = (180, 200, 255) if best else (80, 90, 100)
                 else:
                     display_right = laps
                     right_col = (140, 165, 185)
 
                 gap = str(entry.get('gap', '')).strip()
-                if session_type in ('practice', 'qualifying', 'qualifying2'):
-                    best = str(entry.get('best_lap', '')).strip()
-                    display_gap = best[:10] if best else gap
-                    gap_col = (180, 200, 220)
+                if is_quali:
+                    # Gap column: Diff from leader — blank for leader (shows gold LEADER)
+                    if gap:
+                        display_gap = gap[:8]
+                        gap_col = (160, 175, 195)
+                    else:
+                        display_gap = 'LEADER'
+                        gap_col = _LEAD
                 elif not gap:
                     display_gap = 'LEADER'
                     gap_col = _LEAD
