@@ -139,21 +139,23 @@ def _ic_sample_colors(img, fallback=((235, 235, 235), (35, 35, 35))):
         rgba = _key_background(img)
         if rgba is None:
             return fallback
-        small = rgba.convert('RGBA').resize((12, 12), Image.Resampling.NEAREST)
-        colors = small.getcolors(12 * 12) or []
+        small = rgba.convert('RGBA').resize((18, 18), Image.Resampling.NEAREST)
+        colors = small.getcolors(18 * 18) or []
         ranked = sorted(colors, key=lambda item: item[0], reverse=True)
         picked = []
         for _, col in ranked:
             if len(col) == 4:
                 r, g, b, a = col
-                if a == 0:
+                if a < 40:
                     continue
             else:
                 r, g, b = col[:3]
             rgb = (int(r), int(g), int(b))
-            if sum(rgb) < 20:
+            if max(rgb) < 24 or min(rgb) > 232:
                 continue
-            if any(sum(abs(rgb[i] - prev[i]) for i in range(3)) < 45 for prev in picked):
+            if (max(rgb) - min(rgb)) < 18:
+                continue
+            if any(sum(abs(rgb[i] - prev[i]) for i in range(3)) < 40 for prev in picked):
                 continue
             picked.append(rgb)
             if len(picked) >= 2:
@@ -295,13 +297,13 @@ class IndycarMixin:
             pos_color = (255, 215, 0) if pos == '1' else (200, 200, 200)
             draw_tiny_text(d, 0, y, pos, pos_color)
 
-            # Put the number art to the left of the driver code.
-            num_fill, num_outline = _ic_sample_colors(self._ic_load_logo(team_logo, (12, 12)))
+            # Put the number text to the left of the driver code.
+            num_fill, num_outline = _ic_sample_colors(self._ic_load_logo(team_logo, (18, 18)))
             num_text = car_num or abbr
             num_w = _tiny_text_width(num_text, self.font)
             name_w = _tiny_text_width(abbr, self.font)
             total_w = num_w + 2 + name_w
-            start_x = max(7, int(round(38 - total_w / 2)))
+            start_x = max(5, int(round(36 - total_w / 2)))
             _draw_tiny_text_outline(d, start_x, y, num_text, num_fill, num_outline)
             draw_tiny_text(d, start_x + num_w + 2, y, abbr, (255, 255, 255))
 
