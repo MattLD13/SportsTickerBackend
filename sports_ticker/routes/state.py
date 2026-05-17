@@ -77,10 +77,11 @@ def get_ticker_data():
 
     # Pin overrides should only remap sports-family modes. Non-sports modes
     # (clock/weather/music/flights/etc.) must remain user-selectable.
-    if has_pinned_game and pin_league == 'masters' and current_mode in SPORTS_MODE_FAMILY:
-        current_mode = 'masters'
-    elif has_pinned_game and current_mode in SPORTS_MODE_FAMILY:
-        current_mode = 'sports_full'
+    if has_pinned_game and current_mode in SPORTS_MODE_FAMILY:
+        if pin_league in ('golf', 'masters'):
+            current_mode = 'golf'
+        else:
+            current_mode = 'sports_full'
 
     # Sleep Mode: dim the display but still fetch real game data so it's
     # immediately available when the ticker wakes up (no stale-data bug).
@@ -96,6 +97,8 @@ def get_ticker_data():
         raw_games = fetcher.get_mode_snapshot('sports_full', delay_seconds)
         pin_id = str(effective_pin).split(':', 1)[-1]
         raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
+    elif effective_pin and current_mode == 'golf':
+        raw_games = fetcher.get_mode_snapshot('golf', delay_seconds)
     elif effective_pin and current_mode == 'masters':
         raw_games = fetcher.get_mode_snapshot('masters', 0)
         pin_id = (pin_game_id or str(effective_pin).split(':', 1)[-1]).strip().lower()
@@ -285,10 +288,12 @@ def api_state():
     if _preview_mode:
         current_mode = normalize_mode(_preview_mode)
 
-    # Legacy app behavior: reflect pin by forcing sports_full mode in /api/state.
-    # This keeps pinned detection compatible with clients that key off mode.
+    # Legacy app behavior: reflect pin by forcing a dedicated mode in /api/state.
+    # Golf pins should use the golf UI; other sports-family pins use sports_full.
     if pinned_game and current_mode in SPORTS_MODE_FAMILY:
-        current_mode = 'sports_full'
+        current_mode = 'golf' if current_mode == 'masters' else 'sports_full'
+        if str(pinned_game).split(':', 1)[0].strip().lower() in ('golf', 'masters'):
+            current_mode = 'golf'
         response_settings['mode'] = current_mode
 
     response_settings['mode'] = current_mode
@@ -303,6 +308,12 @@ def api_state():
     if pinned_game and current_mode == 'sports_full':
         pin_id = str(pinned_game).split(':', 1)[-1]
         raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
+    elif pinned_game and current_mode == 'golf':
+        raw_games = [
+            g for g in raw_games
+            if str(g.get('type', '')).lower() in ('golf', 'masters')
+            or str(g.get('sport', '')).lower() in ('golf', 'masters')
+        ]
     elif pinned_game and current_mode == 'masters':
         pin_id = str(pinned_game).split(':', 1)[-1].strip().lower()
         raw_games = [
@@ -357,6 +368,9 @@ def api_state():
                 should_show = False
         elif current_mode == 'masters':
             if g_type != 'masters':
+                should_show = False
+        elif current_mode == 'golf':
+            if g_type not in ('golf', 'masters') and str(sport).lower() not in ('golf', 'masters'):
                 should_show = False
         elif current_mode == 'flights':
             if sport != 'flight':

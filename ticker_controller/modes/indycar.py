@@ -166,7 +166,7 @@ class IndycarMixin:
 
         # Mini flag on the right edge
         state = str(game.get('state', 'pre')).lower()
-        _draw_mini_flag(d, W - 8, 0, _display_flag(ic.get('flag'), state))
+        _draw_mini_flag(d, W - 12, 0, _display_flag(ic.get('flag'), state))
 
         # Separator
         d.line([(0, 7), (W - 1, 7)], fill=(40, 60, 120))
@@ -190,6 +190,7 @@ class IndycarMixin:
             pos    = str(driver.get('pos') or i + 1)
             abbr   = str(driver.get('abbr') or '???').upper()[:3]
             car_num = str(driver.get('car') or '').strip()
+            team_logo = str(driver.get('team_logo') or '').strip()
 
             # Right column: speed for qualifying, gap for race
             if is_qual:
@@ -201,9 +202,9 @@ class IndycarMixin:
             pos_color = (255, 215, 0) if pos == '1' else (200, 200, 200)
             draw_tiny_text(d, 1, y, pos, pos_color)
 
-            # Center the 3-letter code and badge as one unit.
-            badge = _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=2)
-            group_w = _group_width(abbr, car_num, self.font, badge_scale=2)
+            # Center the 3-letter code and number image as one unit.
+            badge = self.get_logo(team_logo, (10, 10)) if team_logo else _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=2)
+            group_w = _tiny_text_width(abbr, self.font) + (2 if badge else 0) + (badge.width if badge else 0)
             start_x = max(24, int(round(58 - group_w / 2)))
             draw_tiny_text(d, start_x, y, abbr, (255, 255, 255))
             if badge:
@@ -325,7 +326,7 @@ class IndycarMixin:
         # Flag indicator
         y_flag = y_info + 7
         if y_flag + 5 <= H and flag and flag not in ('GREEN', ''):
-            _draw_mini_flag(d, 4, y_flag, _display_flag(flag, state))
+            _draw_mini_flag(d, 0, y_flag, _display_flag(flag, state))
 
     def _ic_draw_driver_panel(self, img, d, drivers, x_off, panel_w, H, is_qual=False):
         """Draw the scrolling driver leaderboard into the right 3/4 panel."""
@@ -366,30 +367,36 @@ class IndycarMixin:
             card = Image.new('RGBA', (card_w, card_h), (0, 0, 0, 0))
             cd = ImageDraw.Draw(card)
             pos = str(driver.get('pos') or '')
-            abbr = str(driver.get('abbr') or '???').upper()[:3]
-            car = str(driver.get('car') or '').strip()
+            name = str(driver.get('name') or driver.get('abbr') or '???').strip()
+            car_num = str(driver.get('car') or '').strip()
+            team_logo = str(driver.get('team_logo') or '').strip()
+            car_image = str(driver.get('car_illustration') or '').strip()
             gap_val = str(driver.get('gap') or '').strip()
-            pri_hex = driver.get('livery_primary', '#888888')
-            sec_hex = driver.get('livery_secondary', '#333333')
-
-            pri = _hex_to_rgb(pri_hex, (26, 26, 40))
-            sec = _hex_to_rgb(sec_hex, (58, 58, 72))
-            cd.rectangle([0, 0, card_w - 1, card_h - 1], fill=(14, 14, 22))
-            cd.rectangle([0, 0, card_w - 1, 4], fill=pri)
-            cd.rectangle([0, card_h - 4, card_w - 1, card_h - 1], fill=sec)
+            cd.rectangle([0, 0, card_w - 1, card_h - 1], fill=(12, 12, 18))
+            cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(60, 60, 72), width=1)
             if pos == '1':
                 cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(255, 215, 0), width=1)
 
             pos_color = (255, 215, 0) if pos == '1' else (180, 180, 180)
             draw_tiny_text(cd, 3, 2, pos, pos_color)
 
-            name_width = _tiny_text_width(abbr, self.font)
-            badge = _render_number_badge(car, self.font, fg=(205, 225, 255), scale=3)
-            group_w = name_width + (2 if badge else 0) + (badge.width if badge else 0)
-            group_x = max(6, int((card_w - group_w) / 2))
-            draw_tiny_text(cd, group_x, 10, abbr, (255, 255, 255))
+            name = name[:18]
+            name_width = _tiny_text_width(name, self.font)
+            badge = self.get_logo(team_logo, (11, 11)) if team_logo else _render_number_badge(car_num, self.font, fg=(205, 225, 255), scale=3)
+            badge_w = badge.width if badge else 0
+            group_w = name_width + (2 if badge else 0) + badge_w
+            group_x = max(5, int((card_w - group_w) / 2))
+            draw_tiny_text(cd, group_x, 2, name, (255, 255, 255))
             if badge:
-                card.paste(badge, (group_x + name_width + 2, 9), badge)
+                card.paste(badge, (group_x + name_width + 2, 1), badge)
+
+            if car_image:
+                car_img = self.get_logo(car_image, (36, 12))
+                if car_img:
+                    car_x = max(4, int((card_w - car_img.width) / 2))
+                    card.paste(car_img, (car_x, 12), car_img)
+            elif car_num:
+                draw_tiny_text(cd, 6, 13, car_num, (110, 110, 122))
 
             if is_qual:
                 right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:8]
@@ -397,7 +404,7 @@ class IndycarMixin:
                 right_val = gap_val[:10]
             if right_val:
                 rv_w = _tiny_text_width(right_val, self.font)
-                draw_tiny_text(cd, max(4, (card_w - rv_w) // 2), 22, right_val, (140, 190, 255) if pos != '1' else (255, 255, 255))
+                draw_tiny_text(cd, max(4, card_w - rv_w - 4), 22, right_val, (140, 190, 255) if pos != '1' else (255, 255, 255))
 
             cards.append(card)
 
