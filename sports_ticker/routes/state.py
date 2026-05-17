@@ -271,7 +271,9 @@ def get_ticker_data():
     response_local_config['utc_offset'] = tz_offset
     effective_mode_for_response = current_mode
     if current_mode == 'sports' and len(visible_items) == 1:
-        effective_mode_for_response = 'sports_full'
+        # Don't upgrade n24 summary cards — they have their own fixed-width renderer
+        if visible_items[0].get('sport') != 'n24':
+            effective_mode_for_response = 'sports_full'
     response_local_config['mode'] = effective_mode_for_response
 
     # Report global config from global state only. Do not reflect per-ticker
@@ -434,7 +436,7 @@ def api_state():
             if g_type != 'flight_visitor':
                 should_show = False
         elif current_mode == 'n24':
-            if g_type != 'n24_car':
+            if g_type not in ('n24_car', 'n24_rc'):
                 should_show = False
 
         game_copy['is_shown'] = should_show
@@ -448,6 +450,10 @@ def api_state():
             if current_mode != 'live' or _is_live:
                 _compact = current_mode != 'sports_full'
                 processed_games.append(_n24_summary_card(_n24_data, compact=_compact))
+
+    # Ensure n24 mode always has at least one visible item so the app can unpin
+    if current_mode == 'n24' and not any(g.get('is_shown') for g in processed_games):
+        processed_games.append(_n24_placeholder())
 
     tz_name = str(response_settings.get('timezone_name', '')).strip()
     tz_offset = response_settings.get('utc_offset', state.get('utc_offset', -5))
