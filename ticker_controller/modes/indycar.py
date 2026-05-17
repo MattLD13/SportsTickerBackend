@@ -7,6 +7,7 @@ Full screen (384 × 32):  left 1/4 = race info, right 3/4 = scrolling driver lis
 import os
 import time
 from datetime import datetime
+import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 from ..config import PANEL_W, PANEL_H
 from ..fonts import draw_tiny_text, draw_hybrid_text
@@ -254,12 +255,45 @@ def _draw_condition_icon(draw, x, y, kind, color):
         draw.point((x + 6, y + 3), fill=color)
 
 
+def _round_weather_value(value):
+    try:
+        return str(int(round(float(value))))
+    except Exception:
+        return ''
+
+
 class IndycarMixin:
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
     def _ic_payload(self, game):
         return (game.get('indycar') or {}) if isinstance(game, dict) else {}
+
+    def _ic_conditions_weather(self, provided=None):
+        if isinstance(provided, dict) and (provided.get('air_temp') or provided.get('wind_mph')):
+            return provided
+        now = time.time()
+        cached = getattr(self, '_ic_render_weather_cache', {'ts': 0.0, 'data': {}})
+        if (now - cached.get('ts', 0.0)) < 300:
+            return cached.get('data') or {}
+        try:
+            url = (
+                "https://api.open-meteo.com/v1/forecast"
+                "?latitude=39.7950&longitude=-86.2340"
+                "&current=temperature_2m,wind_speed_10m,wind_direction_10m"
+                "&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
+            )
+            current = (requests.get(url, timeout=3).json().get('current') or {})
+            data = {
+                'air_temp': _round_weather_value(current.get('temperature_2m')),
+                'wind_mph': _round_weather_value(current.get('wind_speed_10m')),
+                'wind_dir': _round_weather_value(current.get('wind_direction_10m')),
+            }
+            self._ic_render_weather_cache = {'ts': now, 'data': data}
+            return data
+        except Exception:
+            self._ic_render_weather_cache = {'ts': now, 'data': {}}
+            return {}
 
     def _ic_load_logo(self, url, size):
         url = str(url or '').strip()
@@ -496,9 +530,9 @@ class IndycarMixin:
         if show_flag:
             _draw_flag(d, panel_w - 17, 1, flag_name, w=15, h=10)
 
-        variant = str(os.environ.get('INDYCAR_INFO_VARIANT') or '').strip().lower()
+        variant = str(os.environ.get('INDYCAR_INFO_VARIANT') or 'conditions').strip().lower()
         if variant in ('track_map', 'conditions'):
-            weather = ic.get('weather') if isinstance(ic.get('weather'), dict) else {}
+            weather = self._ic_conditions_weather(ic.get('weather'))
             air = str(weather.get('air_temp') or '--').strip()
             wind = str(weather.get('wind_mph') or '--').strip()
             wind_dir = _wind_compass(weather.get('wind_dir')) or '--'
