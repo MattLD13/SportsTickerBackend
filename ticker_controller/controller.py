@@ -443,7 +443,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             return img
 
         if game.get('type') == 'n24_car' or game.get('sport') == 'n24':
-            img = self.draw_n24_car_card(game)
+            img = self.draw_n24_car_compact(game) if game.get('compact') else self.draw_n24_car_card(game)
             self.game_render_cache[game_hash] = img
             return img
 
@@ -483,14 +483,14 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
     def get_item_width(self, game):
         t = game.get('type')
         s = game.get('sport', '')
-        if self.mode in ('sports_full', 'soccer_full') and t not in ['music', 'weather', 'leaderboard', 'stock_ticker'] and 'flight' not in str(t):
+        if self.mode in ('sports_full', 'soccer_full') and t not in ['music', 'weather', 'leaderboard', 'stock_ticker', 'n24_car'] and 'flight' not in str(t):
             return PANEL_W
         if t in ('golf', 'masters') or str(s).lower() in ('golf', 'masters'):
             return PANEL_W if self.mode in ('golf', 'sports_full') else 128 + GAME_SEPARATOR_W
         if t == 'music' or s == 'music':
             return PANEL_W
         if t == 'n24_car' or s == 'n24':
-            return 128
+            return 96 if game.get('compact') else 128
         if t == 'stock_ticker' or (s and str(s).startswith('stock')):
             return 128
         if t == 'weather':

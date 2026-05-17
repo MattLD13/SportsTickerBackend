@@ -1497,3 +1497,9 @@ extract test porsche: porsche
 [AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
 ⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
 Racing routes: ['/racing/nurburgring', '/api/racing/nurburgring', '/api/racing/nurburgring/colors']
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+imports ok
+RacingMixin methods ok

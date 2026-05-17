@@ -27,6 +27,7 @@ _MODE_COLORS = {
     'masters':        ('#ffdd00', '#1a1500'),
     'flights':        ('#00ddcc', '#001a18'),
     'flight_tracker': ('#00ddcc', '#001a18'),
+    'n24':            ('#e0a020', '#1a1200'),
 }
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]

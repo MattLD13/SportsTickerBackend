@@ -65,7 +65,7 @@ LEAGUE_OPTIONS = [
     #{'id': 'wbc', 'label': 'WBC', 'type': 'sport', 'default': True, 'fetch': {'path': 'baseball/world-baseball-classic', 'type': 'scoreboard'}},
     #{'id': 'f1', 'label': 'Formula 1', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
     #{'id': 'nascar', 'label': 'NASCAR', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
-    {'id': 'n24', 'label': 'Nürburgring 24h', 'type': 'racing', 'default': True},
+    {'id': 'n24', 'label': 'Nürburgring 24h', 'type': 'sport', 'default': True},
     {'id': 'weather', 'label': 'Weather', 'type': 'util', 'default': True},
     {'id': 'clock', 'label': 'Clock', 'type': 'util', 'default': True},
     {'id': 'music', 'label': 'Music', 'type': 'util', 'default': True},

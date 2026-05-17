@@ -80,6 +80,8 @@ def get_ticker_data():
     # (clock/weather/music/flights/etc.) must remain user-selectable.
     if has_pinned_game and pin_league == 'masters' and current_mode in SPORTS_MODE_FAMILY:
         current_mode = 'masters'
+    elif has_pinned_game and (pin_league == 'n24' or pin_game_id.startswith('n24_')) and current_mode in SPORTS_MODE_FAMILY:
+        current_mode = 'n24'
     elif has_pinned_game and current_mode in SPORTS_MODE_FAMILY:
         current_mode = 'sports_full'
 
@@ -152,6 +154,13 @@ def get_ticker_data():
                 g_copy['sport'] = sport
                 g_copy['is_shown'] = True
                 visible_items.append(g_copy)
+        if active_sports.get('n24', True):
+            n24_data = n24_fetcher.fetch()
+            if n24_data and n24_data.get('status') == 'live':
+                for g in n24_fetcher.format_for_ticker(n24_data)[:5]:
+                    g['compact'] = True
+                    g['is_shown'] = True
+                    visible_items.append(g)
 
     elif current_mode == 'sports_full':
         # Pinned game override — show everything without active_sports filtering
@@ -163,6 +172,12 @@ def get_ticker_data():
             g_copy['sport'] = sport
             g_copy['is_shown'] = True
             visible_items.append(g_copy)
+        if active_sports.get('n24', True):
+            n24_data = n24_fetcher.fetch()
+            if n24_data:
+                for g in n24_fetcher.format_for_ticker(n24_data)[:10]:
+                    g['is_shown'] = True
+                    visible_items.append(g)
 
     elif current_mode == 'soccer_full':
         for g in raw_games:
@@ -187,11 +202,24 @@ def get_ticker_data():
             g_copy['sport'] = sport
             g_copy['is_shown'] = True
             visible_items.append(g_copy)
+        if active_sports.get('n24', True):
+            n24_data = n24_fetcher.fetch()
+            if n24_data:
+                for g in n24_fetcher.format_for_ticker(n24_data)[:5]:
+                    g['compact'] = True
+                    g['is_shown'] = True
+                    visible_items.append(g)
 
     elif current_mode == 'n24':
         n24_data = n24_fetcher.fetch()
         if n24_data:
-            for g in n24_fetcher.format_for_ticker(n24_data):
+            all_cars = n24_fetcher.format_for_ticker(n24_data)
+            if effective_pin and pin_game_id:
+                pinned_cars = [c for c in all_cars if c.get('id') == pin_game_id]
+                show_cars = pinned_cars if pinned_cars else all_cars[:10]
+            else:
+                show_cars = all_cars[:10]
+            for g in show_cars:
                 g['is_shown'] = True
                 visible_items.append(g)
 
@@ -293,10 +321,15 @@ def api_state():
     if _preview_mode:
         current_mode = normalize_mode(_preview_mode)
 
-    # Legacy app behavior: reflect pin by forcing sports_full mode in /api/state.
+    # Legacy app behavior: reflect pin by forcing sports_full/n24 mode in /api/state.
     # This keeps pinned detection compatible with clients that key off mode.
+    _pg_norm = str(pinned_game or '').strip().lower()
+    _pin_gid = _pg_norm.split(':', 1)[-1] if ':' in _pg_norm else _pg_norm
     if pinned_game and current_mode in SPORTS_MODE_FAMILY:
-        current_mode = 'sports_full'
+        if _pg_norm.startswith('n24:') or _pin_gid.startswith('n24_'):
+            current_mode = 'n24'
+        else:
+            current_mode = 'sports_full'
         response_settings['mode'] = current_mode
 
     response_settings['mode'] = current_mode
@@ -307,7 +340,16 @@ def api_state():
     delay_seconds = (response_settings.get('live_delay_seconds', 0)
                      if (is_sports_mode and response_settings.get('live_delay_mode'))
                      else 0)
-    raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
+    if current_mode == 'n24':
+        _n24_raw = n24_fetcher.fetch()
+        _all_n24 = n24_fetcher.format_for_ticker(_n24_raw) if _n24_raw else []
+        if pinned_game and _pin_gid:
+            _pinned = [c for c in _all_n24 if c.get('id') == _pin_gid]
+            raw_games = _pinned if _pinned else _all_n24[:10]
+        else:
+            raw_games = _all_n24[:10]
+    else:
+        raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
     if pinned_game and current_mode == 'sports_full':
         pin_id = str(pinned_game).split(':', 1)[-1]
         raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
@@ -372,9 +414,25 @@ def api_state():
         elif current_mode == 'flight_tracker':
             if g_type != 'flight_visitor':
                 should_show = False
+        elif current_mode == 'n24':
+            if g_type != 'n24_car':
+                should_show = False
 
         game_copy['is_shown'] = should_show
         processed_games.append(game_copy)
+
+    # Inject N24 entries into sports feed for sports/sports_full/live modes
+    if current_mode in ('sports', 'sports_full', 'live') and _active_sports.get('n24', True):
+        _n24_data = n24_fetcher.fetch()
+        if _n24_data:
+            _is_live = _n24_data.get('status') == 'live'
+            if current_mode != 'live' or _is_live:
+                _limit = 10 if current_mode == 'sports_full' else 5
+                _compact = current_mode != 'sports_full'
+                for _g in n24_fetcher.format_for_ticker(_n24_data)[:_limit]:
+                    _g['compact'] = _compact
+                    _g['is_shown'] = True
+                    processed_games.append(_g)
 
     tz_name = str(response_settings.get('timezone_name', '')).strip()
     tz_offset = response_settings.get('utc_offset', state.get('utc_offset', -5))
