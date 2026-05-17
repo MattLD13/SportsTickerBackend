@@ -132,6 +132,48 @@ def _key_background(img):
         return img
 
 
+def _ic_sample_colors(img, fallback=((235, 235, 235), (35, 35, 35))):
+    if img is None:
+        return fallback
+    try:
+        rgba = _key_background(img)
+        if rgba is None:
+            return fallback
+        small = rgba.convert('RGBA').resize((12, 12), Image.Resampling.NEAREST)
+        colors = small.getcolors(12 * 12) or []
+        ranked = sorted(colors, key=lambda item: item[0], reverse=True)
+        picked = []
+        for _, col in ranked:
+            if len(col) == 4:
+                r, g, b, a = col
+                if a == 0:
+                    continue
+            else:
+                r, g, b = col[:3]
+            rgb = (int(r), int(g), int(b))
+            if sum(rgb) < 20:
+                continue
+            if any(sum(abs(rgb[i] - prev[i]) for i in range(3)) < 45 for prev in picked):
+                continue
+            picked.append(rgb)
+            if len(picked) >= 2:
+                break
+        if len(picked) == 1:
+            picked.append(fallback[1])
+        return tuple(picked[:2]) if picked else fallback
+    except Exception:
+        return fallback
+
+
+def _draw_tiny_text_outline(draw, x, y, text, fill, outline):
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            if dx == 0 and dy == 0:
+                continue
+            draw_tiny_text(draw, x + dx, y + dy, text, outline)
+    draw_tiny_text(draw, x, y, text, fill)
+
+
 class IndycarMixin:
 
     # ── helpers ──────────────────────────────────────────────────────────────
@@ -254,18 +296,14 @@ class IndycarMixin:
             draw_tiny_text(d, 0, y, pos, pos_color)
 
             # Put the number art to the left of the driver code.
-            badge = self._ic_load_logo(team_logo, (6, 6)) if team_logo else _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=1)
+            num_fill, num_outline = _ic_sample_colors(self._ic_load_logo(team_logo, (12, 12)))
+            num_text = car_num or abbr
+            num_w = _tiny_text_width(num_text, self.font)
             name_w = _tiny_text_width(abbr, self.font)
-            badge_w = badge.width if badge else 0
-            total_w = badge_w + (2 if badge else 0) + name_w
-            start_x = max(8, int(round(50 - total_w / 2)))
-            if badge:
-                badge_y = max(0, y - 1)
-                img.paste(badge, (start_x, badge_y), badge)
-                text_x = start_x + badge_w + 2
-            else:
-                text_x = start_x
-            draw_tiny_text(d, text_x, y, abbr, (255, 255, 255))
+            total_w = num_w + 2 + name_w
+            start_x = max(7, int(round(38 - total_w / 2)))
+            _draw_tiny_text_outline(d, start_x, y, num_text, num_fill, num_outline)
+            draw_tiny_text(d, start_x + num_w + 2, y, abbr, (255, 255, 255))
 
             # Right column value
             if right_val:
