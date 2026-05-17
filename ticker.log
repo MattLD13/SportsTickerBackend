@@ -1503,3 +1503,17 @@ Racing routes: ['/racing/nurburgring', '/api/racing/nurburgring', '/api/racing/n
 ⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
 imports ok
 RacingMixin methods ok
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Discovering event ID...
+Event ID: None
+NO DATA returned
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+manual_event_id attr: None
+_KNOWN_EVENT_IDS: {2023: '126489', 2024: '131229', 2025: '136000', 2026: '140000'}
+all ok

@@ -222,10 +222,26 @@ def music_worker():
         time.sleep(1)
 
 def n24_worker():
-    """Background poller for Nürburgring 24h live timing."""
+    """Background poller for Nürburgring 24h live timing.
+
+    Keeps the cache warm for both the dedicated n24 mode and for the inline
+    injection into sports/sports_full/live modes.
+    """
+    # Apply manual event ID override from persisted config if present
+    _manual_id = state.get('n24_event_id', '')
+    if _manual_id:
+        n24_fetcher.manual_event_id = str(_manual_id).strip() or None
+
     while True:
         try:
-            if _any_ticker_needs('n24'):
+            # Sync manual override any time it changes in config
+            _mid = state.get('n24_event_id', '')
+            n24_fetcher.manual_event_id = str(_mid).strip() or None
+
+            needs = _any_ticker_needs('n24', 'sports', 'sports_full', 'live', 'my_teams')
+            with data_lock:
+                n24_on = state.get('active_sports', {}).get('n24', True)
+            if needs and n24_on:
                 n24_fetcher.fetch()
         except Exception as e:
             print(f'N24 worker error: {e}')

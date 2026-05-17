@@ -94,7 +94,20 @@ def get_class_colors(class_name: str | None) -> dict:
 class NurburgringFetcher:
     """Fetches live standings from the Nürburgring 24h via Race Result."""
 
-    _SEARCH_URL = 'https://www.raceresult.com/en/results.php'
+    # Known N24 Race Result event IDs by year (update each May when the race runs).
+    # Used as fallback when auto-discovery fails.
+    _KNOWN_EVENT_IDS = {
+        2023: '126489',
+        2024: '131229',
+        2025: '136000',  # estimated; update if wrong
+        2026: '140000',  # estimated; update if wrong
+    }
+
+    _SEARCH_URLS = [
+        'https://www.raceresult.com/en-us/results.php',
+        'https://www.raceresult.com/en/results.php',
+        'https://raceresult.com/en-us/results.php',
+    ]
     _LIVE_BASE  = 'https://livetiming.raceresult.com'
     _EVENT_TTL  = 1800   # re-discover event ID every 30 min
     _DATA_TTL   = 30     # refresh timing data every 30 s
@@ -106,39 +119,90 @@ class NurburgringFetcher:
         self._event_id_ts: float   = 0.0
         self._cache: dict | None   = None
         self._cache_ts: float      = 0.0
+        # Can be set externally (e.g. from server config) to skip discovery
+        self.manual_event_id: str | None = None
 
     # ------------------------------------------------------------------
     # Event discovery
     # ------------------------------------------------------------------
 
     def _discover_event_id(self) -> str | None:
-        now = time.time()
+        now  = time.time()
+        year = datetime.now().year
+
+        # 1. Manual override wins — no TTL check needed
+        if self.manual_event_id:
+            self._event_id    = self.manual_event_id
+            self._event_id_ts = now
+            return self._event_id
+
+        # 2. Return cached ID if still fresh
         if self._event_id and (now - self._event_id_ts) < self._EVENT_TTL:
             return self._event_id
 
-        year = datetime.now().year
-        for query in [
-            f'Nürburgring 24 {year}',
+        # 3. Try the Race Result search page with multiple URL variants
+        queries = [
+            f'Nurburgring 24 {year}',
             f'Nuerburgring 24 {year}',
-            '24h Nürburgring',
-        ]:
+            f'N24 {year}',
+            '24h Nurburgring',
+        ]
+        id_patterns = [
+            r'/(?:en(?:-us)?/)?results/(\d{5,7})',
+            r'livetiming\.raceresult\.com/(\d{5,7})',
+            r'eventId["\s:=]+(\d{5,7})',
+            r'"id"\s*:\s*(\d{5,7})',
+        ]
+        for url in self._SEARCH_URLS:
+            for query in queries:
+                try:
+                    resp = self.session.get(url, params={'search': query}, timeout=10)
+                    if not resp.ok:
+                        continue
+                    html = resp.text
+                    ids = []
+                    for pat in id_patterns:
+                        ids.extend(re.findall(pat, html))
+                    # Keep only IDs that look plausibly like N24 event IDs (>= 100000)
+                    ids = [i for i in ids if int(i) >= 100000]
+                    if ids:
+                        eid = max(ids, key=int)
+                        self._event_id    = eid
+                        self._event_id_ts = now
+                        print(f'[N24] discovered event ID {eid} via search ({query})')
+                        return eid
+                except Exception as exc:
+                    print(f'[N24] search failed ({url!r}, {query!r}): {exc}')
+
+        # 4. Probe estimated + known IDs for this year — try each until one responds
+        candidates = []
+        if year in self._KNOWN_EVENT_IDS:
+            base = int(self._KNOWN_EVENT_IDS[year])
+            # Try ±200 around the estimate (IDs increase ~4000-6000 per year)
+            candidates = [str(base + d) for d in range(0, 201, 25)]
+        # Also try the known exact IDs from nearby years as sanity anchors
+        for y in sorted(self._KNOWN_EVENT_IDS, reverse=True):
+            candidates.append(self._KNOWN_EVENT_IDS[y])
+
+        for eid in candidates:
             try:
                 resp = self.session.get(
-                    self._SEARCH_URL, params={'search': query}, timeout=10,
+                    f'{self._LIVE_BASE}/{eid}/RRHMI/data',
+                    params={'l': 0, 'p': 1, 't': 0, 's': '', 'f': 'L', 'r': 0, 'm': ''},
+                    timeout=5,
                 )
-                if not resp.ok:
-                    continue
-                ids = re.findall(r'/en/results/(\d{5,6})', resp.text)
-                if not ids:
-                    ids = re.findall(r'livetiming\.raceresult\.com/(\d{5,6})', resp.text)
-                if ids:
-                    eid = max(ids, key=lambda x: int(x))
-                    self._event_id    = eid
-                    self._event_id_ts = now
-                    return eid
-            except Exception as exc:
-                print(f'[N24] discover failed ({query}): {exc}')
+                if resp.ok and resp.content:
+                    parsed = resp.json()
+                    rows = self._extract_rows(parsed)
+                    if rows:
+                        self._event_id    = eid
+                        self._event_id_ts = now
+                        print(f'[N24] found live event ID {eid} via probe')
+                        return eid
+            except Exception:
+                pass
 
+        print(f'[N24] event discovery failed for {year}; using stale ID {self._event_id!r}')
         return self._event_id
 
     # ------------------------------------------------------------------

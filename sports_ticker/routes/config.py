@@ -303,8 +303,44 @@ def update_settings(tid):
         request_refresh('ticker_mode_update')
 
     save_specific_ticker(tid)
-    
-    print(f"✅ Updated Settings for {tid}: {data}") 
+
+    print(f"✅ Updated Settings for {tid}: {data}")
     return jsonify({"success": True})
+
+
+@app.route('/api/n24/event', methods=['GET', 'POST'])
+def n24_event_config():
+    """GET current N24 event ID; POST to set it manually.
+
+    POST body: {"event_id": "140123"}
+    Set event_id to "" to re-enable auto-discovery.
+    """
+    from ..workers import n24_fetcher as _n24f
+    from ..core import save_global_config
+
+    if request.method == 'GET':
+        return jsonify({
+            'event_id':        _n24f._event_id,
+            'manual_event_id': _n24f.manual_event_id,
+            'has_data':        _n24f._cache is not None,
+            'entries':         len((_n24f._cache or {}).get('entries', [])),
+        })
+
+    payload  = request.json or {}
+    raw_id   = str(payload.get('event_id', '')).strip()
+    with data_lock:
+        state['n24_event_id'] = raw_id
+    save_global_config()
+    _n24f.manual_event_id = raw_id or None
+    # Immediately attempt a fetch with the new ID
+    _n24f._cache    = None
+    _n24f._cache_ts = 0.0
+    data = _n24f.fetch()
+    return jsonify({
+        'status':    'ok',
+        'event_id':  raw_id or '(auto)',
+        'has_data':  data is not None,
+        'entries':   len((data or {}).get('entries', [])),
+    })
 
 
