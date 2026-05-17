@@ -65,7 +65,7 @@ LEAGUE_OPTIONS = [
     #{'id': 'wbc', 'label': 'WBC', 'type': 'sport', 'default': True, 'fetch': {'path': 'baseball/world-baseball-classic', 'type': 'scoreboard'}},
     #{'id': 'f1', 'label': 'Formula 1', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/f1', 'type': 'leaderboard'}},
     #{'id': 'nascar', 'label': 'NASCAR', 'type': 'sport', 'default': True, 'fetch': {'path': 'racing/nascar', 'type': 'leaderboard'}},
-    {'id': 'n24', 'label': 'Nürburgring 24h', 'type': 'sport', 'default': True},
+    {'id': 'indycar', 'label': 'IndyCar', 'type': 'sport', 'default': True},
     {'id': 'weather', 'label': 'Weather', 'type': 'util', 'default': True},
     {'id': 'clock', 'label': 'Clock', 'type': 'util', 'default': True},
     {'id': 'music', 'label': 'Music', 'type': 'util', 'default': True},
@@ -104,7 +104,6 @@ VALID_MODES = {
     'stocks', 'weather', 'music', 'clock',
     'golf', 'masters',  # 'masters' kept as recognized alias (migrated → 'golf')
     'flights', 'flight_tracker',
-    'n24',
 }
 
 # Legacy mode migration applied at load time and on /api/config writes
@@ -113,4 +112,6 @@ MODE_MIGRATIONS = {
     'flight2': 'flight_tracker',
     'poop_fetcher': 'sports',
     'masters': 'golf',
+    'n24': 'sports',      # legacy Nürburgring mode
+    'indycar': 'sports',  # IndyCar is now integrated into sports mode
 }

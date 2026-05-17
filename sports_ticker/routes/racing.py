@@ -1,60 +1,49 @@
-"""Racing UI and API routes."""
+"""Racing API routes (JSON only — no HTML pages)."""
 
-import os
-from flask import Blueprint, jsonify, render_template
-from ..fetchers.racing_nurburgring import (
-    n24_fetcher as _n24_fetcher,
-    MANUFACTURER_COLORS,
-    CLASS_COLORS,
-)
+from flask import Blueprint, jsonify
+from ..fetchers.racing_indycar import indycar_fetcher as _indycar_fetcher
 
-_TMPL_DIR = os.path.join(os.path.dirname(__file__), '..', 'dashboard', 'templates')
-
-racing = Blueprint('racing', __name__, template_folder=_TMPL_DIR)
+racing = Blueprint('racing', __name__)
 
 
-@racing.route('/racing/nurburgring')
-def nurburgring_ui():
-    return render_template('racing/nurburgring.html')
-
-
-@racing.route('/api/racing/nurburgring')
-def nurburgring_data():
-    data = _n24_fetcher.fetch()
+@racing.route('/api/racing/indycar')
+def indycar_data():
+    data = _indycar_fetcher.fetch()
     if not data:
         return jsonify({
             'status':            'no_data',
-            'event_name':        '54. ADAC RAVENOL 24h Nürburgring',
+            'event_name':        'INDIANAPOLIS 500',
+            'session_type':      'race',
+            'session_label':     'RACE',
             'leader_laps':       0,
             'entries':           [],
             'race_control':      [],
             'track_state':       '0',
-            'track_state_name':  'GREEN FLAG',
+            'track_state_name':  'GREEN',
             'track_state_color': '#00C040',
             'track_state_key':   'green',
             'fetched_at':        0,
         })
-    return jsonify(_n24_fetcher.enrich(data))
+    return jsonify(_indycar_fetcher.enrich(data))
 
 
-@racing.route('/api/racing/nurburgring/racecontrol')
-def nurburgring_racecontrol():
-    data = _n24_fetcher.fetch()
+@racing.route('/api/racing/indycar/racecontrol')
+def indycar_racecontrol():
+    data = _indycar_fetcher.fetch()
     if not data:
-        return jsonify({'messages': [], 'track_state': '0', 'track_state_name': 'GREEN FLAG'})
+        return jsonify({'messages': [], 'track_state': '0', 'track_state_name': 'GREEN'})
     return jsonify({
         'messages':          data.get('race_control', []),
         'track_state':       data.get('track_state', '0'),
-        'track_state_name':  data.get('track_state_name', 'GREEN FLAG'),
+        'track_state_name':  data.get('track_state_name', 'GREEN'),
         'track_state_color': data.get('track_state_color', '#00C040'),
         'track_state_key':   data.get('track_state_key', 'green'),
+        'session_type':      data.get('session_type', 'race'),
+        'session_label':     data.get('session_label', 'RACE'),
     })
 
 
-@racing.route('/api/racing/nurburgring/colors')
-def nurburgring_colors():
-    """Return full manufacturer and class color maps for client use."""
-    return jsonify({
-        'manufacturers': MANUFACTURER_COLORS,
-        'classes':       CLASS_COLORS,
-    })
+# Legacy alias
+@racing.route('/api/racing/nurburgring')
+def nurburgring_data_alias():
+    return indycar_data()

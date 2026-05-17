@@ -11,28 +11,42 @@ from ..core import (
     SERVER_VERSION,
 )
 from ..workers import request_refresh, fetcher
-from ..fetchers.racing_nurburgring import n24_fetcher
+from ..fetchers.racing_indycar import indycar_fetcher
+# Legacy alias
+n24_fetcher = indycar_fetcher
 
 
-def _n24_placeholder():
+def _indycar_placeholder():
     return {
-        'id': 'n24_rc', 'type': 'n24_rc', 'sport': 'n24',
+        'id': 'indycar_rc', 'type': 'indycar_rc', 'sport': 'indycar',
         'track_state_key': 'green', 'track_state_name': 'CONNECTING...',
-        'track_state_color': '#4a6a88', 'latest_message': 'Connecting to N24 live timing...',
+        'track_state_color': '#4a6a88', 'latest_message': 'Connecting to IndyCar timing...',
+        'session_type': 'race', 'session_label': 'RACE',
         'messages': [], 'leader_laps': 0, 'is_shown': True,
-        'home_abbr': 'N24', 'away_abbr': 'RC', 'home_score': '...', 'away_score': '', 'status': '',
+        'home_abbr': 'IMS', 'away_abbr': 'RC', 'home_score': '...', 'away_score': '', 'status': '',
     }
 
+_n24_placeholder = _indycar_placeholder  # legacy
 
-def _n24_summary_card(data, compact=True):
-    """Return exactly one N24 item (the RC card) for the sports feed."""
-    items = n24_fetcher.format_for_ticker(data)
+
+def _indycar_summary_card(data, compact=True, fullscreen=False):
+    """Return an IndyCar card for the sports feed.
+
+    fullscreen=False → indycar_rc (192 px, scrolls in strip like any sport card)
+    fullscreen=True  → indycar_dashboard (384 px, shown as full-bleed static hold)
+    """
+    items = indycar_fetcher.format_for_ticker(data)
     if not items:
-        return _n24_placeholder()
-    card = items[0].copy()
+        return _indycar_placeholder()
+    if fullscreen:
+        card = next((i for i in items if i.get('type') == 'indycar_dashboard'), items[0]).copy()
+    else:
+        card = next((i for i in items if i.get('type') == 'indycar_rc'), items[0]).copy()
     card['compact'] = compact
     card['is_shown'] = True
     return card
+
+_n24_summary_card = _indycar_summary_card  # legacy
 
 
 @app.route('/data', methods=['GET'])
@@ -102,8 +116,6 @@ def get_ticker_data():
     # (clock/weather/music/flights/etc.) must remain user-selectable.
     if has_pinned_game and pin_league == 'masters' and current_mode in SPORTS_MODE_FAMILY:
         current_mode = 'masters'
-    elif has_pinned_game and (pin_league == 'n24' or pin_game_id.startswith('n24_')) and current_mode in SPORTS_MODE_FAMILY:
-        current_mode = 'n24'
     elif has_pinned_game and current_mode in SPORTS_MODE_FAMILY:
         current_mode = 'sports_full'
 
@@ -176,10 +188,10 @@ def get_ticker_data():
                 g_copy['sport'] = sport
                 g_copy['is_shown'] = True
                 visible_items.append(g_copy)
-        if active_sports.get('n24', True):
-            n24_data = n24_fetcher.fetch()
-            if n24_data and n24_data.get('status') == 'live':
-                card = _n24_summary_card(n24_data, compact=True)
+        if active_sports.get('indycar', active_sports.get('n24', True)):
+            indycar_data = indycar_fetcher.fetch()
+            if indycar_data and indycar_data.get('status') == 'live':
+                card = _indycar_summary_card(indycar_data, compact=True)
                 visible_items.append(card)
 
     elif current_mode == 'sports_full':
@@ -192,10 +204,12 @@ def get_ticker_data():
             g_copy['sport'] = sport
             g_copy['is_shown'] = True
             visible_items.append(g_copy)
-        if active_sports.get('n24', True):
-            n24_data = n24_fetcher.fetch()
-            if n24_data:
-                visible_items.append(_n24_summary_card(n24_data, compact=False))
+        if active_sports.get('indycar', active_sports.get('n24', True)):
+            indycar_data = indycar_fetcher.fetch()
+            _ic_pinned = pin_league in ('n24', 'indycar')
+            # Show fullscreen dashboard when IndyCar is the pinned subject or nothing specific is pinned
+            if indycar_data and (not effective_pin or _ic_pinned):
+                visible_items.append(_indycar_summary_card(indycar_data, compact=False, fullscreen=True))
 
     elif current_mode == 'soccer_full':
         for g in raw_games:
@@ -220,27 +234,11 @@ def get_ticker_data():
             g_copy['sport'] = sport
             g_copy['is_shown'] = True
             visible_items.append(g_copy)
-        if active_sports.get('n24', True):
-            n24_data = n24_fetcher.fetch()
-            if n24_data:
-                visible_items.append(_n24_summary_card(n24_data, compact=True))
-
-    elif current_mode == 'n24':
-        n24_data = n24_fetcher.fetch()
-        if n24_data:
-            all_items = n24_fetcher.format_for_ticker(n24_data)
-            if effective_pin and pin_game_id and pin_game_id != 'n24_rc':
-                pinned = [c for c in all_items if c.get('id') == pin_game_id]
-                show_items = pinned if pinned else all_items[:11]
-            else:
-                show_items = all_items[:11]
-            for g in show_items:
-                g['is_shown'] = True
-                visible_items.append(g)
-        else:
-            # WebSocket not yet connected — show a single placeholder so the
-            # ticker never scrolls empty black bars
-            visible_items.append(_n24_placeholder())
+        if active_sports.get('indycar', active_sports.get('n24', True)):
+            indycar_data = indycar_fetcher.fetch()
+            if indycar_data:
+                # RC card (192 px) scrolls in the sports strip like any other sport card
+                visible_items.append(_indycar_summary_card(indycar_data, compact=True, fullscreen=False))
 
     else:
         # Stocks, Weather, Clock, Flights
@@ -271,8 +269,8 @@ def get_ticker_data():
     response_local_config['utc_offset'] = tz_offset
     effective_mode_for_response = current_mode
     if current_mode == 'sports' and len(visible_items) == 1:
-        # Don't upgrade n24 summary cards — they have their own fixed-width renderer
-        if visible_items[0].get('sport') != 'n24':
+        # Don't upgrade indycar summary cards — they have their own fixed-width renderer
+        if visible_items[0].get('sport') not in ('n24', 'indycar'):
             effective_mode_for_response = 'sports_full'
     response_local_config['mode'] = effective_mode_for_response
 
@@ -342,15 +340,13 @@ def api_state():
     if _preview_mode:
         current_mode = normalize_mode(_preview_mode)
 
-    # Legacy app behavior: reflect pin by forcing sports_full/n24 mode in /api/state.
+    # Legacy app behavior: reflect pin by forcing sports_full mode in /api/state.
     # This keeps pinned detection compatible with clients that key off mode.
     _pg_norm = str(pinned_game or '').strip().lower()
     _pin_gid = _pg_norm.split(':', 1)[-1] if ':' in _pg_norm else _pg_norm
+    _pin_league = _pg_norm.split(':', 1)[0] if ':' in _pg_norm else ''
     if pinned_game and current_mode in SPORTS_MODE_FAMILY:
-        if _pg_norm.startswith('n24:') or _pin_gid.startswith('n24_'):
-            current_mode = 'n24'
-        else:
-            current_mode = 'sports_full'
+        current_mode = 'sports_full'
         response_settings['mode'] = current_mode
 
     response_settings['mode'] = current_mode
@@ -361,16 +357,7 @@ def api_state():
     delay_seconds = (response_settings.get('live_delay_seconds', 0)
                      if (is_sports_mode and response_settings.get('live_delay_mode'))
                      else 0)
-    if current_mode == 'n24':
-        _n24_raw = n24_fetcher.fetch()
-        _all_n24 = n24_fetcher.format_for_ticker(_n24_raw) if _n24_raw else []
-        if pinned_game and _pin_gid:
-            _pinned = [c for c in _all_n24 if c.get('id') == _pin_gid]
-            raw_games = _pinned if _pinned else _all_n24[:10]
-        else:
-            raw_games = _all_n24[:10]
-    else:
-        raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
+    raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
     if pinned_game and current_mode == 'sports_full':
         pin_id = str(pinned_game).split(':', 1)[-1]
         raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
@@ -435,25 +422,19 @@ def api_state():
         elif current_mode == 'flight_tracker':
             if g_type != 'flight_visitor':
                 should_show = False
-        elif current_mode == 'n24':
-            if g_type not in ('n24_car', 'n24_rc'):
-                should_show = False
-
         game_copy['is_shown'] = should_show
         processed_games.append(game_copy)
 
-    # Inject a single N24 summary card into sports feed for sports/sports_full/live modes
-    if current_mode in ('sports', 'sports_full', 'live') and _active_sports.get('n24', True):
-        _n24_data = n24_fetcher.fetch()
-        if _n24_data:
-            _is_live = _n24_data.get('status') == 'live'
+    # Inject IndyCar card into sports/sports_full/live feed
+    if current_mode in ('sports', 'sports_full', 'live') and _active_sports.get('indycar', _active_sports.get('n24', True)):
+        _ic_data = indycar_fetcher.fetch()
+        if _ic_data:
+            _is_live = _ic_data.get('status') == 'live'
             if current_mode != 'live' or _is_live:
-                _compact = current_mode != 'sports_full'
-                processed_games.append(_n24_summary_card(_n24_data, compact=_compact))
-
-    # Ensure n24 mode always has at least one visible item so the app can unpin
-    if current_mode == 'n24' and not any(g.get('is_shown') for g in processed_games):
-        processed_games.append(_n24_placeholder())
+                _ic_pinned = _pin_league in ('n24', 'indycar')
+                _fullscreen = current_mode == 'sports_full' and (not pinned_game or _ic_pinned)
+                if not pinned_game or _ic_pinned:
+                    processed_games.append(_indycar_summary_card(_ic_data, compact=(not _fullscreen), fullscreen=_fullscreen))
 
     tz_name = str(response_settings.get('timezone_name', '')).strip()
     tz_offset = response_settings.get('utc_offset', state.get('utc_offset', -5))
