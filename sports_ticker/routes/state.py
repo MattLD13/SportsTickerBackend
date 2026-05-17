@@ -13,6 +13,28 @@ from ..core import (
 from ..workers import request_refresh, fetcher
 from ..fetchers.racing_nurburgring import n24_fetcher
 
+
+def _n24_placeholder():
+    return {
+        'id': 'n24_rc', 'type': 'n24_rc', 'sport': 'n24',
+        'track_state_key': 'green', 'track_state_name': 'CONNECTING...',
+        'track_state_color': '#4a6a88', 'latest_message': 'Connecting to N24 live timing...',
+        'messages': [], 'leader_laps': 0, 'is_shown': True,
+        'home_abbr': 'N24', 'away_abbr': 'RC', 'home_score': '...', 'away_score': '', 'status': '',
+    }
+
+
+def _n24_summary_card(data, compact=True):
+    """Return exactly one N24 item (the RC card) for the sports feed."""
+    items = n24_fetcher.format_for_ticker(data)
+    if not items:
+        return _n24_placeholder()
+    card = items[0].copy()
+    card['compact'] = compact
+    card['is_shown'] = True
+    return card
+
+
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
     ticker_id = request.args.get('id')
@@ -157,10 +179,8 @@ def get_ticker_data():
         if active_sports.get('n24', True):
             n24_data = n24_fetcher.fetch()
             if n24_data and n24_data.get('status') == 'live':
-                for g in n24_fetcher.format_for_ticker(n24_data)[:5]:
-                    g['compact'] = True
-                    g['is_shown'] = True
-                    visible_items.append(g)
+                card = _n24_summary_card(n24_data, compact=True)
+                visible_items.append(card)
 
     elif current_mode == 'sports_full':
         # Pinned game override — show everything without active_sports filtering
@@ -175,9 +195,7 @@ def get_ticker_data():
         if active_sports.get('n24', True):
             n24_data = n24_fetcher.fetch()
             if n24_data:
-                for g in n24_fetcher.format_for_ticker(n24_data)[:10]:
-                    g['is_shown'] = True
-                    visible_items.append(g)
+                visible_items.append(_n24_summary_card(n24_data, compact=False))
 
     elif current_mode == 'soccer_full':
         for g in raw_games:
@@ -205,23 +223,24 @@ def get_ticker_data():
         if active_sports.get('n24', True):
             n24_data = n24_fetcher.fetch()
             if n24_data:
-                for g in n24_fetcher.format_for_ticker(n24_data)[:5]:
-                    g['compact'] = True
-                    g['is_shown'] = True
-                    visible_items.append(g)
+                visible_items.append(_n24_summary_card(n24_data, compact=True))
 
     elif current_mode == 'n24':
         n24_data = n24_fetcher.fetch()
         if n24_data:
-            all_cars = n24_fetcher.format_for_ticker(n24_data)
-            if effective_pin and pin_game_id:
-                pinned_cars = [c for c in all_cars if c.get('id') == pin_game_id]
-                show_cars = pinned_cars if pinned_cars else all_cars[:10]
+            all_items = n24_fetcher.format_for_ticker(n24_data)
+            if effective_pin and pin_game_id and pin_game_id != 'n24_rc':
+                pinned = [c for c in all_items if c.get('id') == pin_game_id]
+                show_items = pinned if pinned else all_items[:11]
             else:
-                show_cars = all_cars[:10]
-            for g in show_cars:
+                show_items = all_items[:11]
+            for g in show_items:
                 g['is_shown'] = True
                 visible_items.append(g)
+        else:
+            # WebSocket not yet connected — show a single placeholder so the
+            # ticker never scrolls empty black bars
+            visible_items.append(_n24_placeholder())
 
     else:
         # Stocks, Weather, Clock, Flights
@@ -421,18 +440,14 @@ def api_state():
         game_copy['is_shown'] = should_show
         processed_games.append(game_copy)
 
-    # Inject N24 entries into sports feed for sports/sports_full/live modes
+    # Inject a single N24 summary card into sports feed for sports/sports_full/live modes
     if current_mode in ('sports', 'sports_full', 'live') and _active_sports.get('n24', True):
         _n24_data = n24_fetcher.fetch()
         if _n24_data:
             _is_live = _n24_data.get('status') == 'live'
             if current_mode != 'live' or _is_live:
-                _limit = 10 if current_mode == 'sports_full' else 5
                 _compact = current_mode != 'sports_full'
-                for _g in n24_fetcher.format_for_ticker(_n24_data)[:_limit]:
-                    _g['compact'] = _compact
-                    _g['is_shown'] = True
-                    processed_games.append(_g)
+                processed_games.append(_n24_summary_card(_n24_data, compact=_compact))
 
     tz_name = str(response_settings.get('timezone_name', '')).strip()
     tz_offset = response_settings.get('utc_offset', state.get('utc_offset', -5))
