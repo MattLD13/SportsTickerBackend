@@ -10,6 +10,8 @@ from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
 
 _BLOB_BASE = "https://indycar.blob.core.windows.net/racecontrol"
+_IMS_LAT = 39.7950
+_IMS_LON = -86.2340
 
 _SESSION_TYPE_MAP = {
     'Q': 'Qualifying',
@@ -139,8 +141,10 @@ class SportsIndycarMixin:
         if not hasattr(self, '_ic_timing_cache'):
             self._ic_timing_cache = {'ts': 0.0, 'data': None}
             self._ic_drivers_cache = {'ts': 0.0, 'data': {}}   # car_number → driver dict
+            self._ic_weather_cache = {'ts': 0.0, 'data': {}}
             self._ic_timing_ttl   = 8.0     # seconds — poll live data frequently
             self._ic_drivers_ttl  = 300.0   # seconds — driver roster changes rarely
+            self._ic_weather_ttl  = 300.0   # seconds — conditions are slower-moving
 
     def _fetch_indycar_drivers(self, force=False):
         """Fetch and cache driversfeed.json indexed by car number."""
@@ -169,6 +173,40 @@ class SportsIndycarMixin:
             log(f"[IndyCar] driversfeed fetch error: {exc}")
             return self._ic_drivers_cache.get('data', {})
 
+    def _fetch_indycar_weather(self):
+        """Fetch basic IMS conditions for the static IndyCar panel."""
+        self.__init_indycar_cache()
+        now = time.time()
+        if (now - self._ic_weather_cache.get('ts', 0.0)) < self._ic_weather_ttl:
+            return self._ic_weather_cache.get('data') or {}
+        try:
+            url = (
+                "https://api.open-meteo.com/v1/forecast"
+                f"?latitude={_IMS_LAT}&longitude={_IMS_LON}"
+                "&current=temperature_2m,wind_speed_10m,wind_direction_10m"
+                "&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
+            )
+            r = self.session.get(url, headers=HEADERS, timeout=TIMEOUTS.get('default', 10))
+            r.raise_for_status()
+            current = (r.json().get('current') or {})
+
+            def _rounded(value):
+                try:
+                    return str(int(round(float(value))))
+                except Exception:
+                    return ''
+
+            weather = {
+                'air_temp': _rounded(current.get('temperature_2m')),
+                'wind_mph': _rounded(current.get('wind_speed_10m')),
+                'wind_dir': _rounded(current.get('wind_direction_10m')),
+            }
+            self._ic_weather_cache = {'ts': now, 'data': weather}
+            return weather
+        except Exception as exc:
+            log(f"[IndyCar] weather fetch error: {exc}")
+            return self._ic_weather_cache.get('data') or {}
+
     def _fetch_indycar(self, force=False):
         """Fetch live IndyCar session and return a game object, or None."""
         self.__init_indycar_cache()
@@ -196,6 +234,8 @@ class SportsIndycarMixin:
 
         drivers_index = self._fetch_indycar_drivers()
         game = self._build_indycar_game(timing, drivers_index)
+        if game:
+            game.setdefault('indycar', {})['weather'] = self._fetch_indycar_weather()
 
         self._ic_timing_cache = {'ts': now, 'data': game}
         return game

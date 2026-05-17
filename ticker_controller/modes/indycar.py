@@ -4,6 +4,7 @@ Scroll card (128 × 32):  race name + session on top, top-3 drivers below.
 Full screen (384 × 32):  left 1/4 = race info, right 3/4 = scrolling driver list.
 """
 
+import os
 import time
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
@@ -93,6 +94,15 @@ def _trim_transparent_padding(img):
         return rgba.crop(bbox) if bbox else rgba
     except Exception:
         return img
+
+
+def _wind_compass(value):
+    try:
+        deg = float(value)
+    except Exception:
+        return ''
+    labels = ('N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW')
+    return labels[int((deg + 22.5) // 45) % 8]
 
 
 def _render_number_badge(text, font, fg=(235, 235, 235), scale=2):
@@ -224,6 +234,24 @@ def _draw_tiny_text_outline(draw, x, y, text, fill, outline):
                 continue
             draw_tiny_text(draw, x + dx, y + dy, text, outline)
     draw_tiny_text(draw, x, y, text, fill)
+
+
+def _draw_condition_icon(draw, x, y, kind, color):
+    kind = str(kind or '').lower()
+    if kind == 'track':
+        draw.line([(x, y + 4), (x + 6, y + 1)], fill=color)
+        draw.line([(x, y + 5), (x + 6, y + 2)], fill=(95, 105, 120))
+        draw.point((x + 3, y + 3), fill=(235, 235, 235))
+    elif kind == 'air':
+        draw.ellipse([x + 1, y + 1, x + 5, y + 5], outline=color)
+        draw.point((x + 3, y), fill=color)
+        draw.point((x + 3, y + 6), fill=color)
+        draw.point((x, y + 3), fill=color)
+        draw.point((x + 6, y + 3), fill=color)
+    elif kind == 'wind':
+        draw.arc([x, y + 1, x + 6, y + 5], start=180, end=350, fill=color)
+        draw.line([(x + 1, y + 5), (x + 7, y + 5)], fill=color)
+        draw.point((x + 6, y + 3), fill=color)
 
 
 class IndycarMixin:
@@ -467,6 +495,36 @@ class IndycarMixin:
         show_flag = bool(flag_name)
         if show_flag:
             _draw_flag(d, panel_w - 17, 1, flag_name, w=15, h=10)
+
+        variant = str(os.environ.get('INDYCAR_INFO_VARIANT') or '').strip().lower()
+        if variant in ('track_map', 'conditions'):
+            weather = ic.get('weather') if isinstance(ic.get('weather'), dict) else {}
+            air = str(weather.get('air_temp') or '--').strip()
+            wind = str(weather.get('wind_mph') or '--').strip()
+            wind_dir = _wind_compass(weather.get('wind_dir')) or '--'
+            draw_tiny_text(d, 4, 1, short_name[:max(4, (panel_w - 26) // 4)], (255, 220, 50))
+            draw_tiny_text(d, 4, 8, session[:11], (180, 210, 255))
+            _draw_condition_icon(d, 5, 17, 'air', (255, 220, 50))
+            draw_tiny_text(d, 15, 16, f"{air}F", (255, 255, 255))
+            _draw_condition_icon(d, 5, 26, 'wind', (115, 190, 255))
+            draw_tiny_text(d, 15, 25, f"{wind}-{wind_dir}", (180, 210, 255))
+            return
+        if variant == 'leader':
+            drivers = ic.get('drivers', [])
+            leader = next((drv for drv in drivers if isinstance(drv, dict) and str(drv.get('pos') or '') == '1'), None)
+            if not leader and isinstance(drivers, list) and drivers:
+                leader = next((drv for drv in drivers if isinstance(drv, dict)), None)
+            lead_car = str((leader or {}).get('car') or '').strip()
+            lead_abbr = str((leader or {}).get('abbr') or '').strip().upper()
+            lead_speed = str((leader or {}).get('speed') or (leader or {}).get('gap') or '').strip()
+            draw_tiny_text(d, 4, 1, 'P1', (255, 220, 50))
+            if lead_car:
+                d.text((4, 6), lead_car, font=getattr(self, 'medium_font', self.font), fill=(255, 255, 255))
+            if lead_abbr:
+                draw_tiny_text(d, 37, 8, lead_abbr[:3], (180, 210, 255))
+            metric = lead_speed[:10] if lead_speed else session[:10]
+            draw_tiny_text(d, 4, 24, metric, (255, 255, 255))
+            return
 
         title_w = panel_w - (24 if show_flag else 6)
         max_chars = max(4, title_w // 4)
