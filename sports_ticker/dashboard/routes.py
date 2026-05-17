@@ -3,7 +3,6 @@
 import time
 from pathlib import Path
 
-import requests
 from flask import Response, jsonify, render_template, request
 from . import dashboard
 from ..core import (
@@ -85,12 +84,8 @@ def root():
 
 @dashboard.route('/api/browser/ticker_controller_bundle')
 def browser_ticker_bundle():
-    source_path = _REPO_ROOT / 'ticker_controller.py'
-    source = source_path.read_text(encoding='utf-8') if source_path.exists() else ''
-    return jsonify({
-        'root': 'ticker_controller.py',
-        'source': source,
-    })
+    # Removed: browser-side virtual ticker bundle is no longer supported
+    return Response(status=404)
 
 
 @dashboard.route('/api/browser/image_proxy')
@@ -98,12 +93,5 @@ def browser_image_proxy():
     url = request.args.get('url', '').strip()
     if not url:
         return Response(status=400)
-
-    try:
-        resp = requests.get(url, timeout=8, verify=False)
-        content_type = resp.headers.get('Content-Type', 'application/octet-stream')
-        proxy = Response(resp.content, mimetype=content_type)
-        proxy.headers['Cache-Control'] = 'no-store'
-        return proxy
-    except Exception:
-        return Response(status=502)
+    # Removed: image proxy for browser preview — not supported
+    return Response(status=404)

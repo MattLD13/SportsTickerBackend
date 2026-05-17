@@ -245,7 +245,6 @@ window._CFG = {
   weatherCity:   {{ weather_city | tojson }},
   airportIata:   {{ airport_iata | tojson }},
   trackFlightId: {{ track_flight_id | tojson }},
-  browserBundleUrl: {{ url_for('dashboard.browser_ticker_bundle') | tojson }},
 };
 </script>
 <script src="{{ url_for('dashboard.static', filename='ticker.js') }}"></script>
