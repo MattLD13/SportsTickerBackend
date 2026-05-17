@@ -40,8 +40,8 @@ class IndycarMixin:
 
     def _ic_header_label(self, ic):
         """Build a compact header string: short race name + session."""
-        short = str(ic.get('short_name') or ic.get('event_name') or 'INDYCAR').upper()
-        session = str(ic.get('session_type') or 'RACE').upper()
+        short = str(ic.get('short_name') or ic.get('event_name') or 'IndyCar').strip()
+        session = str(ic.get('session_type') or 'Race').strip()
         # Shorten common words so it fits
         short = (short
                  .replace('GRAND PRIX', 'GP')

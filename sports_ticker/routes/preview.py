@@ -224,6 +224,10 @@ def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
                 )
             if sport == 'flight' or itype == 'flight':
                 return renderer.draw_flight_visitor(g)
+            if itype == 'racing' or sport == 'indycar':
+                if renderer.mode in ('indycar', 'indycar_full'):
+                    return renderer.draw_indycar_full(g)
+                return renderer.draw_indycar_scroll_card(g)
             if itype in ('golf', 'masters') or sport in ('golf', 'masters'):
                 if renderer.mode in ('golf', 'masters', 'sports_full'):
                     return renderer.draw_golf_mode(g)
@@ -347,9 +351,9 @@ def _collapse_flight_airport_items(games: list) -> list:
 def _is_sports_game(g: dict) -> bool:
     itype = (g.get('type') or '').lower()
     sport = (g.get('sport') or '').lower()
-    if itype in ('weather', 'stock_ticker', 'music', 'clock', 'flight_visitor', 'flight_airport_hud', 'golf', 'masters'):
+    if itype in ('weather', 'stock_ticker', 'music', 'clock', 'flight_visitor', 'flight_airport_hud', 'golf', 'masters', 'racing'):
         return False
-    if sport in ('golf', 'masters'):
+    if sport in ('golf', 'masters', 'indycar'):
         return False
     if sport == 'flight' or itype == 'flight':
         return False
@@ -471,7 +475,12 @@ def preview_strip():
                     for logo_url in (pinned.get('home_logo'), pinned.get('away_logo')):
                         if logo_url:
                             preview.download_and_process_logo(logo_url, (24, 24))
-                    card = preview.draw_sport_full_bleed(pinned)
+                    sport = str(pinned.get('sport', '')).lower()
+                    g_type = str(pinned.get('type', '')).lower()
+                    if g_type == 'racing' or sport == 'indycar':
+                        card = preview.draw_indycar_full(pinned)
+                    else:
+                        card = preview.draw_sport_full_bleed(pinned)
                     return _single_card_png(card)
                 except Exception as e:
                     print(f"[preview] draw_sport_full_bleed failed: {e}")

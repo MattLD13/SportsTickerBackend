@@ -64,6 +64,51 @@ def _build_abbr(first, last):
     return '???'
 
 
+def _simplify_indycar_event_name(event_name, track_name):
+    value = str(event_name or track_name or 'IndyCar').strip()
+    lowered = value.lower()
+    replacements = [
+        ('110th Running of the ', ''),
+        ('Running of the ', ''),
+        ('Indianapolis 500', 'Indy 500'),
+        ('Grand Prix', 'GP'),
+        ('Championship', 'Champ'),
+        ('Presented by', ''),
+    ]
+    for old, new in replacements:
+        value = value.replace(old, new)
+    value = ' '.join(value.split())
+    if 'indy 500' in lowered or 'indianapolis 500' in lowered:
+        return 'Indy 500'
+    if 'fast 12' in lowered:
+        return 'Fast 12'
+    if 'fast 6' in lowered:
+        return 'Fast 6'
+    if 'fast 10' in lowered:
+        return 'Fast 10'
+    return value or 'IndyCar'
+
+
+def _simplify_indycar_session(session_label, session_name):
+    value = str(session_name or session_label or 'Race').strip()
+    lowered = value.lower()
+    if 'fast 12' in lowered:
+        return 'Fast 12'
+    if 'fast 6' in lowered:
+        return 'Fast 6'
+    if 'fast 10' in lowered:
+        return 'Fast 10'
+    if 'qual' in lowered:
+        return 'Qualifying'
+    if 'practice' in lowered or lowered == 'p':
+        return 'Practice'
+    if 'race' in lowered or lowered == 'r':
+        return 'Race'
+    if 'warm' in lowered:
+        return 'Warm Up'
+    return value
+
+
 class SportsIndycarMixin:
 
     def __init_indycar_cache(self):
@@ -139,6 +184,8 @@ class SportsIndycarMixin:
         session_raw  = str(hb.get('SessionType') or 'R').strip().upper()
         session_name = str(hb.get('SessionName') or hb.get('EventSessionLabel') or '').strip()
         session_label = _SESSION_TYPE_MAP.get(session_raw, session_raw)
+        short_event_name = _simplify_indycar_event_name(event_name, track_name)
+        short_session_name = _simplify_indycar_session(session_label, session_name)
 
         # State from flag / session status
         flag_status    = str(hb.get('currentFlag') or hb.get('SessionStatus') or '').strip().upper()
@@ -256,8 +303,8 @@ class SportsIndycarMixin:
         drivers.sort(key=lambda d: d['pos'] if d['pos'] > 0 else 999)
 
         event_id = str(hb.get('EventID') or hb.get('EventSessionID') or 'indycar_live')
-        away_abbr = event_name or track_name or 'INDYCAR'
-        home_abbr = session_name or session_label or 'SESSION'
+        away_abbr = short_event_name
+        home_abbr = short_session_name
 
         return {
             'id':           event_id,
@@ -269,14 +316,14 @@ class SportsIndycarMixin:
             'startTimeUTC': '',
             'away_abbr':    away_abbr,
             'home_abbr':    home_abbr,
-            'away_score':   track_name or event_name or '',
-            'home_score':   session_label or session_name or '',
+            'away_score':   track_name or short_event_name or '',
+            'home_score':   short_session_name or '',
             'indycar': {
-                'event_name':   event_name,
-                'short_name':   event_name,
+                'event_name':   short_event_name,
+                'short_name':   short_event_name,
                 'track_name':   track_name,
-                'session_type': session_label,
-                'session_name': session_name,
+                'session_type': short_session_name,
+                'session_name': short_session_name,
                 'lap':          current_lap,
                 'total_laps':   total_laps,
                 'laps_remaining': laps_rem,
