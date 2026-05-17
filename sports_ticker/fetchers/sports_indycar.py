@@ -57,10 +57,16 @@ def _build_abbr(first, last):
     """Build a 3-letter driver abbreviation from first/last name."""
     last = str(last or '').strip()
     first = str(first or '').strip()
+    clean_last = ''.join(ch for ch in last if ch.isalnum())
+    clean_first = ''.join(ch for ch in first if ch.isalnum())
+    if len(clean_last) >= 3:
+        return clean_last[:3].upper()
+    if clean_last and clean_first:
+        return (clean_last + clean_first)[:3].upper()
     if last:
         return last[:3].upper()
     if first:
-        return first[:3].upper()
+        return clean_first[:3].upper() if clean_first else first[:3].upper()
     return '???'
 
 

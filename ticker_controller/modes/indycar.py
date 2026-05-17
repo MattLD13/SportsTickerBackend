@@ -414,10 +414,7 @@ class IndycarMixin:
             alpha = int(30 + 20 * x / INFO_W)
             d.line([(x, 0), (x, H)], fill=(0, 20, 60, alpha))
 
-        # Vertical divider
         flag = str(ic.get('flag') or '').upper()
-        div_color = (255, 200, 0) if flag in ('YELLOW', 'RED') else (0, 80, 200)
-        d.line([(INFO_W, 0), (INFO_W, H)], fill=div_color)
 
         # ── Left panel: race info ────────────────────────────────────────────
         self._ic_draw_info_panel(d, ic, game, INFO_W, H)
@@ -462,8 +459,8 @@ class IndycarMixin:
         state      = str(game.get('state', 'pre')).lower()
         is_qual    = 'qual' in session.lower() or 'prac' in session.lower()
 
-        # Accent bar: flag-aware color
-        bar_color = (255, 200, 0) if caution else (0, 80, 200)
+        # Accent bar: match the displayed flag color.
+        bar_color = _ic_flag_color(_display_flag(flag, state))
         d.rectangle([0, 0, 2, H], fill=bar_color)
 
         flag_name = _display_flag(flag, state)
@@ -542,59 +539,99 @@ class IndycarMixin:
         ticker_sleep = float(getattr(self, 'scroll_sleep', 0.05) or 0.05)
         row_speed = 1.0 / max(0.001, ticker_sleep)
 
-        cards = []
-        for driver in visible:
-            pos = str(driver.get('pos') or '')
-            name = str(driver.get('name') or driver.get('abbr') or '???').strip()
-            car_num = str(driver.get('car') or '').strip()
-            place_text = _ordinal_place(pos)
-            name_w, _ = _text_size(pd, name, self.font)
-            place_w, _ = _text_size(pd, place_text, self.font)
-            num_w, _ = _text_size(pd, car_num, self.font)
-            card_w = max(min_card_w, int(name_w) + 24, int(place_w + num_w) + 18)
-            card = Image.new('RGBA', (card_w, card_h), (0, 0, 0, 0))
-            cd = ImageDraw.Draw(card)
-            team_logo = str(driver.get('team_logo') or '').strip()
-            car_image = str(driver.get('car_illustration') or '').strip()
-            gap_val = str(driver.get('gap') or '').strip()
-            cd.rectangle([0, 0, card_w - 1, card_h - 1], fill=(12, 12, 18))
-            cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(60, 60, 72), width=1)
-            if pos == '1':
-                cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(255, 215, 0), width=1)
+        cache_key = (
+            panel_w,
+            H,
+            bool(is_qual),
+            tuple(
+                (
+                    str(drv.get('pos') or ''),
+                    str(drv.get('name') or drv.get('abbr') or ''),
+                    str(drv.get('car') or ''),
+                    str(drv.get('team_logo') or ''),
+                    str(drv.get('car_illustration') or ''),
+                    str(drv.get('gap') or ''),
+                    str(drv.get('speed') or ''),
+                )
+                for drv in visible
+            ),
+        )
+        cached = getattr(self, '_ic_driver_strip_cache', None)
+        if cached and cached.get('key') == cache_key:
+            cards = cached.get('cards') or []
+            strip = cached.get('strip')
+            strip_w = int(cached.get('strip_w') or 0)
+        else:
+            cards = []
+            for driver in visible:
+                pos = str(driver.get('pos') or '')
+                name = str(driver.get('name') or driver.get('abbr') or '???').strip()
+                car_num = str(driver.get('car') or '').strip()
+                place_text = _ordinal_place(pos)
+                name_font = self.font
+                name_w, _ = _text_size(pd, name, name_font)
+                if name_w > 72:
+                    name_font = getattr(self, 'tiny', self.font)
+                    name_w, _ = _text_size(pd, name, name_font)
+                if name_w > 84:
+                    name_font = getattr(self, 'tiny_small', name_font)
+                    name_w, _ = _text_size(pd, name, name_font)
+                place_w, _ = _text_size(pd, place_text, self.font)
+                num_w, _ = _text_size(pd, car_num, self.font)
+                card_w = max(min_card_w, int(name_w) + 24, int(place_w + num_w) + 18)
+                card = Image.new('RGBA', (card_w, card_h), (0, 0, 0, 0))
+                cd = ImageDraw.Draw(card)
+                team_logo = str(driver.get('team_logo') or '').strip()
+                car_image = str(driver.get('car_illustration') or '').strip()
+                gap_val = str(driver.get('gap') or '').strip()
+                cd.rectangle([0, 0, card_w - 1, card_h - 1], fill=(12, 12, 18))
+                cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(60, 60, 72), width=1)
+                if pos == '1':
+                    cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(255, 215, 0), width=1)
 
-            pos_color = (255, 215, 0) if pos == '1' else (180, 180, 180)
-            cd.text((4, 0), place_text, font=self.font, fill=pos_color)
+                pos_color = (255, 215, 0) if pos == '1' else (180, 180, 180)
+                cd.text((4, 0), place_text, font=self.font, fill=pos_color)
 
-            if car_num:
-                num_fill, _num_outline = _ic_sample_colors(self._ic_load_logo(team_logo, (18, 18)))
-                num_w, _ = _text_size(cd, car_num, self.font)
-                cd.text((card_w - int(num_w) - 5, 0), car_num, font=self.font, fill=num_fill)
+                if car_num:
+                    num_fill, _num_outline = _ic_sample_colors(self._ic_load_logo(team_logo, (18, 18)))
+                    num_w, _ = _text_size(cd, car_num, self.font)
+                    cd.text((card_w - int(num_w) - 5, 0), car_num, font=self.font, fill=num_fill)
 
-            name_w, _ = _text_size(cd, name, self.font)
-            name_x = max(4, card_w - int(name_w) - 5)
-            cd.text((name_x, 9), name, font=self.font, fill=(255, 255, 255))
+                name_w, _ = _text_size(cd, name, name_font)
+                name_x = max(4, card_w - int(name_w) - 5)
+                cd.text((name_x, 8), name, font=name_font, fill=(255, 255, 255))
 
-            if car_image:
-                car_img = self._ic_load_logo(car_image, (120, 16))
-                if car_img:
-                    car_img = _trim_transparent_padding(car_img)
-                    car_x = 1
-                    car_y = max(13, card_h - car_img.height - 1)
-                    card.paste(car_img, (car_x, car_y), car_img)
-            elif car_num:
-                draw_tiny_text(cd, 5, 19, car_num, (110, 110, 122))
+                if car_image:
+                    car_img = self._ic_load_logo(car_image, (120, 16))
+                    if car_img:
+                        car_img = _trim_transparent_padding(car_img)
+                        car_x = 1
+                        car_y = max(14, card_h - car_img.height - 1)
+                        card.paste(car_img, (car_x, car_y), car_img)
+                elif car_num:
+                    draw_tiny_text(cd, 5, 19, car_num, (110, 110, 122))
 
-            if is_qual:
-                right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:8]
-            else:
-                right_val = gap_val[:10]
-            if right_val:
-                rv_w = _tiny_text_width(right_val, self.font)
-                draw_tiny_text(cd, max(4, card_w - rv_w - 4), 23, right_val, (140, 190, 255) if pos != '1' else (255, 255, 255))
+                if is_qual:
+                    right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:8]
+                else:
+                    right_val = gap_val[:10]
+                if right_val:
+                    rv_w = _tiny_text_width(right_val, self.font)
+                    draw_tiny_text(cd, max(4, card_w - rv_w - 4), 23, right_val, (140, 190, 255) if pos != '1' else (255, 255, 255))
 
-            cards.append(card)
+                cards.append(card)
 
-        strip_w = sum(card.width for card in cards) + gap * len(cards)
+            strip_w = sum(card.width for card in cards) + gap * len(cards)
+            strip = Image.new('RGBA', (strip_w + panel_w, H), (0, 0, 0, 0))
+            sx = 0
+            i = 0
+            while sx < strip.width and cards:
+                card = cards[i % len(cards)]
+                strip.paste(card, (sx, 1), card)
+                sx += card.width + gap
+                i += 1
+            self._ic_driver_strip_cache = {'key': cache_key, 'cards': cards, 'strip': strip, 'strip_w': strip_w}
+
         if strip_w <= 0:
             img.paste(panel, (x_off, 0), panel)
             return
@@ -608,15 +645,6 @@ class IndycarMixin:
 
         # Advance the horizontal scroll and crop a continuous strip.
         self._ic_hscroll_x = (self._ic_hscroll_x + elapsed * row_speed) % strip_w
-
-        strip = Image.new('RGBA', (strip_w + panel_w, H), (0, 0, 0, 0))
-        sx = 0
-        i = 0
-        while sx < strip.width:
-            card = cards[i % len(cards)]
-            strip.paste(card, (sx, 1), card)
-            sx += card.width + gap
-            i += 1
 
         view_x = int(self._ic_hscroll_x)
         view = strip.crop((view_x, 0, view_x + panel_w, H))
