@@ -256,6 +256,8 @@ class SportsIndycarMixin:
         drivers.sort(key=lambda d: d['pos'] if d['pos'] > 0 else 999)
 
         event_id = str(hb.get('EventID') or hb.get('EventSessionID') or 'indycar_live')
+        away_abbr = event_name or track_name or 'INDYCAR'
+        home_abbr = session_name or session_label or 'SESSION'
 
         return {
             'id':           event_id,
@@ -265,6 +267,10 @@ class SportsIndycarMixin:
             'status':       status_display,
             'is_shown':     True,
             'startTimeUTC': '',
+            'away_abbr':    away_abbr,
+            'home_abbr':    home_abbr,
+            'away_score':   track_name or event_name or '',
+            'home_score':   session_label or session_name or '',
             'indycar': {
                 'event_name':   event_name,
                 'short_name':   event_name,
