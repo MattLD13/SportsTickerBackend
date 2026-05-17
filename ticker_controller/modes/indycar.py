@@ -118,6 +118,19 @@ class IndycarMixin:
     def _ic_payload(self, game):
         return (game.get('indycar') or {}) if isinstance(game, dict) else {}
 
+    def _ic_load_logo(self, url, size):
+        url = str(url or '').strip()
+        if not url:
+            return None
+        logo = self.get_logo(url, size)
+        if logo is not None:
+            return logo
+        try:
+            self.download_and_process_logo(url, size)
+        except Exception:
+            pass
+        return self.get_logo(url, size)
+
     def _ic_draw_livery_bar(self, d, x, y, w, h, primary_hex, secondary_hex):
         """Draw a vertical livery bar split primary (top) / secondary (bottom)."""
         pri = _hex_to_rgb(primary_hex, (128, 128, 128))
@@ -203,13 +216,13 @@ class IndycarMixin:
             draw_tiny_text(d, 1, y, pos, pos_color)
 
             # Center the 3-letter code and number image as one unit.
-            badge = self.get_logo(team_logo, (10, 10)) if team_logo else _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=2)
+            badge = self._ic_load_logo(team_logo, (10, 10)) if team_logo else _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=1)
             group_w = _tiny_text_width(abbr, self.font) + (2 if badge else 0) + (badge.width if badge else 0)
-            start_x = max(24, int(round(58 - group_w / 2)))
+            start_x = max(20, int(round(58 - group_w / 2)))
             draw_tiny_text(d, start_x, y, abbr, (255, 255, 255))
             if badge:
                 badge_x = start_x + _tiny_text_width(abbr, self.font) + 2
-                badge_y = max(0, y - 1)
+                badge_y = max(0, y)
                 img.paste(badge, (badge_x, badge_y), badge)
 
             # Right column value
@@ -357,10 +370,10 @@ class IndycarMixin:
 
         visible.sort(key=_pos_sort_key)
 
-        card_w = 88
-        card_h = H - 2
-        gap = 4
-        row_speed = 16.0 if len(visible) > 6 else 12.0
+        card_w = 96
+        card_h = H - 4
+        gap = 6
+        row_speed = 8.0 if len(visible) > 6 else 6.0
 
         cards = []
         for driver in visible:
@@ -380,9 +393,9 @@ class IndycarMixin:
             pos_color = (255, 215, 0) if pos == '1' else (180, 180, 180)
             draw_tiny_text(cd, 3, 2, pos, pos_color)
 
-            name = name[:18]
+            name = name[:14]
             name_width = _tiny_text_width(name, self.font)
-            badge = self.get_logo(team_logo, (11, 11)) if team_logo else _render_number_badge(car_num, self.font, fg=(205, 225, 255), scale=3)
+            badge = self._ic_load_logo(team_logo, (11, 11)) if team_logo else _render_number_badge(car_num, self.font, fg=(205, 225, 255), scale=1)
             badge_w = badge.width if badge else 0
             group_w = name_width + (2 if badge else 0) + badge_w
             group_x = max(5, int((card_w - group_w) / 2))
@@ -391,12 +404,13 @@ class IndycarMixin:
                 card.paste(badge, (group_x + name_width + 2, 1), badge)
 
             if car_image:
-                car_img = self.get_logo(car_image, (36, 12))
+                car_img = self._ic_load_logo(car_image, (36, 12))
                 if car_img:
                     car_x = max(4, int((card_w - car_img.width) / 2))
-                    card.paste(car_img, (car_x, 12), car_img)
+                    car_y = 11
+                    card.paste(car_img, (car_x, car_y), car_img)
             elif car_num:
-                draw_tiny_text(cd, 6, 13, car_num, (110, 110, 122))
+                draw_tiny_text(cd, max(2, int((card_w - _tiny_text_width(car_num, self.font)) / 2)), 13, car_num, (110, 110, 122))
 
             if is_qual:
                 right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:8]
@@ -404,7 +418,7 @@ class IndycarMixin:
                 right_val = gap_val[:10]
             if right_val:
                 rv_w = _tiny_text_width(right_val, self.font)
-                draw_tiny_text(cd, max(4, card_w - rv_w - 4), 22, right_val, (140, 190, 255) if pos != '1' else (255, 255, 255))
+                draw_tiny_text(cd, max(4, card_w - rv_w - 4), 21, right_val, (140, 190, 255) if pos != '1' else (255, 255, 255))
 
             cards.append(card)
 

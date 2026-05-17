@@ -403,6 +403,8 @@ def _filter_preview_games(games: list, mode: str) -> list:
                 should_show = False
         elif mode == 'soccer_full':
             should_show = str(sport).startswith('soccer_')
+        elif mode == 'golf':
+            should_show = g_type in ('golf', 'masters') or sport in ('golf', 'masters')
         elif mode == 'masters':
             should_show = g_type == 'masters' or sport == 'masters'
 
