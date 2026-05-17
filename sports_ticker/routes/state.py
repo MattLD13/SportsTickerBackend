@@ -49,6 +49,28 @@ def _indycar_summary_card(data, compact=True, fullscreen=False):
 _n24_summary_card = _indycar_summary_card  # legacy
 
 
+def _inject_indycar_items(data: dict, target: list, compact: bool = True):
+    """Append all IndyCar display items to target list.
+
+    Produces:
+      • indycar_dashboard  — fullscreen 384 px leaderboard (→ static hold)
+      • indycar_rc         — 192 px session/flag summary  (→ scrolling strip)
+      • indycar_car × N    — one card per driver with a time (→ scrolling strip)
+
+    compact=True  → car cards render at 96 px (sports scroll mode)
+    compact=False → car cards render at 128 px (sports_full / pinned mode)
+    """
+    items = indycar_fetcher.format_for_ticker(data)
+    for item in items:
+        # Skip car cards for drivers who haven't set a time yet
+        if item.get('type') == 'indycar_car' and not item.get('best_lap'):
+            continue
+        card = item.copy()
+        card['compact']  = compact
+        card['is_shown'] = True
+        target.append(card)
+
+
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
     ticker_id = request.args.get('id')
@@ -191,8 +213,7 @@ def get_ticker_data():
         if active_sports.get('indycar', active_sports.get('n24', True)):
             indycar_data = indycar_fetcher.fetch()
             if indycar_data and indycar_data.get('status') == 'live':
-                card = _indycar_summary_card(indycar_data, compact=True)
-                visible_items.append(card)
+                _inject_indycar_items(indycar_data, visible_items, compact=True)
 
     elif current_mode == 'sports_full':
         # Pinned game override — show everything without active_sports filtering
@@ -207,9 +228,8 @@ def get_ticker_data():
         if active_sports.get('indycar', active_sports.get('n24', True)):
             indycar_data = indycar_fetcher.fetch()
             _ic_pinned = pin_league in ('n24', 'indycar')
-            # Show fullscreen dashboard when IndyCar is the pinned subject or nothing specific is pinned
             if indycar_data and (not effective_pin or _ic_pinned):
-                visible_items.append(_indycar_summary_card(indycar_data, compact=False, fullscreen=True))
+                _inject_indycar_items(indycar_data, visible_items, compact=False)
 
     elif current_mode == 'soccer_full':
         for g in raw_games:
@@ -237,8 +257,7 @@ def get_ticker_data():
         if active_sports.get('indycar', active_sports.get('n24', True)):
             indycar_data = indycar_fetcher.fetch()
             if indycar_data:
-                # RC card (192 px) scrolls in the sports strip like any other sport card
-                visible_items.append(_indycar_summary_card(indycar_data, compact=True, fullscreen=False))
+                _inject_indycar_items(indycar_data, visible_items, compact=True)
 
     else:
         # Stocks, Weather, Clock, Flights
@@ -425,16 +444,16 @@ def api_state():
         game_copy['is_shown'] = should_show
         processed_games.append(game_copy)
 
-    # Inject IndyCar card into sports/sports_full/live feed
+    # Inject IndyCar items into sports/sports_full/live feed
     if current_mode in ('sports', 'sports_full', 'live') and _active_sports.get('indycar', _active_sports.get('n24', True)):
         _ic_data = indycar_fetcher.fetch()
         if _ic_data:
             _is_live = _ic_data.get('status') == 'live'
             if current_mode != 'live' or _is_live:
                 _ic_pinned = _pin_league in ('n24', 'indycar')
-                _fullscreen = current_mode == 'sports_full' and (not pinned_game or _ic_pinned)
                 if not pinned_game or _ic_pinned:
-                    processed_games.append(_indycar_summary_card(_ic_data, compact=(not _fullscreen), fullscreen=_fullscreen))
+                    _compact = current_mode != 'sports_full'
+                    _inject_indycar_items(_ic_data, processed_games, compact=_compact)
 
     tz_name = str(response_settings.get('timezone_name', '')).strip()
     tz_offset = response_settings.get('utc_offset', state.get('utc_offset', -5))
