@@ -179,6 +179,92 @@ SOCCER_COLOR_FALLBACK = {
     "sporting": "008000", "celtic": "008000", "rangers": "0000FF", "braga": "E03A3E", "sc braga": "E03A3E",
 }
 
+# ── Nürburgring 24h / endurance racing ──────────────────────────────────────
+# Manufacturer livery palettes: primary, secondary, accent + Wikimedia logo URL.
+# Logo URLs use the stable commons.wikimedia.org/wiki/Special:FilePath redirect
+# with ?width=80 to get a rasterised PNG at a fixed size.
+# Empty string = no logo (HTML falls back to the coloured abbreviation badge).
+_W = 'https://commons.wikimedia.org/wiki/Special:FilePath/'
+RACING_MANUFACTURER_COLORS = {
+    'porsche':       {'primary': '#FFD100', 'secondary': '#000000', 'accent': '#FFFFFF',  'text': '#000000', 'logo': f'{_W}Porsche_logo.svg?width=80'},
+    'bmw':           {'primary': '#1C69AD', 'secondary': '#FFFFFF', 'accent': '#E32221',  'text': '#FFFFFF', 'logo': f'{_W}BMW.svg?width=80'},
+    'bmw m':         {'primary': '#1C69AD', 'secondary': '#FFFFFF', 'accent': '#E32221',  'text': '#FFFFFF', 'logo': f'{_W}BMW.svg?width=80'},
+    'mercedes':      {'primary': '#00D2BE', 'secondary': '#000000', 'accent': '#FFFFFF',  'text': '#000000', 'logo': f'{_W}Mercedes-Benz_Logo_2010.svg?width=80'},
+    'mercedes-amg':  {'primary': '#00D2BE', 'secondary': '#000000', 'accent': '#C8A951',  'text': '#000000', 'logo': f'{_W}Mercedes-Benz_Logo_2010.svg?width=80'},
+    'amg':           {'primary': '#00D2BE', 'secondary': '#000000', 'accent': '#C8A951',  'text': '#000000', 'logo': f'{_W}Mercedes-Benz_Logo_2010.svg?width=80'},
+    'ferrari':       {'primary': '#DC0000', 'secondary': '#FFFFFF', 'accent': '#FFD700',  'text': '#FFFFFF', 'logo': f'{_W}Ferrari-Logo.svg?width=80'},
+    'lamborghini':   {'primary': '#B8960C', 'secondary': '#1A1A1A', 'accent': '#FFFFFF',  'text': '#FFFFFF', 'logo': f'{_W}Lamborghini_Logo.svg?width=80'},
+    'audi':          {'primary': '#BB0000', 'secondary': '#FFFFFF', 'accent': '#888888',  'text': '#FFFFFF', 'logo': f'{_W}Audi-Logo_2016.svg?width=80'},
+    'mclaren':       {'primary': '#FF8000', 'secondary': '#000000', 'accent': '#0090D4',  'text': '#FFFFFF', 'logo': ''},
+    'aston martin':  {'primary': '#006F62', 'secondary': '#CEAE56', 'accent': '#FFFFFF',  'text': '#FFFFFF', 'logo': f'{_W}Aston_Martin_logo.svg?width=80'},
+    'ford':          {'primary': '#003087', 'secondary': '#FFFFFF', 'accent': '#C41230',  'text': '#FFFFFF', 'logo': f'{_W}Ford_logo_flat.svg?width=80'},
+    'mustang':       {'primary': '#003087', 'secondary': '#FFFFFF', 'accent': '#C41230',  'text': '#FFFFFF', 'logo': f'{_W}Ford_logo_flat.svg?width=80'},
+    'corvette':      {'primary': '#FEC306', 'secondary': '#C41230', 'accent': '#000000',  'text': '#000000', 'logo': ''},
+    'chevrolet':     {'primary': '#D4AF37', 'secondary': '#C41230', 'accent': '#000000',  'text': '#000000', 'logo': f'{_W}Chevrolet_logo.svg?width=80'},
+    'nissan':        {'primary': '#C3122F', 'secondary': '#FFFFFF', 'accent': '#888888',  'text': '#FFFFFF', 'logo': f'{_W}Nissan_2020_logo.svg?width=80'},
+    'toyota':        {'primary': '#EB0A1E', 'secondary': '#FFFFFF', 'accent': '#222222',  'text': '#FFFFFF', 'logo': f'{_W}Toyota_carlogo.svg?width=80'},
+    'lexus':         {'primary': '#1A1A1A', 'secondary': '#C8A951', 'accent': '#FFFFFF',  'text': '#FFFFFF', 'logo': f'{_W}Lexus_division_emblem.svg?width=80'},
+    'honda':         {'primary': '#CC0000', 'secondary': '#FFFFFF', 'accent': '#555555',  'text': '#FFFFFF', 'logo': f'{_W}Honda.svg?width=80'},
+    'acura':         {'primary': '#CC0000', 'secondary': '#FFFFFF', 'accent': '#888888',  'text': '#FFFFFF', 'logo': f'{_W}Acura_logo.svg?width=80'},
+    'hyundai':       {'primary': '#002C5F', 'secondary': '#FFFFFF', 'accent': '#00AAD4',  'text': '#FFFFFF', 'logo': f'{_W}Hyundai_Motor_Company_logo.svg?width=80'},
+    'alpine':        {'primary': '#0067FF', 'secondary': '#FFFFFF', 'accent': '#FF0033',  'text': '#FFFFFF', 'logo': f'{_W}Alpine_cars_logo.svg?width=80'},
+    'renault':       {'primary': '#FFCD00', 'secondary': '#000000', 'accent': '#C41230',  'text': '#000000', 'logo': f'{_W}Renault_2021_Text_Logo.svg?width=80'},
+    'seat':          {'primary': '#FF0000', 'secondary': '#FFFFFF', 'accent': '#222222',  'text': '#FFFFFF', 'logo': f'{_W}SEAT_logo.svg?width=80'},
+    'cupra':         {'primary': '#B37F17', 'secondary': '#000000', 'accent': '#FFFFFF',  'text': '#FFFFFF', 'logo': ''},
+    'bentley':       {'primary': '#2D6030', 'secondary': '#CEAE56', 'accent': '#FFFFFF',  'text': '#FFFFFF', 'logo': f'{_W}Bentley_logo.svg?width=80'},
+    'maserati':      {'primary': '#131F6B', 'secondary': '#FFFFFF', 'accent': '#C8A951',  'text': '#FFFFFF', 'logo': f'{_W}Maserati_logo.svg?width=80'},
+    'cadillac':      {'primary': '#002654', 'secondary': '#B8960C', 'accent': '#FFFFFF',  'text': '#FFFFFF', 'logo': f'{_W}Cadillac_logo.svg?width=80'},
+    'peugeot':       {'primary': '#0082C3', 'secondary': '#FFFFFF', 'accent': '#222222',  'text': '#FFFFFF', 'logo': f'{_W}Peugeot_logo.svg?width=80'},
+    'mazda':         {'primary': '#910037', 'secondary': '#FFFFFF', 'accent': '#888888',  'text': '#FFFFFF', 'logo': f'{_W}Mazda_logo.svg?width=80'},
+    'subaru':        {'primary': '#0033A0', 'secondary': '#FFD700', 'accent': '#FFFFFF',  'text': '#FFFFFF', 'logo': f'{_W}Subaru_logo.svg?width=80'},
+    'volkswagen':    {'primary': '#001E50', 'secondary': '#FFFFFF', 'accent': '#6E9ECC',  'text': '#FFFFFF', 'logo': f'{_W}Volkswagen_logo_2019.svg?width=80'},
+    'vw':            {'primary': '#001E50', 'secondary': '#FFFFFF', 'accent': '#6E9ECC',  'text': '#FFFFFF', 'logo': f'{_W}Volkswagen_logo_2019.svg?width=80'},
+    'lotus':         {'primary': '#005C23', 'secondary': '#FFD700', 'accent': '#000000',  'text': '#FFFFFF', 'logo': f'{_W}Lotus_logo.svg?width=80'},
+    'jaguar':        {'primary': '#005A2B', 'secondary': '#CEAE56', 'accent': '#FFFFFF',  'text': '#FFFFFF', 'logo': f'{_W}Jaguar_Cars_logo.svg?width=80'},
+    'mini':          {'primary': '#EB0A1E', 'secondary': '#FFFFFF', 'accent': '#222222',  'text': '#FFFFFF', 'logo': f'{_W}Mini_logo.svg?width=80'},
+    'opel':          {'primary': '#FFED00', 'secondary': '#000000', 'accent': '#C41230',  'text': '#000000', 'logo': f'{_W}Opel_logo_2017.svg?width=80'},
+    'alfa romeo':    {'primary': '#CE2028', 'secondary': '#002F6C', 'accent': '#FFFFFF',  'text': '#FFFFFF', 'logo': f'{_W}Alfa_Romeo_logo.svg?width=80'},
+    'alfa':          {'primary': '#CE2028', 'secondary': '#002F6C', 'accent': '#FFFFFF',  'text': '#FFFFFF', 'logo': f'{_W}Alfa_Romeo_logo.svg?width=80'},
+    'glickenhaus':   {'primary': '#C8102E', 'secondary': '#FFFFFF', 'accent': '#003087',  'text': '#FFFFFF', 'logo': ''},
+    'ginetta':       {'primary': '#D01F2A', 'secondary': '#FFFFFF', 'accent': '#222222',  'text': '#FFFFFF', 'logo': ''},
+    'radical':       {'primary': '#FF4500', 'secondary': '#000000', 'accent': '#FFD700',  'text': '#FFFFFF', 'logo': ''},
+    'dodge':         {'primary': '#D40000', 'secondary': '#000000', 'accent': '#AAAAAA',  'text': '#FFFFFF', 'logo': f'{_W}Dodge_logo.svg?width=80'},
+    'ktm':           {'primary': '#FF6600', 'secondary': '#000000', 'accent': '#FFFFFF',  'text': '#FFFFFF', 'logo': f'{_W}KTM-logo.svg?width=80'},
+    'skoda':         {'primary': '#4BA82E', 'secondary': '#FFFFFF', 'accent': '#000000',  'text': '#FFFFFF', 'logo': f'{_W}Škoda_Auto_logo_since_2016.svg?width=80'},
+    'abarth':        {'primary': '#CC0000', 'secondary': '#FFDD00', 'accent': '#222222',  'text': '#FFFFFF', 'logo': f'{_W}Abarth_logo.svg?width=80'},
+    'lancia':        {'primary': '#003087', 'secondary': '#FFFFFF', 'accent': '#C41230',  'text': '#FFFFFF', 'logo': f'{_W}Lancia_logo.svg?width=80'},
+    'pagani':        {'primary': '#C8A951', 'secondary': '#000000', 'accent': '#FFFFFF',  'text': '#000000', 'logo': ''},
+}
+
+# N24 / VLN race class colour palettes
+RACING_CLASS_COLORS = {
+    'SP9':       {'bg': '#CC2200', 'text': '#FFFFFF', 'label': 'GT3'},
+    'SP9 GT3':   {'bg': '#CC2200', 'text': '#FFFFFF', 'label': 'GT3'},
+    'SP9-GT3':   {'bg': '#CC2200', 'text': '#FFFFFF', 'label': 'GT3'},
+    'LMGT3':     {'bg': '#CC2200', 'text': '#FFFFFF', 'label': 'LMGT3'},
+    'SP8':       {'bg': '#C05000', 'text': '#FFFFFF', 'label': 'GTC'},
+    'SP7':       {'bg': '#BB7700', 'text': '#FFFFFF', 'label': 'SP7'},
+    'SP6':       {'bg': '#998800', 'text': '#FFFFFF', 'label': 'SP6'},
+    'SPX':       {'bg': '#557700', 'text': '#FFFFFF', 'label': 'SPX'},
+    'SP3T':      {'bg': '#007744', 'text': '#FFFFFF', 'label': 'SP3T'},
+    'SP3':       {'bg': '#007744', 'text': '#FFFFFF', 'label': 'SP3'},
+    'SP2T':      {'bg': '#005599', 'text': '#FFFFFF', 'label': 'SP2T'},
+    'SP2':       {'bg': '#005599', 'text': '#FFFFFF', 'label': 'SP2'},
+    'SP1':       {'bg': '#550099', 'text': '#FFFFFF', 'label': 'SP1'},
+    'CUP5':      {'bg': '#880055', 'text': '#FFFFFF', 'label': 'CUP5'},
+    'CUP3':      {'bg': '#775500', 'text': '#FFFFFF', 'label': 'CUP3'},
+    'CUP2':      {'bg': '#335500', 'text': '#FFFFFF', 'label': 'CUP2'},
+    'E1-XP':     {'bg': '#004488', 'text': '#FFFFFF', 'label': 'E1-XP'},
+    'E2-SH':     {'bg': '#004455', 'text': '#FFFFFF', 'label': 'E2-SH'},
+    'VT2':       {'bg': '#444444', 'text': '#FFFFFF', 'label': 'VT2'},
+    'AT':        {'bg': '#334455', 'text': '#FFFFFF', 'label': 'AT'},
+    'TCR':       {'bg': '#0055AA', 'text': '#FFFFFF', 'label': 'TCR'},
+    'GT4':       {'bg': '#AA4400', 'text': '#FFFFFF', 'label': 'GT4'},
+}
+
+_RACING_DEFAULT_MFR   = {'primary': '#2A3A4A', 'secondary': '#4A6A8A', 'accent': '#AABBCC', 'text': '#FFFFFF', 'logo': ''}
+_RACING_DEFAULT_CLASS = {'bg': '#333344', 'text': '#CCCCDD', 'label': '?'}
+
 SPORT_DURATIONS = {
     'nfl': 195, 'ncf_fbs': 210, 'ncf_fcs': 195,
     'nba': 150, 'nhl': 150, 'mlb': 180, 'weather': 60, 'soccer': 115

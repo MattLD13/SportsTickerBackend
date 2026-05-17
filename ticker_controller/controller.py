@@ -34,9 +34,10 @@ from .modes.golf import GolfMixin
 from .modes.music import MusicMixin
 from .modes.flight import FlightMixin
 from .modes.misc import MiscMixin
+from .modes.racing import RacingMixin
 
 
-class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin):
+class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin, RacingMixin):
     def __init__(self):
         print("Starting Ticker System...")
         self.device_id = get_device_id()
@@ -441,6 +442,11 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             self.game_render_cache[game_hash] = img
             return img
 
+        if game.get('type') == 'n24_car' or game.get('sport') == 'n24':
+            img = self.draw_n24_car_card(game)
+            self.game_render_cache[game_hash] = img
+            return img
+
         if game.get('type') == 'flight_visitor':
             img = self.draw_flight_visitor(game)
             self.game_render_cache[game_hash] = img
@@ -483,6 +489,8 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             return PANEL_W if self.mode in ('golf', 'sports_full') else 128 + GAME_SEPARATOR_W
         if t == 'music' or s == 'music':
             return PANEL_W
+        if t == 'n24_car' or s == 'n24':
+            return 128
         if t == 'stock_ticker' or (s and str(s).startswith('stock')):
             return 128
         if t == 'weather':

@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>N24 · Nürburgring 24h Live</title>
+  <style>
+    /* ── Reset / base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:          #070c12;
+      --surface:     #0d1620;
+      --surface2:    #111e2c;
+      --surface3:    #152538;
+      --border:      #1e3448;
+      --text-hi:     #edf4fc;
+      --text-mid:    #8aaccc;
+      --text-dim:    #4a6a88;
+      --accent:      #e8c040;
+      --live-red:    #ef4444;
+      --scroll-dur:  80s;
+    }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text-hi);
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+      overflow: hidden;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────── */
+    .page { display: flex; flex-direction: column; height: 100vh; }
+
+    /* ── Race header ──────────────────────────────────────────────── */
+    .race-header {
+      flex-shrink: 0;
+      background: linear-gradient(135deg, #0d1a2a 0%, #0a1520 60%, #12200f 100%);
+      border-bottom: 2px solid var(--border);
+      padding: 14px 24px;
+    }
+    .header-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .event-branding {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex: 1;
+      min-width: 0;
+    }
+    .flag-ring {
+      width: 46px; height: 46px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px;
+      background: #0a1620;
+      flex-shrink: 0;
+    }
+    .event-text .event-name {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text-hi);
+      line-height: 1.2;
+    }
+    .event-text .circuit-name {
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+    .header-pills {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .pill {
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .pill-live {
+      background: rgba(239,68,68,0.15);
+      border: 1px solid var(--live-red);
+      color: var(--live-red);
+    }
+    .pill-live .blink-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--live-red);
+      animation: blink 1.2s ease-in-out infinite;
+    }
+    .pill-no-data {
+      background: rgba(100,120,140,0.15);
+      border: 1px solid var(--text-dim);
+      color: var(--text-dim);
+    }
+    @keyframes blink {
+      0%,100% { opacity: 1; }
+      50%      { opacity: 0.15; }
+    }
+    .race-stats {
+      display: flex; gap: 20px;
+    }
+    .stat {
+      text-align: right;
+    }
+    .stat-label {
+      font-size: 0.58rem;
+      letter-spacing: 0.18em;
+      color: var(--text-dim);
+    }
+    .stat-value {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1.3;
+    }
+
+    /* ── Column header ────────────────────────────────────────────── */
+    .col-header {
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: 52px 52px 72px 1fr 1fr 68px 90px 96px;
+      gap: 0;
+      padding: 7px 16px 7px 26px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.6rem;
+      letter-spacing: 0.18em;
+      color: var(--text-dim);
+    }
+
+    /* ── Scroll viewport ──────────────────────────────────────────── */
+    .scroll-viewport {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+    .scroll-track {
+      /* JS sets --row-count and controls transform for infinite scroll */
+      will-change: transform;
+    }
+    .scroll-track.animating {
+      transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ── Entry row ────────────────────────────────────────────────── */
+    .entry {
+      display: grid;
+      grid-template-columns: 52px 52px 72px 1fr 1fr 68px 90px 96px;
+      gap: 0;
+      align-items: center;
+      padding: 0 16px 0 0;
+      height: 52px;
+      border-bottom: 1px solid rgba(30,52,72,0.6);
+      position: relative;
+      transition: background 0.2s;
+    }
+    .entry:hover { background: rgba(255,255,255,0.03); }
+    .entry.podium-1 { background: rgba(255,215,0,0.06); }
+    .entry.podium-2 { background: rgba(192,192,192,0.05); }
+    .entry.podium-3 { background: rgba(205,127,50,0.05); }
+
+    /* 3-color livery stripe on the left edge */
+    .livery-stripe {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 6px;
+      display: flex;
+      flex-direction: column;
+    }
+    .livery-stripe span {
+      flex: 1;
+    }
+
+    /* Columns */
+    .col { padding: 0 6px; display: flex; align-items: center; }
+
+    .col-pos {
+      justify-content: center;
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--text-hi);
+      padding-left: 10px;
+    }
+    .col-pos.p1 { color: #FFD700; }
+    .col-pos.p2 { color: #C0C0C0; }
+    .col-pos.p3 { color: #CD7F32; }
+
+    .col-num {
+      justify-content: center;
+    }
+    .car-number {
+      min-width: 34px;
+      text-align: center;
+      padding: 3px 5px;
+      border-radius: 5px;
+      font-size: 0.8rem;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      line-height: 1;
+    }
+
+    .col-class { justify-content: center; }
+    .class-badge {
+      padding: 3px 7px;
+      border-radius: 4px;
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      white-space: nowrap;
+    }
+
+    .col-team {
+      gap: 8px;
+      min-width: 0;
+    }
+    .mfr-logo-wrap {
+      width: 26px; height: 26px;
+      flex-shrink: 0;
+      border-radius: 4px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.06);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .mfr-logo-wrap img {
+      width: 100%; height: 100%;
+      object-fit: contain;
+    }
+    .mfr-logo-wrap .mfr-abbr {
+      font-size: 0.48rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-align: center;
+      line-height: 1.1;
+      padding: 1px;
+    }
+    .team-text { min-width: 0; }
+    .team-name {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-hi);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .car-name {
+      font-size: 0.58rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+
+    .col-drivers { min-width: 0; flex-direction: column; align-items: flex-start; gap: 1px; }
+    .driver-name {
+      font-size: 0.6rem;
+      color: var(--text-mid);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      width: 100%;
+    }
+
+    .col-laps {
+      justify-content: center;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text-hi);
+    }
+
+    .col-gap {
+      justify-content: flex-end;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--text-mid);
+      font-variant-numeric: tabular-nums;
+    }
+    .gap-leader { color: var(--accent); font-size: 0.62rem; letter-spacing: 0.06em; }
+
+    .col-lap {
+      justify-content: flex-end;
+      font-size: 0.72rem;
+      color: var(--text-mid);
+      font-variant-numeric: tabular-nums;
+    }
+    .lap-time { color: var(--text-hi); }
+
+    /* ── Empty / error state ──────────────────────────────────────── */
+    .empty-state {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 16px;
+      color: var(--text-dim);
+    }
+    .empty-state.visible { display: flex; }
+    .empty-icon { font-size: 3rem; }
+    .empty-title { font-size: 1.1rem; font-weight: 700; color: var(--text-mid); letter-spacing: 0.06em; }
+    .empty-body  { font-size: 0.75rem; text-align: center; line-height: 1.7; max-width: 340px; }
+
+    /* ── Footer ───────────────────────────────────────────────────── */
+    .race-footer {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 20px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      font-size: 0.58rem;
+      letter-spacing: 0.12em;
+      color: var(--text-dim);
+    }
+    .footer-left { display: flex; gap: 16px; }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .legend-dot {
+      width: 8px; height: 8px;
+      border-radius: 2px;
+    }
+
+    /* ── Scrollbar hidden ─────────────────────────────────────────── */
+    ::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Race header ──────────────────────────────────────────────── -->
+  <div class="race-header">
+    <div class="header-row">
+      <div class="event-branding">
+        <div class="flag-ring">🇩🇪</div>
+        <div class="event-text">
+          <div class="event-name">ADAC TOTAL 24H-RENNEN</div>
+          <div class="circuit-name">NÜRBURGRING · NORDSCHLEIFE · 25.678 KM</div>
+        </div>
+      </div>
+      <div class="race-stats">
+        <div class="stat">
+          <div class="stat-label">ENTRIES</div>
+          <div class="stat-value" id="stat-entries">—</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">LEADER LAPS</div>
+          <div class="stat-value" id="stat-laps">—</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">UPDATED</div>
+          <div class="stat-value" id="stat-updated">—</div>
+        </div>
+      </div>
+      <div class="header-pills">
+        <div class="pill pill-live" id="pill-live" style="display:none">
+          <span class="blink-dot"></span>LIVE
+        </div>
+        <div class="pill pill-no-data" id="pill-offline">NO DATA</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Column labels ──────────────────────────────────────────────── -->
+  <div class="col-header">
+    <span>POS</span>
+    <span style="text-align:center">#</span>
+    <span style="text-align:center">CLASS</span>
+    <span>TEAM / CAR</span>
+    <span>DRIVERS</span>
+    <span style="text-align:center">LAPS</span>
+    <span style="text-align:right">GAP</span>
+    <span style="text-align:right">LAST LAP</span>
+  </div>
+
+  <!-- ── Scrolling leaderboard ──────────────────────────────────────── -->
+  <div class="scroll-viewport" id="viewport">
+    <div class="scroll-track" id="scroll-track">
+      <!-- entries injected here by JS; duplicated for seamless loop -->
+    </div>
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">🏁</div>
+      <div class="empty-title">RACE NOT ACTIVE</div>
+      <div class="empty-body">
+        The Nürburgring 24h is not currently underway.<br>
+        Live timing will appear automatically when the race begins.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Footer / legend ───────────────────────────────────────────── -->
+  <div class="race-footer">
+    <div class="footer-left">
+      <div class="legend-item"><div class="legend-dot" style="background:#CC2200"></div>SP9 GT3</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#C05000"></div>SP8 GTC</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#BB7700"></div>SP7</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#557700"></div>SPX</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#007744"></div>SP3/SP3T</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#005599"></div>SP2/SP2T</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#0055AA"></div>TCR</div>
+    </div>
+    <span>DATA: RACE RESULT / ADAC MOTORSPORT</span>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Config ──────────────────────────────────────────────────────────
+  const API_URL      = '/api/racing/nurburgring';
+  const REFRESH_MS   = 30_000;   // re-fetch every 30 s
+  const ROW_HEIGHT   = 52;       // px — must match CSS .entry height
+  const ROWS_VISIBLE = 10;       // rows to show at once before scrolling
+  const STEP_MS      = 3_000;    // pause between scroll steps
+  const STEP_ROWS    = 3;        // rows to advance per step
+
+  // ── State ────────────────────────────────────────────────────────────
+  let entries      = [];
+  let scrollPos    = 0;   // current top row index
+  let scrollTimer  = null;
+  let isPaused     = false;
+
+  // ── DOM refs ─────────────────────────────────────────────────────────
+  const track      = document.getElementById('scroll-track');
+  const viewport   = document.getElementById('viewport');
+  const emptyState = document.getElementById('empty-state');
+  const pillLive   = document.getElementById('pill-live');
+  const pillOffline= document.getElementById('pill-offline');
+  const statEntries= document.getElementById('stat-entries');
+  const statLaps   = document.getElementById('stat-laps');
+  const statUpdated= document.getElementById('stat-updated');
+
+  // Pause on hover
+  viewport.addEventListener('mouseenter', () => { isPaused = true;  });
+  viewport.addEventListener('mouseleave', () => { isPaused = false; });
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s ?? '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+
+  function fmtTime(s) {
+    const t = new Date(s * 1000);
+    return t.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  }
+
+  function mfrAbbr(name) {
+    if (!name) return '?';
+    return name.replace('mercedes-amg','AMG')
+               .replace('aston martin','AM')
+               .replace('alfa romeo','AR')
+               .split(' ').map(w => w[0]?.toUpperCase()).join('').slice(0,3);
+  }
+
+  // ── Render a single entry row ─────────────────────────────────────────
+  function buildRow(e, idx) {
+    const mc  = e.manufacturer_colors  || { primary:'#2A3A4A', secondary:'#4A6A8A', accent:'#AABBCC', text:'#FFFFFF', logo:'' };
+    const cc  = e.class_colors         || { bg:'#333344', text:'#CCCCDD', label: e.class_name || '?' };
+    const pos = parseInt(e.pos) || 99;
+    const podiumCls = pos === 1 ? 'podium-1' : pos === 2 ? 'podium-2' : pos === 3 ? 'podium-3' : '';
+    const posCls    = pos === 1 ? 'p1'       : pos === 2 ? 'p2'       : pos === 3 ? 'p3'       : '';
+
+    const driversHtml = (e.drivers || []).slice(0,3)
+      .map(d => `<div class="driver-name">${esc(d)}</div>`).join('');
+
+    const logoHtml = mc.logo
+      ? `<img src="${esc(mc.logo)}" alt="${esc(e.manufacturer || '')}"
+              onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      : '';
+    const abbrStyle  = mc.logo
+      ? `style="display:none;color:${esc(mc.text)}"` : `style="color:${esc(mc.text)}"`;
+
+    const gapHtml = e.gap
+      ? `<span>${esc(e.gap)}</span>`
+      : `<span class="gap-leader">LEADER</span>`;
+
+    const lapHtml = e.last_lap
+      ? `<span class="lap-time">${esc(e.last_lap)}</span>`
+      : `<span>—</span>`;
+
+    return `
+<div class="entry ${podiumCls}" data-idx="${idx}">
+  <div class="livery-stripe">
+    <span style="background:${esc(mc.primary)}"></span>
+    <span style="background:${esc(mc.secondary)}"></span>
+    <span style="background:${esc(mc.accent)}"></span>
+  </div>
+
+  <div class="col col-pos ${posCls}">${esc(e.pos)}</div>
+
+  <div class="col col-num">
+    <div class="car-number"
+         style="background:${esc(mc.primary)};color:${esc(mc.text)}"
+    >${esc(e.car_num)}</div>
+  </div>
+
+  <div class="col col-class">
+    <div class="class-badge"
+         style="background:${esc(cc.bg)};color:${esc(cc.text)}"
+    >${esc(cc.label)}</div>
+  </div>
+
+  <div class="col col-team">
+    <div class="mfr-logo-wrap" style="border:1px solid ${esc(mc.primary)}40">
+      ${logoHtml}
+      <div class="mfr-abbr" ${abbrStyle}>${esc(mfrAbbr(e.manufacturer))}</div>
+    </div>
+    <div class="team-text">
+      <div class="team-name">${esc(e.team || e.car || '—')}</div>
+      <div class="car-name">${esc(e.car && e.car !== e.team ? e.car : '')}</div>
+    </div>
+  </div>
+
+  <div class="col col-drivers">${driversHtml || '<div class="driver-name">—</div>'}</div>
+
+  <div class="col col-laps">${e.laps || '—'}</div>
+
+  <div class="col col-gap">${gapHtml}</div>
+
+  <div class="col col-lap">${lapHtml}</div>
+</div>`;
+  }
+
+  // ── Render the full track (entries + duplicate for seamless loop) ─────
+  function renderTrack(data) {
+    if (!data || !data.entries || data.entries.length === 0) {
+      track.innerHTML = '';
+      emptyState.classList.add('visible');
+      pillLive.style.display    = 'none';
+      pillOffline.style.display = '';
+      statEntries.textContent   = '—';
+      statLaps.textContent      = '—';
+      statUpdated.textContent   = '—';
+      return;
+    }
+
+    emptyState.classList.remove('visible');
+    pillLive.style.display    = '';
+    pillOffline.style.display = 'none';
+    statEntries.textContent   = data.entries.length;
+    statLaps.textContent      = data.leader_laps || '—';
+    statUpdated.textContent   = data.fetched_at ? fmtTime(data.fetched_at) : '—';
+
+    entries = data.entries;
+    const html = entries.map((e, i) => buildRow(e, i)).join('');
+    // Duplicate for seamless infinite scroll
+    track.innerHTML = html + html;
+
+    // Reset scroll position
+    scrollPos = 0;
+    applyScroll(false);
+  }
+
+  // ── Scroll logic ──────────────────────────────────────────────────────
+  function applyScroll(animate) {
+    const offset = scrollPos * ROW_HEIGHT;
+    if (animate) {
+      track.classList.add('animating');
+      track.addEventListener('transitionend', () => track.classList.remove('animating'), { once: true });
+    }
+    track.style.transform = `translateY(-${offset}px)`;
+  }
+
+  function tick() {
+    if (isPaused || entries.length === 0) return;
+
+    const maxRows    = entries.length;           // half the track (it's doubled)
+    const totalVisible = ROWS_VISIBLE;
+    const maxScroll  = maxRows - totalVisible;
+
+    if (maxScroll <= 0) return;
+
+    scrollPos += STEP_ROWS;
+
+    // Seamlessly reset when we've scrolled through the first copy
+    if (scrollPos >= maxRows) {
+      // Instantly jump to equivalent position in the duplicate
+      scrollPos -= maxRows;
+      applyScroll(false);
+      // Wait a frame then continue
+      requestAnimationFrame(() => {
+        scrollPos += STEP_ROWS;
+        applyScroll(true);
+      });
+    } else {
+      applyScroll(true);
+    }
+  }
+
+  function startScrollTimer() {
+    if (scrollTimer) clearInterval(scrollTimer);
+    scrollTimer = setInterval(tick, STEP_MS);
+  }
+
+  // ── Data fetching ─────────────────────────────────────────────────────
+  async function fetchData() {
+    try {
+      const resp = await fetch(API_URL);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      renderTrack(data);
+    } catch (err) {
+      console.warn('[N24] fetch error:', err);
+      // keep existing display
+    }
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────
+  fetchData();
+  setInterval(fetchData, REFRESH_MS);
+  startScrollTimer();
+
+})();
+</script>
+</body>
+</html>

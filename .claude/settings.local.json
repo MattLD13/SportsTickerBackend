@@ -85,7 +85,11 @@
       "Bash(python -c \"import yt_dlp; print\\('yt-dlp', yt_dlp.version.__version__\\)\")",
       "Bash(.venv/Scripts/pip install *)",
       "Bash(python -c \"import yt_dlp; print\\('ok', yt_dlp.version.__version__\\)\")",
-      "Bash(python -m pip install yt-dlp -q)"
+      "Bash(python -m pip install yt-dlp -q)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\" -Force)",
+      "Bash(Select-Object Name, FullName)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\ticker_controller\" -Recurse)",
+      "Bash(dir \"c:\\\\Users\\\\mld20\\\\Documents\\\\SportsTickerBackend\\\\sports_ticker\\\\dashboard\\\\static\\\\\")"
     ]
   }
 }

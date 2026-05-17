@@ -10,6 +10,7 @@ from .core import (
     Tee, tee_instance, purge_stale_tickers,
 )
 from .fetchers_runtime import TestMode, SportsFetcher, SpotifyFetcher, FlightTracker
+from .fetchers.racing_nurburgring import n24_fetcher
 
 # Restore TestMode from persisted state (only active when debug_mode is on)
 if state.get('debug_mode'):
@@ -220,6 +221,17 @@ def music_worker():
             print(f"Music worker error: {e}")
         time.sleep(1)
 
+def n24_worker():
+    """Background poller for Nürburgring 24h live timing."""
+    while True:
+        try:
+            if _any_ticker_needs('n24'):
+                n24_fetcher.fetch()
+        except Exception as e:
+            print(f'N24 worker error: {e}')
+        time.sleep(30)
+
+
 def start_background_workers():
     """Start all background worker threads. Called once at server startup."""
     global _background_workers_started
@@ -233,6 +245,7 @@ def start_background_workers():
         ('stocks_worker',  stocks_worker),
         ('music_worker',   music_worker),
         ('flights_worker', flights_worker),
+        ('n24_worker',     n24_worker),
     ]
     for name, target in workers:
         threading.Thread(target=target, name=name, daemon=True).start()

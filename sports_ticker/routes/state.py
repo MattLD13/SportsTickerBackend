@@ -11,6 +11,7 @@ from ..core import (
     SERVER_VERSION,
 )
 from ..workers import request_refresh, fetcher
+from ..fetchers.racing_nurburgring import n24_fetcher
 
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
@@ -186,6 +187,13 @@ def get_ticker_data():
             g_copy['sport'] = sport
             g_copy['is_shown'] = True
             visible_items.append(g_copy)
+
+    elif current_mode == 'n24':
+        n24_data = n24_fetcher.fetch()
+        if n24_data:
+            for g in n24_fetcher.format_for_ticker(n24_data):
+                g['is_shown'] = True
+                visible_items.append(g)
 
     else:
         # Stocks, Weather, Clock, Flights

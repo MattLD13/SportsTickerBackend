@@ -1485,3 +1485,15 @@ Starting Flask on port 5000...
 [DEBUG][REFRESH] done reason=music_worker took=0.00s
 [DEBUG][REFRESH] start reason=music_worker
 [DEBUG][REFRESH] done reason=music_worker took=0.00s
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+fetcher OK — manufacturers: 48 classes: 22
+acronym test DOL: DOL
+extract test porsche: porsche
+📂 Found 0 saved tickers in 'ticker_data'
+📦 Loaded 30 cached games from game_cache.json
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Racing routes: ['/racing/nurburgring', '/api/racing/nurburgring', '/api/racing/nurburgring/colors']
