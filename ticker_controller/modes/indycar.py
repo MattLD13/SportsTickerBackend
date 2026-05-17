@@ -7,6 +7,7 @@ Full screen (384 × 32):  left 1/4 = race info, right 3/4 = scrolling driver lis
 import hashlib
 import io
 import os
+import threading
 import time
 from datetime import datetime
 import requests
@@ -157,12 +158,25 @@ def _flood_remove_background(img, tolerance=35):
         return img
 
 
-_NASCAR_CAR_CACHE: dict = {}   # url → PIL RGBA (bg removed, mirrored, not yet resized)
+_NASCAR_CAR_CACHE: dict = {}   # cache_key → PIL RGBA
 _NASCAR_CAR_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
+# Download progress tracking
+_nascar_dl_lock   = threading.Lock()
+_nascar_dl_total  = 0        # URLs submitted for current race
+_nascar_dl_done   = 0        # URLs successfully cached (memory or disk)
+_nascar_dl_pending: set = set()  # URLs not yet successfully downloaded
+
+
+def nascar_dl_progress():
+    """Return (done, total) for the current NASCAR car image download batch."""
+    with _nascar_dl_lock:
+        return _nascar_dl_done, _nascar_dl_total
 
 
 def _load_nascar_car(url, target_size):
     """Download at full resolution, remove white bg via flood-fill, then thumbnail. Disk-cached."""
+    global _nascar_dl_done
     if not url:
         return None
     cache_key = f"{url}_{target_size[0]}x{target_size[1]}"
@@ -174,6 +188,9 @@ def _load_nascar_car(url, target_size):
         if os.path.exists(disk_path):
             img = Image.open(disk_path).convert('RGBA')
             _NASCAR_CAR_CACHE[cache_key] = img
+            with _nascar_dl_lock:
+                _nascar_dl_pending.discard(url)
+                _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
             return img
     except Exception:
         pass
@@ -190,11 +207,38 @@ def _load_nascar_car(url, target_size):
             full.save(disk_path, 'PNG')
         except Exception:
             pass
+        with _nascar_dl_lock:
+            _nascar_dl_pending.discard(url)
+            _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
         return full
-    except Exception as _nascar_exc:
+    except Exception as _exc:
         import logging
-        logging.getLogger(__name__).warning("[NASCAR] car image failed %s: %s", url, _nascar_exc)
+        logging.getLogger(__name__).warning("[NASCAR] car image failed %s: %s", url, _exc)
         return None
+
+
+def nascar_submit_downloads(urls, target_size, executor):
+    """Register a batch of NASCAR car URLs and submit them to the thread pool."""
+    global _nascar_dl_total, _nascar_dl_done
+    urls = [u for u in urls if u]
+    if not urls:
+        return
+    with _nascar_dl_lock:
+        # Only queue URLs whose processed cache key isn't already present
+        new_urls = [u for u in urls
+                    if f"{u}_{target_size[0]}x{target_size[1]}" not in _NASCAR_CAR_CACHE]
+        _nascar_dl_pending.update(new_urls)
+        _nascar_dl_total = len(_nascar_dl_pending) + _nascar_dl_done
+    for u in new_urls:
+        executor.submit(_load_nascar_car, u, target_size)
+
+
+def nascar_retry_pending(executor, target_size=(120, 14)):
+    """Re-submit any URLs that haven't successfully downloaded yet."""
+    with _nascar_dl_lock:
+        pending = list(_nascar_dl_pending)
+    for u in pending:
+        executor.submit(_load_nascar_car, u, target_size)
 
 
 _NASCAR_RACE_ID_FILE = 'nascar_race_id.txt'
@@ -212,7 +256,7 @@ def _nascar_purge_old_cars(assets_dir, race_id):
         stored = ''
     if stored == race_id:
         return
-    # Race week changed — purge stale car PNGs and memory cache
+    # Race week changed — purge stale car PNGs and all counters
     import logging
     logging.getLogger(__name__).info("[NASCAR] race_id changed %s→%s, purging car cache", stored, race_id)
     try:
@@ -223,6 +267,11 @@ def _nascar_purge_old_cars(assets_dir, race_id):
                 except Exception:
                     pass
         _NASCAR_CAR_CACHE.clear()
+        global _nascar_dl_total, _nascar_dl_done
+        with _nascar_dl_lock:
+            _nascar_dl_total = 0
+            _nascar_dl_done = 0
+            _nascar_dl_pending.clear()
         os.makedirs(assets_dir, exist_ok=True)
         with open(id_file, 'w') as f:
             f.write(race_id)

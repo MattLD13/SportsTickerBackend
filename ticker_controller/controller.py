@@ -34,7 +34,10 @@ from .modes.golf import GolfMixin
 from .modes.music import MusicMixin
 from .modes.flight import FlightMixin
 from .modes.misc import MiscMixin
-from .modes.indycar import IndycarMixin, _load_nascar_car, _nascar_purge_old_cars
+from .modes.indycar import (
+    IndycarMixin, _load_nascar_car, _nascar_purge_old_cars,
+    nascar_submit_downloads, nascar_retry_pending, nascar_dl_progress,
+)
 from .modes.f1 import F1Mixin
 from .modes.nascar import NascarMixin
 
@@ -161,6 +164,12 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         img = pil_image.convert("RGB")
         if self.inverted:
             img = img.rotate(180)
+        # Download progress bar: 1px dark-green strip at the bottom
+        dl_done, dl_total = nascar_dl_progress()
+        if dl_total > 0 and dl_done < dl_total:
+            bar_w = max(1, int(img.width * dl_done / dl_total))
+            draw = ImageDraw.Draw(img)
+            draw.line([(0, img.height - 1), (bar_w - 1, img.height - 1)], fill=(0, 80, 0))
         target_b = int(max(0, min(100, self.brightness * 100)))
         self.matrix.brightness = target_b
         self.matrix.SetImage(img)
@@ -638,6 +647,8 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
 
                 if self.brightness <= 0.001:
                     self.matrix.Fill(0, 0, 0)
+                    # Night: aggressively retry any pending NASCAR car downloads
+                    nascar_retry_pending(self.executor)
                     time.sleep(0.5)
                     continue
 
@@ -898,6 +909,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                                 if nascar_race_id:
                                     _nascar_purge_old_cars(ASSETS_DIR, str(nascar_race_id))
                             # Prefetch ALL drivers' logos and car illustrations
+                            nascar_car_urls = []
                             for drv in (ic.get('drivers') or []):
                                 tl = drv.get('team_logo') or ''
                                 ci = drv.get('car_illustration') or ''
@@ -906,12 +918,12 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                                     logos_to_fetch.append((tl, (10, 10)))
                                     logos_to_fetch.append((tl, (7, 7)))
                                 if ci and 'nascar.com' in ci:
-                                    # NASCAR car images need flood-fill BG removal — submit
-                                    # directly to _NASCAR_CAR_CACHE (same cache the renderer uses)
-                                    self.executor.submit(_load_nascar_car, ci, (120, 14))
+                                    nascar_car_urls.append(ci)
                                 elif ci:
                                     logos_to_fetch.append((ci, (36, 12)))
                                     logos_to_fetch.append((ci, (120, 16)))
+                            if nascar_car_urls:
+                                nascar_submit_downloads(nascar_car_urls, (120, 14), self.executor)
                         else:
                             if g.get('home_logo'):
                                 logos_to_fetch.append((g.get('home_logo'), (22, 22)))
