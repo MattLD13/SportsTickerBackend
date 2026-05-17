@@ -298,13 +298,13 @@ class IndycarMixin:
             draw_tiny_text(d, 0, y, pos, pos_color)
 
             # Put the number text to the left of the driver code.
-            num_fill, num_outline = _ic_sample_colors(self._ic_load_logo(team_logo, (18, 18)))
+            num_fill, _num_outline = _ic_sample_colors(self._ic_load_logo(team_logo, (18, 18)))
             num_text = car_num or abbr
             num_w = _tiny_text_width(num_text, self.font)
             name_w = _tiny_text_width(abbr, self.font)
             total_w = num_w + 2 + name_w
             start_x = max(5, int(round(36 - total_w / 2)))
-            _draw_tiny_text_outline(d, start_x, y, num_text, num_fill, num_outline)
+            draw_tiny_text(d, start_x, y, num_text, num_fill)
             draw_tiny_text(d, start_x + num_w + 2, y, abbr, (255, 255, 255))
 
             # Right column value
