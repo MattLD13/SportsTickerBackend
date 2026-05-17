@@ -54,12 +54,12 @@ def _render_number_badge(text, font, fg=(235, 235, 235), scale=2):
         text_w = bbox[2] - bbox[0]
     except Exception:
         text_w = max(4, len(text) * 4)
-    base_w = max(8, text_w + 2)
-    badge = Image.new("RGBA", (base_w, 7), (0, 0, 0, 0))
+    base_w = max(6, text_w + 1)
+    badge = Image.new("RGBA", (base_w, 5), (0, 0, 0, 0))
     bd = ImageDraw.Draw(badge)
     draw_tiny_text(bd, max(0, (base_w - text_w) // 2), 0, text, fg)
     if scale > 1:
-        badge = badge.resize((base_w * scale, 7 * scale), Image.Resampling.NEAREST)
+        badge = badge.resize((base_w * scale, 5 * scale), Image.Resampling.NEAREST)
     return badge
 
 
@@ -231,13 +231,13 @@ class IndycarMixin:
             draw_tiny_text(d, 1, y, pos, pos_color)
 
             # Put the number art to the left of the driver code.
-            badge = self._ic_load_logo(team_logo, (12, 12)) if team_logo else _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=1)
+            badge = self._ic_load_logo(team_logo, (8, 8)) if team_logo else _render_number_badge(car_num, self.font, fg=(180, 210, 255), scale=1)
             name_w = _tiny_text_width(abbr, self.font)
             badge_w = badge.width if badge else 0
             total_w = badge_w + (2 if badge else 0) + name_w
-            start_x = max(18, int(round(61 - total_w / 2)))
+            start_x = max(10, int(round(58 - total_w / 2)))
             if badge:
-                badge_y = max(0, y - 1)
+                badge_y = max(0, y - 2)
                 img.paste(badge, (start_x, badge_y), badge)
                 text_x = start_x + badge_w + 2
             else:
