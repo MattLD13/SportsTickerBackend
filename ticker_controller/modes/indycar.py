@@ -303,7 +303,11 @@ class IndycarMixin:
             num_w = _tiny_text_width(num_text, self.font)
             name_w = _tiny_text_width(abbr, self.font)
             total_w = num_w + 2 + name_w
-            start_x = max(5, int(round(36 - total_w / 2)))
+            # Center the (number + name) group in the DRIVER column
+            DRIVER_COL_LEFT = 34
+            DRIVER_COL_RIGHT = 90
+            center_x = (DRIVER_COL_LEFT + DRIVER_COL_RIGHT) / 2
+            start_x = max(5, int(round(center_x - total_w / 2)))
             draw_tiny_text(d, start_x, y, num_text, num_fill)
             draw_tiny_text(d, start_x + num_w + 2, y, abbr, (255, 255, 255))
 
