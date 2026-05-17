@@ -11,6 +11,65 @@ from ..core import (
     SERVER_VERSION,
 )
 from ..workers import request_refresh, fetcher
+from ..fetchers.racing_indycar import indycar_fetcher
+# Legacy alias
+n24_fetcher = indycar_fetcher
+
+
+def _indycar_placeholder():
+    return {
+        'id': 'indycar_rc', 'type': 'indycar_rc', 'sport': 'indycar',
+        'track_state_key': 'green', 'track_state_name': 'CONNECTING...',
+        'track_state_color': '#4a6a88', 'latest_message': 'Connecting to IndyCar timing...',
+        'session_type': 'race', 'session_label': 'RACE',
+        'messages': [], 'leader_laps': 0, 'is_shown': True,
+        'home_abbr': 'IMS', 'away_abbr': 'RC', 'home_score': '...', 'away_score': '', 'status': '',
+    }
+
+_n24_placeholder = _indycar_placeholder  # legacy
+
+
+def _indycar_summary_card(data, compact=True, fullscreen=False):
+    """Return an IndyCar card for the sports feed.
+
+    fullscreen=False → indycar_rc (192 px, scrolls in strip like any sport card)
+    fullscreen=True  → indycar_dashboard (384 px, shown as full-bleed static hold)
+    """
+    items = indycar_fetcher.format_for_ticker(data)
+    if not items:
+        return _indycar_placeholder()
+    if fullscreen:
+        card = next((i for i in items if i.get('type') == 'indycar_dashboard'), items[0]).copy()
+    else:
+        card = next((i for i in items if i.get('type') == 'indycar_rc'), items[0]).copy()
+    card['compact'] = compact
+    card['is_shown'] = True
+    return card
+
+_n24_summary_card = _indycar_summary_card  # legacy
+
+
+def _inject_indycar_items(data: dict, target: list, compact: bool = True):
+    """Append all IndyCar display items to target list.
+
+    Produces:
+      • indycar_dashboard  — fullscreen 384 px leaderboard (→ static hold)
+      • indycar_rc         — 192 px session/flag summary  (→ scrolling strip)
+      • indycar_car × N    — one card per driver with a time (→ scrolling strip)
+
+    compact=True  → car cards render at 96 px (sports scroll mode)
+    compact=False → car cards render at 128 px (sports_full / pinned mode)
+    """
+    items = indycar_fetcher.format_for_ticker(data)
+    for item in items:
+        # Skip car cards for drivers who haven't set a time yet
+        if item.get('type') == 'indycar_car' and not item.get('best_lap'):
+            continue
+        card = item.copy()
+        card['compact']  = compact
+        card['is_shown'] = True
+        target.append(card)
+
 
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
@@ -151,6 +210,10 @@ def get_ticker_data():
                 g_copy['sport'] = sport
                 g_copy['is_shown'] = True
                 visible_items.append(g_copy)
+        if active_sports.get('indycar', active_sports.get('n24', True)):
+            indycar_data = indycar_fetcher.fetch()
+            if indycar_data and indycar_data.get('status') == 'live':
+                _inject_indycar_items(indycar_data, visible_items, compact=True)
 
     elif current_mode == 'sports_full':
         # Pinned game override — show everything without active_sports filtering
@@ -162,6 +225,11 @@ def get_ticker_data():
             g_copy['sport'] = sport
             g_copy['is_shown'] = True
             visible_items.append(g_copy)
+        if active_sports.get('indycar', active_sports.get('n24', True)):
+            indycar_data = indycar_fetcher.fetch()
+            _ic_pinned = pin_league in ('n24', 'indycar')
+            if indycar_data and (not effective_pin or _ic_pinned):
+                _inject_indycar_items(indycar_data, visible_items, compact=False)
 
     elif current_mode == 'soccer_full':
         for g in raw_games:
@@ -186,6 +254,10 @@ def get_ticker_data():
             g_copy['sport'] = sport
             g_copy['is_shown'] = True
             visible_items.append(g_copy)
+        if active_sports.get('indycar', active_sports.get('n24', True)):
+            indycar_data = indycar_fetcher.fetch()
+            if indycar_data:
+                _inject_indycar_items(indycar_data, visible_items, compact=True)
 
     else:
         # Stocks, Weather, Clock, Flights
@@ -216,7 +288,9 @@ def get_ticker_data():
     response_local_config['utc_offset'] = tz_offset
     effective_mode_for_response = current_mode
     if current_mode == 'sports' and len(visible_items) == 1:
-        effective_mode_for_response = 'sports_full'
+        # Don't upgrade indycar summary cards — they have their own fixed-width renderer
+        if visible_items[0].get('sport') not in ('n24', 'indycar'):
+            effective_mode_for_response = 'sports_full'
     response_local_config['mode'] = effective_mode_for_response
 
     # Report global config from global state only. Do not reflect per-ticker
@@ -287,6 +361,9 @@ def api_state():
 
     # Legacy app behavior: reflect pin by forcing sports_full mode in /api/state.
     # This keeps pinned detection compatible with clients that key off mode.
+    _pg_norm = str(pinned_game or '').strip().lower()
+    _pin_gid = _pg_norm.split(':', 1)[-1] if ':' in _pg_norm else _pg_norm
+    _pin_league = _pg_norm.split(':', 1)[0] if ':' in _pg_norm else ''
     if pinned_game and current_mode in SPORTS_MODE_FAMILY:
         current_mode = 'sports_full'
         response_settings['mode'] = current_mode
@@ -364,9 +441,19 @@ def api_state():
         elif current_mode == 'flight_tracker':
             if g_type != 'flight_visitor':
                 should_show = False
-
         game_copy['is_shown'] = should_show
         processed_games.append(game_copy)
+
+    # Inject IndyCar items into sports/sports_full/live feed
+    if current_mode in ('sports', 'sports_full', 'live') and _active_sports.get('indycar', _active_sports.get('n24', True)):
+        _ic_data = indycar_fetcher.fetch()
+        if _ic_data:
+            _is_live = _ic_data.get('status') == 'live'
+            if current_mode != 'live' or _is_live:
+                _ic_pinned = _pin_league in ('n24', 'indycar')
+                if not pinned_game or _ic_pinned:
+                    _compact = current_mode != 'sports_full'
+                    _inject_indycar_items(_ic_data, processed_games, compact=_compact)
 
     tz_name = str(response_settings.get('timezone_name', '')).strip()
     tz_offset = response_settings.get('utc_offset', state.get('utc_offset', -5))

@@ -10,6 +10,9 @@ from .core import (
     Tee, tee_instance, purge_stale_tickers,
 )
 from .fetchers_runtime import TestMode, SportsFetcher, SpotifyFetcher, FlightTracker
+from .fetchers.racing_indycar import indycar_fetcher
+# Legacy alias so anything still importing n24_fetcher keeps working
+n24_fetcher = indycar_fetcher
 
 # Restore TestMode from persisted state (only active when debug_mode is on)
 if state.get('debug_mode'):
@@ -220,6 +223,40 @@ def music_worker():
             print(f"Music worker error: {e}")
         time.sleep(1)
 
+def indycar_worker():
+    """Background poller for IndyCar live timing.
+
+    Keeps the cache warm for indycar mode and for injection into
+    sports/sports_full/live modes. The fetcher's own HTTP poll loop
+    runs independently; this worker just ensures the scoring URL
+    override from config is applied and the thread stays alive.
+    """
+    _manual_url = state.get('indycar_scoring_url', '')
+    if _manual_url:
+        indycar_fetcher.manual_scoring_url = str(_manual_url).strip() or None
+
+    while True:
+        try:
+            _url = state.get('indycar_scoring_url', '')
+            indycar_fetcher.manual_scoring_url = str(_url).strip() or None
+
+            needs = _any_ticker_needs('indycar', 'sports', 'sports_full', 'live', 'my_teams')
+            with data_lock:
+                indycar_on = (
+                    state.get('active_sports', {}).get('indycar', True)
+                    or state.get('active_sports', {}).get('n24', False)
+                )
+            if needs and indycar_on:
+                indycar_fetcher._start_poll()  # no-op if already running
+        except Exception as e:
+            print(f'IndyCar worker error: {e}')
+        time.sleep(30)
+
+
+# Keep old name so any external call site doesn't break immediately
+n24_worker = indycar_worker
+
+
 def start_background_workers():
     """Start all background worker threads. Called once at server startup."""
     global _background_workers_started
@@ -233,6 +270,7 @@ def start_background_workers():
         ('stocks_worker',  stocks_worker),
         ('music_worker',   music_worker),
         ('flights_worker', flights_worker),
+        ('indycar_worker', indycar_worker),
     ]
     for name, target in workers:
         threading.Thread(target=target, name=name, daemon=True).start()
