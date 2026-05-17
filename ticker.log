@@ -2199,3 +2199,41 @@ AttributeError: 'SportsFetcher' object has no attribute 'fetch_games'
 Racing in sports feed: 2
   indycar    state=post   status=FINAL      is_shown=True event='Indy 500'
   nascar     state=post   status=FINAL      is_shown=True event='NASCAR All-Star Race - Final Segment'
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_SCROLL: drivers_count=26
+scroll card: 128x32
+INDYCAR_PANEL: visible_count=26 panel_w=300
+sports_full pin: 384x32
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+{
+  "id": "nascar_5609",
+  "type": "racing",
+  "sport": "nascar",
+  "state": "post",
+  "status": "FINAL",
+  "away_abbr": "NASCAR All-Star Race - Final Segment",
+  "home_abbr": "Cup Series",
+  "away_score": "",
+  "home_score": "",
+  "startTimeUTC": "",
+  "is_shown": true
+}
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+{
+  "sport": "nascar",
+  "state": "post",
+  "status": "FINAL",
+  "away_abbr": "NASCAR All-Star Race",
+  "home_abbr": "Race",
+  "away_score": "",
+  "home_score": ""
+}

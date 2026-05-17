@@ -208,7 +208,15 @@ class SportsNascarMixin:
             short_name = run_name
             for drop in ('NASCAR CUP SERIES ', 'NASCAR XFINITY SERIES ', 'NASCAR CRAFTSMAN TRUCK SERIES '):
                 short_name = short_name.replace(drop, '').replace(drop.title(), '')
+            # Also strip " - Final Segment" / " - Final" suffixes for the display name
+            for suffix in (' - Final Segment', ' - FINAL SEGMENT', ' - Final', ' - FINAL'):
+                if short_name.endswith(suffix):
+                    short_name = short_name[:-len(suffix)].strip()
+                    break
             short_name = short_name.strip()
+
+            # session_label e.g. "Race", "Qualifying" — used as home_abbr for iOS app display
+            session_label_short = {1: 'Race', 2: 'Xfinity', 3: 'Trucks'}.get(series_id, series_label)
 
             game = {
                 'id': f"nascar_{feed.get('race_id', 'live')}",
@@ -219,7 +227,7 @@ class SportsNascarMixin:
                 'is_shown': True,
                 'startTimeUTC': '',
                 'away_abbr': short_name,
-                'home_abbr': series_label,
+                'home_abbr': session_label_short,
                 'away_score': '',
                 'home_score': '',
                 'nascar': {
