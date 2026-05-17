@@ -202,79 +202,9 @@ a:hover { text-decoration: underline; }
 }
 .mode-scroller::-webkit-scrollbar { display: none; }
 
-.mode-filters {
-  display: flex;
-  gap: 6px;
-  flex-wrap: nowrap;
-  min-width: max-content;
-}
+ 
 
-.mf-btn {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: .3px;
-  padding: 6px 16px;
-  border-radius: 20px;
-  border: 1px solid var(--border-2);
-  background: var(--surface-2);
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: all .15s;
-  white-space: nowrap;
-  font-family: var(--font);
-  flex-shrink: 0;
-}
-.mf-btn:hover { color: var(--text-hi); background: var(--surface-3); }
-.mf-btn.active {
-  border-color: var(--mf-c, var(--accent));
-  color: var(--mf-c, var(--accent));
-  background: color-mix(in srgb, var(--mf-c, var(--accent)) 14%, transparent);
-}
-
-.mf-btn[data-mode="sports"]         { --mf-c: #ff8c00; }
-.mf-btn[data-mode="live"]           { --mf-c: #ef4444; }
-.mf-btn[data-mode="stocks"]         { --mf-c: #22c55e; }
-.mf-btn[data-mode="music"]          { --mf-c: #1DB954; }
-.mf-btn[data-mode="flights"]        { --mf-c: #06b6d4; }
-.mf-btn[data-mode="flight_tracker"] { --mf-c: #06b6d4; }
-.mf-btn[data-mode="weather"]        { --mf-c: #3b82f6; }
-.mf-btn[data-mode="clock"]          { --mf-c: #94a3b8; }
-
-/* ── Speed slider ─────────────────────────────────────────────────────────── */
-.speed-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-}
-.speed-cap { font-size: 11px; color: var(--text-mute); font-family: var(--font-mono); min-width: 12px; }
-.speed-num { font-size: 13px; font-weight: 700; color: var(--text-hi); font-family: var(--font-mono); min-width: 16px; }
-
-.speed-range {
-  -webkit-appearance: none;
-  flex: 1;
-  max-width: 220px;
-  height: 4px;
-  background: var(--border-2);
-  border-radius: 2px;
-  outline: none;
-  cursor: pointer;
-}
-.speed-range::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 15px; height: 15px;
-  border-radius: 50%;
-  background: var(--accent);
-  cursor: pointer;
-  box-shadow: 0 0 8px rgba(0,120,255,.4);
-}
-.speed-range::-moz-range-thumb {
-  width: 15px; height: 15px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: none;
-  cursor: pointer;
-}
+ 
 
 /* ── Control panels ───────────────────────────────────────────────────────── */
 .ctrl-panel {
@@ -414,77 +344,7 @@ a:hover { text-decoration: underline; }
   letter-spacing: .5px;
 }
 
-/* ── Games section ────────────────────────────────────────────────────────── */
-.games-section { padding-bottom: 32px; }
-
-.collapsible {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.collapsible-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-  gap: 12px;
-  transition: background .15s;
-}
-.collapsible-header::-webkit-details-marker { display: none; }
-.collapsible-header::marker               { display: none; }
-.collapsible-header:hover { background: var(--surface-2); }
-
-.collapsible-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-hi);     /* ← always readable */
-}
-.collapsible-arrow {
-  color: var(--text-dim);
-  transition: transform .2s;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-}
-details[open] .collapsible-arrow { transform: rotate(180deg); }
-
-/* ── Detail grid ──────────────────────────────────────────────────────────── */
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 10px;
-  padding: 16px 20px 20px;
-  border-top: 1px solid var(--border);
-}
-
-.dc {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px 16px;
-  cursor: pointer;
-  transition: border-color .15s, background .15s, box-shadow .2s;
-}
-.dc:hover  { border-color: var(--border-2); background: var(--surface-3); }
-.dc.active { border-color: var(--border-2); background: var(--surface-3); }
-.dc.pinned {
-  border-color: var(--red) !important;
-  background: rgba(239,68,68,.06) !important;
-  box-shadow: 0 0 18px rgba(239,68,68,.16);
-}
-
-.dc-badge  { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .6px; padding: 2px 9px; border-radius: 5px; margin-bottom: 10px; text-transform: uppercase; }
-.dc-teams  { font-size: 14px; font-weight: 700; color: var(--text-hi); line-height: 1.3; margin-bottom: 5px; }
-.dc-score  { font-size: 24px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; margin-bottom: 3px; letter-spacing: -.5px; }
-.dc-status { font-size: 12px; color: var(--text-dim); margin-bottom: 2px; }
-.dc-detail { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-dim); line-height: 1.9; }
-.dc.active .dc-detail { display: block; }
-.dc-detail .row { display: flex; justify-content: space-between; gap: 8px; }
-.dc-detail .row span:last-child { color: var(--text); text-align: right; }
+ 
 
 /* ── System info ──────────────────────────────────────────────────────────── */
 .info-section { padding-bottom: 64px; }
@@ -617,9 +477,7 @@ details[open] .collapsible-arrow { transform: rotate(180deg); }
 
   .setting-row { flex-wrap: wrap; padding: 12px 16px; gap: 10px; }
   .setting-label { min-width: 0; }
-  .mode-scroller { order: 2; width: 100%; }
-
-  .detail-grid { grid-template-columns: 1fr 1fr; padding: 12px 14px 16px; gap: 8px; }
+  
 
   .ctrl-panel { padding: 14px 16px; }
 }
@@ -644,16 +502,11 @@ details[open] .collapsible-arrow { transform: rotate(180deg); }
   .setting-row   { padding: 10px 12px; gap: 8px; }
   .setting-label { font-size: 11px; }
 
-  /* Mode buttons — smaller on mobile */
-  .mf-btn { font-size: 11px; padding: 5px 12px; }
-
-  /* Speed slider — hide label, compact track */
-  .speed-range { max-width: 100%; }
-  .speed-cap   { display: none; }
+  
 
   .ctrl-panel { padding: 12px 12px; gap: 10px; }
 
-  .detail-grid { grid-template-columns: 1fr 1fr; padding: 10px 10px 14px; gap: 7px; }
+  
   .dc { padding: 10px 12px; }
   .dc-teams { font-size: 12px; }
   .dc-score { font-size: 18px; }
@@ -661,7 +514,7 @@ details[open] .collapsible-arrow { transform: rotate(180deg); }
   .collapsible-header { padding: 12px 14px; }
   .collapsible-title  { font-size: 13px; }
 
-  .games-section  { padding-bottom: 20px; }
+  
   .settings-section { padding-bottom: 20px; }
   .info-section   { padding-bottom: 40px; }
 
@@ -677,6 +530,5 @@ details[open] .collapsible-arrow { transform: rotate(180deg); }
   .logo-text  { display: none; }
   .ver-chip   { display: none; }
   .stats-grid { grid-template-columns: repeat(3, 1fr); gap: 5px; }
-  .detail-grid { grid-template-columns: 1fr; }
-  .mf-btn { font-size: 10px; padding: 4px 10px; }
+  
 }

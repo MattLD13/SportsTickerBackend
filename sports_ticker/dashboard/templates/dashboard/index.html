@@ -40,41 +40,11 @@
     <div class="container">
       <div class="settings-card">
 
-        <!-- Mode selector -->
-        <div class="setting-row">
-          <label class="setting-label">Mode</label>
-          <div class="mode-scroller">
-            <div class="mode-filters" id="mode-filters">
-              <button class="mf-btn" data-mode="sports">Sports</button>
-              <button class="mf-btn" data-mode="live">Live</button>
-              <button class="mf-btn" data-mode="stocks">Stocks</button>
-              <button class="mf-btn" data-mode="music">Music</button>
-              <button class="mf-btn" data-mode="flights">Flights</button>
-              <button class="mf-btn" data-mode="flight_tracker">Tracker</button>
-              <button class="mf-btn" data-mode="weather">Weather</button>
-              <button class="mf-btn" data-mode="clock">Clock</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Speed -->
-        <div class="setting-row">
-          <label class="setting-label">
-            Speed&ensp;<span class="speed-num" id="speed-val">3</span>
-          </label>
-          <div class="speed-wrap">
-            <span class="speed-cap">1</span>
-            <input type="range" id="speed-range" class="speed-range" min="1" max="10" step="1" value="3">
-            <span class="speed-cap">10</span>
-          </div>
-        </div>
+        <!-- Mode selector and preview speed removed -->
 
         <!-- Control panels (JS shows one at a time via .active) -->
 
-        <div class="ctrl-panel" id="ctrl-sports">
-          <div class="ctrl-hint">Click a game below to pin it on the display.</div>
-          <button class="btn btn-ghost" id="unpin-btn" onclick="unpinGame()" style="display:none">✕ Unpin Game</button>
-        </div>
+        <!-- sports preview controls removed -->
 
         <div class="ctrl-panel" id="ctrl-weather">
           <div class="ctrl-row">
@@ -147,26 +117,7 @@
     </div>
   </section>
 
-  <!-- ── 3. GAMES & ITEMS ── -->
-  <section class="games-section">
-    <div class="container">
-      <details class="collapsible" open>
-        <summary class="collapsible-header">
-          <span class="collapsible-title" id="detail-title">Games</span>
-          <span class="collapsible-arrow">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5"
-                    stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </span>
-        </summary>
-        <div id="detail-grid" class="detail-grid">
-          <p class="empty-note">Loading…</p>
-        </div>
-      </details>
-    </div>
-  </section>
-
+  
   <!-- ── 4. SYSTEM INFO ── -->
   <section class="info-section">
     <div class="container">
