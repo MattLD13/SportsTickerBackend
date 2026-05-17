@@ -109,6 +109,24 @@ def _simplify_indycar_session(session_label, session_name):
     return value
 
 
+def _extract_indycar_start_time(hb):
+    for key in (
+        'startTimeUTC',
+        'StartTimeUTC',
+        'SessionStartUTC',
+        'SessionStartTimeUTC',
+        'SessionStartTime',
+        'EventStartTimeUTC',
+        'EventStartTime',
+        'sessionStartUTC',
+        'sessionStartTimeUTC',
+    ):
+        value = str(hb.get(key) or '').strip()
+        if value:
+            return value
+    return ''
+
+
 class SportsIndycarMixin:
 
     def __init_indycar_cache(self):
@@ -186,6 +204,7 @@ class SportsIndycarMixin:
         session_label = _SESSION_TYPE_MAP.get(session_raw, session_raw)
         short_event_name = _simplify_indycar_event_name(event_name, track_name)
         short_session_name = _simplify_indycar_session(session_label, session_name)
+        start_time_utc = _extract_indycar_start_time(hb)
 
         # State from flag / session status
         flag_status    = str(hb.get('currentFlag') or hb.get('SessionStatus') or '').strip().upper()
@@ -213,7 +232,17 @@ class SportsIndycarMixin:
             else:
                 status_display = 'LIVE'
         else:
-            status_display = 'Scheduled'
+            if start_time_utc:
+                start_display = start_time_utc
+                try:
+                    start_dt = parse_iso(start_time_utc)
+                    if start_dt:
+                        start_display = start_dt.strftime('%I:%M %p').lstrip('0')
+                except Exception:
+                    pass
+                status_display = f"Starts {start_display}"
+            else:
+                status_display = 'Starts Soon'
 
         # Lap info (race sessions)
         current_lap = 0
@@ -313,7 +342,7 @@ class SportsIndycarMixin:
             'state':        state,
             'status':       status_display,
             'is_shown':     True,
-            'startTimeUTC': '',
+            'startTimeUTC': start_time_utc,
             'away_abbr':    away_abbr,
             'home_abbr':    home_abbr,
             'away_score':   '',

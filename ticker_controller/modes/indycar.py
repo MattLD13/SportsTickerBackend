@@ -32,18 +32,16 @@ def _ic_flag_color(flag):
 
 
 def _draw_mini_flag(d, x, y, flag):
-    pole_col = (120, 120, 120)
     fill = _ic_flag_color(flag)
     flag_name = str(flag or '').strip().upper()
-    d.line([(x, y + 1), (x, y + 8)], fill=pole_col)
     if flag_name == 'CHECKERED':
-        d.rectangle([x + 1, y + 1, x + 7, y + 5], fill=(240, 240, 240), outline=(35, 35, 35))
+        d.rectangle([x, y + 1, x + 6, y + 5], fill=(240, 240, 240), outline=(35, 35, 35))
         for yy in range(1, 5):
-            for xx in range(1, 7):
+            for xx in range(0, 7):
                 if (xx + yy) % 2 == 0:
                     d.point((x + xx, y + yy), fill=(45, 45, 45))
     else:
-        d.rectangle([x + 1, y + 1, x + 7, y + 5], fill=fill, outline=(35, 35, 35))
+        d.rectangle([x, y + 1, x + 6, y + 5], fill=fill, outline=(35, 35, 35))
 
 
 def _draw_centered_tiny_text(draw, center_x, y, text, color, font):
@@ -145,13 +143,8 @@ class IndycarMixin:
         for i, driver in enumerate(top3):
             y = row_ys[i]
             pos    = str(driver.get('pos') or i + 1)
-            name   = str(driver.get('name') or 'Unknown').strip()
-            if len(name) > 12:
-                pieces = name.split()
-                name = pieces[-1] if pieces else name
-            name = name[:11]
+            abbr   = str(driver.get('abbr') or '???').upper()[:3]
             car_num = str(driver.get('car') or '').strip()
-            car_num = f"#{car_num}" if car_num else ''
 
             # Right column: speed for qualifying, gap for race
             if is_qual:
@@ -163,11 +156,11 @@ class IndycarMixin:
             pos_color = (255, 215, 0) if pos == '1' else (200, 200, 200)
             draw_tiny_text(d, 1, y, pos, pos_color)
 
-            # Inline driver name with the car number immediately after it.
+            # Inline 3-letter driver code with the car number immediately after it.
             name_x = 26
-            draw_tiny_text(d, name_x, y, name, (255, 255, 255))
+            draw_tiny_text(d, name_x, y, abbr, (255, 255, 255))
             if car_num:
-                car_x = name_x + _tiny_text_width(name, self.font) + 2
+                car_x = name_x + _tiny_text_width(abbr, self.font) + 2
                 draw_tiny_text(d, car_x, y, car_num, (180, 210, 255))
 
             # Right column value
@@ -240,6 +233,7 @@ class IndycarMixin:
         total      = ic.get('total_laps', 0) or 0
         rem        = ic.get('laps_remaining', 0) or 0
         time_to_go = str(ic.get('time_to_go') or '').strip()
+        start_utc  = str(game.get('startTimeUTC') or '').strip()
         flag       = str(ic.get('flag') or '').strip().upper()
         caution    = flag in ('YELLOW', 'RED') or bool(ic.get('caution'))
         state      = str(game.get('state', 'pre')).lower()
@@ -270,10 +264,19 @@ class IndycarMixin:
             info_str = f"L{lap}/{total}"
         elif state == 'in' and lap > 0:
             info_str = f"LAP {lap}"
+        elif state == 'pre' and start_utc:
+            start_txt = start_utc
+            try:
+                start_dt = parse_iso(start_utc)
+                if start_dt:
+                    start_txt = start_dt.strftime('%I:%M %p').lstrip('0')
+            except Exception:
+                pass
+            info_str = f"STARTS {start_txt}"[:max_chars]
         elif time_to_go:
             info_str = time_to_go[:max_chars]
         else:
-            info_str = str(game.get('status', '')).upper()[:max_chars]
+            info_str = 'STARTS SOON' if state == 'pre' else str(game.get('status', '')).upper()[:max_chars]
 
         draw_tiny_text(d, 4, y_info, info_str, (255, 255, 255))
 
