@@ -551,11 +551,10 @@ class SportsModesMixin:
             golf_needed = bool(conf.get('active_sports', {}).get('golf', False))
             if not golf_needed:
                 golf_needed = any(str(p).strip().lower().startswith(('golf:', 'masters:')) for p in active_pins)
-            # Racing sports always fetch so live/finished races auto-appear in the
-            # scroll like any other sport. Explicit config or pins also enable them.
-            indycar_needed = True
-            f1_needed = True
-            nascar_needed = True
+            # Race leagues now obey active_sports so LEAGUE_OPTIONS is the source of truth.
+            indycar_needed = bool(conf.get('active_sports', {}).get('indycar', False))
+            f1_needed = bool(conf.get('active_sports', {}).get('f1', False))
+            nascar_needed = bool(conf.get('active_sports', {}).get('nascar', False))
             
         all_games = []
         utc_offset = conf.get('utc_offset', -5)

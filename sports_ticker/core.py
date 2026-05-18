@@ -401,9 +401,12 @@ if os.path.exists(GAME_CACHE_FILE):
         with open(GAME_CACHE_FILE, 'r') as _gcf:
             _cached = json.load(_gcf)
         if isinstance(_cached, list) and _cached:
+            _allowed_sports = {item['id'] for item in LEAGUE_OPTIONS}
             for _g in _cached:
                 _sport = _g.get('sport', '').upper()
                 if not _sport:
+                    continue
+                if _sport.lower() not in _allowed_sports and _sport.lower() not in ('clock', 'weather', 'music', 'flight', 'flight_tracker'):
                     continue
                 for _side in ('home', 'away'):
                     _abbr = _g.get(f'{_side}_abbr', '')
@@ -411,6 +414,7 @@ if os.path.exists(GAME_CACHE_FILE):
                         _override = LOGO_OVERRIDES.get(f'{_sport}:{_abbr}')
                         if _override:
                             _g[f'{_side}_logo'] = _override
+            _cached = [g for g in _cached if g.get('sport', '').lower() in _allowed_sports or g.get('sport', '').lower() in ('clock', 'weather', 'music', 'flight', 'flight_tracker')]
             state['current_games'] = _cached
             print(f"📦 Loaded {len(_cached)} cached games from {GAME_CACHE_FILE}")
     except Exception as _e:
