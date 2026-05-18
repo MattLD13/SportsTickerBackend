@@ -16,7 +16,9 @@ PAGE_HOLD_TIME = 8.0
 REFRESH_RATE = 0
 ID_FILE_PATH = "/boot/ticker_id.txt"
 ID_FILE_FALLBACK = "ticker_id.txt"
-ASSETS_DIR = os.path.expanduser("~/caches")
+# Use project-relative path so it resolves correctly regardless of which user
+# (root or mld) the service runs as.
+ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'caches')
 
 requests.packages.urllib3.disable_warnings()
 

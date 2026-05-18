@@ -244,6 +244,12 @@ def _process_nascar_raw(url, target_size):
         with open(raw_path, 'rb') as fh:
             raw = fh.read()
     except Exception:
+        # Raw file missing — download failed for this car; remove from pending so
+        # the progress bar can complete rather than stalling at N-1.
+        with _nascar_dl_lock:
+            _nascar_dl_pending.discard(url)
+            _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
+        print(f"[NASCAR] SKIP {url.rsplit('/',1)[-1]} — raw file missing (404'd earlier)")
         return None
     try:
         full = Image.open(io.BytesIO(raw)).convert('RGBA')
@@ -321,9 +327,17 @@ def nascar_submit_downloads(urls, target_size, executor):
 def nascar_retry_pending(executor, target_size=(120, 14)):
     """Re-submit any URLs that haven't successfully downloaded yet."""
     with _nascar_dl_lock:
-        pending = list(_nascar_dl_pending)
-    for u in pending:
-        executor.submit(_load_nascar_car, u, target_size)
+        pending = [u for u in _nascar_dl_pending if u not in _nascar_dl_inflight]
+    if not pending:
+        return
+
+    def _run_retry():
+        dl_futs = [executor.submit(_download_nascar_raw, u) for u in pending]
+        concurrent.futures.wait(dl_futs)
+        proc_futs = [executor.submit(_process_nascar_raw, u, target_size) for u in pending]
+        concurrent.futures.wait(proc_futs)
+
+    threading.Thread(target=_run_retry, daemon=True).start()
 
 
 _NASCAR_RACE_ID_FILE = 'nascar_race_id.txt'
