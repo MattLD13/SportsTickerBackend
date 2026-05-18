@@ -189,37 +189,43 @@ def _download_nascar_raw(url):
     Returns (raw_bytes, candidate_url) or (None, None) on total failure."""
     raw_name = f"nascar_raw_{hashlib.md5(url.encode()).hexdigest()}.jpg"
     raw_path = os.path.join(ASSETS_DIR, raw_name)
+    with _nascar_dl_lock:
+        _nascar_dl_inflight.add(url)
     # Already on disk?
-    if os.path.exists(raw_path):
-        try:
-            with open(raw_path, 'rb') as fh:
-                return fh.read(), raw_path
-        except Exception:
-            pass
-    # Download
-    for candidate in _nascar_candidates(url):
-        try:
-            r = requests.get(candidate, headers=_NASCAR_CAR_HEADERS, timeout=12)
-            if r.status_code == 404:
-                continue
-            r.raise_for_status()
-            size_lbl = '300x130' if '-300x130' in candidate else '922x400'
-            print(f"[NASCAR] downloaded {url.rsplit('/',1)[-1]} ({size_lbl}, {len(r.content)//1024}KB)")
+    try:
+        if os.path.exists(raw_path):
             try:
-                os.makedirs(ASSETS_DIR, exist_ok=True)
-                with open(raw_path, 'wb') as fh:
-                    fh.write(r.content)
-            except Exception as e:
-                print(f"[NASCAR] raw save failed: {e}")
-            return r.content, raw_path
-        except Exception:
-            continue
-    print(f"[NASCAR] MISSING {url.rsplit('/',1)[-1]} — all candidates 404'd")
-    return None, None
+                with open(raw_path, 'rb') as fh:
+                    return fh.read(), raw_path
+            except Exception:
+                pass
+        # Download
+        for candidate in _nascar_candidates(url):
+            try:
+                r = requests.get(candidate, headers=_NASCAR_CAR_HEADERS, timeout=12)
+                if r.status_code == 404:
+                    continue
+                r.raise_for_status()
+                size_lbl = '300x130' if '-300x130' in candidate else '922x400'
+                print(f"[NASCAR] downloaded {url.rsplit('/',1)[-1]} ({size_lbl}, {len(r.content)//1024}KB)")
+                try:
+                    os.makedirs(ASSETS_DIR, exist_ok=True)
+                    with open(raw_path, 'wb') as fh:
+                        fh.write(r.content)
+                except Exception as e:
+                    print(f"[NASCAR] raw save failed: {e}")
+                return r.content, raw_path
+            except Exception:
+                continue
+        print(f"[NASCAR] MISSING {url.rsplit('/',1)[-1]} — all candidates 404'd")
+        return None, None
+    finally:
+        with _nascar_dl_lock:
+            _nascar_dl_inflight.discard(url)
 
 
 def _process_nascar_raw(url, target_size):
-    """Phase 2 — load raw JPEG from disk, remove BG, thumbnail, save PNG."""
+    """Phase 2 — load raw JPEG from disk, thumbnail early, remove BG, save PNG."""
     global _nascar_dl_done
     cache_key = f"{url}_{target_size[0]}x{target_size[1]}"
     if cache_key in _NASCAR_CAR_CACHE:
@@ -253,9 +259,9 @@ def _process_nascar_raw(url, target_size):
         return None
     try:
         full = Image.open(io.BytesIO(raw)).convert('RGBA')
+        full.thumbnail(target_size, Image.Resampling.LANCZOS)
         full = _flood_remove_background(full, tolerance=40)
         full = _trim_transparent_padding(full)
-        full.thumbnail(target_size, Image.Resampling.LANCZOS)
         _NASCAR_CAR_CACHE[cache_key] = full
         print(f"[NASCAR] processed {url.rsplit('/',1)[-1]} → {full.size}")
         try:
@@ -311,15 +317,25 @@ def nascar_submit_downloads(urls, target_size, executor):
         return
 
     def _run_phases():
-        # Phase 1: parallel downloads
-        dl_futs = [executor.submit(_download_nascar_raw, u) for u in new_urls]
-        concurrent.futures.wait(dl_futs)
-        print(f"[NASCAR] all {len(new_urls)} downloads complete — processing...")
-        # Phase 2: parallel processing (numpy BG removal is fast even on Pi Zero 2W)
-        proc_futs = [executor.submit(_process_nascar_raw, u, target_size) for u in new_urls]
-        concurrent.futures.wait(proc_futs)
-        done, total = nascar_dl_progress()
-        print(f"[NASCAR] prefetch done: {done}/{total} cars ready")
+        # Phase 1: download all raw images before any image processing starts.
+        download_workers = min(4, max(1, len(new_urls)))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=download_workers) as download_pool:
+            dl_futs = [download_pool.submit(_download_nascar_raw, u) for u in new_urls]
+            concurrent.futures.wait(dl_futs)
+
+        print(f"[NASCAR] all {len(new_urls)} downloads complete — processing in background...")
+
+        # Phase 2: image cleanup and resizing happens separately so it does not
+        # contend with the main ticker executor or delay the raw downloads.
+        def _run_processing():
+            process_workers = min(2, max(1, len(new_urls)))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=process_workers) as process_pool:
+                proc_futs = [process_pool.submit(_process_nascar_raw, u, target_size) for u in new_urls]
+                concurrent.futures.wait(proc_futs)
+            done, total = nascar_dl_progress()
+            print(f"[NASCAR] prefetch done: {done}/{total} cars ready")
+
+        threading.Thread(target=_run_processing, daemon=True).start()
 
     threading.Thread(target=_run_phases, daemon=True).start()
 
