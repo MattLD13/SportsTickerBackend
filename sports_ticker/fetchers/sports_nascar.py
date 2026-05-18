@@ -65,7 +65,9 @@ def _nascar_car_image_url(race_id, car_number, year=2026):
         race_day = date.fromisoformat(race_date_iso)
     except Exception:
         return ''
-    upload_day = race_day - timedelta(days=5)   # Tuesday of race week
+    # NASCAR uploads images 4-7 days before race day; use 5 as the default.
+    # The downloader will try adjacent offsets if the primary URL 404s.
+    upload_day = race_day - timedelta(days=5)
     yy  = str(year)[-2:]
     mon = f"{upload_day.month:02d}"
     day = f"{upload_day.day:02d}"
@@ -74,6 +76,28 @@ def _nascar_car_image_url(race_id, car_number, year=2026):
         f"{_NASCAR_IMG_BASE}/{year}/{mon}/{day}/"
         f"{yy}_NCS_{race_num}{track_slug}_{car}-922x400.jpg"
     )
+
+
+def _nascar_car_image_candidates(race_id, car_number, year=2026):
+    """Return candidate URLs trying upload offsets 4-7 days before race."""
+    entry = _NCS_2026.get(int(race_id or 0))
+    if not entry:
+        return []
+    race_num, track_slug, race_date_iso = entry
+    try:
+        race_day = date.fromisoformat(race_date_iso)
+    except Exception:
+        return []
+    yy  = str(year)[-2:]
+    car = str(car_number).strip()
+    urls = []
+    for offset in (5, 6, 4, 7):
+        d = race_day - timedelta(days=offset)
+        urls.append(
+            f"{_NASCAR_IMG_BASE}/{year}/{d.month:02d}/{d.day:02d}/"
+            f"{yy}_NCS_{race_num}{track_slug}_{car}-922x400.jpg"
+        )
+    return urls
 
 # Flag state codes from NASCAR feed
 _FLAG_MAP = {

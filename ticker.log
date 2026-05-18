@@ -2237,3 +2237,123 @@ sports_full pin: 384x32
   "away_score": "",
   "home_score": ""
 }
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Fetching live NASCAR feed...
+Race: NASCAR All-Star Race - Final Segment  (race_id=5609)
+Cars in feed: 26
+Map entry: race #14 at Dover  (2026-05-17)
+  OK   P 1 #11  Denny Hamlin
+  OK   P 2 #19  Chase Briscoe
+  OK   P 3 #43  Erik Jones
+  OK   P 4 #3   Austin Dillon
+  OK   P 5 #88  Connor Zilisch
+  OK   P 6 #2   Austin Cindric
+  404  P 7 #24  William Byron  https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_24-922x400.jpg
+  OK   P 8 #71  Michael McDowell
+  OK   P 9 #48  Alex Bowman
+  OK   P10 #6   Brad Keselowski
+  OK   P11 #4   Noah Gragson
+  OK   P12 #16  AJ Allmendinger
+  OK   P13 #12  Ryan Blaney
+  OK   P14 #77  Carson Hocevar
+  OK   P15 #10  Ty Dillon
+  OK   P16 #47  Ricky Stenhouse Jr.
+  OK   P17 #8   Kyle Busch
+  OK   P18 #21  Josh Berry
+  OK   P19 #97  Shane Van Gisbergen
+  OK   P20 #23  Bubba Wallace
+  OK   P21 #7   Daniel Suarez
+  OK   P22 #45  Tyler Reddick
+  OK   P23 #20  Christopher Bell
+  OK   P24 #54  Ty Gibbs
+  OK   P25 #22  Joey Logano
+  OK   P26 #5   Kyle Larson
+
+============================================================
+Downloaded: 25/26
+
+MISSING (404 or error): 1
+  #24 William Byron
+    https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_24-922x400.jpg
+
+Preview images saved to: C:\Users\mld20\Documents\SportsTickerBackend\previews\nascar\cars
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Fetching live NASCAR feed...
+Race: NASCAR All-Star Race - Final Segment  (race_id=5609)
+Cars in feed: 26
+Map entry: race #14 at Dover  (2026-05-17)
+  OK   P 1 #11  Denny Hamlin
+  OK   P 2 #19  Chase Briscoe
+  OK   P 3 #43  Erik Jones
+  OK   P 4 #3   Austin Dillon
+  OK   P 5 #88  Connor Zilisch
+  OK   P 6 #2   Austin Cindric
+  OK   P 7 #24  William Byron
+  OK   P 8 #71  Michael McDowell
+  OK   P 9 #48  Alex Bowman
+  OK   P10 #6   Brad Keselowski
+  OK   P11 #4   Noah Gragson
+  OK   P12 #16  AJ Allmendinger
+  OK   P13 #12  Ryan Blaney
+  OK   P14 #77  Carson Hocevar
+  OK   P15 #10  Ty Dillon
+  OK   P16 #47  Ricky Stenhouse Jr.
+  OK   P17 #8   Kyle Busch
+  OK   P18 #21  Josh Berry
+  OK   P19 #97  Shane Van Gisbergen
+  OK   P20 #23  Bubba Wallace
+  OK   P21 #7   Daniel Suarez
+  OK   P22 #45  Tyler Reddick
+  OK   P23 #20  Christopher Bell
+  OK   P24 #54  Ty Gibbs
+  OK   P25 #22  Joey Logano
+  OK   P26 #5   Kyle Larson
+
+============================================================
+Downloaded: 26/26
+
+All car images present.
+
+Preview images saved to: C:\Users\mld20\Documents\SportsTickerBackend\previews\nascar\cars
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+=== car_illustration URLs that would be stored in game data ===
+  #3 Austin Dillon
+    primary : https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_3-922x400.jpg
+    fallbacks: +3 date variants
+  #5 Kyle Larson
+    primary : https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_5-922x400.jpg
+    fallbacks: +3 date variants
+  #7 Daniel Suarez
+    primary : https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_7-922x400.jpg
+    fallbacks: +3 date variants
+  #16 AJ Allmendinger
+    primary : https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_16-922x400.jpg
+    fallbacks: +3 date variants
+  #20 Christopher Bell
+    primary : https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_20-922x400.jpg
+    fallbacks: +3 date variants
+  #23 Bubba Wallace
+    primary : https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_23-922x400.jpg
+    fallbacks: +3 date variants
+  #24 William Byron
+    primary : https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_24-922x400.jpg
+    fallbacks: +3 date variants
+  #54 Ty Gibbs
+    primary : https://www.nascar.com/wp-content/uploads/sites/7/2026/05/12/26_NCS_14Dover_54-922x400.jpg
+    fallbacks: +3 date variants
+
+=== Full download pipeline test ===
+  #3 Austin Dillon: OK (50, 14) (offset -5d)
+  #5 Kyle Larson: OK (51, 14) (offset -5d)
+  #7 Daniel Suarez: OK (51, 14) (offset -5d)
+  #16 AJ Allmendinger: OK (46, 14) (offset -5d)
+  #20 Christopher Bell: OK (46, 14) (offset -5d)
+  #23 Bubba Wallace: OK (50, 14) (offset -5d)
+  #24 William Byron: OK (51, 14) (offset -4d)
+  #54 Ty Gibbs: OK (46, 14) (offset -5d)

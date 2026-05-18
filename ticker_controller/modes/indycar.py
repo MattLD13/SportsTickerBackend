@@ -194,10 +194,40 @@ def _load_nascar_car(url, target_size):
             return img
     except Exception:
         pass
+    # Try primary URL then ±1/±2 day variants in case NASCAR uploaded on a different day
+    import re as _re
+    from datetime import date as _date, timedelta as _td
+    _m = _re.search(r'/(\d{4})/(\d{2})/(\d{2})/', url)
+    if _m:
+        _base_date = _date(int(_m.group(1)), int(_m.group(2)), int(_m.group(3)))
+        candidates = [url]
+        for _delta in (-1, 1, -2, 2):
+            _d = _base_date + _td(days=_delta)
+            candidates.append(
+                url[:_m.start()] + f"/{_d.year}/{_d.month:02d}/{_d.day:02d}/" + url[_m.end():]
+            )
+    else:
+        candidates = [url]
+
+    raw_content = None
+    for candidate in candidates:
+        try:
+            r = requests.get(candidate, headers=_NASCAR_CAR_HEADERS, timeout=8)
+            if r.status_code == 404:
+                continue
+            r.raise_for_status()
+            raw_content = r.content
+            break
+        except Exception:
+            continue
+
+    if raw_content is None:
+        import logging
+        logging.getLogger(__name__).warning("[NASCAR] car image not found for any date variant: %s", url)
+        return None
+
     try:
-        r = requests.get(url, headers=_NASCAR_CAR_HEADERS, timeout=8)
-        r.raise_for_status()
-        full = Image.open(io.BytesIO(r.content)).convert('RGBA')
+        full = Image.open(io.BytesIO(raw_content)).convert('RGBA')
         full = _flood_remove_background(full, tolerance=40)
         full = _trim_transparent_padding(full)
         full.thumbnail(target_size, Image.Resampling.LANCZOS)
@@ -213,7 +243,7 @@ def _load_nascar_car(url, target_size):
         return full
     except Exception as _exc:
         import logging
-        logging.getLogger(__name__).warning("[NASCAR] car image failed %s: %s", url, _exc)
+        logging.getLogger(__name__).warning("[NASCAR] car image process failed %s: %s", url, _exc)
         return None
 
 
