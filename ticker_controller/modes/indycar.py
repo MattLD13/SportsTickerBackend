@@ -155,6 +155,7 @@ _nascar_dl_total   = 0
 _nascar_dl_done    = 0
 _nascar_dl_pending: set = set()   # URLs not yet successfully downloaded
 _nascar_dl_inflight: set = set()  # URLs currently being downloaded (prevents duplicates)
+_nascar_prefetch_running = False
 
 
 def nascar_dl_progress():
@@ -304,7 +305,7 @@ def _load_nascar_car(url, target_size):
 
 def nascar_submit_downloads(urls, target_size, executor):
     """Two-phase prefetch: download ALL raw JPEGs first, then process them all."""
-    global _nascar_dl_total, _nascar_dl_done
+    global _nascar_dl_total, _nascar_dl_done, _nascar_prefetch_running
     urls = [u for u in urls if u]
     if not urls:
         return
@@ -313,29 +314,35 @@ def nascar_submit_downloads(urls, target_size, executor):
                     if f"{u}_{target_size[0]}x{target_size[1]}" not in _NASCAR_CAR_CACHE]
         _nascar_dl_pending.update(new_urls)
         _nascar_dl_total = len(_nascar_dl_pending) + _nascar_dl_done
+        if _nascar_prefetch_running:
+            return
+        _nascar_prefetch_running = True
     if not new_urls:
+        with _nascar_dl_lock:
+            _nascar_prefetch_running = False
         return
 
     def _run_phases():
-        # Phase 1: download all raw images before any image processing starts.
-        download_workers = min(4, max(1, len(new_urls)))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=download_workers) as download_pool:
-            dl_futs = [download_pool.submit(_download_nascar_raw, u) for u in new_urls]
-            concurrent.futures.wait(dl_futs)
+        try:
+            # Phase 1: download all raw images before any image processing starts.
+            download_workers = min(4, max(1, len(new_urls)))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=download_workers) as download_pool:
+                dl_futs = [download_pool.submit(_download_nascar_raw, u) for u in new_urls]
+                concurrent.futures.wait(dl_futs)
 
-        print(f"[NASCAR] all {len(new_urls)} downloads complete — processing in background...")
+            print(f"[NASCAR] all {len(new_urls)} downloads complete — processing in background...")
 
-        # Phase 2: image cleanup and resizing happens separately so it does not
-        # contend with the main ticker executor or delay the raw downloads.
-        def _run_processing():
+            # Phase 2: image cleanup and resizing happens separately so it does not
+            # contend with the main ticker executor or delay the raw downloads.
             process_workers = min(2, max(1, len(new_urls)))
             with concurrent.futures.ThreadPoolExecutor(max_workers=process_workers) as process_pool:
                 proc_futs = [process_pool.submit(_process_nascar_raw, u, target_size) for u in new_urls]
                 concurrent.futures.wait(proc_futs)
             done, total = nascar_dl_progress()
             print(f"[NASCAR] prefetch done: {done}/{total} cars ready")
-
-        threading.Thread(target=_run_processing, daemon=True).start()
+        finally:
+            with _nascar_dl_lock:
+                _nascar_prefetch_running = False
 
     threading.Thread(target=_run_phases, daemon=True).start()
 
