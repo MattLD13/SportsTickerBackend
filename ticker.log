@@ -2417,3 +2417,65 @@ Downloaded: 26/26
 All car images present.
 
 Preview images saved to: C:\Users\mld20\Documents\SportsTickerBackend\previews\nascar\cars
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+[NASCAR] OK 26_NCS_14Dover_43-922x400.jpg (300x130, 6KB → (53, 14))
+[NASCAR] OK 26_NCS_14Dover_3-922x400.jpg (300x130, 5KB → (50, 14))
+[NASCAR] OK 26_NCS_14Dover_11-922x400.jpg (300x130, 6KB → (49, 14))
+[NASCAR] OK 26_NCS_14Dover_19-922x400.jpg (300x130, 6KB → (48, 14))
+[NASCAR] OK 26_NCS_14Dover_88-922x400.jpg (300x130, 7KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_2-922x400.jpg (300x130, 5KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_71-922x400.jpg (300x130, 6KB → (52, 14))
+[NASCAR] OK 26_NCS_14Dover_48-922x400.jpg (300x130, 6KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_6-922x400.jpg (300x130, 6KB → (49, 14))
+[NASCAR] OK 26_NCS_14Dover_4-922x400.jpg (300x130, 5KB → (53, 14))
+[NASCAR] OK 26_NCS_14Dover_16-922x400.jpg (300x130, 6KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_12-922x400.jpg (300x130, 6KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_24-922x400.jpg (300x130, 6KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_77-922x400.jpg (300x130, 6KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_10-922x400.jpg (300x130, 6KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_47-922x400.jpg (300x130, 6KB → (53, 14))
+[NASCAR] OK 26_NCS_14Dover_8-922x400.jpg (300x130, 6KB → (50, 14))
+[NASCAR] OK 26_NCS_14Dover_21-922x400.jpg (300x130, 6KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_97-922x400.jpg (300x130, 6KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_23-922x400.jpg (300x130, 5KB → (50, 14))
+[NASCAR] OK 26_NCS_14Dover_7-922x400.jpg (300x130, 6KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_45-922x400.jpg (300x130, 6KB → (50, 14))
+[NASCAR] OK 26_NCS_14Dover_20-922x400.jpg (300x130, 6KB → (49, 14))
+[NASCAR] OK 26_NCS_14Dover_54-922x400.jpg (300x130, 6KB → (49, 14))
+[NASCAR] OK 26_NCS_14Dover_22-922x400.jpg (300x130, 6KB → (51, 14))
+[NASCAR] OK 26_NCS_14Dover_5-922x400.jpg (300x130, 6KB → (51, 14))
+All 26 cars: 26/26 done in 2.76s
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+[NASCAR] downloaded 26_NCS_14Dover_19-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_3-922x400.jpg (300x130, 5KB)
+[NASCAR] downloaded 26_NCS_14Dover_11-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_43-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_88-922x400.jpg (300x130, 7KB)
+[NASCAR] downloaded 26_NCS_14Dover_2-922x400.jpg (300x130, 5KB)
+[NASCAR] downloaded 26_NCS_14Dover_71-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_48-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_6-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_4-922x400.jpg (300x130, 5KB)
+[NASCAR] downloaded 26_NCS_14Dover_16-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_12-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_77-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_24-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_10-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_47-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_21-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_8-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_97-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_23-922x400.jpg (300x130, 5KB)
+[NASCAR] downloaded 26_NCS_14Dover_45-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_7-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_20-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_54-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_22-922x400.jpg (300x130, 6KB)
+[NASCAR] downloaded 26_NCS_14Dover_5-922x400.jpg (300x130, 6KB)
+[NASCAR] all 26 downloads complete — processing...
+[NASCAR] prefetch done: 26/26 cars ready
+Total: 26/26 in 3.0s
