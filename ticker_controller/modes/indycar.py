@@ -162,10 +162,11 @@ _NASCAR_CAR_CACHE: dict = {}   # cache_key → PIL RGBA
 _NASCAR_CAR_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
 # Download progress tracking
-_nascar_dl_lock   = threading.Lock()
-_nascar_dl_total  = 0        # URLs submitted for current race
-_nascar_dl_done   = 0        # URLs successfully cached (memory or disk)
-_nascar_dl_pending: set = set()  # URLs not yet successfully downloaded
+_nascar_dl_lock    = threading.Lock()
+_nascar_dl_total   = 0
+_nascar_dl_done    = 0
+_nascar_dl_pending: set = set()   # URLs not yet successfully downloaded
+_nascar_dl_inflight: set = set()  # URLs currently being downloaded (prevents duplicates)
 
 
 def nascar_dl_progress():
@@ -175,63 +176,81 @@ def nascar_dl_progress():
 
 
 def _load_nascar_car(url, target_size):
-    """Download at full resolution, remove white bg via flood-fill, then thumbnail. Disk-cached."""
+    """Download NASCAR car image. Tries 300x130 thumbnail first (6KB) then full 922x400 (36KB).
+    Checks all date offsets (±2 days) before giving up. Disk-cached."""
     global _nascar_dl_done
     if not url:
         return None
     cache_key = f"{url}_{target_size[0]}x{target_size[1]}"
     if cache_key in _NASCAR_CAR_CACHE:
         return _NASCAR_CAR_CACHE[cache_key]
-    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}.png"
-    disk_path = os.path.join(ASSETS_DIR, disk_name)
-    try:
-        if os.path.exists(disk_path):
-            img = Image.open(disk_path).convert('RGBA')
-            _NASCAR_CAR_CACHE[cache_key] = img
-            with _nascar_dl_lock:
-                _nascar_dl_pending.discard(url)
-                _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
-            return img
-    except Exception:
-        pass
-    # Try primary URL then ±1/±2 day variants in case NASCAR uploaded on a different day
-    import re as _re
-    from datetime import date as _date, timedelta as _td
-    _m = _re.search(r'/(\d{4})/(\d{2})/(\d{2})/', url)
-    if _m:
-        _base_date = _date(int(_m.group(1)), int(_m.group(2)), int(_m.group(3)))
-        candidates = [url]
-        for _delta in (-1, 1, -2, 2):
-            _d = _base_date + _td(days=_delta)
-            candidates.append(
-                url[:_m.start()] + f"/{_d.year}/{_d.month:02d}/{_d.day:02d}/" + url[_m.end():]
-            )
-    else:
-        candidates = [url]
 
-    raw_content = None
-    for candidate in candidates:
+    # Deduplicate: don't download the same URL twice concurrently
+    with _nascar_dl_lock:
+        if url in _nascar_dl_inflight:
+            return None
+        _nascar_dl_inflight.add(url)
+
+    try:
+        disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}.png"
+        disk_path = os.path.join(ASSETS_DIR, disk_name)
         try:
-            r = requests.get(candidate, headers=_NASCAR_CAR_HEADERS, timeout=8)
-            if r.status_code == 404:
-                continue
-            r.raise_for_status()
-            raw_content = r.content
-            break
+            if os.path.exists(disk_path):
+                img = Image.open(disk_path).convert('RGBA')
+                _NASCAR_CAR_CACHE[cache_key] = img
+                with _nascar_dl_lock:
+                    _nascar_dl_pending.discard(url)
+                    _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
+                return img
         except Exception:
-            continue
+            pass
 
-    if raw_content is None:
-        import logging
-        logging.getLogger(__name__).warning("[NASCAR] car image not found for any date variant: %s", url)
-        return None
+        # Build candidate list: 300x130 (fast, ~6KB) at each date offset, then 922x400 fallback
+        import re as _re
+        from datetime import date as _date, timedelta as _td
+        _m = _re.search(r'/(\d{4})/(\d{2})/(\d{2})/', url)
+        if _m:
+            _base = _date(int(_m.group(1)), int(_m.group(2)), int(_m.group(3)))
+            _prefix = url[:_m.start()]
+            _fname  = url[_m.end():]                         # e.g. 26_NCS_14Dover_5-922x400.jpg
+            _small  = _fname.replace('-922x400.jpg', '-300x130.jpg')
+            _offsets = (0, -1, 1, -2, 2)
+            # Try 300x130 at every offset first, then 922x400 at every offset
+            candidates = []
+            if _small != _fname:
+                for _d in (_base + _td(days=o) for o in _offsets):
+                    candidates.append(_prefix + f"/{_d.year}/{_d.month:02d}/{_d.day:02d}/" + _small)
+            for _d in (_base + _td(days=o) for o in _offsets):
+                candidates.append(_prefix + f"/{_d.year}/{_d.month:02d}/{_d.day:02d}/" + _fname)
+        else:
+            candidates = [url]
 
-    try:
+        raw_content = None
+        used = None
+        for candidate in candidates:
+            try:
+                r = requests.get(candidate, headers=_NASCAR_CAR_HEADERS, timeout=12)
+                if r.status_code == 404:
+                    continue
+                r.raise_for_status()
+                raw_content = r.content
+                used = candidate
+                break
+            except Exception:
+                continue
+
+        car_id = url.rsplit('/', 1)[-1]
+        if raw_content is None:
+            print(f"[NASCAR] MISSING {car_id} — all {len(candidates)} candidates 404'd")
+            return None
+
         full = Image.open(io.BytesIO(raw_content)).convert('RGBA')
         full = _flood_remove_background(full, tolerance=40)
         full = _trim_transparent_padding(full)
         full.thumbnail(target_size, Image.Resampling.LANCZOS)
         _NASCAR_CAR_CACHE[cache_key] = full
+        size_used = '300x130' if '-300x130' in (used or '') else '922x400'
+        print(f"[NASCAR] OK {car_id} ({size_used}, {len(raw_content)//1024}KB → {full.size})")
         try:
             os.makedirs(ASSETS_DIR, exist_ok=True)
             full.save(disk_path, 'PNG')
@@ -241,10 +260,13 @@ def _load_nascar_car(url, target_size):
             _nascar_dl_pending.discard(url)
             _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
         return full
+
     except Exception as _exc:
-        import logging
-        logging.getLogger(__name__).warning("[NASCAR] car image process failed %s: %s", url, _exc)
+        print(f"[NASCAR] ERROR {url.rsplit('/',1)[-1]}: {_exc}")
         return None
+    finally:
+        with _nascar_dl_lock:
+            _nascar_dl_inflight.discard(url)
 
 
 def nascar_submit_downloads(urls, target_size, executor):
@@ -302,6 +324,7 @@ def _nascar_purge_old_cars(assets_dir, race_id):
             _nascar_dl_total = 0
             _nascar_dl_done = 0
             _nascar_dl_pending.clear()
+            _nascar_dl_inflight.clear()
         os.makedirs(assets_dir, exist_ok=True)
         with open(id_file, 'w') as f:
             f.write(race_id)
