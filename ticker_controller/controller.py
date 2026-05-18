@@ -646,9 +646,18 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                     continue
 
                 if self.brightness <= 0.001:
-                    self.matrix.Fill(0, 0, 0)
-                    # Night: aggressively retry any pending NASCAR car downloads
                     nascar_retry_pending(self.executor)
+                    dl_done, dl_total = nascar_dl_progress()
+                    if dl_total > 0 and dl_done < dl_total:
+                        bar_w = max(1, int(PANEL_W * dl_done / dl_total))
+                        img = Image.new('RGB', (PANEL_W, PANEL_H), (0, 0, 0))
+                        ImageDraw.Draw(img).line(
+                            [(0, PANEL_H - 1), (bar_w - 1, PANEL_H - 1)], fill=(0, 6, 0)
+                        )
+                        self.matrix.brightness = 100
+                        self.matrix.SetImage(img)
+                    else:
+                        self.matrix.Fill(0, 0, 0)
                     time.sleep(0.5)
                     continue
 
