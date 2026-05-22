@@ -563,9 +563,12 @@ class PreviewWindow:
             return
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         initial = f"ticker_frame_{self.view}_{ts}.png"
+        temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "previews", "temp")
+        os.makedirs(temp_dir, exist_ok=True)
         path = self.filedialog.asksaveasfilename(
             title="Save current ticker frame",
             defaultextension=".png",
+            initialdir=temp_dir,
             initialfile=initial,
             filetypes=[("PNG image", "*.png"), ("All files", "*.*")],
         )
@@ -758,7 +761,7 @@ def main() -> int:
     parser.add_argument("--view", choices=("scroll", "pin", "both"), default="scroll")
     parser.add_argument("--pin-id", default="", help="Pinned item id, e.g. nhl:401234567")
     parser.add_argument("--index", type=int, default=0, help="Pinned item index when --pin-id is not set")
-    parser.add_argument("--save", default="live_render.png", help="Output PNG path")
+    parser.add_argument("--save", default=None, help="Output PNG path (default: previews/temp/render_<ts>.png)")
     parser.add_argument("--show", action="store_true", help="Open an interactive preview window")
     parser.add_argument("--list", action="store_true", help="Print returned items")
     parser.add_argument("--include-hidden", action="store_true", help="Render items even if is_shown is false")
@@ -770,6 +773,13 @@ def main() -> int:
     parser.add_argument("--brightness", type=float, default=1.0, help="Interactive brightness multiplier")
     parser.add_argument("--no-prefetch-logos", action="store_true", help="Skip logo downloads before rendering")
     args = parser.parse_args()
+
+    # Resolve default save path to previews/temp/ with timestamp
+    if args.save is None:
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "previews", "temp")
+        os.makedirs(temp_dir, exist_ok=True)
+        args.save = os.path.join(temp_dir, f"render_{args.mode}_{ts}.png")
 
     try:
         snapshot = fetch_snapshot(

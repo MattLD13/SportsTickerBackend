@@ -66,13 +66,13 @@ frames[0].save('previews/nascar/scroll_test.gif', save_all=True,
 
 ```
 previews/
-  nascar/     ← NASCAR scroll/pin PNGs and GIFs
+  temp/       ← timestamped renders from every tool run (never deleted, gitignored)
+  nascar/     ← NASCAR scroll/pin PNGs and GIFs (latest, fixed names)
   f1/         ← F1 scroll/pin PNGs
-    live/     ← renders from live OpenF1 API
   indycar/    ← IndyCar scroll/pin PNGs
 ```
 
-Save previews into the appropriate sport subfolder, not the root `previews/`.
+`previews/temp/` accumulates every render with a timestamp in the filename so nothing is ever overwritten. These files are gitignored. Named sport folders hold the latest fixed-name renders for quick reference.
 
 ## Notes
 - `make_renderer(mode)` returns a `TickerStreamer` with fonts and logo cache pre-initialized.

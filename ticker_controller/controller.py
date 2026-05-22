@@ -548,7 +548,10 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         if t == 'racing' or str(s).lower() in ('indycar', 'f1', 'nascar'):
             return PANEL_W if self.mode in ('indycar', 'indycar_full', 'f1', 'f1_full', 'nascar', 'nascar_full', 'sports_full') else 128 + GAME_SEPARATOR_W
         if t in ('golf', 'masters') or str(s).lower() in ('golf', 'masters'):
-            return PANEL_W if self.mode in ('golf', 'sports_full') else 128 + GAME_SEPARATOR_W
+            if self.mode in ('golf', 'sports_full'):
+                return PANEL_W
+            from .modes.golf import GolfMixin
+            return GolfMixin.golf_scroll_card_width(game) + GAME_SEPARATOR_W
         if t == 'music' or s == 'music':
             return PANEL_W
         if t == 'stock_ticker' or (s and str(s).startswith('stock')):

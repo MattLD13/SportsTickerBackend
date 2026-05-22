@@ -2490,3 +2490,45 @@ FP1 live: Practice 1 in
 After FP2: Practice 2 post
 Thursday: None
 All OK
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_SCROLL: drivers_count=33
+INDYCAR_PANEL: visible_count=33 panel_w=300
+Saved previews\indycar\indycar_scroll.png (513x32)
+Saved previews\indycar\indycar_pin.png (384x32)
+Saved C:\Users\mld20\Documents\SportsTickerBackend\previews\temp\indycar_20260522_180933_scroll.png (513x32)
+Saved C:\Users\mld20\Documents\SportsTickerBackend\previews\temp\indycar_20260522_180933_pin.png (384x32)
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_SCROLL: drivers_count=22
+INDYCAR_PANEL: visible_count=22 panel_w=300
+Saved previews\f1\f1_scroll.png (513x32)
+Saved previews\f1\f1_pin.png (384x32)
+Saved C:\Users\mld20\Documents\SportsTickerBackend\previews\temp\f1_20260522_180959_scroll.png (513x32)
+Saved C:\Users\mld20\Documents\SportsTickerBackend\previews\temp\f1_20260522_180959_pin.png (384x32)
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+INDYCAR_SCROLL: drivers_count=0
+Saved previews\nascar\nascar_scroll.png (513x32)
+Saved previews\nascar\nascar_pin.png (384x32)
+Saved C:\Users\mld20\Documents\SportsTickerBackend\previews\temp\nascar_20260522_181003_scroll.png (513x32)
+Saved C:\Users\mld20\Documents\SportsTickerBackend\previews\temp\nascar_20260522_181003_pin.png (384x32)
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+No golf data
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+['_build_golf_buffer', '_fetch_f1', '_fetch_f1_results', '_fetch_f1_schedule', '_fetch_fotmob_details', '_fetch_fotmob_league', '_fetch_golf_game', '_fetch_indycar', '_fetch_indycar_drivers', '_fetch_indycar_weather', '_fetch_nascar', '_fetch_nhl_landing', '_fetch_nhl_native', '_fetch_simple_league', '_golf_cache', '_golf_cache_ttl', '_golf_extract_holes', '_golf_format_relative_score', '_golf_parse_relative_score', '_golf_pick_active_round', '_golf_placeholder_game', '_golf_position_sort_key', '_golf_round_label', 'consecutive_empty_fetches', 'fetch_all_teams', 'fetch_pinned_game', 'fetch_shootout_details', 'fetch_single_league']
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+Saved previews\sports\golf_pin.png (384x32)
+Saved previews\temp\golf_20260522_181025_pin.png (384x32)
+Saved previews\sports\golf_scroll.png (521x32)
+Saved previews\temp\golf_20260522_181025_scroll.png (521x32)
+Golf done: THE CJ CUP BYRON NELSON

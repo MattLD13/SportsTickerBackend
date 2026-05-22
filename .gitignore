@@ -22,6 +22,10 @@ venv/
 # Environment
 .env
 
+# Preview temp renders (accumulate locally, not committed)
+previews/temp/*.png
+previews/temp/*.gif
+
 # OS
 .DS_Store
 Thumbs.db
