@@ -170,7 +170,7 @@ class SportsIndycarMixin:
             self._ic_drivers_cache = {'ts': now, 'data': index}
             return index
         except Exception as exc:
-            log(f"[IndyCar] driversfeed fetch error: {exc}")
+            print(f"[IndyCar] driversfeed fetch error: {exc}")
             return self._ic_drivers_cache.get('data', {})
 
     def _fetch_indycar_weather(self):
@@ -204,7 +204,7 @@ class SportsIndycarMixin:
             self._ic_weather_cache = {'ts': now, 'data': weather}
             return weather
         except Exception as exc:
-            log(f"[IndyCar] weather fetch error: {exc}")
+            print(f"[IndyCar] weather fetch error: {exc}")
             return self._ic_weather_cache.get('data') or {}
 
     def _fetch_indycar(self, force=False):
@@ -224,7 +224,7 @@ class SportsIndycarMixin:
             r.raise_for_status()
             payload = r.json()
         except Exception as exc:
-            log(f"[IndyCar] timingscoring fetch error: {exc}")
+            print(f"[IndyCar] timingscoring fetch error: {exc}")
             # Return stale cache if we have it
             return self._ic_timing_cache.get('data')
 

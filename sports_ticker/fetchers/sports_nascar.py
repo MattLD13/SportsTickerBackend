@@ -282,5 +282,5 @@ class SportsNascarMixin:
             return game
 
         except Exception as exc:
-            log(f"[NASCAR] fetch error: {exc}")
+            print(f"[NASCAR] fetch error: {exc}")
             return self._nascar_cache.get('data')

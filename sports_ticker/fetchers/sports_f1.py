@@ -107,7 +107,7 @@ class SportsF1Mixin:
             session_key = session.get('session_key')
             meeting_key = session.get('meeting_key')
         except Exception as exc:
-            log(f"[F1] session fetch error: {exc}")
+            print(f"[F1] session fetch error: {exc}")
             return self._f1_cache.get('data')
 
         try:
@@ -247,5 +247,5 @@ class SportsF1Mixin:
             self._f1_cache = {'ts': now_ts, 'data': game}
             return game
         except Exception as exc:
-            log(f"[F1] build error: {exc}")
+            print(f"[F1] build error: {exc}")
             return self._f1_cache.get('data')
