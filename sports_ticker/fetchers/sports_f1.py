@@ -1,6 +1,6 @@
 """Formula 1 live/latest data fetcher using OpenF1."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
@@ -106,14 +106,44 @@ class SportsF1Mixin:
             session = sessions[-1]
             session_key = session.get('session_key')
             meeting_key = session.get('meeting_key')
+        except Exception as exc:
+            log(f"[F1] session fetch error: {exc}")
+            return self._f1_cache.get('data')
 
+        try:
             meetings = self._openf1_get('meetings', meeting_key=meeting_key) if meeting_key else []
             meeting = meetings[-1] if meetings else {}
-            drivers_raw = self._openf1_get('drivers', session_key=session_key)
-            positions_raw = self._openf1_get('position', session_key=session_key)
-            intervals_raw = self._openf1_get('intervals', session_key=session_key)
-            weather_raw = self._openf1_get('weather', session_key=session_key)
+        except Exception:
+            meeting = {}
 
+        try:
+            drivers_raw = self._openf1_get('drivers', session_key=session_key)
+        except Exception:
+            drivers_raw = []
+
+        # For position and intervals, limit to the last 10 minutes to avoid
+        # downloading the full session history during long live sessions.
+        recent_cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%S')
+        try:
+            positions_raw = self._openf1_get('position', **{'session_key': session_key, 'date>': recent_cutoff})
+            if not positions_raw:
+                positions_raw = self._openf1_get('position', session_key=session_key)
+        except Exception:
+            positions_raw = []
+
+        try:
+            intervals_raw = self._openf1_get('intervals', **{'session_key': session_key, 'date>': recent_cutoff})
+            if not intervals_raw:
+                intervals_raw = self._openf1_get('intervals', session_key=session_key)
+        except Exception:
+            intervals_raw = []
+
+        try:
+            weather_raw = self._openf1_get('weather', session_key=session_key)
+        except Exception:
+            weather_raw = []
+
+        try:
             latest_pos = {}
             for item in positions_raw:
                 num = item.get('driver_number')
@@ -158,11 +188,20 @@ class SportsF1Mixin:
             state = 'pre'
             try:
                 start = datetime.fromisoformat(str(session.get('date_start')).replace('Z', '+00:00'))
-                end = datetime.fromisoformat(str(session.get('date_end')).replace('Z', '+00:00'))
-                if start <= now_utc <= end:
-                    state = 'in'
-                elif now_utc > end:
-                    state = 'post'
+                date_end_raw = session.get('date_end')
+                if date_end_raw:
+                    end = datetime.fromisoformat(str(date_end_raw).replace('Z', '+00:00'))
+                    # Add a 2-hour buffer so sessions running overtime still show as LIVE.
+                    if start <= now_utc <= end + timedelta(hours=2):
+                        state = 'in'
+                    elif now_utc > end + timedelta(hours=2):
+                        state = 'post'
+                else:
+                    # No scheduled end — treat as live for up to 5 hours after start.
+                    if start <= now_utc <= start + timedelta(hours=5):
+                        state = 'in'
+                    elif now_utc > start + timedelta(hours=5):
+                        state = 'post'
             except Exception:
                 pass
 
@@ -208,5 +247,5 @@ class SportsF1Mixin:
             self._f1_cache = {'ts': now_ts, 'data': game}
             return game
         except Exception as exc:
-            log(f"[F1] fetch error: {exc}")
+            log(f"[F1] build error: {exc}")
             return self._f1_cache.get('data')
