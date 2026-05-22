@@ -331,6 +331,58 @@ def render_pin(renderer: TickerStreamer, game: dict | None) -> Image.Image:
         renderer.mode = old_mode
 
 
+# Width of the left info panel in draw_indycar_full (hardcoded there as INFO_W = 84)
+_RACING_INFO_W  = 84
+_RACING_CARD_GAP = 6
+
+
+def render_pin_strip(renderer: TickerStreamer, game: dict | None) -> Image.Image:
+    """Render the full scrollable content of a racing pin card as one wide image.
+
+    For IndyCar / F1 / NASCAR pin cards, the driver leaderboard normally scrolls
+    horizontally inside a 300 px viewport.  This function renders all driver cards
+    side-by-side so the entire leaderboard fits in a single static PNG.
+
+    For non-racing cards the result is identical to render_pin().
+    """
+    if game is None:
+        return blank_frame("NO PIN DATA")
+
+    # One render call populates _ic_driver_strip_cache on the renderer.
+    pin_frame = render_pin(renderer, game)
+
+    cache = getattr(renderer, "_ic_driver_strip_cache", None)
+    if not cache or not cache.get("cards"):
+        return pin_frame   # non-racing or no cache — return the static frame
+
+    cards = cache["cards"]
+    if len(cards) <= 1:
+        return pin_frame   # single card already fits without scrolling
+
+    gap = _RACING_CARD_GAP
+    strip_content_w = sum(c.width for c in cards) + gap * len(cards)
+    total_w = _RACING_INFO_W + strip_content_w
+    result = Image.new("RGB", (total_w, PANEL_H), (0, 0, 0))
+
+    # Left info panel — crop from the rendered pin frame
+    result.paste(pin_frame.crop((0, 0, _RACING_INFO_W, PANEL_H)), (0, 0))
+
+    # Driver cards in order, no wrapping
+    x = _RACING_INFO_W
+    for card in cards:
+        card_rgb = card.convert("RGB") if card.mode != "RGBA" else None
+        if card.mode == "RGBA":
+            bg = Image.new("RGB", card.size, (0, 0, 0))
+            bg.paste(card, mask=card.split()[3])
+            result.paste(bg, (x, 1))
+        else:
+            result.paste(card_rgb, (x, 1))
+        x += card.width + gap
+
+    print(f"Full strip: {total_w}×{PANEL_H}  ({len(cards)} driver cards)")
+    return result
+
+
 def blank_frame(label: str) -> Image.Image:
     img = Image.new("RGB", (PANEL_W, PANEL_H), (0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -378,13 +430,15 @@ class PreviewWindow:
         self.snapshot = snapshot
         self.renderer = renderer
         self.games = visible_games(snapshot, include_hidden=args.include_hidden)
-        self.view = args.view if args.view in ("scroll", "pin") else "scroll"
+        self.view = args.view if args.view in ("scroll", "pin", "strip") else "scroll"
         self.pin_index = max(0, args.index)
         self.offset = 0
+        self.strip_offset = 0  # horizontal scroll offset for strip view
         self.photo = None
         self.current_frame = None
         self.grabbed_frame = None
         self.grabbed = False
+        self._full_strip: Image.Image | None = None  # cached full-width strip image
         self.auto_refresh = bool(args.auto_refresh)
         self.next_refresh_at = time.monotonic() + max(1.0, args.refresh_interval)
         self.root = tk.Tk()
@@ -469,6 +523,7 @@ class PreviewWindow:
         self.pin_choice_box.bind("<<ComboboxSelected>>", lambda _e: self._select_pin_choice())
         self._button(row2, "Scroll", lambda: self._set_view("scroll")).pack(side="left", padx=(0, 4))
         self._button(row2, "Pin", lambda: self._set_view("pin")).pack(side="left", padx=(0, 4))
+        self._button(row2, "Strip", lambda: self._set_view("strip")).pack(side="left", padx=(0, 4))
         self._button(row2, "Grab", self._grab_frame).pack(side="left", padx=(0, 4))
         self._button(row2, "Live", self._release_grab).pack(side="left", padx=(0, 4))
         self._button(row2, "Save", self._save_frame_dialog).pack(side="left")
@@ -557,7 +612,11 @@ class PreviewWindow:
         self._draw_current()
 
     def _save_frame_dialog(self) -> None:
-        frame = self.grabbed_frame if self.grabbed and self.grabbed_frame is not None else self.current_frame
+        # In strip view, save the full-width image instead of the current viewport
+        if self.view == "strip" and not self.grabbed and self._full_strip is not None:
+            frame = self._full_strip
+        else:
+            frame = self.grabbed_frame if self.grabbed and self.grabbed_frame is not None else self.current_frame
         if frame is None:
             self.message_var.set("No frame to save yet.")
             return
@@ -672,7 +731,10 @@ class PreviewWindow:
             prefetch_logos(self.renderer, self.games)
         self.strip = render_scroll(self.renderer, self.games)
         pin_id = self.pin_var.get().strip() or self.args.pin_id or self.snapshot.pinned_game
-        self.pin = render_pin(self.renderer, choose_pinned_game(self.games, pin_id, self.pin_index))
+        game = choose_pinned_game(self.games, pin_id, self.pin_index)
+        self.pin = render_pin(self.renderer, game)
+        self._full_strip = render_pin_strip(self.renderer, game)
+        self.strip_offset = 0
         self._sync_item_box()
         self._draw_current()
 
@@ -720,6 +782,10 @@ class PreviewWindow:
             max_x = max(1, self.strip.width - PANEL_W)
             self.offset = (self.offset + 1) % max_x
             self._draw_current()
+        elif self.view == "strip" and self._full_strip and not self.grabbed:
+            max_x = max(1, self._full_strip.width - PANEL_W)
+            self.strip_offset = (self.strip_offset + 1) % max_x
+            self._draw_current()
         self.root.after(max(1, int(self.args.scroll_sleep * 1000)), self._tick)
 
     def _draw_current(self) -> None:
@@ -729,6 +795,11 @@ class PreviewWindow:
             max_x = max(1, self.strip.width - PANEL_W)
             x = self.offset % max_x
             frame = self.strip.crop((x, 0, x + PANEL_W, PANEL_H))
+        elif self.view == "strip" and self._full_strip:
+            # Show a scrolling 384px window into the full-width strip
+            max_x = max(1, self._full_strip.width - PANEL_W)
+            x = self.strip_offset % max_x
+            frame = self._full_strip.crop((x, 0, x + PANEL_W, PANEL_H))
         else:
             frame = self.pin or blank_frame("NO PIN DATA")
 
@@ -758,7 +829,8 @@ def main() -> int:
     parser.add_argument("--endpoint", default="", help="Override endpoint, e.g. /api/state or /data")
     parser.add_argument("--ticker-id", default="", help="Ticker id for /data requests")
     parser.add_argument("--mode", default="sports", help="Mode to request/render")
-    parser.add_argument("--view", choices=("scroll", "pin", "both"), default="scroll")
+    parser.add_argument("--view", choices=("scroll", "pin", "strip", "both"), default="scroll",
+                        help="scroll=full strip GIF, pin=384×32 frame, strip=full-width pin content, both=scroll+pin")
     parser.add_argument("--pin-id", default="", help="Pinned item id, e.g. nhl:401234567")
     parser.add_argument("--index", type=int, default=0, help="Pinned item index when --pin-id is not set")
     parser.add_argument("--save", default=None, help="Output PNG path (default: previews/temp/render_<ts>.png)")
@@ -802,18 +874,19 @@ def main() -> int:
             PreviewWindow(args, snapshot, renderer).run()
             return 0
 
+        pin_id = args.pin_id or snapshot.pinned_game
+        pinned = choose_pinned_game(games, pin_id, args.index)
+
         if args.view == "scroll":
             save_image(render_scroll(renderer, games), args.save)
         elif args.view == "pin":
-            pin_id = args.pin_id or snapshot.pinned_game
-            save_image(render_pin(renderer, choose_pinned_game(games, pin_id, args.index)), args.save)
-        else:
+            save_image(render_pin(renderer, pinned), args.save)
+        elif args.view == "strip":
+            save_image(render_pin_strip(renderer, pinned), args.save)
+        else:  # both
             root, ext = os.path.splitext(args.save)
-            scroll_path = f"{root}_scroll{ext or '.png'}"
-            pin_path = f"{root}_pin{ext or '.png'}"
-            save_image(render_scroll(renderer, games), scroll_path)
-            pin_id = args.pin_id or snapshot.pinned_game
-            save_image(render_pin(renderer, choose_pinned_game(games, pin_id, args.index)), pin_path)
+            save_image(render_scroll(renderer, games), f"{root}_scroll{ext or '.png'}")
+            save_image(render_pin(renderer, pinned),   f"{root}_pin{ext or '.png'}")
         return 0
     except Exception:
         traceback.print_exc()

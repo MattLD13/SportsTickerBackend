@@ -25,15 +25,18 @@ _F1_TEAM_SLUGS = {
     'mclaren':      'mclaren',
     'mercedes':     'mercedes',
     'ferrari':      'ferrari',
-    'red bull':     'red-bull-racing',
-    'racing bulls': 'racing-bulls',
-    'rb':           'racing-bulls',
-    'aston martin': 'aston-martin',
+    'red bull':     'redbullracing',
+    'racing bulls': 'racingbulls',
+    'rb':           'racingbulls',
+    'aston martin': 'astonmartin',
     'alpine':       'alpine',
     'williams':     'williams',
-    'haas':         'haas',
-    'sauber':       'kick-sauber',
-    'kick sauber':  'kick-sauber',
+    'haas':         'haasf1team',
+    'audi':         'audi',
+    'sauber':       'audi',       # Sauber became Audi in 2026
+    'kick sauber':  'audi',
+    'cadillac':     'cadillac',
+    'andretti':     'cadillac',   # Cadillac/Andretti
 }
 
 _F1_TEAM_COLORS = {
@@ -47,8 +50,11 @@ _F1_TEAM_COLORS = {
     'alpine':       '#FF87BC',
     'williams':     '#64C4FF',
     'haas':         '#B6BABD',
-    'sauber':       '#52E252',
-    'kick sauber':  '#52E252',
+    'audi':         '#C0C0C0',
+    'sauber':       '#C0C0C0',
+    'kick sauber':  '#C0C0C0',
+    'cadillac':     '#CC0000',
+    'andretti':     '#CC0000',
 }
 
 # TrackStatus codes from the F1 SignalR feed (used if SignalR ever connects)
