@@ -219,10 +219,12 @@ class F1LiveTimingClient:
                 target[key] = val
 
     def _run_loop(self):
+        retry_delay = 10
         while self._running:
             try:
                 token = self._negotiate()
                 url   = self._ws_url(token)
+                retry_delay = 10  # reset on successful negotiate
                 self._ws = websocket.WebSocketApp(
                     url,
                     header=[f"{k}: {v}" for k, v in _HEADERS.items()],
@@ -233,11 +235,18 @@ class F1LiveTimingClient:
                 )
                 self._ws.run_forever(ping_interval=20, ping_timeout=10)
             except Exception as exc:
-                print(f"[F1 SignalR] connection loop error: {exc}")
+                err = str(exc)
+                if '403' in err or 'Forbidden' in err:
+                    # Server is blocking the IP — back off aggressively
+                    retry_delay = min(retry_delay * 2, 600)
+                    print(f"[F1 SignalR] 403 Forbidden (retry in {retry_delay}s)")
+                else:
+                    print(f"[F1 SignalR] connection loop error: {exc}")
+                    retry_delay = 10
             finally:
                 self._connected = False
             if self._running:
-                time.sleep(5)
+                time.sleep(retry_delay)
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────
