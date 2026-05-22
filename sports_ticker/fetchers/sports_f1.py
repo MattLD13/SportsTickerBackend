@@ -7,8 +7,17 @@ globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')
 
 from . import f1_signalr as _f1_signalr
 
-_F1LT_BASE  = "https://livetiming.formula1.com/static"
+_F1LT_BASE    = "https://livetiming.formula1.com/static"
 _JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
+
+# F1 live timing CDN requires the BestHTTP UA used by their official apps.
+_F1LT_HEADERS = {
+    'User-Agent':      'BestHTTP',
+    'Accept':          '*/*',
+    'Accept-Encoding': 'gzip, identity',
+    'Referer':         'https://www.formula1.com/',
+    'Origin':          'https://www.formula1.com',
+}
 
 _F1_CAR_URL = (
     "https://media.formula1.com/image/upload/c_lfill,h_224/q_auto/"
@@ -49,6 +58,16 @@ _F1_TEAM_COLORS = {
 
 # SessionStatus values that indicate a live session
 _F1LT_LIVE_STATUSES = frozenset({'Started', 'Aborted', 'Ends'})
+
+# TrackStatus.Status codes from the F1 live timing feed
+_F1LT_TRACK_STATUS = {
+    '1': 'GREEN',
+    '2': 'YELLOW',
+    '4': 'SAFETY CAR',
+    '5': 'RED FLAG',
+    '6': 'VSC',
+    '7': 'VSC ENDING',
+}
 
 
 def _f1_short_event(name):
@@ -164,7 +183,7 @@ class SportsF1Mixin:
     def _f1lt_get(self, path):
         """GET a JSON file from the F1 live timing static CDN."""
         url = f"{_F1LT_BASE}/{path.lstrip('/')}"
-        r = self.session.get(url, headers=HEADERS, timeout=TIMEOUTS.get('default', 10))
+        r = self.session.get(url, headers=_F1LT_HEADERS, timeout=TIMEOUTS.get('default', 10))
         r.raise_for_status()
         return r.json()
 
@@ -176,25 +195,36 @@ class SportsF1Mixin:
         return r.json()
 
     def _fetch_f1(self, force=False):
-        """Fetch the current F1 session using F1 Live Timing + Jolpica."""
+        """Fetch the current F1 session using F1 Live Timing (SignalR) + Jolpica."""
         self.__init_f1_cache()
         now_ts = time.time()
         if not force and (now_ts - self._f1_cache.get('ts', 0.0)) < self._f1_ttl:
             return self._f1_cache.get('data')
 
-        # ── 1. Session info from F1 live timing ──────────────────────────────
+        # ── 0. Ensure SignalR client is running ──────────────────────────────
+        signalr_client = _f1_signalr.get_client()
+        signalr_data   = signalr_client.get_live_data() if signalr_client else {}
+
+        # ── 1. Session info: static CDN first, SignalR fallback ──────────────
+        si = None
         try:
             si = self._f1lt_get('SessionInfo.json')
         except Exception as exc:
-            print(f"[F1] SessionInfo fetch error: {exc}")
+            print(f"[F1] SessionInfo CDN error ({exc}); using SignalR session info")
+            # Build a synthetic si from SignalR SessionInfo topic data
+            sr_si = signalr_data.get('session_info', {})
+            if sr_si:
+                si = sr_si
+
+        if not si:
             return self._f1_cache.get('data')
 
         session_status = str(si.get('SessionStatus', '')).strip()
-        session_type   = str(si.get('Type', '')).strip()
         session_name   = str(si.get('Name') or si.get('Type') or 'Session').strip()
+        session_type   = str(si.get('Type') or session_name).strip()
         gmt_offset     = str(si.get('GmtOffset', '+00:00:00'))
-        meeting        = si.get('Meeting', {})
-        circuit        = meeting.get('Circuit', {})
+        meeting        = si.get('Meeting', {}) if isinstance(si.get('Meeting'), dict) else {}
+        circuit        = meeting.get('Circuit', {}) if isinstance(meeting.get('Circuit'), dict) else {}
 
         event = _f1_short_event(meeting.get('OfficialName') or meeting.get('Name') or circuit.get('ShortName'))
         track = str(circuit.get('ShortName') or meeting.get('Location') or '').strip()
@@ -204,12 +234,15 @@ class SportsF1Mixin:
         now_utc = datetime.now(timezone.utc)
         state = 'pre'
 
-        if session_status in _F1LT_LIVE_STATUSES:
+        # SignalR session_status is authoritative when connected
+        sr_session_status = signalr_data.get('session_status', '')
+        effective_status  = sr_session_status if sr_session_status else session_status
+
+        if effective_status in _F1LT_LIVE_STATUSES:
             state = 'in'
-        elif session_status in ('Finalised', 'Finished'):
+        elif effective_status in ('Finalised', 'Finished'):
             state = 'post'
         else:
-            # Fall back to time-window comparison
             try:
                 start_utc = _f1lt_to_utc(si['StartDate'], gmt_offset)
                 end_utc   = _f1lt_to_utc(si['EndDate'],   gmt_offset)
@@ -228,24 +261,12 @@ class SportsF1Mixin:
 
         # ── 3. Driver list — SignalR (live) or Jolpica (fallback) ────────────
         drivers = []
+        live_signalr = signalr_data if (signalr_client and signalr_client.is_connected and state == 'in') else {}
 
-        # Always ensure the SignalR client is running so it's ready when a
-        # session goes live.
-        signalr_client = _f1_signalr.get_client()
-
-        signalr_live_data = None
-        if signalr_client and signalr_client.is_connected and state == 'in':
-            signalr_live_data = signalr_client.get_live_data()
-
-        if signalr_live_data and signalr_live_data.get('driver_list'):
-            drivers = _drivers_from_signalr(signalr_live_data)
-            # Override session_status from SignalR if available
-            sr_status = signalr_live_data.get('session_status', '')
-            if sr_status in _F1LT_LIVE_STATUSES:
-                state = 'in'
+        if live_signalr and live_signalr.get('driver_list'):
+            drivers = _drivers_from_signalr(live_signalr)
 
         if not drivers:
-            # Fall back to Jolpica last-race results for driver roster
             try:
                 data = self._jolpica_get('current/last/results.json')
                 races = data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
@@ -258,11 +279,11 @@ class SportsF1Mixin:
                         pos = int(res.get('position', 999))
                     except Exception:
                         pos = 999
-                    code = str(drv.get('code') or '').upper()[:3]
-                    name = f"{drv.get('givenName', '')} {drv.get('familyName', '')}".strip().title()
-                    car  = str(drv.get('permanentNumber') or res.get('number') or '').strip()
+                    code    = str(drv.get('code') or '').upper()[:3]
+                    name    = f"{drv.get('givenName', '')} {drv.get('familyName', '')}".strip().title()
+                    car     = str(drv.get('permanentNumber') or res.get('number') or '').strip()
                     gap_val = res.get('Time', {}).get('time') or res.get('status', '')
-                    gap = 'Leader' if pos == 1 else (f"+{gap_val}" if gap_val and gap_val not in ('Finished', 'Lapped') else '')
+                    gap     = 'Leader' if pos == 1 else (f"+{gap_val}" if gap_val and gap_val not in ('Finished', 'Lapped') else '')
                     drivers.append({
                         'pos':              pos,
                         'name':             name or 'Driver',
@@ -282,13 +303,61 @@ class SportsF1Mixin:
             except Exception as exc:
                 print(f"[F1] Jolpica results fetch error: {exc}")
 
-        # ── 4. Build game object ─────────────────────────────────────────────
+        # ── 4. Status display ────────────────────────────────────────────────
+        session_lower = session_type.lower()
+        is_practice   = any(x in session_lower for x in ('practice', 'warm up'))
+
+        if state == 'post':
+            status_display = 'FINAL'
+        elif state == 'in':
+            ts_code    = str(live_signalr.get('track_status', {}).get('Status', '1')).strip()
+            lap_count  = live_signalr.get('lap_count', {})
+            extrap     = live_signalr.get('extrapolated_clock', {})
+            cur_lap    = lap_count.get('CurrentLap')
+            tot_lap    = lap_count.get('TotalLaps')
+            remaining  = str(extrap.get('Remaining') or '').split('.')[0]  # strip sub-seconds
+
+            if is_practice:
+                status_display = _F1LT_TRACK_STATUS.get(ts_code, 'GREEN')
+            else:
+                # Race / Qualifying: prefer laps, then time remaining, then flag
+                if cur_lap and tot_lap:
+                    status_display = f"Lap {cur_lap}/{tot_lap}"
+                elif remaining and remaining not in ('', '0:00:00'):
+                    status_display = remaining
+                else:
+                    status_display = _F1LT_TRACK_STATUS.get(ts_code, 'GREEN')
+        else:
+            # Pre: show scheduled start time
+            if start_utc_str:
+                try:
+                    start_dt = parse_iso(start_utc_str)
+                    if start_dt:
+                        status_display = start_dt.strftime('%I:%M %p').lstrip('0')
+                    else:
+                        status_display = 'Starts Soon'
+                except Exception:
+                    status_display = 'Starts Soon'
+            else:
+                status_display = 'Starts Soon'
+
+        flag = _F1LT_TRACK_STATUS.get(
+            str(live_signalr.get('track_status', {}).get('Status', '1')).strip(),
+            _f1_flag_for_state(state)
+        )
+
+        # Lap info for racing sessions
+        lap_count_d = live_signalr.get('lap_count', {})
+        cur_lap_val = int(lap_count_d.get('CurrentLap') or 0)
+        tot_lap_val = int(lap_count_d.get('TotalLaps') or 0)
+
+        # ── 5. Build game object ─────────────────────────────────────────────
         game = {
             'id':           session_id,
             'type':         'racing',
             'sport':        'f1',
             'state':        state,
-            'status':       'LIVE' if state == 'in' else ('FINAL' if state == 'post' else 'Starts Soon'),
+            'status':       status_display,
             'is_shown':     True,
             'startTimeUTC': start_utc_str,
             'away_abbr':    event,
@@ -296,18 +365,18 @@ class SportsF1Mixin:
             'away_score':   '',
             'home_score':   '',
             'f1': {
-                'event_name':    event,
-                'short_name':    event,
-                'track_name':    track,
-                'session_type':  session_name,
-                'session_name':  session_name,
-                'lap':           0,
-                'total_laps':    0,
-                'laps_remaining': 0,
-                'caution':       False,
-                'flag':          _f1_flag_for_state(state),
-                'drivers':       drivers,
-                'weather':       {},
+                'event_name':     event,
+                'short_name':     event,
+                'track_name':     track,
+                'session_type':   session_name,
+                'session_name':   session_name,
+                'lap':            cur_lap_val,
+                'total_laps':     tot_lap_val,
+                'laps_remaining': max(0, tot_lap_val - cur_lap_val),
+                'caution':        flag in ('YELLOW', 'SAFETY CAR', 'VSC', 'RED FLAG'),
+                'flag':           flag,
+                'drivers':        drivers,
+                'weather':        {},
             },
         }
         self._f1_cache = {'ts': now_ts, 'data': game}

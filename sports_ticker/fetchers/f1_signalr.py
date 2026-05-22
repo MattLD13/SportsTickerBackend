@@ -22,16 +22,20 @@ _NEGOTIATE_URL = f"https://{_SIGNALR_HOST}/signalr/negotiate"
 _WS_BASE       = f"wss://{_SIGNALR_HOST}/signalr/connect"
 
 _TOPICS = [
+    "SessionInfo",
     "DriverList",
     "TimingData",
     "TrackStatus",
     "SessionStatus",
+    "LapCount",
+    "ExtrapolatedClock",
     "RaceControlMessages",
 ]
 
 _HEADERS = {
-    "User-Agent":      "Mozilla/5.0",
-    "Accept":          "application/json",
+    "User-Agent":      "BestHTTP",
+    "Accept":          "*/*",
+    "Accept-Encoding": "gzip, identity",
     "Accept-Language": "en",
 }
 
@@ -52,10 +56,13 @@ class F1LiveTimingClient:
         self._connected = False
 
         # Live data store — updated in place as messages arrive
-        self._driver_list   = {}   # keyed by racing number string
-        self._timing_lines  = {}   # keyed by racing number string
-        self._track_status  = {}
-        self._session_status = ''
+        self._driver_list        = {}   # keyed by racing number string
+        self._timing_lines       = {}   # keyed by racing number string
+        self._track_status       = {}
+        self._session_status     = ''
+        self._session_info       = {}   # session metadata (Name, Type, Meeting, dates)
+        self._lap_count          = {}   # {CurrentLap, TotalLaps}
+        self._extrapolated_clock = {}   # {Remaining, Extrapolating}
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -83,10 +90,13 @@ class F1LiveTimingClient:
         """Return a snapshot of the latest timing data (thread-safe)."""
         with self._lock:
             return {
-                'driver_list':    dict(self._driver_list),
-                'timing_lines':   dict(self._timing_lines),
-                'track_status':   dict(self._track_status),
-                'session_status': self._session_status,
+                'driver_list':        dict(self._driver_list),
+                'timing_lines':       dict(self._timing_lines),
+                'track_status':       dict(self._track_status),
+                'session_status':     self._session_status,
+                'session_info':       dict(self._session_info),
+                'lap_count':          dict(self._lap_count),
+                'extrapolated_clock': dict(self._extrapolated_clock),
             }
 
     # ── Internal ──────────────────────────────────────────────────────────────
@@ -146,6 +156,10 @@ class F1LiveTimingClient:
 
     def _apply_initial_state(self, state):
         with self._lock:
+            si = state.get('SessionInfo', {})
+            if isinstance(si, dict):
+                self._session_info.update(si)
+
             dl = state.get('DriverList', {})
             if isinstance(dl, dict):
                 self._driver_list.update(dl)
@@ -164,11 +178,21 @@ class F1LiveTimingClient:
             if isinstance(ss, dict):
                 self._session_status = str(ss.get('Status', self._session_status))
 
+            lc = state.get('LapCount', {})
+            if isinstance(lc, dict):
+                self._lap_count.update(lc)
+
+            ec = state.get('ExtrapolatedClock', {})
+            if isinstance(ec, dict):
+                self._extrapolated_clock.update(ec)
+
     def _apply_feed(self, topic, data):
         if not isinstance(data, dict):
             return
         with self._lock:
-            if topic == 'DriverList':
+            if topic == 'SessionInfo':
+                self._merge_nested(self._session_info, data)
+            elif topic == 'DriverList':
                 self._merge_nested(self._driver_list, data)
             elif topic == 'TimingData':
                 lines = data.get('Lines', {})
@@ -180,6 +204,10 @@ class F1LiveTimingClient:
                 status = data.get('Status')
                 if status:
                     self._session_status = str(status)
+            elif topic == 'LapCount':
+                self._lap_count.update(data)
+            elif topic == 'ExtrapolatedClock':
+                self._extrapolated_clock.update(data)
 
     @staticmethod
     def _merge_nested(target, source):

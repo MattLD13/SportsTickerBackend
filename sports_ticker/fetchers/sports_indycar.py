@@ -266,18 +266,70 @@ class SportsIndycarMixin:
 
         caution = flag_status in ('YELLOW', 'RED')
 
+        # Lap info (race sessions)
+        current_lap = 0
+        total_laps  = int(hb.get('totalLaps') or hb.get('TotalLaps') or hb.get('lapsInEvent') or 0)
+        laps_rem    = int(hb.get('lapsToGo') or hb.get('LapsToGo') or 0)
+        items = timing.get('Item', [])
+        if isinstance(items, list) and items:
+            try:
+                current_lap = max(int(d.get('laps') or 0) for d in items if isinstance(d, dict))
+            except Exception:
+                pass
+
+        # Time to go (timed/qualifying sessions)
+        time_to_go = str(hb.get('overallTimeToGo') or '').strip()
+
         # Status display string
         if state == 'post':
             status_display = 'FINAL'
         elif state == 'in':
-            if flag_status == 'YELLOW':
-                status_display = 'YELLOW'
-            elif flag_status == 'RED':
-                status_display = 'RED FLAG'
-            elif flag_status == 'CHECKERED':
-                status_display = 'CHECKERED'
+            is_practice = session_raw in ('P', 'W')
+            is_race     = session_raw == 'R'
+            is_quali    = session_raw in ('Q', 'F')
+
+            if is_practice:
+                # Practice: show the current flag colour
+                if flag_status in ('YELLOW',):
+                    status_display = 'YELLOW'
+                elif flag_status == 'RED':
+                    status_display = 'RED FLAG'
+                elif flag_status == 'CHECKERED':
+                    status_display = 'CHECKERED'
+                else:
+                    status_display = 'GREEN'
+
+            elif is_race:
+                # Race: show lap count, falling back to flag
+                if total_laps > 0:
+                    status_display = f"Lap {current_lap}/{total_laps}"
+                elif laps_rem > 0:
+                    status_display = f"{laps_rem} to go"
+                elif flag_status == 'YELLOW':
+                    status_display = 'YELLOW'
+                elif flag_status == 'RED':
+                    status_display = 'RED FLAG'
+                elif flag_status == 'CHECKERED':
+                    status_display = 'CHECKERED'
+                else:
+                    status_display = 'GREEN'
+
+            elif is_quali:
+                # Qualifying: show time remaining
+                if time_to_go:
+                    status_display = time_to_go
+                elif flag_status == 'YELLOW':
+                    status_display = 'YELLOW'
+                elif flag_status == 'RED':
+                    status_display = 'RED FLAG'
+                elif flag_status == 'CHECKERED':
+                    status_display = 'CHECKERED'
+                else:
+                    status_display = 'GREEN'
+
             else:
                 status_display = 'LIVE'
+
         else:
             if start_time_utc:
                 start_display = start_time_utc
@@ -290,20 +342,6 @@ class SportsIndycarMixin:
                 status_display = f"Starts {start_display}"
             else:
                 status_display = 'Starts Soon'
-
-        # Lap info (race sessions)
-        current_lap = 0
-        total_laps  = 0
-        laps_rem    = 0
-        items = timing.get('Item', [])
-        if isinstance(items, list) and items:
-            try:
-                current_lap = max(int(d.get('laps') or 0) for d in items if isinstance(d, dict))
-            except Exception:
-                pass
-
-        # Time to go (timed/qualifying sessions)
-        time_to_go = str(hb.get('overallTimeToGo') or '').strip()
 
         # Build driver list
         if not isinstance(items, list):

@@ -348,7 +348,7 @@ class SportsGolfMixin:
                 'status': round_label,
                 'state': state_val,
                 'is_shown': False,
-                'away_abbr': tourney_display[:16],
+                'away_abbr': tourney_display,
                 'away_score': str(year),
                 'away_logo': tour_colors['logo'],
                 'home_abbr': str(leader.get('name') or 'LEADER'),

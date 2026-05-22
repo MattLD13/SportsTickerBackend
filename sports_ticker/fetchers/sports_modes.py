@@ -509,6 +509,14 @@ class SportsModesMixin:
                 filtered.append(g)
                 continue
             if state_val == 'pre':
+                # Racing sessions: only show on the day the session is scheduled
+                if g_type == 'racing' and g.get('startTimeUTC'):
+                    try:
+                        game_dt = parse_iso(g.get('startTimeUTC'))
+                        if not (visible_start_utc <= game_dt < visible_end_utc):
+                            continue
+                    except Exception:
+                        pass
                 filtered.append(g)
                 continue
             if state_val == 'post' or 'FINAL' in status_val:

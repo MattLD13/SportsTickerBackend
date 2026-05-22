@@ -2479,3 +2479,7 @@ All 26 cars: 26/26 done in 2.76s
 [NASCAR] all 26 downloads complete — processing...
 [NASCAR] prefetch done: 26/26 cars ready
 Total: 26/26 in 3.0s
+📂 Found 0 saved tickers in 'ticker_data'
+[AIRLINE-DB] Loaded 983 airline IATA↔ICAO mappings from OpenFlights
+⚠️ No Finnhub Keys found. Starting STOCK SIMULATION mode.
+imports OK
