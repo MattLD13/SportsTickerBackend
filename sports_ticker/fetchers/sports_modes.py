@@ -548,12 +548,11 @@ class SportsModesMixin:
                     if _pn and _pn not in seen_pins:
                         seen_pins.add(_pn)
                         active_pins.append(_p)
-            golf_needed = bool(conf.get('active_sports', {}).get('golf', False))
+            golf_needed = bool(conf.get('active_sports', {}).get('golf', True))
             if not golf_needed:
                 golf_needed = any(str(p).strip().lower().startswith(('golf:', 'masters:')) for p in active_pins)
-            # Race leagues now obey active_sports so LEAGUE_OPTIONS is the source of truth.
-            indycar_needed = bool(conf.get('active_sports', {}).get('indycar', False))
-            f1_needed = bool(conf.get('active_sports', {}).get('f1', False))
+            indycar_needed = bool(conf.get('active_sports', {}).get('indycar', True))
+            f1_needed = bool(conf.get('active_sports', {}).get('f1', True))
             nascar_needed = bool(conf.get('active_sports', {}).get('nascar', False))
             
         all_games = []
