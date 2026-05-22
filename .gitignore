@@ -1,31 +1,8 @@
 # Logs
 *.log
+ticker.log
 
-# Runtime cache files
-stock_cache.json
-game_cache.json
-airport_name_cache.json
-airline_code_cache.json
-
-# Persisted app state
-global_config.json
-ticker_data/
-
-# Python
+# Python cache
 __pycache__/
 *.py[cod]
-*.pyo
-.venv/
-venv/
-*.egg-info/
-
-# Environment
-.env
-
-# Preview temp renders (accumulate locally, not committed)
-previews/temp/*.png
-previews/temp/*.gif
-
-# OS
-.DS_Store
-Thumbs.db
+*$py.class
