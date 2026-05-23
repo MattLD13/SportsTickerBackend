@@ -9,6 +9,7 @@ from .core import (
     SPORTS_UPDATE_INTERVAL, _normalize_single_pin, _STOCK_LISTS,
     Tee, tee_instance, purge_stale_tickers, is_mode_enabled, normalize_mode,
 )
+from .fetchers import sports_modes_common as _sports_modes_common
 from .fetchers_runtime import TestMode, SportsFetcher, SpotifyFetcher, FlightTracker
 
 # Restore TestMode from persisted state (only active when debug_mode is on)
@@ -66,6 +67,9 @@ except Exception as e:
 
 _fetchers._sports_modes.spotify_fetcher = spotify_fetcher
 _fetchers._sports_modes.flight_tracker = flight_tracker
+# Buffer builders import these from sports_modes_common, not sports_modes.
+_sports_modes_common.spotify_fetcher = spotify_fetcher
+_sports_modes_common.flight_tracker = flight_tracker
 
 # ── Section K: Worker Threads ──
 _refresh_event = threading.Event()

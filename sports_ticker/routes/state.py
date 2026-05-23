@@ -5,7 +5,7 @@ from ..core import (
     state, tickers, data_lock,
     normalize_enabled_mode, normalize_mode, _normalize_single_pin,
     resolve_ticker_id, create_ticker_record, save_specific_ticker, generate_pairing_code,
-    SPORTS_MODE_FAMILY, NON_SCOREBOARD_TYPES, HIDDEN_STATUS_KEYWORDS, _ACTIVE_STATES,
+    SPORTS_MODE_FAMILY, RACING_FULLSCREEN_MODES, NON_SCOREBOARD_TYPES, HIDDEN_STATUS_KEYWORDS, _ACTIVE_STATES,
     _get_ticker_timezone_context, _apply_timezone_to_game_times,
     _materialize_blank_logo_urls, _maybe_update_ticker_timezone_from_request,
     SERVER_VERSION,
@@ -76,6 +76,8 @@ def get_ticker_data():
                 pin_league = 'masters'
 
     display_style = 'strip'
+    if current_mode in RACING_FULLSCREEN_MODES:
+        display_style = 'full'
 
     # Pin overrides should only remap sports-family modes. Non-sports modes
     # (clock/weather/music/flights/etc.) must remain user-selectable.
@@ -317,6 +319,8 @@ def api_state():
         current_mode = normalize_enabled_mode(_preview_mode)
 
     display_style = 'strip'
+    if current_mode in RACING_FULLSCREEN_MODES:
+        display_style = 'full'
 
     # Legacy app behavior: golf pins still use the golf UI. Other sports pins
     # request full-screen presentation without changing the mode.

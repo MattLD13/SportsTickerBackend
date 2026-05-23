@@ -179,6 +179,7 @@ from .lookups import (
 _TIME_RE = re.compile(r'\d+:\d+')
 _ACTIVE_STATES = frozenset({'in', 'half', 'crit'})
 SPORTS_MODE_FAMILY = ('sports', 'live', 'my_teams', 'soccer')
+RACING_FULLSCREEN_MODES = frozenset({'indycar', 'f1', 'nascar'})
 NON_SCOREBOARD_TYPES = ('music', 'clock', 'weather', 'stock_ticker', 'flight_visitor', 'masters')
 HIDDEN_STATUS_KEYWORDS = frozenset({"postponed", "suspended", "canceled", "ppd"})
 

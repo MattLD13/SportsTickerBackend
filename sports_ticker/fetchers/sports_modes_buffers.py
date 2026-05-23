@@ -42,6 +42,8 @@ class SportsModesBuffersMixin:
                 }
             }
 
+        if not spotify_fetcher:
+            return None
         s_data = spotify_fetcher.get_cached_state()
         
         # If no data or explicit "Waiting for Music" state, return placeholder
