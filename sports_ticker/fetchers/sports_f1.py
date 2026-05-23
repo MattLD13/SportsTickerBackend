@@ -601,7 +601,7 @@ class SportsF1Mixin:
         if not drivers and state in ('in', 'post'):
             drivers = self._fetch_openf1_live(start_utc) or []
 
-        if not drivers:
+        if not drivers and state in ('in', 'post'):
             for res in self._fetch_f1_results():
                 drv  = res.get('Driver', {})
                 ctor = res.get('Constructor', {})

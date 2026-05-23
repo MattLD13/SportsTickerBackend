@@ -254,13 +254,15 @@ class SportsIndycarMixin:
 
         # Ignore stale blob snapshots from previous sessions so the ticker
         # hides IndyCar cleanly on days with no current event.
-        if start_time_utc:
-            try:
-                start_dt = parse_iso(start_time_utc)
-                if start_dt and abs((datetime.now(timezone.utc) - start_dt).total_seconds()) > 18 * 3600:
-                    return None
-            except Exception:
-                pass
+        # If no start time is present we cannot verify currency — hide it.
+        if not start_time_utc:
+            return None
+        try:
+            start_dt = parse_iso(start_time_utc)
+            if start_dt and abs((datetime.now(timezone.utc) - start_dt).total_seconds()) > 18 * 3600:
+                return None
+        except Exception:
+            return None
 
         # State from flag / session status
         flag_status    = str(hb.get('currentFlag') or hb.get('SessionStatus') or '').strip().upper()
