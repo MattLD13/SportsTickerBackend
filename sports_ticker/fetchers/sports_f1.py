@@ -264,8 +264,6 @@ def _find_f1_session(races, now_utc):
     Returns (race_dict, sess_key, sess_name, is_practice, start_utc, end_utc, state)
     or None if no session is scheduled today or currently live.
     """
-    today = now_utc.date()
-
     for race in races:
         sessions = []
         for key, name, is_practice, dur_min in _F1_SESSION_ORDER:
@@ -281,10 +279,11 @@ def _find_f1_session(races, now_utc):
         if not sessions:
             continue
 
-        # Is today within this race weekend?
         weekend_start = min(s[3] for s in sessions)
         weekend_end   = max(s[4] for s in sessions)
-        if not (weekend_start.date() <= today <= weekend_end.date()):
+        
+        # Are we within ~1 day of the race weekend?
+        if not (weekend_start - timedelta(days=1) <= now_utc <= weekend_end + timedelta(days=1)):
             continue
 
         # 1. Currently live?
@@ -292,24 +291,23 @@ def _find_f1_session(races, now_utc):
             if start <= now_utc <= end:
                 return race, key, name, ip, start, end, 'in'
 
-        # 2. Most recently completed session today?
-        past = [(k, n, ip, s, e) for k, n, ip, s, e in sessions
-                if s.date() == today and e < now_utc]
+        # 2. Past session (ended within the last 12 hours)
+        past = [(k, n, ip, s, e) for k, n, ip, s, e in sessions if e < now_utc]
         if past:
-            k, n, ip, s, e = past[-1]
-            return race, k, n, ip, s, e, 'post'
+            past.sort(key=lambda x: x[4]) # sort by end time
+            last = past[-1]
+            if (now_utc - last[4]).total_seconds() < 12 * 3600:
+                return race, last[0], last[1], last[2], last[3], last[4], 'post'
 
-        # 3. Next upcoming session today?
-        future = sorted(
-            [(k, n, ip, s, e) for k, n, ip, s, e in sessions
-             if s.date() == today and s > now_utc],
-            key=lambda x: x[3]
-        )
+        # 3. Next upcoming session (starts within the next 24 hours)
+        future = [(k, n, ip, s, e) for k, n, ip, s, e in sessions if s > now_utc]
         if future:
-            k, n, ip, s, e = future[0]
-            return race, k, n, ip, s, e, 'pre'
+            future.sort(key=lambda x: x[3])
+            nxt = future[0]
+            if (nxt[3] - now_utc).total_seconds() < 24 * 3600:
+                return race, nxt[0], nxt[1], nxt[2], nxt[3], nxt[4], 'pre'
 
-        # Race weekend day with no sessions scheduled (e.g. Thursday media day)
+        # Race weekend day with no active or immediate sessions
         return None
 
     return None
