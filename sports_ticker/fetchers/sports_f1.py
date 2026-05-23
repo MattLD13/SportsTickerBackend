@@ -258,6 +258,21 @@ def _f1_parse_session_utc(sess_dict):
         return None
 
 
+def _f1_schedule_year(races):
+    years = []
+    for race in races or []:
+        if not isinstance(race, dict):
+            continue
+        for key, _, _, _ in _F1_SESSION_ORDER:
+            sess = race.get(key)
+            if not isinstance(sess, dict):
+                continue
+            start = _f1_parse_session_utc(sess)
+            if start:
+                years.append(start.year)
+    return max(years) if years else None
+
+
 def _find_f1_session(races, now_utc):
     """Scan the season calendar and return the active/next/post session for today.
 
@@ -389,11 +404,18 @@ class SportsF1Mixin:
         try:
             data  = self._jolpica_get('current.json')
             races = data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
+            current_year = datetime.now(timezone.utc).year
+            if _f1_schedule_year(races) not in (None, current_year):
+                try:
+                    data = self._jolpica_get(f"{current_year}.json")
+                    races = data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
+                except Exception:
+                    pass
             self._f1_schedule_cache = {'ts': now, 'data': races}
             return races
         except Exception as exc:
             print(f"[F1] Schedule fetch error: {exc}")
-            return cache.get('data', [])
+            return []
 
     def _fetch_f1_results(self, force=False):
         """Fetch last-race driver results from Jolpica (cached 30 min)."""
@@ -529,7 +551,14 @@ class SportsF1Mixin:
         self.__init_f1_cache()
         now_ts = time.time()
         if not force and (now_ts - self._f1_cache.get('ts', 0.0)) < self._f1_ttl:
-            return self._f1_cache.get('data')
+            cached = self._f1_cache.get('data')
+            if cached:
+                try:
+                    cached_start = parse_iso(str(cached.get('startTimeUTC') or ''))
+                    if cached_start and abs((datetime.now(timezone.utc) - cached_start).total_seconds()) <= 18 * 3600:
+                        return cached
+                except Exception:
+                    pass
 
         now_utc = datetime.now(timezone.utc)
 
