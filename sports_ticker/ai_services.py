@@ -5,6 +5,8 @@ import io
 import json
 import os
 import re
+import threading
+import time
 
 import requests
 
@@ -97,6 +99,11 @@ def _load_json_cache(filepath: str, label: str) -> dict:
 
 _ai_airport_cache: dict = _load_json_cache(AIRPORT_CACHE_FILE, "shortened airport names")
 _ai_airline_cache: dict = _load_json_cache(AIRLINE_CACHE_FILE, "airline codes")
+_airline_cache_lock = threading.RLock()
+_airline_ai_request_lock = threading.Lock()
+_AIRLINE_UNKNOWN_SENTINEL = "__UNKNOWN__"
+_AIRLINE_QUOTA_RETRY_SECONDS = 3600
+_airline_ai_cooldown_until = 0.0
 
 
 def _migrate_airport_cache():
@@ -123,42 +130,90 @@ def ai_lookup_airline_codes(query_code: str):
     Stores the result bidirectionally so AI is only called once per airline.
     Returns (icao_3, iata_2) or (None, None).
     """
-    global _ai_airline_cache
+    global _ai_airline_cache, _airline_ai_cooldown_until
     query_code = query_code.upper().strip()
 
-    if query_code in _ai_airline_cache:
-        partner = _ai_airline_cache[query_code]
-        return (partner, query_code) if len(query_code) == 2 else (query_code, partner)
+    if len(query_code) not in (2, 3) or not query_code.isalnum():
+        return None, None
+
+    now = time.time()
+    with _airline_cache_lock:
+        cached = _ai_airline_cache.get(query_code)
+        if isinstance(cached, str):
+            if cached == _AIRLINE_UNKNOWN_SENTINEL:
+                return None, None
+            return (cached, query_code) if len(query_code) == 2 else (query_code, cached)
+        if isinstance(cached, dict):
+            retry_after = float(cached.get('retry_after') or 0)
+            if retry_after > now:
+                return None, None
+            _ai_airline_cache.pop(query_code, None)
+
+        if _airline_ai_cooldown_until > now:
+            return None, None
 
     if not AI_AVAILABLE or not AI_CLIENT:
         return None, None
 
-    try:
-        prompt = (
-            f"What are the IATA (2-letter) and ICAO (3-letter) codes for the airline "
-            f"identified by code '{query_code}'?\n"
-            "Reply with ONLY: IATA ICAO (e.g. 'UA UAL'). If unknown, reply 'UNKNOWN'."
-        )
-        response = AI_CLIENT.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(
-                candidate_count=1, max_output_tokens=10, temperature=0.0
-            ),
-        )
-        text = (response.text or '').strip().upper()
-        if text == 'UNKNOWN' or not text:
-            return None, None
-        parts = text.split()
-        if len(parts) == 2 and len(parts[0]) == 2 and len(parts[1]) == 3:
-            iata, icao = parts[0], parts[1]
-            _ai_airline_cache[iata] = icao
-            _ai_airline_cache[icao] = iata
-            save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
-            print(f"[AIRLINE-AI] Resolved '{query_code}' → IATA={iata}, ICAO={icao}")
-            return icao, iata
-    except Exception as e:
-        print(f"[AIRLINE-AI] Lookup failed for '{query_code}': {e}")
+    with _airline_ai_request_lock:
+        now = time.time()
+        with _airline_cache_lock:
+            cached = _ai_airline_cache.get(query_code)
+            if isinstance(cached, str):
+                if cached == _AIRLINE_UNKNOWN_SENTINEL:
+                    return None, None
+                return (cached, query_code) if len(query_code) == 2 else (query_code, cached)
+            if isinstance(cached, dict):
+                retry_after = float(cached.get('retry_after') or 0)
+                if retry_after > now:
+                    return None, None
+                _ai_airline_cache.pop(query_code, None)
+
+            if _airline_ai_cooldown_until > now:
+                return None, None
+
+        try:
+            prompt = (
+                f"What are the IATA (2-letter) and ICAO (3-letter) codes for the airline "
+                f"identified by code '{query_code}'?\n"
+                "Reply with ONLY: IATA ICAO (e.g. 'UA UAL'). If unknown, reply 'UNKNOWN'."
+            )
+            response = AI_CLIENT.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    candidate_count=1, max_output_tokens=10, temperature=0.0
+                ),
+            )
+            text = (response.text or '').strip().upper()
+            if text == 'UNKNOWN' or not text:
+                with _airline_cache_lock:
+                    _ai_airline_cache[query_code] = _AIRLINE_UNKNOWN_SENTINEL
+                    save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
+                return None, None
+            parts = text.split()
+            if len(parts) == 2 and len(parts[0]) == 2 and len(parts[1]) == 3:
+                iata, icao = parts[0], parts[1]
+                with _airline_cache_lock:
+                    _ai_airline_cache[iata] = icao
+                    _ai_airline_cache[icao] = iata
+                    save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
+                print(f"[AIRLINE-AI] Resolved '{query_code}' → IATA={iata}, ICAO={icao}")
+                return icao, iata
+        except Exception as e:
+            message = str(e)
+            if "429" in message or "RESOURCE_EXHAUSTED" in message:
+                retry_after = time.time() + _AIRLINE_QUOTA_RETRY_SECONDS
+                with _airline_cache_lock:
+                    _airline_ai_cooldown_until = retry_after
+                    _ai_airline_cache[query_code] = {
+                        "error": "quota",
+                        "retry_after": retry_after,
+                    }
+                    save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
+                print(f"[AIRLINE-AI] Quota hit for '{query_code}', suppressing AI airline lookups for {_AIRLINE_QUOTA_RETRY_SECONDS}s")
+            else:
+                print(f"[AIRLINE-AI] Lookup failed for '{query_code}': {e}")
     return None, None
 
 

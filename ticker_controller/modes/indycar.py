@@ -1030,6 +1030,7 @@ class IndycarMixin:
                 if pos == '1':
                     cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(255, 215, 0), width=1)
 
+                drew_car = False
                 if car_image:
                     is_nascar_img = 'nascar.com' in car_image
                     if is_nascar_img:
@@ -1059,10 +1060,12 @@ class IndycarMixin:
                         car_x = 1
                         car_y = max(0, card_h - car_img.height - 1)
                         card.paste(car_img, (car_x, car_y), car_img)
-                elif hasattr(self, '_draw_f1_generated_car') and str(driver.get('team') or ''):
+                        drew_car = True
+                if not drew_car and hasattr(self, '_draw_f1_generated_car') and str(driver.get('team') or ''):
                     fallback_w = min(120, card_w - 2)
                     self._draw_f1_generated_car(card, 1, 14, fallback_w, 15, primary + (255,), secondary + (255,))
-                elif car_num:
+                    drew_car = True
+                if not drew_car and car_num:
                     draw_tiny_text(cd, 5, 19, car_num, (110, 110, 122))
 
                 pos_color = (255, 215, 0) if pos == '1' else (180, 180, 180)

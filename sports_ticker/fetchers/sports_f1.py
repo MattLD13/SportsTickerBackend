@@ -7,6 +7,7 @@ accessible it will upgrade the card with real positions and lap counts.
 """
 
 from datetime import datetime, timezone, timedelta
+import re
 
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
@@ -102,14 +103,54 @@ def _f1_flag_for_state(state):
     return {'pre': 'WHITE', 'post': 'CHECKERED'}.get(str(state or '').lower(), 'GREEN')
 
 
+def _f1_format_lapped_gap(text):
+    raw = str(text or '').strip().lower()
+    if not raw:
+        return ''
+    match = re.search(r'([+-]?\d+)\s*(?:lap|laps|\bl\b)', raw)
+    if not match:
+        return ''
+    laps = abs(int(match.group(1)))
+    if laps <= 0:
+        return ''
+    return f"+{laps} lap" if laps == 1 else f"+{laps} laps"
+
+
+def _f1_seconds_from_time_text(text):
+    raw = str(text or '').strip()
+    if ':' not in raw:
+        return None
+    try:
+        parts = [float(part) for part in raw.split(':')]
+    except Exception:
+        return None
+    if len(parts) == 2:
+        return parts[0] * 60 + parts[1]
+    if len(parts) == 3:
+        return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    return None
+
+
 def _f1_compact_gap(value, position):
     if position == 1:
         return 'Leader'
     if value in (None, ''):
         return ''
     text = str(value).strip()
-    # Remove stray plus signs like '++' or leading '+' that can appear in some feeds
-    text = text.replace('++', '').replace('+', '').strip()
+
+    lapped = _f1_format_lapped_gap(text)
+    if lapped:
+        return lapped
+
+    # Collapse stray plus signs like '++3.264' to a single normalized plus.
+    text = re.sub(r'^\++', '', text).strip()
+    if not text:
+        return ''
+
+    seconds = _f1_seconds_from_time_text(text)
+    if seconds is not None:
+        return f"+{seconds:.1f}s" if seconds < 60 else f"+{seconds:.0f}s"
+
     try:
         gap = abs(float(text))
         if gap < 1:
@@ -118,7 +159,7 @@ def _f1_compact_gap(value, position):
             return f"+{gap:.1f}s"
         return f"+{gap:.0f}s"
     except Exception:
-        # fallback: return cleaned text truncated
+        # Status text such as "Retired" should not pick up a synthetic plus.
         return text[:10]
 
 

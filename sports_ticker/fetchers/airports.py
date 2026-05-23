@@ -108,9 +108,9 @@ class AirportMixin:
                     altitude = getattr(flight, 'altitude', 0) or 0
                     callsign = str(getattr(flight, 'callsign', '') or '').strip()
                     number = str(getattr(flight, 'number', '') or '').strip()
-                    airline_icao, airline_iata, flight_number = self._get_airline_identifiers(callsign or number)
-                    airline_code = airline_iata or airline_icao
-                    airline_logo = self._get_airline_logo_url(airline_code)
+                    display_id = callsign or number
+                    if not display_id:
+                        continue
 
                     if mode == 'arrivals':
                         dest = str(getattr(flight, 'destination_airport_iata', '') or '').strip().upper()
@@ -131,9 +131,9 @@ class AirportMixin:
                             'status_label': 'DEPARTING',
                         }
 
-                    display_id = callsign or number
-                    if not display_id:
-                        continue
+                    airline_icao, airline_iata, flight_number = self._get_airline_identifiers(display_id)
+                    airline_code = airline_iata or airline_icao
+                    airline_logo = self._get_airline_logo_url(airline_code)
 
                     # Lower altitude = closer to landing (arrivals) or just departed (departures)
                     # Negate altitude so lower altitude sorts first (highest sort_time)

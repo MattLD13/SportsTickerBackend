@@ -97,15 +97,21 @@ def fetch_games_for_render(
     """Resolve game list from backend and/or live fetchers."""
     games: list[dict] = []
     render_mode = mode
+    prefer_live = mode in ('f1', 'indycar', 'nascar')
 
-    if source in ('auto', 'backend'):
+    if source == 'auto' and prefer_live:
+        print("Fetching live data directly...")
+        games, render_mode = live_games(mode)
+        print(f"Live: {len(games)} items")
+
+    if not games and source in ('auto', 'backend'):
         try:
             games, render_mode = backend_games(url, mode)
             print(f"Backend: {len(games)} items")
         except Exception as exc:
             print(f"Backend unavailable ({exc})")
 
-    if not games and source in ('auto', 'live'):
+    if not games and source in ('auto', 'live') and not prefer_live:
         print("Fetching live data directly...")
         games, render_mode = live_games(mode)
         print(f"Live: {len(games)} items")

@@ -61,12 +61,12 @@ def main() -> int:
         os.makedirs(out_dir, exist_ok=True)
         games = []
         render_mode = mode
-        if args.source in ("auto", "backend"):
-            games, render_mode = backend_racing_games(args.url, mode)
-        if not games and args.source in ("auto", "live"):
+        if args.source in ("auto", "live"):
             live_game = live_racing_game(mode)
             games = [live_game] if live_game else []
             render_mode = mode
+        if not games and args.source in ("auto", "backend"):
+            games, render_mode = backend_racing_games(args.url, mode)
         renderer = make_renderer(render_mode)
         renderer.mode = mode
         if not args.no_prefetch_logos:
