@@ -8,7 +8,8 @@ from flask import request, jsonify, make_response
 from ..routes_runtime import app
 from ..core import (
     state,
-    LEAGUE_OPTIONS, _league_sort_key, _auto_category_for_option, resolve_ticker_id,
+    LEAGUE_OPTIONS, MODE_OPTIONS,
+    is_mode_enabled, _league_sort_key, _auto_category_for_option, resolve_ticker_id,
 )
 from ..workers import spotify_fetcher
 
@@ -35,6 +36,25 @@ def get_league_options():
             'enabled': state['active_sports'].get('music', False),
         })
     return jsonify(league_meta)
+
+
+@app.route('/modes', methods=['GET'])
+@app.route('/api/modes', methods=['GET'])
+def get_mode_options():
+    active_modes = state.get('active_modes', {})
+    mode_meta = []
+    for item in MODE_OPTIONS:
+        explicit_value = active_modes.get(item['id'])
+        mode_meta.append({
+            'id': item['id'],
+            'label': item['label'],
+            'family': item.get('family', 'other'),
+            'follows': item.get('follows'),
+            'enabled': is_mode_enabled(item['id'], active_modes),
+            'explicit_enabled': explicit_value,
+            'is_inherited': explicit_value is None and bool(item.get('follows')),
+        })
+    return jsonify(mode_meta)
 
 
 @app.route('/api/spotify/now', methods=['GET'])

@@ -4,17 +4,13 @@ Scroll card (128 × 32):  race name + session on top, top-3 drivers below.
 Full screen (384 × 32):  left 1/4 = race info, right 3/4 = scrolling driver list.
 """
 
-import concurrent.futures
-import hashlib
-import io
-import os
-import threading
 import time
 from datetime import datetime
-import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
-from ..config import PANEL_W, PANEL_H, ASSETS_DIR
+from ..assets.nascar_cars import load_nascar_car, trim_transparent_padding
+from ..config import PANEL_W, PANEL_H
 from ..fonts import draw_tiny_text, draw_hybrid_text
+from ..racing import racing_payload, racing_sport
 
 
 def _hex_to_rgb(h, fallback=(128, 128, 128)):
@@ -99,307 +95,6 @@ def _trim_transparent_padding(img):
         return rgba.crop(bbox) if bbox else rgba
     except Exception:
         return img
-
-
-def _flood_remove_background(img, tolerance=35):
-    """Remove background from NASCAR car image.
-
-    Fast path: numpy vectorised threshold (~1 ms on desktop, ~15 ms on Pi Zero 2W).
-    Fallback: PIL C-accelerated floodfill (~35 ms desktop, ~350 ms Pi Zero 2W).
-    The old pure-Python BFS (~260 ms desktop, >2 s Pi Zero 2W) is gone.
-    """
-    if img is None:
-        return img
-    # ── numpy fast path ──────────────────────────────────────────────────────
-    try:
-        import numpy as np
-        arr = np.array(img.convert('RGBA'), dtype=np.int16)
-        # Sample background colour from all four edges
-        edges = np.concatenate([
-            arr[0, :, :3], arr[-1, :, :3],
-            arr[:, 0, :3], arr[:, -1, :3],
-        ])
-        bg = np.median(edges, axis=0).astype(np.int16)
-        diff = np.abs(arr[:, :, :3] - bg)
-        arr[np.all(diff <= tolerance, axis=2), 3] = 0
-        return Image.fromarray(arr.astype(np.uint8), 'RGBA')
-    except ImportError:
-        pass
-    # ── PIL floodfill fallback (no numpy) ────────────────────────────────────
-    try:
-        from PIL import ImageDraw, ImageChops, ImageOps
-        rgba = img.convert('RGBA')
-        w, h = rgba.size
-        rgb_before = rgba.convert('RGB')
-        rgb_after  = rgb_before.copy()
-        FILL = (1, 2, 3)
-        for corner in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
-            if rgb_after.getpixel(corner) != FILL:
-                ImageDraw.floodfill(rgb_after, corner, FILL, thresh=tolerance)
-        diff    = ImageChops.difference(rgb_before, rgb_after)
-        r, g, b = diff.split()
-        changed = ImageChops.lighter(ImageChops.lighter(r, g), b)
-        bg_mask = changed.point(lambda v: 255 if v > 0 else 0, 'L')
-        rgba.putalpha(ImageOps.invert(bg_mask))
-        return rgba
-    except Exception:
-        return img
-
-
-_NASCAR_CAR_CACHE: dict = {}   # cache_key → PIL RGBA
-_NASCAR_CAR_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-
-# Download progress tracking
-_nascar_dl_lock    = threading.Lock()
-_nascar_dl_total   = 0
-_nascar_dl_done    = 0
-_nascar_dl_pending: set = set()   # URLs not yet successfully downloaded
-_nascar_dl_inflight: set = set()  # URLs currently being downloaded (prevents duplicates)
-_nascar_prefetch_running = False
-
-
-def nascar_dl_progress():
-    """Return (done, total) for the current NASCAR car image download batch."""
-    with _nascar_dl_lock:
-        return _nascar_dl_done, _nascar_dl_total
-
-
-def _nascar_candidates(url):
-    """Return candidate URLs to try: 300x130 (fast) at each date offset, then 922x400."""
-    import re as _re
-    from datetime import date as _date, timedelta as _td
-    _m = _re.search(r'/(\d{4})/(\d{2})/(\d{2})/', url)
-    if not _m:
-        return [url]
-    _base   = _date(int(_m.group(1)), int(_m.group(2)), int(_m.group(3)))
-    _prefix = url[:_m.start()]
-    _fname  = url[_m.end():]
-    _small  = _fname.replace('-922x400.jpg', '-300x130.jpg')
-    _offsets = (0, -1, 1, -2, 2)
-    out = []
-    if _small != _fname:
-        for _d in (_base + _td(days=o) for o in _offsets):
-            out.append(_prefix + f"/{_d.year}/{_d.month:02d}/{_d.day:02d}/" + _small)
-    for _d in (_base + _td(days=o) for o in _offsets):
-        out.append(_prefix + f"/{_d.year}/{_d.month:02d}/{_d.day:02d}/" + _fname)
-    return out
-
-
-def _download_nascar_raw(url):
-    """Phase 1 — download raw JPEG to ~/caches/nascar_raw_<hash>.jpg.
-    Returns (raw_bytes, candidate_url) or (None, None) on total failure."""
-    raw_name = f"nascar_raw_{hashlib.md5(url.encode()).hexdigest()}.jpg"
-    raw_path = os.path.join(ASSETS_DIR, raw_name)
-    with _nascar_dl_lock:
-        _nascar_dl_inflight.add(url)
-    # Already on disk?
-    try:
-        if os.path.exists(raw_path):
-            try:
-                with open(raw_path, 'rb') as fh:
-                    return fh.read(), raw_path
-            except Exception:
-                pass
-        # Download
-        for candidate in _nascar_candidates(url):
-            try:
-                r = requests.get(candidate, headers=_NASCAR_CAR_HEADERS, timeout=12)
-                if r.status_code == 404:
-                    continue
-                r.raise_for_status()
-                size_lbl = '300x130' if '-300x130' in candidate else '922x400'
-                print(f"[NASCAR] downloaded {url.rsplit('/',1)[-1]} ({size_lbl}, {len(r.content)//1024}KB)")
-                try:
-                    os.makedirs(ASSETS_DIR, exist_ok=True)
-                    with open(raw_path, 'wb') as fh:
-                        fh.write(r.content)
-                except Exception as e:
-                    print(f"[NASCAR] raw save failed: {e}")
-                return r.content, raw_path
-            except Exception:
-                continue
-        print(f"[NASCAR] MISSING {url.rsplit('/',1)[-1]} — all candidates 404'd")
-        return None, None
-    finally:
-        with _nascar_dl_lock:
-            _nascar_dl_inflight.discard(url)
-
-
-def _process_nascar_raw(url, target_size):
-    """Phase 2 — load raw JPEG from disk, thumbnail early, remove BG, save PNG."""
-    global _nascar_dl_done
-    cache_key = f"{url}_{target_size[0]}x{target_size[1]}"
-    if cache_key in _NASCAR_CAR_CACHE:
-        return _NASCAR_CAR_CACHE[cache_key]
-    raw_name  = f"nascar_raw_{hashlib.md5(url.encode()).hexdigest()}.jpg"
-    raw_path  = os.path.join(ASSETS_DIR, raw_name)
-    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}.png"
-    disk_path = os.path.join(ASSETS_DIR, disk_name)
-    # Already processed?
-    if os.path.exists(disk_path):
-        try:
-            img = Image.open(disk_path).convert('RGBA')
-            _NASCAR_CAR_CACHE[cache_key] = img
-            with _nascar_dl_lock:
-                _nascar_dl_pending.discard(url)
-                _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
-            return img
-        except Exception:
-            pass
-    # Load raw
-    try:
-        with open(raw_path, 'rb') as fh:
-            raw = fh.read()
-    except Exception:
-        # Raw file missing — download failed for this car; remove from pending so
-        # the progress bar can complete rather than stalling at N-1.
-        with _nascar_dl_lock:
-            _nascar_dl_pending.discard(url)
-            _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
-        print(f"[NASCAR] SKIP {url.rsplit('/',1)[-1]} — raw file missing (404'd earlier)")
-        return None
-    try:
-        full = Image.open(io.BytesIO(raw)).convert('RGBA')
-        full.thumbnail(target_size, Image.Resampling.LANCZOS)
-        full = _flood_remove_background(full, tolerance=40)
-        full = _trim_transparent_padding(full)
-        _NASCAR_CAR_CACHE[cache_key] = full
-        print(f"[NASCAR] processed {url.rsplit('/',1)[-1]} → {full.size}")
-        try:
-            full.save(disk_path, 'PNG')
-        except Exception as e:
-            print(f"[NASCAR] PNG save failed ({disk_path}): {e}")
-        with _nascar_dl_lock:
-            _nascar_dl_pending.discard(url)
-            _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
-        return full
-    except Exception as e:
-        print(f"[NASCAR] process failed {url.rsplit('/',1)[-1]}: {e}")
-        return None
-
-
-def _load_nascar_car(url, target_size):
-    """Render-thread helper: return processed image from memory/disk cache.
-    If not yet processed, trigger processing from raw (non-blocking on miss)."""
-    global _nascar_dl_done
-    if not url:
-        return None
-    cache_key = f"{url}_{target_size[0]}x{target_size[1]}"
-    if cache_key in _NASCAR_CAR_CACHE:
-        return _NASCAR_CAR_CACHE[cache_key]
-    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}.png"
-    disk_path = os.path.join(ASSETS_DIR, disk_name)
-    if os.path.exists(disk_path):
-        try:
-            img = Image.open(disk_path).convert('RGBA')
-            _NASCAR_CAR_CACHE[cache_key] = img
-            with _nascar_dl_lock:
-                _nascar_dl_pending.discard(url)
-                _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
-            return img
-        except Exception:
-            pass
-    # Not ready yet — return None (prefetch will deliver it shortly)
-    return None
-
-
-def nascar_submit_downloads(urls, target_size, executor):
-    """Two-phase prefetch: download ALL raw JPEGs first, then process them all."""
-    global _nascar_dl_total, _nascar_dl_done, _nascar_prefetch_running
-    urls = [u for u in urls if u]
-    if not urls:
-        return
-    with _nascar_dl_lock:
-        new_urls = [u for u in urls
-                    if f"{u}_{target_size[0]}x{target_size[1]}" not in _NASCAR_CAR_CACHE]
-        _nascar_dl_pending.update(new_urls)
-        _nascar_dl_total = len(_nascar_dl_pending) + _nascar_dl_done
-        if _nascar_prefetch_running:
-            return
-        _nascar_prefetch_running = True
-    if not new_urls:
-        with _nascar_dl_lock:
-            _nascar_prefetch_running = False
-        return
-
-    def _run_phases():
-        try:
-            # Phase 1: download all raw images before any image processing starts.
-            download_workers = min(4, max(1, len(new_urls)))
-            with concurrent.futures.ThreadPoolExecutor(max_workers=download_workers) as download_pool:
-                dl_futs = [download_pool.submit(_download_nascar_raw, u) for u in new_urls]
-                concurrent.futures.wait(dl_futs)
-
-            print(f"[NASCAR] all {len(new_urls)} downloads complete — processing in background...")
-
-            # Phase 2: image cleanup and resizing happens separately so it does not
-            # contend with the main ticker executor or delay the raw downloads.
-            process_workers = min(2, max(1, len(new_urls)))
-            with concurrent.futures.ThreadPoolExecutor(max_workers=process_workers) as process_pool:
-                proc_futs = [process_pool.submit(_process_nascar_raw, u, target_size) for u in new_urls]
-                concurrent.futures.wait(proc_futs)
-            done, total = nascar_dl_progress()
-            print(f"[NASCAR] prefetch done: {done}/{total} cars ready")
-        finally:
-            with _nascar_dl_lock:
-                _nascar_prefetch_running = False
-
-    threading.Thread(target=_run_phases, daemon=True).start()
-
-
-def nascar_retry_pending(executor, target_size=(120, 14)):
-    """Re-submit any URLs that haven't successfully downloaded yet."""
-    with _nascar_dl_lock:
-        pending = [u for u in _nascar_dl_pending if u not in _nascar_dl_inflight]
-    if not pending:
-        return
-
-    def _run_retry():
-        dl_futs = [executor.submit(_download_nascar_raw, u) for u in pending]
-        concurrent.futures.wait(dl_futs)
-        proc_futs = [executor.submit(_process_nascar_raw, u, target_size) for u in pending]
-        concurrent.futures.wait(proc_futs)
-
-    threading.Thread(target=_run_retry, daemon=True).start()
-
-
-_NASCAR_RACE_ID_FILE = 'nascar_race_id.txt'
-
-
-def _nascar_purge_old_cars(assets_dir, race_id):
-    """Delete disk-cached car images when race_id changes (new race week)."""
-    race_id = str(race_id or '').strip()
-    if not race_id or not assets_dir:
-        return
-    id_file = os.path.join(assets_dir, _NASCAR_RACE_ID_FILE)
-    try:
-        stored = open(id_file).read().strip() if os.path.exists(id_file) else ''
-    except Exception:
-        stored = ''
-    if stored == race_id:
-        return
-    # Race week changed — purge stale car PNGs and all counters
-    import logging
-    logging.getLogger(__name__).info("[NASCAR] race_id changed %s→%s, purging car cache", stored, race_id)
-    try:
-        for fname in os.listdir(assets_dir):
-            if fname.startswith('nascar_') and fname.endswith('.png'):
-                try:
-                    os.remove(os.path.join(assets_dir, fname))
-                except Exception:
-                    pass
-        _NASCAR_CAR_CACHE.clear()
-        global _nascar_dl_total, _nascar_dl_done
-        with _nascar_dl_lock:
-            _nascar_dl_total = 0
-            _nascar_dl_done = 0
-            _nascar_dl_pending.clear()
-            _nascar_dl_inflight.clear()
-        os.makedirs(assets_dir, exist_ok=True)
-        with open(id_file, 'w') as f:
-            f.write(race_id)
-    except Exception:
-        pass
 
 
 def _wind_compass(value):
@@ -575,33 +270,16 @@ class IndycarMixin:
     # ── helpers ──────────────────────────────────────────────────────────────
 
     def _ic_payload(self, game):
-        return (game.get('indycar') or {}) if isinstance(game, dict) else {}
+        return racing_payload(game)
+
+    def _ic_sport(self, game):
+        return racing_sport(game)
 
     def _ic_conditions_weather(self, provided=None):
-        if isinstance(provided, dict) and (provided.get('air_temp') or provided.get('wind_mph')):
+        """Use weather from the fetcher payload only (no renderer HTTP)."""
+        if isinstance(provided, dict):
             return provided
-        now = time.time()
-        cached = getattr(self, '_ic_render_weather_cache', {'ts': 0.0, 'data': {}})
-        if (now - cached.get('ts', 0.0)) < 300:
-            return cached.get('data') or {}
-        try:
-            url = (
-                "https://api.open-meteo.com/v1/forecast"
-                "?latitude=39.7950&longitude=-86.2340"
-                "&current=temperature_2m,wind_speed_10m,wind_direction_10m"
-                "&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
-            )
-            current = (requests.get(url, timeout=3).json().get('current') or {})
-            data = {
-                'air_temp': _round_weather_value(current.get('temperature_2m')),
-                'wind_mph': _round_weather_value(current.get('wind_speed_10m')),
-                'wind_dir': _round_weather_value(current.get('wind_direction_10m')),
-            }
-            self._ic_render_weather_cache = {'ts': now, 'data': data}
-            return data
-        except Exception:
-            self._ic_render_weather_cache = {'ts': now, 'data': {}}
-            return {}
+        return {}
 
     def _ic_load_logo(self, url, size, bg_tolerance=18):
         url = str(url or '').strip()
@@ -649,16 +327,21 @@ class IndycarMixin:
         short = str(ic.get('short_name') or ic.get('event_name') or 'IndyCar').strip()
         # Prefer explicit session_name when provided (e.g., "Qualifying - Round 1")
         session = str(ic.get('session_name') or ic.get('session_type') or 'Race').strip()
-        # Shorten common words so it fits
-        short = (short
+        # Shorten common words so it fits (uppercase so replacements match any case;
+        # draw_hybrid_text uppercases on render so display is unaffected)
+        short = (short.upper()
                  .replace('GRAND PRIX', 'GP')
                  .replace('CHAMPIONSHIP', 'CHAMP')
                  .replace('PRESENTED BY', '')
                  .replace('  ', ' ')
                  .strip())
-        # Truncate so "SHORT SESSION" fits in ~22 chars
-        if len(short) + 1 + len(session) > 22:
-            short = short[:max(4, 22 - 1 - len(session))]
+        session = (session
+                   .replace('Sprint Qualifying', 'Sprint Quali')
+                   .replace('SprintQualifying', 'Sprint Quali')
+                   .replace('Qualifying', 'Quali'))
+        # Truncate so "SHORT SESSION" fits in ~24 chars (5px/char × 24 = 120px in 128px card)
+        if len(short) + 1 + len(session) > 24:
+            short = short[:max(4, 24 - 1 - len(session))]
         return f"{short} {session}"
 
     # ── scroll card (128 × 32) ───────────────────────────────────────────────
@@ -693,12 +376,17 @@ class IndycarMixin:
 
         session = str(ic.get('session_type') or 'Race').lower()
         is_qual = 'qual' in session
+        sport = str(game.get('sport') or '').lower()
+        is_f1 = sport == 'f1'
 
         # ── Column labels ────────────────────────────────────────────────────
         LABEL_COL = (70, 90, 140)
         draw_tiny_text(d, 1,  8, 'P',      LABEL_COL)
         draw_tiny_text(d, 34, 8, 'DRIVER', LABEL_COL)
-        right_label = 'MPH' if is_qual else 'GAP'
+        if is_qual:
+            right_label = 'TIME' if is_f1 else 'MPH'
+        else:
+            right_label = 'GAP'
         draw_tiny_text(d, 90, 8, right_label, LABEL_COL)
 
         # ── Driver rows (top 3) ──────────────────────────────────────────────
@@ -712,8 +400,10 @@ class IndycarMixin:
             car_num = str(driver.get('car') or '').strip()
             team_logo = str(driver.get('team_logo') or '').strip()
 
-            # Right column: speed for qualifying, gap for race
-            if is_qual:
+            # Right column: lap time (F1 quali), speed (IndyCar quali), or gap (race)
+            if is_qual and is_f1:
+                right_val = str(driver.get('gap') or '').strip()[:9]
+            elif is_qual:
                 right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:7]
             else:
                 right_val = str(driver.get('gap') or '').strip()[:12]
@@ -803,7 +493,7 @@ class IndycarMixin:
 
         # ── Right panel: scrolling driver list or session info ─────────────
         if drivers:
-            self._ic_draw_driver_panel(img, d, drivers, INFO_W, RACE_W, H, is_qual=is_qual)
+            self._ic_draw_driver_panel(img, d, drivers, INFO_W, RACE_W, H, is_qual=is_qual, game=game)
         else:
             # No drivers yet: present session label and start time centered
             start_utc = str(game.get('startTimeUTC') or '').strip()
@@ -939,7 +629,7 @@ class IndycarMixin:
         if info_str:
             draw_tiny_text(d, 4, y_info, info_str, (255, 255, 255))
 
-    def _ic_draw_driver_panel(self, img, d, drivers, x_off, panel_w, H, is_qual=False):
+    def _ic_draw_driver_panel(self, img, d, drivers, x_off, panel_w, H, is_qual=False, game=None):
         """Draw the scrolling driver leaderboard into the right 3/4 panel."""
         now = time.time()
         if not hasattr(self, '_ic_hscroll_x'):
@@ -1031,18 +721,16 @@ class IndycarMixin:
                     cd.rectangle([0, 0, card_w - 1, card_h - 1], outline=(255, 215, 0), width=1)
 
                 if car_image:
-                    is_nascar_img = 'nascar.com' in car_image
-                    if is_nascar_img:
-                        # Use the same size as the pre-fetch so _NASCAR_CAR_CACHE hits
-                        car_img = _load_nascar_car(car_image, (120, 14))
+                    if 'nascar.com' in car_image:
+                        car_img = load_nascar_car(car_image, (120, 14))
                     else:
                         car_img = self._ic_load_logo(car_image, (120, 19))
                     if car_img:
-                        car_img = _trim_transparent_padding(car_img)
+                        car_img = trim_transparent_padding(car_img)
                         car_x = 1
                         car_y = max(0, card_h - car_img.height - 1)
                         card.paste(car_img, (car_x, car_y), car_img)
-                elif hasattr(self, '_draw_f1_generated_car') and str(driver.get('team') or ''):
+                elif self._ic_sport(game or {}) == 'f1' and str(driver.get('team') or ''):
                     fallback_w = min(120, card_w - 2)
                     self._draw_f1_generated_car(card, 1, 14, fallback_w, 15, primary + (255,), secondary + (255,))
                 elif car_num:

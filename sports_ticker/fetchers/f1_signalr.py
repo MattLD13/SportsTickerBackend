@@ -5,11 +5,24 @@ snapshot of live driver positions, gaps, and session status.
 """
 
 import json
+import os
 import threading
 import time
 import urllib.parse
 
 import requests
+
+def _signalr_enabled() -> bool:
+    """Opt-in via F1_SIGNALR=1; auto-on for local dev unless F1_SIGNALR=0."""
+    explicit = os.environ.get('F1_SIGNALR', '').strip().lower()
+    if explicit in ('0', 'false', 'no', 'off'):
+        return False
+    if explicit in ('1', 'true', 'yes'):
+        return True
+    for flag in ('SPORTS_TICKER_DEV', 'FLASK_DEBUG', 'FLASK_ENV'):
+        if os.environ.get(flag, '').strip().lower() in ('1', 'true', 'yes', 'development'):
+            return True
+    return False
 
 try:
     import websocket
@@ -256,9 +269,9 @@ _client_lock = threading.Lock()
 
 
 def get_client() -> F1LiveTimingClient | None:
-    """Return the running SignalR client, starting it on first call."""
+    """Return the running SignalR client when F1_SIGNALR=1 and websocket is installed."""
     global _client
-    if not _HAS_WEBSOCKET:
+    if not _signalr_enabled() or not _HAS_WEBSOCKET:
         return None
     if _client is None:
         with _client_lock:

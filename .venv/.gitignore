@@ -1,8 +1,35 @@
 # Logs
 *.log
-ticker.log
 
-# Python cache
+# Runtime cache files
+stock_cache.json
+game_cache.json
+airport_name_cache.json
+airline_code_cache.json
+
+# Downloaded logo/image cache
+caches/
+
+# Persisted app state
+global_config.json
+ticker_data/
+
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+
+# Preview renders — temp folder accumulates locally, sport folders keep latest
+previews/temp/*.png
+previews/temp/*.gif
+previews/*/*.gif
+
+# OS
+.DS_Store
+Thumbs.db

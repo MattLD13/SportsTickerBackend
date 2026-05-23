@@ -161,7 +161,8 @@ from .leagues import (
     MASTERS_LOGO_URL, PGA_CHAMPIONSHIP_LOGO_URL, PGA_TOUR_LOGO_URL,
     GOLF_TOURNAMENT_COLORS, PGA_TOUR_COLORS, _golf_tournament_colors,
     LEAGUE_OPTIONS, _LEAGUE_LABEL_MAP, _VALID_LEAGUE_IDS, _STOCK_LISTS,
-    _LEAGUE_CATEGORY_ORDER, VALID_MODES, MODE_MIGRATIONS,
+    _LEAGUE_CATEGORY_ORDER, _auto_category_for_option, _league_sort_key,
+    MODE_OPTIONS, VALID_MODES, _VALID_MODE_IDS, _MODE_LABEL_MAP, MODE_MIGRATIONS,
 )
 
 # Re-export static lookup tables so fetchers (using globals().update(vars(_core)))
@@ -174,36 +175,11 @@ from .lookups import (
 )
 
 # ── Section D: Category helpers ──
-def _auto_category_for_option(item: dict) -> str:
-    t = item.get('type')
-    if t != 'sport':
-        return str(t or 'other')
-    league_id = str(item.get('id', ''))
-    path = str((item.get('fetch') or {}).get('path', '')).lower()
-    if league_id.startswith('soccer_') or path.startswith('soccer/'):
-        return 'soccer'
-    if path.startswith('football/'):
-        return 'football'
-    if path.startswith('basketball/'):
-        return 'basketball'
-    if path.startswith('baseball/'):
-        return 'baseball'
-    if path.startswith('hockey/'):
-        return 'hockey'
-    return 'other'
-
-
-def _league_sort_key(item: dict):
-    category = _auto_category_for_option(item)
-    return (
-        _LEAGUE_CATEGORY_ORDER.get(category, 99),
-        str(item.get('label', '')).lower(),
-    )
-
 # Pre-compiled regex and frozensets for hot-path checks
 _TIME_RE = re.compile(r'\d+:\d+')
 _ACTIVE_STATES = frozenset({'in', 'half', 'crit'})
-SPORTS_MODE_FAMILY = ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
+SPORTS_MODE_FAMILY = ('sports', 'live', 'my_teams', 'soccer')
+RACING_FULLSCREEN_MODES = frozenset({'indycar', 'f1', 'nascar'})
 NON_SCOREBOARD_TYPES = ('music', 'clock', 'weather', 'stock_ticker', 'flight_visitor', 'masters')
 HIDDEN_STATUS_KEYWORDS = frozenset({"postponed", "suspended", "canceled", "ppd"})
 
@@ -211,6 +187,46 @@ HIDDEN_STATUS_KEYWORDS = frozenset({"postponed", "suspended", "canceled", "ppd"}
 def normalize_mode(mode, fallback='sports'):
     normalized = MODE_MIGRATIONS.get(mode, mode)
     return normalized if normalized in VALID_MODES else fallback
+
+
+_MODE_OPTION_MAP = {item['id']: item for item in MODE_OPTIONS}
+
+
+def is_mode_enabled(mode, active_modes=None, _seen=None) -> bool:
+    normalized = normalize_mode(mode)
+    modes = state.get('active_modes', {}) if active_modes is None else active_modes
+    value = modes.get(normalized)
+    if value is not None:
+        return bool(value)
+
+    item = _MODE_OPTION_MAP.get(normalized, {})
+    parent = item.get('follows')
+    if parent and parent != normalized:
+        seen = set() if _seen is None else set(_seen)
+        if parent in seen:
+            return bool(item.get('default', True))
+        seen.add(normalized)
+        return is_mode_enabled(parent, modes, seen)
+
+    default = item.get('default', True)
+    return True if default is None else bool(default)
+
+
+def first_enabled_mode(fallback='sports') -> str:
+    active_modes = state.get('active_modes', {})
+    normalized_fallback = normalize_mode(fallback)
+    if is_mode_enabled(normalized_fallback, active_modes):
+        return normalized_fallback
+    for item in MODE_OPTIONS:
+        mode_id = item['id']
+        if mode_id in VALID_MODES and is_mode_enabled(mode_id, active_modes):
+            return mode_id
+    return 'sports'
+
+
+def normalize_enabled_mode(mode, fallback='sports'):
+    normalized = normalize_mode(mode, fallback)
+    return normalized if is_mode_enabled(normalized) else first_enabled_mode(fallback)
 
 
 def _normalize_single_pin(pinned_game=None, pinned_games=None):
@@ -244,6 +260,7 @@ def _game_sort_key(x):
 # ── Section E: Default State ──
 default_state = {
     'active_sports': { item['id']: item['default'] for item in LEAGUE_OPTIONS },
+    'active_modes': { item['id']: item['default'] for item in MODE_OPTIONS if item.get('default') is not None },
     'mode': 'sports',
     'layout_mode': 'schedule',
     'my_teams': [],
@@ -328,9 +345,31 @@ if _deprecated_leagues:
     print(f"🧹 Removed deprecated leagues: {', '.join(_deprecated_leagues)}")
 _deprecated_leagues_pending_save = bool(_deprecated_leagues)
 
+_valid_mode_ids = {item['id'] for item in MODE_OPTIONS}
+_deprecated_modes = []
+_inherited_modes = []
+if not isinstance(state.get('active_modes'), dict):
+    state['active_modes'] = {}
+for _k in list(state['active_modes'].keys()):
+    if _k not in _valid_mode_ids:
+        del state['active_modes'][_k]
+        _deprecated_modes.append(_k)
+for _item in MODE_OPTIONS:
+    if _item['id'] not in state['active_modes']:
+        if _item.get('default') is not None:
+            state['active_modes'][_item['id']] = _item['default']
+    elif _item.get('follows') and state['active_modes'][_item['id']] in (None, True):
+        del state['active_modes'][_item['id']]
+        _inherited_modes.append(_item['id'])
+if _deprecated_modes:
+    print(f"ðŸ§¹ Removed deprecated modes: {', '.join(_deprecated_modes)}")
+_deprecated_modes_pending_save = bool(_deprecated_modes or _inherited_modes)
+
 state['mode'] = MODE_MIGRATIONS.get(state.get('mode', 'sports'), state.get('mode', 'sports'))
 if state['mode'] not in VALID_MODES:
     state['mode'] = 'sports'
+if not is_mode_enabled(state['mode']):
+    state['mode'] = first_enabled_mode(state['mode'])
 state['airline_filter'] = ''
 
 # 2. Load Individual Ticker Files
@@ -436,6 +475,7 @@ def save_global_config():
         with data_lock:
             export_data = {
                 'active_sports': state['active_sports'],
+                'active_modes': state['active_modes'],
                 'mode': state['mode'],
                 'weather_city': state['weather_city'],
                 'weather_lat': state['weather_lat'],
@@ -453,7 +493,7 @@ def save_global_config():
         print(f"Error saving global config: {e}")
 
 
-if _deprecated_leagues_pending_save:
+if _deprecated_leagues_pending_save or _deprecated_modes_pending_save:
     save_global_config()
 
 

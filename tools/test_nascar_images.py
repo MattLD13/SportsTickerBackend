@@ -75,25 +75,28 @@ for race_id, car, label in test_cases:
 
 # Also print what URL the live feed would have produced
 print("\n=== Live feed URL test ===")
-print("Enter the race_id and a car number from the live JSON to test:")
-print("(Ctrl+C to skip)")
-try:
-    race_id_in = int(input("race_id: ").strip())
-    car_in = input("car number: ").strip()
-    url = build_url(race_id_in, car_in)
-    print(f"URL: {url}")
-    if url:
-        r = requests.get(url, headers=HEADERS, timeout=10)
-        print(f"HTTP {r.status_code}")
-        if r.status_code == 200:
-            img = Image.open(io.BytesIO(r.content))
-            print(f"Image: {img.size} {img.mode} - OK")
+if not sys.stdin or not sys.stdin.isatty():
+    print("(skipped in non-interactive environment)")
+else:
+    print("Enter the race_id and a car number from the live JSON to test:")
+    print("(Ctrl+C to skip)")
+    try:
+        race_id_in = int(input("race_id: ").strip())
+        car_in = input("car number: ").strip()
+        url = build_url(race_id_in, car_in)
+        print(f"URL: {url}")
+        if url:
+            r = requests.get(url, headers=HEADERS, timeout=10)
+            print(f"HTTP {r.status_code}")
+            if r.status_code == 200:
+                img = Image.open(io.BytesIO(r.content))
+                print(f"Image: {img.size} {img.mode} - OK")
+            else:
+                # Show redirect location if any
+                print(f"Reason: {r.reason}")
+                if r.history:
+                    print(f"Redirects: {[resp.url for resp in r.history]}")
         else:
-            # Show redirect location if any
-            print(f"Reason: {r.reason}")
-            if r.history:
-                print(f"Redirects: {[resp.url for resp in r.history]}")
-    else:
-        print("race_id not in map — add it to _NCS_2026")
-except (KeyboardInterrupt, EOFError):
-    print("(skipped)")
+            print("race_id not in map — add it to _NCS_2026")
+    except (KeyboardInterrupt, EOFError):
+        print("(skipped)")
