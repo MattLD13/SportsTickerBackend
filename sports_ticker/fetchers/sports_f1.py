@@ -345,10 +345,10 @@ def _drivers_from_signalr(live_data):
         tc     = str(dl_info.get('TeamColour') or '').strip().lstrip('#')
         livery = f"#{tc}" if tc else _f1_team_color(team)
 
-        gap_raw = tl.get('GapToLeader', '')
-        if isinstance(gap_raw, dict):
-            gap_raw = gap_raw.get('Value', '')
-        gap = _f1_compact_gap(gap_raw, pos)
+        interval_raw = tl.get('IntervalToPositionAhead', '')
+        if isinstance(interval_raw, dict):
+            interval_raw = interval_raw.get('Value', '')
+        gap = _f1_compact_gap(interval_raw, pos)
 
         full_name = str(dl_info.get('FullName') or dl_info.get('BroadcastName') or f"#{num}").strip()
         tla       = str(dl_info.get('Tla') or num)[:3].upper()
@@ -522,7 +522,7 @@ class SportsF1Mixin:
                     if pos == 1:
                         gap = "Leader"
                     else:
-                        gap_val = iv.get('gap_to_leader')
+                        gap_val = iv.get('interval_to_position_ahead')
                         if gap_val is not None:
                             try:
                                 gap_float = float(gap_val)
