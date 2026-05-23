@@ -21,6 +21,8 @@ python tools/render_ticker_gif.py --mode <mode> [--source live|backend|auto]
 python tools/render_ticker_gif.py --source live --mode golf --fps 20 --speed 3 --scale 4
 python tools/render_ticker_gif.py --source live --mode indycar --sport-dir previews/indycar
 ```
+- `render_gif_jobs()` — scroll and/or pin GIFs (used by `gif_maker_ui.py`).
+- `fetch_games_for_render()` — shared backend/live game resolution.
 - `--mode`: any mode — `sports`, `golf`, `indycar`, `f1`, `nascar`, etc.
 - `--source auto` (default): tries backend first, falls back to live API
 - `--fps` / `--speed`: control playback speed and pixel advance per frame

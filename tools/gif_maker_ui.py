@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PIL import Image, ImageTk
 
+from sports_ticker.catalog.modes import MODE_OPTIONS
 from ticker_controller.config import BACKEND_URL, PANEL_H, PANEL_W
 
 # ── Colour palette ──────────────────────────────────────────────────────────
@@ -38,13 +39,7 @@ FONT     = ("Courier New", 9)
 FONT_B   = ("Courier New", 9, "bold")
 FONT_LG  = ("Courier New", 11, "bold")
 
-MODES = [
-    "sports", "my_teams", "live",
-    "soccer",
-    "golf", "masters",
-    "indycar", "f1", "nascar",
-    "stocks", "weather", "music", "clock", "flights",
-]
+MODES = [item['id'] for item in MODE_OPTIONS]
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMP_DIR  = os.path.join(REPO_ROOT, "previews", "temp")
@@ -434,128 +429,67 @@ class GifMakerApp:
 
     def _run_render(self) -> str | None:
         """Called in a background thread. Returns saved GIF path or None."""
-        import time as _time
-        from render_ticker_gif import (
-            backend_games,
-            live_games,
-            make_gif,
-            save_gif,
-        )
-        from fetch_and_render import (
-            choose_pinned_game,
-            make_renderer,
-            prefetch_logos,
-            render_pin,
-            render_scroll,
-        )
+        from render_ticker_gif import render_gif_jobs
 
-        mode   = self._mode_var.get().strip() or "sports"
+        mode = self._mode_var.get().strip() or "sports"
         source = self._source_var.get()
-        url    = self._url_var.get().strip() or BACKEND_URL
-        fps    = max(1, self._fps_var.get())
-        speed  = max(1, self._speed_var.get())
-        scale  = max(1, self._scale_var.get())
-        loops  = max(1, self._loops_var.get())
-        skip   = self._skip_logos_var.get()
-        view   = self._view_var.get()          # "scroll" | "pin" | "both"
+        url = self._url_var.get().strip() or BACKEND_URL
+        fps = max(1, self._fps_var.get())
+        speed = max(1, self._speed_var.get())
+        scale = max(1, self._scale_var.get())
+        loops = max(1, self._loops_var.get())
+        skip = self._skip_logos_var.get()
+        view = self._view_var.get()
         pin_idx = max(0, self._pin_idx_var.get())
         pin_dur = max(1, self._pin_dur_var.get())
 
-        out_path  = self._out_var.get().strip() or None
+        out_path = self._out_var.get().strip() or None
         sport_dir = self._sportdir_var.get().strip() or None
 
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         os.makedirs(TEMP_DIR, exist_ok=True)
 
-        # Resolve output paths per view
-        def _out(suffix: str) -> str:
-            if out_path:
-                if view == "both":
-                    root, ext = os.path.splitext(out_path)
-                    return f"{root}_{suffix}{ext or '.gif'}"
-                return out_path
-            return os.path.join(TEMP_DIR, f"ticker_{mode}_{ts}_{suffix}.gif")
+        def _out(suffix: str) -> str | None:
+            if view not in ("scroll", "pin", "both"):
+                return None
+            if view == suffix or view == "both":
+                if out_path:
+                    if view == "both":
+                        root, ext = os.path.splitext(out_path)
+                        return f"{root}_{suffix}{ext or '.gif'}"
+                    return out_path
+                return os.path.join(TEMP_DIR, f"ticker_{mode}_{ts}_{suffix}.gif")
+            return None
 
-        scroll_out = _out("scroll")
-        pin_out    = _out("pin")
-
-        # Fetch data
-        games: list[dict] = []
-        render_mode = mode
-
-        if source in ("auto", "backend"):
-            try:
-                games, render_mode = backend_games(url, mode)
-                print(f"Backend: {len(games)} items")
-            except Exception as exc:
-                print(f"Backend unavailable: {exc}")
-
-        if not games and source in ("auto", "live"):
-            print("Fetching live data directly…")
-            games, render_mode = live_games(mode)
-            print(f"Live: {len(games)} items")
-
-        if not games:
+        bundle = render_gif_jobs(
+            mode,
+            source=source,
+            url=url,
+            view=view,
+            scroll_out=_out("scroll"),
+            pin_out=_out("pin"),
+            fps=fps,
+            speed=speed,
+            scale=scale,
+            loops=loops,
+            pin_idx=pin_idx,
+            pin_dur=pin_dur,
+            sport_dir=sport_dir or None,
+            do_prefetch_logos=not skip,
+        )
+        if not bundle.games:
             print("No data returned — nothing to render.")
             return None
 
-        renderer = make_renderer(render_mode)
-        renderer.mode = mode
-        if not skip:
-            prefetch_logos(renderer, games)
+        self._gif_delay_ms = max(20, int(1000 / fps))
+        if view == "pin" and bundle.pin_frames:
+            self._gif_pil_frames = bundle.pin_frames
+        elif bundle.scroll_frames:
+            self._gif_pil_frames = bundle.scroll_frames
+        elif bundle.pin_frames:
+            self._gif_pil_frames = bundle.pin_frames
 
-        last_path: str | None = None
-
-        # ── Scroll GIF
-        if view in ("scroll", "both"):
-            strip = render_scroll(renderer, games)
-            content_w = strip.width - PANEL_W
-            print(f"Strip: {strip.width}×{strip.height}  content={content_w}px  cards={len(games)}")
-            frames = make_gif(strip, fps=fps, speed=speed, scale=scale, loops=loops)
-            print(f"Scroll frames: {len(frames)}  size: {frames[0].width}×{frames[0].height}")
-            save_gif(frames, scroll_out, fps)
-            if sport_dir:
-                os.makedirs(sport_dir, exist_ok=True)
-                save_gif(frames, os.path.join(sport_dir, f"{mode}_scroll.gif"), fps)
-            # Keep for preview
-            self._gif_pil_frames = [f.convert("RGB") for f in frames]
-            self._gif_delay_ms = max(20, int(1000 / fps))
-            last_path = scroll_out
-
-        # ── Pin GIF
-        if view in ("pin", "both"):
-            game = choose_pinned_game(games, "", pin_idx)
-            if game is None:
-                print("No game at that index.")
-            else:
-                sport = game.get("sport", "")
-                gname = game.get("away_abbr") or game.get("home_abbr") or game.get("id") or sport
-                n_frames = fps * pin_dur
-                print(f"Pin [{pin_idx}]: {sport} {gname}  →  {n_frames} frames @ {fps}fps")
-                delay = 1.0 / fps
-                out_w  = PANEL_W * scale
-                out_h  = PANEL_H * scale
-                pin_frames: list[Image.Image] = []
-                for _ in range(n_frames):
-                    frame = render_pin(renderer, game)
-                    if scale > 1:
-                        frame = frame.resize((out_w, out_h), Image.Resampling.NEAREST)
-                    pin_frames.append(
-                        frame.convert("P", palette=Image.Palette.ADAPTIVE, colors=256)
-                    )
-                    _time.sleep(delay)
-                print(f"Pin frames: {len(pin_frames)}  size: {pin_frames[0].width}×{pin_frames[0].height}")
-                save_gif(pin_frames, pin_out, fps)
-                if sport_dir:
-                    os.makedirs(sport_dir, exist_ok=True)
-                    save_gif(pin_frames, os.path.join(sport_dir, f"{mode}_pin.gif"), fps)
-                # Pin preview takes priority when view == "pin"
-                if view == "pin" or not self._gif_pil_frames:
-                    self._gif_pil_frames = [f.convert("RGB") for f in pin_frames]
-                    self._gif_delay_ms = max(20, int(1000 / fps))
-                last_path = pin_out
-
-        return last_path
+        return bundle.pin_path or bundle.scroll_path
 
     def _on_render_done(self, gif_path: str | None) -> None:
         self._running = False

@@ -98,6 +98,38 @@ def _f1_flag_for_state(state):
     return {'pre': 'WHITE', 'post': 'CHECKERED'}.get(str(state or '').lower(), 'GREEN')
 
 
+def _f1_driver_record(
+    pos,
+    name,
+    abbr,
+    car,
+    team,
+    gap,
+    speed='',
+    status='Active',
+    on_track=True,
+):
+    """Canonical racing driver dict for F1 fetch + display paths."""
+    team = str(team or '')
+    tc = ''
+    livery = _f1_team_color(team)
+    return {
+        'pos': int(pos) if pos is not None else 999,
+        'name': str(name or 'Driver').strip(),
+        'abbr': str(abbr or car or '')[:3].upper(),
+        'car': str(car or ''),
+        'team': team,
+        'team_logo': '',
+        'car_illustration': _f1_car_url(team),
+        'livery_primary': livery,
+        'livery_secondary': '#111111',
+        'gap': str(gap or ''),
+        'speed': str(speed or ''),
+        'status': status,
+        'on_track': on_track,
+    }
+
+
 def _f1_parse_laptime_s(t):
     """'1:28.653' or '28.653' → seconds as float."""
     parts = str(t or '').strip().split(':')
@@ -263,9 +295,7 @@ def _drivers_from_signalr(live_data):
         except Exception:
             pos = 999
 
-        team   = str(dl_info.get('TeamName') or '')
-        tc     = str(dl_info.get('TeamColour') or '').strip().lstrip('#')
-        livery = f"#{tc}" if tc else _f1_team_color(team)
+        team = str(dl_info.get('TeamName') or '')
 
         gap_raw = tl.get('GapToLeader', '')
         if isinstance(gap_raw, dict):
@@ -275,21 +305,9 @@ def _drivers_from_signalr(live_data):
         full_name = str(dl_info.get('FullName') or dl_info.get('BroadcastName') or f"#{num}").strip()
         tla       = str(dl_info.get('Tla') or num)[:3].upper()
 
-        drivers.append({
-            'pos':              pos,
-            'name':             full_name.title(),
-            'abbr':             tla,
-            'car':              str(num),
-            'team':             team,
-            'team_logo':        '',
-            'car_illustration': _f1_car_url(team),
-            'livery_primary':   livery,
-            'livery_secondary': '#111111',
-            'gap':              gap,
-            'speed':            '',
-            'status':           'Active',
-            'on_track':         True,
-        })
+        drivers.append(_f1_driver_record(
+            pos, full_name.title(), tla, str(num), team, gap,
+        ))
 
     drivers.sort(key=lambda d: d['pos'])
     return drivers
@@ -468,21 +486,9 @@ class SportsF1Mixin:
                 name = f"{drv.get('first_name','')  } {drv.get('last_name','')  }".strip().title()
                 code = str(drv.get('name_acronym') or dn)[:3].upper()
 
-                drivers.append({
-                    'pos':              pos,
-                    'name':             name or 'Driver',
-                    'abbr':             code,
-                    'car':              str(dn),
-                    'team':             team,
-                    'team_logo':        '',
-                    'car_illustration': _f1_car_url(team),
-                    'livery_primary':   livery,
-                    'livery_secondary': '#111111',
-                    'gap':              gap,
-                    'speed':            '',
-                    'status':           'Active',
-                    'on_track':         True,
-                })
+                drivers.append(_f1_driver_record(
+                    pos, name or 'Driver', code, str(dn), team, gap,
+                ))
 
             self._openf1_drv_cache = {'ts': now, 'sk': session_key, 'data': drivers}
             return drivers
@@ -522,12 +528,14 @@ class SportsF1Mixin:
         session_id = f"f1_{race.get('round', 'r')}_{sess_key.lower()}"
         start_utc_str = start_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
 
-        # ── 2. Optional SignalR overlay (real positions/laps when connected) ───
+        # ── 2. Optional SignalR overlay (set F1_SIGNALR=1 to enable; blocked on most servers) ──
         signalr_client = _f1_signalr.get_client()
-        signalr_data   = signalr_client.get_live_data() if signalr_client else {}
-        live_signalr   = (signalr_data
-                          if signalr_client and signalr_client.is_connected and state == 'in'
-                          else {})
+        signalr_data = signalr_client.get_live_data() if signalr_client else {}
+        live_signalr = (
+            signalr_data
+            if signalr_client and signalr_client.is_connected and state == 'in'
+            else {}
+        )
 
         is_qual_sess = sess_key in ('Qualifying', 'SprintQualifying')
 
@@ -569,21 +577,9 @@ class SportsF1Mixin:
                         res.get('status', ''),
                     )
 
-                drivers.append({
-                    'pos':              pos,
-                    'name':             name or 'Driver',
-                    'abbr':             code,
-                    'car':              car,
-                    'team':             team,
-                    'team_logo':        '',
-                    'car_illustration': _f1_car_url(team),
-                    'livery_primary':   _f1_team_color(team),
-                    'livery_secondary': '#111111',
-                    'gap':              gap,
-                    'speed':            '',
-                    'status':           'Active',
-                    'on_track':         True,
-                })
+                drivers.append(_f1_driver_record(
+                    pos, name or 'Driver', code, car, team, gap,
+                ))
             drivers.sort(key=lambda d: d['pos'])
 
         # ── 4. Status display ─────────────────────────────────────────────────
