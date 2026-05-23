@@ -5,6 +5,7 @@ snapshot of live driver positions, gaps, and session status.
 """
 
 import json
+import os
 import threading
 import time
 import urllib.parse
@@ -20,6 +21,7 @@ except ImportError:
 _SIGNALR_HOST = "livetiming.formula1.com"
 _NEGOTIATE_URL = f"https://{_SIGNALR_HOST}/signalr/negotiate"
 _WS_BASE       = f"wss://{_SIGNALR_HOST}/signalr/connect"
+_FORBIDDEN_COOLDOWN_SECONDS = int(os.getenv("F1_SIGNALR_403_COOLDOWN_SECONDS", "21600"))
 
 _TOPICS = [
     "SessionInfo",
@@ -54,6 +56,7 @@ class F1LiveTimingClient:
         self._running  = False
         self._invoke_id = 0
         self._connected = False
+        self._blocked_until = 0.0
 
         # Live data store — updated in place as messages arrive
         self._driver_list        = {}   # keyed by racing number string
@@ -221,6 +224,11 @@ class F1LiveTimingClient:
     def _run_loop(self):
         retry_delay = 10
         while self._running:
+            now = time.time()
+            if self._blocked_until > now:
+                time.sleep(min(self._blocked_until - now, 60))
+                continue
+
             try:
                 token = self._negotiate()
                 url   = self._ws_url(token)
@@ -237,9 +245,10 @@ class F1LiveTimingClient:
             except Exception as exc:
                 err = str(exc)
                 if '403' in err or 'Forbidden' in err:
-                    # Server is blocking the IP — back off aggressively
-                    retry_delay = min(retry_delay * 2, 600)
-                    print(f"[F1 SignalR] 403 Forbidden (retry in {retry_delay}s)")
+                    # Server is blocking this client/IP. F1 can still render from Jolpica.
+                    self._blocked_until = time.time() + _FORBIDDEN_COOLDOWN_SECONDS
+                    retry_delay = 10
+                    print(f"[F1 SignalR] 403 Forbidden; live overlay disabled for {_FORBIDDEN_COOLDOWN_SECONDS}s")
                 else:
                     print(f"[F1 SignalR] connection loop error: {exc}")
                     retry_delay = 10

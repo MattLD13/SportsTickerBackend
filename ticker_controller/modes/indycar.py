@@ -650,15 +650,18 @@ class IndycarMixin:
         # Prefer explicit session_name when provided (e.g., "Qualifying - Round 1")
         session = str(ic.get('session_name') or ic.get('session_type') or 'Race').strip()
         # Shorten common words so it fits
-        short = (short
+        short = (short.upper()
                  .replace('GRAND PRIX', 'GP')
                  .replace('CHAMPIONSHIP', 'CHAMP')
                  .replace('PRESENTED BY', '')
                  .replace('  ', ' ')
                  .strip())
-        # Truncate so "SHORT SESSION" fits in ~22 chars
-        if len(short) + 1 + len(session) > 22:
-            short = short[:max(4, 22 - 1 - len(session))]
+        session = (session
+                   .replace('Sprint Qualifying', 'Sprint Quali')
+                   .replace('Qualifying', 'Quali'))
+        # Truncate so "SHORT SESSION" fits in ~24 chars
+        if len(short) + 1 + len(session) > 24:
+            short = short[:max(4, 24 - 1 - len(session))]
         return f"{short} {session}"
 
     # ── scroll card (128 × 32) ───────────────────────────────────────────────
@@ -693,12 +696,16 @@ class IndycarMixin:
 
         session = str(ic.get('session_type') or 'Race').lower()
         is_qual = 'qual' in session
+        is_f1 = game.get('sport') == 'f1'
 
         # ── Column labels ────────────────────────────────────────────────────
         LABEL_COL = (70, 90, 140)
         draw_tiny_text(d, 1,  8, 'P',      LABEL_COL)
         draw_tiny_text(d, 34, 8, 'DRIVER', LABEL_COL)
-        right_label = 'MPH' if is_qual else 'GAP'
+        if is_qual:
+            right_label = 'TIME' if is_f1 else 'MPH'
+        else:
+            right_label = 'GAP'
         draw_tiny_text(d, 90, 8, right_label, LABEL_COL)
 
         # ── Driver rows (top 3) ──────────────────────────────────────────────
@@ -714,7 +721,10 @@ class IndycarMixin:
 
             # Right column: speed for qualifying, gap for race
             if is_qual:
-                right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:7]
+                if is_f1:
+                    right_val = str(driver.get('gap') or '').strip()[:12]
+                else:
+                    right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:7]
             else:
                 right_val = str(driver.get('gap') or '').strip()[:12]
 

@@ -32,8 +32,10 @@ class AirportMixin:
         code = str(airline_code or '').strip().upper()
         if not code:
             return ''
+        if code.isalnum() and len(code) in (2, 3):
+            return f"https://content.airhex.com/content/logos/airlines_{code}_350_100_r.png?theme=dark"
         airline_domains = {
-            'UA': 'https://www.united.com/favicon.ico',
+            'UA': 'united.com',
             'DL': 'delta.com',
             'AA': 'aa.com',
             'WN': 'southwest.com',
@@ -51,7 +53,7 @@ class AirportMixin:
             if domain.startswith('http://') or domain.startswith('https://'):
                 return domain
             return f"https://logo.clearbit.com/{domain}"
-        return f"https://content.airhex.com/content/logos/airlines_{code}_350_100_r.png?theme=dark"
+        return ''
 
     def _get_airport_query_code(self):
         for attr in ('airport_code_iata', 'airport_code_icao'):

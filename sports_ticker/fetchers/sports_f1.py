@@ -185,6 +185,18 @@ def _f1_sanitize_time_text(text):
     return raw
 
 
+def _f1_format_qual_time(seconds):
+    try:
+        val = float(seconds)
+        if val <= 0: return ""
+        minutes = int(val // 60)
+        secs = val % 60
+        return f"{minutes}:{secs:06.3f}" if minutes > 0 else f"{secs:.3f}"
+    except Exception:
+        return str(seconds)
+
+
+
 def _f1_team_match(team_name):
     lower = str(team_name or '').strip().lower()
     for key in sorted(_F1_TEAM_SLUGS, key=len, reverse=True):
@@ -402,6 +414,118 @@ class SportsF1Mixin:
             print(f"[F1] Results fetch error: {exc}")
             return cache.get('data', [])
 
+    def _fetch_openf1_live(self, start_utc):
+        """Fetch real-time position/driver data from OpenF1 if it corresponds to the current session."""
+        try:
+            r = self.session.get("https://api.openf1.org/v1/sessions?session_key=latest", timeout=10)
+            if not r.ok: return None
+            latest = r.json()
+            if not latest: return None
+            s = latest[0] if isinstance(latest, list) else latest
+            sk = s.get('session_key')
+
+            # Check if this latest session matches our current window (within 2 days)
+            start_str = str(s.get('date_start', '')).replace('+00:00', '+00:00')
+            try:
+                s_date = datetime.fromisoformat(start_str)
+                if s_date.tzinfo is None:
+                    s_date = s_date.replace(tzinfo=timezone.utc)
+            except Exception:
+                return None
+
+            if abs((s_date - start_utc).total_seconds()) > 86400 * 2:
+                return None
+
+            base = "https://api.openf1.org/v1"
+
+            # Drivers
+            drivers_r = self.session.get(f"{base}/drivers?session_key={sk}", timeout=10)
+            if not drivers_r.ok: return None
+            driver_info = {d['driver_number']: d for d in drivers_r.json()}
+
+            # Positions
+            pos_r = self.session.get(f"{base}/position?session_key={sk}", timeout=10)
+            if not pos_r.ok: return None
+            positions = pos_r.json()
+            latest_pos = {}
+            for p in positions:
+                dn = p['driver_number']
+                if dn not in latest_pos or p['date'] > latest_pos[dn]['date']:
+                    latest_pos[dn] = p
+
+            # Intervals / Laps (for gap)
+            is_qual = 'qual' in s.get('session_name', '').lower()
+            best_lap = {}
+            intervals = {}
+            if is_qual:
+                laps_r = self.session.get(f"{base}/laps?session_key={sk}", timeout=10)
+                if laps_r.ok:
+                    for lap in laps_r.json():
+                        dn = lap['driver_number']
+                        dur = lap.get('lap_duration')
+                        if dur and (dn not in best_lap or dur < best_lap[dn]):
+                            best_lap[dn] = dur
+            else:
+                int_r = self.session.get(f"{base}/intervals?session_key={sk}", timeout=10)
+                if int_r.ok:
+                    for iv in int_r.json():
+                        dn = iv['driver_number']
+                        if dn not in intervals or iv['date'] > intervals[dn]['date']:
+                            intervals[dn] = iv
+
+            ranked = sorted(latest_pos.values(), key=lambda x: x['position'])
+            leader_time = best_lap.get(ranked[0]['driver_number']) if ranked and is_qual else None
+
+            drivers = []
+            for p in ranked:
+                dn = p['driver_number']
+                pos = p['position']
+                drv = driver_info.get(dn, {})
+                team = drv.get('team_name', '')
+                code = drv.get('name_acronym', str(dn))
+                name = drv.get('full_name', f"Driver {dn}")
+
+                gap = ""
+                if is_qual:
+                    bt = best_lap.get(dn)
+                    if bt:
+                        if pos == 1:
+                            gap = _f1_format_qual_time(bt)
+                        elif leader_time:
+                            gap = f"+{bt - leader_time:.3f}"
+                else:
+                    iv = intervals.get(dn, {})
+                    if pos == 1:
+                        gap = "Leader"
+                    else:
+                        gap_val = iv.get('gap_to_leader')
+                        if gap_val is not None:
+                            try:
+                                gap_float = float(gap_val)
+                                gap = f"+{gap_float:.1f}s" if gap_float >= 60 else f"+{gap_float:.3f}"
+                            except Exception:
+                                gap = f"+{gap_val}"
+
+                drivers.append({
+                    'pos': pos,
+                    'name': name.title(),
+                    'abbr': code,
+                    'car': str(dn),
+                    'team': team,
+                    'team_logo': '',
+                    'car_illustration': _f1_car_url(team),
+                    'livery_primary': _f1_team_color(team),
+                    'livery_secondary': '#111111',
+                    'gap': gap,
+                    'speed': '',
+                    'status': 'Active',
+                    'on_track': True,
+                })
+            return drivers
+        except Exception as e:
+            print(f"[F1] OpenF1 fetch error: {e}")
+            return None
+
     def _fetch_f1(self, force=False):
         """Return an F1 game object for today's session, or None if no session today."""
         self.__init_f1_cache()
@@ -436,7 +560,7 @@ class SportsF1Mixin:
         start_utc_str = start_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
 
         # ── 2. Optional SignalR overlay (real positions/laps when connected) ───
-        signalr_client = _f1_signalr.get_client()
+        signalr_client = _f1_signalr.get_client() if state == 'in' else None
         signalr_data   = signalr_client.get_live_data() if signalr_client else {}
         live_signalr   = (signalr_data
                           if signalr_client and signalr_client.is_connected and state == 'in'
@@ -446,6 +570,9 @@ class SportsF1Mixin:
         drivers = []
         if live_signalr and live_signalr.get('driver_list'):
             drivers = _drivers_from_signalr(live_signalr)
+            
+        if not drivers and state in ('in', 'post'):
+            drivers = self._fetch_openf1_live(start_utc) or []
 
         if not drivers:
             for res in self._fetch_f1_results():
@@ -460,7 +587,13 @@ class SportsF1Mixin:
                 name    = f"{drv.get('givenName', '')} {drv.get('familyName', '')}".strip().title()
                 car     = str(drv.get('permanentNumber') or res.get('number') or '').strip()
                 gap_val = res.get('Time', {}).get('time') or res.get('status', '')
-                gap     = _f1_compact_gap(gap_val, pos)
+                
+                # Jolpica format fallback for P1 in qual when time is available
+                if pos == 1 and 'qual' in sess_name.lower() and gap_val and ':' not in gap_val and gap_val.replace('.','',1).isdigit():
+                    gap = _f1_format_qual_time(gap_val)
+                else:
+                    gap = _f1_compact_gap(gap_val, pos)
+                    
                 drivers.append({
                     'pos':              pos,
                     'name':             name or 'Driver',

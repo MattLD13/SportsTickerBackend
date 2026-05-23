@@ -23,22 +23,17 @@ class FlightMixin:
             return logo
         for key in ('airline_iata', 'airline_code', 'airline_icao', 'airline'):
             airline = str(item.get(key) or '').strip().upper().replace(' ', '')
-            if len(airline) == 2 and airline.isalpha():
-                domain = self._airline_domain_for_code(airline)
-                if domain.startswith('http://') or domain.startswith('https://'):
-                    return domain
-                return f"https://logo.clearbit.com/{domain}"
-            if len(airline) == 3 and airline.isalpha():
+            if len(airline) in (2, 3) and airline.isalnum():
                 return f"https://content.airhex.com/content/logos/airlines_{airline}_350_100_r.png?theme=dark"
         flight_id = str(item.get('away_abbr') or item.get('id') or '').strip().upper().replace(' ', '')
-        if len(flight_id) >= 2 and flight_id[:2].isalpha():
+        if len(flight_id) >= 2 and flight_id[:2].isalnum():
             return f"https://content.airhex.com/content/logos/airlines_{flight_id[:2]}_350_100_r.png?theme=dark"
         return ''
 
     @staticmethod
     def _airline_domain_for_code(code):
         return {
-            'UA': 'https://www.united.com/favicon.ico',
+            'UA': 'united.com',
             'DL': 'delta.com',
             'AA': 'aa.com',
             'WN': 'southwest.com',
