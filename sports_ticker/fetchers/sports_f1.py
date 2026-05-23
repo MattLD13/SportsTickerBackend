@@ -668,7 +668,7 @@ class SportsF1Mixin:
                     status_display = _F1LT_TRACK_STATUS.get(ts_code, 'GREEN')
         else:
             try:
-                status_display = start_utc.strftime('%I:%M %p').lstrip('0')
+                status_display = start_utc.astimezone().strftime('%I:%M %p').lstrip('0')
             except Exception:
                 status_display = 'Starts Soon'
 
