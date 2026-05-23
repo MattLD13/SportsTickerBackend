@@ -59,7 +59,7 @@ class AirportMixin:
         if not domain:
             domain = ai_lookup_airline_domain(code)
         if domain:
-            return f"https://logo.clearbit.com/{domain}"
+            return f"https://www.google.com/s2/favicons?domain={domain}&sz=64"
         return ''
 
     def _get_airport_query_code(self):

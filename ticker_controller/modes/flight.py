@@ -25,11 +25,11 @@ class FlightMixin:
             airline = str(item.get(key) or '').strip().upper().replace(' ', '')
             if len(airline) in (2, 3) and airline.isalnum():
                 domain = self._airline_domain_for_code(airline)
-                return f"https://logo.clearbit.com/{domain}"
+                return f"https://www.google.com/s2/favicons?domain={domain}&sz=64"
         flight_id = str(item.get('away_abbr') or item.get('id') or '').strip().upper().replace(' ', '')
         if len(flight_id) >= 2 and flight_id[:2].isalpha():
             domain = self._airline_domain_for_code(flight_id[:2].upper())
-            return f"https://logo.clearbit.com/{domain}"
+            return f"https://www.google.com/s2/favicons?domain={domain}&sz=64"
         return ''
 
     @staticmethod
