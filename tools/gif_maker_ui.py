@@ -40,9 +40,9 @@ FONT_LG  = ("Courier New", 11, "bold")
 
 MODES = [
     "sports", "my_teams", "live",
+    "soccer",
     "golf", "masters",
     "indycar", "f1", "nascar",
-    "sports_full", "soccer_full",
     "stocks", "weather", "music", "clock", "flights",
 ]
 

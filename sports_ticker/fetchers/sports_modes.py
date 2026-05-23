@@ -536,12 +536,13 @@ class SportsModesMixin:
         with data_lock:
             conf = {
                 'active_sports': state.get('active_sports', {}),
+                'active_modes': state.get('active_modes', {}),
                 'mode': state.get('mode', 'sports'),
                 'utc_offset': state.get('utc_offset', -5),
                 'debug_mode': state.get('debug_mode', False),
                 'custom_date': state.get('custom_date')}
 
-            # Special pinned-game poller inputs (sports_full): collect active pins
+            # Special pinned-game poller inputs: collect active pins
             # and merge fresh pinned objects into the normal sports snapshot.
             active_pins = []
             seen_pins = set()
@@ -594,6 +595,7 @@ class SportsModesMixin:
 
         for league_key, config in self.leagues.items():
             if league_key in ('nhl', 'golf', 'indycar', 'f1') or league_key.startswith('soccer_'): continue
+            if not conf.get('active_sports', {}).get(league_key, False): continue
             f = self.executor.submit(self.fetch_single_league, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc)
             futures[f] = league_key
         
@@ -672,7 +674,7 @@ class SportsModesMixin:
                     all_games.append(nascar_game)
 
         # Pinned refresh merge: poll only pinned games and merge them into the
-        # normal sports feed so sports_full gets a fresh focused game while
+        # normal sports feed so pinned full-screen display gets a fresh focused game while
         # retaining all other scores from the standard poller.
         if active_pins:
             pinned_futures = {
@@ -855,11 +857,12 @@ class SportsModesMixin:
 
                 with data_lock:
                     global_mode = state.get('mode', 'sports')
+                    active_modes = dict(state.get('active_modes', {}))
                     # Collect all modes currently in use across all tickers.
-                    needed: set = {global_mode}
+                    needed: set = {global_mode} if is_mode_enabled(global_mode, active_modes) else set()
                     for t in tickers.values():
                         m = t.get('settings', {}).get('mode')
-                        if m and m in VALID_MODES:
+                        if m and m in VALID_MODES and is_mode_enabled(m, active_modes):
                             needed.add(m)
 
                         # If any ticker has a special racing/golf pin, ensure the
@@ -880,17 +883,19 @@ class SportsModesMixin:
                             else:
                                 pin_league = 'golf' if pin_norm.startswith(('golf', 'masters')) else ''
                             if pin_league in ('golf', 'masters'):
-                                needed.add('golf')
+                                if is_mode_enabled('golf', active_modes):
+                                    needed.add('golf')
                                 break
                             if pin_league == 'f1':
-                                needed.add('f1')
+                                if is_mode_enabled('f1', active_modes):
+                                    needed.add('f1')
                                 break
 
                 _dispatch = {
                     'sports':         self._build_sports_buffer,
                     'live':           self._build_sports_buffer,
                     'my_teams':       self._build_sports_buffer,
-                    'soccer_full':    self._build_sports_buffer,
+                    'soccer':         self._build_sports_buffer,
                     'stocks':         self._build_stocks_buffer,
                     'weather':        self._build_weather_buffer,
                     'music':          self._build_music_buffer,
@@ -900,16 +905,13 @@ class SportsModesMixin:
                     'flights':        self._build_flights_buffer,
                     'flight_tracker': self._build_flight_tracker_buffer,
                     'indycar':        self._build_indycar_buffer,
-                    'indycar_full':   self._build_indycar_buffer,
                     'f1':             self._build_f1_buffer,
-                    'f1_full':        self._build_f1_buffer,
                     'nascar':         self._build_nascar_buffer,
-                    'nascar_full':    self._build_nascar_buffer,
                 }
 
                 sports_built = False
                 for mode in needed:
-                    is_sports = mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
+                    is_sports = mode in ('sports', 'live', 'my_teams', 'soccer')
 
                     if is_sports and sports_built:
                         # Sports-like modes share one raw buffer; filtering happens in /data.
@@ -920,7 +922,7 @@ class SportsModesMixin:
 
                     if is_sports:
                         sports_built = True
-                        for sm in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
+                        for sm in ('sports', 'live', 'my_teams', 'soccer'):
                             self._set_mode_buffer(sm, result)
 
                         snap = (time.time(), result[:])
@@ -939,7 +941,7 @@ class SportsModesMixin:
                 # Keep global state['current_games'] in sync with the global mode.
                 with self._mode_buffer_lock:
                     global_result = self._mode_buffers.get(global_mode, [])
-                is_global_sports = global_mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
+                is_global_sports = global_mode in ('sports', 'live', 'my_teams', 'soccer')
                 with data_lock:
                     if global_result or not is_global_sports or not state.get('current_games'):
                         state['current_games'] = global_result
@@ -997,7 +999,11 @@ class SportsModesMixin:
         Sports modes with delay use the history buffer for live-delay support.
         All other modes always return current data (delay is ignored).
         """
-        if mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
+        with data_lock:
+            if not is_mode_enabled(mode):
+                return []
+
+        if mode in ('sports', 'live', 'my_teams', 'soccer'):
             return self.get_snapshot_for_delay(delay_seconds)
         with self._mode_buffer_lock:
             snapshot = list(self._mode_buffers.get(mode, []))
@@ -1018,9 +1024,8 @@ class SportsModesMixin:
             'flights':        self._build_flights_buffer,
             'flight_tracker': self._build_flight_tracker_buffer,
             'indycar':        self._build_indycar_buffer,
-            'indycar_full':   self._build_indycar_buffer,
             'f1':             self._build_f1_buffer,
-            'f1_full':        self._build_f1_buffer,
+            'nascar':         self._build_nascar_buffer,
         }
         builder = _dispatch.get(mode)
         if not builder:

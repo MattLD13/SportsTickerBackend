@@ -4,7 +4,8 @@ from .. import workers as _workers
 from ..routes_runtime import app
 from ..core import (
     state, tickers, data_lock,
-    normalize_mode, _normalize_single_pin, VALID_MODES, _VALID_LEAGUE_IDS,
+    is_mode_enabled, normalize_enabled_mode, normalize_mode, _normalize_single_pin,
+    VALID_MODES, _VALID_LEAGUE_IDS, _VALID_MODE_IDS,
     lookup_and_auto_fill_airport, resolve_ticker_id, create_ticker_record,
     save_specific_ticker, save_global_config,
 )
@@ -28,7 +29,7 @@ def api_config():
             )
 
         if 'mode' in new_data:
-            new_data['mode'] = normalize_mode(new_data['mode'])
+            new_data['mode'] = normalize_enabled_mode(new_data['mode'])
             resolved = new_data['mode']
             # Submode only adjusts within the flights family.
             # An explicit non-flight mode (sports, weather, etc.) is never overridden.
@@ -45,6 +46,8 @@ def api_config():
             new_data['mode'] = 'flight_tracker' if incoming_submode == 'track' else 'flights'
         # Drop flight_submode — no longer a stored key
         new_data.pop('flight_submode', None)
+        if 'mode' in new_data:
+            new_data['mode'] = normalize_enabled_mode(new_data['mode'])
         
         cid = request.headers.get('X-Client-ID')
 
@@ -142,7 +145,7 @@ def api_config():
                     flight_tracker.force_update()
             
             allowed_keys = {
-                'active_sports', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date',
+                'active_sports', 'active_modes', 'mode', 'layout_mode', 'my_teams', 'debug_mode', 'custom_date',
                 'weather_city', 'weather_lat', 'weather_lon', 'utc_offset',
                 'timezone_name',
                 'track_flight_id', 'track_guest_name', 'airport_code_icao',
@@ -191,6 +194,19 @@ def api_config():
                     for ak, av in v.items():
                         if ak in _VALID_LEAGUE_IDS:
                             state['active_sports'][ak] = av
+                    continue
+
+                # HANDLE ACTIVE MODES - only accept keys that exist in MODE_OPTIONS
+                if k == 'active_modes' and isinstance(v, dict):
+                    for mk, mv in v.items():
+                        mode_key = mk if mk in _VALID_MODE_IDS else normalize_mode(mk)
+                        if mode_key in _VALID_MODE_IDS:
+                            if mv is None:
+                                state['active_modes'].pop(mode_key, None)
+                            else:
+                                state['active_modes'][mode_key] = bool(mv)
+                    if not is_mode_enabled(state.get('mode', 'sports')):
+                        state['mode'] = normalize_enabled_mode(state.get('mode', 'sports'))
                     continue
                 
                 # HANDLE MODE — per-ticker isolation
@@ -291,7 +307,7 @@ def update_settings(tid):
     
     # --- FIX: Sync Mode (per-ticker only — do NOT touch global state['mode']) ---
     if 'mode' in data:
-        new_mode = normalize_mode(data['mode'])
+        new_mode = normalize_enabled_mode(data['mode'])
 
         with data_lock:
             # Only update this ticker's mode setting; other tickers keep theirs

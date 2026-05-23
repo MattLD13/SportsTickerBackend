@@ -51,7 +51,7 @@ STATIC_TYPES = {
     "flight_visitor",
     "flight_airport_hud",
 }
-FULLSCREEN_MODES = {"sports_full", "soccer_full", "golf", "masters", "indycar", "indycar_full", "f1", "f1_full", "nascar", "nascar_full"}
+FULLSCREEN_MODES = {"golf", "masters", "indycar", "f1", "nascar"}
 
 
 @dataclass
@@ -317,6 +317,7 @@ def render_pin(renderer: TickerStreamer, game: dict | None) -> Image.Image:
     if game is None:
         return blank_frame("NO PIN DATA")
     old_mode = renderer.mode
+    old_display_style = getattr(renderer, "display_style", "strip")
     sport = str(game.get("sport", "")).lower()
     item_type = str(game.get("type", "")).lower()
     if item_type in ("golf", "masters") or sport in ("golf", "masters"):
@@ -324,11 +325,12 @@ def render_pin(renderer: TickerStreamer, game: dict | None) -> Image.Image:
     elif item_type == "racing" or sport in ("indycar", "f1", "nascar"):
         renderer.mode = {"f1": "f1", "nascar": "nascar"}.get(sport, "indycar")
     elif item_type not in STATIC_TYPES:
-        renderer.mode = "sports_full"
+        renderer.display_style = "full"
     try:
         return renderer.draw_single_game(game).convert("RGB")
     finally:
         renderer.mode = old_mode
+        renderer.display_style = old_display_style
 
 
 # Width of the left info panel in draw_indycar_full (hardcoded there as INFO_W = 84)
@@ -492,7 +494,7 @@ class PreviewWindow:
             textvariable=self.mode_var,
             width=14,
             values=[
-                "sports", "live", "my_teams", "sports_full", "soccer_full",
+                "sports", "live", "my_teams", "soccer",
                 "golf", "masters", "indycar", "f1", "stocks", "weather", "music",
                 "clock", "flights", "flight_tracker",
             ],

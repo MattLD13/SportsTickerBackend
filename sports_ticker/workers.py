@@ -7,7 +7,7 @@ from . import fetchers_runtime as _fetchers
 from .core import (
     state, tickers, data_lock,
     SPORTS_UPDATE_INTERVAL, _normalize_single_pin, _STOCK_LISTS,
-    Tee, tee_instance, purge_stale_tickers,
+    Tee, tee_instance, purge_stale_tickers, is_mode_enabled, normalize_mode,
 )
 from .fetchers_runtime import TestMode, SportsFetcher, SpotifyFetcher, FlightTracker
 
@@ -135,8 +135,13 @@ def _any_ticker_needs(*modes):
     """Return True if the global state or any paired ticker is in one of the given modes."""
     mode_set = set(modes)
     with data_lock:
-        # Pinned game override: force sports_full behavior whenever any pin exists.
-        if 'sports_full' in mode_set:
+        active_modes = state.get('active_modes', {})
+        mode_set = {m for m in mode_set if is_mode_enabled(normalize_mode(m), active_modes)}
+        if not mode_set:
+            return False
+
+        # Pinned game override: keep sports data fresh whenever any pin exists.
+        if 'sports' in mode_set:
             for t in tickers.values():
                 s = t.get('settings', {})
                 if s.get('pinned_game'):
@@ -179,7 +184,7 @@ def sports_worker():
     while True:
         try:
             start_time = time.time()
-            if _any_ticker_needs('sports', 'live', 'my_teams', 'sports_full', 'soccer_full', 'masters'):
+            if _any_ticker_needs('sports', 'live', 'my_teams', 'soccer', 'masters'):
                 try:
                     request_refresh('sports_worker')
                 except Exception as e:
