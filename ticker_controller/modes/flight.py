@@ -48,16 +48,9 @@ class FlightMixin:
             plane_color = self.C_GRN if is_live else self.C_AMBER
         self._icon_plane(d, 6, 2, plane_color)
         draw_tiny_text(d, 18, 2, guest_name, self.C_AMBER)
-
-        logo = self.get_logo(game.get('airline_logo'), (24, 24))
-        logo_w = 0
-        if logo:
-            logo_w = 28
-            img.paste(logo, (PANEL_W - 30, 2), logo)
-
         if guest_name.upper() != flight_id.upper() and flight_id.lower() != 'flight_tracker_blank':
             id_w = len(flight_id) * 5
-            draw_tiny_text(d, PANEL_W - id_w - 8 - logo_w, 2, flight_id, self.C_GRY)
+            draw_tiny_text(d, PANEL_W - id_w - 8, 2, flight_id, self.C_GRY)
 
         route_str = f"{route_origin} > {route_dest}"
         draw_tiny_text(d, 6, 10, route_str, self.C_BLUE_TXT)

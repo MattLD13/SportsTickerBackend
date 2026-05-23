@@ -16,9 +16,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import requests
 from PIL import Image
 
-from ticker_controller.assets.nascar_cars import (
+from ticker_controller.modes.indycar import (
     _flood_remove_background,
-    trim_transparent_padding,
+    _trim_transparent_padding,
 )
 from sports_ticker.fetchers.sports_nascar import (
     _NCS_2026,
@@ -64,7 +64,7 @@ def download_car(race_id, car_num, name, pos):
             r.raise_for_status()
             full = Image.open(io.BytesIO(r.content)).convert('RGBA')
             full = _flood_remove_background(full, tolerance=40)
-            full = trim_transparent_padding(full)
+            full = _trim_transparent_padding(full)
             full.thumbnail(THUMB_SIZE, Image.Resampling.LANCZOS)
             return full, url, 'ok'
         except Exception:

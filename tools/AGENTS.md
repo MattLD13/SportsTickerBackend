@@ -14,23 +14,6 @@ python tools/fetch_and_render.py --mode <mode> --view <scroll|pin|both> --save p
 - `--view pin`: renders the 384×32 full pinned frame
 - Requires the backend server to be running (`python -m sports_ticker` or similar)
 
-### `render_ticker_gif.py`
-Renders the full 384×32 ticker scroll loop as an animated GIF — works for any mode.
-```
-python tools/render_ticker_gif.py --mode <mode> [--source live|backend|auto]
-python tools/render_ticker_gif.py --source live --mode golf --fps 20 --speed 3 --scale 4
-python tools/render_ticker_gif.py --source live --mode indycar --sport-dir previews/indycar
-```
-- `render_gif_jobs()` — scroll and/or pin GIFs (used by `gif_maker_ui.py`).
-- `fetch_games_for_render()` — shared backend/live game resolution.
-- `--mode`: any mode — `sports`, `golf`, `indycar`, `f1`, `nascar`, etc.
-- `--source auto` (default): tries backend first, falls back to live API
-- `--fps` / `--speed`: control playback speed and pixel advance per frame
-- `--scale`: upscale factor (default 4 → 1536×128, readable in browser)
-- `--loops`: how many full content passes to capture (default 1)
-- `--sport-dir`: also write a fixed-name `{mode}_scroll.gif` here (e.g. `previews/indycar`)
-- Always saves a timestamped copy to `previews/temp/` — images never deleted
-
 ### `render_racing_previews.py`
 Renders racing (IndyCar / F1 / NASCAR) scroll+pin PNGs directly from the live API or backend.
 ```
@@ -83,13 +66,13 @@ frames[0].save('previews/nascar/scroll_test.gif', save_all=True,
 
 ```
 previews/
-  temp/       ← timestamped renders from every tool run (never deleted, gitignored)
-  nascar/     ← NASCAR scroll/pin PNGs and GIFs (latest, fixed names)
+  nascar/     ← NASCAR scroll/pin PNGs and GIFs
   f1/         ← F1 scroll/pin PNGs
+    live/     ← renders from live OpenF1 API
   indycar/    ← IndyCar scroll/pin PNGs
 ```
 
-`previews/temp/` accumulates every render with a timestamp in the filename so nothing is ever overwritten. These files are gitignored. Named sport folders hold the latest fixed-name renders for quick reference.
+Save previews into the appropriate sport subfolder, not the root `previews/`.
 
 ## Notes
 - `make_renderer(mode)` returns a `TickerStreamer` with fonts and logo cache pre-initialized.

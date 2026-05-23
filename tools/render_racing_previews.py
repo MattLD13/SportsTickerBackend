@@ -9,7 +9,6 @@ Examples:
 from __future__ import annotations
 
 import argparse
-import datetime
 import os
 
 from fetch_and_render import (
@@ -72,23 +71,10 @@ def main() -> int:
         renderer.mode = mode
         if not args.no_prefetch_logos:
             prefetch_logos(renderer, games)
-
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "previews", "temp")
-        os.makedirs(temp_dir, exist_ok=True)
-
-        scroll_img = render_scroll(renderer, games)
-        pin_img = render_pin(renderer, games[0] if games else None)
-
-        # Fixed-name latest render in sport folder
         scroll_path = os.path.join(out_dir, f"{mode}_scroll.png")
         pin_path = os.path.join(out_dir, f"{mode}_pin.png")
-        save_image(scroll_img, scroll_path)
-        save_image(pin_img, pin_path)
-
-        # Timestamped copy in previews/temp/ (never overwritten)
-        save_image(scroll_img, os.path.join(temp_dir, f"{mode}_{ts}_scroll.png"))
-        save_image(pin_img, os.path.join(temp_dir, f"{mode}_{ts}_pin.png"))
+        save_image(render_scroll(renderer, games), scroll_path)
+        save_image(render_pin(renderer, games[0] if games else None), pin_path)
     return 0
 
 

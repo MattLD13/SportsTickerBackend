@@ -14,8 +14,6 @@ This repo powers a sports ticker backend plus a Raspberry Pi LED-matrix style co
 - Render live frame: `python tools\fetch_and_render.py --mode indycar --view pin --save indycar_pin_live.png`
 - Render racing previews: `python tools\render_racing_previews.py --mode both --out-dir previews`
 - Dump backend JSON: `python tools\dump_backend_snapshot.py --mode f1`
-- Run pytest suite: `.venv\Scripts\pytest`
-- Run pytest with coverage: `.venv\Scripts\pytest --cov=sports_ticker tests/`
 
 ## Development Notes
 - Use live/backend render tools for UI verification. Avoid adding dummy-only render tests unless they supplement live renders.
@@ -23,7 +21,6 @@ This repo powers a sports ticker backend plus a Raspberry Pi LED-matrix style co
 - Generated preview PNGs and `__pycache__` files are artifacts. Do not commit bytecode.
 - The controller caches remote images in `~/ticker/assets` via `download_and_process_logo`.
 - OpenF1 is used for F1 latest session data. OpenF1 docs: https://openf1.org/docs/
-- **Test Suite Verification**: When modifying core backend logic, API routes, or fetchers, run the pytest suite with `.venv\Scripts\pytest` to verify changes are correct. Add new tests in `tests/` for any new endpoints or core parsing logic. Do not mock configurations globally; rely on `tests/conftest.py`'s automatic filesystem and worker isolation.
 
 ## Adding a Racing Mode
 1. Add league/mode IDs in `sports_ticker/leagues.py`.

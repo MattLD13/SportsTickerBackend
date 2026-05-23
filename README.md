@@ -198,22 +198,6 @@ google-genai     Gemini AI fallback lookups
 
 ---
 
-## Testing
-
-A comprehensive unit and integration testing suite is included to verify core state, Flask routes, pairing endpoints, and fetcher parsing logic under complete isolation.
-
-For setup, execution commands, coverage details, and developer guidelines, see [TESTING.md](TESTING.md).
-
-```bash
-# Install test requirements
-.venv\Scripts\pip install pytest pytest-mock pytest-cov responses
-
-# Run the test suite
-.venv\Scripts\pytest
-```
-
----
-
 ## API Reference
 
 ### Core

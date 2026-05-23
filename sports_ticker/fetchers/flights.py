@@ -78,14 +78,6 @@ class FlightTracker(AirportMixin):
         
         try:
             self.log("TRACKER", f"Fetching flight: {self.track_flight_id}")
-            
-            # Try to get IATA code to build the airline logo URL
-            try:
-                _, iata, _ = self.parse_flight_code(self.track_flight_id)
-            except Exception:
-                iata = None
-            logo_url = f"https://www.gstatic.com/flights/airline_logos/70px/{iata.upper()}.png" if iata else ""
-
             fr24_data = self.fetch_fr24_flight(self.track_flight_id)
             
             if fr24_data:
@@ -154,7 +146,6 @@ class FlightTracker(AirportMixin):
                         'is_live': is_live,
                         'aircraft_type': fr24_data.get('aircraft_type', ''),
                         'aircraft_code': fr24_data.get('aircraft_code', ''),
-                        'airline_logo': logo_url,
                         'is_shown': True
                     }
                 self.log("TRACKER", f"{self.track_flight_id} (FR24) {status} | {fr24_data['altitude']}ft")
@@ -173,7 +164,7 @@ class FlightTracker(AirportMixin):
                     'origin_city': "UNKNOWN",
                     'dest_city': "UNKNOWN",
                     'alt': 0, 'dist': 0, 'eta_str': "PENDING", 'speed': 0, 'progress': 0,
-                    'status': "pending", 'airline_logo': logo_url, 'is_shown': True
+                    'status': "pending", 'is_shown': True
                 }
 
         except Exception as e:

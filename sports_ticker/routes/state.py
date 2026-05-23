@@ -3,9 +3,9 @@ from flask import request, jsonify
 from ..routes_runtime import app
 from ..core import (
     state, tickers, data_lock,
-    normalize_enabled_mode, normalize_mode, _normalize_single_pin,
+    normalize_mode, _normalize_single_pin,
     resolve_ticker_id, create_ticker_record, save_specific_ticker, generate_pairing_code,
-    SPORTS_MODE_FAMILY, RACING_FULLSCREEN_MODES, NON_SCOREBOARD_TYPES, HIDDEN_STATUS_KEYWORDS, _ACTIVE_STATES,
+    SPORTS_MODE_FAMILY, NON_SCOREBOARD_TYPES, HIDDEN_STATUS_KEYWORDS, _ACTIVE_STATES,
     _get_ticker_timezone_context, _apply_timezone_to_game_times,
     _materialize_blank_logo_urls, _maybe_update_ticker_timezone_from_request,
     SERVER_VERSION,
@@ -49,9 +49,9 @@ def get_ticker_data():
     # mode change, matching /api/state and /api/preview/strip.png behavior.
     preview_mode = request.args.get('mode')
     if preview_mode:
-        current_mode = normalize_enabled_mode(preview_mode)
+        current_mode = normalize_mode(preview_mode)
     else:
-        current_mode = normalize_enabled_mode(t_settings.get('mode') or state.get('mode', 'sports'), state.get('mode', 'sports'))
+        current_mode = normalize_mode(t_settings.get('mode') or state.get('mode', 'sports'), state.get('mode', 'sports'))
     
     # --- FORCE SPORTS_FULL IF TICKER HAS A PIN ---
     t_pinned_game = str(rec.get('settings', {}).get('pinned_game', '')).strip()
@@ -75,17 +75,13 @@ def get_ticker_data():
             if pin_norm.startswith('masters'):
                 pin_league = 'masters'
 
-    display_style = 'strip'
-    if current_mode in RACING_FULLSCREEN_MODES:
-        display_style = 'full'
-
     # Pin overrides should only remap sports-family modes. Non-sports modes
     # (clock/weather/music/flights/etc.) must remain user-selectable.
     if has_pinned_game and current_mode in SPORTS_MODE_FAMILY:
         if pin_league in ('golf', 'masters'):
             current_mode = 'golf'
         else:
-            display_style = 'full'
+            current_mode = 'sports_full'
 
     # Sleep Mode: dim the display but still fetch real game data so it's
     # immediately available when the ticker wakes up (no stale-data bug).
@@ -97,8 +93,8 @@ def get_ticker_data():
     delay_seconds = (t_settings.get('live_delay_seconds', 0)
                      if (is_sports_mode and t_settings.get('live_delay_mode'))
                      else 0)
-    if effective_pin and display_style == 'full':
-        raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
+    if effective_pin and current_mode == 'sports_full':
+        raw_games = fetcher.get_mode_snapshot('sports_full', delay_seconds)
         pin_id = str(effective_pin).split(':', 1)[-1]
         raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
     elif effective_pin and current_mode == 'golf':
@@ -131,16 +127,6 @@ def get_ticker_data():
             music_obj = fetcher.get_music_object(require_enabled=False)
             if music_obj: visible_items.append(music_obj)
 
-    elif display_style == 'full' and current_mode in SPORTS_MODE_FAMILY:
-        for g in raw_games:
-            if g.get('type') == 'masters':
-                continue
-            sport = _sport_for_data_mode(g.get('sport', ''))
-            g_copy = g.copy()
-            g_copy['sport'] = sport
-            g_copy['is_shown'] = True
-            visible_items.append(g_copy)
-
     elif current_mode == 'my_teams':
         _ticker_teams = rec.get('my_teams')
         saved_teams = set(state.get('my_teams', []) if _ticker_teams is None else _ticker_teams)
@@ -169,7 +155,7 @@ def get_ticker_data():
                 g_copy['is_shown'] = True
                 visible_items.append(g_copy)
 
-    elif False:
+    elif current_mode == 'sports_full':
         # Pinned game override — show everything without active_sports filtering
         for g in raw_games:
             if g.get('type') == 'masters':
@@ -180,12 +166,11 @@ def get_ticker_data():
             g_copy['is_shown'] = True
             visible_items.append(g_copy)
 
-    elif current_mode == 'soccer':
+    elif current_mode == 'soccer_full':
         for g in raw_games:
             sport = _sport_for_data_mode(g.get('sport', ''))
             if not str(sport).startswith('soccer_'):
                 continue
-            if not active_sports.get(sport, True): continue
             g_copy = g.copy()
             g_copy['sport'] = sport
             g_copy['is_shown'] = True
@@ -227,9 +212,9 @@ def get_ticker_data():
             elif current_mode == 'masters' and (g_type == 'masters' or str(g_sport).lower() == 'masters'): match = True
             elif current_mode == 'flights' and g_sport == 'flight': match = True
             elif current_mode == 'flight_tracker' and g_type == 'flight_visitor': match = True
-            elif current_mode == 'indycar' and str(g_sport).lower() == 'indycar': match = True
-            elif current_mode == 'f1' and str(g_sport).lower() == 'f1': match = True
-            elif current_mode == 'nascar' and str(g_sport).lower() == 'nascar': match = True
+            elif current_mode in ('indycar', 'indycar_full') and str(g_sport).lower() == 'indycar': match = True
+            elif current_mode in ('f1', 'f1_full') and str(g_sport).lower() == 'f1': match = True
+            elif current_mode in ('nascar', 'nascar_full') and str(g_sport).lower() == 'nascar': match = True
 
             if match:
                 g['is_shown'] = True
@@ -248,9 +233,8 @@ def get_ticker_data():
     response_local_config['utc_offset'] = tz_offset
     effective_mode_for_response = current_mode
     if current_mode == 'sports' and len(visible_items) == 1:
-        display_style = 'full'
+        effective_mode_for_response = 'sports_full'
     response_local_config['mode'] = effective_mode_for_response
-    response_local_config['display_style'] = display_style
 
     # Report global config from global state only. Do not reflect per-ticker
     # pin overrides here, otherwise global_config.mode appears to change.
@@ -311,28 +295,22 @@ def api_state():
     response_settings['pinned_games'] = pinned_games
     response_settings['is_pinned'] = bool(pinned_game)
 
-    current_mode = normalize_enabled_mode(response_settings.get('mode', 'sports'))
+    current_mode = normalize_mode(response_settings.get('mode', 'sports'))
 
     # Allow web dashboard to preview any mode without changing ticker state
     _preview_mode = request.args.get('mode')
     if _preview_mode:
-        current_mode = normalize_enabled_mode(_preview_mode)
+        current_mode = normalize_mode(_preview_mode)
 
-    display_style = 'strip'
-    if current_mode in RACING_FULLSCREEN_MODES:
-        display_style = 'full'
-
-    # Legacy app behavior: golf pins still use the golf UI. Other sports pins
-    # request full-screen presentation without changing the mode.
+    # Legacy app behavior: reflect pin by forcing a dedicated mode in /api/state.
+    # Golf pins should use the golf UI; other sports-family pins use sports_full.
     if pinned_game and current_mode in SPORTS_MODE_FAMILY:
-        display_style = 'full'
+        current_mode = 'golf' if current_mode == 'masters' else 'sports_full'
         if str(pinned_game).split(':', 1)[0].strip().lower() in ('golf', 'masters'):
             current_mode = 'golf'
-            display_style = 'strip'
         response_settings['mode'] = current_mode
 
     response_settings['mode'] = current_mode
-    response_settings['display_style'] = display_style
         
     response_settings['flight_submode'] = 'track' if current_mode == 'flight_tracker' else 'airport'
 
@@ -341,7 +319,7 @@ def api_state():
                      if (is_sports_mode and response_settings.get('live_delay_mode'))
                      else 0)
     raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
-    if pinned_game and display_style == 'full':
+    if pinned_game and current_mode == 'sports_full':
         pin_id = str(pinned_game).split(':', 1)[-1]
         raw_games = [g for g in raw_games if str(g.get('id', '')) == pin_id]
     elif pinned_game and current_mode == 'golf':
@@ -365,14 +343,12 @@ def api_state():
         game_copy = g.copy()
         sport = game_copy.get('sport', '')
         g_type = game_copy.get('type', '')
-        if current_mode in ('sports', 'live', 'my_teams', 'soccer'):
+        if current_mode in ('sports', 'live', 'my_teams'):
             should_show = _active_sports.get(sport, True)
         else:
             should_show = True
 
-        if display_style == 'full' and current_mode in SPORTS_MODE_FAMILY:
-            should_show = g_type != 'masters'
-        elif current_mode == 'my_teams':
+        if current_mode == 'my_teams':
             h_ab = str(game_copy.get('home_abbr', '')).upper()
             a_ab = str(game_copy.get('away_abbr', '')).upper()
             in_home = f"{sport}:{h_ab}" in saved_teams or (h_ab in saved_teams and h_ab not in COLLISION_ABBRS)
@@ -389,7 +365,7 @@ def api_state():
                 status_lower = str(game_copy.get('status', '')).lower()
                 if any(k in status_lower for k in HIDDEN_STATUS_KEYWORDS):
                     should_show = False
-        elif current_mode == 'soccer':
+        elif current_mode == 'soccer_full':
             if not str(sport).startswith('soccer_'):
                 should_show = False
         elif current_mode == 'golf':
@@ -419,13 +395,13 @@ def api_state():
         elif current_mode == 'flight_tracker':
             if g_type != 'flight_visitor':
                 should_show = False
-        elif current_mode == 'indycar':
+        elif current_mode in ('indycar', 'indycar_full'):
             if str(sport).lower() != 'indycar':
                 should_show = False
-        elif current_mode == 'f1':
+        elif current_mode in ('f1', 'f1_full'):
             if str(sport).lower() != 'f1':
                 should_show = False
-        elif current_mode == 'nascar':
+        elif current_mode in ('nascar', 'nascar_full'):
             if str(sport).lower() != 'nascar':
                 should_show = False
 

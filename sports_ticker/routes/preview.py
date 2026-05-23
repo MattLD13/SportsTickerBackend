@@ -38,7 +38,7 @@ _SPORTS_TYPES = {
     'soccer_europa_league', 'soccer_mls', 'soccer_wc', 'golf', 'masters',
 }
 
-_STATIC_PREVIEW_MODES = {'music', 'weather', 'clock', 'flights', 'flight_tracker', 'golf', 'masters', 'indycar', 'f1', 'nascar'}
+_STATIC_PREVIEW_MODES = {'music', 'weather', 'clock', 'flights', 'flight_tracker', 'golf', 'masters', 'sports_full', 'indycar', 'indycar_full', 'f1', 'f1_full'}
 
 
 def _get_renderer():
@@ -107,9 +107,6 @@ def _get_preview_renderer():
             renderer.C_GRN = (80, 255, 80)
             renderer.C_RED = (255, 60, 60)
             renderer.C_GRY = (120, 120, 130)
-            renderer.mode = 'sports'
-            renderer.display_style = 'strip'
-            renderer.game_render_cache = {}
             _preview_renderer = renderer
         except Exception as e:
             print(f"[preview] preview renderer init failed: {e}")
@@ -206,7 +203,6 @@ def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
             itype = str(g.get('type', '')).lower()
             sport = str(g.get('sport', '')).lower()
             renderer.mode = str(mode or 'sports')
-            renderer.display_style = 'strip'
             if itype == 'weather':
                 return renderer.draw_weather_detailed(g)
             if itype == 'stock_ticker' or sport.startswith('stock'):
@@ -230,18 +226,18 @@ def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
                 return renderer.draw_flight_visitor(g)
             if itype == 'racing' or sport in ('indycar', 'f1', 'nascar'):
                 if sport == 'f1':
-                    if renderer.mode == 'f1' or renderer.is_full_display():
+                    if renderer.mode in ('f1', 'f1_full', 'sports_full'):
                         return renderer.draw_f1_full(g)
                     return renderer.draw_f1_scroll_card(g)
                 if sport == 'nascar':
-                    if renderer.mode == 'nascar' or renderer.is_full_display():
+                    if renderer.mode in ('nascar', 'nascar_full', 'sports_full'):
                         return renderer.draw_nascar_full(g)
                     return renderer.draw_nascar_scroll_card(g)
-                if renderer.mode == 'indycar' or renderer.is_full_display():
+                if renderer.mode in ('indycar', 'indycar_full', 'sports_full'):
                     return renderer.draw_indycar_full(g)
                 return renderer.draw_indycar_scroll_card(g)
             if itype in ('golf', 'masters') or sport in ('golf', 'masters'):
-                if renderer.mode in ('golf', 'masters') or renderer.is_full_display():
+                if renderer.mode in ('golf', 'masters', 'sports_full'):
                     return renderer.draw_golf_mode(g)
                 return renderer.draw_golf_scroll_card(g)
             if itype == 'leaderboard':
@@ -413,7 +409,7 @@ def _filter_preview_games(games: list, mode: str) -> list:
             status_lower = str(game.get('status', '')).lower()
             if any(k in status_lower for k in HIDDEN_STATUS_KEYWORDS):
                 should_show = False
-        elif mode == 'soccer':
+        elif mode == 'soccer_full':
             should_show = str(sport).startswith('soccer_')
         elif mode == 'golf':
             should_show = g_type in ('golf', 'masters') or sport in ('golf', 'masters')
@@ -456,12 +452,14 @@ def preview_strip():
     pin_id   = request.args.get('pin_id', '')
     try:
         current_mode = normalize_mode(mode_str)
-        games = fetcher.get_mode_snapshot(current_mode, 0)[:30]
+        # sports_full uses the sports snapshot — just filter to a single pinned game
+        fetch_mode = 'sports' if current_mode == 'sports_full' else current_mode
+        games = fetcher.get_mode_snapshot(fetch_mode, 0)[:30]
     except Exception:
         games = []
 
-    # Full-screen preview: render the pinned game as one full-card image.
-    if pin_id:
+    # sports_full: render the pinned game fullscreen
+    if current_mode == 'sports_full' and pin_id:
         all_games = games
         # pin_id from JS is "sport:raw_id" (e.g. "nfl:401548409")
         if ':' in pin_id:
@@ -483,21 +481,14 @@ def preview_strip():
             preview = _get_preview_renderer()
             if preview:
                 try:
-                    preview.mode = current_mode
-                    preview.display_style = 'full'
                     # Pre-warm the logo cache so get_logo() finds them
                     for logo_url in (pinned.get('home_logo'), pinned.get('away_logo')):
                         if logo_url:
                             preview.download_and_process_logo(logo_url, (24, 24))
                     sport = str(pinned.get('sport', '')).lower()
                     g_type = str(pinned.get('type', '')).lower()
-                    if g_type == 'racing' or sport in ('indycar', 'f1', 'nascar'):
-                        if sport == 'f1':
-                            card = preview.draw_f1_full(pinned)
-                        elif sport == 'nascar':
-                            card = preview.draw_nascar_full(pinned)
-                        else:
-                            card = preview.draw_indycar_full(pinned)
+                    if g_type == 'racing' or sport in ('indycar', 'f1'):
+                        card = preview.draw_f1_full(pinned) if sport == 'f1' else preview.draw_indycar_full(pinned)
                     else:
                         card = preview.draw_sport_full_bleed(pinned)
                     return _single_card_png(card)
