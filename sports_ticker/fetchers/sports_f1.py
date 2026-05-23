@@ -429,31 +429,35 @@ class SportsF1Mixin:
             return cache.get('data', [])
 
     def _fetch_openf1_live(self, start_utc):
-        """Fetch real-time position/driver data from OpenF1 if it corresponds to the current session."""
+        """Fetch real-time position/driver data from OpenF1 for the session at start_utc."""
         try:
-            r = self.session.get("https://api.openf1.org/v1/sessions?session_key=latest", timeout=10)
+            # Search for the session by date range (±90 min of start_utc) so we get
+            # the correct session even when a later session has become "latest".
+            window_start = (start_utc - timedelta(minutes=90)).strftime('%Y-%m-%dT%H:%M:%SZ')
+            window_end   = (start_utc + timedelta(minutes=90)).strftime('%Y-%m-%dT%H:%M:%SZ')
+            url = (f"https://api.openf1.org/v1/sessions"
+                   f"?date_start>={window_start}&date_start<={window_end}")
+            r = self.session.get(url, timeout=10)
             if not r.ok: return None
-            latest = r.json()
-            if not latest: return None
+            results = r.json()
             # OpenF1 locks access during live sessions and returns {"detail": "..."}
-            if isinstance(latest, dict) and 'detail' in latest:
-                print(f"[F1] OpenF1 locked during live session: {latest['detail'][:80]}")
+            if isinstance(results, dict) and 'detail' in results:
+                print(f"[F1] OpenF1 locked during live session: {results['detail'][:80]}")
                 return None
-            s = latest[0] if isinstance(latest, list) else latest
+            if not results or not isinstance(results, list):
+                return None
+            # Pick the session whose date_start is closest to our start_utc
+            def _dist(sess):
+                try:
+                    sd = datetime.fromisoformat(str(sess.get('date_start', '')).replace('Z', '+00:00'))
+                    if sd.tzinfo is None:
+                        sd = sd.replace(tzinfo=timezone.utc)
+                    return abs((sd - start_utc).total_seconds())
+                except Exception:
+                    return float('inf')
+            s  = min(results, key=_dist)
             sk = s.get('session_key')
             if not sk:
-                return None
-
-            # Check if this latest session matches our current window (within 2 days)
-            start_str = str(s.get('date_start', '')).replace('+00:00', '+00:00')
-            try:
-                s_date = datetime.fromisoformat(start_str)
-                if s_date.tzinfo is None:
-                    s_date = s_date.replace(tzinfo=timezone.utc)
-            except Exception:
-                return None
-
-            if abs((s_date - start_utc).total_seconds()) > 3600 * 6:
                 return None
 
             base = "https://api.openf1.org/v1"
