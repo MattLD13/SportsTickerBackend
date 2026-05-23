@@ -321,6 +321,17 @@ def _find_f1_sessions(races, now_utc):
     return []
 
 
+def _gtl_to_float(raw):
+    """Parse a GapToLeader string to float seconds, or None if non-numeric (e.g. lapped)."""
+    s = str(raw or '').strip().lstrip('+')
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
 def _drivers_from_signalr(live_data):
     """Build a sorted driver list from a SignalR live snapshot."""
     driver_list  = live_data.get('driver_list', {})
@@ -328,7 +339,7 @@ def _drivers_from_signalr(live_data):
     if not driver_list:
         return []
 
-    drivers = []
+    entries = []
     for num, dl_info in driver_list.items():
         if not isinstance(dl_info, dict):
             continue
@@ -345,21 +356,16 @@ def _drivers_from_signalr(live_data):
         tc     = str(dl_info.get('TeamColour') or '').strip().lstrip('#')
         livery = f"#{tc}" if tc else _f1_team_color(team)
 
-        interval_raw = tl.get('IntervalToPositionAhead', '')
-        if isinstance(interval_raw, dict):
-            interval_raw = interval_raw.get('Value', '')
-        if not interval_raw:
-            gap_raw = tl.get('GapToLeader', '')
-            if isinstance(gap_raw, dict):
-                gap_raw = gap_raw.get('Value', '')
-            interval_raw = gap_raw
-        gap = _f1_compact_gap(interval_raw, pos)
+        gtl_raw = tl.get('GapToLeader', '')
+        if isinstance(gtl_raw, dict):
+            gtl_raw = gtl_raw.get('Value', '')
 
         full_name = str(dl_info.get('FullName') or dl_info.get('BroadcastName') or f"#{num}").strip()
         tla       = str(dl_info.get('Tla') or num)[:3].upper()
 
-        drivers.append({
+        entries.append({
             'pos':              pos,
+            '_gtl':             str(gtl_raw or '').strip(),
             'name':             full_name.title(),
             'abbr':             tla,
             'car':              str(num),
@@ -368,13 +374,34 @@ def _drivers_from_signalr(live_data):
             'car_illustration': '',
             'livery_primary':   livery,
             'livery_secondary': '#111111',
-            'gap':              gap,
+            'gap':              '',
             'speed':            '',
             'status':           'Active',
             'on_track':         True,
         })
 
-    drivers.sort(key=lambda d: d['pos'])
+    entries.sort(key=lambda d: d['pos'])
+
+    # Compute interval to car ahead from consecutive gap-to-leader values.
+    prev_gtl = 0.0
+    drivers = []
+    for drv in entries:
+        gtl_str = drv.pop('_gtl', '')
+        pos     = drv['pos']
+        if pos == 1:
+            drv['gap'] = 'Leader'
+            prev_gtl = 0.0
+        else:
+            gtl_f = _gtl_to_float(gtl_str)
+            if gtl_f is not None:
+                interval = gtl_f - prev_gtl
+                prev_gtl = gtl_f
+                drv['gap'] = _f1_compact_gap(f"+{interval:.3f}", pos)
+            else:
+                # Lapped or non-numeric gap — show as-is
+                drv['gap'] = _f1_compact_gap(gtl_str, pos)
+        drivers.append(drv)
+
     return drivers
 
 
@@ -505,6 +532,22 @@ class SportsF1Mixin:
             ranked = sorted(latest_pos.values(), key=lambda x: x['position'])
             leader_time = best_lap.get(ranked[0]['driver_number']) if ranked and is_qual else None
 
+            # Pre-compute intervals from gap_to_leader for race sessions where
+            # interval_to_position_ahead may be absent.
+            computed_interval = {}
+            if not is_qual:
+                prev_gtl = 0.0
+                for p in ranked:
+                    dn = p['driver_number']
+                    iv = intervals.get(dn, {})
+                    raw_gtl = iv.get('gap_to_leader')
+                    try:
+                        gtl_f = float(raw_gtl)
+                        computed_interval[dn] = gtl_f - prev_gtl
+                        prev_gtl = gtl_f
+                    except (TypeError, ValueError):
+                        pass
+
             drivers = []
             for p in ranked:
                 dn = p['driver_number']
@@ -527,13 +570,17 @@ class SportsF1Mixin:
                     if pos == 1:
                         gap = "Leader"
                     else:
-                        gap_val = iv.get('interval_to_position_ahead') or iv.get('gap_to_leader')
-                        if gap_val is not None:
+                        # Prefer native interval; fall back to computed from gap_to_leader
+                        itpa = iv.get('interval_to_position_ahead')
+                        if itpa is not None:
                             try:
-                                gap_float = float(gap_val)
-                                gap = f"+{gap_float:.1f}s" if gap_float >= 60 else f"+{gap_float:.3f}"
+                                itpa_f = float(itpa)
+                                gap = f"+{itpa_f:.1f}s" if itpa_f >= 60 else f"+{itpa_f:.3f}"
                             except Exception:
-                                gap = f"+{gap_val}"
+                                gap = f"+{itpa}"
+                        elif dn in computed_interval:
+                            ci = computed_interval[dn]
+                            gap = f"+{ci:.1f}s" if ci >= 60 else f"+{ci:.3f}"
 
                 drivers.append({
                     'pos': pos,
