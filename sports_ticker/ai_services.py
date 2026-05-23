@@ -1,4 +1,4 @@
-"""AI-assisted lookups: airline codes, airport names, and airport data helpers."""
+"""Airline/airport lookups backed by Wikidata SPARQL (free, no API key)."""
 
 import csv
 import io
@@ -10,30 +10,58 @@ import time
 
 import requests
 
-try:
-    from google import genai
-    from google.genai import types as genai_types
-except ImportError:
-    genai = None
-    genai_types = None
-
 # Imported from core — available by the time any route loads this module.
 from .core import (
     AIRPORTS_DB, AIRPORT_CACHE_FILE, AIRLINE_CACHE_FILE,
     TIMEOUTS, save_json_atomically,
 )
 
-# ── Gemini AI setup ──
-GEMINI_KEY = os.getenv('GEMINI_API_KEY')
-AI_CLIENT = None
+# ── Wikidata SPARQL setup (free, no API key, remote) ──
+_WIKIDATA_SPARQL = 'https://query.wikidata.org/sparql'
+_WIKIDATA_HEADERS = {'User-Agent': 'SportsTicker/1.0 (sports display ticker)'}
+
+AI_CLIENT    = None   # set to 'wikidata' sentinel when reachable
 AI_AVAILABLE = False
 
-if GEMINI_KEY and genai is not None:
+
+def _check_wikidata():
+    global AI_CLIENT, AI_AVAILABLE
     try:
-        AI_CLIENT = genai.Client(api_key=GEMINI_KEY)
-        AI_AVAILABLE = True
+        # Ping with a trivial 1-result query
+        r = requests.get(
+            _WIKIDATA_SPARQL,
+            params={'query': 'SELECT ?x WHERE { BIND(1 AS ?x) } LIMIT 1', 'format': 'json'},
+            headers=_WIKIDATA_HEADERS,
+            timeout=5,
+        )
+        if r.status_code == 200:
+            AI_CLIENT    = 'wikidata'
+            AI_AVAILABLE = True
+            print('[WIKIDATA] Connected — airline/domain lookups enabled')
+        else:
+            print(f'[WIKIDATA] Responded with status {r.status_code} — lookups disabled')
+    except Exception as e:
+        print(f'[WIKIDATA] Not reachable ({e}) — lookups disabled')
+
+
+_check_wikidata()
+
+
+def _wikidata_query(sparql: str) -> list:
+    """Run a SPARQL query against Wikidata. Returns list of binding dicts or []."""
+    try:
+        r = requests.get(
+            _WIKIDATA_SPARQL,
+            params={'query': sparql, 'format': 'json'},
+            headers=_WIKIDATA_HEADERS,
+            timeout=10,
+        )
+        if r.status_code == 200:
+            return r.json().get('results', {}).get('bindings', [])
     except Exception:
-        AI_AVAILABLE = False
+        pass
+    return []
+
 
 # ── Airline IATA ↔ ICAO mappings ──
 _IATA_TO_ICAO_FALLBACK = {
@@ -84,7 +112,7 @@ _ICAO_TO_IATA_INDEX: dict = {
     if data.get('icao')
 }
 
-# ── Persistent AI caches ──
+# ── Persistent caches ──
 def _load_json_cache(filepath: str, label: str) -> dict:
     if os.path.exists(filepath):
         try:
@@ -99,11 +127,9 @@ def _load_json_cache(filepath: str, label: str) -> dict:
 
 _ai_airport_cache: dict = _load_json_cache(AIRPORT_CACHE_FILE, "shortened airport names")
 _ai_airline_cache: dict = _load_json_cache(AIRLINE_CACHE_FILE, "airline codes")
-_airline_cache_lock = threading.RLock()
-_airline_ai_request_lock = threading.Lock()
+_airline_cache_lock   = threading.RLock()
+_airline_lookup_lock  = threading.Lock()
 _AIRLINE_UNKNOWN_SENTINEL = "__UNKNOWN__"
-_AIRLINE_QUOTA_RETRY_SECONDS = 3600
-_airline_ai_cooldown_until = 0.0
 
 
 def _migrate_airport_cache():
@@ -126,102 +152,139 @@ _migrate_airport_cache()
 
 def ai_lookup_airline_codes(query_code: str):
     """
-    Resolve an unknown airline code (2-letter IATA or 3-letter ICAO) via Gemini AI.
-    Stores the result bidirectionally so AI is only called once per airline.
+    Resolve an unknown airline code (2-letter IATA or 3-letter ICAO) via Wikidata.
+    Stores the result bidirectionally so Wikidata is only queried once per airline.
     Returns (icao_3, iata_2) or (None, None).
     """
-    global _ai_airline_cache, _airline_ai_cooldown_until
     query_code = query_code.upper().strip()
-
     if len(query_code) not in (2, 3) or not query_code.isalnum():
         return None, None
 
-    now = time.time()
     with _airline_cache_lock:
         cached = _ai_airline_cache.get(query_code)
         if isinstance(cached, str):
             if cached == _AIRLINE_UNKNOWN_SENTINEL:
                 return None, None
             return (cached, query_code) if len(query_code) == 2 else (query_code, cached)
-        if isinstance(cached, dict):
-            retry_after = float(cached.get('retry_after') or 0)
-            if retry_after > now:
-                return None, None
-            _ai_airline_cache.pop(query_code, None)
 
-        if _airline_ai_cooldown_until > now:
-            return None, None
-
-    if not AI_AVAILABLE or not AI_CLIENT:
+    if not AI_AVAILABLE:
         return None, None
 
-    with _airline_ai_request_lock:
-        now = time.time()
+    with _airline_lookup_lock:
+        # Re-check cache after acquiring lock
         with _airline_cache_lock:
             cached = _ai_airline_cache.get(query_code)
             if isinstance(cached, str):
                 if cached == _AIRLINE_UNKNOWN_SENTINEL:
                     return None, None
                 return (cached, query_code) if len(query_code) == 2 else (query_code, cached)
-            if isinstance(cached, dict):
-                retry_after = float(cached.get('retry_after') or 0)
-                if retry_after > now:
-                    return None, None
-                _ai_airline_cache.pop(query_code, None)
-
-            if _airline_ai_cooldown_until > now:
-                return None, None
 
         try:
-            prompt = (
-                f"What are the IATA (2-letter) and ICAO (3-letter) codes for the airline "
-                f"identified by code '{query_code}'?\n"
-                "Reply with ONLY: IATA ICAO (e.g. 'UA UAL'). If unknown, reply 'UNKNOWN'."
-            )
-            response = AI_CLIENT.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    candidate_count=1, max_output_tokens=10, temperature=0.0
-                ),
-            )
-            text = (response.text or '').strip().upper()
-            if text == 'UNKNOWN' or not text:
-                with _airline_cache_lock:
-                    _ai_airline_cache[query_code] = _AIRLINE_UNKNOWN_SENTINEL
-                    save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
-                return None, None
-            parts = text.split()
-            if len(parts) == 2 and len(parts[0]) == 2 and len(parts[1]) == 3:
-                iata, icao = parts[0], parts[1]
-                with _airline_cache_lock:
-                    _ai_airline_cache[iata] = icao
-                    _ai_airline_cache[icao] = iata
-                    save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
-                print(f"[AIRLINE-AI] Resolved '{query_code}' → IATA={iata}, ICAO={icao}")
-                return icao, iata
-        except Exception as e:
-            message = str(e)
-            if "429" in message or "RESOURCE_EXHAUSTED" in message:
-                retry_after = time.time() + _AIRLINE_QUOTA_RETRY_SECONDS
-                with _airline_cache_lock:
-                    _airline_ai_cooldown_until = retry_after
-                    _ai_airline_cache[query_code] = {
-                        "error": "quota",
-                        "retry_after": retry_after,
-                    }
-                    save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
-                print(f"[AIRLINE-AI] Quota hit for '{query_code}', suppressing AI airline lookups for {_AIRLINE_QUOTA_RETRY_SECONDS}s")
+            if len(query_code) == 2:
+                # IATA → ICAO
+                sparql = f"""
+SELECT ?icao WHERE {{
+  ?airline wdt:P229 "{query_code}" .
+  ?airline wdt:P230 ?icao .
+}}
+LIMIT 1"""
+                rows = _wikidata_query(sparql)
+                if rows:
+                    icao = rows[0].get('icao', {}).get('value', '').upper()
+                    if len(icao) == 3:
+                        with _airline_cache_lock:
+                            _ai_airline_cache[query_code] = icao
+                            _ai_airline_cache[icao] = query_code
+                            save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
+                        print(f"[WIKIDATA] {query_code} → ICAO={icao}")
+                        return icao, query_code
             else:
-                print(f"[AIRLINE-AI] Lookup failed for '{query_code}': {e}")
+                # ICAO → IATA
+                sparql = f"""
+SELECT ?iata WHERE {{
+  ?airline wdt:P230 "{query_code}" .
+  ?airline wdt:P229 ?iata .
+}}
+LIMIT 1"""
+                rows = _wikidata_query(sparql)
+                if rows:
+                    iata = rows[0].get('iata', {}).get('value', '').upper()
+                    if len(iata) == 2:
+                        with _airline_cache_lock:
+                            _ai_airline_cache[query_code] = iata
+                            _ai_airline_cache[iata] = query_code
+                            save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
+                        print(f"[WIKIDATA] {query_code} → IATA={iata}")
+                        return query_code, iata
+
+            with _airline_cache_lock:
+                _ai_airline_cache[query_code] = _AIRLINE_UNKNOWN_SENTINEL
+                save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
+        except Exception as e:
+            print(f"[WIKIDATA] Airline code lookup failed for '{query_code}': {e}")
+
     return None, None
+
+
+def ai_lookup_airline_domain(airline_code: str) -> str:
+    """
+    Return the official website domain for an airline IATA or ICAO code via Wikidata.
+    Results are cached persistently so Wikidata is only queried once per airline.
+    Returns a bare domain string like 'united.com', or '' if unknown.
+    """
+    code = airline_code.upper().strip()
+    if not code or not code.isalnum() or len(code) not in (2, 3):
+        return ''
+
+    cache_key = f"{code}_domain"
+    with _airline_cache_lock:
+        cached = _ai_airline_cache.get(cache_key)
+        if isinstance(cached, str):
+            return '' if cached == _AIRLINE_UNKNOWN_SENTINEL else cached
+
+    if not AI_AVAILABLE:
+        return ''
+
+    with _airline_lookup_lock:
+        with _airline_cache_lock:
+            cached = _ai_airline_cache.get(cache_key)
+            if isinstance(cached, str):
+                return '' if cached == _AIRLINE_UNKNOWN_SENTINEL else cached
+
+        try:
+            prop = 'P229' if len(code) == 2 else 'P230'
+            sparql = f"""
+SELECT ?website WHERE {{
+  ?airline wdt:{prop} "{code}" .
+  ?airline wdt:P856 ?website .
+}}
+LIMIT 1"""
+            rows = _wikidata_query(sparql)
+            if rows:
+                url = rows[0].get('website', {}).get('value', '')
+                url = re.sub(r'^https?://', '', url)
+                url = re.sub(r'^www\.', '', url)
+                domain = url.split('/')[0].strip().lower()
+                if domain and '.' in domain:
+                    with _airline_cache_lock:
+                        _ai_airline_cache[cache_key] = domain
+                        save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
+                    print(f"[WIKIDATA] Domain for '{code}' → '{domain}'")
+                    return domain
+
+            with _airline_cache_lock:
+                _ai_airline_cache[cache_key] = _AIRLINE_UNKNOWN_SENTINEL
+                save_json_atomically(AIRLINE_CACHE_FILE, _ai_airline_cache)
+        except Exception as e:
+            print(f"[WIKIDATA] Domain lookup failed for '{code}': {e}")
+
+    return ''
 
 
 def get_airport_display_name(iata_code: str) -> str:
     """
     Return a short display name for an airport IATA code.
-    Checks the persistent cache first; calls Gemini AI for anything not cached.
-    Falls back to algorithmic suffix stripping.
+    Checks persistent cache first, then applies algorithmic suffix stripping.
     """
     if not iata_code:
         return 'UNKNOWN'
@@ -232,42 +295,7 @@ def get_airport_display_name(iata_code: str) -> str:
 
     data = (AIRPORTS_DB or {}).get(code, {})
     raw_name = data.get('name', code)
-    city = data.get('city', '')
 
-    if AI_AVAILABLE and AI_CLIENT:
-        try:
-            prompt = (
-                f"Shorten the airport name '{raw_name}' (City: {city}) for a compact display ticker.\n"
-                "Rules:\n"
-                "1. KEEP 'International' if it is part of the airport's distinct identity.\n"
-                "2. REMOVE only trailing standalone 'Airport' and generic suffixes like "
-                "'Intercontinental', 'Municipal', 'Regional', 'Field'.\n"
-                "3. REMOVE the city name only when it adds no info.\n"
-                "4. PERSON NAMES: Always use Full Name (First + Last). Never shorten to surname only.\n"
-                "5. COLLOQUIAL: Use a famous acronym or nickname when universally known "
-                "(e.g. 'JFK', 'Heathrow').\n"
-                f"Input to process: {raw_name}"
-            )
-            response = AI_CLIENT.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    candidate_count=1, max_output_tokens=15, temperature=0.1
-                ),
-            )
-            if response.text:
-                short_name = response.text.strip()
-                if len(short_name) < len(raw_name) + 5:
-                    _ai_airport_cache[code] = short_name
-                    save_json_atomically(AIRPORT_CACHE_FILE, _ai_airport_cache)
-                    return short_name
-        except Exception as e:
-            if "429" in str(e):
-                print(f"[AI] Quota hit (429) for {code}, using algorithmic fallback.")
-            else:
-                print(f"[AI] Failed to shorten {code}: {e}")
-
-    # Algorithmic fallback
     replacements = [
         " Intercontinental Airport", " Regional Airport", " Municipal Airport",
         " Intercontinental", " Municipal", " Regional",

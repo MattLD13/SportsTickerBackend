@@ -566,7 +566,7 @@ def fetch_json(session, url, *, timeout=None, params=None, headers=None):
 # dependency (ai_services/timezone → core) does not create a real circle.
 from .ai_services import (                                      # noqa: E402
     _IATA_TO_ICAO, _ICAO_TO_IATA, _ICAO_TO_IATA_INDEX,
-    ai_lookup_airline_codes, get_airport_display_name, get_city_name,
+    ai_lookup_airline_codes, ai_lookup_airline_domain, get_airport_display_name, get_city_name,
     lookup_and_auto_fill_airport, haversine,
     AI_CLIENT, AI_AVAILABLE,
 )

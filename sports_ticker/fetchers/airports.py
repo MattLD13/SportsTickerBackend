@@ -32,26 +32,33 @@ class AirportMixin:
         code = str(airline_code or '').strip().upper()
         if not code:
             return ''
-        if code.isalnum() and len(code) in (2, 3):
-            return f"https://content.airhex.com/content/logos/airlines_{code}_350_100_r.png?theme=dark"
-        airline_domains = {
-            'UA': 'united.com',
-            'DL': 'delta.com',
-            'AA': 'aa.com',
-            'WN': 'southwest.com',
-            'B6': 'jetblue.com',
-            'AS': 'alaskaair.com',
-            'AC': 'aircanada.com',
-            'BA': 'britishairways.com',
-            'LH': 'lufthansa.com',
-            'AF': 'airfrance.us',
-            'KL': 'klm.com',
-            'EK': 'emirates.com',
+        # Fast-path map for common carriers (avoids an AI call on first render)
+        _KNOWN_DOMAINS = {
+            'UA': 'united.com',       'UAL': 'united.com',
+            'DL': 'delta.com',        'DAL': 'delta.com',
+            'AA': 'aa.com',           'AAL': 'aa.com',
+            'WN': 'southwest.com',    'SWA': 'southwest.com',
+            'B6': 'jetblue.com',      'JBU': 'jetblue.com',
+            'AS': 'alaskaair.com',    'ASA': 'alaskaair.com',
+            'NK': 'spirit.com',       'NKS': 'spirit.com',
+            'F9': 'flyfrontier.com',  'FFT': 'flyfrontier.com',
+            'AC': 'aircanada.com',    'ACA': 'aircanada.com',
+            'BA': 'britishairways.com', 'BAW': 'britishairways.com',
+            'LH': 'lufthansa.com',    'DLH': 'lufthansa.com',
+            'AF': 'airfrance.com',    'AFR': 'airfrance.com',
+            'KL': 'klm.com',          'KLM': 'klm.com',
+            'EK': 'emirates.com',     'UAE': 'emirates.com',
+            'QR': 'qatarairways.com', 'QTR': 'qatarairways.com',
+            'SQ': 'singaporeair.com', 'SIA': 'singaporeair.com',
+            'VS': 'virginatlantic.com', 'VIR': 'virginatlantic.com',
+            'CX': 'cathaypacific.com', 'CPA': 'cathaypacific.com',
+            'JL': 'jal.com',          'JAL': 'jal.com',
+            'NH': 'ana.co.jp',        'ANA': 'ana.co.jp',
         }
-        domain = airline_domains.get(code)
+        domain = _KNOWN_DOMAINS.get(code)
+        if not domain:
+            domain = ai_lookup_airline_domain(code)
         if domain:
-            if domain.startswith('http://') or domain.startswith('https://'):
-                return domain
             return f"https://logo.clearbit.com/{domain}"
         return ''
 

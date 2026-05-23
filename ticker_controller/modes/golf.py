@@ -16,10 +16,10 @@ class GolfMixin:
         players = golf_payload.get('players', []) if isinstance(golf_payload.get('players'), list) else []
         pars_list = golf_payload.get('pars', []) if isinstance(golf_payload.get('pars'), list) else []
 
-        # Header: full event name + round, centered (e.g. "PGA CHAMPIONSHIP ROUND 2")
+        # Header: full event name + round abbreviation, centered (e.g. "PGA CHAMPIONSHIP R2")
         rnd_m = _re.search(r'\d+', round_label)
         rnd_num = rnd_m.group() if rnd_m else '-'
-        header = f"{event_name} ROUND {rnd_num}"
+        header = f"{event_name} R{rnd_num}"
         tw = len(header) * 5
         W = max(128, tw + 4)
         img = Image.new("RGBA", (W, 32), (0, 0, 0, 255))

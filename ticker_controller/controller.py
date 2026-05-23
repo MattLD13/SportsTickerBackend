@@ -563,7 +563,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             round_label = str(golf_payload.get('round') or game.get('status') or '').upper()
             rnd_m = _re.search(r'\d+', round_label)
             rnd_num = rnd_m.group() if rnd_m else '-'
-            header = f"{event_name} ROUND {rnd_num}"
+            header = f"{event_name} R{rnd_num}"
             tw = len(header) * 5
             return max(128, tw + 4) + GAME_SEPARATOR_W
         if t == 'music' or s == 'music':
