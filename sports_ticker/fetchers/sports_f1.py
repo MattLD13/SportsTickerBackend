@@ -441,8 +441,14 @@ class SportsF1Mixin:
             if not r.ok: return None
             latest = r.json()
             if not latest: return None
+            # OpenF1 locks access during live sessions and returns {"detail": "..."}
+            if isinstance(latest, dict) and 'detail' in latest:
+                print(f"[F1] OpenF1 locked during live session: {latest['detail'][:80]}")
+                return None
             s = latest[0] if isinstance(latest, list) else latest
             sk = s.get('session_key')
+            if not sk:
+                return None
 
             # Check if this latest session matches our current window (within 2 days)
             start_str = str(s.get('date_start', '')).replace('+00:00', '+00:00')
@@ -453,7 +459,7 @@ class SportsF1Mixin:
             except Exception:
                 return None
 
-            if abs((s_date - start_utc).total_seconds()) > 86400 * 2:
+            if abs((s_date - start_utc).total_seconds()) > 3600 * 6:
                 return None
 
             base = "https://api.openf1.org/v1"
@@ -601,7 +607,7 @@ class SportsF1Mixin:
         if not drivers and state in ('in', 'post'):
             drivers = self._fetch_openf1_live(start_utc) or []
 
-        if not drivers and state in ('in', 'post'):
+        if not drivers and state == 'post':
             for res in self._fetch_f1_results():
                 drv  = res.get('Driver', {})
                 ctor = res.get('Constructor', {})

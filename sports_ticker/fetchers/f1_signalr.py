@@ -1,26 +1,28 @@
-"""Background SignalR client for F1 Live Timing (livetiming.formula1.com).
+"""Background SignalR Core client for F1 Live Timing (livetiming.formula1.com).
 
-Connects to the official F1 timing WebSocket feed and keeps an in-memory
-snapshot of live driver positions, gaps, and session status.
+Uses the /signalrcore endpoint (ASP.NET Core SignalR), matching the approach
+of the FastF1 library. A cookie-based negotiate handshake obtains the
+AWSALBCORS token needed for the WebSocket upgrade. TimingData, DriverList,
+LapCount, TrackStatus, ExtrapolatedClock, and SessionInfo are all free and
+require no F1TV subscription.
 """
 
-import json
+import logging
 import os
 import threading
 import time
-import urllib.parse
 
 import requests
 
 try:
-    import websocket
-    _HAS_WEBSOCKET = True
+    from signalrcore.hub_connection_builder import HubConnectionBuilder
+    from signalrcore.messages.completion_message import CompletionMessage
+    _HAS_SIGNALRCORE = True
 except ImportError:
-    _HAS_WEBSOCKET = False
+    _HAS_SIGNALRCORE = False
 
-_SIGNALR_HOST = "livetiming.formula1.com"
-_NEGOTIATE_URL = f"https://{_SIGNALR_HOST}/signalr/negotiate"
-_WS_BASE       = f"wss://{_SIGNALR_HOST}/signalr/connect"
+_NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate"
+_WS_URL        = "wss://livetiming.formula1.com/signalrcore"
 _FORBIDDEN_COOLDOWN_SECONDS = int(os.getenv("F1_SIGNALR_403_COOLDOWN_SECONDS", "21600"))
 
 _TOPICS = [
@@ -34,43 +36,34 @@ _TOPICS = [
     "RaceControlMessages",
 ]
 
-_HEADERS = {
-    "User-Agent":      "BestHTTP",
-    "Accept":          "*/*",
-    "Accept-Encoding": "gzip, identity",
-    "Accept-Language": "en",
-}
-
 
 class F1LiveTimingClient:
-    """
-    Persistent SignalR WebSocket client for F1 live timing.
+    """Persistent SignalR Core client for F1 live timing.
 
-    Start once at import time via module-level singleton.
-    Call get_live_data() from any thread to read the latest snapshot.
+    Started once at module load via the singleton.  Call get_live_data() from
+    any thread to read the latest snapshot.
     """
 
     def __init__(self):
-        self._lock     = threading.Lock()
-        self._ws       = None
-        self._running  = False
-        self._invoke_id = 0
-        self._connected = False
+        self._lock          = threading.Lock()
+        self._connection    = None
+        self._running       = False
+        self._connected     = False
         self._blocked_until = 0.0
 
-        # Live data store — updated in place as messages arrive
-        self._driver_list        = {}   # keyed by racing number string
-        self._timing_lines       = {}   # keyed by racing number string
+        # Live data store
+        self._driver_list        = {}
+        self._timing_lines       = {}
         self._track_status       = {}
         self._session_status     = ''
-        self._session_info       = {}   # session metadata (Name, Type, Meeting, dates)
-        self._lap_count          = {}   # {CurrentLap, TotalLaps}
-        self._extrapolated_clock = {}   # {Remaining, Extrapolating}
+        self._session_info       = {}
+        self._lap_count          = {}
+        self._extrapolated_clock = {}
 
     # ── Public API ────────────────────────────────────────────────────────────
 
     def start(self):
-        if self._running or not _HAS_WEBSOCKET:
+        if self._running or not _HAS_SIGNALRCORE:
             return
         self._running = True
         t = threading.Thread(target=self._run_loop, name='f1_signalr', daemon=True)
@@ -78,10 +71,10 @@ class F1LiveTimingClient:
 
     def stop(self):
         self._running = False
-        ws = self._ws
-        if ws:
+        conn = self._connection
+        if conn:
             try:
-                ws.close()
+                conn.stop()
             except Exception:
                 pass
 
@@ -104,92 +97,7 @@ class F1LiveTimingClient:
 
     # ── Internal ──────────────────────────────────────────────────────────────
 
-    def _negotiate(self):
-        params = {
-            'clientProtocol': '1.5',
-            'connectionData': '[{"name":"streaming"}]',
-        }
-        r = requests.get(_NEGOTIATE_URL, params=params, headers=_HEADERS, timeout=10)
-        r.raise_for_status()
-        return r.json()['ConnectionToken']
-
-    def _ws_url(self, token):
-        qs = urllib.parse.urlencode({
-            'clientProtocol': '1.5',
-            'transport':      'webSockets',
-            'connectionToken': token,
-            'connectionData': '[{"name":"streaming"}]',
-        })
-        return f"{_WS_BASE}?{qs}"
-
-    def _on_open(self, ws):
-        self._invoke_id += 1
-        msg = json.dumps({
-            'H': 'streaming',
-            'M': 'Subscribe',
-            'A': [_TOPICS],
-            'I': self._invoke_id,
-        })
-        ws.send(msg)
-
-    def _on_message(self, ws, raw):
-        try:
-            msg = json.loads(raw)
-        except Exception:
-            return
-
-        # Response to our Subscribe call — contains the full initial state
-        result = msg.get('R')
-        if isinstance(result, dict):
-            self._apply_initial_state(result)
-            self._connected = True
-
-        # Incremental push messages from the server
-        for item in msg.get('M', []):
-            if str(item.get('H', '')).lower() == 'streaming' and item.get('M') == 'feed':
-                args = item.get('A', [])
-                if len(args) >= 2:
-                    self._apply_feed(args[0], args[1])
-
-    def _on_error(self, ws, error):
-        print(f"[F1 SignalR] error: {error}")
-
-    def _on_close(self, ws, code, msg):
-        self._connected = False
-
-    def _apply_initial_state(self, state):
-        with self._lock:
-            si = state.get('SessionInfo', {})
-            if isinstance(si, dict):
-                self._session_info.update(si)
-
-            dl = state.get('DriverList', {})
-            if isinstance(dl, dict):
-                self._driver_list.update(dl)
-
-            td = state.get('TimingData', {})
-            if isinstance(td, dict):
-                lines = td.get('Lines', {})
-                if isinstance(lines, dict):
-                    self._timing_lines.update(lines)
-
-            ts = state.get('TrackStatus', {})
-            if isinstance(ts, dict):
-                self._track_status.update(ts)
-
-            ss = state.get('SessionStatus', {})
-            if isinstance(ss, dict):
-                self._session_status = str(ss.get('Status', self._session_status))
-
-            lc = state.get('LapCount', {})
-            if isinstance(lc, dict):
-                self._lap_count.update(lc)
-
-            ec = state.get('ExtrapolatedClock', {})
-            if isinstance(ec, dict):
-                self._extrapolated_clock.update(ec)
-
-    def _apply_feed(self, topic, data):
+    def _apply_topic(self, topic, data):
         if not isinstance(data, dict):
             return
         with self._lock:
@@ -212,50 +120,107 @@ class F1LiveTimingClient:
             elif topic == 'ExtrapolatedClock':
                 self._extrapolated_clock.update(data)
 
-    @staticmethod
-    def _merge_nested(target, source):
-        """Recursively merge source into target (dict of dicts)."""
-        for key, val in source.items():
-            if isinstance(val, dict) and isinstance(target.get(key), dict):
-                F1LiveTimingClient._merge_nested(target[key], val)
-            else:
-                target[key] = val
+    def _on_message(self, msg):
+        """Handle messages from signalrcore hub.
+
+        CompletionMessage = initial state bulk-dump after Subscribe.
+        list              = incremental feed: [topic, data] or [topic, data, ''].
+        """
+        try:
+            if isinstance(msg, CompletionMessage):
+                if isinstance(msg.result, dict):
+                    for topic, data in msg.result.items():
+                        self._apply_topic(topic, data)
+                    self._connected = True
+            elif isinstance(msg, list) and len(msg) >= 2:
+                self._apply_topic(msg[0], msg[1])
+        except Exception as exc:
+            print(f"[F1 SignalR] message parse error: {exc}")
 
     def _run_loop(self):
-        retry_delay = 10
+        logging.getLogger('signalrcore').setLevel(logging.WARNING)
+
         while self._running:
             now = time.time()
             if self._blocked_until > now:
                 time.sleep(min(self._blocked_until - now, 60))
                 continue
 
+            open_event  = threading.Event()
+            close_event = threading.Event()
+
             try:
-                token = self._negotiate()
-                url   = self._ws_url(token)
-                retry_delay = 10  # reset on successful negotiate
-                self._ws = websocket.WebSocketApp(
-                    url,
-                    header=[f"{k}: {v}" for k, v in _HEADERS.items()],
-                    on_open=self._on_open,
-                    on_message=self._on_message,
-                    on_error=self._on_error,
-                    on_close=self._on_close,
+                # 1. Pre-negotiate to obtain the AWSALBCORS load-balancer cookie
+                r = requests.options(_NEGOTIATE_URL, timeout=10)
+                if r.status_code == 403:
+                    self._blocked_until = time.time() + _FORBIDDEN_COOLDOWN_SECONDS
+                    print(f"[F1 SignalR] 403 at negotiate; disabled for {_FORBIDDEN_COOLDOWN_SECONDS}s")
+                    continue
+                r.raise_for_status()
+
+                cookie_val = r.cookies.get("AWSALBCORS", "")
+                headers    = {"Cookie": f"AWSALBCORS={cookie_val}"} if cookie_val else {}
+
+                # 2. Build SignalR Core connection (no F1TV auth — free topics only)
+                conn = (
+                    HubConnectionBuilder()
+                    .with_url(_WS_URL, options={
+                        "verify_ssl":           True,
+                        "access_token_factory": None,
+                        "headers":              headers,
+                    })
+                    .build()
                 )
-                self._ws.run_forever(ping_interval=20, ping_timeout=10)
+
+                def _on_open():
+                    open_event.set()
+                    print("[F1 SignalR] connected")
+
+                def _on_close(*_):
+                    self._connected = False
+                    close_event.set()
+                    print("[F1 SignalR] disconnected")
+
+                conn.on_open(_on_open)
+                conn.on_close(_on_close)
+                conn.on("feed", self._on_message)
+
+                self._connection = conn
+                conn.start()
+
+                # 3. Wait for WebSocket to open before subscribing
+                if not open_event.wait(timeout=15):
+                    print("[F1 SignalR] connection timed out")
+                    conn.stop()
+                    time.sleep(10)
+                    continue
+
+                conn.send("Subscribe", [_TOPICS], on_invocation=self._on_message)
+
+                # 4. Stay alive until the server closes the connection
+                while self._running and not close_event.wait(timeout=5):
+                    pass
+
             except Exception as exc:
                 err = str(exc)
                 if '403' in err or 'Forbidden' in err:
-                    # Server is blocking this client/IP. F1 can still render from Jolpica.
                     self._blocked_until = time.time() + _FORBIDDEN_COOLDOWN_SECONDS
-                    retry_delay = 10
-                    print(f"[F1 SignalR] 403 Forbidden; live overlay disabled for {_FORBIDDEN_COOLDOWN_SECONDS}s")
+                    print(f"[F1 SignalR] 403 Forbidden; disabled for {_FORBIDDEN_COOLDOWN_SECONDS}s")
                 else:
-                    print(f"[F1 SignalR] connection loop error: {exc}")
-                    retry_delay = 10
+                    print(f"[F1 SignalR] connection error: {exc}")
             finally:
                 self._connected = False
+
             if self._running:
-                time.sleep(retry_delay)
+                time.sleep(10)
+
+    @staticmethod
+    def _merge_nested(target, source):
+        for key, val in source.items():
+            if isinstance(val, dict) and isinstance(target.get(key), dict):
+                F1LiveTimingClient._merge_nested(target[key], val)
+            else:
+                target[key] = val
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────
@@ -267,7 +232,7 @@ _client_lock = threading.Lock()
 def get_client() -> F1LiveTimingClient | None:
     """Return the running SignalR client, starting it on first call."""
     global _client
-    if not _HAS_WEBSOCKET:
+    if not _HAS_SIGNALRCORE:
         return None
     if _client is None:
         with _client_lock:
