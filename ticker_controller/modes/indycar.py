@@ -468,10 +468,15 @@ def _tiny_text_width(text, font=None):
 
 
 def _display_flag(flag, state):
+    f = str(flag or '').strip().upper()
+    if f:
+        return f
     state = str(state or '').lower()
-    if state in ('pre', 'post'):
+    if state == 'post':
         return 'CHECKERED'
-    return str(flag or '').strip().upper() or 'GREEN'
+    if state == 'pre':
+        return 'WHITE'
+    return 'GREEN'
 
 
 def _key_background(img, tolerance=18):
@@ -766,8 +771,8 @@ class IndycarMixin:
 
         if not top3:
             # Show session starting info when drivers have not yet run
-            start_utc = str(game.get('startTimeUTC') or '').strip()
-            start_txt = _format_indycar_time(start_utc) if start_utc else ''
+            g_state = str(game.get('state') or '').lower()
+            start_txt = str(game.get('status') or '').strip() if g_state == 'pre' else ''
             session_label = self._ic_header_label(ic)
             # Draw the session label and starts text centered in the driver area
             draw_tiny_text(d, max(2, int((W - _tiny_text_width(session_label, self.font)) / 2)), 16, session_label, (180, 210, 255))
@@ -816,8 +821,8 @@ class IndycarMixin:
             self._ic_draw_driver_panel(img, d, drivers, INFO_W, RACE_W, H, is_qual=is_qual)
         else:
             # No drivers yet: present session label and start time centered
-            start_utc = str(game.get('startTimeUTC') or '').strip()
-            start_txt = _format_indycar_time(start_utc) if start_utc else ''
+            g_state = str(game.get('state') or '').lower()
+            start_txt = str(game.get('status') or '').strip() if g_state == 'pre' else ''
             session_label = self._ic_header_label(ic)
             # draw into right panel area
             text_x = INFO_W + max(4, int((RACE_W - _tiny_text_width(session_label, self.font)) / 2))
@@ -938,8 +943,8 @@ class IndycarMixin:
             info_str = f"L{lap}/{total}"
         elif state == 'in' and lap > 0:
             info_str = f"LAP {lap}"
-        elif state == 'pre' and start_utc:
-            start_txt = _format_indycar_time(start_utc)
+        elif state == 'pre':
+            start_txt = str(game.get('status') or '').strip() or _format_indycar_time(start_utc)
             info_str = f"STARTS {start_txt}"[:max_chars]
         elif time_to_go:
             info_str = time_to_go[:max_chars]
