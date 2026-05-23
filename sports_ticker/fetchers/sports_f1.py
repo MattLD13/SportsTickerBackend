@@ -612,7 +612,7 @@ class SportsF1Mixin:
         if not drivers and state in ('in', 'post'):
             drivers = self._fetch_openf1_live(start_utc) or []
 
-        if not drivers and state == 'post':
+        if not drivers and state == 'post' and sess_key == 'Race':
             for res in self._fetch_f1_results():
                 drv  = res.get('Driver', {})
                 ctor = res.get('Constructor', {})
@@ -668,13 +668,16 @@ class SportsF1Mixin:
                     status_display = _F1LT_TRACK_STATUS.get(ts_code, 'GREEN')
         else:
             try:
-                utc_off = state.get('utc_offset', -5)
+                utc_off = _core.state.get('utc_offset', -5)
                 local_tz = timezone(timedelta(hours=utc_off))
                 status_display = start_utc.astimezone(local_tz).strftime('%I:%M %p').lstrip('0')
             except Exception:
                 status_display = 'Starts Soon'
 
-        flag        = _F1LT_TRACK_STATUS.get(ts_code, _f1_flag_for_state(state))
+        if state == 'in':
+            flag = _F1LT_TRACK_STATUS.get(ts_code, 'GREEN')
+        else:
+            flag = _f1_flag_for_state(state)  # WHITE for pre, CHECKERED for post
         cur_lap_val = int(cur_lap or 0)
         tot_lap_val = int(tot_lap or 0)
 
