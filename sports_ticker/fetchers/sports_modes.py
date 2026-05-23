@@ -27,8 +27,7 @@ class SportsModesMixin:
             return [golf_game] if golf_game else []
 
         if league_key == 'f1':
-            f1_game = self._fetch_f1(force=True)
-            return [f1_game] if f1_game else []
+            return self._fetch_f1(force=True)
 
         # 0. NHL Native Pinned Game (handles NHL gamecenter IDs like 2025020978)
         if league_key == 'nhl':
@@ -633,8 +632,7 @@ class SportsModesMixin:
                     all_games.append(golf_game)
 
         if indycar_needed:
-            indycar_game = self._fetch_indycar()
-            if indycar_game:
+            for indycar_game in self._fetch_indycar():
                 ic_key = (str(indycar_game.get('sport', '')), str(indycar_game.get('id', '')))
                 replaced = False
                 for idx, existing in enumerate(all_games):
@@ -646,8 +644,7 @@ class SportsModesMixin:
                     all_games.append(indycar_game)
 
         if f1_needed:
-            f1_game = self._fetch_f1()
-            if f1_game:
+            for f1_game in self._fetch_f1():
                 f1_key = (str(f1_game.get('sport', '')), str(f1_game.get('id', '')))
                 replaced = False
                 for idx, existing in enumerate(all_games):
@@ -745,16 +742,10 @@ class SportsModesMixin:
         return [self._golf_placeholder_game()]
 
     def _build_indycar_buffer(self):
-        obj = self._fetch_indycar()
-        if obj:
-            return [obj]
-        return []
+        return self._fetch_indycar()
 
     def _build_f1_buffer(self):
-        obj = self._fetch_f1()
-        if obj:
-            return [obj]
-        return []
+        return self._fetch_f1()
 
     def _build_nascar_buffer(self):
         obj = self._fetch_nascar()

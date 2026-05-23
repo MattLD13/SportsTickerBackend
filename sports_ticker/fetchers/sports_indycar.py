@@ -208,13 +208,13 @@ class SportsIndycarMixin:
             return self._ic_weather_cache.get('data') or {}
 
     def _fetch_indycar(self, force=False):
-        """Fetch live IndyCar session and return a game object, or None."""
+        """Fetch live IndyCar session and return a list of game objects (0 or 1)."""
         self.__init_indycar_cache()
         now = time.time()
         if not force and (now - self._ic_timing_cache['ts']) < self._ic_timing_ttl:
             cached = self._ic_timing_cache.get('data')
             if cached is not None:
-                return cached
+                return [cached]
 
         try:
             url = f"{_BLOB_BASE}/timingscoring-ris.json"
@@ -225,12 +225,12 @@ class SportsIndycarMixin:
             payload = r.json()
         except Exception as exc:
             print(f"[IndyCar] timingscoring fetch error: {exc}")
-            # Return stale cache if we have it
-            return self._ic_timing_cache.get('data')
+            stale = self._ic_timing_cache.get('data')
+            return [stale] if stale else []
 
         timing = payload.get('timing_results', {})
         if not timing:
-            return None
+            return []
 
         drivers_index = self._fetch_indycar_drivers()
         game = self._build_indycar_game(timing, drivers_index)
@@ -238,7 +238,7 @@ class SportsIndycarMixin:
             game.setdefault('indycar', {})['weather'] = self._fetch_indycar_weather()
 
         self._ic_timing_cache = {'ts': now, 'data': game}
-        return game
+        return [game] if game else []
 
     def _build_indycar_game(self, timing, drivers_index):
         hb = timing.get('heartbeat', {}) or {}

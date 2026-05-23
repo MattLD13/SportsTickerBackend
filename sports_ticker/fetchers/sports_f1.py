@@ -273,11 +273,16 @@ def _f1_schedule_year(races):
     return max(years) if years else None
 
 
-def _find_f1_session(races, now_utc):
-    """Scan the season calendar and return the active/next/post session for today.
+def _find_f1_sessions(races, now_utc):
+    """Return all sessions for the nearest race weekend that warrant a ticker card.
 
-    Returns (race_dict, sess_key, sess_name, is_practice, start_utc, end_utc, state)
-    or None if no session is scheduled today or currently live.
+    A session is included when it is:
+      - currently live              → state 'in'
+      - ended within the last 12 h  → state 'post'
+      - starts within the next 24 h → state 'pre'
+
+    Returns a list of (race, key, name, is_practice, start_utc, end_utc, state)
+    sorted by start time, or [] if no relevant weekend is found.
     """
     for race in races:
         sessions = []
@@ -296,36 +301,24 @@ def _find_f1_session(races, now_utc):
 
         weekend_start = min(s[3] for s in sessions)
         weekend_end   = max(s[4] for s in sessions)
-        
-        # Are we within ~1 day of the race weekend?
+
         if not (weekend_start - timedelta(days=1) <= now_utc <= weekend_end + timedelta(days=1)):
             continue
 
-        # 1. Currently live?
+        relevant = []
         for key, name, ip, start, end in sessions:
             if start <= now_utc <= end:
-                return race, key, name, ip, start, end, 'in'
+                relevant.append((race, key, name, ip, start, end, 'in'))
+            elif end < now_utc and (now_utc - end).total_seconds() < 12 * 3600:
+                relevant.append((race, key, name, ip, start, end, 'post'))
+            elif start > now_utc and (start - now_utc).total_seconds() < 24 * 3600:
+                relevant.append((race, key, name, ip, start, end, 'pre'))
 
-        # 2. Past session (ended within the last 12 hours)
-        past = [(k, n, ip, s, e) for k, n, ip, s, e in sessions if e < now_utc]
-        if past:
-            past.sort(key=lambda x: x[4]) # sort by end time
-            last = past[-1]
-            if (now_utc - last[4]).total_seconds() < 12 * 3600:
-                return race, last[0], last[1], last[2], last[3], last[4], 'post'
+        if relevant:
+            relevant.sort(key=lambda x: x[4])  # chronological order
+            return relevant
 
-        # 3. Next upcoming session (starts within the next 24 hours)
-        future = [(k, n, ip, s, e) for k, n, ip, s, e in sessions if s > now_utc]
-        if future:
-            future.sort(key=lambda x: x[3])
-            nxt = future[0]
-            if (nxt[3] - now_utc).total_seconds() < 24 * 3600:
-                return race, nxt[0], nxt[1], nxt[2], nxt[3], nxt[4], 'pre'
-
-        # Race weekend day with no active or immediate sessions
-        return None
-
-    return None
+    return []
 
 
 def _drivers_from_signalr(live_data):
@@ -382,8 +375,8 @@ def _drivers_from_signalr(live_data):
 
 class SportsF1Mixin:
     def __init_f1_cache(self):
-        if not hasattr(self, '_f1_cache'):
-            self._f1_cache          = {'ts': 0.0, 'data': None}
+        if not hasattr(self, '_f1_session_caches'):
+            self._f1_session_caches = {}           # {session_id: {'ts', 'data'}}
             self._f1_schedule_cache = {'ts': 0.0, 'data': []}
             self._f1_results_cache  = {'ts': 0.0, 'data': []}
             self._f1_ttl            = 30.0
@@ -553,57 +546,69 @@ class SportsF1Mixin:
             return None
 
     def _fetch_f1(self, force=False):
-        """Return an F1 game object for today's session, or None if no session today."""
+        """Return a list of F1 game objects — one per relevant session today."""
         self.__init_f1_cache()
-        now_ts = time.time()
-        if not force and (now_ts - self._f1_cache.get('ts', 0.0)) < self._f1_ttl:
-            cached = self._f1_cache.get('data')
-            if cached:
-                try:
-                    cached_start = parse_iso(str(cached.get('startTimeUTC') or ''))
-                    if cached_start and abs((datetime.now(timezone.utc) - cached_start).total_seconds()) <= 18 * 3600:
-                        return cached
-                except Exception:
-                    pass
-
+        now_ts  = time.time()
         now_utc = datetime.now(timezone.utc)
 
-        # ── 1. Find today's session from the Jolpica calendar ─────────────────
         races = self._fetch_f1_schedule()
         if not races:
-            return self._f1_cache.get('data')
+            return [c['data'] for c in self._f1_session_caches.values() if c.get('data')]
 
-        result = _find_f1_session(races, now_utc)
-        if result is None:
-            # No session today — hide the card
-            self._f1_cache = {'ts': now_ts, 'data': None}
-            return None
+        session_list = _find_f1_sessions(races, now_utc)
+        if not session_list:
+            self._f1_session_caches.clear()
+            return []
 
-        race, sess_key, sess_name, is_practice, start_utc, end_utc, state = result
-        now_utc = datetime.now(timezone.utc)
+        # Fetch SignalR data once — it covers whichever session is currently live.
+        has_live     = any(state == 'in' for *_, state in session_list)
+        sig_client   = _f1_signalr.get_client() if has_live else None
+        sig_data     = sig_client.get_live_data() if sig_client else {}
+        live_signalr = sig_data if (sig_client and sig_client.is_connected and has_live) else {}
 
-        # Circuit / event metadata
-        circuit    = race.get('Circuit', {})
-        race_name  = str(race.get('raceName', 'Formula 1')).strip()
-        locality   = circuit.get('Location', {}).get('locality', '')
-        circ_name  = str(circuit.get('circuitName') or locality or race_name).strip()
-        event      = _f1_short_event(race_name)
-        track      = circ_name
-        session_id = f"f1_{race.get('round', 'r')}_{sess_key.lower()}"
+        games       = []
+        current_ids = set()
+        for race, sess_key, sess_name, is_practice, start_utc, end_utc, state in session_list:
+            session_id = f"f1_{race.get('round', 'r')}_{sess_key.lower()}"
+            current_ids.add(session_id)
+
+            cache = self._f1_session_caches.get(session_id, {'ts': 0.0, 'data': None})
+            if not force and (now_ts - cache['ts']) < self._f1_ttl and cache['data']:
+                games.append(cache['data'])
+                continue
+
+            game = self._build_f1_game(
+                race, sess_key, sess_name, is_practice,
+                start_utc, end_utc, state, now_utc, live_signalr,
+            )
+            if game:
+                self._f1_session_caches[session_id] = {'ts': now_ts, 'data': game}
+                games.append(game)
+
+        # Evict cache entries for sessions that are no longer relevant.
+        for sid in list(self._f1_session_caches.keys()):
+            if sid not in current_ids:
+                del self._f1_session_caches[sid]
+
+        return games
+
+    def _build_f1_game(self, race, sess_key, sess_name, is_practice,
+                       start_utc, end_utc, state, now_utc, live_signalr):
+        """Build a single F1 game object for one session."""
+        circuit   = race.get('Circuit', {})
+        race_name = str(race.get('raceName', 'Formula 1')).strip()
+        locality  = circuit.get('Location', {}).get('locality', '')
+        circ_name = str(circuit.get('circuitName') or locality or race_name).strip()
+        event     = _f1_short_event(race_name)
+        track     = circ_name
+        session_id    = f"f1_{race.get('round', 'r')}_{sess_key.lower()}"
         start_utc_str = start_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
 
-        # ── 2. Optional SignalR overlay (real positions/laps when connected) ───
-        signalr_client = _f1_signalr.get_client() if state == 'in' else None
-        signalr_data   = signalr_client.get_live_data() if signalr_client else {}
-        live_signalr   = (signalr_data
-                          if signalr_client and signalr_client.is_connected and state == 'in'
-                          else {})
-
-        # ── 3. Driver list ────────────────────────────────────────────────────
+        # ── Driver list ───────────────────────────────────────────────────────
         drivers = []
-        if live_signalr and live_signalr.get('driver_list'):
+        if live_signalr and state == 'in' and live_signalr.get('driver_list'):
             drivers = _drivers_from_signalr(live_signalr)
-            
+
         if not drivers and state in ('in', 'post'):
             drivers = self._fetch_openf1_live(start_utc) or []
 
@@ -620,13 +625,10 @@ class SportsF1Mixin:
                 name    = f"{drv.get('givenName', '')} {drv.get('familyName', '')}".strip().title()
                 car     = str(drv.get('permanentNumber') or res.get('number') or '').strip()
                 gap_val = res.get('Time', {}).get('time') or res.get('status', '')
-                
-                # Jolpica format fallback for P1 in qual when time is available
-                if pos == 1 and 'qual' in sess_name.lower() and gap_val and ':' not in gap_val and gap_val.replace('.','',1).isdigit():
+                if pos == 1 and 'qual' in sess_name.lower() and gap_val and ':' not in gap_val and gap_val.replace('.', '', 1).isdigit():
                     gap = _f1_format_qual_time(gap_val)
                 else:
                     gap = _f1_compact_gap(gap_val, pos)
-                    
                 drivers.append({
                     'pos':              pos,
                     'name':             name or 'Driver',
@@ -644,10 +646,10 @@ class SportsF1Mixin:
                 })
             drivers.sort(key=lambda d: d['pos'])
 
-        # ── 4. Status display ─────────────────────────────────────────────────
-        ts_code   = str(live_signalr.get('track_status', {}).get('Status', '1')).strip()
-        lap_count = live_signalr.get('lap_count', {})
-        extrap    = live_signalr.get('extrapolated_clock', {})
+        # ── Status display ────────────────────────────────────────────────────
+        ts_code   = str(live_signalr.get('track_status', {}).get('Status', '1')).strip() if state == 'in' else '1'
+        lap_count = live_signalr.get('lap_count', {}) if state == 'in' else {}
+        extrap    = live_signalr.get('extrapolated_clock', {}) if state == 'in' else {}
         cur_lap   = lap_count.get('CurrentLap')
         tot_lap   = lap_count.get('TotalLaps')
         remaining = _f1_sanitize_time_text(str(extrap.get('Remaining') or '').split('.')[0])
@@ -674,8 +676,7 @@ class SportsF1Mixin:
         cur_lap_val = int(cur_lap or 0)
         tot_lap_val = int(tot_lap or 0)
 
-        # ── 5. Build game object ──────────────────────────────────────────────
-        game = {
+        return {
             'id':           session_id,
             'type':         'racing',
             'sport':        'f1',
@@ -707,5 +708,3 @@ class SportsF1Mixin:
                 'weather':        {},
             },
         }
-        self._f1_cache = {'ts': now_ts, 'data': game}
-        return game
