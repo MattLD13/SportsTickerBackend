@@ -1036,7 +1036,24 @@ class IndycarMixin:
                         # Use the same size as the pre-fetch so _NASCAR_CAR_CACHE hits
                         car_img = _load_nascar_car(car_image, (120, 14))
                     else:
-                        car_img = self._ic_load_logo(car_image, (120, 19))
+                        # Prefer explicit car illustration; try alternate extensions if needed
+                        car_img = None
+                        tried = []
+                        for ext in ('webp', 'png', 'jpg', 'jpeg'):
+                            if car_image.endswith(f'.{ext}'):
+                                tried.append(car_image)
+                                car_img = self._ic_load_logo(car_image, (120, 19))
+                                if car_img:
+                                    break
+                            else:
+                                alt = car_image.rsplit('.', 1)[0] + f'.{ext}'
+                                tried.append(alt)
+                                car_img = self._ic_load_logo(alt, (120, 19))
+                                if car_img:
+                                    break
+                        # Last resort: try original URL as-is
+                        if not car_img:
+                            car_img = self._ic_load_logo(car_image, (120, 19))
                     if car_img:
                         car_img = _trim_transparent_padding(car_img)
                         car_x = 1

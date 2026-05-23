@@ -15,6 +15,57 @@ class FlightMixin:
         for px, py in pts:
             self._pixel(draw, px, py, color)
 
+    def _flight_logo_url(self, item):
+        if not isinstance(item, dict):
+            return ''
+        logo = str(item.get('airline_logo') or '').strip()
+        if logo:
+            return logo
+        for key in ('airline_iata', 'airline_code', 'airline_icao', 'airline'):
+            airline = str(item.get(key) or '').strip().upper().replace(' ', '')
+            if len(airline) == 2 and airline.isalpha():
+                domain = self._airline_domain_for_code(airline)
+                if domain.startswith('http://') or domain.startswith('https://'):
+                    return domain
+                return f"https://logo.clearbit.com/{domain}"
+            if len(airline) == 3 and airline.isalpha():
+                return f"https://content.airhex.com/content/logos/airlines_{airline}_350_100_r.png?theme=dark"
+        flight_id = str(item.get('away_abbr') or item.get('id') or '').strip().upper().replace(' ', '')
+        if len(flight_id) >= 2 and flight_id[:2].isalpha():
+            return f"https://content.airhex.com/content/logos/airlines_{flight_id[:2]}_350_100_r.png?theme=dark"
+        return ''
+
+    @staticmethod
+    def _airline_domain_for_code(code):
+        return {
+            'UA': 'https://www.united.com/favicon.ico',
+            'DL': 'delta.com',
+            'AA': 'aa.com',
+            'WN': 'southwest.com',
+            'B6': 'jetblue.com',
+            'AS': 'alaskaair.com',
+            'AC': 'aircanada.com',
+            'BA': 'britishairways.com',
+            'LH': 'lufthansa.com',
+            'AF': 'airfrance.us',
+            'KL': 'klm.com',
+            'EK': 'emirates.com',
+        }.get(code, f"{code.lower()}.com")
+
+    def _draw_flight_logo(self, img, item, x, y, size=(10, 10)):
+        logo_url = self._flight_logo_url(item)
+        if not logo_url:
+            return x
+        try:
+            self.download_and_process_logo(logo_url, size)
+            logo = self.get_logo(logo_url, size)
+            if logo:
+                img.alpha_composite(logo, (x, y))
+                return x + size[0] + 3
+        except Exception:
+            pass
+        return x
+
     def draw_flight_visitor(self, game):
         img = Image.new("RGBA", (PANEL_W, PANEL_H), self.C_BG + (255,))
         d = ImageDraw.Draw(img)
@@ -47,10 +98,24 @@ class FlightMixin:
         else:
             plane_color = self.C_GRN if is_live else self.C_AMBER
         self._icon_plane(d, 6, 2, plane_color)
-        draw_tiny_text(d, 18, 2, guest_name, self.C_AMBER)
+
+        logo_w = 22
+        logo_x = PANEL_W - logo_w - 6
+        logo_url = self._flight_logo_url(game)
+        if logo_url:
+            try:
+                self.download_and_process_logo(logo_url, (logo_w, logo_w))
+                logo = self.get_logo(logo_url, (logo_w, logo_w))
+                if logo:
+                    img.alpha_composite(logo, (logo_x, 1))
+            except Exception:
+                pass
+
         if guest_name.upper() != flight_id.upper() and flight_id.lower() != 'flight_tracker_blank':
             id_w = len(flight_id) * 5
-            draw_tiny_text(d, PANEL_W - id_w - 8, 2, flight_id, self.C_GRY)
+            draw_tiny_text(d, logo_x - id_w - 5, 2, flight_id, self.C_GRY)
+
+        draw_tiny_text(d, 14, 2, guest_name, self.C_AMBER)
 
         route_str = f"{route_origin} > {route_dest}"
         draw_tiny_text(d, 6, 10, route_str, self.C_BLUE_TXT)
@@ -94,8 +159,10 @@ class FlightMixin:
         for i, arr in enumerate(arrivals[:2]):
             flight_id = str(arr.get('away_abbr', '???'))
             from_city = str(arr.get('home_abbr', '???'))
-            text_str = f"{flight_id} FROM {from_city}"[:36]
-            draw_tiny_text(d, 5, 18 + i * 7, text_str, self.C_GRN)
+            row_y = 18 + i * 7
+            text_x = self._draw_flight_logo(img, arr, 5, row_y - 1, size=(8, 8))
+            text_str = f"{flight_id} FROM {from_city}"[:30]
+            draw_tiny_text(d, text_x, row_y, text_str, self.C_GRN)
         if not arrivals:
             draw_tiny_text(d, 5, 18, "--", self.C_GRY)
 
@@ -104,8 +171,10 @@ class FlightMixin:
         for i, dep in enumerate(departures[:2]):
             flight_id = str(dep.get('away_abbr', '???'))
             to_city = str(dep.get('home_abbr', '???'))
-            text_str = f"{flight_id} TO {to_city}"[:36]
-            draw_tiny_text(d, 197, 18 + i * 7, text_str, self.C_RED)
+            row_y = 18 + i * 7
+            text_x = self._draw_flight_logo(img, dep, 197, row_y - 1, size=(8, 8))
+            text_str = f"{flight_id} TO {to_city}"[:30]
+            draw_tiny_text(d, text_x, row_y, text_str, self.C_RED)
         if not departures:
             draw_tiny_text(d, 197, 18, "--", self.C_GRY)
 

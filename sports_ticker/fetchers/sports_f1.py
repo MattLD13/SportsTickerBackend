@@ -17,7 +17,6 @@ _JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
 
 _F1_CAR_URL = (
     "https://media.formula1.com/image/upload/c_lfill,h_224/q_auto/"
-    "d_common:f1:2026:fallback:car:2026fallbackcarright.webp/"
     "v1740000001/common/f1/2026/{slug}/2026{slug}carright.webp"
 )
 
@@ -25,15 +24,18 @@ _F1_TEAM_SLUGS = {
     'mclaren':      'mclaren',
     'mercedes':     'mercedes',
     'ferrari':      'ferrari',
-    'red bull':     'red-bull-racing',
-    'racing bulls': 'racing-bulls',
-    'rb':           'racing-bulls',
-    'aston martin': 'aston-martin',
+    'red bull':     'redbullracing',
+    'racing bulls': 'racingbulls',
+    'rb':           'racingbulls',
+    'aston martin': 'astonmartin',
     'alpine':       'alpine',
     'williams':     'williams',
-    'haas':         'haas',
-    'sauber':       'kick-sauber',
-    'kick sauber':  'kick-sauber',
+    'haas':         'haasf1team',
+    'audi':         'audi',
+    'sauber':       'audi',       # Sauber became Audi in 2026
+    'kick sauber':  'audi',
+    'cadillac':     'cadillac',
+    'andretti':     'cadillac',   
 }
 
 _F1_TEAM_COLORS = {
@@ -41,15 +43,27 @@ _F1_TEAM_COLORS = {
     'mercedes':     '#27F4D2',
     'ferrari':      '#E8002D',
     'red bull':     '#3671C6',
+    'red bull racing': '#3671C6',
+    'oracle red bull racing': '#3671C6',
     'racing bulls': '#6692FF',
+    'visa cash app rb': '#6692FF',
+    'visa cash app rb f1 team': '#6692FF',
+    'vcarb':        '#6692FF',
     'rb':           '#6692FF',
     'aston martin': '#229971',
+    'aston martin aramco': '#229971',
+    'aston martin aramco mercedes': '#229971',
     'alpine':       '#FF87BC',
     'williams':     '#64C4FF',
     'haas':         '#B6BABD',
     'sauber':       '#52E252',
     'kick sauber':  '#52E252',
+    'audi':         '#52E252',
+    'cadillac':     '#9CA3AF',
 }
+
+# Cache resolved working slugs to avoid repeated HEAD requests
+_F1_RESOLVED_SLUGS = {}
 
 # TrackStatus codes from the F1 SignalR feed (used if SignalR ever connects)
 _F1LT_TRACK_STATUS = {
@@ -94,16 +108,46 @@ def _f1_compact_gap(value, position):
     if value in (None, ''):
         return ''
     text = str(value).strip()
+    # Remove stray plus signs like '++' or leading '+' that can appear in some feeds
+    text = text.replace('++', '').replace('+', '').strip()
     try:
-        return f"+{float(text):.3f}"
+        gap = abs(float(text))
+        if gap < 1:
+            return f"+{int(round(gap * 1000))}ms"
+        if gap < 60:
+            return f"+{gap:.1f}s"
+        return f"+{gap:.0f}s"
     except Exception:
+        # fallback: return cleaned text truncated
         return text[:10]
+
+
+def _f1_duration_text(seconds):
+    try:
+        total_seconds = max(0, int(seconds))
+    except Exception:
+        return ''
+    if total_seconds <= 0:
+        return ''
+    minutes, secs = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+def _f1_sanitize_time_text(text):
+    raw = str(text or '').strip()
+    if not raw:
+        return ''
+    raw = raw.replace('++', '').replace('+', '').strip()
+    return raw
 
 
 def _f1_team_match(team_name):
     lower = str(team_name or '').strip().lower()
-    for key in _F1_TEAM_SLUGS:
-        if key in lower:
+    for key in sorted(_F1_TEAM_SLUGS, key=len, reverse=True):
+        if key and key in lower:
             return key
     return ''
 
@@ -111,7 +155,39 @@ def _f1_team_match(team_name):
 def _f1_car_url(team_name):
     key = _f1_team_match(team_name)
     slug = _F1_TEAM_SLUGS.get(key, '')
-    return _F1_CAR_URL.format(slug=slug) if slug else ''
+    if not slug:
+        return ''
+
+    # If we've already resolved a working slug, use it.
+    if slug in _F1_RESOLVED_SLUGS:
+        return _F1_CAR_URL.format(slug=_F1_RESOLVED_SLUGS[slug])
+
+    # Try variants: original, without hyphens, and a few common alternates.
+    candidates = [slug, slug.replace('-', ''), slug.replace('-', '_')]
+    # also try removing numeric/dashed suffixes
+    if '-' in slug:
+        parts = slug.split('-')
+        candidates += [''.join(parts), ''.join(parts[:2])]
+
+    # Try each candidate with a HEAD request to find a working URL.
+    try:
+        import requests
+        for cand in candidates:
+            url = _F1_CAR_URL.format(slug=cand)
+            try:
+                r = requests.head(url, timeout=5)
+                if r.status_code == 200:
+                    _F1_RESOLVED_SLUGS[slug] = cand
+                    return _F1_CAR_URL.format(slug=cand)
+            except Exception:
+                continue
+    except Exception:
+        # network not available or requests missing; fall back to original slug
+        pass
+
+    # No working variant found; record empty to avoid retrying.
+    _F1_RESOLVED_SLUGS[slug] = slug
+    return _F1_CAR_URL.format(slug=slug)
 
 
 def _f1_team_color(team_name):
@@ -225,7 +301,7 @@ def _drivers_from_signalr(live_data):
             'car':              str(num),
             'team':             team,
             'team_logo':        '',
-            'car_illustration': _f1_car_url(team),
+            'car_illustration': '',
             'livery_primary':   livery,
             'livery_secondary': '#111111',
             'gap':              gap,
@@ -306,6 +382,7 @@ class SportsF1Mixin:
             return None
 
         race, sess_key, sess_name, is_practice, start_utc, end_utc, state = result
+        now_utc = datetime.now(timezone.utc)
 
         # Circuit / event metadata
         circuit    = race.get('Circuit', {})
@@ -342,8 +419,7 @@ class SportsF1Mixin:
                 name    = f"{drv.get('givenName', '')} {drv.get('familyName', '')}".strip().title()
                 car     = str(drv.get('permanentNumber') or res.get('number') or '').strip()
                 gap_val = res.get('Time', {}).get('time') or res.get('status', '')
-                gap     = ('Leader' if pos == 1
-                           else (f"+{gap_val}" if gap_val and gap_val not in ('Finished', 'Lapped') else ''))
+                gap     = _f1_compact_gap(gap_val, pos)
                 drivers.append({
                     'pos':              pos,
                     'name':             name or 'Driver',
@@ -367,7 +443,7 @@ class SportsF1Mixin:
         extrap    = live_signalr.get('extrapolated_clock', {})
         cur_lap   = lap_count.get('CurrentLap')
         tot_lap   = lap_count.get('TotalLaps')
-        remaining = str(extrap.get('Remaining') or '').split('.')[0]
+        remaining = _f1_sanitize_time_text(str(extrap.get('Remaining') or '').split('.')[0])
 
         if state == 'post':
             status_display = 'FINAL'
@@ -377,7 +453,7 @@ class SportsF1Mixin:
             else:
                 if cur_lap and tot_lap:
                     status_display = f"Lap {cur_lap}/{tot_lap}"
-                elif remaining and remaining not in ('', '0:00:00'):
+                elif remaining and remaining not in ('', '0:00:00', '0:00'):
                     status_display = remaining
                 else:
                     status_display = _F1LT_TRACK_STATUS.get(ts_code, 'GREEN')
@@ -413,6 +489,11 @@ class SportsF1Mixin:
                 'lap':            cur_lap_val,
                 'total_laps':     tot_lap_val,
                 'laps_remaining': max(0, tot_lap_val - cur_lap_val),
+                'time_to_go':     _f1_sanitize_time_text(
+                    _f1_duration_text((start_utc - now_utc).total_seconds()) if state == 'pre'
+                    else _f1_duration_text((end_utc - now_utc).total_seconds()) if state == 'in' and is_practice
+                    else ''
+                ),
                 'caution':        flag in ('YELLOW', 'SAFETY CAR', 'VSC', 'RED FLAG'),
                 'flag':           flag,
                 'drivers':        drivers,

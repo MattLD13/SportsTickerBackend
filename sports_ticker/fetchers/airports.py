@@ -1,10 +1,58 @@
 import concurrent.futures
+import re
 
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
 
 
 class AirportMixin:
+    def _get_airline_identifiers(self, flight_code):
+        code = str(flight_code or '').strip().upper().replace(' ', '')
+        if not code:
+            return '', '', ''
+
+        match = re.match(r'^([A-Z]{2,3})(.*)$', code)
+        if not match:
+            return '', '', code
+
+        prefix = match.group(1)
+        number = match.group(2).lstrip()
+        if len(prefix) == 2:
+            icao = _IATA_TO_ICAO.get(prefix, '')
+            if not icao:
+                icao, _ = ai_lookup_airline_codes(prefix)
+            return str(icao or '').upper(), prefix, number
+
+        iata = _ICAO_TO_IATA.get(prefix, '')
+        if not iata:
+            _, iata = ai_lookup_airline_codes(prefix)
+        return prefix, str(iata or '').upper(), number
+
+    def _get_airline_logo_url(self, airline_code):
+        code = str(airline_code or '').strip().upper()
+        if not code:
+            return ''
+        airline_domains = {
+            'UA': 'https://www.united.com/favicon.ico',
+            'DL': 'delta.com',
+            'AA': 'aa.com',
+            'WN': 'southwest.com',
+            'B6': 'jetblue.com',
+            'AS': 'alaskaair.com',
+            'AC': 'aircanada.com',
+            'BA': 'britishairways.com',
+            'LH': 'lufthansa.com',
+            'AF': 'airfrance.us',
+            'KL': 'klm.com',
+            'EK': 'emirates.com',
+        }
+        domain = airline_domains.get(code)
+        if domain:
+            if domain.startswith('http://') or domain.startswith('https://'):
+                return domain
+            return f"https://logo.clearbit.com/{domain}"
+        return f"https://content.airhex.com/content/logos/airlines_{code}_350_100_r.png?theme=dark"
+
     def _get_airport_query_code(self):
         for attr in ('airport_code_iata', 'airport_code_icao'):
             code = str(getattr(self, attr, '') or '').strip().upper()
@@ -58,6 +106,11 @@ class AirportMixin:
             for flight in flights:
                 try:
                     altitude = getattr(flight, 'altitude', 0) or 0
+                    callsign = str(getattr(flight, 'callsign', '') or '').strip()
+                    number = str(getattr(flight, 'number', '') or '').strip()
+                    airline_icao, airline_iata, flight_number = self._get_airline_identifiers(callsign or number)
+                    airline_code = airline_iata or airline_icao
+                    airline_logo = self._get_airline_logo_url(airline_code)
 
                     if mode == 'arrivals':
                         dest = str(getattr(flight, 'destination_airport_iata', '') or '').strip().upper()
@@ -78,8 +131,6 @@ class AirportMixin:
                             'status_label': 'DEPARTING',
                         }
 
-                    callsign = str(getattr(flight, 'callsign', '') or '').strip()
-                    number = str(getattr(flight, 'number', '') or '').strip()
                     display_id = callsign or number
                     if not display_id:
                         continue
@@ -87,6 +138,11 @@ class AirportMixin:
                     # Lower altitude = closer to landing (arrivals) or just departed (departures)
                     # Negate altitude so lower altitude sorts first (highest sort_time)
                     entry['id'] = display_id
+                    entry['airline'] = airline_code
+                    entry['airline_icao'] = airline_icao
+                    entry['airline_iata'] = airline_iata
+                    entry['airline_logo'] = airline_logo
+                    entry['flight_number'] = flight_number or display_id
                     entry['sort_time'] = now - altitude
                     processed_list.append(entry)
                 except:

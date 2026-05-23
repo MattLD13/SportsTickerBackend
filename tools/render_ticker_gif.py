@@ -203,7 +203,7 @@ def render_pin_gif(
     sport = game.get("sport", "")
     gname = game.get("away_abbr") or game.get("home_abbr") or game.get("id") or sport
     n_frames = fps * pin_dur
-    print(f"Pin [{pin_idx}]: {sport} {gname}  →  {n_frames} frames @ {fps}fps")
+    print(f"Pin [{pin_idx}]: {sport} {gname}  ->  {n_frames} frames @ {fps}fps")
     delay = 1.0 / fps
     out_w = PANEL_W * scale
     out_h = PANEL_H * scale

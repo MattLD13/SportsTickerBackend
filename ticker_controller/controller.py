@@ -254,22 +254,29 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                 self.logo_cache[tuple_key] = cached
                 self.logo_cache[dim_key] = cached
                 return
-            r = requests.get(url, timeout=5)
-            if r.status_code == 200:
+            if os.path.exists(url):
+                img = Image.open(url).convert("RGBA")
+            elif url.lower().startswith("file://"):
+                img = Image.open(url[7:]).convert("RGBA")
+            else:
+                r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+                if r.status_code != 200:
+                    return
                 img = Image.open(io.BytesIO(r.content)).convert("RGBA")
-                img = img.convert("RGBa")
-                img.thumbnail(size, Image.Resampling.LANCZOS)
-                img = img.convert("RGBA")
-                final = Image.new("RGBA", size, (0, 0, 0, 0))
-                final.paste(img, ((size[0] - img.width) // 2, (size[1] - img.height) // 2))
-                final = _enhance_logo_visibility(final)
-                self.logo_cache[tuple_key] = final
-                self.logo_cache[dim_key] = final
-                try:
-                    os.makedirs(ASSETS_DIR, exist_ok=True)
-                    final.save(local, "PNG")
-                except Exception:
-                    pass
+
+            img = img.convert("RGBa")
+            img.thumbnail(size, Image.Resampling.LANCZOS)
+            img = img.convert("RGBA")
+            final = Image.new("RGBA", size, (0, 0, 0, 0))
+            final.paste(img, ((size[0] - img.width) // 2, (size[1] - img.height) // 2))
+            final = _enhance_logo_visibility(final)
+            self.logo_cache[tuple_key] = final
+            self.logo_cache[dim_key] = final
+            try:
+                os.makedirs(ASSETS_DIR, exist_ok=True)
+                final.save(local, "PNG")
+            except Exception:
+                pass
         except Exception:
             pass
 

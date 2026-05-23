@@ -78,6 +78,9 @@ class FlightTracker(AirportMixin):
         
         try:
             self.log("TRACKER", f"Fetching flight: {self.track_flight_id}")
+            airline_icao, airline_iata, _flight_num = self.parse_flight_code(self.track_flight_id)
+            airline_code = airline_iata or airline_icao
+            airline_logo = self._get_airline_logo_url(airline_code)
             fr24_data = self.fetch_fr24_flight(self.track_flight_id)
             
             if fr24_data:
@@ -132,6 +135,10 @@ class FlightTracker(AirportMixin):
                         'sport': 'flight',
                         'id': self.track_flight_id,
                         'guest_name': self.track_guest_name or self.track_flight_id,
+                        'airline': airline_code,
+                        'airline_iata': airline_iata,
+                        'airline_icao': airline_icao,
+                        'airline_logo': airline_logo,
                         'route': f"{origin} > {dest}",
                         'origin_city': get_airport_display_name(origin), # Shortened Name
                         'dest_city': get_airport_display_name(dest),     # Shortened Name
@@ -160,6 +167,10 @@ class FlightTracker(AirportMixin):
                     'sport': 'flight',
                     'id': self.track_flight_id,
                     'guest_name': self.track_guest_name or self.track_flight_id,
+                    'airline': airline_code,
+                    'airline_iata': airline_iata,
+                    'airline_icao': airline_icao,
+                    'airline_logo': airline_logo,
                     'route': "UNK > UNK",
                     'origin_city': "UNKNOWN",
                     'dest_city': "UNKNOWN",

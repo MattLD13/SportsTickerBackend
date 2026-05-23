@@ -1,8 +1,27 @@
 # Logs
 *.log
-ticker.log
 
-# Python cache
+# Runtime cache files
+stock_cache.json
+game_cache.json
+airport_name_cache.json
+airline_code_cache.json
+
+# Persisted app state
+global_config.json
+ticker_data/
+
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
