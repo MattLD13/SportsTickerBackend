@@ -10,21 +10,20 @@ class GolfMixin:
     def draw_golf_scroll_card(self, game):
         """Compact top-3 golf card for sports/live mode scrolling strip. Matches stadium theme."""
         import re as _re
-        W = 128
-        img = Image.new("RGBA", (W, 32), (0, 0, 0, 255))
-        d = ImageDraw.Draw(img)
-
         golf_payload = (game.get('golf') or game.get('masters') or {}) if isinstance(game, dict) else {}
         event_name = str(golf_payload.get('event_name') or game.get('away_abbr') or 'PGA TOUR').upper()
         round_label = str(golf_payload.get('round') or game.get('status') or '').upper()
         players = golf_payload.get('players', []) if isinstance(golf_payload.get('players'), list) else []
         pars_list = golf_payload.get('pars', []) if isinstance(golf_payload.get('pars'), list) else []
 
-        # Header: full event name + round, centered (e.g. "PGA CHAMPIONSHIP R2")
+        # Header: full event name + round, centered (e.g. "PGA CHAMPIONSHIP ROUND 2")
         rnd_m = _re.search(r'\d+', round_label)
-        rnd_short = f"R{rnd_m.group()}" if rnd_m else 'R-'
-        header = f"{event_name} {rnd_short}"
+        rnd_num = rnd_m.group() if rnd_m else '-'
+        header = f"{event_name} ROUND {rnd_num}"
         tw = len(header) * 5
+        W = max(128, tw + 4)
+        img = Image.new("RGBA", (W, 32), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
         tx = max(1, (W - tw) // 2)
         draw_hybrid_text(d, tx + 1, 2, header, (8, 8, 8, 180))
         draw_hybrid_text(d, tx,     1, header, (255, 240, 150, 255))

@@ -24,10 +24,12 @@ class FlightMixin:
         for key in ('airline_iata', 'airline_code', 'airline_icao', 'airline'):
             airline = str(item.get(key) or '').strip().upper().replace(' ', '')
             if len(airline) in (2, 3) and airline.isalnum():
-                return f"https://content.airhex.com/content/logos/airlines_{airline}_350_100_r.png?theme=dark"
+                domain = self._airline_domain_for_code(airline)
+                return f"https://logo.clearbit.com/{domain}"
         flight_id = str(item.get('away_abbr') or item.get('id') or '').strip().upper().replace(' ', '')
-        if len(flight_id) >= 2 and flight_id[:2].isalnum():
-            return f"https://content.airhex.com/content/logos/airlines_{flight_id[:2]}_350_100_r.png?theme=dark"
+        if len(flight_id) >= 2 and flight_id[:2].isalpha():
+            domain = self._airline_domain_for_code(flight_id[:2].upper())
+            return f"https://logo.clearbit.com/{domain}"
         return ''
 
     @staticmethod
@@ -62,7 +64,7 @@ class FlightMixin:
         return x
 
     def draw_flight_visitor(self, game):
-        img = Image.new("RGBA", (PANEL_W, PANEL_H), self.C_BG + (255,))
+        img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
 
         guest_name = str(game.get('guest_name', game.get('id', '???')))
@@ -134,7 +136,7 @@ class FlightMixin:
         return img
 
     def draw_flight_airport(self, weather_item, arrivals, departures):
-        img = Image.new("RGBA", (PANEL_W, PANEL_H), self.C_BG + (255,))
+        img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
 
         d.rectangle((0, 0, PANEL_W, 6), fill=(20, 30, 45))

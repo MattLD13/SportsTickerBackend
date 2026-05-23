@@ -555,7 +555,17 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         if t == 'racing' or str(s).lower() in ('indycar', 'f1', 'nascar'):
             return PANEL_W if self.mode in ('indycar', 'indycar_full', 'f1', 'f1_full', 'nascar', 'nascar_full', 'sports_full') else 128 + GAME_SEPARATOR_W
         if t in ('golf', 'masters') or str(s).lower() in ('golf', 'masters'):
-            return PANEL_W if self.mode in ('golf', 'sports_full') else 128 + GAME_SEPARATOR_W
+            if self.mode in ('golf', 'sports_full'):
+                return PANEL_W
+            import re as _re
+            golf_payload = (game.get('golf') or game.get('masters') or {}) if isinstance(game, dict) else {}
+            event_name = str(golf_payload.get('event_name') or game.get('away_abbr') or 'PGA TOUR').upper()
+            round_label = str(golf_payload.get('round') or game.get('status') or '').upper()
+            rnd_m = _re.search(r'\d+', round_label)
+            rnd_num = rnd_m.group() if rnd_m else '-'
+            header = f"{event_name} ROUND {rnd_num}"
+            tw = len(header) * 5
+            return max(128, tw + 4) + GAME_SEPARATOR_W
         if t == 'music' or s == 'music':
             return PANEL_W
         if t == 'stock_ticker' or (s and str(s).startswith('stock')):
