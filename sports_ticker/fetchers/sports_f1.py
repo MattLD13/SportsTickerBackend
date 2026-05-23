@@ -376,10 +376,11 @@ def _drivers_from_signalr(live_data):
 class SportsF1Mixin:
     def __init_f1_cache(self):
         if not hasattr(self, '_f1_session_caches'):
-            self._f1_session_caches = {}           # {session_id: {'ts', 'data'}}
-            self._f1_schedule_cache = {'ts': 0.0, 'data': []}
-            self._f1_results_cache  = {'ts': 0.0, 'data': []}
-            self._f1_ttl            = 30.0
+            self._f1_session_caches   = {}           # {session_id: {'ts', 'data'}}
+            self._f1_signalr_snapshots = {}          # {session_id: [drivers]} — last live standings
+            self._f1_schedule_cache   = {'ts': 0.0, 'data': []}
+            self._f1_results_cache    = {'ts': 0.0, 'data': []}
+            self._f1_ttl              = 30.0
 
     def _jolpica_get(self, path):
         url = f"{_JOLPICA_BASE}/{path.lstrip('/')}"
@@ -608,9 +609,14 @@ class SportsF1Mixin:
         drivers = []
         if live_signalr and state == 'in' and live_signalr.get('driver_list'):
             drivers = _drivers_from_signalr(live_signalr)
+            if drivers:
+                self._f1_signalr_snapshots[session_id] = list(drivers)
 
         if not drivers and state in ('in', 'post'):
             drivers = self._fetch_openf1_live(start_utc) or []
+
+        if not drivers and state == 'post':
+            drivers = list(self._f1_signalr_snapshots.get(session_id, []))
 
         if not drivers and state == 'post' and sess_key == 'Race':
             for res in self._fetch_f1_results():
