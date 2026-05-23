@@ -348,7 +348,8 @@ class SportsIndycarMixin:
                 try:
                     start_dt = parse_iso(start_time_utc)
                     if start_dt:
-                        start_display = start_dt.astimezone().strftime('%I:%M %p').lstrip('0')
+                        utc_off = state.get('utc_offset', -5)
+                    start_display = start_dt.astimezone(timezone(timedelta(hours=utc_off))).strftime('%I:%M %p').lstrip('0')
                 except Exception:
                     pass
                 status_display = f"Starts {start_display}"
