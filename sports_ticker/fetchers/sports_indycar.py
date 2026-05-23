@@ -252,6 +252,16 @@ class SportsIndycarMixin:
         short_session_name = _simplify_indycar_session(session_label, session_name)
         start_time_utc = _extract_indycar_start_time(hb)
 
+        # Ignore stale blob snapshots from previous sessions so the ticker
+        # hides IndyCar cleanly on days with no current event.
+        if start_time_utc:
+            try:
+                start_dt = parse_iso(start_time_utc)
+                if start_dt and abs((datetime.now(timezone.utc) - start_dt).total_seconds()) > 18 * 3600:
+                    return None
+            except Exception:
+                pass
+
         # State from flag / session status
         flag_status    = str(hb.get('currentFlag') or hb.get('SessionStatus') or '').strip().upper()
         session_status = str(hb.get('SessionStatus') or '').strip().upper()

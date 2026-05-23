@@ -748,62 +748,13 @@ class SportsModesMixin:
         obj = self._fetch_indycar()
         if obj:
             return [obj]
-        return [{
-            'id': 'indycar_loading',
-            'type': 'racing',
-            'sport': 'indycar',
-            'state': 'pre',
-            'status': 'Loading',
-            'is_shown': True,
-            'startTimeUTC': '',
-            'away_abbr': 'IndyCar',
-            'home_abbr': 'Race',
-            'away_score': '',
-            'home_score': '',
-            'indycar': {
-                'event_name': 'IndyCar',
-                'short_name': 'IndyCar',
-                'session_type': 'Race',
-                'lap': 0,
-                'total_laps': 0,
-                'laps_remaining': 0,
-                'caution': False,
-                'drivers': [],
-            },
-        }]
+        return []
 
     def _build_f1_buffer(self):
         obj = self._fetch_f1()
         if obj:
             return [obj]
-        return [{
-            'id': 'f1_loading',
-            'type': 'racing',
-            'sport': 'f1',
-            'state': 'pre',
-            'status': 'Loading',
-            'is_shown': True,
-            'startTimeUTC': '',
-            'away_abbr': 'Formula 1',
-            'home_abbr': 'Race',
-            'away_score': '',
-            'home_score': '',
-            'f1': {
-                'event_name': 'Formula 1',
-                'short_name': 'Formula 1',
-                'track_name': '',
-                'session_type': 'Race',
-                'session_name': 'Race',
-                'lap': 0,
-                'total_laps': 0,
-                'laps_remaining': 0,
-                'time_to_go': '',
-                'caution': False,
-                'flag': 'GREEN',
-                'drivers': [],
-                'weather': {},
-            },
-        }]
+        return []
 
     def _build_nascar_buffer(self):
         obj = self._fetch_nascar()
@@ -1004,12 +955,13 @@ class SportsModesMixin:
         Sports modes with delay use the history buffer for live-delay support.
         All other modes always return current data (delay is ignored).
         """
+        refresh_on_access = mode in ('indycar', 'indycar_full', 'f1', 'f1_full')
         if mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
             return self.get_snapshot_for_delay(delay_seconds)
         with self._mode_buffer_lock:
             snapshot = list(self._mode_buffers.get(mode, []))
 
-        if snapshot:
+        if snapshot and not refresh_on_access:
             return snapshot
 
         # Web dashboard previews can ask for a mode that no paired ticker is
