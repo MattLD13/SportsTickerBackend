@@ -1,7 +1,8 @@
-"""Formula 1 fetcher using Jolpica (ergast) for the session schedule.
+"""Formula 1 fetcher using ESPN for the session schedule.
 
 livetiming.formula1.com blocks server IPs; all session metadata now comes from
-Jolpica which carries the full calendar including per-session start times.
+the ESPN F1 scoreboard which carries the full calendar including per-session
+start times for the current race weekend.
 SignalR is kept as an optional live-timing overlay — if it ever becomes
 accessible it will upgrade the card with real positions and lap counts.
 """
@@ -15,6 +16,18 @@ globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')
 from . import f1_signalr as _f1_signalr
 
 _JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
+_ESPN_F1_SCOREBOARD = "http://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
+
+# ESPN competition type abbreviation → Jolpica session key
+_ESPN_F1_ABBR_TO_JOLPICA = {
+    'FP1':  'FirstPractice',
+    'FP2':  'SecondPractice',
+    'FP3':  'ThirdPractice',
+    'SS':   'SprintQualifying',
+    'SR':   'Sprint',
+    'Qual': 'Qualifying',
+    'Race': 'Race',
+}
 
 _F1_CAR_URL = (
     "https://media.formula1.com/image/upload/c_lfill,h_224/q_auto/"
@@ -57,9 +70,9 @@ _F1_TEAM_COLORS = {
     'alpine':       '#FF87BC',
     'williams':     '#64C4FF',
     'haas':         '#B6BABD',
-    'sauber':       '#52E252',
-    'kick sauber':  '#52E252',
-    'audi':         '#52E252',
+    'sauber':       '#BB0000',
+    'kick sauber':  '#BB0000',
+    'audi':         '#BB0000',
     'cadillac':     '#9CA3AF',
 }
 
@@ -248,6 +261,40 @@ def _f1_team_color(team_name):
     return _F1_TEAM_COLORS.get(key, '#888888')
 
 
+def _espn_f1_event_to_jolpica(event):
+    """Convert an ESPN F1 scoreboard event to the Jolpica race dict format."""
+    circuit = event.get('circuit', {})
+    address = circuit.get('address', {})
+    race = {
+        'round':    str(event.get('id', '')),
+        'raceName': event.get('name', 'Formula 1'),
+        'Circuit': {
+            'circuitName': circuit.get('fullName', ''),
+            'Location': {
+                'locality': address.get('city', ''),
+                'country':  address.get('country', ''),
+            },
+        },
+    }
+    for comp in event.get('competitions', []):
+        abbr  = (comp.get('type') or {}).get('abbreviation', '')
+        jkey  = _ESPN_F1_ABBR_TO_JOLPICA.get(abbr)
+        if not jkey:
+            continue
+        start = comp.get('startDate') or comp.get('date') or ''
+        if not start:
+            continue
+        try:
+            s = start.rstrip('Z')
+            d, t = s.split('T', 1) if 'T' in s else (s, '00:00:00')
+            if len(t.split(':')) == 2:
+                t += ':00'
+            race[jkey] = {'date': d, 'time': t + 'Z'}
+        except Exception:
+            pass
+    return race
+
+
 def _f1_parse_session_utc(sess_dict):
     """Parse a Jolpica session dict {'date': 'YYYY-MM-DD', 'time': 'HH:MM:SSZ'} → UTC datetime."""
     try:
@@ -311,7 +358,7 @@ def _find_f1_sessions(races, now_utc):
                 relevant.append((race, key, name, ip, start, end, 'in'))
             elif end < now_utc and (now_utc - end).total_seconds() < 12 * 3600:
                 relevant.append((race, key, name, ip, start, end, 'post'))
-            elif start > now_utc and (start - now_utc).total_seconds() < 24 * 3600:
+            elif start > now_utc and (start - now_utc).total_seconds() < 48 * 3600:
                 relevant.append((race, key, name, ip, start, end, 'pre'))
 
         if relevant:
@@ -421,27 +468,23 @@ class SportsF1Mixin:
         return r.json()
 
     def _fetch_f1_schedule(self, force=False):
-        """Fetch the full season race calendar from Jolpica (cached 1 h)."""
+        """Fetch the current race weekend schedule from ESPN F1 scoreboard (cached 1 h)."""
         self.__init_f1_cache()
         now = time.time()
         cache = self._f1_schedule_cache
         if not force and (now - cache['ts']) < _F1_SCHEDULE_TTL and cache['data']:
             return cache['data']
         try:
-            data  = self._jolpica_get('current.json')
-            races = data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
-            current_year = datetime.now(timezone.utc).year
-            if _f1_schedule_year(races) not in (None, current_year):
-                try:
-                    data = self._jolpica_get(f"{current_year}.json")
-                    races = data.get('MRData', {}).get('RaceTable', {}).get('Races', [])
-                except Exception:
-                    pass
+            r = self.session.get(_ESPN_F1_SCOREBOARD, headers=HEADERS,
+                                 timeout=TIMEOUTS.get('default', 10))
+            r.raise_for_status()
+            events = r.json().get('events', [])
+            races  = [_espn_f1_event_to_jolpica(e) for e in events]
             self._f1_schedule_cache = {'ts': now, 'data': races}
             return races
         except Exception as exc:
-            print(f"[F1] Schedule fetch error: {exc}")
-            return []
+            print(f"[F1] ESPN schedule fetch error: {exc}")
+            return cache.get('data', [])
 
     def _fetch_f1_results(self, force=False):
         """Fetch last-race driver results from Jolpica (cached 30 min)."""
@@ -460,39 +503,60 @@ class SportsF1Mixin:
             print(f"[F1] Results fetch error: {exc}")
             return cache.get('data', [])
 
-    def _fetch_openf1_live(self, start_utc):
-        """Fetch real-time position/driver data from OpenF1 for the session at start_utc."""
-        try:
-            # Search for the session by date range (±90 min of start_utc) so we get
-            # the correct session even when a later session has become "latest".
-            window_start = (start_utc - timedelta(minutes=90)).strftime('%Y-%m-%dT%H:%M:%SZ')
-            window_end   = (start_utc + timedelta(minutes=90)).strftime('%Y-%m-%dT%H:%M:%SZ')
-            url = (f"https://api.openf1.org/v1/sessions"
-                   f"?date_start>={window_start}&date_start<={window_end}")
-            r = self.session.get(url, timeout=10)
-            if not r.ok: return None
-            results = r.json()
-            # OpenF1 locks access during live sessions and returns {"detail": "..."}
-            if isinstance(results, dict) and 'detail' in results:
-                print(f"[F1] OpenF1 locked during live session: {results['detail'][:80]}")
-                return None
-            if not results or not isinstance(results, list):
-                return None
-            # Pick the session whose date_start is closest to our start_utc
-            def _dist(sess):
-                try:
-                    sd = datetime.fromisoformat(str(sess.get('date_start', '')).replace('Z', '+00:00'))
-                    if sd.tzinfo is None:
-                        sd = sd.replace(tzinfo=timezone.utc)
-                    return abs((sd - start_utc).total_seconds())
-                except Exception:
-                    return float('inf')
-            s  = min(results, key=_dist)
-            sk = s.get('session_key')
-            if not sk:
-                return None
+    def _fetch_openf1_live(self, start_utc, session_key=None):
+        """Fetch real-time position/driver data from OpenF1.
 
+        session_key — if 'latest', skip the date-range search and query the
+        live session directly (faster and more reliable during active sessions).
+        If None, falls back to the ±90-min date-range lookup by start_utc.
+        """
+        try:
             base = "https://api.openf1.org/v1"
+
+            if session_key:
+                # Direct lookup — no date-range search needed
+                sr = self.session.get(f"{base}/sessions?session_key={session_key}", timeout=10)
+                if not sr.ok:
+                    print(f"[F1] OpenF1 sessions HTTP {sr.status_code} (key={session_key})")
+                    return None
+                sess_list = sr.json()
+                if isinstance(sess_list, dict):
+                    print(f"[F1] OpenF1 sessions error: {str(sess_list)[:80]}")
+                    return None
+                if not sess_list or not isinstance(sess_list, list):
+                    return None
+                s  = sess_list[0]
+                sk = s.get('session_key')
+                if not sk:
+                    return None
+            else:
+                # Search for the session by date range (±90 min of start_utc) so we get
+                # the correct session even when a later session has become "latest".
+                window_start = (start_utc - timedelta(minutes=90)).strftime('%Y-%m-%dT%H:%M:%SZ')
+                window_end   = (start_utc + timedelta(minutes=90)).strftime('%Y-%m-%dT%H:%M:%SZ')
+                url = (f"{base}/sessions"
+                       f"?date_start>={window_start}&date_start<={window_end}")
+                r = self.session.get(url, timeout=10)
+                if not r.ok: return None
+                results = r.json()
+                if isinstance(results, dict):
+                    print(f"[F1] OpenF1 sessions error: {str(results)[:80]}")
+                    return None
+                if not results or not isinstance(results, list):
+                    return None
+                # Pick the session whose date_start is closest to our start_utc
+                def _dist(sess):
+                    try:
+                        sd = datetime.fromisoformat(str(sess.get('date_start', '')).replace('Z', '+00:00'))
+                        if sd.tzinfo is None:
+                            sd = sd.replace(tzinfo=timezone.utc)
+                        return abs((sd - start_utc).total_seconds())
+                    except Exception:
+                        return float('inf')
+                s  = min(results, key=_dist)
+                sk = s.get('session_key')
+                if not sk:
+                    return None
 
             # Drivers
             drivers_r = self.session.get(f"{base}/drivers?session_key={sk}", timeout=10)
@@ -574,13 +638,11 @@ class SportsF1Mixin:
                         itpa = iv.get('interval_to_position_ahead')
                         if itpa is not None:
                             try:
-                                itpa_f = float(itpa)
-                                gap = f"+{itpa_f:.1f}s" if itpa_f >= 60 else f"+{itpa_f:.3f}"
+                                gap = _f1_compact_gap(f"+{float(itpa):.3f}", pos)
                             except Exception:
-                                gap = f"+{itpa}"
+                                gap = _f1_compact_gap(str(itpa), pos)
                         elif dn in computed_interval:
-                            ci = computed_interval[dn]
-                            gap = f"+{ci:.1f}s" if ci >= 60 else f"+{ci:.3f}"
+                            gap = _f1_compact_gap(f"+{computed_interval[dn]:.3f}", pos)
 
                 drivers.append({
                     'pos': pos,
@@ -669,7 +731,10 @@ class SportsF1Mixin:
                 self._f1_signalr_snapshots[session_id] = list(drivers)
 
         if not drivers and state in ('in', 'post'):
-            drivers = self._fetch_openf1_live(start_utc) or []
+            # Pass 'latest' for live sessions — skips the date-range search and
+            # hits the current session directly, which is faster and more reliable.
+            sk_hint = 'latest' if state == 'in' else None
+            drivers = self._fetch_openf1_live(start_utc, session_key=sk_hint) or []
 
         if not drivers and state == 'post':
             drivers = list(self._f1_signalr_snapshots.get(session_id, []))
