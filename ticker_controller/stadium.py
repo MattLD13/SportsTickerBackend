@@ -308,7 +308,9 @@ def calc_card_width(g):
     score_w = a_score_w + pf_w('-', sc=2) + h_score_w
     center = score_w
 
-    if is_mlb and is_active:
+    _susp_kw = ('delay', 'suspended', 'postponed', 'canceled', 'ppd')
+    is_delay = any(k in status.lower() for k in _susp_kw)
+    if is_mlb and is_active and not is_delay:
         center = max(center, score_w + 2)
     else:
         center = max(center, pf_w(status))
@@ -388,6 +390,12 @@ class StadiumRenderer:
         h_score = str(g['hs'])
         status = g['status']
 
+        # Treat delay/suspension like a non-active game for header rendering:
+        # show the status text ("Rain Delay", "Suspended", etc.) instead of
+        # the inning arrow/BSO that would render as a lone '▼' with no number.
+        _SUSP_KW  = ('delay', 'suspended', 'postponed', 'canceled', 'ppd')
+        is_delay  = any(k in status.lower() for k in _SUSP_KW)
+
         def _side_from_value(val):
             if val is None:
                 return None
@@ -419,7 +427,7 @@ class StadiumRenderer:
         fi(d, 0, 7, CW, 1,  55, 76, 130)
 
         st = status[:12]
-        if not (is_mlb and is_active):
+        if not (is_mlb and is_active and not is_delay):
             self._draw_header_text(img, CW, st)
             fi(d, 0, 7, CW, 1, 55, 76, 130)
 
@@ -448,7 +456,7 @@ class StadiumRenderer:
         center_x = (cL + cR) / 2.0
 
         # ── Score ─────────────────────────────────────────────────────────────
-        if not (is_mlb and is_active):
+        if not (is_mlb and is_active and not is_delay):
             a_sw = pf_w(a_score, sc=2)
             h_sw = pf_w(h_score, sc=2)
             dash_sw = pf_w('-', sc=2)
@@ -513,7 +521,7 @@ class StadiumRenderer:
                            vertical=True, size=5, stride=7, max_show=3)
 
         # ══ MLB ══════════════════════════════════════════════════════════════
-        if is_mlb and is_active:
+        if is_mlb and is_active and not is_delay:
             balls   = int(sit.get('balls',   g.get('balls',   0)) or 0)
             strikes = int(sit.get('strikes', g.get('strikes', 0)) or 0)
             outs    = int(sit.get('outs',    g.get('outs',    0)) or 0)
@@ -595,7 +603,7 @@ class StadiumRenderer:
 
     def _draw_header_text(self, img, card_w, text):
         """Draw header with the hybrid bitmap renderer style."""
-        label = str(text or '')[:9].upper()
+        label = str(text or '')[:12].upper()
         if not label:
             return
         d = ImageDraw.Draw(img, 'RGBA')

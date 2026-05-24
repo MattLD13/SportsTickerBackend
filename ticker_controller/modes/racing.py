@@ -1005,7 +1005,7 @@ class RacingMixin:
         state = str(game.get('state', 'pre')).lower()
         _draw_mini_flag(d, W - 12, 0, _display_flag(ic.get('flag'), state))
 
-        d.line([(0, 7), (W - 1, 7)], fill=(40, 60, 120))
+        d.line([(0, 7), (W - 1, 7)], fill=(55, 76, 130))
 
         session  = str(ic.get('session_type') or 'Race').lower()
         is_qual  = 'qual' in session
