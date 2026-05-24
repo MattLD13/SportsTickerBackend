@@ -479,7 +479,7 @@ def _process_nascar_raw(url, target_size):
         return _NASCAR_CAR_CACHE[cache_key]
     raw_name  = f"nascar_raw_{hashlib.md5(url.encode()).hexdigest()}.jpg"
     raw_path  = os.path.join(ASSETS_DIR, raw_name)
-    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}_v3.png"
+    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}_v4.png"
     disk_path = os.path.join(ASSETS_DIR, disk_name)
     if os.path.exists(disk_path):
         try:
@@ -528,11 +528,9 @@ def _process_nascar_raw(url, target_size):
         #    visible car starts at pixel 0 (flush left)
         full = _flood_remove_background(full, tolerance=20)
         full = _trim_transparent_padding(full)
-        # 3) Final resize to exact target — all cars end up identical size
+        # 3) Fit within target box preserving aspect ratio
         if full.width > 0 and full.height > 0:
-            scale = target_size[0] / full.width
-            new_h = max(1, min(target_size[1], round(full.height * scale)))
-            full = full.resize((target_size[0], new_h), Image.Resampling.LANCZOS)
+            full.thumbnail(target_size, Image.Resampling.LANCZOS)
         _NASCAR_CAR_CACHE[cache_key] = full
         print(f"[NASCAR] processed {url.rsplit('/',1)[-1]} -> {full.size}")
         try:
@@ -563,7 +561,7 @@ def _load_nascar_car(url, target_size):
     cache_key = f"{url}_{target_size[0]}x{target_size[1]}"
     if cache_key in _NASCAR_CAR_CACHE:
         return _NASCAR_CAR_CACHE[cache_key]
-    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}_v3.png"
+    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}_v4.png"
     disk_path = os.path.join(ASSETS_DIR, disk_name)
     if os.path.exists(disk_path):
         try:
