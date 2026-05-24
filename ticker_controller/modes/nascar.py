@@ -6,22 +6,27 @@ class NascarMixin:
         """Map the nascar payload into the indycar slot so shared renderers work."""
         mapped = dict(game or {})
         nc = dict(mapped.get('nascar') or {})
-        # Add laps info to header label support
-        lap       = int(nc.get('lap') or 0)
         total     = int(nc.get('total_laps') or 0)
         remaining = int(nc.get('laps_remaining') or 0)
-        track     = str(nc.get('track_name') or '').strip()
         short     = str(nc.get('short_name') or nc.get('event_name') or 'NASCAR').strip()
 
-        # Build a compact session label: "Lap 142/200" or "FINAL" etc.
+        # Compact series label: "Race" for Cup, keep "Xfinity"/"Trucks" as-is.
+        # This mirrors the away_abbr/home_abbr pattern used on other sport cards
+        # so the header reads e.g. "Coca-Cola 600 Race" instead of "Lap 142/200".
+        # Lap count is still rendered in the info-panel body via ic['lap']/ic['total_laps'].
+        _raw_series = str(nc.get('session_type') or '').strip()
+        if 'Xfinity' in _raw_series:
+            series_short = 'Xfinity'
+        elif 'Truck' in _raw_series:
+            series_short = 'Trucks'
+        else:
+            series_short = 'Race'
+
+        # FINAL when race is over; short series type while running
         if remaining == 0 and total > 0:
             session_label = 'FINAL'
-        elif lap > 0 and total > 0:
-            session_label = f"Lap {lap}/{total}"
-        elif track:
-            session_label = track
         else:
-            session_label = str(nc.get('session_type') or 'Race').strip()
+            session_label = series_short
 
         nc['session_name'] = session_label
         nc['session_type'] = session_label
