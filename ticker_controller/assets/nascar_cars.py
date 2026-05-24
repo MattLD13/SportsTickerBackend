@@ -87,7 +87,7 @@ def _nascar_candidates(url):
     _prefix = url[:_m.start()]
     _fname = url[_m.end():]
     _small = _fname.replace('-922x400.jpg', '-300x130.jpg')
-    _offsets = (0, -1, 1, -2, 2)
+    _offsets = (0, -1, 1, -2, 2, -3, 3, -4, 4)
     out = []
     if _small != _fname:
         for _d in (_base + _td(days=o) for o in _offsets):

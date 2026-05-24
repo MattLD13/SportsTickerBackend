@@ -421,7 +421,7 @@ def _nascar_candidates(url):
     _fname  = url[_m.end():]
     _small  = _fname.replace('-922x400.jpg', '-300x130.jpg')
     # Interleave small/large per offset so a hit at the right date is found quickly.
-    _offsets = (0, -1, 1)
+    _offsets = (0, -1, 1, -2, 2, -3, 3, -4, 4)
     out = []
     for _d in (_base + _td(days=o) for o in _offsets):
         dated = f"/{_d.year}/{_d.month:02d}/{_d.day:02d}/"
