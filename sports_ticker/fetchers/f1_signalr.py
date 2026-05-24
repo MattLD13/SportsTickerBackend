@@ -21,7 +21,7 @@ try:
 except ImportError:
     _HAS_SIGNALRCORE = False
 
-_NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate"
+_NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate?negotiateVersion=1"
 _WS_URL        = "wss://livetiming.formula1.com/signalrcore"
 _FORBIDDEN_COOLDOWN_SECONDS = int(os.getenv("F1_SIGNALR_403_COOLDOWN_SECONDS", "21600"))
 
@@ -150,24 +150,32 @@ class F1LiveTimingClient:
             close_event = threading.Event()
 
             try:
-                # 1. Pre-negotiate to obtain the AWSALBCORS load-balancer cookie
-                r = requests.options(_NEGOTIATE_URL, timeout=10)
+                # 1. POST negotiate to obtain the AWSALBCORS load-balancer cookie
+                #    (ASP.NET Core SignalR requires POST, not OPTIONS)
+                r = requests.post(
+                    _NEGOTIATE_URL, timeout=10,
+                    headers={"Content-Type": "text/plain;charset=UTF-8"},
+                )
                 if r.status_code == 403:
                     self._blocked_until = time.time() + _FORBIDDEN_COOLDOWN_SECONDS
                     print(f"[F1 SignalR] 403 at negotiate; disabled for {_FORBIDDEN_COOLDOWN_SECONDS}s")
                     continue
-                r.raise_for_status()
+                if not r.ok:
+                    print(f"[F1 SignalR] negotiate HTTP {r.status_code}; retrying in 30s")
+                    time.sleep(30)
+                    continue
 
                 cookie_val = r.cookies.get("AWSALBCORS", "")
                 headers    = {"Cookie": f"AWSALBCORS={cookie_val}"} if cookie_val else {}
 
                 # 2. Build SignalR Core connection (no F1TV auth — free topics only)
+                #    Do NOT pass access_token_factory=None — signalrcore requires
+                #    it to be a callable or absent entirely.
                 conn = (
                     HubConnectionBuilder()
                     .with_url(_WS_URL, options={
-                        "verify_ssl":           True,
-                        "access_token_factory": None,
-                        "headers":              headers,
+                        "verify_ssl": True,
+                        "headers":    headers,
                     })
                     .build()
                 )
