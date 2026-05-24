@@ -1375,7 +1375,10 @@ class RacingMixin:
                         if not car_img:
                             car_img = self._ic_load_logo(car_image, (120, 19))
                     if car_img:
-                        car_img = _trim_transparent_padding(car_img)
+                        # Only trim non-NASCAR; NASCAR cars are already at a
+                        # consistent size from _process_nascar_raw.
+                        if not is_nascar_img:
+                            car_img = _trim_transparent_padding(car_img)
                         car_x   = 1
                         car_y   = max(0, card_h - car_img.height - 1)
                         card.paste(car_img, (car_x, car_y), car_img)
