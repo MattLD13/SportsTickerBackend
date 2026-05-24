@@ -1244,7 +1244,7 @@ class RacingMixin:
                 leader = next((drv for drv in drivers if isinstance(drv, dict)), None)
             lead_car   = str((leader or {}).get('car') or '').strip()
             lead_abbr  = str((leader or {}).get('abbr') or '').strip().upper()
-            lead_speed = str((leader or {}).get('speed') or (leader or {}).get('gap') or '').strip()
+            lead_speed = str((leader or {}).get('speed') or (leader or {}).get('interval') or '').strip()
             draw_tiny_text(d, 4, 8, 'P1', (255, 220, 50))
             if lead_car:
                 d.text((4, 13), lead_car, font=getattr(self, 'medium_font', self.font), fill=(255, 255, 255))
@@ -1324,7 +1324,7 @@ class RacingMixin:
                     str(drv.get('car') or ''),
                     str(drv.get('team_logo') or ''),
                     str(drv.get('car_illustration') or ''),
-                    str(drv.get('gap') or ''),
+                    str(drv.get('interval') or ''),
                     str(drv.get('speed') or ''),
                 )
                 for drv in visible
@@ -1357,7 +1357,7 @@ class RacingMixin:
                 cd = ImageDraw.Draw(card)
                 team_logo  = str(driver.get('team_logo') or '').strip()
                 car_image  = str(driver.get('car_illustration') or '').strip()
-                interval_val = str(driver.get('interval') or driver.get('gap') or '').strip()
+                interval_val = str(driver.get('interval') or '').strip()
                 primary    = _hex_to_rgb(driver.get('livery_primary'), (120, 120, 130))
                 secondary  = _hex_to_rgb(driver.get('livery_secondary'), (20, 20, 24))
                 cd.rectangle([0, 0, card_w - 1, card_h - 1], fill=(12, 12, 18))
@@ -1423,7 +1423,7 @@ class RacingMixin:
                 cd.text((name_x, 10), name, font=name_font, fill=(255, 255, 255))
 
                 if is_qual:
-                    right_val = str(driver.get('speed') or driver.get('interval') or driver.get('gap') or '').strip()[:8]
+                    right_val = str(driver.get('speed') or driver.get('interval') or '').strip()[:8]
                 elif is_nascar:
                     right_val = interval_val[:10]
                 else:
