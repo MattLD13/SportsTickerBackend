@@ -528,6 +528,10 @@ class SportsF1Mixin:
         session_key — if 'latest', skip the date-range search and query the
         live session directly (faster and more reliable during active sessions).
         If None, falls back to the ±90-min date-range lookup by start_utc.
+
+        Returns (drivers, session_ended) where session_ended is True when
+        OpenF1 reports a date_end in the past, meaning the session is over
+        even if the scheduled time window hasn't yet elapsed.
         """
         try:
             base = "https://api.openf1.org/v1"
@@ -537,17 +541,17 @@ class SportsF1Mixin:
                 sr = self.session.get(f"{base}/sessions?session_key={session_key}", timeout=10)
                 if not sr.ok:
                     print(f"[F1] OpenF1 sessions HTTP {sr.status_code} (key={session_key})")
-                    return None
+                    return None, False
                 sess_list = sr.json()
                 if isinstance(sess_list, dict):
                     print(f"[F1] OpenF1 sessions error: {str(sess_list)[:80]}")
-                    return None
+                    return None, False
                 if not sess_list or not isinstance(sess_list, list):
-                    return None
+                    return None, False
                 s  = sess_list[0]
                 sk = s.get('session_key')
                 if not sk:
-                    return None
+                    return None, False
             else:
                 # Search for the session by date range (±90 min of start_utc) so we get
                 # the correct session even when a later session has become "latest".
@@ -556,13 +560,13 @@ class SportsF1Mixin:
                 url = (f"{base}/sessions"
                        f"?date_start>={window_start}&date_start<={window_end}")
                 r = self.session.get(url, timeout=10)
-                if not r.ok: return None
+                if not r.ok: return None, False
                 results = r.json()
                 if isinstance(results, dict):
                     print(f"[F1] OpenF1 sessions error: {str(results)[:80]}")
-                    return None
+                    return None, False
                 if not results or not isinstance(results, list):
-                    return None
+                    return None, False
                 # Pick the session whose date_start is closest to our start_utc
                 def _dist(sess):
                     try:
@@ -575,16 +579,29 @@ class SportsF1Mixin:
                 s  = min(results, key=_dist)
                 sk = s.get('session_key')
                 if not sk:
-                    return None
+                    return None, False
+
+            # Check whether the session has actually ended via OpenF1's date_end.
+            # This lets us detect a finished race before the scheduled window expires.
+            session_ended = False
+            try:
+                raw_end = s.get('date_end')
+                if raw_end:
+                    end_dt = datetime.fromisoformat(str(raw_end).replace('Z', '+00:00'))
+                    if end_dt.tzinfo is None:
+                        end_dt = end_dt.replace(tzinfo=timezone.utc)
+                    session_ended = end_dt < datetime.now(timezone.utc)
+            except Exception:
+                pass
 
             # Drivers
             drivers_r = self.session.get(f"{base}/drivers?session_key={sk}", timeout=10)
-            if not drivers_r.ok: return None
+            if not drivers_r.ok: return None, session_ended
             driver_info = {d['driver_number']: d for d in drivers_r.json()}
 
             # Positions
             pos_r = self.session.get(f"{base}/position?session_key={sk}", timeout=10)
-            if not pos_r.ok: return None
+            if not pos_r.ok: return None, session_ended
             positions = pos_r.json()
             latest_pos = {}
             for p in positions:
@@ -678,10 +695,10 @@ class SportsF1Mixin:
                     'status': 'Active',
                     'on_track': True,
                 })
-            return drivers
+            return drivers, session_ended
         except Exception as e:
             print(f"[F1] OpenF1 fetch error: {e}")
-            return None
+            return None, False
 
     def _fetch_f1(self, force=False):
         """Return a list of F1 game objects — one per relevant session today."""
@@ -753,7 +770,13 @@ class SportsF1Mixin:
             # Pass 'latest' for live sessions — skips the date-range search and
             # hits the current session directly, which is faster and more reliable.
             sk_hint = 'latest' if state == 'in' else None
-            drivers = self._fetch_openf1_live(start_utc, session_key=sk_hint) or []
+            _of1_drivers, _of1_ended = self._fetch_openf1_live(start_utc, session_key=sk_hint) or ([], False)
+            drivers = _of1_drivers or []
+            # If OpenF1 says the session has ended (date_end in the past) but our
+            # scheduled window hasn't elapsed yet, flip state → post early so the
+            # display shows CHECKERED/FINAL instead of GREEN/LIVE.
+            if state == 'in' and not is_practice and _of1_ended:
+                state = 'post'
 
         if not drivers and state == 'post':
             drivers = list(self._f1_signalr_snapshots.get(session_id, []))
