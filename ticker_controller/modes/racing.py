@@ -89,14 +89,14 @@ def racing_flag_color(flag):
 
         # ── Checkered — session end ───────────────────────────────────────
         'CHECKERED':           (235, 235, 235),
-        'GWC':                 (235, 235, 235),   # Green-White-Checkered (NASCAR OT)
+        'GWC':                 (55, 190, 90),     # Green-White-Checkered: starts green
 
         # ── Blue — backmarker / pass instruction ──────────────────────────
         'BLUE':                (60, 100, 235),
-        'MEATBALL':            (60, 100, 235),    # NASCAR mechanical (informal alias)
 
         # ── Black — penalty / DSQ ─────────────────────────────────────────
         'BLACK':               (30, 30, 30),
+        'MEATBALL':            (30, 30, 30),      # Black flag + orange disc (NASCAR mechanical)
         'BLACK AND WHITE':     (130, 130, 130),   # Warning (unsportsmanlike)
         'BLACK WHITE':         (130, 130, 130),
 
@@ -114,31 +114,154 @@ _ic_flag_color = racing_flag_color
 # ── Flag drawing helpers ──────────────────────────────────────────────────────
 
 def _draw_mini_flag(d, x, y, flag):
-    fill = racing_flag_color(flag)
+    """Draw a small flag indicator (9 × 6 px visible area).
+
+    Custom patterns for flags with distinct visual designs; solid fill
+    from racing_flag_color() for everything else.
+    """
     flag_name = str(flag or '').strip().upper()
+    # Bounding box
+    bx0, by0, bx1, by1 = x, y + 1, x + 8, y + 6
+    OL = (35, 35, 35)
+
     if flag_name == 'CHECKERED':
-        d.rectangle([x, y + 1, x + 8, y + 6], fill=(240, 240, 240), outline=(35, 35, 35))
-        for yy in range(1, 6):
-            for xx in range(0, 9):
+        d.rectangle([bx0, by0, bx1, by1], fill=(240, 240, 240))
+        for yy in range(by0, by1 + 1):
+            for xx in range(bx0, bx1 + 1):
                 if (xx + yy) % 2 == 0:
-                    d.point((x + xx, y + yy), fill=(45, 45, 45))
+                    d.point((xx, yy), fill=(45, 45, 45))
+
+    elif flag_name == 'GWC':
+        # Green-White-Checkered: left ~1/3 green, right ~2/3 checker
+        split = bx0 + 3
+        d.rectangle([bx0, by0, split - 1, by1], fill=(55, 190, 90))
+        d.rectangle([split, by0, bx1, by1], fill=(240, 240, 240))
+        for yy in range(by0, by1 + 1):
+            for xx in range(split, bx1 + 1):
+                if ((xx - split) + (yy - by0)) % 2 == 0:
+                    d.point((xx, yy), fill=(45, 45, 45))
+
+    elif flag_name == 'MEATBALL':
+        # NASCAR black flag with central orange disc
+        d.rectangle([bx0, by0, bx1, by1], fill=(20, 20, 20))
+        cx, cy = (bx0 + bx1) // 2, (by0 + by1) // 2
+        d.ellipse([cx - 2, cy - 2, cx + 2, cy + 2], fill=(255, 120, 0))
+
+    elif flag_name in ('BLACK AND WHITE', 'BLACK WHITE'):
+        # NASCAR warning flag: white base, black upper-left triangle
+        d.rectangle([bx0, by0, bx1, by1], fill=(240, 240, 240))
+        d.polygon([(bx0, by0), (bx1, by0), (bx0, by1)], fill=(20, 20, 20))
+
+    elif flag_name == 'DOUBLE YELLOW':
+        # Dark background with two yellow bands (top + bottom)
+        d.rectangle([bx0, by0, bx1, by1], fill=(20, 15, 0))
+        mid = (by0 + by1) // 2
+        d.rectangle([bx0, by0, bx1, mid - 1], fill=(255, 215, 0))
+        d.rectangle([bx0, mid + 1, bx1, by1], fill=(255, 215, 0))
+
+    elif flag_name == 'BLUE':
+        # Blue flag with diagonal yellow stripe (lower-left → upper-right)
+        d.rectangle([bx0, by0, bx1, by1], fill=(60, 100, 235))
+        d.line([(bx0 + 1, by1), (bx1, by0 + 1)], fill=(255, 215, 0))
+        d.line([(bx0 + 2, by1), (bx1, by0 + 2)], fill=(255, 215, 0))
+
+    elif flag_name in ('VSC ENDING', 'SC ENDING'):
+        # Left orange (still SC), right green (about to go green)
+        mid = (bx0 + bx1) // 2
+        d.rectangle([bx0, by0, mid, by1], fill=(255, 140, 0))
+        d.rectangle([mid + 1, by0, bx1, by1], fill=(55, 190, 90))
+
+    elif flag_name in ('FLAG TO FLAG', 'FTF'):
+        # Left sky-blue (wet/rain), right green (dry)
+        mid = (bx0 + bx1) // 2
+        d.rectangle([bx0, by0, mid, by1], fill=(100, 160, 220))
+        d.rectangle([mid + 1, by0, bx1, by1], fill=(55, 190, 90))
+
     else:
-        d.rectangle([x, y + 1, x + 8, y + 6], fill=fill, outline=(35, 35, 35))
+        d.rectangle([bx0, by0, bx1, by1], fill=racing_flag_color(flag_name))
+
+    d.rectangle([bx0, by0, bx1, by1], outline=OL)
 
 
 def _draw_flag(d, x, y, flag, w=15, h=10):
-    fill = racing_flag_color(flag)
+    """Draw a flag icon (w × h px, default 15 × 10).
+
+    Custom patterns for flags with distinct visual designs; solid fill
+    from racing_flag_color() for everything else.
+    """
     flag_name = str(flag or '').strip().upper()
+
+    # Drop-shadow / background halo
     d.rectangle([x - 1, y - 1, x + w, y + h], fill=(6, 8, 12), outline=(120, 130, 145))
+
+    # Flag outer bounds and inner area (inside 1 px outline)
+    x0, y0, x1, y1 = x, y, x + w - 1, y + h - 1
+    ix0, iy0, ix1, iy1 = x0 + 1, y0 + 1, x1 - 1, y1 - 1
+    OL = (35, 35, 35)
+
     if flag_name == 'CHECKERED':
-        d.rectangle([x, y, x + w - 1, y + h - 1], fill=(240, 240, 240), outline=(35, 35, 35))
+        d.rectangle([x0, y0, x1, y1], fill=(240, 240, 240), outline=OL)
         cell = 2
-        for yy in range(y + 1, y + h - 1):
-            for xx in range(x + 1, x + w - 1):
-                if (((xx - x) // cell) + ((yy - y) // cell)) % 2 == 0:
+        for yy in range(iy0, iy1 + 1):
+            for xx in range(ix0, ix1 + 1):
+                if (((xx - ix0) // cell) + ((yy - iy0) // cell)) % 2 == 0:
                     d.point((xx, yy), fill=(45, 45, 45))
+
+    elif flag_name == 'GWC':
+        # Green-White-Checkered: left ~1/3 green, right ~2/3 checker
+        split = x0 + max(3, (w - 2) // 3)
+        d.rectangle([x0, y0, split - 1, y1], fill=(55, 190, 90))
+        d.rectangle([split, y0, x1, y1], fill=(240, 240, 240))
+        cell = 2
+        for yy in range(iy0, iy1 + 1):
+            for xx in range(split, ix1 + 1):
+                if (((xx - split) // cell) + ((yy - iy0) // cell)) % 2 == 0:
+                    d.point((xx, yy), fill=(45, 45, 45))
+        d.rectangle([x0, y0, x1, y1], outline=OL)
+
+    elif flag_name == 'MEATBALL':
+        # NASCAR mechanical: black flag with central orange disc
+        d.rectangle([x0, y0, x1, y1], fill=(20, 20, 20), outline=OL)
+        cx = (x0 + x1) // 2
+        cy = (y0 + y1) // 2
+        r  = max(2, min(w, h) // 3)
+        d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(255, 120, 0))
+
+    elif flag_name in ('BLACK AND WHITE', 'BLACK WHITE'):
+        # NASCAR warning flag: white base, black upper-left triangle
+        d.rectangle([x0, y0, x1, y1], fill=(240, 240, 240), outline=OL)
+        d.polygon([(ix0, iy0), (ix1, iy0), (ix0, iy1)], fill=(20, 20, 20))
+        d.rectangle([x0, y0, x1, y1], outline=OL)
+
+    elif flag_name == 'DOUBLE YELLOW':
+        # Dark background with two yellow bands (top + bottom)
+        d.rectangle([x0, y0, x1, y1], fill=(20, 15, 0), outline=OL)
+        stripe_h = max(2, (iy1 - iy0 + 1) // 3)
+        d.rectangle([ix0, iy0, ix1, iy0 + stripe_h - 1], fill=(255, 215, 0))
+        d.rectangle([ix0, iy1 - stripe_h + 1, ix1, iy1], fill=(255, 215, 0))
+
+    elif flag_name == 'BLUE':
+        # Blue flag with diagonal yellow stripe (lower-left → upper-right)
+        d.rectangle([x0, y0, x1, y1], fill=(60, 100, 235), outline=OL)
+        for i in range(3):
+            d.line([(ix0 + i, iy1), (ix1, iy0 + i)], fill=(255, 215, 0))
+
+    elif flag_name in ('VSC ENDING', 'SC ENDING'):
+        # Left orange (still under SC), right green (restart imminent)
+        mid = (x0 + x1) // 2
+        d.rectangle([x0, y0, mid, y1], fill=(255, 140, 0))
+        d.rectangle([mid + 1, y0, x1, y1], fill=(55, 190, 90))
+        d.rectangle([x0, y0, x1, y1], outline=OL)
+
+    elif flag_name in ('FLAG TO FLAG', 'FTF'):
+        # Left sky-blue (wet/rain track), right green (dry/slick)
+        mid = (x0 + x1) // 2
+        d.rectangle([x0, y0, mid, y1], fill=(100, 160, 220))
+        d.rectangle([mid + 1, y0, x1, y1], fill=(55, 190, 90))
+        d.rectangle([x0, y0, x1, y1], outline=OL)
+
     else:
-        d.rectangle([x, y, x + w - 1, y + h - 1], fill=fill, outline=(35, 35, 35))
+        d.rectangle([x0, y0, x1, y1], fill=racing_flag_color(flag_name), outline=OL)
 
 
 # ── Misc helpers ──────────────────────────────────────────────────────────────
