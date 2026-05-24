@@ -26,6 +26,46 @@ _SESSION_TYPE_MAP = {
 
 _LIVE_FLAGS = {'GREEN', 'YELLOW', 'RED', 'CHECKERED', 'WHITE'}
 
+# 2026 IndyCar roster: lowercase full name → (car_number, team_name)
+# Used by the ESPN fallback to resolve car numbers before looking up driversfeed.
+_INDYCAR_2026_ROSTER = {
+    'álex palou':          ('10', 'Chip Ganassi Racing'),
+    'alex palou':          ('10', 'Chip Ganassi Racing'),
+    'pato o\'ward':        ('5',  'Arrow McLaren'),
+    'patricio o\'ward':    ('5',  'Arrow McLaren'),
+    'scott dixon':         ('9',  'Chip Ganassi Racing'),
+    'josef newgarden':     ('2',  'Team Penske'),
+    'will power':          ('26', 'Andretti Global'),
+    'scott mclaughlin':    ('3',  'Team Penske'),
+    'kyle kirkwood':       ('27', 'Andretti Global'),
+    'nolan siegel':        ('6',  'Arrow McLaren'),
+    'christian lundgaard': ('7',  'Arrow McLaren'),
+    'kyffin simpson':      ('8',  'Chip Ganassi Racing'),
+    'marcus armstrong':    ('66', 'Meyer Shank Racing'),
+    'marcus ericsson':     ('28', 'Andretti Global'),
+    'romain grosjean':     ('18', 'Dale Coyne Racing'),
+    'alexander rossi':     ('20', 'Ed Carpenter Racing'),
+    'christian rasmussen': ('21', 'Ed Carpenter Racing'),
+    'david malukas':       ('12', 'Team Penske'),
+    'felix rosenqvist':    ('60', 'Meyer Shank Racing'),
+    'helio castroneves':   ('06', 'Meyer Shank Racing'),
+    'takuma sato':         ('75', 'Rahal Letterman Lanigan Racing'),
+    'rinus veekay':        ('76', 'Juncos Hollinger Racing'),
+    'conor daly':          ('23', 'Dreyer & Reinbold Racing'),
+    'jack harvey':         ('24', 'Dreyer & Reinbold Racing'),
+    'louis foster':        ('45', 'Rahal Letterman Lanigan Racing'),
+    'ryan hunter-reay':    ('31', 'Arrow McLaren'),
+    'katherine legge':     ('11', 'HMD Motorsports w/ AJ Foyt Racing'),
+    'mick schumacher':     ('47', 'Rahal Letterman Lanigan Racing'),
+    'graham rahal':        ('15', 'Rahal Letterman Lanigan Racing'),
+    'dennis hauger':       ('19', 'Dale Coyne Racing'),
+    'jacob abel':          ('51', 'Abel Motorsports'),
+    'sting ray robb':      ('77', 'Juncos Hollinger Racing'),
+    'caio collet':         ('4',  'A.J. Foyt Enterprises'),
+    'santino ferrucci':    ('14', 'A.J. Foyt Enterprises'),
+    'ed carpenter':        ('33', 'Ed Carpenter Racing'),
+}
+
 # Team livery colors keyed by lowercased team name fragments
 _INDYCAR_LIVERIES = {
     'chip ganassi':  ('#E31937', '#002D62'),
@@ -223,6 +263,9 @@ class SportsIndycarMixin:
             return None
 
         now_utc = datetime.now(timezone.utc)
+        # Fetch driversfeed once up front — keyed by car number
+        drivers_index = self._fetch_indycar_drivers()
+
         for event in events:
             competitions = event.get('competitions', [])
             if not competitions:
@@ -260,14 +303,6 @@ class SportsIndycarMixin:
                 else:
                     status_display = 'Starts Soon'
 
-            # Build a name → driver-feed lookup so we can get car numbers and illustrations
-            drivers_index = self._fetch_indycar_drivers()
-            name_to_drv = {}
-            for drv in drivers_index.values():
-                fn = str(drv.get('firstName') or '').strip()
-                ln = str(drv.get('lastName') or '').strip()
-                name_to_drv[f"{fn} {ln}".strip().lower()] = drv
-
             drivers = []
             for c in comp.get('competitors', []):
                 athlete   = c.get('athlete', {})
@@ -276,13 +311,16 @@ class SportsIndycarMixin:
                 first, last = (parts[0], parts[1]) if len(parts) == 2 else ('', full_name)
                 pos = c.get('order', 0)
 
-                drv_feed  = name_to_drv.get(full_name.strip().lower(), {})
-                car_num   = str(drv_feed.get('number') or pos or '').strip()
+                # Resolve car number + team from hardcoded 2026 roster
+                car_num, team_name = _INDYCAR_2026_ROSTER.get(
+                    full_name.strip().lower(), (str(pos), ''))
+
+                # Use car number to look up driversfeed for illustrations/endplate
+                drv_feed  = drivers_index.get(car_num, {})
                 car_illus = str(drv_feed.get('carillustration') or '').strip()
                 endplate  = str(drv_feed.get('endplatesmall') or drv_feed.get('endplatelarge') or '').strip()
                 headshot  = str(drv_feed.get('headshot') or '').strip()
                 logo_url  = endplate or headshot
-                team_name = str(drv_feed.get('teamName') or '').strip()
                 pri_hex, sec_hex = _team_livery(team_name)
 
                 drivers.append({
