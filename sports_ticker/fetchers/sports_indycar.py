@@ -6,6 +6,8 @@ Endpoints discovered by reverse-engineering leaderboard.indycar.com:
   tsconfig.json           — session config flags
 """
 
+from datetime import datetime, timezone, timedelta
+
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
 
