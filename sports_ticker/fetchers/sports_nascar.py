@@ -79,7 +79,7 @@ def _nascar_car_image_url(race_id, car_number, year=2026):
 
 
 def _nascar_car_image_candidates(race_id, car_number, year=2026):
-    """Return candidate URLs trying upload offsets 4-7 days before race."""
+    """Return candidate URLs trying upload offsets around the expected upload day."""
     entry = _NCS_2026.get(int(race_id or 0))
     if not entry:
         return []
@@ -91,7 +91,7 @@ def _nascar_car_image_candidates(race_id, car_number, year=2026):
     yy  = str(year)[-2:]
     car = str(car_number).strip()
     urls = []
-    for offset in (5, 6, 4, 7):
+    for offset in (5, 4, 6, 3, 7, 2, 8, 1, 9, 0, 10):
         d = race_day - timedelta(days=offset)
         urls.append(
             f"{_NASCAR_IMG_BASE}/{year}/{d.month:02d}/{d.day:02d}/"
