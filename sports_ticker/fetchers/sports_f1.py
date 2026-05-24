@@ -187,11 +187,9 @@ def _f1_compact_gap(value, position):
 
     try:
         gap = abs(float(text))
-        if gap < 1:
-            return f"+{int(round(gap * 1000))}ms"
         if gap < 60:
-            return f"+{gap:.1f}s"
-        return f"+{gap:.0f}s"
+            return f"+{gap:.3f}s"
+        return f"+{gap:.1f}s"
     except Exception:
         # Status text such as "Retired" should not pick up a synthetic plus.
         return text[:10]
