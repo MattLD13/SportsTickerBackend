@@ -422,19 +422,7 @@ class SportsIndycarMixin:
         short_session_name = _simplify_indycar_session(session_label, session_name)
         start_time_utc = _extract_indycar_start_time(hb)
 
-        # Ignore stale blob snapshots from previous sessions so the ticker
-        # hides IndyCar cleanly on days with no current event.
-        # If no start time is present we cannot verify currency — hide it.
-        if not start_time_utc:
-            return None
-        try:
-            start_dt = parse_iso(start_time_utc)
-            if start_dt and abs((datetime.now(timezone.utc) - start_dt).total_seconds()) > 30 * 3600:
-                return None
-        except Exception:
-            return None
-
-        # State from flag / session status
+        # Determine state first so we can skip staleness checks for live sessions.
         flag_status    = str(hb.get('currentFlag') or hb.get('SessionStatus') or '').strip().upper()
         session_status = str(hb.get('SessionStatus') or '').strip().upper()
 
@@ -445,6 +433,19 @@ class SportsIndycarMixin:
             state = 'in'
         else:
             state = 'pre'
+
+        # For live or recently-finished sessions the blob is authoritative —
+        # never hide them due to a missing or stale start time.
+        # Only filter 'pre' sessions where the start time is missing or stale.
+        if state == 'pre':
+            if not start_time_utc:
+                return None
+            try:
+                start_dt = parse_iso(start_time_utc)
+                if start_dt and abs((datetime.now(timezone.utc) - start_dt).total_seconds()) > 30 * 3600:
+                    return None
+            except Exception:
+                return None
 
         caution = flag_status in ('YELLOW', 'RED')
 
