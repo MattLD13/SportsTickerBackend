@@ -495,6 +495,7 @@ def _process_nascar_raw(url, target_size):
         with open(raw_path, 'rb') as fh:
             raw = fh.read()
     except Exception:
+        _NASCAR_CAR_CACHE[cache_key] = None
         with _nascar_dl_lock:
             _nascar_dl_pending.discard(url)
             _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
@@ -543,6 +544,7 @@ def _process_nascar_raw(url, target_size):
         return full
     except Exception as e:
         print(f"[NASCAR] process failed {url.rsplit('/',1)[-1]}: {e}")
+        _NASCAR_CAR_CACHE[cache_key] = None
         with _nascar_dl_lock:
             _nascar_dl_pending.discard(url)
             _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
