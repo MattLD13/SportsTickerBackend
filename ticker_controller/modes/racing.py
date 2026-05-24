@@ -1029,6 +1029,7 @@ class RacingMixin:
         session  = str(ic.get('session_type') or 'Race').lower()
         is_qual  = 'qual' in session
         is_f1    = game.get('sport') == 'f1'
+        is_nascar = game.get('sport') == 'nascar'
 
         # ── Column labels ────────────────────────────────────────────────────
         LABEL_COL = (70, 90, 140)
@@ -1036,6 +1037,8 @@ class RacingMixin:
         draw_tiny_text(d, 34, 8, 'DRIVER', LABEL_COL)
         if is_qual:
             right_label = 'TIME' if is_f1 else 'MPH'
+        elif is_nascar:
+            right_label = 'INTERVAL'
         else:
             right_label = 'GAP'
         draw_tiny_text(d, 90, 8, right_label, LABEL_COL)
@@ -1053,11 +1056,11 @@ class RacingMixin:
 
             if is_qual:
                 if is_f1:
-                    right_val = str(driver.get('gap') or '').strip()[:12]
+                    right_val = str(driver.get('interval') or driver.get('gap') or '').strip()[:12]
                 else:
-                    right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:7]
+                    right_val = str(driver.get('speed') or driver.get('interval') or driver.get('gap') or '').strip()[:7]
             else:
-                right_val = str(driver.get('gap') or '').strip()[:12]
+                right_val = str(driver.get('interval') or driver.get('gap') or '').strip()[:12]
 
             pos_color = (255, 215, 0) if pos == '1' else (200, 200, 200)
             draw_tiny_text(d, 0, y, pos, pos_color)
