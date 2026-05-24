@@ -10,6 +10,7 @@ from datetime import datetime, timezone, timedelta
 
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
+from .racing_flags import LIVE_FLAGS, CAUTION_FLAGS, normalize_flag
 
 _BLOB_BASE     = "https://indycar.blob.core.windows.net/racecontrol"
 _ESPN_IRL_BASE = "http://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard"
@@ -24,7 +25,7 @@ _SESSION_TYPE_MAP = {
     'F': 'Qualifying',   # Fast Friday / final qualifying runs
 }
 
-_LIVE_FLAGS = {'GREEN', 'YELLOW', 'RED', 'CHECKERED', 'WHITE'}
+_LIVE_FLAGS = LIVE_FLAGS  # imported from racing_flags
 
 # 2026 IndyCar roster: lowercase full name → (car_number, team_name)
 # Used by the ESPN fallback to resolve car numbers before looking up driversfeed.
@@ -423,7 +424,7 @@ class SportsIndycarMixin:
         start_time_utc = _extract_indycar_start_time(hb)
 
         # Determine state first so we can skip staleness checks for live sessions.
-        flag_status    = str(hb.get('currentFlag') or hb.get('SessionStatus') or '').strip().upper()
+        flag_status    = normalize_flag(hb.get('currentFlag') or hb.get('SessionStatus') or '')
         session_status = str(hb.get('SessionStatus') or '').strip().upper()
 
         _POST_STATUSES = {'FINAL', 'ENDED', 'UNOFFICIAL', 'OFFICIAL', 'CHKD', 'COLD'}
@@ -447,7 +448,7 @@ class SportsIndycarMixin:
             except Exception:
                 return None
 
-        caution = flag_status in ('YELLOW', 'RED')
+        caution = flag_status in CAUTION_FLAGS
 
         # Lap info (race sessions)
         current_lap = 0

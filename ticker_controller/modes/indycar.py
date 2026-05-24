@@ -28,14 +28,74 @@ def _hex_to_rgb(h, fallback=(128, 128, 128)):
 
 
 def _ic_flag_color(flag):
+    """Map a normalized flag string to an RGB colour for LED display.
+
+    Covers F1, IndyCar, NASCAR, WEC, IMSA, DTM, Formula E, MotoGP,
+    Nürburgring / VLN, and generic motor sport series.
+    Unknown flags fall back to dim blue so they're visually distinct.
+    """
     flag = str(flag or '').strip().upper()
     return {
-        'GREEN': (55, 190, 90),
-        'RED': (230, 70, 70),
-        'YELLOW': (255, 215, 0),
-        'CHECKERED': (235, 235, 235),
-        'WHITE': (230, 230, 230),
-    }.get(flag, (0, 80, 180))
+        # ── Green ──────────────────────────────────────────────────────────
+        'GREEN':               (55, 190, 90),
+        'CLEAR':               (55, 190, 90),   # alias
+        'ROLLING START':       (55, 190, 90),
+        'FORMATION LAP':       (55, 190, 90),
+
+        # ── Yellow — plain / full-course / local ───────────────────────────
+        # All mean "slow down / caution" and render as yellow.
+        'YELLOW':              (255, 215, 0),
+        'DOUBLE YELLOW':       (255, 215, 0),
+        'CAUTION':             (255, 215, 0),   # NASCAR / IndyCar
+        'DEBRIS':              (255, 215, 0),   # NASCAR debris caution
+        'FCY':                 (255, 215, 0),   # WEC Full Course Yellow
+        'FULL COURSE YELLOW':  (255, 215, 0),
+        'LOCAL YELLOW':        (255, 215, 0),   # WEC / IMSA local sector
+        'SLOW ZONE':           (255, 215, 0),   # WEC slow zone
+        'CODE 60':             (255, 215, 0),   # Nürburgring / VLN (60 km/h)
+        'CODE60':              (255, 215, 0),
+        'WAVE AROUND':         (255, 215, 0),   # NASCAR (free pass lap)
+        'LUCKY DOG':           (255, 215, 0),   # NASCAR (free pass recipient)
+
+        # ── Safety Car / VSC / Pace Car — orange (distinct from yellow) ────
+        'SAFETY CAR':          (255, 140, 0),
+        'SC':                  (255, 140, 0),
+        'PACE CAR':            (255, 140, 0),   # NASCAR / IMSA
+        'PACE':                (255, 140, 0),
+        'VSC':                 (255, 140, 0),   # Virtual Safety Car (F1/WEC)
+        'VIRTUAL SAFETY CAR':  (255, 140, 0),
+        'VSC ENDING':          (255, 185, 0),   # VSC winding down
+        'SC ENDING':           (255, 185, 0),
+        'NEUTRALISED':         (255, 140, 0),   # Rallycross / Pikes Peak
+        'NEUTRALIZED':         (255, 140, 0),
+
+        # ── Red ────────────────────────────────────────────────────────────
+        'RED':                 (230, 70, 70),
+        'RED FLAG':            (230, 70, 70),
+
+        # ── White — final lap (IndyCar, NASCAR, WEC, MotoGP, etc.) ─────────
+        'WHITE':               (230, 230, 230),
+        # WEC / MotoGP also use white for oil/fluid on track — same colour.
+        'OIL FLAG':            (230, 230, 230),
+
+        # ── Checkered — session end ────────────────────────────────────────
+        'CHECKERED':           (235, 235, 235),
+        'GWC':                 (235, 235, 235),  # Green-White-Checkered (NASCAR OT)
+
+        # ── Blue — backmarker / pass instruction ──────────────────────────
+        'BLUE':                (60, 100, 235),
+        'MEATBALL':            (60, 100, 235),   # NASCAR mechanical black (alias)
+
+        # ── Black — penalty / DSQ ─────────────────────────────────────────
+        'BLACK':               (30, 30, 30),
+        'BLACK AND WHITE':     (130, 130, 130),  # Warning flag (unsportsmanlike)
+        'BLACK WHITE':         (130, 130, 130),
+
+        # ── MotoGP specific ───────────────────────────────────────────────
+        'FLAG TO FLAG':        (55, 190, 90),    # Wet-to-dry bike swap, race continues
+        'FTF':                 (55, 190, 90),
+
+    }.get(flag, (0, 80, 180))   # dim blue = unrecognised flag (easy to spot)
 
 
 def _draw_mini_flag(d, x, y, flag):
@@ -863,7 +923,11 @@ class IndycarMixin:
         time_to_go = str(ic.get('time_to_go') or '').strip()
         start_utc  = str(game.get('startTimeUTC') or '').strip()
         flag       = str(ic.get('flag') or '').strip().upper()
-        caution    = flag in ('YELLOW', 'RED') or bool(ic.get('caution'))
+        caution    = flag in (
+            'YELLOW', 'DOUBLE YELLOW', 'FCY', 'FULL COURSE YELLOW', 'CAUTION',
+            'SAFETY CAR', 'SC', 'VSC', 'VSC ENDING', 'SC ENDING',
+            'RED', 'RED FLAG',
+        ) or bool(ic.get('caution'))
         state      = str(game.get('state', 'pre')).lower()
         is_qual    = 'qual' in session.lower() or 'prac' in session.lower()
 
