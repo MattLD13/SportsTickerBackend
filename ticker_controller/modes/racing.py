@@ -479,7 +479,7 @@ def _process_nascar_raw(url, target_size):
         return _NASCAR_CAR_CACHE[cache_key]
     raw_name  = f"nascar_raw_{hashlib.md5(url.encode()).hexdigest()}.jpg"
     raw_path  = os.path.join(ASSETS_DIR, raw_name)
-    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}_v2.png"
+    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}_v3.png"
     disk_path = os.path.join(ASSETS_DIR, disk_name)
     if os.path.exists(disk_path):
         try:
@@ -522,17 +522,17 @@ def _process_nascar_raw(url, target_size):
         except Exception:
             pass
 
-        # Resize to fill target width, center-crop height if needed.
-        # (thumbnail() preserves aspect ratio → inconsistent widths per car)
-        w, h = full.size
-        if w > 0 and h > 0:
-            scale = target_size[0] / w
-            new_h = max(1, int(h * scale))
-            full = full.resize((target_size[0], new_h), Image.Resampling.LANCZOS)
-            if new_h > target_size[1]:
-                top = (new_h - target_size[1]) // 2
-                full = full.crop((0, top, target_size[0], top + target_size[1]))
+        # 1) Generous intermediate resize for high-quality bg removal
+        full.thumbnail((200, 28), Image.Resampling.LANCZOS)
+        # 2) Remove background, then trim transparent padding so the
+        #    visible car starts at pixel 0 (flush left)
         full = _flood_remove_background(full, tolerance=20)
+        full = _trim_transparent_padding(full)
+        # 3) Final resize to exact target — all cars end up identical size
+        if full.width > 0 and full.height > 0:
+            scale = target_size[0] / full.width
+            new_h = max(1, min(target_size[1], round(full.height * scale)))
+            full = full.resize((target_size[0], new_h), Image.Resampling.LANCZOS)
         _NASCAR_CAR_CACHE[cache_key] = full
         print(f"[NASCAR] processed {url.rsplit('/',1)[-1]} -> {full.size}")
         try:
@@ -563,7 +563,7 @@ def _load_nascar_car(url, target_size):
     cache_key = f"{url}_{target_size[0]}x{target_size[1]}"
     if cache_key in _NASCAR_CAR_CACHE:
         return _NASCAR_CAR_CACHE[cache_key]
-    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}_v2.png"
+    disk_name = f"nascar_{hashlib.md5(url.encode()).hexdigest()}_{target_size[0]}x{target_size[1]}_v3.png"
     disk_path = os.path.join(ASSETS_DIR, disk_name)
     if os.path.exists(disk_path):
         try:
@@ -615,7 +615,7 @@ def nascar_submit_downloads(urls, target_size, executor):
     threading.Thread(target=_run_phases, daemon=True).start()
 
 
-def nascar_retry_pending(executor, target_size=(120, 14)):
+def nascar_retry_pending(executor, target_size=(80, 14)):
     """Re-submit any URLs that haven't successfully downloaded yet."""
     with _nascar_dl_lock:
         pending = [u for u in _nascar_dl_pending if u not in _nascar_dl_inflight]
@@ -1359,7 +1359,7 @@ class RacingMixin:
                 if car_image:
                     is_nascar_img = 'nascar.com' in car_image
                     if is_nascar_img:
-                        car_img = _load_nascar_car(car_image, (120, 14))
+                        car_img = _load_nascar_car(car_image, (80, 14))
                     else:
                         car_img = None
                         for ext in ('webp', 'png', 'jpg', 'jpeg'):
@@ -1379,7 +1379,7 @@ class RacingMixin:
                         # consistent size from _process_nascar_raw.
                         if not is_nascar_img:
                             car_img = _trim_transparent_padding(car_img)
-                        car_x   = 1
+                        car_x   = 0
                         car_y   = max(0, card_h - car_img.height - 1)
                         card.paste(car_img, (car_x, car_y), car_img)
                         drew_car = True
