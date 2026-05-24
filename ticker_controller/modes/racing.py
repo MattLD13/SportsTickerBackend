@@ -132,14 +132,12 @@ def _draw_mini_flag(d, x, y, flag):
                     d.point((xx, yy), fill=(45, 45, 45))
 
     elif flag_name == 'GWC':
-        # Green-White-Checkered: left ~1/3 green, right ~2/3 checker
-        split = bx0 + 3
-        d.rectangle([bx0, by0, split - 1, by1], fill=(55, 190, 90))
-        d.rectangle([split, by0, bx1, by1], fill=(240, 240, 240))
+        # Green-White-Checkered: full checker with green replacing black
+        d.rectangle([bx0, by0, bx1, by1], fill=(240, 240, 240))
         for yy in range(by0, by1 + 1):
-            for xx in range(split, bx1 + 1):
-                if ((xx - split) + (yy - by0)) % 2 == 0:
-                    d.point((xx, yy), fill=(45, 45, 45))
+            for xx in range(bx0, bx1 + 1):
+                if (xx + yy) % 2 == 0:
+                    d.point((xx, yy), fill=(55, 190, 90))
 
     elif flag_name == 'MEATBALL':
         # NASCAR black flag with central orange disc
@@ -208,16 +206,13 @@ def _draw_flag(d, x, y, flag, w=15, h=10):
                     d.point((xx, yy), fill=(45, 45, 45))
 
     elif flag_name == 'GWC':
-        # Green-White-Checkered: left ~1/3 green, right ~2/3 checker
-        split = x0 + max(3, (w - 2) // 3)
-        d.rectangle([x0, y0, split - 1, y1], fill=(55, 190, 90))
-        d.rectangle([split, y0, x1, y1], fill=(240, 240, 240))
+        # Green-White-Checkered: full checker with green replacing black
+        d.rectangle([x0, y0, x1, y1], fill=(240, 240, 240), outline=OL)
         cell = 2
         for yy in range(iy0, iy1 + 1):
-            for xx in range(split, ix1 + 1):
-                if (((xx - split) // cell) + ((yy - iy0) // cell)) % 2 == 0:
-                    d.point((xx, yy), fill=(45, 45, 45))
-        d.rectangle([x0, y0, x1, y1], outline=OL)
+            for xx in range(ix0, ix1 + 1):
+                if (((xx - ix0) // cell) + ((yy - iy0) // cell)) % 2 == 0:
+                    d.point((xx, yy), fill=(55, 190, 90))
 
     elif flag_name == 'MEATBALL':
         # NASCAR mechanical: black flag with central orange disc
