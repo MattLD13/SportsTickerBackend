@@ -27,12 +27,7 @@ from sports_ticker.fetchers.sports_nascar import (
     _nascar_car_image_candidates,
 )
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://www.nascar.com/',
-}
+HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 OUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'previews', 'nascar', 'cars')
 THUMB_SIZE = (200, 62)   # larger for preview, proportional to 922×400 source
 

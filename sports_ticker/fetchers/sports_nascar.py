@@ -7,12 +7,7 @@ from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
 
 _NASCAR_LIVE_URL = "https://cf.nascar.com/cacher/live/live-feed.json"
-_NASCAR_HEADERS  = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://www.nascar.com/',
-}
+_NASCAR_HEADERS  = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
 # 2026 NCS schedule: race_id → (race_num, track_slug, race_date_iso)
 # race_num excludes Duels (5594, 5595); upload date = race_date - 5 days (Tuesday of race week)
@@ -129,7 +124,7 @@ _SERIES_LABEL = {
 }
 
 
-def _nascar_compact_interval(delta, pos):
+def _nascar_compact_gap(delta, pos):
     if pos == 1:
         return 'Leader'
     try:
@@ -233,7 +228,7 @@ class SportsNascarMixin:
                     'car_illustration': _nascar_car_image_url(race_id, car_num),
                     'livery_primary': _nascar_make_color(make),
                     'livery_secondary': '#111111',
-                    'interval': _nascar_compact_interval(delta, pos),
+                    'gap': _nascar_compact_gap(delta, pos),
                     'speed': '',
                     'status': 'Active' if on_track else 'Out',
                     'on_track': on_track,
