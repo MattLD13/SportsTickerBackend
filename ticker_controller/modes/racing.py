@@ -387,6 +387,9 @@ def _flood_remove_background(img, tolerance=20):
 
 _NASCAR_CAR_CACHE: dict = {}
 _NASCAR_CAR_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+# Shared session for connection reuse — avoids TLS re-handshake per candidate URL.
+_nascar_http = requests.Session()
+_nascar_http.headers.update(_NASCAR_CAR_HEADERS)
 
 _nascar_dl_lock      = threading.Lock()
 _nascar_dl_total     = 0
@@ -403,7 +406,11 @@ def nascar_dl_progress():
 
 
 def _nascar_candidates(url):
-    """Return candidate URLs to try: 300x130 (fast) at each date offset, then 922x400."""
+    """Return candidate URLs to try: 300x130 (fast) at each date offset, then 922x400.
+
+    Ordered most-likely first: primary offset (0) in both sizes, then ±1 day,
+    then ±2 days.  Caps at 6 candidates to keep total timeout bounded.
+    """
     import re as _re
     from datetime import date as _date, timedelta as _td
     _m = _re.search(r'/(\d{4})/(\d{2})/(\d{2})/', url)
@@ -413,13 +420,14 @@ def _nascar_candidates(url):
     _prefix = url[:_m.start()]
     _fname  = url[_m.end():]
     _small  = _fname.replace('-922x400.jpg', '-300x130.jpg')
-    _offsets = (0, -1, 1, -2, 2)
+    # Interleave small/large per offset so a hit at the right date is found quickly.
+    _offsets = (0, -1, 1)
     out = []
-    if _small != _fname:
-        for _d in (_base + _td(days=o) for o in _offsets):
-            out.append(_prefix + f"/{_d.year}/{_d.month:02d}/{_d.day:02d}/" + _small)
     for _d in (_base + _td(days=o) for o in _offsets):
-        out.append(_prefix + f"/{_d.year}/{_d.month:02d}/{_d.day:02d}/" + _fname)
+        dated = f"/{_d.year}/{_d.month:02d}/{_d.day:02d}/"
+        if _small != _fname:
+            out.append(_prefix + dated + _small)
+        out.append(_prefix + dated + _fname)
     return out
 
 
@@ -441,7 +449,7 @@ def _download_nascar_raw(url):
                 pass
         for candidate in _nascar_candidates(url):
             try:
-                r = requests.get(candidate, headers=_NASCAR_CAR_HEADERS, timeout=12)
+                r = _nascar_http.get(candidate, timeout=(3, 8))
                 if r.status_code == 404:
                     continue
                 r.raise_for_status()
@@ -529,6 +537,9 @@ def _process_nascar_raw(url, target_size):
         return full
     except Exception as e:
         print(f"[NASCAR] process failed {url.rsplit('/',1)[-1]}: {e}")
+        with _nascar_dl_lock:
+            _nascar_dl_pending.discard(url)
+            _nascar_dl_done = min(_nascar_dl_total, _nascar_dl_done + 1)
         return None
 
 
