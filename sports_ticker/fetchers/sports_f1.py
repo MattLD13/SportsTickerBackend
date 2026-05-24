@@ -105,8 +105,29 @@ _F1_SCHEDULE_TTL = 3600.0   # cache the season calendar for 1 hour
 _F1_RESULTS_TTL  = 1800.0   # cache driver results for 30 min
 
 
+_F1_MULTI_WORD_LOCATIONS = {
+    'las vegas', 'abu dhabi', 'sao paulo', 'são paulo',
+    'emilia romagna', 'saudi arabian', 'great britain',
+}
+
+def _strip_f1_sponsor(name):
+    """Strip title-sponsor prefix from ESPN race names.
+
+    'Lenovo Canadian Grand Prix'       → 'Canadian Grand Prix'
+    'Qatar Airways Australian Grand Prix' → 'Australian Grand Prix'
+    'Pirelli Abu Dhabi Grand Prix'     → 'Abu Dhabi Grand Prix'
+    """
+    m = re.search(r'(.+?)\s+grand\s+prix', name, re.IGNORECASE)
+    if not m:
+        return name
+    words = m.group(1).strip().split()
+    two   = ' '.join(words[-2:]).lower() if len(words) >= 2 else ''
+    location = ' '.join(words[-2:]) if two in _F1_MULTI_WORD_LOCATIONS else words[-1]
+    return f"{location} Grand Prix"
+
+
 def _f1_short_event(name):
-    text = str(name or 'Formula 1').strip()
+    text = _strip_f1_sponsor(str(name or 'Formula 1').strip())
     text = text.replace('FORMULA 1', '').replace('GRAND PRIX', 'GP')
     text = ' '.join(text.split())
     return text.title() or 'Formula 1'

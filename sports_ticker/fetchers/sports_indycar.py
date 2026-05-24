@@ -260,22 +260,41 @@ class SportsIndycarMixin:
                 else:
                     status_display = 'Starts Soon'
 
+            # Build a name → driver-feed lookup so we can get car numbers and illustrations
+            drivers_index = self._fetch_indycar_drivers()
+            name_to_drv = {}
+            for drv in drivers_index.values():
+                fn = str(drv.get('firstName') or '').strip()
+                ln = str(drv.get('lastName') or '').strip()
+                name_to_drv[f"{fn} {ln}".strip().lower()] = drv
+
             drivers = []
             for c in comp.get('competitors', []):
                 athlete   = c.get('athlete', {})
                 full_name = athlete.get('fullName', '')
                 parts     = full_name.rsplit(' ', 1)
                 first, last = (parts[0], parts[1]) if len(parts) == 2 else ('', full_name)
+                pos = c.get('order', 0)
+
+                drv_feed  = name_to_drv.get(full_name.strip().lower(), {})
+                car_num   = str(drv_feed.get('number') or pos or '').strip()
+                car_illus = str(drv_feed.get('carillustration') or '').strip()
+                endplate  = str(drv_feed.get('endplatesmall') or drv_feed.get('endplatelarge') or '').strip()
+                headshot  = str(drv_feed.get('headshot') or '').strip()
+                logo_url  = endplate or headshot
+                team_name = str(drv_feed.get('teamName') or '').strip()
+                pri_hex, sec_hex = _team_livery(team_name)
+
                 drivers.append({
-                    'pos':              c.get('order', 0),
+                    'pos':              pos,
                     'name':             full_name,
                     'abbr':             _build_abbr(first, last),
-                    'car':              '',
-                    'team':             '',
-                    'team_logo':        '',
-                    'car_illustration': '',
-                    'livery_primary':   '#FFFFFF',
-                    'livery_secondary': '#333333',
+                    'car':              car_num,
+                    'team':             team_name,
+                    'team_logo':        logo_url,
+                    'car_illustration': car_illus,
+                    'livery_primary':   pri_hex,
+                    'livery_secondary': sec_hex,
                     'gap':              '',
                     'laps':             '',
                     'speed':            '',
