@@ -31,7 +31,7 @@ class NascarMixin:
         return mapped
 
     def draw_nascar_scroll_card(self, game):
-        return self.draw_indycar_scroll_card(self._nascar_as_indycar_game(game))
+        return self.draw_racing_scroll_card(self._nascar_as_indycar_game(game))
 
     def draw_nascar_full(self, game):
-        return self.draw_indycar_full(self._nascar_as_indycar_game(game))
+        return self.draw_racing_full(self._nascar_as_indycar_game(game))

@@ -11,10 +11,10 @@ class F1Mixin:
         return mapped
 
     def draw_f1_scroll_card(self, game):
-        return self.draw_indycar_scroll_card(self._f1_as_indycar_game(game))
+        return self.draw_racing_scroll_card(self._f1_as_indycar_game(game))
 
     def draw_f1_full(self, game):
-        return self.draw_indycar_full(self._f1_as_indycar_game(game))
+        return self.draw_racing_full(self._f1_as_indycar_game(game))
 
     def _draw_f1_generated_car(self, card, x, y, w, h, primary, secondary):
         if w <= 8 or h <= 4:
