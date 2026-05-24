@@ -1,0 +1,7 @@
+name            = "f1-signalr-proxy"
+main            = "worker.js"
+compatibility_date = "2024-09-23"
+
+# Free tier limits (well within for one persistent WS connection):
+#   100,000 requests/day
+#   10 ms CPU per invocation (WebSocket messages are cheap)

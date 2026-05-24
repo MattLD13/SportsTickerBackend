@@ -7,6 +7,8 @@ LapCount, TrackStatus, ExtrapolatedClock, and SessionInfo are all free and
 require no F1TV subscription.
 """
 
+import asyncio
+import json
 import logging
 import os
 import threading
@@ -21,9 +23,44 @@ try:
 except ImportError:
     _HAS_SIGNALRCORE = False
 
-_NEGOTIATE_URL = "https://livetiming.formula1.com/signalrcore/negotiate?negotiateVersion=1"
-_WS_URL        = "wss://livetiming.formula1.com/signalrcore"
-_FORBIDDEN_COOLDOWN_SECONDS = int(os.getenv("F1_SIGNALR_403_COOLDOWN_SECONDS", "21600"))
+try:
+    import websockets.asyncio.client as _ws_client
+    _HAS_WEBSOCKETS = True
+except ImportError:
+    _HAS_WEBSOCKETS = False
+
+# ASP.NET Core SignalR uses Record Separator (0x1E) as message delimiter.
+_SIGNALR_SEP = '\x1e'
+
+# Set F1_SIGNALR_PROXY_HOST to route through a Cloudflare Worker (or any
+# reverse-proxy) when the server IP is blocked by F1's CDN.
+# Example: F1_SIGNALR_PROXY_HOST=f1-signalr-proxy.yourname.workers.dev
+_PROXY_HOST    = os.getenv("F1_SIGNALR_PROXY_HOST", "").strip()
+_NEGOTIATE_URL = (
+    f"https://{_PROXY_HOST}/signalrcore/negotiate?negotiateVersion=1"
+    if _PROXY_HOST else
+    "https://livetiming.formula1.com/signalrcore/negotiate?negotiateVersion=1"
+)
+_WS_URL = (
+    f"wss://{_PROXY_HOST}/signalrcore"
+    if _PROXY_HOST else
+    "wss://livetiming.formula1.com/signalrcore"
+)
+# Default retry delay after a 403.  Keep short — F1's CDN blocks by IP and
+# may unblock after a few minutes.  Override with the env var if needed.
+_FORBIDDEN_COOLDOWN_SECONDS = int(os.getenv("F1_SIGNALR_403_COOLDOWN_SECONDS", "300"))
+
+# Headers that make the negotiate request look like a browser visiting
+# formula1.com — CDNs / WAFs commonly check Origin and Referer.
+_BROWSER_HEADERS = {
+    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) "
+                       "Chrome/125.0.0.0 Safari/537.36",
+    "Origin":          "https://www.formula1.com",
+    "Referer":         "https://www.formula1.com/",
+    "Accept":          "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 _TOPICS = [
     "SessionInfo",
@@ -140,6 +177,14 @@ class F1LiveTimingClient:
     def _run_loop(self):
         logging.getLogger('signalrcore').setLevel(logging.WARNING)
 
+        # When a proxy host is configured, Cloudflare's Browser Integrity Check
+        # blocks urllib (used by signalrcore internally for negotiate).
+        # Use our own async SignalR implementation that drives everything with
+        # requests + websockets — both send headers we can control.
+        if _PROXY_HOST and _HAS_WEBSOCKETS:
+            asyncio.run(self._run_loop_proxy())
+            return
+
         while self._running:
             now = time.time()
             if self._blocked_until > now:
@@ -150,15 +195,17 @@ class F1LiveTimingClient:
             close_event = threading.Event()
 
             try:
-                # 1. POST negotiate to obtain the AWSALBCORS load-balancer cookie
-                #    (ASP.NET Core SignalR requires POST, not OPTIONS)
-                r = requests.post(
-                    _NEGOTIATE_URL, timeout=10,
-                    headers={"Content-Type": "text/plain;charset=UTF-8"},
-                )
+                # 1. POST negotiate to obtain the AWSALBCORS load-balancer cookie.
+                #    Browser-like headers (Origin, Referer, UA) help bypass CDN
+                #    rules that block plain server/bot requests.
+                neg_headers = {
+                    **_BROWSER_HEADERS,
+                    "Content-Type": "text/plain;charset=UTF-8",
+                }
+                r = requests.post(_NEGOTIATE_URL, timeout=10, headers=neg_headers)
                 if r.status_code == 403:
                     self._blocked_until = time.time() + _FORBIDDEN_COOLDOWN_SECONDS
-                    print(f"[F1 SignalR] 403 at negotiate; disabled for {_FORBIDDEN_COOLDOWN_SECONDS}s")
+                    print(f"[F1 SignalR] 403 at negotiate; retrying in {_FORBIDDEN_COOLDOWN_SECONDS}s")
                     continue
                 if not r.ok:
                     print(f"[F1 SignalR] negotiate HTTP {r.status_code}; retrying in 30s")
@@ -166,16 +213,20 @@ class F1LiveTimingClient:
                     continue
 
                 cookie_val = r.cookies.get("AWSALBCORS", "")
-                headers    = {"Cookie": f"AWSALBCORS={cookie_val}"} if cookie_val else {}
+                ws_headers = {**_BROWSER_HEADERS}
+                if cookie_val:
+                    ws_headers["Cookie"] = f"AWSALBCORS={cookie_val}"
 
-                # 2. Build SignalR Core connection (no F1TV auth — free topics only)
+                # 2. Build SignalR Core connection (no F1TV auth — free topics only).
+                #    Pass the same browser headers to the WebSocket upgrade so the
+                #    CDN sees a consistent request fingerprint.
                 #    Do NOT pass access_token_factory=None — signalrcore requires
                 #    it to be a callable or absent entirely.
                 conn = (
                     HubConnectionBuilder()
                     .with_url(_WS_URL, options={
                         "verify_ssl": True,
-                        "headers":    headers,
+                        "headers":    ws_headers,
                     })
                     .build()
                 )
@@ -213,7 +264,7 @@ class F1LiveTimingClient:
                 err = str(exc)
                 if '403' in err or 'Forbidden' in err:
                     self._blocked_until = time.time() + _FORBIDDEN_COOLDOWN_SECONDS
-                    print(f"[F1 SignalR] 403 Forbidden; disabled for {_FORBIDDEN_COOLDOWN_SECONDS}s")
+                    print(f"[F1 SignalR] 403 Forbidden; retrying in {_FORBIDDEN_COOLDOWN_SECONDS}s")
                 else:
                     print(f"[F1 SignalR] connection error: {exc}")
             finally:
@@ -221,6 +272,104 @@ class F1LiveTimingClient:
 
             if self._running:
                 time.sleep(10)
+
+    async def _run_loop_proxy(self):
+        """Async SignalR client for proxy mode.
+
+        Cloudflare's Browser Integrity Check blocks urllib (used internally by
+        signalrcore) before the Worker script even runs.  This implementation
+        drives the full protocol manually:
+          - negotiate  via requests  (respects our custom headers — BIC passes)
+          - WebSocket  via websockets (proper Upgrade headers — BIC passes)
+        """
+        while self._running:
+            now = time.time()
+            if self._blocked_until > now:
+                await asyncio.sleep(min(self._blocked_until - now, 60))
+                continue
+
+            try:
+                # 1. Negotiate (requests library — gets past Cloudflare BIC)
+                neg_headers = {**_BROWSER_HEADERS, "Content-Type": "text/plain;charset=UTF-8"}
+                r = requests.post(_NEGOTIATE_URL, timeout=10, headers=neg_headers)
+                if r.status_code == 403:
+                    self._blocked_until = time.time() + _FORBIDDEN_COOLDOWN_SECONDS
+                    print(f"[F1 SignalR] 403 at negotiate (proxy); retrying in {_FORBIDDEN_COOLDOWN_SECONDS}s")
+                    continue
+                if not r.ok:
+                    print(f"[F1 SignalR] negotiate HTTP {r.status_code} (proxy); retrying in 30s")
+                    await asyncio.sleep(30)
+                    continue
+
+                token  = r.json().get("connectionToken", "")
+                cookie = r.cookies.get("AWSALBCORS", "")
+
+                # 2. Connect WebSocket via proxy (websockets library — BIC passes)
+                ws_url = f"wss://{_PROXY_HOST}/signalrcore?id={token}"
+                ws_hdrs = dict(_BROWSER_HEADERS)
+                if cookie:
+                    ws_hdrs["Cookie"] = f"AWSALBCORS={cookie}"
+
+                async with _ws_client.connect(
+                    ws_url,
+                    additional_headers=ws_hdrs,
+                    user_agent_header=None,   # suppress websockets' default UA
+                ) as ws:
+                    print("[F1 SignalR] connected (proxy)")
+                    self._connected = True
+
+                    # 3. SignalR Core handshake
+                    await ws.send('{"protocol":"json","version":1}' + _SIGNALR_SEP)
+                    await asyncio.wait_for(ws.recv(), timeout=10)   # expect {}\x1e
+
+                    # 4. Subscribe to free topics
+                    await ws.send(
+                        json.dumps({
+                            "type":         1,
+                            "invocationId": "0",
+                            "target":       "Subscribe",
+                            "arguments":    [_TOPICS],
+                        }) + _SIGNALR_SEP
+                    )
+
+                    # 5. Pump incoming messages
+                    async for raw in ws:
+                        if not self._running:
+                            break
+                        for frame in str(raw).split(_SIGNALR_SEP):
+                            frame = frame.strip()
+                            if not frame:
+                                continue
+                            try:
+                                msg = json.loads(frame)
+                            except json.JSONDecodeError:
+                                continue
+                            # type 1 = server push (incremental update)
+                            # type 3 = completion of our Subscribe (bulk snapshot)
+                            mtype = msg.get("type")
+                            if mtype == 1:
+                                args = msg.get("arguments", [])
+                                if msg.get("target") == "feed" and len(args) >= 2:
+                                    self._apply_topic(args[0], args[1])
+                            elif mtype == 3:
+                                result = msg.get("result", {})
+                                if isinstance(result, dict):
+                                    for topic, data in result.items():
+                                        self._apply_topic(topic, data)
+                                    self._connected = True
+
+            except Exception as exc:
+                err = str(exc)
+                if "403" in err or "Forbidden" in err:
+                    self._blocked_until = time.time() + _FORBIDDEN_COOLDOWN_SECONDS
+                    print(f"[F1 SignalR] 403 (proxy); retrying in {_FORBIDDEN_COOLDOWN_SECONDS}s")
+                else:
+                    print(f"[F1 SignalR] proxy connection error: {exc}")
+            finally:
+                self._connected = False
+
+            if self._running:
+                await asyncio.sleep(10)
 
     @staticmethod
     def _merge_nested(target, source):
@@ -240,7 +389,8 @@ _client_lock = threading.Lock()
 def get_client() -> F1LiveTimingClient | None:
     """Return the running SignalR client, starting it on first call."""
     global _client
-    if not _HAS_SIGNALRCORE:
+    # Need at least one of: signalrcore (direct) or websockets+proxy (proxy mode)
+    if not _HAS_SIGNALRCORE and not (_PROXY_HOST and _HAS_WEBSOCKETS):
         return None
     if _client is None:
         with _client_lock:
