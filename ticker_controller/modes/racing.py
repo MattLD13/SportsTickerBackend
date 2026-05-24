@@ -386,7 +386,12 @@ def _flood_remove_background(img, tolerance=20):
 # ── NASCAR car image download / cache ─────────────────────────────────────────
 
 _NASCAR_CAR_CACHE: dict = {}
-_NASCAR_CAR_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+_NASCAR_CAR_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://www.nascar.com/',
+}
 # Shared session for connection reuse — avoids TLS re-handshake per candidate URL.
 _nascar_http = requests.Session()
 _nascar_http.headers.update(_NASCAR_CAR_HEADERS)
@@ -1034,8 +1039,11 @@ class RacingMixin:
         LABEL_COL = (70, 90, 140)
         draw_tiny_text(d, 1,  8, 'P',      LABEL_COL)
         draw_tiny_text(d, 34, 8, 'DRIVER', LABEL_COL)
+        is_nascar = game.get('sport') == 'nascar'
         if is_qual:
             right_label = 'TIME' if is_f1 else 'MPH'
+        elif is_nascar:
+            right_label = 'INTERVAL'
         else:
             right_label = 'GAP'
         draw_tiny_text(d, 90, 8, right_label, LABEL_COL)
@@ -1053,9 +1061,11 @@ class RacingMixin:
 
             if is_qual:
                 if is_f1:
-                    right_val = str(driver.get('gap') or '').strip()[:12]
+                    right_val = str(driver.get('interval') or driver.get('gap') or '').strip()[:12]
                 else:
-                    right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:7]
+                    right_val = str(driver.get('speed') or driver.get('interval') or driver.get('gap') or '').strip()[:7]
+            elif is_nascar:
+                right_val = str(driver.get('interval') or '').strip()[:12]
             else:
                 right_val = str(driver.get('gap') or '').strip()[:12]
 
@@ -1347,7 +1357,7 @@ class RacingMixin:
                 cd = ImageDraw.Draw(card)
                 team_logo  = str(driver.get('team_logo') or '').strip()
                 car_image  = str(driver.get('car_illustration') or '').strip()
-                gap_val    = str(driver.get('gap') or '').strip()
+                interval_val = str(driver.get('interval') or driver.get('gap') or '').strip()
                 primary    = _hex_to_rgb(driver.get('livery_primary'), (120, 120, 130))
                 secondary  = _hex_to_rgb(driver.get('livery_secondary'), (20, 20, 24))
                 cd.rectangle([0, 0, card_w - 1, card_h - 1], fill=(12, 12, 18))
@@ -1413,9 +1423,11 @@ class RacingMixin:
                 cd.text((name_x, 10), name, font=name_font, fill=(255, 255, 255))
 
                 if is_qual:
-                    right_val = str(driver.get('speed') or driver.get('gap') or '').strip()[:8]
+                    right_val = str(driver.get('speed') or driver.get('interval') or driver.get('gap') or '').strip()[:8]
+                elif is_nascar:
+                    right_val = interval_val[:10]
                 else:
-                    right_val = gap_val[:10]
+                    right_val = interval_val[:10]
                 if right_val:
                     rv_w = _tiny_text_width(right_val, self.font)
                     draw_tiny_text(cd, max(4, card_w - rv_w - 4), 23,

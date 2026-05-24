@@ -20,7 +20,12 @@ _NCS_2026 = {
     5609: (14, 'Dover',       '2026-05-17'),
 }
 
-HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://www.nascar.com/',
+}
 
 def build_url(race_id, car_number, year=2026):
     entry = _NCS_2026.get(int(race_id or 0))
