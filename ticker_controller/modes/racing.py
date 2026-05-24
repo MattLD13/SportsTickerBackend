@@ -1000,7 +1000,7 @@ class RacingMixin:
         # ── Header ──────────────────────────────────────────────────────────
         header = self._ic_header_label(ic)
         draw_hybrid_text(d, 1 + 1, 1 + 1, header, (8, 8, 8, 180))
-        draw_hybrid_text(d, 1,     1,     header, (255, 220, 50, 255))
+        draw_hybrid_text(d, 1,     1,     header, (255, 240, 150, 255))
 
         state = str(game.get('state', 'pre')).lower()
         _draw_mini_flag(d, W - 12, 0, _display_flag(ic.get('flag'), state))
@@ -1177,7 +1177,7 @@ class RacingMixin:
         name_px  = _tiny_text_width(short_name, self.font)
 
         if name_px <= avail_w:
-            draw_tiny_text(d, 4, 1, short_name, (255, 220, 50))
+            draw_tiny_text(d, 4, 1, short_name, (255, 240, 150))
         else:
             now_t = time.time()
             if not hasattr(self, '_ic_info_scroll_x'):
@@ -1191,8 +1191,8 @@ class RacingMixin:
             offset = int(self._ic_info_scroll_x)
             tmp = Image.new('RGBA', (name_px * 2 + GAP + avail_w, 7), (0, 0, 0, 0))
             td  = ImageDraw.Draw(tmp)
-            draw_tiny_text(td, 0,             0, short_name, (255, 220, 50))
-            draw_tiny_text(td, name_px + GAP, 0, short_name, (255, 220, 50))
+            draw_tiny_text(td, 0,             0, short_name, (255, 240, 150))
+            draw_tiny_text(td, name_px + GAP, 0, short_name, (255, 240, 150))
             clip = tmp.crop((offset, 0, offset + avail_w, 7))
             d._image.paste(clip, (4, 1), clip)
 
@@ -1287,6 +1287,7 @@ class RacingMixin:
             panel_w,
             H,
             bool(is_qual),
+            nascar_dl_progress(),   # invalidates strip once all car downloads finish
             tuple(
                 (
                     str(drv.get('pos') or ''),

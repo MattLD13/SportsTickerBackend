@@ -946,8 +946,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                                 if ci and 'nascar.com' in ci:
                                     nascar_car_urls.append(ci)
                                 elif ci:
-                                    logos_to_fetch.append((ci, (36, 12)))
-                                    logos_to_fetch.append((ci, (120, 16)))
+                                    logos_to_fetch.append((ci, (120, 19)))
                             if nascar_car_urls:
                                 nascar_submit_downloads(nascar_car_urls, (120, 14), self.executor)
                         else:
