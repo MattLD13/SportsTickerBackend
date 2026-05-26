@@ -13,6 +13,11 @@ from ..core import (
 _SERVER_START = time.time()
 
 
+@dashboard.route('/demo')
+def demo():
+    return render_template('demo_ticker.html')
+
+
 @dashboard.route('/')
 def root():
     now      = time.time()

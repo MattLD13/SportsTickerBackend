@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sports Ticker — Live Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0b0b10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 28px 16px;
+    }
+
+    .outer { width: 100%; max-width: 900px; }
+
+    /* ── Frame: exact 384∶32 aspect ratio of the real panel ── */
+    .frame {
+      width: 100%;
+      aspect-ratio: 384 / 32;
+      background: #000;
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+      box-shadow:
+        0 0 0 2px #050505,
+        0 0 0 6px #0e0e0e,
+        0 0 0 7px #050505,
+        0 10px 36px rgba(0,0,0,0.95);
+    }
+
+    /* LED pixel grid */
+    .frame::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,0,0,0.18) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.18) 1px, transparent 1px);
+      background-size: calc(100% / 384) calc(100% / 32);
+      z-index: 80;
+      pointer-events: none;
+    }
+
+    /* Vignette */
+    .frame::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 110% 120% at 50% 50%,
+        transparent 30%, rgba(0,0,0,0.55) 100%);
+      z-index: 81;
+      pointer-events: none;
+    }
+
+    /* ── Viewport ── */
+    .vp {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+    }
+    .vp.fading { opacity: 0; transition: opacity 0.3s; }
+
+    /* Scrolling strip */
+    .scroll-track {
+      display: flex;
+      height: 100%;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .strip-img {
+      display: block;
+      height: 100%;
+      width: auto;
+      flex-shrink: 0;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* Static strip (weather etc.) */
+    .static-img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* Canvas modes (music, clock) */
+    .live-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .status-msg {
+      width: 100%;
+      text-align: center;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #1a3050;
+      letter-spacing: 3px;
+    }
+
+    /* ── Mode buttons ── */
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+      justify-content: center;
+    }
+    .btn {
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      padding: 10px 22px;
+      background: #0e0e14;
+      color: #333;
+      border: 1px solid #1a1a28;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
+      user-select: none;
+    }
+    .btn:hover:not(.active) {
+      background: #14141f;
+      color: #555;
+      border-color: #2a2a40;
+    }
+    .btn.active {
+      background: #0d2a4a;
+      color: #5aacf0;
+      border-color: #1a5fa0;
+      box-shadow: 0 0 12px rgba(26,95,160,0.3);
+    }
+
+    .hw {
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      color: #111;
+      text-align: center;
+      margin-top: 10px;
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+<div class="outer">
+  <div class="frame">
+    <div class="vp" id="vp">
+      <div class="status-msg">CONNECTING TO TICKER...</div>
+    </div>
+  </div>
+  <div class="buttons" id="buttons"></div>
+  <div class="hw">384×32 RGB LED MATRIX &nbsp;·&nbsp; 6× HUB75 PANELS &nbsp;·&nbsp; RASPBERRY PI ZERO 2W</div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════════════════════════════════════
+
+const BASE             = 'https://ticker.mattdicks.org';
+const NATIVE_SCROLL    = 35;   // real px/sec for scrolling strip modes
+const W = 384, H = 32;        // real panel dimensions
+
+const MODES = [
+  { id: 'sports',  label: 'SPORTS',      scroll: true  },
+  { id: 'live',    label: 'LIVE SPORTS', scroll: true  },
+  { id: 'stocks',  label: 'STOCKS',      scroll: true  },
+  { id: 'weather', label: 'WEATHER',     scroll: false },
+  { id: 'music',   label: 'MUSIC',       canvas: true  },
+  { id: 'clock',   label: 'CLOCK',       canvas: true  },
+];
+
+// ════════════════════════════════════════════════════════════════════════════
+// SHARED ANIMATION STATE
+// ════════════════════════════════════════════════════════════════════════════
+
+let curIdx  = 0;
+let animId  = null;   // rAF for scroll or canvas modes
+let offset  = 0;
+let lastTs  = null;
+let stripW  = 0;
+
+// Music-specific interval for Spotify polling
+let musicInterval = null;
+
+// ════════════════════════════════════════════════════════════════════════════
+// BUTTONS
+// ════════════════════════════════════════════════════════════════════════════
+
+const btnEl = document.getElementById('buttons');
+MODES.forEach((m, i) => {
+  const b = document.createElement('button');
+  b.className = 'btn' + (i === 0 ? ' active' : '');
+  b.textContent = m.label;
+  b.onclick = () => goTo(i);
+  btnEl.appendChild(b);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// STRIP SCROLL (sports / live / stocks)
+// ════════════════════════════════════════════════════════════════════════════
+
+function stopAll() {
+  if (animId) { cancelAnimationFrame(animId); animId = null; }
+  if (musicInterval) { clearInterval(musicInterval); musicInterval = null; }
+  lastTs = null;
+}
+
+function startScroll(track) {
+  offset = 0; lastTs = null;
+  const vp = document.getElementById('vp');
+  function step(ts) {
+    if (!lastTs) lastTs = ts;
+    const dt    = Math.min((ts - lastTs) / 1000, 0.1);
+    lastTs = ts;
+    const scale = vp.clientHeight / H;
+    offset = (offset + NATIVE_SCROLL * scale * dt) % stripW;
+    track.style.transform = `translateX(${-offset}px)`;
+    animId = requestAnimationFrame(step);
+  }
+  animId = requestAnimationFrame(step);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MUSIC CANVAS  — matches draw_music_card() in ticker_controller/modes/music.py
+// ════════════════════════════════════════════════════════════════════════════
+
+function initMusic() {
+  return {
+    albumImg:      null,
+    artUrl:        '',
+    domColor:      [29, 185, 84],   // Spotify green default
+    spindleColor:  'white',
+    vinylRot:      0,               // degrees
+    scrollPos:     0,               // pixels
+    lastFrame:     performance.now(),
+    progress:      0,               // seconds
+    duration:      240,             // seconds
+    fetchTs:       Date.now() / 1000,
+    isPlaying:     false,
+    title:         'LOADING...',
+    artist:        '',
+    vizH:          Array(16).fill(2),
+    vizPhase:      Array.from({length:16}, () => Math.random() * 10),
+  };
+}
+
+async function fetchSpotify(ms) {
+  try {
+    const r = await fetch(`${BASE}/api/spotify/now`);
+    if (!r.ok) return;
+    const d = await r.json();
+    ms.isPlaying = !!d.is_playing;
+    ms.progress  = d.progress  || 0;    // already seconds (server pre-interpolates)
+    ms.duration  = d.duration  || 240;  // already seconds
+    ms.fetchTs   = Date.now() / 1000;   // snapshot when we received the data
+    ms.title     = d.name   || 'NOT PLAYING';
+    ms.artist    = d.artist || '';
+    const cover  = d.cover || '';
+    if (cover && cover !== ms.artUrl) {
+      ms.artUrl = cover;
+      loadArt(ms, cover);
+    }
+  } catch (_) {}
+}
+
+function loadArt(ms, url) {
+  // Try CORS load first (needed for pixel sampling)
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    ms.albumImg = img;
+    try {
+      const tmp = document.createElement('canvas');
+      tmp.width = tmp.height = 8;
+      const t = tmp.getContext('2d');
+      t.drawImage(img, 0, 0, 8, 8);
+      const px = t.getImageData(0, 0, 8, 8).data;
+      let r = 0, g = 0, b = 0;
+      for (let i = 0; i < 64; i++) { r += px[i*4]; g += px[i*4+1]; b += px[i*4+2]; }
+      r /= 64; g /= 64; b /= 64;
+      const lum = 0.299*r + 0.587*g + 0.114*b;
+      ms.spindleColor = lum < 140 ? 'white' : '#111';
+      // Mirror extract_colors_and_spindle: HSV boost for saturation + brightness
+      const rf = r/255, gf = g/255, bf = b/255;
+      const mx = Math.max(rf,gf,bf), mn = Math.min(rf,gf,bf), d = mx - mn;
+      let h = 0, s = mx ? d/mx : 0, v = mx;
+      if (d) {
+        if (mx===rf)      h = ((gf-bf)/d + 6) % 6;
+        else if (mx===gf) h = (bf-rf)/d + 2;
+        else              h = (rf-gf)/d + 4;
+        h /= 6;
+      }
+      if      (s < 0.2) s = 0.0;
+      else if (s < 0.5) s = Math.min(1.0, s * 1.5);
+      if      (v < 0.3) v = 0.5;          // dark art → boost to mid brightness
+      else if (v < 0.8) v = Math.min(1.0, v * 1.3);
+      const i6 = Math.floor(h*6), f = h*6-i6, p = v*(1-s), q = v*(1-f*s), tt = v*(1-(1-f)*s);
+      let nr, ng, nb;
+      switch (i6 % 6) {
+        case 0: nr=v;  ng=tt; nb=p;  break;
+        case 1: nr=q;  ng=v;  nb=p;  break;
+        case 2: nr=p;  ng=v;  nb=tt; break;
+        case 3: nr=p;  ng=q;  nb=v;  break;
+        case 4: nr=tt; ng=p;  nb=v;  break;
+        case 5: nr=v;  ng=p;  nb=q;  break;
+      }
+      ms.domColor = [nr*255|0, ng*255|0, nb*255|0];
+    } catch (_) {
+      ms.domColor = [29, 185, 84]; // fallback if CORS blocked
+    }
+  };
+  img.onerror = () => {
+    // Fallback: load without CORS for display only, no color sample
+    const img2 = new Image();
+    img2.onload = () => { ms.albumImg = img2; };
+    img2.src = url;
+  };
+  img.src = url;
+}
+
+function drawScrollText(ctx, text, x, y, maxW, scrollPos) {
+  const tw = ctx.measureText(text).width;
+  if (tw <= maxW - 2) { ctx.fillText(text, x, y); return; }
+  const GAP = 40, loop = tw + GAP;
+  const off = scrollPos % loop;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, 0, maxW, H);
+  ctx.clip();
+  ctx.fillText(text, x - off, y);
+  if (x - off + tw < x + maxW) ctx.fillText(text, x - off + loop, y);
+  ctx.restore();
+}
+
+function drawMusicFrame(canvas, ms) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  const now = performance.now();
+  const dt  = Math.min((now - ms.lastFrame) / 1000, 0.1);
+  ms.lastFrame = now;
+
+  // Interpolate progress (fetchTs is Date.now()/1000 at last fetch)
+  let localProg = ms.progress;
+  if (ms.isPlaying) {
+    localProg = ms.progress + (Date.now() / 1000 - ms.fetchTs);
+    ms.vinylRot   = (ms.vinylRot - 100 * dt) % 360;
+    ms.scrollPos += 15 * dt;
+  }
+  localProg = Math.min(localProg, ms.duration);
+
+  const [dr, dg, db] = ms.domColor;
+  const domRgb = `rgb(${dr},${dg},${db})`;
+
+  // ── Vinyl disc ────────────────────────────────────────────────────────
+  // Real: VINYL_SIZE=51, COVER_SIZE=42, pasted at (4,-9)
+  // → center at (4+25.5, -9+25.5) = (29.5, 16.5)
+  const VCX = 29.5, VCY = 16.5, VR = 25.5, CR = 21;
+
+  // Dark vinyl body
+  ctx.fillStyle = '#141414';
+  ctx.beginPath(); ctx.arc(VCX, VCY, VR, 0, Math.PI*2); ctx.fill();
+
+  // Groove rings
+  ctx.lineWidth = 0.5;
+  for (let r = 5; r < VR; r += 3) {
+    ctx.strokeStyle = `rgba(55,55,55,0.9)`;
+    ctx.beginPath(); ctx.arc(VCX, VCY, r, 0, Math.PI*2); ctx.stroke();
+  }
+
+  // Album art — circular clipped, rotated
+  ctx.save();
+  ctx.beginPath(); ctx.arc(VCX, VCY, CR, 0, Math.PI*2); ctx.clip();
+  ctx.translate(VCX, VCY);
+  ctx.rotate(ms.vinylRot * Math.PI / 180);
+  if (ms.albumImg) {
+    ctx.drawImage(ms.albumImg, -CR, -CR, CR*2, CR*2);
+  } else {
+    ctx.fillStyle = domRgb;
+    ctx.fillRect(-CR, -CR, CR*2, CR*2);
+  }
+  ctx.restore();
+
+  // Spindle  (real: ellipse (22,22,28,28) outer, (23,23,27,27) inner on 51×51)
+  ctx.fillStyle = '#222';
+  ctx.beginPath(); ctx.arc(VCX, VCY, 3, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = ms.spindleColor;
+  ctx.beginPath(); ctx.arc(VCX, VCY, 2, 0, Math.PI*2); ctx.fill();
+
+  // ── Song title (scrolling)  real: TEXT_X=60, y=0, medium_font ─────────
+  const TX = 60;
+  ctx.textBaseline = 'top';
+  ctx.font = 'bold 11px "Courier New", monospace';
+  ctx.fillStyle = 'white';
+  drawScrollText(ctx, ms.title, TX, 0, 188, ms.scrollPos);
+
+  // ── Spotify-style icon  real: ellipse(60,15,72,27) + 3 arcs ──────────
+  const ICX = TX + 6, ICY = 21;
+  ctx.fillStyle = domRgb;
+  ctx.beginPath(); ctx.arc(ICX, ICY, 6, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+  ctx.lineWidth = 0.7;
+  for (let i = 0; i < 3; i++) {
+    // PIL arc 190°→350° clockwise from 3-o'clock (y-down), shifted down per row
+    const r = 4.5 - i * 1.2;
+    ctx.beginPath();
+    ctx.arc(ICX, ICY + i, r, 190*Math.PI/180, 350*Math.PI/180);
+    ctx.stroke();
+  }
+
+  // ── Artist (scrolling)  real: TEXT_X+16=76, y=17, tiny ───────────────
+  ctx.font = '8px "Courier New", monospace';
+  ctx.fillStyle = 'rgb(180,180,180)';
+  drawScrollText(ctx, ms.artist, TX + 16, 19, 172, ms.scrollPos);
+
+  // ── Visualizer  real: x=248, y=6, w=80, h=20, 16 bars (w=2,gap=3) ────
+  const VX = 248, VY = 6, VH = 20, BARS = 16, BW = 2, BG = 3;
+  const t  = now / 1000;
+  const CY = VY + VH / 2;
+  for (let i = 0; i < BARS; i++) {
+    let tgt;
+    if (ms.isPlaying) {
+      const base  = Math.sin(t * 4 + ms.vizPhase[i]);
+      const noise = Math.sin(t * 12 + i * 0.5) * (0.5 + Math.random() * 0.7);
+      const amp   = i < 5 ? 8 + Math.sin(t*2)*2 : i < 11 ? 6 : 4 + noise*2;
+      tgt = Math.max(2, Math.min(VH, Math.abs(base + noise) * amp));
+    } else {
+      tgt = 2;
+    }
+    ms.vizH[i] += (tgt - ms.vizH[i]) * 0.25;
+    const h = ms.vizH[i] | 0;
+
+    // Gradient: dominant → lighter  (matches render_visualizer)
+    const f  = (i / (BARS-1)) * 0.6;
+    const cr = Math.min(255, dr + (255-dr)*f) | 0;
+    const cg = Math.min(255, dg + (255-dg)*f) | 0;
+    const cb = Math.min(255, db + (255-db)*f) | 0;
+    ctx.fillStyle = `rgb(${cr},${cg},${cb})`;
+    ctx.fillRect(VX + i*(BW+BG), CY - h/2, BW, h);
+  }
+
+  // ── Progress bar  real: y=31, 1px, colored ────────────────────────────
+  const pct = Math.max(0, Math.min(1, localProg / ms.duration));
+  ctx.fillStyle = '#222';
+  ctx.fillRect(0, 31, W, 1);
+  ctx.fillStyle = domRgb;
+  ctx.fillRect(0, 31, W * pct | 0, 1);
+
+  // ── Time remaining  real: right-aligned, y=10, tiny ───────────────────
+  const remS  = Math.max(0, ms.duration - localProg) | 0;
+  const remStr = `-${remS/60|0}:${String(remS%60).padStart(2,'0')}`;
+  ctx.font = '8px "Courier New", monospace';
+  ctx.fillStyle = 'white';
+  ctx.textBaseline = 'top';
+  const tw = ctx.measureText(remStr).width;
+  ctx.fillText(remStr, W - tw - 5, 12);
+}
+
+function startMusicCanvas(vp) {
+  const canvas = document.createElement('canvas');
+  canvas.width  = W;
+  canvas.height = H;
+  canvas.className = 'live-canvas';
+  vp.appendChild(canvas);
+
+  const ms = initMusic();
+  fetchSpotify(ms);
+  musicInterval = setInterval(() => fetchSpotify(ms), 5000);
+
+  function frame() {
+    if (!canvas.parentNode) return;
+    drawMusicFrame(canvas, ms);
+    animId = requestAnimationFrame(frame);
+  }
+  animId = requestAnimationFrame(frame);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CLOCK CANVAS  — matches draw_clock_modern() in ticker_controller/modes/misc.py
+// User's local timezone via JS Date (server clock uses server timezone).
+// ════════════════════════════════════════════════════════════════════════════
+
+function drawClockFrame(canvas) {
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  const now  = new Date();
+  const DAYS  = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
+  const MONTHS= ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE',
+                  'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+  const dateStr = `${DAYS[now.getDay()]} ${MONTHS[now.getMonth()]} ${now.getDate()}`;
+
+  // Date row — real: y=-1, tiny font, centered, gray
+  ctx.font = '8px "Courier New", monospace';
+  ctx.fillStyle = 'rgb(200,200,200)';
+  ctx.textBaseline = 'top';
+  const dw = ctx.measureText(dateStr).width;
+  ctx.fillText(dateStr, (W - dw) / 2, 0);
+
+  // Time — real: clock_giant (28px bold), y=4, centered, white
+  const h12    = now.getHours() % 12 || 12;
+  const timeStr = `${h12}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  ctx.font = 'bold 22px "Courier New", monospace';
+  ctx.fillStyle = 'white';
+  const tw = ctx.measureText(timeStr).width;
+  ctx.fillText(timeStr, (W - tw) / 2, 6);
+
+  // Second progress bar — real: y=31, dark bg + cyan fill
+  const totalSec = now.getSeconds() + now.getMilliseconds() / 1000;
+  const barW = (totalSec / 60) * W | 0;
+  ctx.fillStyle = 'rgb(30,30,30)';
+  ctx.fillRect(0, 31, W, 1);
+  ctx.fillStyle = 'rgb(0,200,255)';
+  ctx.fillRect(0, 31, barW, 1);
+}
+
+function startClockCanvas(vp) {
+  const canvas = document.createElement('canvas');
+  canvas.width  = W;
+  canvas.height = H;
+  canvas.className = 'live-canvas';
+  vp.appendChild(canvas);
+
+  function frame() {
+    if (!canvas.parentNode) return;
+    drawClockFrame(canvas);
+    animId = requestAnimationFrame(frame);
+  }
+  animId = requestAnimationFrame(frame);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODE SWITCHER
+// ════════════════════════════════════════════════════════════════════════════
+
+function goTo(idx) {
+  stopAll();
+  curIdx = idx % MODES.length;
+  const mode = MODES[curIdx];
+
+  btnEl.querySelectorAll('.btn').forEach((b, i) => b.classList.toggle('active', i === curIdx));
+
+  const vp  = document.getElementById('vp');
+  const url = `${BASE}/api/preview/strip.png?mode=${mode.id}&_t=${Date.now()}`;
+
+  vp.classList.add('fading');
+  setTimeout(() => {
+    vp.innerHTML = '';
+
+    if (mode.scroll) {
+      const track = document.createElement('div');
+      track.className = 'scroll-track';
+      let loaded = 0;
+      const onLoad = (img) => {
+        if (++loaded === 2) {
+          stripW = img.naturalWidth * (vp.clientHeight / H);
+          startScroll(track);
+        }
+      };
+      const onErr = () => {
+        vp.innerHTML = '<div class="status-msg">NO DATA FOR THIS MODE</div>';
+      };
+      for (let i = 0; i < 2; i++) {
+        const img = document.createElement('img');
+        img.className = 'strip-img';
+        img.onload  = () => onLoad(img);
+        img.onerror = onErr;
+        img.src = url;
+        track.appendChild(img);
+      }
+      vp.appendChild(track);
+
+    } else if (mode.canvas) {
+      if (mode.id === 'music') startMusicCanvas(vp);
+      if (mode.id === 'clock') startClockCanvas(vp);
+
+    } else {
+      const img = document.createElement('img');
+      img.className = 'static-img';
+      img.onerror = () => { vp.innerHTML = '<div class="status-msg">NO DATA FOR THIS MODE</div>'; };
+      img.src = url;
+      vp.appendChild(img);
+    }
+
+    vp.classList.remove('fading');
+  }, 300);
+}
+
+// Boot
+goTo(0);
+</script>
+</body>
+</html>
