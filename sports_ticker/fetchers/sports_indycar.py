@@ -183,7 +183,7 @@ class SportsIndycarMixin:
 
     def __init_indycar_cache(self):
         if not hasattr(self, '_ic_timing_cache'):
-            self._ic_timing_cache = {'ts': 0.0, 'data': None}
+            self._ic_timing_cache = {'ts': 0.0, 'data': None, 'post_since': None}
             self._ic_drivers_cache = {'ts': 0.0, 'data': {}}   # car_number → driver dict
             self._ic_weather_cache = {'ts': 0.0, 'data': {}}
             self._ic_timing_ttl   = 8.0     # seconds — poll live data frequently
@@ -395,20 +395,45 @@ class SportsIndycarMixin:
 
         timing = payload.get('timing_results', {})
         if not timing:
+            self._ic_timing_cache['post_since'] = None
             espn = self._fetch_indycar_espn_game()
             return [espn] if espn else []
 
         drivers_index = self._fetch_indycar_drivers()
         game = self._build_indycar_game(timing, drivers_index)
+        espn_fallback = None   # populated at most once if needed
+
         if game:
             game.setdefault('indycar', {})['weather'] = self._fetch_indycar_weather()
-        else:
-            espn = self._fetch_indycar_espn_game()
+
+            # Track how long we've been stuck in a post state so we can expire
+            # stale blobs (e.g. Indy 500 COLD status lingering for days with no
+            # start time in the heartbeat).
+            if game.get('state') == 'post':
+                if not self._ic_timing_cache.get('post_since'):
+                    self._ic_timing_cache['post_since'] = now
+
+                start_utc = game.get('startTimeUTC', '')
+                expired = now - self._ic_timing_cache['post_since'] > 24 * 3600
+                if not expired and not start_utc:
+                    # No start time — cross-check with ESPN: if ESPN has already
+                    # expired this event (>12 h since start), treat the blob as stale.
+                    espn_fallback = self._fetch_indycar_espn_game()
+                    if espn_fallback is None:
+                        expired = True
+                if expired:
+                    game = None
+            else:
+                self._ic_timing_cache['post_since'] = None
+
+        if not game:
+            espn = espn_fallback or self._fetch_indycar_espn_game()
             if espn:
-                self._ic_timing_cache = {'ts': now, 'data': None}
+                self._ic_timing_cache = {'ts': now, 'data': None, 'post_since': None}
                 return [espn]
 
-        self._ic_timing_cache = {'ts': now, 'data': game}
+        self._ic_timing_cache['ts'] = now
+        self._ic_timing_cache['data'] = game
         return [game] if game else []
 
     def _build_indycar_game(self, timing, drivers_index):
@@ -450,6 +475,8 @@ class SportsIndycarMixin:
 
         # Post-race expiry: the timing blob stays stale between race weekends.
         # Hide a finished session once it's been more than 24 h since its start time.
+        # Some events (e.g. Indy 500 COLD state) have no start time in the blob —
+        # those are caught by the post_since tracker in _fetch_indycar instead.
         if state == 'post' and start_time_utc:
             try:
                 start_dt = parse_iso(start_time_utc)
