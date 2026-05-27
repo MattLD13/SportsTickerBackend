@@ -448,6 +448,16 @@ class SportsIndycarMixin:
             except Exception:
                 return None
 
+        # Post-race expiry: the timing blob stays stale between race weekends.
+        # Hide a finished session once it's been more than 24 h since its start time.
+        if state == 'post' and start_time_utc:
+            try:
+                start_dt = parse_iso(start_time_utc)
+                if start_dt and (datetime.now(timezone.utc) - start_dt).total_seconds() > 24 * 3600:
+                    return None
+            except Exception:
+                pass
+
         caution = flag_status in CAUTION_FLAGS
 
         # Lap info (race sessions)

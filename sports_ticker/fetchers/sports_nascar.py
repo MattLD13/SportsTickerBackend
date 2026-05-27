@@ -1,7 +1,7 @@
 """NASCAR live data fetcher using cf.nascar.com public feeds."""
 
 import re
-from datetime import date, timedelta
+from datetime import date, datetime as _dt_cls, timedelta, timezone as _tz
 
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
@@ -201,6 +201,26 @@ class SportsNascarMixin:
                 state = 'in'
             else:
                 state = 'pre'
+
+            # Post-race expiry: hide the finished race after ~24 h from race day end.
+            # The live feed stays stale between race weekends and has no end-time field,
+            # so we derive expiry from the _NCS_2026 race date.
+            if state == 'post':
+                entry = _NCS_2026.get(race_id)
+                if entry:
+                    _, _, race_date_iso = entry
+                    try:
+                        race_day = date.fromisoformat(race_date_iso)
+                        # Expire at midnight UTC on the day after race day
+                        expiry_utc = _dt_cls(
+                            race_day.year, race_day.month, race_day.day,
+                            tzinfo=_tz.utc
+                        ) + timedelta(days=2)
+                        if _dt_cls.now(_tz.utc) > expiry_utc:
+                            self._nascar_cache = {'ts': now_ts, 'data': None}
+                            return None
+                    except Exception:
+                        pass
 
             vehicles = sorted(
                 [v for v in feed.get('vehicles', []) if isinstance(v, dict)],

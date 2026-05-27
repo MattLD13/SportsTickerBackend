@@ -519,12 +519,22 @@ class SportsModesMixin:
                 filtered.append(g)
                 continue
             if state_val == 'post' or 'FINAL' in status_val:
-                try:
-                    game_dt = parse_iso(g.get('startTimeUTC', ''))
-                    if visible_start_utc <= game_dt < visible_end_utc:
-                        filtered.append(g)
-                except Exception:
+                start_utc_str = g.get('startTimeUTC', '')
+                if not start_utc_str and g_type == 'racing':
+                    # Racing games (NASCAR/IndyCar/F1) with no startTimeUTC rely on
+                    # their own fetcher-level expiry — if they reached here without
+                    # a start time they've already been deemed current; show them.
                     filtered.append(g)
+                else:
+                    try:
+                        game_dt = parse_iso(start_utc_str)
+                        if visible_start_utc <= game_dt < visible_end_utc:
+                            filtered.append(g)
+                    except Exception:
+                        if g_type != 'racing':
+                            filtered.append(g)
+                        # racing with unparseable startTimeUTC: skip — expiry
+                        # should have been handled at the fetcher level
                 continue
             filtered.append(g)
         filtered.sort(key=_game_sort_key)
