@@ -416,10 +416,12 @@ class SportsIndycarMixin:
                 start_utc = game.get('startTimeUTC', '')
                 expired = now - self._ic_timing_cache['post_since'] > 24 * 3600
                 if not expired and not start_utc:
-                    # No start time — cross-check with ESPN: if ESPN has already
-                    # expired this event (>12 h since start), treat the blob as stale.
+                    # No start time — cross-check with ESPN to detect a stale blob.
+                    # Expire if: ESPN has no IndyCar event at all, OR ESPN's current
+                    # event is 'pre' (next race hasn't started), meaning this blob is
+                    # from a previous race weekend.
                     espn_fallback = self._fetch_indycar_espn_game()
-                    if espn_fallback is None:
+                    if espn_fallback is None or espn_fallback.get('state') == 'pre':
                         expired = True
                 if expired:
                     game = None
