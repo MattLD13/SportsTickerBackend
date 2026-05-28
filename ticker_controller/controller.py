@@ -435,8 +435,6 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
 
     # ================= SINGLE GAME RENDERER =================
     def draw_single_game(self, game):
-        game_hash = self.get_game_hash(game)
-
         if game.get('sport') == 'clock':
             return self.draw_clock_modern()
 
@@ -490,6 +488,8 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         if game.get('type') == 'music' or game.get('sport') == 'music':
             return self.draw_music_card(game)
 
+        game_hash = self.get_game_hash(game)
+
         if game.get('type') != 'weather':
             if game_hash in self.game_render_cache:
                 return self.game_render_cache[game_hash]
@@ -540,12 +540,11 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         return img
 
     def get_game_hash(self, game):
-        s = (
+        return (
             f"{self.mode}_"
             f"{game.get('id')}_{game.get('home_score')}_{game.get('away_score')}_"
             f"{game.get('situation', {}).get('change')}_{game.get('status')}"
         )
-        return hashlib.md5(s.encode()).hexdigest()
 
     def get_item_width(self, game):
         t = game.get('type')
