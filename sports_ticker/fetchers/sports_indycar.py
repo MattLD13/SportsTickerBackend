@@ -16,6 +16,43 @@ _BLOB_BASE            = "https://indycar.blob.core.windows.net/racecontrol"
 _IC_POST_SINCE_FILE   = "indycar_post_since.json"
 _IC_POST_GRACE_SECS   = 12 * 3600   # show FINAL for 12 h after race ends, then hide
 _IMS_LAT = 39.7950
+
+# Approximate race start times (UTC) for the 2025 IndyCar season.
+# Keys are lowercase substrings matched against the blob's eventName.
+# Used to expire stale COLD blobs when the blob carries no startTimeUTC.
+# Times are approximate (±1 h is fine; expiry window is 12 h).
+# Update the relevant entries each season.
+_INDYCAR_SCHEDULE: dict = {
+    'st. pete':          datetime(2025,  3,  2, 18, 0, tzinfo=timezone.utc),
+    'st. petersburg':    datetime(2025,  3,  2, 18, 0, tzinfo=timezone.utc),
+    'thermal':           datetime(2025,  3, 23, 21, 0, tzinfo=timezone.utc),
+    'texas':             datetime(2025,  4,  5, 23, 0, tzinfo=timezone.utc),
+    'long beach':        datetime(2025,  4, 13, 21, 0, tzinfo=timezone.utc),
+    'barber':            datetime(2025,  4, 27, 17, 0, tzinfo=timezone.utc),
+    'indianapolis gp':   datetime(2025,  5, 10, 18, 0, tzinfo=timezone.utc),
+    'indy gp':           datetime(2025,  5, 10, 18, 0, tzinfo=timezone.utc),
+    'indy 500':          datetime(2025,  5, 25, 17, 0, tzinfo=timezone.utc),
+    'indianapolis 500':  datetime(2025,  5, 25, 17, 0, tzinfo=timezone.utc),
+    'detroit':           datetime(2025,  6,  1, 18, 0, tzinfo=timezone.utc),
+    'road america':      datetime(2025,  6, 22, 17, 0, tzinfo=timezone.utc),
+    'mid-ohio':          datetime(2025,  7,  6, 16, 0, tzinfo=timezone.utc),
+    'iowa':              datetime(2025,  7, 19, 22, 0, tzinfo=timezone.utc),
+    'toronto':           datetime(2025,  7, 20, 17, 0, tzinfo=timezone.utc),
+    'nashville':         datetime(2025,  8,  3, 23, 0, tzinfo=timezone.utc),
+    'gateway':           datetime(2025,  8, 23, 23, 0, tzinfo=timezone.utc),
+    'portland':          datetime(2025,  8, 31, 21, 0, tzinfo=timezone.utc),
+    'laguna seca':       datetime(2025,  9, 14, 20, 0, tzinfo=timezone.utc),
+    'monterey':          datetime(2025,  9, 14, 20, 0, tzinfo=timezone.utc),
+}
+
+
+def _indycar_schedule_race_dt(event_name: str):
+    """Return the approximate race start UTC for a known event, or None."""
+    lower = str(event_name or '').lower()
+    for key, race_dt in _INDYCAR_SCHEDULE.items():
+        if key in lower:
+            return race_dt
+    return None
 _IMS_LON = -86.2340
 
 _SESSION_TYPE_MAP = {
@@ -365,8 +402,6 @@ class SportsIndycarMixin:
 
         # Post-race expiry: the timing blob stays stale between race weekends.
         # Hide a finished session once it's been more than 24 h since its start time.
-        # Some events (e.g. Indy 500 COLD state) have no start time in the blob —
-        # those are caught by the post_since tracker in _fetch_indycar instead.
         if state == 'post' and start_time_utc:
             try:
                 start_dt = parse_iso(start_time_utc)
@@ -374,6 +409,14 @@ class SportsIndycarMixin:
                     return None
             except Exception:
                 pass
+
+        # Blobs with no start time (e.g. Indy 500 COLD state) linger indefinitely.
+        # Look up the event in the hardcoded schedule to expire them reliably,
+        # regardless of server restart history.
+        if state == 'post' and not start_time_utc:
+            race_dt = _indycar_schedule_race_dt(event_name) or _indycar_schedule_race_dt(short_event_name)
+            if race_dt and (datetime.now(timezone.utc) - race_dt).total_seconds() > _IC_POST_GRACE_SECS:
+                return None
 
         caution = flag_status in CAUTION_FLAGS
 
