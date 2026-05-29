@@ -12,8 +12,9 @@ from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
 from .racing_flags import LIVE_FLAGS, CAUTION_FLAGS, normalize_flag
 
-_BLOB_BASE     = "https://indycar.blob.core.windows.net/racecontrol"
-_ESPN_IRL_BASE = "http://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard"
+_BLOB_BASE            = "https://indycar.blob.core.windows.net/racecontrol"
+_IC_POST_SINCE_FILE   = "indycar_post_since.json"
+_IC_POST_GRACE_SECS   = 12 * 3600   # show FINAL for 12 h after race ends, then hide
 _IMS_LAT = 39.7950
 _IMS_LON = -86.2340
 
@@ -183,12 +184,30 @@ class SportsIndycarMixin:
 
     def __init_indycar_cache(self):
         if not hasattr(self, '_ic_timing_cache'):
-            self._ic_timing_cache = {'ts': 0.0, 'data': None, 'post_since': None}
+            # Restore post_since from disk so expiry survives server restarts.
+            post_since = None
+            try:
+                with open(_IC_POST_SINCE_FILE) as _f:
+                    _d = json.load(_f)
+                    _v = _d.get('post_since')
+                    if _v:
+                        post_since = float(_v)
+            except Exception:
+                pass
+
+            self._ic_timing_cache = {'ts': 0.0, 'data': None, 'post_since': post_since}
             self._ic_drivers_cache = {'ts': 0.0, 'data': {}}   # car_number → driver dict
             self._ic_weather_cache = {'ts': 0.0, 'data': {}}
             self._ic_timing_ttl   = 8.0     # seconds — poll live data frequently
             self._ic_drivers_ttl  = 300.0   # seconds — driver roster changes rarely
             self._ic_weather_ttl  = 300.0   # seconds — conditions are slower-moving
+
+    def _ic_save_post_since(self, value):
+        """Persist post_since timestamp to disk so expiry survives restarts."""
+        try:
+            save_json_atomically(_IC_POST_SINCE_FILE, {'post_since': value} if value else {})
+        except Exception as exc:
+            print(f"[IndyCar] Could not save post_since: {exc}")
 
     def _fetch_indycar_drivers(self, force=False):
         """Fetch and cache driversfeed.json indexed by car number."""
@@ -251,127 +270,6 @@ class SportsIndycarMixin:
             print(f"[IndyCar] weather fetch error: {exc}")
             return self._ic_weather_cache.get('data') or {}
 
-    def _fetch_indycar_espn_game(self):
-        """Return a minimal IndyCar game object from ESPN IRL when the blob has no data."""
-        try:
-            r = self.session.get(_ESPN_IRL_BASE, headers=HEADERS,
-                                 params={'_': int(time.time() * 1000)},
-                                 timeout=TIMEOUTS.get('default', 10))
-            r.raise_for_status()
-            events = r.json().get('events', [])
-        except Exception as exc:
-            print(f"[IndyCar] ESPN fallback fetch error: {exc}")
-            return None
-
-        now_utc = datetime.now(timezone.utc)
-        # Fetch driversfeed once up front — keyed by car number
-        drivers_index = self._fetch_indycar_drivers()
-
-        for event in events:
-            competitions = event.get('competitions', [])
-            if not competitions:
-                continue
-            comp      = competitions[0]
-            start_str = comp.get('startDate') or comp.get('date') or event.get('date', '')
-            status    = (comp.get('status') or {}).get('type', {})
-            state     = status.get('state', 'pre')
-
-            # Skip post-race events that ended more than 12 hours ago
-            if state == 'post' and start_str:
-                try:
-                    start_dt = parse_iso(start_str)
-                    if start_dt and (now_utc - start_dt).total_seconds() > 12 * 3600:
-                        continue
-                except Exception:
-                    pass
-
-            event_name = event.get('name', 'IndyCar')
-            short_name = _simplify_indycar_event_name(event_name, '')
-
-            if state == 'post':
-                status_display = 'FINAL'
-            elif state == 'in':
-                status_display = 'LIVE'
-            else:
-                if start_str:
-                    try:
-                        start_dt = parse_iso(start_str)
-                        utc_off  = _core.state.get('utc_offset', -5)
-                        local_dt = start_dt.astimezone(timezone(timedelta(hours=utc_off)))
-                        status_display = f"Starts {local_dt.strftime('%I:%M %p').lstrip('0')}"
-                    except Exception:
-                        status_display = 'Starts Soon'
-                else:
-                    status_display = 'Starts Soon'
-
-            drivers = []
-            for c in comp.get('competitors', []):
-                athlete   = c.get('athlete', {})
-                full_name = athlete.get('fullName', '')
-                parts     = full_name.rsplit(' ', 1)
-                first, last = (parts[0], parts[1]) if len(parts) == 2 else ('', full_name)
-                pos = c.get('order', 0)
-
-                # Resolve car number + team from hardcoded 2026 roster
-                car_num, team_name = _INDYCAR_2026_ROSTER.get(
-                    full_name.strip().lower(), (str(pos), ''))
-
-                # Use car number to look up driversfeed for illustrations/endplate
-                drv_feed  = drivers_index.get(car_num, {})
-                car_illus = str(drv_feed.get('carillustration') or '').strip()
-                endplate  = str(drv_feed.get('endplatesmall') or drv_feed.get('endplatelarge') or '').strip()
-                headshot  = str(drv_feed.get('headshot') or '').strip()
-                logo_url  = endplate or headshot
-                pri_hex, sec_hex = _team_livery(team_name)
-
-                drivers.append({
-                    'pos':              pos,
-                    'name':             full_name,
-                    'abbr':             _build_abbr(first, last),
-                    'car':              car_num,
-                    'team':             team_name,
-                    'team_logo':        logo_url,
-                    'car_illustration': car_illus,
-                    'livery_primary':   pri_hex,
-                    'livery_secondary': sec_hex,
-                    'gap':              '',
-                    'laps':             '',
-                    'speed':            '',
-                    'best_time':        '',
-                    'status':           'Active',
-                    'on_track':         state == 'in',
-                })
-
-            return {
-                'id':           str(event.get('id', 'indycar_espn')),
-                'type':         'racing',
-                'sport':        'indycar',
-                'state':        state,
-                'status':       status_display,
-                'is_shown':     True,
-                'startTimeUTC': start_str,
-                'away_abbr':    short_name,
-                'home_abbr':    'Race',
-                'away_score':   '',
-                'home_score':   '',
-                'indycar': {
-                    'event_name':     short_name,
-                    'short_name':     short_name,
-                    'track_name':     '',
-                    'session_type':   'Race',
-                    'session_name':   'Race',
-                    'lap':            0,
-                    'total_laps':     0,
-                    'laps_remaining': 0,
-                    'time_to_go':     '',
-                    'caution':        False,
-                    'flag':           '',
-                    'drivers':        drivers,
-                    'weather':        {},
-                },
-            }
-        return None
-
     def _fetch_indycar(self, force=False):
         """Fetch live IndyCar session and return a list of game objects (0 or 1)."""
         self.__init_indycar_cache()
@@ -395,44 +293,34 @@ class SportsIndycarMixin:
 
         timing = payload.get('timing_results', {})
         if not timing:
-            self._ic_timing_cache['post_since'] = None
-            espn = self._fetch_indycar_espn_game()
-            return [espn] if espn else []
+            # Blob returned empty — no active session.
+            if self._ic_timing_cache.get('post_since'):
+                self._ic_timing_cache['post_since'] = None
+                self._ic_save_post_since(None)
+            self._ic_timing_cache['ts'] = now
+            self._ic_timing_cache['data'] = None
+            return []
 
         drivers_index = self._fetch_indycar_drivers()
         game = self._build_indycar_game(timing, drivers_index)
-        espn_fallback = None   # populated at most once if needed
 
         if game:
             game.setdefault('indycar', {})['weather'] = self._fetch_indycar_weather()
 
-            # Track how long we've been stuck in a post state so we can expire
-            # stale blobs (e.g. Indy 500 COLD status lingering for days with no
-            # start time in the heartbeat).
             if game.get('state') == 'post':
+                # Set post_since on first entry into post state; persist to disk
+                # so the expiry window survives server restarts.
                 if not self._ic_timing_cache.get('post_since'):
                     self._ic_timing_cache['post_since'] = now
+                    self._ic_save_post_since(now)
 
-                start_utc = game.get('startTimeUTC', '')
-                expired = now - self._ic_timing_cache['post_since'] > 24 * 3600
-                if not expired and not start_utc:
-                    # No start time — cross-check with ESPN to detect a stale blob.
-                    # Expire if: ESPN has no IndyCar event at all, OR ESPN's current
-                    # event is 'pre' (next race hasn't started), meaning this blob is
-                    # from a previous race weekend.
-                    espn_fallback = self._fetch_indycar_espn_game()
-                    if espn_fallback is None or espn_fallback.get('state') == 'pre':
-                        expired = True
-                if expired:
+                if (now - self._ic_timing_cache['post_since']) > _IC_POST_GRACE_SECS:
                     game = None
             else:
-                self._ic_timing_cache['post_since'] = None
-
-        if not game:
-            espn = espn_fallback or self._fetch_indycar_espn_game()
-            if espn:
-                self._ic_timing_cache = {'ts': now, 'data': None, 'post_since': None}
-                return [espn]
+                # Live or pre — reset post_since if it was set.
+                if self._ic_timing_cache.get('post_since'):
+                    self._ic_timing_cache['post_since'] = None
+                    self._ic_save_post_since(None)
 
         self._ic_timing_cache['ts'] = now
         self._ic_timing_cache['data'] = game
