@@ -83,7 +83,9 @@ class GolfMixin:
             for i, p in enumerate(top3):
                 y = row_ys[i]
                 pos   = str(p.get('pos', '-')).upper()[:3]
-                name  = str(p.get('name', '')).upper()[:10]
+                raw_name = str(p.get('name', '')).strip()
+                parts = raw_name.split()
+                name = (f"{parts[0][0]}. {parts[-1]}" if len(parts) >= 2 else raw_name).upper()[:10]
                 total = p.get('total')
                 try:
                     thru = int(p.get('thru', 0) or 0)
@@ -215,10 +217,9 @@ class GolfMixin:
             if pos in ('WD', 'DQ'):
                 continue
 
-            name = normalize_special_chars(str(p.get('name', 'UNKNOWN'))).upper()
-            if len(name) > 11:
-                name = name.split()[-1].upper()
-            name = name[:11]
+            raw_name = normalize_special_chars(str(p.get('name', 'UNKNOWN'))).strip()
+            parts = raw_name.split()
+            name = (f"{parts[0][0]}. {parts[-1]}" if len(parts) >= 2 else raw_name).upper()[:11]
 
             total = _as_int(p.get('total'), 0)
             today = _as_int_or_none(p.get('today'))
