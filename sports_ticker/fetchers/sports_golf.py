@@ -200,10 +200,9 @@ class SportsGolfMixin:
 
                 status_obj = c.get('status', {}) if isinstance(c.get('status'), dict) else {}
                 athlete = c.get('athlete', {}) if isinstance(c.get('athlete'), dict) else {}
-                short_name = str(athlete.get('shortName') or athlete.get('displayName') or 'UNKNOWN').strip()
-                if short_name:
-                    short_name = short_name.split()[-1].upper()
-                short_name = short_name[:14]
+                raw_name = str(athlete.get('shortName') or athlete.get('displayName') or 'UNKNOWN').strip()
+                parts = raw_name.split()
+                short_name = (f"{parts[0][0]}. {parts[-1]}" if len(parts) >= 2 else raw_name).upper()[:14]
 
                 total_val = self._golf_parse_relative_score(c.get('score'))
                 if total_val is None:
