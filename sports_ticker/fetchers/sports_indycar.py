@@ -14,45 +14,9 @@ from .racing_flags import LIVE_FLAGS, CAUTION_FLAGS, normalize_flag
 
 _BLOB_BASE            = "https://indycar.blob.core.windows.net/racecontrol"
 _IC_POST_SINCE_FILE   = "indycar_post_since.json"
+_IC_EXPIRED_IDS_FILE  = "indycar_expired_events.json"
 _IC_POST_GRACE_SECS   = 12 * 3600   # show FINAL for 12 h after race ends, then hide
 _IMS_LAT = 39.7950
-
-# Approximate race start times (UTC) for the 2025 IndyCar season.
-# Keys are lowercase substrings matched against the blob's eventName.
-# Used to expire stale COLD blobs when the blob carries no startTimeUTC.
-# Times are approximate (±1 h is fine; expiry window is 12 h).
-# Update the relevant entries each season.
-_INDYCAR_SCHEDULE: dict = {
-    'st. pete':          datetime(2025,  3,  2, 18, 0, tzinfo=timezone.utc),
-    'st. petersburg':    datetime(2025,  3,  2, 18, 0, tzinfo=timezone.utc),
-    'thermal':           datetime(2025,  3, 23, 21, 0, tzinfo=timezone.utc),
-    'texas':             datetime(2025,  4,  5, 23, 0, tzinfo=timezone.utc),
-    'long beach':        datetime(2025,  4, 13, 21, 0, tzinfo=timezone.utc),
-    'barber':            datetime(2025,  4, 27, 17, 0, tzinfo=timezone.utc),
-    'indianapolis gp':   datetime(2025,  5, 10, 18, 0, tzinfo=timezone.utc),
-    'indy gp':           datetime(2025,  5, 10, 18, 0, tzinfo=timezone.utc),
-    'indy 500':          datetime(2025,  5, 25, 17, 0, tzinfo=timezone.utc),
-    'indianapolis 500':  datetime(2025,  5, 25, 17, 0, tzinfo=timezone.utc),
-    'detroit':           datetime(2025,  6,  1, 18, 0, tzinfo=timezone.utc),
-    'road america':      datetime(2025,  6, 22, 17, 0, tzinfo=timezone.utc),
-    'mid-ohio':          datetime(2025,  7,  6, 16, 0, tzinfo=timezone.utc),
-    'iowa':              datetime(2025,  7, 19, 22, 0, tzinfo=timezone.utc),
-    'toronto':           datetime(2025,  7, 20, 17, 0, tzinfo=timezone.utc),
-    'nashville':         datetime(2025,  8,  3, 23, 0, tzinfo=timezone.utc),
-    'gateway':           datetime(2025,  8, 23, 23, 0, tzinfo=timezone.utc),
-    'portland':          datetime(2025,  8, 31, 21, 0, tzinfo=timezone.utc),
-    'laguna seca':       datetime(2025,  9, 14, 20, 0, tzinfo=timezone.utc),
-    'monterey':          datetime(2025,  9, 14, 20, 0, tzinfo=timezone.utc),
-}
-
-
-def _indycar_schedule_race_dt(event_name: str):
-    """Return the approximate race start UTC for a known event, or None."""
-    lower = str(event_name or '').lower()
-    for key, race_dt in _INDYCAR_SCHEDULE.items():
-        if key in lower:
-            return race_dt
-    return None
 _IMS_LON = -86.2340
 
 _SESSION_TYPE_MAP = {
@@ -64,46 +28,6 @@ _SESSION_TYPE_MAP = {
 }
 
 _LIVE_FLAGS = LIVE_FLAGS  # imported from racing_flags
-
-# 2026 IndyCar roster: lowercase full name → (car_number, team_name)
-# Used by the ESPN fallback to resolve car numbers before looking up driversfeed.
-_INDYCAR_2026_ROSTER = {
-    'álex palou':          ('10', 'Chip Ganassi Racing'),
-    'alex palou':          ('10', 'Chip Ganassi Racing'),
-    'pato o\'ward':        ('5',  'Arrow McLaren'),
-    'patricio o\'ward':    ('5',  'Arrow McLaren'),
-    'scott dixon':         ('9',  'Chip Ganassi Racing'),
-    'josef newgarden':     ('2',  'Team Penske'),
-    'will power':          ('26', 'Andretti Global'),
-    'scott mclaughlin':    ('3',  'Team Penske'),
-    'kyle kirkwood':       ('27', 'Andretti Global'),
-    'nolan siegel':        ('6',  'Arrow McLaren'),
-    'christian lundgaard': ('7',  'Arrow McLaren'),
-    'kyffin simpson':      ('8',  'Chip Ganassi Racing'),
-    'marcus armstrong':    ('66', 'Meyer Shank Racing'),
-    'marcus ericsson':     ('28', 'Andretti Global'),
-    'romain grosjean':     ('18', 'Dale Coyne Racing'),
-    'alexander rossi':     ('20', 'Ed Carpenter Racing'),
-    'christian rasmussen': ('21', 'Ed Carpenter Racing'),
-    'david malukas':       ('12', 'Team Penske'),
-    'felix rosenqvist':    ('60', 'Meyer Shank Racing'),
-    'helio castroneves':   ('06', 'Meyer Shank Racing'),
-    'takuma sato':         ('75', 'Rahal Letterman Lanigan Racing'),
-    'rinus veekay':        ('76', 'Juncos Hollinger Racing'),
-    'conor daly':          ('23', 'Dreyer & Reinbold Racing'),
-    'jack harvey':         ('24', 'Dreyer & Reinbold Racing'),
-    'louis foster':        ('45', 'Rahal Letterman Lanigan Racing'),
-    'ryan hunter-reay':    ('31', 'Arrow McLaren'),
-    'katherine legge':     ('11', 'HMD Motorsports w/ AJ Foyt Racing'),
-    'mick schumacher':     ('47', 'Rahal Letterman Lanigan Racing'),
-    'graham rahal':        ('15', 'Rahal Letterman Lanigan Racing'),
-    'dennis hauger':       ('19', 'Dale Coyne Racing'),
-    'jacob abel':          ('51', 'Abel Motorsports'),
-    'sting ray robb':      ('77', 'Juncos Hollinger Racing'),
-    'caio collet':         ('4',  'A.J. Foyt Enterprises'),
-    'santino ferrucci':    ('14', 'A.J. Foyt Enterprises'),
-    'ed carpenter':        ('33', 'Ed Carpenter Racing'),
-}
 
 # Team livery colors keyed by lowercased team name fragments
 _INDYCAR_LIVERIES = {
@@ -221,30 +145,46 @@ class SportsIndycarMixin:
 
     def __init_indycar_cache(self):
         if not hasattr(self, '_ic_timing_cache'):
-            # Restore post_since from disk so expiry survives server restarts.
             post_since = None
             try:
                 with open(_IC_POST_SINCE_FILE) as _f:
-                    _d = json.load(_f)
-                    _v = _d.get('post_since')
+                    _v = json.load(_f).get('post_since')
                     if _v:
                         post_since = float(_v)
             except Exception:
                 pass
 
-            self._ic_timing_cache = {'ts': 0.0, 'data': None, 'post_since': post_since}
-            self._ic_drivers_cache = {'ts': 0.0, 'data': {}}   # car_number → driver dict
+            expired_ids: set = set()
+            try:
+                with open(_IC_EXPIRED_IDS_FILE) as _f:
+                    expired_ids = set(json.load(_f).get('ids', []))
+            except Exception:
+                pass
+
+            self._ic_timing_cache  = {'ts': 0.0, 'data': None, 'post_since': post_since}
+            self._ic_expired_ids   = expired_ids
+            self._ic_drivers_cache = {'ts': 0.0, 'data': {}}
             self._ic_weather_cache = {'ts': 0.0, 'data': {}}
-            self._ic_timing_ttl   = 8.0     # seconds — poll live data frequently
-            self._ic_drivers_ttl  = 300.0   # seconds — driver roster changes rarely
-            self._ic_weather_ttl  = 300.0   # seconds — conditions are slower-moving
+            self._ic_timing_ttl    = 8.0
+            self._ic_drivers_ttl   = 300.0
+            self._ic_weather_ttl   = 300.0
 
     def _ic_save_post_since(self, value):
-        """Persist post_since timestamp to disk so expiry survives restarts."""
         try:
             save_json_atomically(_IC_POST_SINCE_FILE, {'post_since': value} if value else {})
         except Exception as exc:
             print(f"[IndyCar] Could not save post_since: {exc}")
+
+    def _ic_expire_event(self, event_id: str):
+        """Mark event_id as permanently expired and clear the post_since timer."""
+        if event_id and event_id != 'indycar_live':
+            self._ic_expired_ids.add(event_id)
+            try:
+                save_json_atomically(_IC_EXPIRED_IDS_FILE, {'ids': list(self._ic_expired_ids)[-100:]})
+            except Exception as exc:
+                print(f"[IndyCar] Could not save expired IDs: {exc}")
+        self._ic_timing_cache['post_since'] = None
+        self._ic_save_post_since(None)
 
     def _fetch_indycar_drivers(self, force=False):
         """Fetch and cache driversfeed.json indexed by car number."""
@@ -343,18 +283,37 @@ class SportsIndycarMixin:
 
         if game:
             game.setdefault('indycar', {})['weather'] = self._fetch_indycar_weather()
+            event_id = game.get('id', '')
 
             if game.get('state') == 'post':
-                # Set post_since on first entry into post state; persist to disk
-                # so the expiry window survives server restarts.
-                if not self._ic_timing_cache.get('post_since'):
-                    self._ic_timing_cache['post_since'] = now
-                    self._ic_save_post_since(now)
-
-                if (now - self._ic_timing_cache['post_since']) > _IC_POST_GRACE_SECS:
+                # Layer 1: permanently expired event IDs (auto-learned, survives restarts).
+                if event_id in self._ic_expired_ids:
                     game = None
+
+                # Layer 2: start_time present → expire 24 h after race start.
+                if game:
+                    start_utc = game.get('startTimeUTC', '')
+                    if start_utc:
+                        try:
+                            start_dt = parse_iso(start_utc)
+                            if start_dt and (datetime.now(timezone.utc) - start_dt).total_seconds() > 24 * 3600:
+                                self._ic_expire_event(event_id)
+                                game = None
+                        except Exception:
+                            pass
+
+                # Layer 3: no start_time → use post_since timer (12 h grace window).
+                # post_since is persisted to disk so restarts don't reset it.
+                if game and not game.get('startTimeUTC'):
+                    if not self._ic_timing_cache.get('post_since'):
+                        self._ic_timing_cache['post_since'] = now
+                        self._ic_save_post_since(now)
+                    if (now - self._ic_timing_cache['post_since']) > _IC_POST_GRACE_SECS:
+                        self._ic_expire_event(event_id)
+                        game = None
+
             else:
-                # Live or pre — reset post_since if it was set.
+                # Live or pre — clear post_since if it lingered.
                 if self._ic_timing_cache.get('post_since'):
                     self._ic_timing_cache['post_since'] = None
                     self._ic_save_post_since(None)
@@ -398,24 +357,6 @@ class SportsIndycarMixin:
                 if start_dt and abs((datetime.now(timezone.utc) - start_dt).total_seconds()) > 30 * 3600:
                     return None
             except Exception:
-                return None
-
-        # Post-race expiry: the timing blob stays stale between race weekends.
-        # Hide a finished session once it's been more than 24 h since its start time.
-        if state == 'post' and start_time_utc:
-            try:
-                start_dt = parse_iso(start_time_utc)
-                if start_dt and (datetime.now(timezone.utc) - start_dt).total_seconds() > 24 * 3600:
-                    return None
-            except Exception:
-                pass
-
-        # Blobs with no start time (e.g. Indy 500 COLD state) linger indefinitely.
-        # Look up the event in the hardcoded schedule to expire them reliably,
-        # regardless of server restart history.
-        if state == 'post' and not start_time_utc:
-            race_dt = _indycar_schedule_race_dt(event_name) or _indycar_schedule_race_dt(short_event_name)
-            if race_dt and (datetime.now(timezone.utc) - race_dt).total_seconds() > _IC_POST_GRACE_SECS:
                 return None
 
         caution = flag_status in CAUTION_FLAGS
