@@ -21,11 +21,23 @@ from ticker_controller.modes.indycar import (
     _trim_transparent_padding,
 )
 from sports_ticker.fetchers.sports_nascar import (
-    _NCS_2026,
+    _NASCAR_IMAGE_LOOKUP,
     _NASCAR_IMG_BASE,
+    _NASCAR_SCHEDULE_URL,
+    _nascar_build_image_lookup,
     _nascar_car_image_url,
     _nascar_car_image_candidates,
 )
+
+import datetime as _dt
+
+
+def refresh_image_lookup():
+    """Populate _NASCAR_IMAGE_LOOKUP by fetching this year's official schedule."""
+    year = _dt.datetime.now(_dt.timezone.utc).year
+    r = requests.get(_NASCAR_SCHEDULE_URL.format(year=year), headers=HEADERS, timeout=10)
+    r.raise_for_status()
+    _NASCAR_IMAGE_LOOKUP.update(_nascar_build_image_lookup(r.json()))
 
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 OUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'previews', 'nascar', 'cars')
@@ -73,16 +85,19 @@ def download_car(race_id, car_num, name, pos):
 
 
 def main():
+    print("Fetching NASCAR schedule...")
+    refresh_image_lookup()
+
     print("Fetching live NASCAR feed...")
     race_id, run_name, cars = fetch_live_cars()
     print(f"Race: {run_name}  (race_id={race_id})")
     print(f"Cars in feed: {len(cars)}")
 
-    entry = _NCS_2026.get(race_id)
+    entry = _NASCAR_IMAGE_LOOKUP.get(race_id)
     if entry:
         print(f"Map entry: race #{entry[0]} at {entry[1]}  ({entry[2]})")
     else:
-        print(f"WARNING: race_id {race_id} is NOT in _NCS_2026 — image URLs will be empty!")
+        print(f"WARNING: race_id {race_id} is NOT in the schedule lookup — image URLs will be empty!")
 
     os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -101,7 +116,7 @@ def main():
             print(f"  404  {label}  {url}")
             missing.append((car_num, name, url))
         elif status == 'no_url':
-            print(f"  NOURL {label}  (race_id not in _NCS_2026)")
+            print(f"  NOURL {label}  (race_id not in schedule lookup)")
             no_url.append((car_num, name))
         else:
             print(f"  ERR  {label}  {status}")

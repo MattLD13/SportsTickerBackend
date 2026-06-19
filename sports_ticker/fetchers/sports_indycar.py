@@ -20,56 +20,129 @@ _IC_POST_GRACE_SECS   = 12 * 3600   # show FINAL for 12 h after race ends, then 
 _IMS_LAT = 39.7950
 _IMS_LON = -86.2340
 
-# Season schedule (race-day start times only — no separate Practice/Qualifying
-# times are published here). Used to show an accurate "Race starts at X" card
-# before IndyCar's own live timing blob starts reporting a session.
-_IC_SCHEDULE_URL     = "https://Bmorganqwe98.github.io/racing-2026-calendar/indycar.ics"
-_IC_SCHEDULE_TTL     = 3600.0
-_IC_RACE_DURATION_MIN = 180
+# Race-day times for the whole season come from ESPN (same API the F1 fetcher
+# uses, year resolved at request time). IndyCar publishes no API for
+# Practice/Qualifying/Warmup times, so those are scraped from indycar.com's
+# own schedule pages for the *current* race weekend only — that's the only
+# weekend ever actually displayed, so the rest of the season stays race-day-only.
+_IC_ESPN_SCOREBOARD     = "http://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard"
+_IC_SCHEDULE_INDEX_URL  = "https://www.indycar.com/Schedule"
+_IC_SCHEDULE_TTL        = 3600.0
+_IC_INDEX_TTL           = 6 * 3600.0
+_IC_EVENT_DETAIL_TTL    = 1800.0
 
-_ICS_VEVENT_RE  = re.compile(r'BEGIN:VEVENT(.*?)END:VEVENT', re.DOTALL)
-_ICS_SUMMARY_RE = re.compile(r'^SUMMARY:(.*)$', re.MULTILINE)
-_ICS_DTSTART_RE = re.compile(r'^DTSTART;TZID=([^:]+):(\d{8}T\d{6})$', re.MULTILINE)
+_IC_SESSION_DURATION_MIN = {
+    'Practice 1': 90, 'Practice 2': 90, 'Practice 3': 90, 'Practice': 90,
+    'Qualifying': 60, 'Fast 12': 30, 'Fast 6': 20, 'Fast 10': 30,
+    'Warmup': 30, 'Race': 180,
+}
+_IC_DEFAULT_DURATION_MIN = 60
+
+_IC_INDEX_HREF_RE = re.compile(r'href="/Schedule/(\d{4})/([^"]+)"')
+_IC_DAY_HEADER_RE = re.compile(r'<h3>[A-Za-z]+, ([A-Za-z]+) (\d{1,2})</h3>')
+_IC_ENTRY_RE = re.compile(
+    r'<div class="schedule-entry">.*?<div class="schedule-time">([^<]+)</div>'
+    r'.*?<div class="schedule-description">([^<]+)</div>',
+    re.DOTALL,
+)
 
 
-def _ic_parse_schedule_ics(text):
-    """Parse the community IndyCar .ics feed into [(event_name, start_utc), ...]."""
+def _ic_parse_espn_schedule(events):
+    """Parse the ESPN IndyCar scoreboard's events into
+    [(race_name, session_name, start_utc), ...] — race-day times only."""
     sessions = []
-    for block in _ICS_VEVENT_RE.findall(text or ''):
-        m_summary = _ICS_SUMMARY_RE.search(block)
-        m_start   = _ICS_DTSTART_RE.search(block)
-        if not m_summary or not m_start:
+    for e in events or []:
+        if not isinstance(e, dict):
             continue
-        tzid, local_raw = m_start.groups()
+        name = str(e.get('shortName') or e.get('name') or '').strip()
+        raw  = str(e.get('date') or '').strip()
+        if not name or not raw:
+            continue
         try:
-            tz = ZoneInfo(tzid)
-            local_dt = datetime.strptime(local_raw, '%Y%m%dT%H%M%S').replace(tzinfo=tz)
-            start_utc = local_dt.astimezone(timezone.utc)
+            start = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
         except Exception:
             continue
-        name = m_summary.group(1).strip()
-        name = re.sub(r'^IndyCar\s+', '', name)
-        name = re.sub(r'\s*-\s*Race\s*$', '', name).strip()
-        sessions.append((name, start_utc))
-    sessions.sort(key=lambda x: x[1])
+        sessions.append((name, 'Race', start))
+    sessions.sort(key=lambda x: x[2])
+    return sessions
+
+
+def _ic_parse_schedule_index(html):
+    """Return the season's [(year, slug), ...] in chronological order from
+    indycar.com's /Schedule index page's "Full Schedule" section (the page
+    repeats the same list a second time further down for mobile, so stop at
+    the first repeated slug)."""
+    marker = html.find('Full Schedule</h2>')
+    if marker == -1:
+        return []
+    body = html[marker:]
+    ordered = []
+    seen_slugs = set()
+    for year, slug in _IC_INDEX_HREF_RE.findall(body):
+        if ordered and ordered[-1] == (year, slug):
+            continue   # same event linked twice within its own card
+        if slug in seen_slugs:
+            break       # page repeats the whole list a second time
+        seen_slugs.add(slug)
+        ordered.append((year, slug))
+    return ordered
+
+
+def _ic_parse_event_sessions(html, year, race_name):
+    """Parse Practice/Qualifying/Warmup/Race times off an indycar.com event
+    page into [(race_name, session_name, start_utc), ...]. Times on these
+    pages are always shown in US Eastern regardless of the track's actual
+    timezone."""
+    markers = []
+    for m in _IC_DAY_HEADER_RE.finditer(html):
+        markers.append((m.start(), 'day', (m.group(1), m.group(2))))
+    for m in _IC_ENTRY_RE.finditer(html):
+        markers.append((m.start(), 'entry', (m.group(1).strip(), m.group(2).strip())))
+    markers.sort(key=lambda x: x[0])
+
+    sessions = []
+    cur_day = None
+    tz = ZoneInfo('America/New_York')
+    for _, kind, val in markers:
+        if kind == 'day':
+            cur_day = val
+            continue
+        if not cur_day:
+            continue
+        time_str, desc = val
+        if not desc.startswith('NTT INDYCAR SERIES'):
+            continue   # support-series or ancillary entry, not on-track IndyCar time
+        session_name = desc.split(' - ', 1)[-1].strip()
+        time_str = time_str.replace(' ET', '').strip()
+        month_str, day_str = cur_day
+        try:
+            local_dt = datetime.strptime(f"{month_str} {day_str} {year} {time_str}", '%b %d %Y %I:%M%p')
+            local_dt = local_dt.replace(tzinfo=tz)
+        except Exception:
+            continue
+        sessions.append((race_name, session_name, local_dt.astimezone(timezone.utc)))
     return sessions
 
 
 def _ic_find_schedule_session(sessions, now_utc):
-    """Return the most relevant race — live, recently finished, or next up —
-    as (event_name, start_utc, end_utc, state), like other sports on this
-    ticker the next scheduled race is always shown regardless of how far off.
+    """Return the most relevant session — live, recently finished, or next up
+    — as (race_name, session_name, start_utc, end_utc, state), like other
+    sports on this ticker the next scheduled session is always shown
+    regardless of how far off it is.
     """
     best_post = None
     next_pre = None
-    for name, start in sessions:
-        end = start + timedelta(minutes=_IC_RACE_DURATION_MIN)
+    for race_name, session_name, start in sessions:
+        duration = _IC_SESSION_DURATION_MIN.get(session_name, _IC_DEFAULT_DURATION_MIN)
+        end = start + timedelta(minutes=duration)
         if start <= now_utc <= end:
-            return (name, start, end, 'in')
+            return (race_name, session_name, start, end, 'in')
         if end < now_utc and (now_utc - end).total_seconds() < 12 * 3600:
-            best_post = (name, start, end, 'post')
+            best_post = (race_name, session_name, start, end, 'post')
         elif start > now_utc and next_pre is None:
-            next_pre = (name, start, end, 'pre')
+            next_pre = (race_name, session_name, start, end, 'pre')
     return best_post or next_pre
 
 _SESSION_TYPE_MAP = {
@@ -219,27 +292,85 @@ class SportsIndycarMixin:
             self._ic_drivers_cache = {'ts': 0.0, 'data': {}}
             self._ic_weather_cache = {'ts': 0.0, 'data': {}}
             self._ic_schedule_cache = {'ts': 0.0, 'data': []}
+            self._ic_index_cache   = {'ts': 0.0, 'data': []}
+            self._ic_event_cache   = {}    # "{year}/{slug}" -> {'ts': ..., 'data': [...]}
             self._ic_timing_ttl    = 8.0
             self._ic_drivers_ttl   = 300.0
             self._ic_weather_ttl   = 300.0
 
     def _fetch_indycar_schedule(self, force=False):
-        """Fetch and cache the season's race-day schedule (community iCal)."""
+        """Fetch and cache the season's schedule: race-day times for every
+        weekend from ESPN, with full Practice/Qualifying/Warmup/Race times
+        for the current weekend scraped from indycar.com layered on top
+        (IndyCar publishes no API for session-level times)."""
         self.__init_indycar_cache()
         now = time.time()
         cache = self._ic_schedule_cache
         if not force and (now - cache['ts']) < _IC_SCHEDULE_TTL and cache['data']:
             return cache['data']
         try:
-            r = self.session.get(_IC_SCHEDULE_URL, headers=HEADERS,
+            year = datetime.now(timezone.utc).year
+            r = self.session.get(_IC_ESPN_SCOREBOARD, headers=HEADERS,
+                                 params={'dates': year},
                                  timeout=TIMEOUTS.get('default', 10))
             r.raise_for_status()
-            sessions = _ic_parse_schedule_ics(r.text)
-            self._ic_schedule_cache = {'ts': now, 'data': sessions}
-            return sessions
+            espn_sessions = _ic_parse_espn_schedule(r.json().get('events', []))
         except Exception as exc:
             print(f"[IndyCar] schedule fetch error: {exc}")
             return cache.get('data', [])
+
+        sessions = list(espn_sessions)
+        try:
+            weekend = self._ic_fetch_current_weekend_sessions(espn_sessions, now)
+            if weekend:
+                race_name, weekend_sessions = weekend
+                sessions = [s for s in sessions if s[0] != race_name] + weekend_sessions
+        except Exception as exc:
+            print(f"[IndyCar] weekend session scrape error: {exc}")
+
+        sessions.sort(key=lambda x: x[2])
+        self._ic_schedule_cache = {'ts': now, 'data': sessions}
+        return sessions
+
+    def _ic_fetch_current_weekend_sessions(self, espn_sessions, now):
+        """Scrape indycar.com for the current weekend's per-session times.
+        Returns (race_name, [(race_name, session_name, start_utc), ...]) or
+        None if there's no relevant weekend or the scrape didn't pan out.
+        """
+        match = _ic_find_schedule_session(espn_sessions, datetime.now(timezone.utc)) if espn_sessions else None
+        if not match:
+            return None
+        race_name = match[0]
+        try:
+            idx = next(i for i, (n, _, _) in enumerate(espn_sessions) if n == race_name)
+        except StopIteration:
+            return None
+
+        idx_cache = self._ic_index_cache
+        if (now - idx_cache['ts']) >= _IC_INDEX_TTL or not idx_cache['data']:
+            r = self.session.get(_IC_SCHEDULE_INDEX_URL, headers=HEADERS,
+                                 timeout=TIMEOUTS.get('default', 10))
+            r.raise_for_status()
+            idx_cache['data'] = _ic_parse_schedule_index(r.text)
+            idx_cache['ts'] = now
+        slugs = idx_cache['data']
+        if idx >= len(slugs):
+            return None
+        slug_year, slug = slugs[idx]
+
+        cache_key = f"{slug_year}/{slug}"
+        entry = self._ic_event_cache.get(cache_key)
+        if not entry or (now - entry['ts']) >= _IC_EVENT_DETAIL_TTL:
+            r = self.session.get(f"{_IC_SCHEDULE_INDEX_URL}/{slug_year}/{slug}", headers=HEADERS,
+                                 timeout=TIMEOUTS.get('default', 10))
+            r.raise_for_status()
+            weekend_sessions = _ic_parse_event_sessions(r.text, int(slug_year), race_name)
+            entry = {'ts': now, 'data': weekend_sessions}
+            self._ic_event_cache[cache_key] = entry
+        weekend_sessions = entry['data']
+        if not weekend_sessions:
+            return None
+        return race_name, weekend_sessions
 
     def _build_indycar_schedule_game(self, now_utc):
         """Build a lightweight game object from the season schedule alone —
@@ -248,9 +379,10 @@ class SportsIndycarMixin:
         match = _ic_find_schedule_session(sessions, now_utc) if sessions else None
         if not match:
             return None
-        name, start_utc, _end_utc, state = match
+        race_name, session_name, start_utc, _end_utc, state = match
 
-        short_event_name = _simplify_indycar_event_name(name, name)
+        short_event_name = _simplify_indycar_event_name(race_name, race_name)
+        short_session_name = _simplify_indycar_session(session_name, session_name)
         start_time_utc = start_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
 
         if state == 'in':
@@ -266,7 +398,7 @@ class SportsIndycarMixin:
                 status_display = 'Starts Soon'
 
         return {
-            'id':           f"indycar_sched_{start_utc.strftime('%Y%m%d')}",
+            'id':           f"indycar_sched_{start_utc.strftime('%Y%m%dT%H%M')}",
             'type':         'racing',
             'sport':        'indycar',
             'state':        state,
@@ -274,15 +406,15 @@ class SportsIndycarMixin:
             'is_shown':     True,
             'startTimeUTC': start_time_utc,
             'away_abbr':    short_event_name,
-            'home_abbr':    'Race',
+            'home_abbr':    short_session_name,
             'away_score':   '',
             'home_score':   '',
             'indycar': {
                 'event_name':   short_event_name,
                 'short_name':   short_event_name,
                 'track_name':   '',
-                'session_type': 'Race',
-                'session_name': 'Race',
+                'session_type': short_session_name,
+                'session_name': short_session_name,
                 'lap':          0,
                 'total_laps':   0,
                 'laps_remaining': 0,
@@ -407,11 +539,6 @@ class SportsIndycarMixin:
         drivers_index = self._fetch_indycar_drivers()
         game = self._build_indycar_game(timing, drivers_index)
 
-        if not game:
-            # Blob has data, but not for NTT INDYCAR SERIES (e.g. an Indy NXT
-            # session) — fall back to the season schedule for the next race.
-            game = self._build_indycar_schedule_game(datetime.now(timezone.utc))
-
         if game:
             game.setdefault('indycar', {})['weather'] = self._fetch_indycar_weather()
             event_id = game.get('id', '')
@@ -448,6 +575,12 @@ class SportsIndycarMixin:
                 if self._ic_timing_cache.get('post_since'):
                     self._ic_timing_cache['post_since'] = None
                     self._ic_save_post_since(None)
+
+        if not game:
+            # Nothing from the blob — not for NTT INDYCAR SERIES (e.g. Indy NXT),
+            # or a stale/expired post-race session just got cleared above. Either
+            # way, fall back to the season schedule for the next race.
+            game = self._build_indycar_schedule_game(datetime.now(timezone.utc))
 
         self._ic_timing_cache['ts'] = now
         self._ic_timing_cache['data'] = game
@@ -494,7 +627,7 @@ class SportsIndycarMixin:
             sched = self._fetch_indycar_schedule()
             match = _ic_find_schedule_session(sched, datetime.now(timezone.utc)) if sched else None
             if match:
-                start_time_utc = match[1].strftime('%Y-%m-%dT%H:%M:%SZ')
+                start_time_utc = match[2].strftime('%Y-%m-%dT%H:%M:%SZ')
             else:
                 return None
 

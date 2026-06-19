@@ -24,55 +24,72 @@ _NASCAR_SESSION_DURATION_MIN = {
     _RUN_TYPE_RACE:       220,
 }
 
-# 2026 NCS schedule: race_id → (race_num, track_slug, race_date_iso)
-# race_num excludes Duels (5594, 5595); upload date = race_date - 5 days (Tuesday of race week)
-# Track slug: strip Motor/Speedway/Raceway/International/Superspeedway/Stadium; join remaining words
-_NCS_2026 = {
-    5593: (1,  'Bowmangray',            '2026-02-04'),
-    5596: (2,  'Daytona',               '2026-02-15'),
-    5597: (3,  'Atlanta',               '2026-02-22'),
-    5598: (4,  'Cota',                  '2026-03-01'),
-    5599: (5,  'Phoenix',               '2026-03-08'),
-    5600: (6,  'Lasvegas',              '2026-03-15'),
-    5603: (7,  'Darlington',            '2026-03-22'),
-    5602: (8,  'Martinsville',          '2026-03-29'),
-    5604: (9,  'Bristol',               '2026-04-12'),
-    5607: (10, 'Kansas',                '2026-04-19'),
-    5605: (11, 'Talladega',             '2026-04-26'),
-    5606: (12, 'Texas',                 '2026-05-03'),
-    5621: (13, 'Watkinsglen',           '2026-05-10'),
-    5609: (14, 'Dover',                 '2026-05-17'),
-    5610: (15, 'Charlotte',             '2026-05-24'),
-    5611: (16, 'Nashville',             '2026-05-31'),
-    5612: (17, 'Michigan',              '2026-06-07'),
-    5614: (18, 'Pocono',                '2026-06-14'),
-    5613: (19, 'Sandiego',              '2026-06-21'),
-    5617: (20, 'Sonoma',                '2026-06-28'),
-    5616: (21, 'Chicagoland',           '2026-07-05'),
-    5615: (22, 'Atlanta',               '2026-07-12'),
-    5618: (23, 'Northwilkesboro',       '2026-07-19'),
-    5619: (24, 'Indianapolis',          '2026-07-26'),
-    5620: (25, 'Iowa',                  '2026-08-09'),
-    5622: (26, 'Richmond',              '2026-08-15'),
-    5627: (27, 'Newhampshire',          '2026-08-23'),
-    5623: (28, 'Daytona',               '2026-08-29'),
-    5624: (29, 'Darlington',            '2026-09-06'),
-    5625: (30, 'Worldwidetechnology',   '2026-09-13'),
-    5626: (31, 'Bristol',               '2026-09-19'),
-    5628: (32, 'Kansas',                '2026-09-27'),
-    5630: (33, 'Lasvegas',              '2026-10-04'),
-    5629: (34, 'Charlotte',             '2026-10-11'),
-    5633: (35, 'Phoenix',               '2026-10-18'),
-    5631: (36, 'Talladega',             '2026-10-25'),
-    5632: (37, 'Martinsville',          '2026-11-01'),
-    5601: (38, 'Homesteadmiami',        '2026-11-08'),
+# Track name → NASCAR.com media slug. Stable across years (a venue's slug
+# only changes if NASCAR renames/replaces it), unlike the schedule itself —
+# only needs an entry here for venues the generic stripping rule can't handle.
+_NASCAR_TRACK_SLUG_OVERRIDES = {
+    'circuit of the americas':  'Cota',
+    'san diego street course':  'Sandiego',
 }
+_NASCAR_TRACK_SLUG_STRIP_WORDS = {
+    'motor', 'speedway', 'raceway', 'international', 'superspeedway', 'stadium', 'fairgrounds',
+}
+
+
+def _nascar_track_slug(track_name):
+    """Derive NASCAR.com's car-image slug from a track name, e.g.
+    'Las Vegas Motor Speedway' -> 'Lasvegas', 'Bowman Gray Stadium' -> 'Bowmangray'.
+    """
+    key = str(track_name or '').strip().lower()
+    if key in _NASCAR_TRACK_SLUG_OVERRIDES:
+        return _NASCAR_TRACK_SLUG_OVERRIDES[key]
+    words = re.findall(r"[A-Za-z']+", track_name or '')
+    kept = [w for w in words if w.lower() not in _NASCAR_TRACK_SLUG_STRIP_WORDS]
+    slug = ''.join(kept)
+    return slug.capitalize() if slug else ''
+
+
+def _nascar_build_image_lookup(payload):
+    """Map race_id -> (race_num, track_slug, race_date_iso) for Cup Series
+    races, derived entirely from the official schedule so this never needs a
+    manual per-season update. race_num is the ordinal position of each race
+    that has an actual Race session — qualifying-only races like the Daytona
+    Duels aren't separately numbered, matching NASCAR.com's image naming.
+    """
+    races = []
+    for race in (payload or {}).get(f'series_{_NASCAR_CUP_SERIES_ID}', []) or []:
+        if not isinstance(race, dict):
+            continue
+        race_id    = int(race.get('race_id') or 0)
+        track_name = str(race.get('track_name') or '').strip()
+        race_date  = None
+        for s in race.get('schedule', []) or []:
+            if int(s.get('run_type') or 0) == _RUN_TYPE_RACE:
+                raw = str(s.get('start_time_utc') or '').strip()
+                if raw:
+                    try:
+                        race_date = _dt_cls.fromisoformat(raw).date()
+                    except Exception:
+                        pass
+                break
+        if race_id and race_date:
+            races.append((race_id, track_name, race_date))
+    races.sort(key=lambda x: x[2])
+    return {
+        race_id: (i + 1, _nascar_track_slug(track_name), race_date.isoformat())
+        for i, (race_id, track_name, race_date) in enumerate(races)
+    }
+
+
+# race_id -> (race_num, track_slug, race_date_iso); refreshed each time the
+# season schedule is fetched, so it tracks the current year automatically.
+_NASCAR_IMAGE_LOOKUP = {}
 
 _NASCAR_IMG_BASE = "https://www.nascar.com/wp-content/uploads/sites/7"
 
 
-def _nascar_car_image_url(race_id, car_number, year=2026):
-    entry = _NCS_2026.get(int(race_id or 0))
+def _nascar_car_image_url(race_id, car_number):
+    entry = _NASCAR_IMAGE_LOOKUP.get(int(race_id or 0))
     if not entry:
         return ''
     race_num, track_slug, race_date_iso = entry
@@ -83,19 +100,19 @@ def _nascar_car_image_url(race_id, car_number, year=2026):
     # NASCAR uploads images 4-7 days before race day; use 5 as the default.
     # The downloader will try adjacent offsets if the primary URL 404s.
     upload_day = race_day - timedelta(days=5)
-    yy  = str(year)[-2:]
+    yy  = str(race_day.year)[-2:]
     mon = f"{upload_day.month:02d}"
     day = f"{upload_day.day:02d}"
     car = str(car_number).strip()
     return (
-        f"{_NASCAR_IMG_BASE}/{year}/{mon}/{day}/"
+        f"{_NASCAR_IMG_BASE}/{race_day.year}/{mon}/{day}/"
         f"{yy}_NCS_{race_num}{track_slug}_{car}-922x400.jpg"
     )
 
 
-def _nascar_car_image_candidates(race_id, car_number, year=2026):
+def _nascar_car_image_candidates(race_id, car_number):
     """Return candidate URLs trying upload offsets around the expected upload day."""
-    entry = _NCS_2026.get(int(race_id or 0))
+    entry = _NASCAR_IMAGE_LOOKUP.get(int(race_id or 0))
     if not entry:
         return []
     race_num, track_slug, race_date_iso = entry
@@ -103,13 +120,13 @@ def _nascar_car_image_candidates(race_id, car_number, year=2026):
         race_day = date.fromisoformat(race_date_iso)
     except Exception:
         return []
-    yy  = str(year)[-2:]
+    yy  = str(race_day.year)[-2:]
     car = str(car_number).strip()
     urls = []
     for offset in (5, 4, 6, 3, 7, 2, 8, 1, 9, 0, 10):
         d = race_day - timedelta(days=offset)
         urls.append(
-            f"{_NASCAR_IMG_BASE}/{year}/{d.month:02d}/{d.day:02d}/"
+            f"{_NASCAR_IMG_BASE}/{race_day.year}/{d.month:02d}/{d.day:02d}/"
             f"{yy}_NCS_{race_num}{track_slug}_{car}-922x400.jpg"
         )
     return urls
@@ -270,7 +287,9 @@ class SportsNascarMixin:
                 timeout=10,
             )
             r.raise_for_status()
-            sessions = _nascar_flatten_schedule(r.json())
+            payload = r.json()
+            sessions = _nascar_flatten_schedule(payload)
+            _NASCAR_IMAGE_LOOKUP.update(_nascar_build_image_lookup(payload))
             self._nascar_schedule_cache = {'ts': now, 'data': sessions}
             return sessions
         except Exception as exc:
