@@ -138,6 +138,20 @@ _SERIES_LABEL = {
     3: 'Trucks',
 }
 
+# run_type → display session name (title's secondary line)
+_RUN_TYPE_SESSION_NAME = {
+    _RUN_TYPE_PRACTICE:   'Practice',
+    _RUN_TYPE_QUALIFYING: 'Qualifying',
+    _RUN_TYPE_RACE:       'Race',
+}
+
+
+def _nascar_short_race_name(race_name):
+    """Strip secondary sponsor clauses from a NASCAR race name for display."""
+    name = str(race_name or '').strip()
+    name = re.split(r'\s+(?:presented by|powered by|sponsored by)\b', name, flags=re.IGNORECASE)[0]
+    return name.strip()
+
 
 def _nascar_compact_gap(delta, pos):
     if pos == 1:
@@ -309,24 +323,29 @@ class SportsNascarMixin:
                     feed_state = 'pre'
 
             start_time_utc_str = ''
+            race_name = ''
+            session_name = ''
             feed_matches_schedule = bool(sched_match) and sched_match[0] == race_id
 
             if sched_match and feed_matches_schedule and feed_state == sched_match[8]:
                 # Live feed is reporting on the same session the schedule says is
                 # current — trust its telemetry as-is.
                 state = feed_state
-                start_time_utc_str = sched_match[6].strftime('%Y-%m-%dT%H:%M:%SZ')
+                _, _, race_name, _, s_run_type, _, s_start, _, _ = sched_match
+                start_time_utc_str = s_start.strftime('%Y-%m-%dT%H:%M:%SZ')
+                session_name = _RUN_TYPE_SESSION_NAME.get(s_run_type, '')
             elif sched_match:
                 # Schedule decides which session is current; only keep the feed's
                 # telemetry when it's actually tracking that same session.
-                s_race_id, s_series_id, _s_race_name, s_track_name, _s_run_type, s_event_name, s_start, _s_end, s_state = sched_match
+                s_race_id, s_series_id, s_race_name, s_track_name, s_run_type, _s_event_name, s_start, _s_end, s_state = sched_match
                 state = s_state
+                race_name = s_race_name
+                session_name = _RUN_TYPE_SESSION_NAME.get(s_run_type, '')
                 start_time_utc_str = s_start.strftime('%Y-%m-%dT%H:%M:%SZ')
                 if not feed_matches_schedule:
                     race_id    = s_race_id
                     series_id  = s_series_id
                     track_name = s_track_name or track_name
-                    run_name   = s_event_name or run_name
                     lap = total_laps = laps_to_go = 0
                     flag_state = 0
                     cautions   = 0
@@ -380,19 +399,23 @@ class SportsNascarMixin:
                     'make': make,
                 })
 
-            # Shorten run_name so it fits display (~22 chars)
-            short_name = run_name
-            for drop in ('NASCAR CUP SERIES ', 'NASCAR XFINITY SERIES ', 'NASCAR CRAFTSMAN TRUCK SERIES '):
-                short_name = short_name.replace(drop, '').replace(drop.title(), '')
-            # Also strip " - Final Segment" / " - Final" suffixes for the display name
-            for suffix in (' - Final Segment', ' - FINAL SEGMENT', ' - Final', ' - FINAL'):
-                if short_name.endswith(suffix):
-                    short_name = short_name[:-len(suffix)].strip()
-                    break
-            short_name = short_name.strip()
+            if race_name:
+                # Race name from the official schedule — the card's title.
+                short_name = _nascar_short_race_name(race_name)
+            else:
+                # No schedule match (e.g. schedule fetch failed) — fall back to
+                # deriving a display name from the live feed's run_name.
+                short_name = run_name
+                for drop in ('NASCAR CUP SERIES ', 'NASCAR XFINITY SERIES ', 'NASCAR CRAFTSMAN TRUCK SERIES '):
+                    short_name = short_name.replace(drop, '').replace(drop.title(), '')
+                for suffix in (' - Final Segment', ' - FINAL SEGMENT', ' - Final', ' - FINAL'):
+                    if short_name.endswith(suffix):
+                        short_name = short_name[:-len(suffix)].strip()
+                        break
+                short_name = short_name.strip()
 
-            # session_label e.g. "Race", "Qualifying" — used as home_abbr for iOS app display
-            session_label_short = {1: 'Race', 2: 'Xfinity', 3: 'Trucks'}.get(series_id, series_label)
+            # session_label e.g. "Practice", "Qualifying", "Race" — the card's subtitle.
+            session_label_short = session_name or {1: 'Race', 2: 'Xfinity', 3: 'Trucks'}.get(series_id, series_label)
 
             if state == 'in':
                 status_display = 'LIVE'
@@ -423,11 +446,11 @@ class SportsNascarMixin:
                 'home_score': '',
                 'nascar': {
                     'race_id': race_id,
-                    'event_name': run_name,
+                    'event_name': short_name,
                     'short_name': short_name,
                     'track_name': track_name,
-                    'session_type': series_label,
-                    'session_name': series_label,
+                    'session_type': session_label_short,
+                    'session_name': session_label_short,
                     'lap': lap,
                     'total_laps': total_laps,
                     'laps_remaining': laps_to_go,
