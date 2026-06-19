@@ -10,17 +10,19 @@ class NascarMixin:
         remaining = int(nc.get('laps_remaining') or 0)
         short     = str(nc.get('short_name') or nc.get('event_name') or 'NASCAR').strip()
 
-        # Compact series label: "Race" for Cup, keep "Xfinity"/"Trucks" as-is.
+        # session_type is now the actual session (Practice/Qualifying/Race) from
+        # the fetcher, except for the legacy Xfinity/Trucks series label, which
+        # still arrives as the series name — normalize that case to a short tag.
         # This mirrors the away_abbr/home_abbr pattern used on other sport cards
         # so the header reads e.g. "Coca-Cola 600 Race" instead of "Lap 142/200".
         # Lap count is still rendered in the info-panel body via ic['lap']/ic['total_laps'].
-        _raw_series = str(nc.get('session_type') or '').strip()
-        if 'Xfinity' in _raw_series:
+        _raw_session = str(nc.get('session_type') or '').strip()
+        if 'Xfinity' in _raw_session:
             series_short = 'Xfinity'
-        elif 'Truck' in _raw_series:
+        elif 'Truck' in _raw_session:
             series_short = 'Trucks'
         else:
-            series_short = 'Race'
+            series_short = _raw_session or 'Race'
 
         # FINAL when race is over; short series type while running
         if remaining == 0 and total > 0:
