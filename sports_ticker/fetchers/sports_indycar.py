@@ -207,17 +207,6 @@ def _build_abbr(first, last):
 def _simplify_indycar_event_name(event_name, track_name):
     value = str(event_name or track_name or 'IndyCar').strip()
     lowered = value.lower()
-    replacements = [
-        ('110th Running of the ', ''),
-        ('Running of the ', ''),
-        ('Indianapolis 500', 'Indy 500'),
-        ('Grand Prix', 'GP'),
-        ('Championship', 'Champ'),
-        ('Presented by', ''),
-    ]
-    for old, new in replacements:
-        value = value.replace(old, new)
-    value = ' '.join(value.split())
     if 'indy 500' in lowered or 'indianapolis 500' in lowered:
         return 'Indy 500'
     if 'fast 12' in lowered:
@@ -226,6 +215,23 @@ def _simplify_indycar_event_name(event_name, track_name):
         return 'Fast 6'
     if 'fast 10' in lowered:
         return 'Fast 10'
+
+    # IndyCar race names are almost always "<title sponsor> Grand Prix of/at
+    # <location>[ presented by <sponsor>]" — drop the sponsor on both sides
+    # and keep just the location, regardless of which sponsor is attached
+    # this year (e.g. "XPEL Grand Prix at Road America" -> "Road America").
+    m = re.search(r'grand\s+prix\s+(?:of|at)\s+(.+)', value, re.IGNORECASE)
+    if m:
+        location = re.split(r'\s+presented\s+by\b', m.group(1), flags=re.IGNORECASE)[0]
+        location = location.strip().rstrip('.,')
+        if location:
+            return location
+
+    value = value.replace('110th Running of the ', '').replace('Running of the ', '')
+    value = re.sub(r'\bGrand Prix\b', 'GP', value, flags=re.IGNORECASE)
+    value = re.sub(r'\bChampionship\b', 'Champ', value, flags=re.IGNORECASE)
+    value = re.sub(r'\bpresented by\b.*$', '', value, flags=re.IGNORECASE).strip()
+    value = ' '.join(value.split())
     return value or 'IndyCar'
 
 
