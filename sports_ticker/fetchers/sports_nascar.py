@@ -9,6 +9,21 @@ globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')
 _NASCAR_LIVE_URL = "https://cf.nascar.com/cacher/live/live-feed.json"
 _NASCAR_HEADERS  = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
+# Official season schedule (all series, with per-session start times) — same
+# cf.nascar.com host as the live feed above.
+_NASCAR_SCHEDULE_URL  = "https://cf.nascar.com/cacher/{year}/race_list_basic.json"
+_NASCAR_SCHEDULE_TTL  = 3600.0
+
+# run_type codes in the schedule feed's per-race "schedule" array
+_RUN_TYPE_PRACTICE   = 1
+_RUN_TYPE_QUALIFYING = 2
+_RUN_TYPE_RACE       = 3
+_NASCAR_SESSION_DURATION_MIN = {
+    _RUN_TYPE_PRACTICE:   60,
+    _RUN_TYPE_QUALIFYING: 60,
+    _RUN_TYPE_RACE:       220,
+}
+
 # 2026 NCS schedule: race_id → (race_num, track_slug, race_date_iso)
 # race_num excludes Duels (5594, 5595); upload date = race_date - 5 days (Tuesday of race week)
 # Track slug: strip Motor/Speedway/Raceway/International/Superspeedway/Stadium; join remaining words
@@ -150,6 +165,65 @@ def _nascar_make_color(manufacturer):
     return _MAKE_COLOR.get(str(manufacturer or '').lower().strip(), '#888888')
 
 
+_NASCAR_CUP_SERIES_ID = 1   # only Cup Series is shown on the ticker — no Xfinity/Trucks
+
+
+def _nascar_flatten_schedule(payload):
+    """Flatten the {'series_1': [...], 'series_2': [...], 'series_3': [...]} schedule
+    payload into a chronological list of Cup Series session tuples:
+    (race_id, series_id, race_name, track_name, run_type, event_name, start_utc).
+    """
+    sessions = []
+    for key, races in (payload or {}).items():
+        try:
+            series_id = int(str(key).rsplit('_', 1)[-1])
+        except Exception:
+            continue
+        if series_id != _NASCAR_CUP_SERIES_ID:
+            continue
+        for race in races or []:
+            if not isinstance(race, dict):
+                continue
+            race_id    = int(race.get('race_id') or 0)
+            race_name  = str(race.get('race_name') or '').strip()
+            track_name = str(race.get('track_name') or '').strip()
+            for s in race.get('schedule', []) or []:
+                run_type = int(s.get('run_type') or 0)
+                if run_type not in _NASCAR_SESSION_DURATION_MIN:
+                    continue
+                raw = str(s.get('start_time_utc') or '').strip()
+                if not raw:
+                    continue
+                try:
+                    start = _dt_cls.fromisoformat(raw).replace(tzinfo=_tz.utc)
+                except Exception:
+                    continue
+                event_name = str(s.get('event_name') or '').strip()
+                sessions.append((race_id, series_id, race_name, track_name, run_type, event_name, start))
+    sessions.sort(key=lambda x: x[6])
+    return sessions
+
+
+def _nascar_find_schedule_session(sessions, now_utc):
+    """Return the most relevant session — currently live, recently finished
+    (within 12h), or else the next upcoming one — as (race_id, series_id,
+    race_name, track_name, run_type, event_name, start_utc, end_utc, state).
+    Like other sports on this ticker, the next scheduled session is always
+    shown (with a real countdown) regardless of how far away it is.
+    """
+    best_post = None
+    next_pre = None
+    for race_id, series_id, race_name, track_name, run_type, event_name, start in sessions:
+        end = start + timedelta(minutes=_NASCAR_SESSION_DURATION_MIN[run_type])
+        if start <= now_utc <= end:
+            return (race_id, series_id, race_name, track_name, run_type, event_name, start, end, 'in')
+        if end < now_utc and (now_utc - end).total_seconds() < 12 * 3600:
+            best_post = (race_id, series_id, race_name, track_name, run_type, event_name, start, end, 'post')
+        elif start > now_utc and next_pre is None:
+            next_pre = (race_id, series_id, race_name, track_name, run_type, event_name, start, end, 'pre')
+    return best_post or next_pre
+
+
 def _nascar_abbr(full_name):
     # Strip rookie "#" suffix and any non-alpha trailing tokens from the NASCAR feed
     name = re.sub(r'\s*#\w*\s*$', '', str(full_name or '').strip()).strip()
@@ -164,23 +238,57 @@ class SportsNascarMixin:
         if not hasattr(self, '_nascar_cache'):
             self._nascar_cache = {'ts': 0.0, 'data': None}
             self._nascar_ttl = 30.0
+            self._nascar_schedule_cache = {'ts': 0.0, 'data': []}
+
+    def _fetch_nascar_schedule(self, force=False):
+        """Fetch the official season schedule (all series, with per-session start
+        times) from cf.nascar.com, flattened and cached for an hour."""
+        self.__init_nascar_cache()
+        now = time.time()
+        cache = self._nascar_schedule_cache
+        if not force and (now - cache['ts']) < _NASCAR_SCHEDULE_TTL and cache['data']:
+            return cache['data']
+        try:
+            year = _dt_cls.now(_tz.utc).year
+            r = self.session.get(
+                _NASCAR_SCHEDULE_URL.format(year=year),
+                headers=_NASCAR_HEADERS,
+                timeout=10,
+            )
+            r.raise_for_status()
+            sessions = _nascar_flatten_schedule(r.json())
+            self._nascar_schedule_cache = {'ts': now, 'data': sessions}
+            return sessions
+        except Exception as exc:
+            print(f"[NASCAR] schedule fetch error: {exc}")
+            return cache.get('data', [])
 
     def _fetch_nascar(self, force=False):
-        """Fetch the live NASCAR feed and return a racing game object."""
+        """Fetch the live NASCAR feed and return a racing game object.
+
+        The official schedule decides *which* session is current (live, just
+        finished, or next up); the live feed supplies rich telemetry when it's
+        actually reporting on that same session. This keeps a real, accurate
+        card showing throughout race week instead of only once the live feed
+        catches up.
+        """
         self.__init_nascar_cache()
         now_ts = time.time()
         if not force and (now_ts - self._nascar_cache.get('ts', 0.0)) < self._nascar_ttl:
             return self._nascar_cache.get('data')
 
+        sched_sessions = self._fetch_nascar_schedule()
+        sched_match = _nascar_find_schedule_session(sched_sessions, _dt_cls.now(_tz.utc)) if sched_sessions else None
+
         try:
-            r = self.session.get(
-                _NASCAR_LIVE_URL,
-                headers=_NASCAR_HEADERS,
-                timeout=10,
-            )
+            r = self.session.get(_NASCAR_LIVE_URL, headers=_NASCAR_HEADERS, timeout=10)
             r.raise_for_status()
             feed = r.json()
+        except Exception as exc:
+            print(f"[NASCAR] fetch error: {exc}")
+            feed = {}
 
+        try:
             lap          = int(feed.get('lap_number') or 0)
             total_laps   = int(feed.get('laps_in_race') or 0)
             laps_to_go   = int(feed.get('laps_to_go') or 0)
@@ -191,36 +299,53 @@ class SportsNascarMixin:
             race_id      = int(feed.get('race_id') or 0)
             cautions     = int(feed.get('number_of_caution_laps') or 0)
 
-            series_label = _SERIES_LABEL.get(series_id, 'NASCAR')
-            flag         = _nascar_flag(flag_state, laps_to_go)
-            caution      = flag_state == 2
+            feed_state = None
+            if feed:
+                if laps_to_go == 0 and total_laps > 0:
+                    feed_state = 'post'
+                elif lap > 0:
+                    feed_state = 'in'
+                else:
+                    feed_state = 'pre'
 
-            if laps_to_go == 0 and total_laps > 0:
-                state = 'post'
-            elif lap > 0:
-                state = 'in'
+            start_time_utc_str = ''
+            feed_matches_schedule = bool(sched_match) and sched_match[0] == race_id
+
+            if sched_match and feed_matches_schedule and feed_state == sched_match[8]:
+                # Live feed is reporting on the same session the schedule says is
+                # current — trust its telemetry as-is.
+                state = feed_state
+                start_time_utc_str = sched_match[6].strftime('%Y-%m-%dT%H:%M:%SZ')
+            elif sched_match:
+                # Schedule decides which session is current; only keep the feed's
+                # telemetry when it's actually tracking that same session.
+                s_race_id, s_series_id, _s_race_name, s_track_name, _s_run_type, s_event_name, s_start, _s_end, s_state = sched_match
+                state = s_state
+                start_time_utc_str = s_start.strftime('%Y-%m-%dT%H:%M:%SZ')
+                if not feed_matches_schedule:
+                    race_id    = s_race_id
+                    series_id  = s_series_id
+                    track_name = s_track_name or track_name
+                    run_name   = s_event_name or run_name
+                    lap = total_laps = laps_to_go = 0
+                    flag_state = 0
+                    cautions   = 0
+                    feed = {}   # telemetry belongs to a different session
+            elif feed_state:
+                state = feed_state
             else:
-                state = 'pre'
+                # No schedule and no usable live feed — nothing to show.
+                self._nascar_cache = {'ts': now_ts, 'data': None}
+                return None
 
-            # Post-race expiry: hide the finished race after ~24 h from race day end.
-            # The live feed stays stale between race weekends and has no end-time field,
-            # so we derive expiry from the _NCS_2026 race date.
-            if state == 'post':
-                entry = _NCS_2026.get(race_id)
-                if entry:
-                    _, _, race_date_iso = entry
-                    try:
-                        race_day = date.fromisoformat(race_date_iso)
-                        # Expire at midnight UTC on the day after race day
-                        expiry_utc = _dt_cls(
-                            race_day.year, race_day.month, race_day.day,
-                            tzinfo=_tz.utc
-                        ) + timedelta(days=2)
-                        if _dt_cls.now(_tz.utc) > expiry_utc:
-                            self._nascar_cache = {'ts': now_ts, 'data': None}
-                            return None
-                    except Exception:
-                        pass
+            series_label = _SERIES_LABEL.get(series_id, 'NASCAR')
+            if feed:
+                flag    = _nascar_flag(flag_state, laps_to_go)
+                caution = flag_state == 2
+            else:
+                # Schedule-only card (no matching telemetry) — flag reflects state alone.
+                flag    = 'CHECKERED' if state == 'post' else ('GREEN' if state == 'in' else 'WHITE')
+                caution = False
 
             vehicles = sorted(
                 [v for v in feed.get('vehicles', []) if isinstance(v, dict)],
@@ -269,14 +394,29 @@ class SportsNascarMixin:
             # session_label e.g. "Race", "Qualifying" — used as home_abbr for iOS app display
             session_label_short = {1: 'Race', 2: 'Xfinity', 3: 'Trucks'}.get(series_id, series_label)
 
+            if state == 'in':
+                status_display = 'LIVE'
+            elif state == 'post':
+                status_display = 'FINAL'
+            elif start_time_utc_str:
+                try:
+                    utc_off = _core.state.get('utc_offset', -5)
+                    local_tz = _tz(timedelta(hours=utc_off))
+                    start_dt = _dt_cls.fromisoformat(start_time_utc_str.rstrip('Z')).replace(tzinfo=_tz.utc)
+                    status_display = 'Starts ' + start_dt.astimezone(local_tz).strftime('%I:%M %p').lstrip('0')
+                except Exception:
+                    status_display = 'Starts Soon'
+            else:
+                status_display = 'Starts Soon'
+
             game = {
-                'id': f"nascar_{feed.get('race_id', 'live')}",
+                'id': f"nascar_{race_id or 'live'}",
                 'type': 'racing',
                 'sport': 'nascar',
                 'state': state,
-                'status': 'LIVE' if state == 'in' else ('FINAL' if state == 'post' else 'Starts Soon'),
+                'status': status_display,
                 'is_shown': True,
-                'startTimeUTC': '',
+                'startTimeUTC': start_time_utc_str,
                 'away_abbr': short_name,
                 'home_abbr': session_label_short,
                 'away_score': '',
