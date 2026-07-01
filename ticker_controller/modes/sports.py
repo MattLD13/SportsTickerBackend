@@ -674,14 +674,15 @@ class SportsMixin:
                 pitch_info_line = pitch_type_line
 
             # Prefer backend possession marker; fall back to inning state.
+            # home_ab is now the visual-left (actual away) team after the home/away swap.
             home_batting = bool(home_ab and poss_ab and poss_ab == home_ab)
             away_batting = bool(away_ab and poss_ab and poss_ab == away_ab)
             if not home_batting and not away_batting:
-                home_batting = is_bot_inn and not is_mid_inn
-                away_batting = is_top_inn and not is_mid_inn
+                home_batting = is_top_inn and not is_mid_inn
+                away_batting = is_bot_inn and not is_mid_inn
             if home_batting and away_batting:
-                home_batting = is_bot_inn and not is_mid_inn
-                away_batting = is_top_inn and not is_mid_inn
+                home_batting = is_top_inn and not is_mid_inn
+                away_batting = is_bot_inn and not is_mid_inn
 
             info_lane_spread = 92
             info_left_cx  = W // 2 - info_lane_spread
