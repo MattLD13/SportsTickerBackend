@@ -58,6 +58,17 @@ class SportsMixin:
         img = Image.new("RGBA", (W, H), (0, 0, 0, 255))
         d = ImageDraw.Draw(img, "RGBA")
 
+        # Display convention: away on left, home on right.
+        _g = {}
+        for k, v in game.items():
+            if k.startswith('home_'):
+                _g['away_' + k[5:]] = v
+            elif k.startswith('away_'):
+                _g['home_' + k[5:]] = v
+            else:
+                _g[k] = v
+        game = _g
+
         sport    = str(game.get('sport', '')).lower()
         is_nfl   = 'football' in sport or 'nfl' in sport or 'ncf' in sport
         is_nhl   = 'hockey' in sport or 'nhl' in sport
@@ -369,8 +380,8 @@ class SportsMixin:
             if sit.get('shootout'):
                 so_a = sit.get('shootout', {}).get('away', [])
                 so_h = sit.get('shootout', {}).get('home', [])
-                self._draw_soccer_so_col(d, a_logo_x + LOGO_SZ + 2, 8, so_a)
-                self._draw_soccer_so_col(d, h_logo_x - 5, 8, so_h)
+                self._draw_soccer_so_col(d, a_logo_x + LOGO_SZ + 2, 8, so_h)
+                self._draw_soccer_so_col(d, h_logo_x - 5, 8, so_a)
 
             return img
 
@@ -563,9 +574,9 @@ class SportsMixin:
 
             # ── Step 6: bat icon ─────────────────────────────────────────────
             if is_top_inn:
-                self.draw_bat(d, int(a_sc_x - a_sc_w - 8), 7)   # cx between score and logo
+                self.draw_bat(d, int(h_sc_x + h_sc_w + 8), 7)   # away (top) now on left
             elif is_bot_inn:
-                self.draw_bat(d, int(h_sc_x + h_sc_w + 8), 7)
+                self.draw_bat(d, int(a_sc_x - a_sc_w - 8), 7)   # home (bot) now on right
 
             # ── Step 7: batter / pitcher detail blocks in side lanes ────────
             def _short_last_name(raw, max_chars=10):
