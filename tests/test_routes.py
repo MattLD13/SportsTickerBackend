@@ -133,7 +133,7 @@ def test_get_data_empty_sports_returns_no_games_placeholder(client, monkeypatch)
     sports = payload["content"]["sports"]
     assert len(sports) == 1
     assert sports[0]["no_games"] is True
-    assert sports[0]["type"] == "clock"
+    assert sports[0]["type"] == "no_games"
     assert sports[0]["status"] == "NO GAMES AVAILABLE"
 
 

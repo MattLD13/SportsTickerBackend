@@ -139,6 +139,24 @@ def _pw(text, sc=2):
 
 def _placeholder_item_for_mode(mode: str) -> dict | None:
     mode = str(mode or '').lower()
+    if mode in ('sports', 'live', 'my_teams', 'soccer', 'sports_full', 'soccer_full'):
+        now = datetime.datetime.now()
+        return {
+            'type': 'no_games',
+            'sport': 'clock',
+            'id': 'no_games_available',
+            'is_shown': True,
+            'no_games': True,
+            'status': 'NO GAMES AVAILABLE',
+            'home_abbr': 'NO GAMES',
+            'away_abbr': 'AVAILABLE',
+            'home_score': '',
+            'away_score': '',
+            'situation': {
+                'message': 'NO GAMES AVAILABLE',
+                'clock': now.strftime('%I:%M %p').lstrip('0'),
+            },
+        }
     if mode == 'music':
         return {
             'type': 'music',
@@ -214,6 +232,8 @@ def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
                 return renderer.draw_music_card(g)
             if itype == 'clock' or sport.startswith('clock'):
                 return renderer.draw_clock_modern()
+            if itype == 'no_games':
+                return renderer.draw_no_games_screen()
             if itype == 'flight_visitor':
                 return renderer.draw_flight_visitor(g)
             if itype == 'flight_airport_hud':
@@ -259,6 +279,15 @@ def _render_non_game(g: dict, mode: str = 'sports') -> Image.Image:
         temp_str = f"{int(round(temp))}F" if temp is not None else '--F'
         x2 = _pf(draw, temp_str, 4, 20, (255, 255, 255), sc=2)
         _pf(draw, cond, x2 + 6, 20, (80, 170, 255), sc=2)
+    elif itype == 'no_games':
+        draw.rectangle([0, 0, PANEL_W - 1, 3], fill=(40, 40, 56, 255))
+        draw.rectangle([0, 0, 2, PANEL_H - 1], fill=(72, 76, 92, 255))
+        draw.rectangle([PANEL_W - 3, 0, PANEL_W - 1, PANEL_H - 1], fill=(72, 76, 92, 255))
+        _pf(draw, 'NO GAMES AVAILABLE', 4, 6, (210, 215, 225), sc=2)
+        _pf(draw, 'CHECK BACK LATER', 4, 20, (150, 158, 170), sc=2)
+        clock_text = str((g.get('situation') or {}).get('clock') or '').strip() or datetime.datetime.now().strftime('%I:%M %p').lstrip('0')
+        cw = _pw(clock_text, sc=2)
+        _pf(draw, clock_text, PANEL_W - cw - 6, 20, (200, 200, 200), sc=2)
     elif itype == 'stock_ticker':
         symbol = (g.get('symbol') or '???').upper()[:6]
         price = g.get('price')

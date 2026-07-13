@@ -15,7 +15,7 @@ from ..workers import request_refresh, fetcher
 
 def _no_games_placeholder_object(now_label: str = ''):
     return {
-        'type': 'clock',
+        'type': 'no_games',
         'sport': 'clock',
         'id': 'no_games_available',
         'is_shown': True,
