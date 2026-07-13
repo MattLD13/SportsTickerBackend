@@ -791,9 +791,16 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                     if self.scroll_sleep > 0:
                         time.sleep(self.scroll_sleep)
                 else:
-                    if self.static_items and self.start_static_display():
+                    has_non_music_static = any(
+                        str(g.get('type', '')).lower() != 'music' and str(g.get('sport', '')).lower() != 'music'
+                        for g in self.static_items
+                    )
+                    if has_non_music_static and self.static_items and self.start_static_display():
                         continue
-                    self.update_display(self.draw_clock_modern())
+                    if self.mode == 'clock':
+                        self.update_display(self.draw_clock_modern())
+                    else:
+                        self.update_display(self.draw_no_games_screen())
                     time.sleep(0.033)
 
             except Exception as e:
