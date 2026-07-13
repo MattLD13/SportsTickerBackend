@@ -871,6 +871,24 @@ def _draw_condition_icon(draw, x, y, kind, color):
         draw.point((x + 5, y + 6), fill=color)
 
 
+def _draw_racing_empty_state(draw, width, height, title='NO GAMES AVAILABLE', subtitle='CHECK BACK LATER'):
+    bg = (8, 8, 16)
+    edge = (72, 76, 92)
+    title_color = (205, 212, 224)
+    subtitle_color = (145, 152, 165)
+
+    draw.rectangle([0, 0, width - 1, height - 1], fill=bg)
+    draw.rectangle([0, 0, 2, height - 1], fill=edge)
+    draw.rectangle([width - 3, 0, width - 1, height - 1], fill=edge)
+
+    title = str(title or '').strip()
+    subtitle = str(subtitle or '').strip()
+    if title:
+        draw_tiny_text(draw, max(2, int((width - _tiny_text_width(title)) / 2)), 10, title, title_color)
+    if subtitle:
+        draw_tiny_text(draw, max(2, int((width - _tiny_text_width(subtitle)) / 2)), 18, subtitle, subtitle_color)
+
+
 def _round_weather_value(value):
     try:
         return str(int(round(float(value))))
@@ -1047,6 +1065,12 @@ class RacingMixin:
         row_ys = [13, 20, 27]
         top3   = drivers[:3]
 
+        has_session_context = bool(ic.get('short_name') or ic.get('event_name') or ic.get('session_type') or ic.get('session_name'))
+        if not top3:
+            subtitle = 'WAITING FOR DATA' if has_session_context else 'CHECK BACK LATER'
+            _draw_racing_empty_state(d, W, PANEL_H, 'NO GAMES AVAILABLE', subtitle)
+            return img
+
         for i, driver in enumerate(top3):
             y       = row_ys[i]
             pos     = str(driver.get('pos') or i + 1)
@@ -1093,17 +1117,6 @@ class RacingMixin:
                 val_x = min(82, W - len(right_val) * 4 - 2)
                 val_color = (255, 255, 255) if pos == '1' else (180, 210, 255)
                 draw_tiny_text(d, val_x, y, right_val, val_color)
-
-        if not top3:
-            g_state    = str(game.get('state') or '').lower()
-            start_txt  = str(game.get('status') or '').strip() if g_state == 'pre' else ''
-            session_label = self._ic_header_label(ic)
-            draw_tiny_text(d, max(2, int((W - _tiny_text_width(session_label, self.font)) / 2)),
-                           16, session_label, (180, 210, 255))
-            if start_txt:
-                starts = f"STARTS {start_txt}"
-                draw_tiny_text(d, max(2, int((W - _tiny_text_width(starts, self.font)) / 2)),
-                               23, starts, (200, 200, 200))
 
         return img
 
@@ -1286,8 +1299,9 @@ class RacingMixin:
 
         visible = [dict(drv) for drv in drivers if isinstance(drv, dict)]
         if not visible:
-            pd.rectangle([0, 0, panel_w - 1, H - 1], fill=(8, 8, 16))
-            draw_tiny_text(pd, 8, 12, 'LOADING', (120, 120, 120))
+            has_session_context = bool(ic.get('short_name') or ic.get('event_name') or ic.get('session_type') or ic.get('session_name'))
+            subtitle = 'WAITING FOR DATA' if has_session_context else 'CHECK BACK LATER'
+            _draw_racing_empty_state(pd, panel_w, H, 'NO GAMES AVAILABLE', subtitle)
             img.paste(panel, (x_off, 0), panel)
             return
 
