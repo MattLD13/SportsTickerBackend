@@ -169,8 +169,8 @@ class MiscMixin:
         title_w = d.textlength(title, font=self.font)
         subtitle_w = d.textlength(subtitle, font=self.tiny)
         clock_w = d.textlength(clock_text, font=self.tiny)
-        d.text(((PANEL_W - title_w) / 2, 8), title, font=self.font, fill=(205, 212, 224))
-        d.text(((PANEL_W - subtitle_w) / 2, 18), subtitle, font=self.tiny, fill=(145, 152, 165))
+        d.text(((PANEL_W - title_w) / 2, 5), title, font=self.font, fill=(205, 212, 224))
+        d.text(((PANEL_W - subtitle_w) / 2, 14), subtitle, font=self.tiny, fill=(145, 152, 165))
         d.text(((PANEL_W - clock_w) / 2, 22), clock_text, font=self.tiny, fill=(200, 200, 200))
 
         return img
