@@ -437,6 +437,9 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
     def draw_single_game(self, game):
         game_hash = self.get_game_hash(game)
 
+        if game.get('no_games'):
+            return self.draw_no_games_screen()
+
         if game.get('sport') == 'clock':
             return self.draw_clock_modern()
 

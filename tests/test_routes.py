@@ -1,6 +1,7 @@
 import json
 import pytest
 from sports_ticker.core import tickers, state, create_ticker_record
+import sports_ticker.routes.state as route_state
 
 def test_status_page(client):
     response = client.get("/")
@@ -113,6 +114,27 @@ def test_get_data_and_state(client):
     state_payload = response_state.get_json()
     assert "settings" in state_payload
     assert "active_sports" in state_payload["settings"]
+
+
+def test_get_data_empty_sports_returns_no_games_placeholder(client, monkeypatch):
+    tid = "ticker_empty_games_test"
+    tickers[tid] = create_ticker_record("Empty Games Ticker", client_id="empty_client")
+    tickers[tid]["settings"]["mode"] = "sports"
+
+    def _empty_snapshot(mode, delay_seconds=0):
+        return []
+
+    monkeypatch.setattr(route_state.fetcher, "get_mode_snapshot", _empty_snapshot)
+
+    response = client.get(f"/data?id={tid}")
+    assert response.status_code == 200
+    payload = response.get_json()
+
+    sports = payload["content"]["sports"]
+    assert len(sports) == 1
+    assert sports[0]["no_games"] is True
+    assert sports[0]["type"] == "clock"
+    assert sports[0]["status"] == "NO GAMES AVAILABLE"
 
 
 def test_api_config_global_and_ticker(client):

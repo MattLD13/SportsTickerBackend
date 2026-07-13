@@ -12,6 +12,25 @@ from ..core import (
 )
 from ..workers import request_refresh, fetcher
 
+
+def _no_games_placeholder_object(now_label: str = ''):
+    return {
+        'type': 'clock',
+        'sport': 'clock',
+        'id': 'no_games_available',
+        'is_shown': True,
+        'no_games': True,
+        'status': 'NO GAMES AVAILABLE',
+        'home_abbr': 'NO GAMES',
+        'away_abbr': 'AVAILABLE',
+        'home_score': '',
+        'away_score': '',
+        'situation': {
+            'message': 'NO GAMES AVAILABLE',
+            'clock': now_label,
+        },
+    }
+
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
     ticker_id = request.args.get('id')
@@ -224,6 +243,10 @@ def get_ticker_data():
 
     tz_name, tz_offset = _get_ticker_timezone_context(rec)
     _apply_timezone_to_game_times(visible_items, tz_name=tz_name, utc_offset=tz_offset)
+
+    if not visible_items and current_mode in SPORTS_MODE_FAMILY:
+        now_label = time.strftime('%I:%M %p').lstrip('0')
+        visible_items = [_no_games_placeholder_object(now_label)]
 
     # 6. Final Response
     # Display-only override: if normal sports mode has exactly one item,

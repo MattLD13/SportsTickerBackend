@@ -157,6 +157,7 @@ class MiscMixin:
     def draw_no_games_screen(self):
         img = Image.new("RGBA", (PANEL_W, 32), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
+        now = datetime.now()
 
         d.rectangle((0, 0, PANEL_W - 1, 31), fill=(8, 8, 16))
         d.rectangle((0, 0, 1, 31), fill=(72, 76, 92))
@@ -164,9 +165,12 @@ class MiscMixin:
 
         title = 'NO GAMES AVAILABLE'
         subtitle = 'CHECK BACK LATER'
+        clock_text = now.strftime('%I:%M %p').lstrip('0')
         title_w = d.textlength(title, font=self.font)
         subtitle_w = d.textlength(subtitle, font=self.tiny)
+        clock_w = d.textlength(clock_text, font=self.tiny)
         d.text(((PANEL_W - title_w) / 2, 8), title, font=self.font, fill=(205, 212, 224))
         d.text(((PANEL_W - subtitle_w) / 2, 18), subtitle, font=self.tiny, fill=(145, 152, 165))
+        d.text(((PANEL_W - clock_w) / 2, 26), clock_text, font=self.tiny, fill=(200, 200, 200))
 
         return img
