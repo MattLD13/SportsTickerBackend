@@ -7,6 +7,7 @@ from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
 from .sports_modes_common import (
     _racing_loading_game,
+    _sports_no_games_placeholder,
     flight_tracker,
     spotify_fetcher,
 )
@@ -329,6 +330,10 @@ class SportsModesBuffersMixin:
                     else:
                         merged_index[key] = len(all_games)
                         all_games.append(pg)
+
+        if not all_games:
+            clock_text = time.strftime('%I:%M %p').lstrip('0')
+            return [_sports_no_games_placeholder(clock_text)]
 
         return self._filter_and_sort_games(all_games, visible_start_utc, visible_end_utc)
 

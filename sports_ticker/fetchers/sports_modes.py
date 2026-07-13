@@ -2,6 +2,7 @@ import concurrent.futures
 
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
+from .sports_modes_common import _sports_no_games_placeholder
 from .test_mode import TestMode
 
 spotify_fetcher = None
@@ -700,6 +701,10 @@ class SportsModesMixin:
                         merged_index[key] = len(all_games)
                         all_games.append(pg)
 
+        if not all_games:
+            clock_text = time.strftime('%I:%M %p').lstrip('0')
+            return [_sports_no_games_placeholder(clock_text)]
+
         return self._filter_and_sort_games(all_games, visible_start_utc, visible_end_utc)
 
     def _build_stocks_buffer(self):
@@ -917,14 +922,12 @@ class SportsModesMixin:
         if delay_seconds <= 0:
             if latest_sports:
                 return latest_sports
-            with data_lock:
-                return list(state.get('current_games', []))
+            return []
 
         if not self.history_buffer:
             if latest_sports:
                 return latest_sports
-            with data_lock:
-                return list(state.get('current_games', []))
+            return []
 
         target_time = time.time() - delay_seconds
         chosen = None

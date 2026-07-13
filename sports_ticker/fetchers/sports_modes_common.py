@@ -47,3 +47,22 @@ def _racing_loading_game(sport, payload_key, away_abbr, home_abbr, payload_extra
     }
     game[payload_key] = payload_extra
     return game
+
+
+def _sports_no_games_placeholder(clock_text=''):
+    return {
+        'type': 'no_games',
+        'sport': 'clock',
+        'id': 'no_games_available',
+        'is_shown': True,
+        'no_games': True,
+        'status': 'NO GAMES AVAILABLE',
+        'home_abbr': 'NO GAMES',
+        'away_abbr': 'AVAILABLE',
+        'home_score': '',
+        'away_score': '',
+        'situation': {
+            'message': 'NO GAMES AVAILABLE',
+            'clock': str(clock_text or '').strip(),
+        },
+    }
