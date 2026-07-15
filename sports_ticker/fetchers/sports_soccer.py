@@ -339,9 +339,9 @@ class SportsSoccerMixin:
                     is_shootout = True
                     if gst == 'in': disp = "Pens"
                 
-                # Fetch matchDetails for all live games to get goals, cards, and shootout data.
+                # Fetch matchDetails for live and finished games to get goals, cards, and shootout data.
                 details = None
-                if gst == 'in':
+                if gst in ('in', 'post'):
                     details = self._fetch_fotmob_details(mid, match.get("home", {}).get("id"), match.get("away", {}).get("id"))
 
                 shootout_data  = (details or {}).get('shootout')
