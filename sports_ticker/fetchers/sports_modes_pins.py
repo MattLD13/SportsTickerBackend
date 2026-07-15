@@ -167,7 +167,9 @@ class SportsModesPinsMixin:
                     huge_start = dt(1970, 1, 1, tzinfo=timezone.utc)
                     huge_end = dt(2099, 1, 1, tzinfo=timezone.utc)
                     games = self._extract_matches([mock_match], league_key, conf, huge_start, huge_end, huge_start, huge_end)
-                    if games:
+                    # _extract_matches fetches details (and injects events) for live games.
+                    # For finished pinned games we still want to show the full scoreline events.
+                    if games and games[0].get('state') == 'post':
                         goal_events, red_cards = self.parse_fotmob_goal_and_card_events(payload)
                         if goal_events or red_cards:
                             games[0]['situation']['goal_events'] = goal_events

@@ -77,6 +77,14 @@ class SportsSoccerMixin:
         except Exception:
             return [], []
     def _fetch_fotmob_details(self, match_id, home_id=None, away_id=None):
+        """Fetch matchDetails and return shootout data plus goal/card events.
+
+        Returns dict with keys:
+          'shootout'    — {'home': [...], 'away': [...]} or None
+          'goal_events' — list of goal dicts
+          'red_cards'   — list of red card dicts
+        Returns None on network failure.
+        """
         try:
             payload = None
             detail_urls = [
@@ -93,33 +101,37 @@ class SportsSoccerMixin:
                     continue
             if not isinstance(payload, dict):
                 return None
-            
+
             info = payload.get("general", {})
             general_home = (info.get("homeTeam") or {}).get("id")
             general_away = (info.get("awayTeam") or {}).get("id")
 
+            # ── Shootout ──────────────────────────────────────────────────────
             containers = [
                 payload.get("shootout"),
                 payload.get("content", {}).get("shootout"),
                 payload.get("content", {}).get("penaltyShootout"),
             ]
-            
             home_shootout, away_shootout = [], []
             for raw in containers:
                 h, a, _, _ = self.parse_shootout(raw, home_id, away_id, general_home, general_away)
                 if h or a:
                     home_shootout, away_shootout = h, a
                     break
-            
             if not home_shootout and not away_shootout and payload.get("content", {}).get("matchFacts"):
                 events_container = payload["content"].get("matchFacts", {}).get("events")
                 h, a, _, _ = self.parse_shootout_events(events_container, home_id, away_id, general_home, general_away)
                 if h or a:
                     home_shootout, away_shootout = h, a
-                    
-            if home_shootout or away_shootout:
-                return {'home': home_shootout, 'away': away_shootout}
-            return None
+
+            # ── Goal / card events ────────────────────────────────────────────
+            goal_events, red_cards = self.parse_fotmob_goal_and_card_events(payload)
+
+            return {
+                'shootout': {'home': home_shootout, 'away': away_shootout} if (home_shootout or away_shootout) else None,
+                'goal_events': goal_events,
+                'red_cards': red_cards,
+            }
         except Exception:
             return None
 
@@ -327,9 +339,14 @@ class SportsSoccerMixin:
                     is_shootout = True
                     if gst == 'in': disp = "Pens"
                 
-                shootout_data = None
-                if is_shootout:
-                    shootout_data = self._fetch_fotmob_details(mid, match.get("home", {}).get("id"), match.get("away", {}).get("id"))
+                # Fetch matchDetails for all live games to get goals, cards, and shootout data.
+                details = None
+                if gst == 'in':
+                    details = self._fetch_fotmob_details(mid, match.get("home", {}).get("id"), match.get("away", {}).get("id"))
+
+                shootout_data  = (details or {}).get('shootout')
+                goal_events    = (details or {}).get('goal_events') or []
+                red_cards      = (details or {}).get('red_cards') or []
 
                 is_shown = True
                 if "Postponed" in disp or "PPD" in reason or status.get("cancelled"):
@@ -342,23 +359,28 @@ class SportsSoccerMixin:
 
                 h_info = self.lookup_team_info_from_cache(internal_id, h_ab, h_name, logo=h_fotmob_logo)
                 a_info = self.lookup_team_info_from_cache(internal_id, a_ab, a_name, logo=a_fotmob_logo)
-                
+
                 matches.append({
                     'type': 'scoreboard',
-                    'sport': internal_id, 
-                    'id': str(mid), 
-                    'status': disp, 
-                    'state': gst, 
+                    'sport': internal_id,
+                    'id': str(mid),
+                    'status': disp,
+                    'state': gst,
                     'is_shown': is_shown,
-                    'home_abbr': h_ab, 'home_score': final_home_score, 
+                    'home_abbr': h_ab, 'home_score': final_home_score,
                     'home_logo': f"https://images.fotmob.com/image_resources/logo/teamlogo/{h_id}.png",
-                    'away_abbr': a_ab, 'away_score': final_away_score, 
+                    'away_abbr': a_ab, 'away_score': final_away_score,
                     'away_logo': f"https://images.fotmob.com/image_resources/logo/teamlogo/{a_id}.png",
                     'home_color': f"#{h_info['color']}", 'home_alt_color': f"#{h_info['alt_color']}",
                     'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
                     'startTimeUTC': kickoff,
                     'estimated_duration': 115,
-                    'situation': { 'possession': '', 'shootout': shootout_data }
+                    'situation': {
+                        'possession': '',
+                        'shootout': shootout_data,
+                        'goal_events': goal_events,
+                        'red_cards': red_cards,
+                    }
                 })
         return matches
 
