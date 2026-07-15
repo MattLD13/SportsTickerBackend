@@ -212,7 +212,10 @@ def draw_so_column(d, x, y, results, vertical=True, size=5, stride=7, max_show=5
 def _download_logo(url, size=(22, 22)):
     """Fetch and resize a logo from URL; returns RGBA PIL Image or None."""
     try:
-        r = requests.get(url, timeout=5)
+        r = requests.get(url, timeout=5, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+            "Referer": "https://www.fotmob.com/",
+        })
         if r.status_code == 200:
             img = Image.open(io.BytesIO(r.content)).convert('RGBA')
             img.thumbnail(size, Image.Resampling.LANCZOS)
@@ -586,6 +589,23 @@ class StadiumRenderer:
             so_h = shootout.get('home', [])
             self._draw_soccer_so_col(d, a_logo_x + LOGO_SZ + 2, 8, so_a)
             self._draw_soccer_so_col(d, h_logo_x - 5, 8, so_h)
+
+        # ══ Soccer red cards (shown in header above team logo) ════════════════
+        if is_soc:
+            red_cards = sit.get('red_cards') or []
+            n_away = sum(1 for c in red_cards if not c.get('is_home'))
+            n_home = sum(1 for c in red_cards if c.get('is_home'))
+
+            # 5×7 card (1px border around 3×5 pixel-font digit); left/right edge of logo
+            CARD_RW, CARD_RH, PAD = 5, 7, 1
+            for n, logo_x, side in [(n_away, a_logo_x, 'left'), (n_home, h_logo_x, 'right')]:
+                if n <= 0:
+                    continue
+                rx = (logo_x + 2) if side == 'left' else (logo_x + LOGO_SZ - CARD_RW - 2)
+                ry = 0
+                d.rectangle([rx, ry, rx + CARD_RW - 1, ry + CARD_RH - 1], fill=(210, 30, 30))
+                if n > 1:
+                    pf_text(d, str(min(n, 9)), rx + PAD, ry + PAD, 255, 255, 255)
 
         # ══ March Madness ════════════════════════════════════════════════════
         if is_march:

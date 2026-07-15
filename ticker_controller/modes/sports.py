@@ -373,9 +373,82 @@ class SportsMixin:
             self.draw_outlined_text(d, a_sc_x, H // 2, a_score,
                                     self.clock_giant, (255, 255, 255), (0, 0, 0, 200), anchor='rm')
 
-            status_text = str(game.get('status', '')).strip().title()
+            # Status / match time — large and vertically centred, matching NHL/NBA
+            status_text = str(game.get('status', '')).strip()
             if status_text:
-                self.draw_outlined_text(d, W // 2, 7, status_text[:16], self.tiny, (255, 240, 150), (0, 0, 0, 220), anchor='ma')
+                self.draw_outlined_text(d, W // 2, H // 2, status_text[:12], self.big_font,
+                                        (255, 240, 150), (0, 0, 0, 220), anchor='mm')
+
+            # Goal scorers and red cards sit in the lane between each score and the centre time.
+            # After the home/away display swap: is_home=False → visual left; is_home=True → visual right.
+            raw_goals = sit.get('goal_events') or []
+            raw_cards = sit.get('red_cards') or []
+            left_events  = [(e, False) for e in raw_goals if not e.get('is_home')] + \
+                           [(e, True)  for e in raw_cards  if not e.get('is_home')]
+            right_events = [(e, False) for e in raw_goals if e.get('is_home')] + \
+                           [(e, True)  for e in raw_cards  if e.get('is_home')]
+
+            # Measure how wide each score and the time text actually are so events
+            # land in the true gap — not overlapping either element.
+            h_sc_w    = d.textlength(str(h_score or '0'), font=self.clock_giant)
+            a_sc_w    = d.textlength(str(a_score or '0'), font=self.clock_giant)
+            time_w    = d.textlength(status_text[:12], font=self.big_font) if status_text else 0
+            left_gap_end   = int(W // 2 - time_w / 2) - 4   # left edge of time text minus margin
+            right_gap_start = int(W // 2 + time_w / 2) + 4  # right edge of time text plus margin
+            left_lane_x  = (int(h_sc_x + h_sc_w) + left_gap_end)  // 2   # centre of left gap
+            right_lane_x = (right_gap_start + int(a_sc_x - a_sc_w)) // 2  # centre of right gap
+
+            CARD_W, CARD_GAP = 3, 4
+            WHITE = (235, 235, 235)
+            DIM   = (150, 150, 150)
+
+            left_gap_start  = int(h_sc_x + h_sc_w)
+            right_gap_end   = int(a_sc_x - a_sc_w)
+
+            for lane, gap_l, gap_r in [
+                (left_events,  left_gap_start, left_gap_end),
+                (right_events, right_gap_start, right_gap_end),
+            ]:
+                if not lane:
+                    continue
+                n = len(lane)
+                gap_w = gap_r - gap_l
+
+                if n <= 3:
+                    # Single centred column
+                    subcols = [(lane, gap_l + gap_w // 2)]
+                    LINE_H, name_len = 9, 8
+                else:
+                    # Two sub-columns: earlier goals on left, later on right
+                    half = (n + 1) // 2
+                    subcols = [
+                        (lane[:half], gap_l + gap_w * 30 // 100),
+                        (lane[half:], gap_l + gap_w * 68 // 100),
+                    ]
+                    LINE_H, name_len = 8, 6
+
+                for subcol, cx in subcols:
+                    nc = len(subcol)
+                    y0 = H // 2 - (nc - 1) * LINE_H // 2
+                    for i, (ev, is_card) in enumerate(subcol):
+                        y = y0 + i * LINE_H
+                        player = str(ev.get('player') or '')[:name_len]
+                        t = str(ev.get('time') or '')
+                        is_og = not is_card and ev.get('own_goal')
+                        label = f"{player} {t}{'(og)' if is_og else ''}".strip()
+                        if not label:
+                            continue
+                        col = DIM if is_og else WHITE
+                        if is_card:
+                            tw = d.textlength(label, font=self.micro)
+                            total_w = CARD_W + CARD_GAP + tw
+                            rx = int(cx - total_w / 2)
+                            d.rectangle([rx, y - 4, rx + CARD_W, y + 2], fill=(220, 30, 30))
+                            self.draw_outlined_text(d, rx + CARD_W + CARD_GAP, y, label,
+                                                    self.micro, WHITE, (0, 0, 0, 200), anchor='lm')
+                        else:
+                            self.draw_outlined_text(d, cx, y, label, self.micro,
+                                                    col, (0, 0, 0, 200), anchor='mm')
 
             if sit.get('shootout'):
                 so_a = sit.get('shootout', {}).get('away', [])

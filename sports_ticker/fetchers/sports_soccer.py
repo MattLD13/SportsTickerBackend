@@ -3,6 +3,79 @@ globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')
 from .test_mode import TestMode
 
 class SportsSoccerMixin:
+    def parse_fotmob_goal_and_card_events(self, payload):
+        """Extract goal scorers and red/second-yellow cards from a FotMob matchDetails payload."""
+        try:
+            events_dict = (payload.get("content") or {}).get("matchFacts", {}).get("events", {})
+            if not isinstance(events_dict, dict):
+                return [], []
+            events = events_dict.get("events") or []
+            if not isinstance(events, list):
+                return [], []
+
+            goal_events, red_cards = [], []
+
+            for ev in events:
+                if not isinstance(ev, dict):
+                    continue
+                ev_type = str(ev.get("type") or "").strip()
+                is_home = ev.get("isHome")
+                if is_home is None:
+                    continue
+                is_home = bool(is_home)
+
+                # Time — FotMob may send int minutes or a nested dict
+                time_raw = ev.get("time") or ev.get("minute") or 0
+                if isinstance(time_raw, dict):
+                    time_int = int(time_raw.get("minute") or time_raw.get("s", 0) // 60)
+                else:
+                    try:
+                        time_int = int(time_raw)
+                    except (ValueError, TypeError):
+                        time_int = 0
+
+                added_raw = ev.get("addedTime") or ev.get("extra_time") or 0
+                try:
+                    added_int = int(added_raw)
+                except (ValueError, TypeError):
+                    added_int = 0
+
+                time_str = f"{time_int}+{added_int}'" if added_int else (f"{time_int}'" if time_int else "")
+
+                # Player name — may be a string or a nested object
+                player_raw = ev.get("player") or ev.get("playerName") or ""
+                if isinstance(player_raw, dict):
+                    player_name = str(player_raw.get("name") or player_raw.get("short") or "").strip()
+                else:
+                    player_name = str(player_raw).strip()
+
+                # Keep only the last name, upper-cased, max 8 chars
+                parts = [p for p in player_name.split() if p]
+                player_last = parts[-1].upper()[:8] if parts else ""
+
+                if ev_type == "Goal":
+                    sub = str(ev.get("subType") or "").lower()
+                    is_og = "own" in sub or ev.get("ownGoal") is True
+                    goal_events.append({
+                        "player": player_last,
+                        "time": time_str,
+                        "is_home": is_home,
+                        "own_goal": is_og,
+                    })
+
+                elif ev_type == "Card":
+                    card = str(ev.get("card") or "").lower()
+                    is_red = ("red" in card and "yellow" not in card) or ("yellow" in card and "red" in card)
+                    if is_red:
+                        red_cards.append({
+                            "player": player_last,
+                            "time": time_str,
+                            "is_home": is_home,
+                        })
+
+            return goal_events, red_cards
+        except Exception:
+            return [], []
     def _fetch_fotmob_details(self, match_id, home_id=None, away_id=None):
         try:
             payload = None

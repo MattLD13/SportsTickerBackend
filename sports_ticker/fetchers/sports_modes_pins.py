@@ -166,7 +166,13 @@ class SportsModesPinsMixin:
                     # Pass a massive time window so it passes normal time filters
                     huge_start = dt(1970, 1, 1, tzinfo=timezone.utc)
                     huge_end = dt(2099, 1, 1, tzinfo=timezone.utc)
-                    return self._extract_matches([mock_match], league_key, conf, huge_start, huge_end, huge_start, huge_end)
+                    games = self._extract_matches([mock_match], league_key, conf, huge_start, huge_end, huge_start, huge_end)
+                    if games:
+                        goal_events, red_cards = self.parse_fotmob_goal_and_card_events(payload)
+                        if goal_events or red_cards:
+                            games[0]['situation']['goal_events'] = goal_events
+                            games[0]['situation']['red_cards'] = red_cards
+                    return games
             except Exception as e:
                 print(f"FotMob Pinned Game Error: {e}")
                 return []
