@@ -4,6 +4,8 @@
 import os
 import sys
 
+from PIL import Image
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from tools.fetch_and_render import make_renderer, render_pin, save_image, prefetch_logos
@@ -124,6 +126,40 @@ MOCK_GAMES = [
 ]
 
 
+MOCK_NASCAR = {
+    "id": "nascar_mock",
+    "type": "racing",
+    "sport": "nascar",
+    "state": "in",
+    "status": "LIVE",
+    "is_shown": True,
+    "away_abbr": "Coca-Cola 600",
+    "home_abbr": "Race",
+    "nascar": {
+        "event_name": "Coca-Cola 600",
+        "short_name": "Coca-Cola 600",
+        "track_name": "Charlotte Motor Speedway",
+        "session_type": "Race",
+        "session_name": "Race",
+        "lap": 142,
+        "total_laps": 200,
+        "laps_remaining": 58,
+        "caution": False,
+        "flag": "GREEN",
+        "drivers": [
+            {"pos": 1,  "name": "Kyle Larson",    "abbr": "LAR", "car": "5",  "team_logo": "https://cf.nascar.com/data/images/carbadges/1/5.png",  "livery_primary": "#F5A623", "livery_secondary": "#111111", "gap": "Leader",   "car_illustration": ""},
+            {"pos": 2,  "name": "Ryan Blaney",    "abbr": "BLA", "car": "12", "team_logo": "https://cf.nascar.com/data/images/carbadges/1/12.png", "livery_primary": "#003EAC", "livery_secondary": "#111111", "gap": "+0.412s",  "car_illustration": ""},
+            {"pos": 3,  "name": "Denny Hamlin",   "abbr": "HAM", "car": "11", "team_logo": "https://cf.nascar.com/data/images/carbadges/1/11.png", "livery_primary": "#CC0000", "livery_secondary": "#111111", "gap": "+1.087s",  "car_illustration": ""},
+            {"pos": 4,  "name": "Chase Elliott",  "abbr": "ELL", "car": "9",  "team_logo": "https://cf.nascar.com/data/images/carbadges/1/9.png",  "livery_primary": "#F5A623", "livery_secondary": "#111111", "gap": "+1.934s",  "car_illustration": ""},
+            {"pos": 5,  "name": "Joey Logano",    "abbr": "LOG", "car": "22", "team_logo": "https://cf.nascar.com/data/images/carbadges/1/22.png", "livery_primary": "#003EAC", "livery_secondary": "#111111", "gap": "+2.751s",  "car_illustration": ""},
+            {"pos": 6,  "name": "Martin Truex Jr","abbr": "TRU", "car": "19", "team_logo": "https://cf.nascar.com/data/images/carbadges/1/19.png", "livery_primary": "#CC0000", "livery_secondary": "#111111", "gap": "+3.642s",  "car_illustration": ""},
+            {"pos": 7,  "name": "Brad Keselowski","abbr": "KES", "car": "6",  "team_logo": "https://cf.nascar.com/data/images/carbadges/1/6.png",  "livery_primary": "#003EAC", "livery_secondary": "#111111", "gap": "+4.508s",  "car_illustration": ""},
+            {"pos": 8,  "name": "Tyler Reddick",  "abbr": "RED", "car": "45", "team_logo": "https://cf.nascar.com/data/images/carbadges/1/45.png", "livery_primary": "#CC0000", "livery_secondary": "#111111", "gap": "+5.329s",  "car_illustration": ""},
+        ],
+    },
+}
+
+
 SCROLL_SOCCER = make_mock_game(
     sport="soccer_pl", game_id=99999,
     away="MCI", home="ARS",
@@ -163,6 +199,30 @@ def main():
         except Exception as exc:
             print(f"  ERROR rendering {label}: {exc}")
             import traceback; traceback.print_exc()
+
+    # NASCAR full-bleed — render multiple frames to show the scrolling driver strip
+    print("Prefetching NASCAR carbadges...")
+    prefetch_logos(nascar_renderer := make_renderer("nascar"), [MOCK_NASCAR])
+    nascar_gif_frames = []
+    nascar_gif_path = os.path.join(OUT_DIR, "nascar_full.gif")
+    try:
+        for _ in range(60):
+            frame = render_pin(nascar_renderer, MOCK_NASCAR)
+            upscaled = frame.resize((frame.width * 4, frame.height * 4), Image.Resampling.NEAREST)
+            nascar_gif_frames.append(upscaled)
+        nascar_gif_frames[0].save(
+            nascar_gif_path,
+            save_all=True,
+            append_images=nascar_gif_frames[1:],
+            duration=50,
+            loop=0,
+        )
+        print(f"Saved {nascar_gif_path} ({len(nascar_gif_frames)} frames)")
+        # Also save a static snapshot
+        save_image(render_pin(nascar_renderer, MOCK_NASCAR), os.path.join(OUT_DIR, "nascar.png"))
+    except Exception as exc:
+        print(f"  ERROR rendering NASCAR: {exc}")
+        import traceback; traceback.print_exc()
 
     # Scroll card test
     from ticker_controller.stadium import StadiumRenderer

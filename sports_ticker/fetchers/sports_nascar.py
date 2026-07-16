@@ -1,5 +1,6 @@
 """NASCAR live data fetcher using cf.nascar.com public feeds."""
 
+import os
 import re
 from datetime import date, datetime as _dt_cls, timedelta, timezone as _tz
 
@@ -8,6 +9,15 @@ globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')
 
 _NASCAR_LIVE_URL = "https://cf.nascar.com/cacher/live/live-feed.json"
 _NASCAR_HEADERS  = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
+# If NASCAR_BADGE_HOST is set (e.g. "https://ticker.mattdicks.org/api/nascar/badge"),
+# badge URLs in the game JSON point to the server proxy instead of cf.nascar.com.
+# The server pre-resizes badges to 32×32 and caches them, saving the Pi the work.
+# Leave unset to have the Pi fetch directly from cf.nascar.com (fine for carbadges).
+_NASCAR_BADGE_HOST = os.environ.get(
+    'NASCAR_BADGE_HOST',
+    'https://cf.nascar.com/data/images/carbadges/1',
+)
 
 # Official season schedule (all series, with per-session start times) — same
 # cf.nascar.com host as the live feed above.
@@ -407,7 +417,7 @@ class SportsNascarMixin:
                     'abbr': _nascar_abbr(full_name),
                     'car': car_num,
                     'team': sponsor,
-                    'team_logo': f"https://cf.nascar.com/data/images/carbadges/1/{car_num}.png" if car_num else '',
+                    'team_logo': f"{_NASCAR_BADGE_HOST}/{car_num}.png" if car_num else '',
                     'car_illustration': _nascar_car_image_url(race_id, car_num),
                     'livery_primary': _nascar_make_color(make),
                     'livery_secondary': '#111111',

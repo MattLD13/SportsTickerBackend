@@ -260,6 +260,9 @@ def prefetch_logos(renderer: TickerStreamer, games: list[dict]) -> None:
                     logo_jobs.append((driver["team_logo"], (18, 18)))
                     logo_jobs.append((driver["team_logo"], (10, 10)))
                     logo_jobs.append((driver["team_logo"], (7, 7)))
+                    # NASCAR carbadges are displayed full-height in the driver card
+                    if sport == "nascar":
+                        logo_jobs.append((driver["team_logo"], (32, 32)))
                 if driver.get("car_illustration"):
                     logo_jobs.append((driver["car_illustration"], (36, 12)))
                     logo_jobs.append((driver["car_illustration"], (120, 16)))

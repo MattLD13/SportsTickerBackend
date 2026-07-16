@@ -22,6 +22,7 @@ from .routes.ticker import list_tickers, pair_ticker, pair_ticker_by_id, registe
 from .routes.flight import api_airport_lookup, debug_flight_tracking, get_airlines, get_airports, get_flight_status
 from .routes.debug import api_debug, api_hardware, api_timezone_debug, get_logs
 from .routes.preview import preview_strip
+from .routes.nascar import nascar_carbadge
 from .dashboard import dashboard as _dashboard_bp
 app.register_blueprint(_dashboard_bp)
 
@@ -34,4 +35,5 @@ __all__ = [
     'api_airport_lookup', 'debug_flight_tracking', 'get_airlines', 'get_airports', 'get_flight_status',
     'api_debug', 'api_hardware', 'api_timezone_debug', 'get_logs',
     'preview_strip',
+    'nascar_carbadge',
 ]

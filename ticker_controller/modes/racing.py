@@ -23,7 +23,7 @@ import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 from ..config import PANEL_W, PANEL_H, ASSETS_DIR
-from ..fonts import draw_tiny_text, draw_hybrid_text
+from ..fonts import TINY_FONT_MAP, draw_tiny_text, draw_hybrid_text
 
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
@@ -524,7 +524,10 @@ def _process_nascar_raw(url, target_size):
             pass
 
         # 1) Generous intermediate resize for high-quality bg removal
-        full.thumbnail((200, 28), Image.Resampling.LANCZOS)
+        # Use 4× the final target so bg removal has enough resolution to work well.
+        inter_w = max(400, target_size[0] * 4)
+        inter_h = max(100, target_size[1] * 4)
+        full.thumbnail((inter_w, inter_h), Image.Resampling.LANCZOS)
         # 2) Remove background, then trim transparent padding so the
         #    visible car starts at pixel 0 (flush left)
         full = _flood_remove_background(full, tolerance=20)
@@ -615,7 +618,7 @@ def nascar_submit_downloads(urls, target_size, executor):
     threading.Thread(target=_run_phases, daemon=True).start()
 
 
-def nascar_retry_pending(executor, target_size=(80, 14)):
+def nascar_retry_pending(executor, target_size=(130, 20)):
     """Re-submit any URLs that haven't successfully downloaded yet."""
     with _nascar_dl_lock:
         pending = [u for u in _nascar_dl_pending if u not in _nascar_dl_inflight]
@@ -696,6 +699,47 @@ def _render_number_badge(text, font, fg=(235, 235, 235), scale=2):
     if scale > 1:
         badge = badge.resize((base_w * scale, 5 * scale), Image.Resampling.NEAREST)
     return badge
+
+
+def _draw_nascar_stylized_number(cd, car_num, primary, secondary, card_w, card_h):
+    """Draw a large, livery-coloured car number as the visual centerpiece of a driver card."""
+    text = str(car_num).strip()
+    if not text:
+        return
+    # Scale the 5-row pixel font to fill most of the card height
+    scale = max(2, min(5, (card_h - 4) // 5))
+    num_h = 5 * scale
+    char_w = 4 * scale
+    gap = max(1, scale - 1)
+    total_w = len(text) * char_w + max(0, len(text) - 1) * gap
+    start_x = max(2, (card_w - total_w) // 2)
+    start_y = max(1, (card_h - num_h) // 2)
+
+    # Soft background strip in secondary livery colour
+    r2, g2, b2 = secondary[:3]
+    cd.rectangle(
+        [0, start_y - 2, card_w - 1, start_y + num_h + 2],
+        fill=(max(0, r2 - 20), max(0, g2 - 20), max(0, b2 - 20)),
+    )
+
+    r1, g1, b1 = primary[:3]
+    luma = 0.299 * r1 + 0.587 * g1 + 0.114 * b1
+    fill_col = (r1, g1, b1)
+    outline_col = (10, 10, 15) if luma > 60 else (200, 200, 200)
+
+    x_cursor = start_x
+    for char in text:
+        bitmap = TINY_FONT_MAP.get(char, [0] * 5)
+        for row_i, row_byte in enumerate(bitmap[:5]):
+            for bit_i, mask in enumerate((0x8, 0x4, 0x2, 0x1)):
+                if row_byte & mask:
+                    px = x_cursor + bit_i * scale
+                    py = start_y + row_i * scale
+                    # Dark outline around each scaled pixel block
+                    cd.rectangle([px - 1, py - 1, px + scale, py + scale], fill=outline_col)
+                    # Fill with primary livery colour
+                    cd.rectangle([px, py, px + scale - 1, py + scale - 1], fill=fill_col)
+        x_cursor += char_w + gap
 
 
 def _format_racing_time(value):
@@ -1349,6 +1393,12 @@ class RacingMixin:
                 name      = str(driver.get('name') or driver.get('abbr') or '???').strip()
                 car_num   = str(driver.get('car') or '').strip()
                 place_text = _ordinal_place(pos)
+                team_logo  = str(driver.get('team_logo') or '').strip()
+                car_image  = str(driver.get('car_illustration') or '').strip()
+                # A badge card uses the carbadge PNG as the visual (no big car illustration).
+                # Carbadge is placed below the position label so we use a narrower card
+                # and leave out the redundant car-number text in the top corner.
+                is_badge_card = bool(team_logo) and (not car_image or 'nascar.com' in car_image)
                 name_font = self.font
                 name_w, _ = _text_size(pd, name, name_font)
                 if name_w > 72:
@@ -1359,11 +1409,14 @@ class RacingMixin:
                     name_w, _ = _text_size(pd, name, name_font)
                 place_w, _ = _text_size(pd, place_text, self.font)
                 num_w,   _ = _text_size(pd, car_num, self.font)
-                card_w = max(min_card_w, int(name_w) + 24, int(place_w + num_w) + 18)
+                if is_badge_card:
+                    # Badge takes ~(card_h-9)px square on the left; text fills the right.
+                    badge_est_w = card_h - 7   # 78:70 ≈ 1.11, ~23px at 21px height
+                    card_w = max(badge_est_w + int(name_w) + 18, 80)
+                else:
+                    card_w = max(min_card_w, int(name_w) + 24, int(place_w + num_w) + 18)
                 card = Image.new('RGBA', (card_w, card_h), (0, 0, 0, 0))
                 cd = ImageDraw.Draw(card)
-                team_logo  = str(driver.get('team_logo') or '').strip()
-                car_image  = str(driver.get('car_illustration') or '').strip()
                 gap_val    = str(driver.get('gap') or '').strip()
                 primary    = _hex_to_rgb(driver.get('livery_primary'), (120, 120, 130))
                 secondary  = _hex_to_rgb(driver.get('livery_secondary'), (20, 20, 24))
@@ -1376,7 +1429,7 @@ class RacingMixin:
                 if car_image:
                     is_nascar_img = 'nascar.com' in car_image
                     if is_nascar_img:
-                        car_img = _load_nascar_car(car_image, (80, 14))
+                        car_img = _load_nascar_car(car_image, (130, 20))
                     else:
                         car_img = None
                         for ext in ('webp', 'png', 'jpg', 'jpeg'):
@@ -1405,13 +1458,27 @@ class RacingMixin:
                     self._draw_f1_generated_car(card, 1, 14, fallback_w, 15,
                                                 primary + (255,), secondary + (255,))
                     drew_car = True
-                if not drew_car and car_num:
-                    draw_tiny_text(cd, 5, 19, car_num, (110, 110, 122))
+                if not drew_car:
+                    # Try the carbadge (small RGBA PNG, clean transparency, no bg removal).
+                    badge_y  = 8                   # below the "1st/2nd place" label
+                    badge_h  = card_h - badge_y - 1
+                    badge_img = self._ic_load_logo(team_logo, (badge_h, badge_h), bg_tolerance=4) if team_logo else None
+                    if badge_img:
+                        badge = badge_img.convert('RGBA')
+                        if badge.height > 0:
+                            bw = int(badge.width * badge_h / badge.height)
+                            badge = badge.resize((bw, badge_h), Image.Resampling.LANCZOS)
+                        card.paste(badge, (2, badge_y), badge)   # left-aligned, below place label
+                        drew_car = True
+                    elif car_num:
+                        _draw_nascar_stylized_number(cd, car_num, primary, secondary, card_w, card_h)
 
                 pos_color = (255, 215, 0) if pos == '1' else (180, 180, 180)
                 cd.text((4, 0), place_text, font=self.font, fill=pos_color)
 
-                if car_num:
+                # Skip the redundant small car-number text when the badge is showing —
+                # the badge already IS the number.
+                if car_num and not drew_car:
                     if team_logo:
                         num_fill, _num_outline = self._ic_logo_colors(team_logo, (18, 18))
                     else:
