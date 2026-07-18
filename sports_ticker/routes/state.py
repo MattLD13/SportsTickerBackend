@@ -99,6 +99,12 @@ def get_ticker_data():
     if has_pinned_game and current_mode in SPORTS_MODE_FAMILY:
         if pin_league in ('golf', 'masters'):
             current_mode = 'golf'
+        elif pin_league in ('indycar', 'indycar_full'):
+            current_mode = 'indycar'
+        elif pin_league in ('nascar', 'nascar_full'):
+            current_mode = 'nascar'
+        elif pin_league in ('f1', 'f1_full'):
+            current_mode = 'f1'
         else:
             current_mode = 'sports_full'
 
@@ -326,11 +332,19 @@ def api_state():
         current_mode = normalize_mode(_preview_mode)
 
     # Legacy app behavior: reflect pin by forcing a dedicated mode in /api/state.
-    # Golf pins should use the golf UI; other sports-family pins use sports_full.
+    # Golf pins use the golf UI; racing pins use their own UI; others use sports_full.
     if pinned_game and current_mode in SPORTS_MODE_FAMILY:
-        current_mode = 'golf' if current_mode == 'masters' else 'sports_full'
-        if str(pinned_game).split(':', 1)[0].strip().lower() in ('golf', 'masters'):
+        _pin_league = str(pinned_game).split(':', 1)[0].strip().lower()
+        if _pin_league in ('golf', 'masters') or current_mode == 'masters':
             current_mode = 'golf'
+        elif _pin_league in ('indycar', 'indycar_full'):
+            current_mode = 'indycar'
+        elif _pin_league in ('nascar', 'nascar_full'):
+            current_mode = 'nascar'
+        elif _pin_league in ('f1', 'f1_full'):
+            current_mode = 'f1'
+        else:
+            current_mode = 'sports_full'
         response_settings['mode'] = current_mode
 
     response_settings['mode'] = current_mode
