@@ -527,20 +527,33 @@ class SportsIndycarMixin:
         if not season_data:
             return ''
         sname_lower = str(session_name or '').lower().strip()
+        # Also try the URL slug (hyphens→spaces) as an alternate event name
+        _, event_slug = self._ic_current_event_slug
+        slug_name = event_slug.replace('-', ' ') if event_slug else ''
+
+        def _event_matches(ename):
+            return (_ic_event_names_match(ename, event_name) or
+                    (slug_name and _ic_event_names_match(ename, slug_name)))
+
+        def _session_id_for_event(event):
+            sessions = event.get('Sessions') or []
+            for s in sessions:
+                if str(s.get('SessionName') or '').lower().strip() == sname_lower:
+                    return str(s.get('EventsSessionID') or '')
+            for s in sessions:
+                sn = str(s.get('SessionName') or '').lower().strip()
+                if sname_lower in sn or sn in sname_lower:
+                    return str(s.get('EventsSessionID') or '')
+            return ''
+
         for year_entry in season_data:
             for event in (year_entry.get('Events') or []):
                 ename = str(event.get('EventName') or '')
-                if not _ic_event_names_match(ename, event_name):
+                if not _event_matches(ename):
                     continue
-                sessions = event.get('Sessions') or []
-                # Prefer exact match; fall back to substring
-                for s in sessions:
-                    if str(s.get('SessionName') or '').lower().strip() == sname_lower:
-                        return str(s.get('EventsSessionID') or '')
-                for s in sessions:
-                    sn = str(s.get('SessionName') or '').lower().strip()
-                    if sname_lower in sn or sn in sname_lower:
-                        return str(s.get('EventsSessionID') or '')
+                sid = _session_id_for_event(event)
+                if sid:
+                    return sid
         return ''
 
     def _ic_fetch_session_results(self, session_id, force=False):
