@@ -16,6 +16,7 @@ from .racing_flags import LIVE_FLAGS, CAUTION_FLAGS, normalize_flag
 _BLOB_BASE            = "https://indycar.blob.core.windows.net/racecontrol"
 _IC_POST_SINCE_FILE   = "indycar_post_since.json"
 _IC_EXPIRED_IDS_FILE  = "indycar_expired_events.json"
+_IC_LAST_FINAL_FILE   = "indycar_last_final.json"
 _IC_POST_GRACE_SECS   = 12 * 3600   # show FINAL for 12 h after race ends, then hide
 _IMS_LAT = 39.7950
 _IMS_LON = -86.2340
@@ -293,7 +294,14 @@ class SportsIndycarMixin:
             except Exception:
                 pass
 
-            self._ic_timing_cache  = {'ts': 0.0, 'data': None, 'post_since': post_since}
+            last_final = None
+            try:
+                with open(_IC_LAST_FINAL_FILE) as _f:
+                    last_final = json.load(_f).get('game') or None
+            except Exception:
+                pass
+
+            self._ic_timing_cache  = {'ts': 0.0, 'data': last_final, 'post_since': post_since}
             self._ic_expired_ids   = expired_ids
             self._ic_drivers_cache = {'ts': 0.0, 'data': {}}
             self._ic_weather_cache = {'ts': 0.0, 'data': {}}
@@ -437,6 +445,12 @@ class SportsIndycarMixin:
         except Exception as exc:
             print(f"[IndyCar] Could not save post_since: {exc}")
 
+    def _ic_save_last_final(self, game):
+        try:
+            save_json_atomically(_IC_LAST_FINAL_FILE, {'game': game} if game else {})
+        except Exception as exc:
+            print(f"[IndyCar] Could not save last_final: {exc}")
+
     def _ic_expire_event(self, event_id: str):
         """Mark event_id as permanently expired and clear the post_since timer."""
         if event_id and event_id != 'indycar_live':
@@ -447,6 +461,7 @@ class SportsIndycarMixin:
                 print(f"[IndyCar] Could not save expired IDs: {exc}")
         self._ic_timing_cache['post_since'] = None
         self._ic_save_post_since(None)
+        self._ic_save_last_final(None)
 
     def _fetch_indycar_drivers(self, force=False):
         """Fetch and cache driversfeed.json indexed by car number."""
@@ -598,6 +613,11 @@ class SportsIndycarMixin:
                 if self._ic_timing_cache.get('post_since'):
                     self._ic_timing_cache['post_since'] = None
                     self._ic_save_post_since(None)
+
+            # Persist any real live-timing game (post or live) so a restart
+            # doesn't lose the last known session results.
+            if game and not str(game.get('id', '')).startswith('indycar_sched_'):
+                self._ic_save_last_final(game)
 
         if not game:
             # Nothing from the blob — not for NTT INDYCAR SERIES (e.g. Indy NXT),
