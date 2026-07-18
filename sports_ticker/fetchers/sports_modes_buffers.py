@@ -387,9 +387,9 @@ class SportsModesBuffersMixin:
         return [self._golf_placeholder_game()]
 
     def _build_indycar_buffer(self):
-        obj = self._fetch_indycar()
-        if obj:
-            return [obj]
+        games = self._fetch_indycar()
+        if games:
+            return games
         return [_racing_loading_game(
             'indycar', 'indycar', 'IndyCar', 'Race',
             {
@@ -405,9 +405,9 @@ class SportsModesBuffersMixin:
         )]
 
     def _build_f1_buffer(self):
-        obj = self._fetch_f1()
-        if obj:
-            return [obj]
+        games = self._fetch_f1()
+        if games:
+            return games
         return [_racing_loading_game(
             'f1', 'f1', 'Formula 1', 'Race',
             {

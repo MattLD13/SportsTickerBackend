@@ -532,9 +532,21 @@ class SportsIndycarMixin:
 
         timing = payload.get('timing_results', {})
         if not timing:
-            # Blob returned empty — no active session. Fall back to the season
-            # schedule so the next race still shows a real countdown.
-            if self._ic_timing_cache.get('post_since'):
+            # Blob returned empty — session may have just ended. If we have a
+            # FINAL result cached, keep showing it for the grace period before
+            # switching to the schedule countdown.
+            cached_game = self._ic_timing_cache.get('data')
+            if cached_game and isinstance(cached_game, dict) and cached_game.get('state') == 'post':
+                if not self._ic_timing_cache.get('post_since'):
+                    self._ic_timing_cache['post_since'] = now
+                    self._ic_save_post_since(now)
+                if (now - self._ic_timing_cache['post_since']) <= _IC_POST_GRACE_SECS:
+                    self._ic_timing_cache['ts'] = now
+                    return [cached_game]
+                # Grace period expired — fall through to schedule
+                self._ic_timing_cache['post_since'] = None
+                self._ic_save_post_since(None)
+            elif self._ic_timing_cache.get('post_since'):
                 self._ic_timing_cache['post_since'] = None
                 self._ic_save_post_since(None)
             game = self._build_indycar_schedule_game(datetime.now(timezone.utc))
