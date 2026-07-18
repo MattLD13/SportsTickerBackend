@@ -47,65 +47,27 @@ _IC_ENTRY_RE = re.compile(
     re.DOTALL,
 )
 
-_IC_RESULTS_BASE  = "https://www.indycar.com/results/ntt-indycar-series"
-_IC_RESULTS_TTL   = 300.0   # re-fetch results page every 5 min max
-
-# HTML table parsers for the server-rendered results page
-_IC_TR_RE  = re.compile(r'<tr\b[^>]*>(.*?)</tr>', re.DOTALL | re.IGNORECASE)
-_IC_TD_RE  = re.compile(r'<td\b[^>]*>(.*?)</td>', re.DOTALL | re.IGNORECASE)
-_IC_TAG_RE = re.compile(r'<[^>]+>')
+_IC_SERIES_GUID     = "b856a4f1-e85c-4fac-8c36-fd58d962227a"
+_IC_API_BASE        = "https://www.indycar.com/api/results"
+_IC_SEASON_DD_TTL   = 3600.0   # re-fetch SeasonDropDown once per hour
+_IC_SESSION_RES_TTL = 300.0    # re-fetch session results every 5 min
 
 
-def _ic_strip_html(s):
-    return _IC_TAG_RE.sub('', s).replace('&amp;', '&').replace('&#39;', "'").strip()
-
-
-def _ic_session_to_results_slug(session_name):
-    """Map a session name like 'Practice 1' to an indycar.com results URL slug."""
-    name = str(session_name or '').lower().strip()
-    m = re.search(r'(\d+)', name)
-    n = m.group(1) if m else '1'
-    if 'practice' in name:
-        return f'practice-{n}'
-    if 'qualifying' in name or 'qual' in name or 'fast' in name:
-        return 'qualifying'
-    if 'race' in name:
-        return 'race'
-    if 'warm' in name:
-        return 'warmup'
-    return None
-
-
-def _ic_parse_results_table(html):
-    """Parse the first data table from an indycar.com results page.
-    Returns list of dicts: pos, car, driver, team, best_time, speed, gap, laps.
-    Columns confirmed from live DOM inspection:
-      0=Rank  1=Car#  2=Driver  3=Team  4=BestTime  5=Speed(mph)
-      6=BestLap  7=GapToLeader  8=Interval  9=TotalLaps
-    """
-    drivers = []
-    for tr_m in _IC_TR_RE.finditer(html):
-        tds = [_ic_strip_html(td) for td in _IC_TD_RE.findall(tr_m.group(1))]
-        if len(tds) < 8:
-            continue
-        try:
-            pos = int(tds[0])
-        except (ValueError, IndexError):
-            continue
-        gap = tds[7] if len(tds) > 7 else ''
-        if gap.startswith('-') or gap == '':
-            gap = 'Leader' if pos == 1 else ''
-        drivers.append({
-            'pos':       pos,
-            'car':       tds[1],
-            'driver':    tds[2],
-            'team':      tds[3],
-            'best_time': tds[4],
-            'speed':     tds[5],
-            'gap':       gap,
-            'laps':      tds[9] if len(tds) > 9 else '',
-        })
-    return drivers
+def _ic_event_names_match(a, b):
+    """Return True if two event name strings plausibly refer to the same race."""
+    a = str(a or '').lower().strip()
+    b = str(b or '').lower().strip()
+    if a == b:
+        return True
+    stop = {'the', 'of', 'at', 'in', 'by', 'and', 'for', 'grand', 'prix', 'gp',
+            'indycar', 'series', 'ntt', 'presented', 'running', 'a', 'an', '110th'}
+    wa = {w for w in re.split(r'\W+', a) if w and w not in stop and len(w) > 2}
+    wb = {w for w in re.split(r'\W+', b) if w and w not in stop and len(w) > 2}
+    if not wa or not wb:
+        return False
+    smaller = wa if len(wa) <= len(wb) else wb
+    larger  = wb if len(wa) <= len(wb) else wa
+    return len(smaller & larger) / len(smaller) >= 0.5
 
 
 def _ic_parse_espn_schedule(events):
@@ -368,7 +330,8 @@ class SportsIndycarMixin:
             self._ic_schedule_cache      = {'ts': 0.0, 'data': []}
             self._ic_index_cache         = {'ts': 0.0, 'data': []}
             self._ic_event_cache         = {}    # "{year}/{slug}" -> {'ts': ..., 'data': [...]}
-            self._ic_results_cache       = {}    # "{year}/{slug}/{session}" -> {'ts': ..., 'data': [...]}
+            self._ic_season_dd_cache     = {'ts': 0.0, 'data': []}
+            self._ic_session_res_cache   = {}    # session_id -> {'ts': ..., 'data': [...]}
             self._ic_current_event_slug  = ('', '')  # (slug_year, event_slug) for current weekend
             self._ic_timing_ttl          = 8.0
             self._ic_drivers_ttl         = 300.0
@@ -474,19 +437,15 @@ class SportsIndycarMixin:
             except Exception:
                 status_display = 'Starts Soon'
 
-        # For finished sessions, try to scrape the results from indycar.com
+        # For finished sessions, fetch results from the IndyCar API
         drivers = []
         if state == 'post':
-            slug_year, event_slug = self._ic_current_event_slug
-            if slug_year and event_slug:
-                session_slug = _ic_session_to_results_slug(session_name)
-                if session_slug:
-                    try:
-                        raw = self._fetch_indycar_results(slug_year, event_slug, session_slug)
-                        if raw:
-                            drivers = self._build_drivers_from_results(raw)
-                    except Exception as exc:
-                        print(f"[IndyCar] results enrichment error: {exc}")
+            try:
+                session_id = self._ic_find_session_id(race_name, session_name)
+                if session_id:
+                    drivers = self._ic_fetch_session_results(session_id)
+            except Exception as exc:
+                print(f"[IndyCar] results enrichment error: {exc}")
 
         return {
             'id':           f"indycar_sched_{start_utc.strftime('%Y%m%dT%H%M')}",
@@ -540,49 +499,106 @@ class SportsIndycarMixin:
         self._ic_save_post_since(None)
         self._ic_save_last_final(None)
 
-    def _fetch_indycar_results(self, slug_year, event_slug, session_slug, force=False):
-        """Fetch post-session standings from the indycar.com server-rendered results page."""
+    def _ic_fetch_season_dropdown(self, force=False):
+        """Fetch SeasonDropDown — all events + sessions with numeric IDs."""
         self.__init_indycar_cache()
-        cache_key = f"{slug_year}/{event_slug}/{session_slug}"
-        entry = self._ic_results_cache.get(cache_key)
         now = time.time()
-        if not force and entry and (now - entry['ts']) < _IC_RESULTS_TTL:
+        cache = self._ic_season_dd_cache
+        if not force and (now - cache['ts']) < _IC_SEASON_DD_TTL and cache['data']:
+            return cache['data']
+        try:
+            r = self.session.get(
+                f"{_IC_API_BASE}/SeasonDropDown",
+                headers=HEADERS,
+                params={'id': _IC_SERIES_GUID},
+                timeout=TIMEOUTS.get('default', 10),
+            )
+            r.raise_for_status()
+            data = r.json()
+            self._ic_season_dd_cache = {'ts': now, 'data': data}
+            return data
+        except Exception as exc:
+            print(f"[IndyCar] SeasonDropDown fetch error: {exc}")
+            return cache.get('data', [])
+
+    def _ic_find_session_id(self, event_name, session_name):
+        """Return the EventsSessionID for the given event + session name, or ''."""
+        season_data = self._ic_fetch_season_dropdown()
+        if not season_data:
+            return ''
+        sname_lower = str(session_name or '').lower().strip()
+        for year_entry in season_data:
+            for event in (year_entry.get('Events') or []):
+                ename = str(event.get('EventName') or '')
+                if not _ic_event_names_match(ename, event_name):
+                    continue
+                sessions = event.get('Sessions') or []
+                # Prefer exact match; fall back to substring
+                for s in sessions:
+                    if str(s.get('SessionName') or '').lower().strip() == sname_lower:
+                        return str(s.get('EventsSessionID') or '')
+                for s in sessions:
+                    sn = str(s.get('SessionName') or '').lower().strip()
+                    if sname_lower in sn or sn in sname_lower:
+                        return str(s.get('EventsSessionID') or '')
+        return ''
+
+    def _ic_fetch_session_results(self, session_id, force=False):
+        """Fetch post-session driver standings via EventsSessionDetails API."""
+        self.__init_indycar_cache()
+        cache_key = str(session_id)
+        entry = self._ic_session_res_cache.get(cache_key)
+        now = time.time()
+        if not force and entry and (now - entry['ts']) < _IC_SESSION_RES_TTL:
             return entry['data']
         try:
-            url = f"{_IC_RESULTS_BASE}/{slug_year}/{event_slug}/{session_slug}"
-            r = self.session.get(url, headers=HEADERS, timeout=TIMEOUTS.get('default', 10))
+            r = self.session.get(
+                f"{_IC_API_BASE}/EventsSessionDetails",
+                headers=HEADERS,
+                params={'id': session_id},
+                timeout=TIMEOUTS.get('default', 10),
+            )
             r.raise_for_status()
-            drivers = _ic_parse_results_table(r.text)
+            drivers = self._build_drivers_from_session_details(r.json())
             if drivers:
-                self._ic_results_cache[cache_key] = {'ts': now, 'data': drivers}
+                self._ic_session_res_cache[cache_key] = {'ts': now, 'data': drivers}
                 return drivers
         except Exception as exc:
-            print(f"[IndyCar] results page fetch error ({session_slug}): {exc}")
+            print(f"[IndyCar] EventsSessionDetails fetch error (id={session_id}): {exc}")
         return entry['data'] if entry else []
 
-    def _build_drivers_from_results(self, raw_drivers):
-        """Convert scraped results-page rows into the standard driver dict format."""
+    def _build_drivers_from_session_details(self, raw_data):
+        """Convert EventsSessionDetails JSON to standard driver dicts."""
         drivers_index = self._fetch_indycar_drivers()
         drivers = []
-        for d in raw_drivers:
-            car_num   = str(d.get('car') or '').strip()
-            full_name = str(d.get('driver') or '').strip()
-            team_name = str(d.get('team') or '').strip()
-            parts     = full_name.rsplit(' ', 1)
-            first = parts[0] if len(parts) == 2 else ''
-            last  = parts[-1]
-            abbr  = _build_abbr(first, last)
+        for d in (raw_data or []):
+            if not isinstance(d, dict):
+                continue
+            first = str(d.get('FirstName') or '').strip()
+            last  = str(d.get('LastName') or '').strip()
+            car_num   = str(d.get('CarNumber') or '').strip()
+            team_name = str(d.get('TeamName') or '').strip()
+            try:
+                pos = int(d.get('PositionFinish') or 0)
+            except Exception:
+                pos = 0
+            if pos == 0:
+                continue
+
+            abbr = _build_abbr(first, last)
+            gap_raw = str(d.get('Gap') or '').strip()
+            gap = 'Leader' if pos == 1 else (gap_raw or '')
 
             drv_feed  = drivers_index.get(car_num, {})
             headshot  = str(drv_feed.get('headshot') or '').strip()
             car_illus = str(drv_feed.get('carillustration') or '').strip()
             endplate  = str(drv_feed.get('endplatesmall') or drv_feed.get('endplatelarge') or '').strip()
             logo_url  = endplate or headshot or ''
-
             pri_hex, sec_hex = _team_livery(team_name)
+
             drivers.append({
-                'pos':              d['pos'],
-                'name':             full_name or 'Unknown',
+                'pos':              pos,
+                'name':             f"{first} {last}".strip() or 'Unknown',
                 'abbr':             abbr,
                 'car':              car_num,
                 'team':             team_name,
@@ -590,14 +606,38 @@ class SportsIndycarMixin:
                 'car_illustration': car_illus,
                 'livery_primary':   pri_hex,
                 'livery_secondary': sec_hex,
-                'gap':              d.get('gap', ''),
-                'laps':             d.get('laps', ''),
-                'speed':            d.get('speed', ''),
-                'best_time':        d.get('best_time', ''),
+                'gap':              gap,
+                'laps':             str(d.get('LapsComplete') or '').strip(),
+                'speed':            str(d.get('BestSpeed') or '').strip(),
+                'best_time':        str(d.get('BestLapTime') or '').strip(),
                 'status':           'Active',
                 'on_track':         False,
             })
+        drivers.sort(key=lambda x: x['pos'])
         return drivers
+
+    def _ic_try_enrich_post_game(self, game):
+        """Populate empty drivers[] on a cached post game using the results API."""
+        try:
+            ic = game.get('indycar') or {}
+            if ic.get('drivers'):
+                return  # already populated
+            # Prefer a session ID stored directly in the game
+            session_id = str(ic.get('events_session_id') or '').strip()
+            if not session_id:
+                event_name   = ic.get('raw_event_name') or ic.get('event_name') or ''
+                session_name = ic.get('raw_session_name') or ic.get('session_name') or ''
+                session_id = self._ic_find_session_id(event_name, session_name)
+            if not session_id:
+                return
+            drivers = self._ic_fetch_session_results(session_id)
+            if drivers:
+                ic['drivers'] = drivers
+                game['indycar'] = ic
+                self._ic_save_last_final(game)
+                print(f"[IndyCar] enriched post game with {len(drivers)} drivers (session {session_id})")
+        except Exception as exc:
+            print(f"[IndyCar] post game enrichment error: {exc}")
 
     def _fetch_indycar_drivers(self, force=False):
         """Fetch and cache driversfeed.json indexed by car number."""
@@ -697,6 +737,9 @@ class SportsIndycarMixin:
                     self._ic_timing_cache['post_since'] = now
                     self._ic_save_post_since(now)
                 if (now - self._ic_timing_cache['post_since']) <= _IC_POST_GRACE_SECS:
+                    # Populate drivers if missing (e.g. after a restart)
+                    if not (cached_game.get('indycar') or {}).get('drivers'):
+                        self._ic_try_enrich_post_game(cached_game)
                     self._ic_timing_cache['ts'] = now
                     return [cached_game]
                 # Grace period expired — fall through to schedule
@@ -969,6 +1012,7 @@ class SportsIndycarMixin:
         drivers.sort(key=lambda d: d['pos'] if d['pos'] > 0 else 999)
 
         event_id = str(hb.get('EventID') or hb.get('EventSessionID') or 'indycar_live')
+        events_session_id = str(hb.get('EventSessionID') or hb.get('EventsSessionID') or '').strip()
         away_abbr = short_event_name
         home_abbr = short_session_name
 
@@ -985,17 +1029,20 @@ class SportsIndycarMixin:
             'away_score':   '',
             'home_score':   '',
             'indycar': {
-                'event_name':   short_event_name,
-                'short_name':   short_event_name,
-                'track_name':   track_name,
-                'session_type': short_session_name,
-                'session_name': short_session_name,
-                'lap':          current_lap,
-                'total_laps':   total_laps,
-                'laps_remaining': laps_rem,
-                'time_to_go':   time_to_go,
-                'caution':      caution,
-                'flag':         flag_status,
-                'drivers':      drivers,
+                'event_name':        short_event_name,
+                'short_name':        short_event_name,
+                'raw_event_name':    event_name,
+                'raw_session_name':  session_name,
+                'events_session_id': events_session_id,
+                'track_name':        track_name,
+                'session_type':      short_session_name,
+                'session_name':      short_session_name,
+                'lap':               current_lap,
+                'total_laps':        total_laps,
+                'laps_remaining':    laps_rem,
+                'time_to_go':        time_to_go,
+                'caution':           caution,
+                'flag':              flag_status,
+                'drivers':           drivers,
             },
         }
