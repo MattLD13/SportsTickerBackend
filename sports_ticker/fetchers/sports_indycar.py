@@ -17,6 +17,7 @@ _BLOB_BASE            = "https://indycar.blob.core.windows.net/racecontrol"
 _IC_POST_SINCE_FILE   = "indycar_post_since.json"
 _IC_EXPIRED_IDS_FILE  = "indycar_expired_events.json"
 _IC_LAST_FINAL_FILE   = "indycar_last_final.json"
+_IC_EVENT_CTX_FILE    = "indycar_event_ctx.json"   # current weekend's full name + EventID
 _IC_POST_GRACE_SECS   = 12 * 3600   # show FINAL for 12 h after race ends, then hide
 _IMS_LAT = 39.7950
 _IMS_LON = -86.2340
@@ -40,6 +41,7 @@ _IC_SESSION_DURATION_MIN = {
 _IC_DEFAULT_DURATION_MIN = 60
 
 _IC_INDEX_HREF_RE = re.compile(r'href="/Schedule/(\d{4})/([^"]+)"')
+_IC_H1_RE         = re.compile(r'<h1[^>]*>(.*?)</h1>', re.DOTALL | re.IGNORECASE)
 _IC_DAY_HEADER_RE = re.compile(r'<h3>[A-Za-z]+, ([A-Za-z]+) (\d{1,2})</h3>')
 _IC_ENTRY_RE = re.compile(
     r'<div class="schedule-entry">.*?<div class="schedule-time">([^<]+)</div>'
@@ -51,6 +53,23 @@ _IC_SERIES_GUID     = "b856a4f1-e85c-4fac-8c36-fd58d962227a"
 _IC_API_BASE        = "https://www.indycar.com/api/results"
 _IC_SEASON_DD_TTL   = 3600.0   # re-fetch SeasonDropDown once per hour
 _IC_SESSION_RES_TTL = 300.0    # re-fetch session results every 5 min
+
+
+_IC_TAG_RE = re.compile(r'<[^>]+>')
+
+
+def _ic_strip_html(s):
+    return _IC_TAG_RE.sub('', str(s or '')).replace('&amp;', '&').replace('&#39;', "'").strip()
+
+
+def _ic_normalize_session_name(name):
+    """Normalize a session name so schedule/blob variants match SeasonDropDown
+    (e.g. 'Warm Up' == 'Warmup', 'Qualifications' ~ 'Qualifying')."""
+    n = str(name or '').lower().strip()
+    n = re.sub(r'\s+', ' ', n)
+    n = n.replace('warm up', 'warmup')
+    n = n.replace('qualifications', 'qualifying').replace('qualification', 'qualifying')
+    return n
 
 
 def _ic_event_names_match(a, b):
@@ -323,6 +342,13 @@ class SportsIndycarMixin:
             except Exception:
                 pass
 
+            event_ctx = {}
+            try:
+                with open(_IC_EVENT_CTX_FILE) as _f:
+                    event_ctx = json.load(_f) or {}
+            except Exception:
+                pass
+
             self._ic_timing_cache        = {'ts': 0.0, 'data': last_final, 'post_since': post_since}
             self._ic_expired_ids         = expired_ids
             self._ic_drivers_cache       = {'ts': 0.0, 'data': {}}
@@ -333,6 +359,11 @@ class SportsIndycarMixin:
             self._ic_season_dd_cache     = {'ts': 0.0, 'data': []}
             self._ic_session_res_cache   = {}    # session_id -> {'ts': ..., 'data': [...]}
             self._ic_current_event_slug  = ('', '')  # (slug_year, event_slug) for current weekend
+            # Current weekend's authoritative event identity, captured from the
+            # live blob when available and persisted so the schedule-game path
+            # can resolve results even after a restart with an empty blob.
+            self._ic_current_event_fullname = str(event_ctx.get('event_fullname') or '')
+            self._ic_current_event_id       = str(event_ctx.get('event_id') or '')
             self._ic_timing_ttl          = 8.0
             self._ic_drivers_ttl         = 300.0
             self._ic_weather_ttl         = 300.0
@@ -405,8 +436,16 @@ class SportsIndycarMixin:
                                  timeout=TIMEOUTS.get('default', 10))
             r.raise_for_status()
             weekend_sessions = _ic_parse_event_sessions(r.text, int(slug_year), race_name)
-            entry = {'ts': now, 'data': weekend_sessions}
+            # The event page's <h1> is the full event name ("Borchetta Bourbon
+            # Music City Grand Prix") — the exact string SeasonDropDown uses,
+            # which the schedule's short ESPN name won't word-match.
+            h1_m = _IC_H1_RE.search(r.text)
+            full_name = _ic_strip_html(h1_m.group(1)) if h1_m else ''
+            entry = {'ts': now, 'data': weekend_sessions, 'fullname': full_name}
             self._ic_event_cache[cache_key] = entry
+        # Persist the full name as a fallback event-identity bridge (the live
+        # blob is authoritative when present; this covers cold starts).
+        self._ic_set_event_ctx(event_fullname=entry.get('fullname', ''))
         weekend_sessions = entry['data']
         if not weekend_sessions:
             return None
@@ -487,6 +526,33 @@ class SportsIndycarMixin:
         except Exception as exc:
             print(f"[IndyCar] Could not save last_final: {exc}")
 
+    def _ic_set_event_ctx(self, event_id='', event_fullname=''):
+        """Record (and persist) the current weekend's authoritative event
+        identity so the schedule-game path can resolve results without a live
+        blob. The id and full name must stay consistent: when the name changes
+        to a new weekend without a fresh id, the old id is dropped so it can't
+        mis-resolve against the previous race."""
+        self.__init_indycar_cache()
+        event_id = str(event_id or '').strip()
+        event_fullname = str(event_fullname or '').strip()
+        changed = False
+        if event_fullname and event_fullname != self._ic_current_event_fullname:
+            self._ic_current_event_fullname = event_fullname
+            if not event_id and self._ic_current_event_id:
+                self._ic_current_event_id = ''   # stale — belonged to prior event
+            changed = True
+        if event_id and event_id != self._ic_current_event_id:
+            self._ic_current_event_id = event_id
+            changed = True
+        if changed:
+            try:
+                save_json_atomically(_IC_EVENT_CTX_FILE, {
+                    'event_id': self._ic_current_event_id,
+                    'event_fullname': self._ic_current_event_fullname,
+                })
+            except Exception as exc:
+                print(f"[IndyCar] Could not save event ctx: {exc}")
+
     def _ic_expire_event(self, event_id: str):
         """Mark event_id as permanently expired and clear the post_since timer."""
         if event_id and event_id != 'indycar_live':
@@ -521,39 +587,53 @@ class SportsIndycarMixin:
             print(f"[IndyCar] SeasonDropDown fetch error: {exc}")
             return cache.get('data', [])
 
-    def _ic_find_session_id(self, event_name, session_name):
-        """Return the EventsSessionID for the given event + session name, or ''."""
+    def _ic_find_session_id(self, event_name, session_name, event_id=''):
+        """Return the EventsSessionID for the given event + session, or ''.
+
+        Resolution order for the event, most reliable first:
+          1. Exact EventID match (from the live blob, persisted across restarts).
+          2. Full event-name match against any of several name candidates
+             (the passed name, the captured full name, the URL slug).
+        The session is then matched within that event by normalized name.
+        """
         season_data = self._ic_fetch_season_dropdown()
         if not season_data:
             return ''
-        sname_lower = str(session_name or '').lower().strip()
-        # Also try the URL slug (hyphens→spaces) as an alternate event name
+
+        sname_norm = _ic_normalize_session_name(session_name)
         _, event_slug = self._ic_current_event_slug
         slug_name = event_slug.replace('-', ' ') if event_slug else ''
-
-        def _event_matches(ename):
-            return (_ic_event_names_match(ename, event_name) or
-                    (slug_name and _ic_event_names_match(ename, slug_name)))
+        event_id = str(event_id or self._ic_current_event_id or '').strip()
+        name_candidates = [c for c in (
+            event_name, self._ic_current_event_fullname, slug_name,
+        ) if c]
 
         def _session_id_for_event(event):
             sessions = event.get('Sessions') or []
             for s in sessions:
-                if str(s.get('SessionName') or '').lower().strip() == sname_lower:
+                if _ic_normalize_session_name(s.get('SessionName')) == sname_norm:
                     return str(s.get('EventsSessionID') or '')
             for s in sessions:
-                sn = str(s.get('SessionName') or '').lower().strip()
-                if sname_lower in sn or sn in sname_lower:
+                sn = _ic_normalize_session_name(s.get('SessionName'))
+                if sname_norm and (sname_norm in sn or sn in sname_norm):
                     return str(s.get('EventsSessionID') or '')
             return ''
 
+        # Pass 1: match the event by EventID (authoritative).
+        if event_id:
+            for year_entry in season_data:
+                for event in (year_entry.get('Events') or []):
+                    if str(event.get('EventID') or '').strip() == event_id:
+                        return _session_id_for_event(event)
+
+        # Pass 2: match the event by any name candidate.
         for year_entry in season_data:
             for event in (year_entry.get('Events') or []):
                 ename = str(event.get('EventName') or '')
-                if not _event_matches(ename):
-                    continue
-                sid = _session_id_for_event(event)
-                if sid:
-                    return sid
+                if any(_ic_event_names_match(ename, c) for c in name_candidates):
+                    sid = _session_id_for_event(event)
+                    if sid:
+                        return sid
         return ''
 
     def _ic_fetch_session_results(self, session_id, force=False):
@@ -646,7 +726,10 @@ class SportsIndycarMixin:
             if not session_id:
                 event_name   = ic.get('raw_event_name') or ic.get('event_name') or ''
                 session_name = ic.get('raw_session_name') or ic.get('session_name') or ''
-                session_id = self._ic_find_session_id(event_name, session_name)
+                event_id     = str(game.get('id') or '').strip()
+                if event_id.startswith('indycar_'):
+                    event_id = ''
+                session_id = self._ic_find_session_id(event_name, session_name, event_id=event_id)
             if not session_id:
                 return
             drivers = self._ic_fetch_session_results(session_id)
@@ -1030,10 +1113,16 @@ class SportsIndycarMixin:
 
         drivers.sort(key=lambda d: d['pos'] if d['pos'] > 0 else 999)
 
-        event_id = str(hb.get('EventID') or hb.get('EventSessionID') or 'indycar_live')
+        raw_event_id = str(hb.get('EventID') or '').strip()
+        event_id = raw_event_id or str(hb.get('EventSessionID') or 'indycar_live')
         events_session_id = str(hb.get('EventSessionID') or hb.get('EventsSessionID') or '').strip()
         away_abbr = short_event_name
         home_abbr = short_session_name
+
+        # The blob is the authoritative source of the weekend's event identity.
+        # Persist it so the schedule-game path can resolve results even after a
+        # restart when the blob has emptied or moved on to a support series.
+        self._ic_set_event_ctx(event_id=raw_event_id, event_fullname=event_name)
 
         return {
             'id':           event_id,

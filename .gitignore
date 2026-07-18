@@ -52,3 +52,9 @@ htmlcov/
 
 # Graphify
 graphify-out/
+
+# IndyCar runtime state (generated at runtime, machine-local)
+indycar_post_since.json
+indycar_expired_events.json
+indycar_last_final.json
+indycar_event_ctx.json
