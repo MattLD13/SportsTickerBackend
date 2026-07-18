@@ -959,7 +959,7 @@ class SportsModesMixin:
         Sports modes with delay use the history buffer for live-delay support.
         All other modes always return current data (delay is ignored).
         """
-        refresh_on_access = mode in ('indycar', 'indycar_full', 'f1', 'f1_full')
+        refresh_on_access = mode in ('indycar', 'indycar_full', 'f1', 'f1_full', 'nascar', 'nascar_full')
         if mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
             return self.get_snapshot_for_delay(delay_seconds)
         with self._mode_buffer_lock:
@@ -984,6 +984,8 @@ class SportsModesMixin:
             'indycar_full':   self._build_indycar_buffer,
             'f1':             self._build_f1_buffer,
             'f1_full':        self._build_f1_buffer,
+            'nascar':         self._build_nascar_buffer,
+            'nascar_full':    self._build_nascar_buffer,
         }
         builder = _dispatch.get(mode)
         if not builder:
