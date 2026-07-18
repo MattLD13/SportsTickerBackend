@@ -104,7 +104,7 @@ def racing_flag_color(flag):
         'FLAG TO FLAG':        (55, 190, 90),     # Wet-to-dry bike swap, race continues
         'FTF':                 (55, 190, 90),
 
-    }.get(flag, (0, 80, 180))   # dim blue = unrecognised flag
+    }.get(flag, (110, 115, 130))   # neutral slate = unrecognised status (not a real flag)
 
 
 # Keep the old private name so any code that imported it directly still works.
@@ -784,8 +784,20 @@ def _tiny_text_width(text, font=None):
     return sum(2 if ch == '~' else 5 for ch in text)
 
 
+# Words that timing feeds place in the flag field but which aren't real
+# racing flags — they describe the session's state, not a flag shown to
+# drivers. Letting them fall through to the state-based indicator avoids
+# rendering e.g. IndyCar's "WARM"/"COLD" as a meaningless (and misleading)
+# blue flag, since blue specifically means "let a faster car pass".
+_NON_FLAG_STATUS = {'WARM', 'COLD', 'FINAL', 'OFFICIAL', 'UNOFFICIAL', 'ENDED', 'STANDBY'}
+
+
 def _display_flag(flag, state):
     f = str(flag or '').strip().upper()
+    if f == 'CHKD':
+        return 'CHECKERED'
+    if f in _NON_FLAG_STATUS:
+        f = ''
     if f:
         return f
     state = str(state or '').lower()
