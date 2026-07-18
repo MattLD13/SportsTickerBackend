@@ -536,7 +536,12 @@ class SportsIndycarMixin:
             # FINAL result cached, keep showing it for the grace period before
             # switching to the schedule countdown.
             cached_game = self._ic_timing_cache.get('data')
-            if cached_game and isinstance(cached_game, dict) and cached_game.get('state') == 'post':
+            _is_live_timing_post = (
+                cached_game and isinstance(cached_game, dict)
+                and cached_game.get('state') == 'post'
+                and not str(cached_game.get('id', '')).startswith('indycar_sched_')
+            )
+            if _is_live_timing_post:
                 if not self._ic_timing_cache.get('post_since'):
                     self._ic_timing_cache['post_since'] = now
                     self._ic_save_post_since(now)
