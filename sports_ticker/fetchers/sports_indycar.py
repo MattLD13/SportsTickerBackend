@@ -572,7 +572,10 @@ class SportsIndycarMixin:
                 timeout=TIMEOUTS.get('default', 10),
             )
             r.raise_for_status()
-            drivers = self._build_drivers_from_session_details(r.json())
+            payload = r.json()
+            # API returns either a flat list or {"records": [...], "EventName": ...}
+            raw_list = payload.get('records', payload) if isinstance(payload, dict) else payload
+            drivers = self._build_drivers_from_session_details(raw_list)
             if drivers:
                 self._ic_session_res_cache[cache_key] = {'ts': now, 'data': drivers}
                 return drivers
@@ -600,7 +603,10 @@ class SportsIndycarMixin:
 
             abbr = _build_abbr(first, last)
             gap_raw = str(d.get('Gap') or '').strip()
-            gap = 'Leader' if pos == 1 else (gap_raw or '')
+            if pos == 1 or gap_raw in ('--.----', '--', ''):
+                gap = 'Leader' if pos == 1 else ''
+            else:
+                gap = gap_raw
 
             drv_feed  = drivers_index.get(car_num, {})
             headshot  = str(drv_feed.get('headshot') or '').strip()
