@@ -1105,6 +1105,34 @@ class RacingMixin:
         is_f1    = game.get('sport') == 'f1'
         is_nascar = game.get('sport') == 'nascar'
 
+        # ── No drivers yet ───────────────────────────────────────────────────
+        # In the scroll strip every card IS a real event, so a driverless racing
+        # game (an upcoming session before its field is posted, or a finished one
+        # still fetching results) must show its own status/countdown — NOT a
+        # "NO GAMES AVAILABLE" card, which reads as a dead segment between games.
+        top3 = drivers[:3]
+        has_session_context = bool(ic.get('short_name') or ic.get('event_name')
+                                   or ic.get('session_type') or ic.get('session_name'))
+        if not top3:
+            if has_session_context:
+                g_state    = str(game.get('state') or '').lower()
+                status_txt = str(game.get('status') or '').strip()
+                if g_state == 'post':
+                    info = status_txt or 'FINAL'
+                elif g_state == 'pre':
+                    if status_txt and not status_txt.upper().startswith('START'):
+                        info = f"STARTS {status_txt}"
+                    else:
+                        info = status_txt or 'UPCOMING'
+                else:
+                    info = status_txt or 'LIVE'
+                info = info[:22]
+                info_w = _tiny_text_width(info, self.font)
+                draw_tiny_text(d, max(2, (W - info_w) // 2), 18, info, (200, 210, 235))
+            else:
+                _draw_racing_empty_state(d, W, PANEL_H, 'NO GAMES AVAILABLE', 'CHECK BACK LATER')
+            return img
+
         # ── Column labels ────────────────────────────────────────────────────
         LABEL_COL = (70, 90, 140)
         draw_tiny_text(d, 1,  8, 'P',      LABEL_COL)
@@ -1119,13 +1147,6 @@ class RacingMixin:
 
         # ── Driver rows (top 3) ──────────────────────────────────────────────
         row_ys = [13, 20, 27]
-        top3   = drivers[:3]
-
-        has_session_context = bool(ic.get('short_name') or ic.get('event_name') or ic.get('session_type') or ic.get('session_name'))
-        if not top3:
-            subtitle = 'WAITING FOR DATA' if has_session_context else 'CHECK BACK LATER'
-            _draw_racing_empty_state(d, W, PANEL_H, 'NO GAMES AVAILABLE', subtitle)
-            return img
 
         for i, driver in enumerate(top3):
             y       = row_ys[i]
