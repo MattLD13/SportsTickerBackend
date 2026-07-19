@@ -6,7 +6,7 @@ import re
 import requests
 from PIL import Image, ImageDraw, ImageStat, ImageFilter, ImageChops, ImageEnhance
 
-from .fonts import HYBRID_FONT_MAP
+from .fonts import HYBRID_FONT_MAP, _HYBRID_SMALL_V
 
 # ── Canvas constants ──────────────────────────────────────────────────────────
 H = 32          # card height, always 32px (LED panel height)
@@ -122,10 +122,14 @@ def pf_w(text, sc=1):
 
 def draw_hybrid_text(draw, x, y, text_str, color):
     """Old renderer style from flights.py: 4px glyph width, 6 rows high."""
-    text_str = str(text_str).upper()
     x_cursor = x
-    for char in text_str:
-        bitmap = HYBRID_FONT_MAP.get(char, HYBRID_FONT_MAP.get(' ', [0x0] * 6))
+    for char in str(text_str):
+        # Lowercase 'v' stays the small versus glyph; everything else is
+        # upper-cased for the caps-only font lookup.
+        if char == 'v':
+            bitmap = _HYBRID_SMALL_V
+        else:
+            bitmap = HYBRID_FONT_MAP.get(char.upper(), HYBRID_FONT_MAP.get(' ', [0x0] * 6))
         for r, row_byte in enumerate(bitmap):
             if row_byte & 0x8:
                 draw.point((x_cursor + 0, y + r), fill=color)
