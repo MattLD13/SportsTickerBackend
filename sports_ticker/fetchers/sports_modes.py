@@ -750,64 +750,41 @@ class SportsModesMixin:
         return [self._golf_placeholder_game()]
 
     def _apply_racing_visibility(self, games):
-        """Drop a finished racing card once it passes the standard 3 AM-local
-        reset boundary — the same window the sports scroll uses — so the
-        dedicated/pinned racing view resets at the exact same instant instead
-        of a rolling N-hours-after-the-session offset. Live and upcoming cards
-        (and loading placeholders without a start time) always pass through.
+        """Show a racing card only inside the standard scoreboard window — the
+        session's local day through the next 3 AM — exactly like every normal
+        sport and like the sports scroll (_filter_and_sort_games). An upcoming
+        race's countdown appears on its day and a finished one resets at the
+        next 3 AM, both in the dedicated/pinned view and the scroll, at the
+        same instant. Live cards, and loading placeholders with no start time,
+        always pass through.
         """
         utc_offset = state.get('utc_offset', -5)
         now_utc = dt.now(timezone.utc)
         out = []
         for g in games or []:
             st = str(g.get('state', '')).lower()
-            is_post = st == 'post' or 'FINAL' in str(g.get('status', '')).upper()
-            if is_post and g.get('startTimeUTC'):
+            if st in ('in', 'half', 'crit'):
+                out.append(g)
+                continue
+            start_raw = g.get('startTimeUTC', '')
+            if start_raw:
                 try:
-                    if not racing_start_in_window(parse_iso(g.get('startTimeUTC')), now_utc, utc_offset):
-                        continue
+                    if not racing_start_in_window(parse_iso(start_raw), now_utc, utc_offset):
+                        continue   # outside its day → not yet on, or already reset
                 except Exception:
                     pass
             out.append(g)
         return out
 
     def _build_indycar_buffer(self):
-        return self._apply_racing_visibility(self._fetch_indycar())
+        return self._apply_racing_visibility(self._fetch_indycar()) or [_sports_no_games_placeholder()]
 
     def _build_f1_buffer(self):
-        return self._apply_racing_visibility(self._fetch_f1())
+        return self._apply_racing_visibility(self._fetch_f1()) or [_sports_no_games_placeholder()]
 
     def _build_nascar_buffer(self):
         obj = self._fetch_nascar()
-        games = self._apply_racing_visibility([obj] if obj else [])
-        if games:
-            return games
-        return [{
-            'id': 'nascar_loading',
-            'type': 'racing',
-            'sport': 'nascar',
-            'state': 'pre',
-            'status': 'Loading',
-            'is_shown': True,
-            'startTimeUTC': '',
-            'away_abbr': 'NASCAR',
-            'home_abbr': 'Cup Series',
-            'away_score': '',
-            'home_score': '',
-            'nascar': {
-                'event_name': 'NASCAR',
-                'short_name': 'NASCAR',
-                'track_name': '',
-                'session_type': 'Cup Series',
-                'flag': 'GREEN',
-                'lap': 0,
-                'total_laps': 0,
-                'laps_remaining': 0,
-                'caution': False,
-                'drivers': [],
-                'weather': {},
-            },
-        }]
+        return self._apply_racing_visibility([obj] if obj else []) or [_sports_no_games_placeholder()]
 
     def _build_flights_buffer(self):
         if not flight_tracker:
