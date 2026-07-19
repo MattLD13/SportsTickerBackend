@@ -534,6 +534,35 @@ def parse_iso(s: str) -> dt:
     return dt.fromisoformat(s.replace('Z', '+00:00'))
 
 
+def compute_visibility_window(now_local):
+    """The standard scoreboard visibility window in UTC.
+
+    A game is shown while its *start* time falls in [today 00:00, tomorrow
+    03:00] local, with a pre-3AM look-back to yesterday so late finals persist
+    through the night and every sport resets at the same natural 3 AM local
+    boundary (instead of a rolling N-hours-after-it-ended offset).
+    """
+    if now_local.hour < 3:
+        vs = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
+        ve = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
+    else:
+        vs = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+        ve = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
+    return vs.astimezone(timezone.utc), ve.astimezone(timezone.utc)
+
+
+def racing_start_in_window(start_utc, now_utc, utc_offset):
+    """True while a racing session (keyed on its start time) is inside the
+    standard 3 AM reset window — i.e. it should still be shown. Shared by the
+    per-sport fetchers and the mode buffers so the dedicated racing view and
+    the sports scroll drop a finished card at the exact same instant."""
+    if start_utc is None:
+        return False
+    now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
+    vs, ve = compute_visibility_window(now_local)
+    return vs <= start_utc < ve
+
+
 def _blank_logo_url_for_request(req) -> str:
     return BLANK_LOGO_URL
 

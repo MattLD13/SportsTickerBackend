@@ -375,7 +375,9 @@ def _find_f1_sessions(races, now_utc):
         for key, name, ip, start, end in sessions:
             if start <= now_utc <= end:
                 relevant.append((race, key, name, ip, start, end, 'in'))
-            elif end < now_utc and (now_utc - end).total_seconds() < 12 * 3600:
+            elif end < now_utc and racing_start_in_window(start, now_utc, _core.state.get('utc_offset', -5)):
+                # Keep the finished session as FINAL until the normal-sport 3 AM
+                # reset boundary of the day it ran on (not a rolling 12 h offset).
                 relevant.append((race, key, name, ip, start, end, 'post'))
             elif start > now_utc and (start - now_utc).total_seconds() < 48 * 3600:
                 relevant.append((race, key, name, ip, start, end, 'pre'))

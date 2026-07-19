@@ -258,7 +258,9 @@ def _nascar_find_schedule_session(sessions, now_utc):
         end = start + timedelta(minutes=_NASCAR_SESSION_DURATION_MIN[run_type])
         if start <= now_utc <= end:
             return (race_id, series_id, race_name, track_name, run_type, event_name, start, end, 'in')
-        if end < now_utc and (now_utc - end).total_seconds() < 12 * 3600:
+        # Keep a finished session as FINAL until the normal-sport 3 AM reset
+        # boundary of the day it ran on (not a rolling 12 h offset).
+        if end < now_utc and racing_start_in_window(start, now_utc, _core.state.get('utc_offset', -5)):
             best_post = (race_id, series_id, race_name, track_name, run_type, event_name, start, end, 'post')
         elif start > now_utc and next_pre is None:
             next_pre = (race_id, series_id, race_name, track_name, run_type, event_name, start, end, 'pre')

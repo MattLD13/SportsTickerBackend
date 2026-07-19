@@ -14,11 +14,8 @@ globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')
 from .racing_flags import LIVE_FLAGS, CAUTION_FLAGS, normalize_flag
 
 _BLOB_BASE            = "https://indycar.blob.core.windows.net/racecontrol"
-_IC_POST_SINCE_FILE   = "indycar_post_since.json"
-_IC_EXPIRED_IDS_FILE  = "indycar_expired_events.json"
 _IC_LAST_FINAL_FILE   = "indycar_last_final.json"
 _IC_EVENT_CTX_FILE    = "indycar_event_ctx.json"   # current weekend's full name + EventID
-_IC_POST_GRACE_SECS   = 12 * 3600   # show FINAL for 12 h after race ends, then hide
 _IMS_LAT = 39.7950
 _IMS_LON = -86.2340
 
@@ -181,7 +178,9 @@ def _ic_find_schedule_session(sessions, now_utc):
         end = start + timedelta(minutes=duration)
         if start <= now_utc <= end:
             return (race_name, session_name, start, end, 'in')
-        if end < now_utc and (now_utc - end).total_seconds() < 12 * 3600:
+        # Keep a finished session as FINAL until the normal-sport 3 AM reset
+        # boundary of the day it ran on (not a rolling 12 h offset).
+        if end < now_utc and racing_start_in_window(start, now_utc, _core.state.get('utc_offset', -5)):
             best_post = (race_name, session_name, start, end, 'post')
         elif start > now_utc and next_pre is None:
             next_pre = (race_name, session_name, start, end, 'pre')
@@ -319,22 +318,6 @@ class SportsIndycarMixin:
 
     def __init_indycar_cache(self):
         if not hasattr(self, '_ic_timing_cache'):
-            post_since = None
-            try:
-                with open(_IC_POST_SINCE_FILE) as _f:
-                    _v = json.load(_f).get('post_since')
-                    if _v:
-                        post_since = float(_v)
-            except Exception:
-                pass
-
-            expired_ids: set = set()
-            try:
-                with open(_IC_EXPIRED_IDS_FILE) as _f:
-                    expired_ids = set(json.load(_f).get('ids', []))
-            except Exception:
-                pass
-
             last_final = None
             try:
                 with open(_IC_LAST_FINAL_FILE) as _f:
@@ -349,8 +332,7 @@ class SportsIndycarMixin:
             except Exception:
                 pass
 
-            self._ic_timing_cache        = {'ts': 0.0, 'data': last_final, 'post_since': post_since}
-            self._ic_expired_ids         = expired_ids
+            self._ic_timing_cache        = {'ts': 0.0, 'data': last_final}
             self._ic_drivers_cache       = {'ts': 0.0, 'data': {}}
             self._ic_weather_cache       = {'ts': 0.0, 'data': {}}
             self._ic_schedule_cache      = {'ts': 0.0, 'data': []}
@@ -514,17 +496,26 @@ class SportsIndycarMixin:
             },
         }
 
-    def _ic_save_post_since(self, value):
-        try:
-            save_json_atomically(_IC_POST_SINCE_FILE, {'post_since': value} if value else {})
-        except Exception as exc:
-            print(f"[IndyCar] Could not save post_since: {exc}")
-
     def _ic_save_last_final(self, game):
         try:
             save_json_atomically(_IC_LAST_FINAL_FILE, {'game': game} if game else {})
         except Exception as exc:
             print(f"[IndyCar] Could not save last_final: {exc}")
+
+    def _ic_post_in_window(self, game):
+        """True while a finished IndyCar game is inside the standard 3 AM reset
+        window (shared with every other sport). A post game without a start
+        time defaults to visible — _build_indycar_game anchors one so this is
+        rare — so it's never hidden prematurely."""
+        start_utc = str((game or {}).get('startTimeUTC') or '').strip()
+        if not start_utc:
+            return True
+        try:
+            return racing_start_in_window(
+                parse_iso(start_utc), datetime.now(timezone.utc),
+                _core.state.get('utc_offset', -5))
+        except Exception:
+            return True
 
     def _ic_set_event_ctx(self, event_id='', event_fullname=''):
         """Record (and persist) the current weekend's authoritative event
@@ -552,18 +543,6 @@ class SportsIndycarMixin:
                 })
             except Exception as exc:
                 print(f"[IndyCar] Could not save event ctx: {exc}")
-
-    def _ic_expire_event(self, event_id: str):
-        """Mark event_id as permanently expired and clear the post_since timer."""
-        if event_id and event_id != 'indycar_live':
-            self._ic_expired_ids.add(event_id)
-            try:
-                save_json_atomically(_IC_EXPIRED_IDS_FILE, {'ids': list(self._ic_expired_ids)[-100:]})
-            except Exception as exc:
-                print(f"[IndyCar] Could not save expired IDs: {exc}")
-        self._ic_timing_cache['post_since'] = None
-        self._ic_save_post_since(None)
-        self._ic_save_last_final(None)
 
     def _ic_fetch_season_dropdown(self, force=False):
         """Fetch SeasonDropDown — all events + sessions with numeric IDs."""
@@ -825,31 +804,22 @@ class SportsIndycarMixin:
 
         timing = payload.get('timing_results', {})
         if not timing:
-            # Blob returned empty — session may have just ended. If we have a
-            # FINAL result cached, keep showing it for the grace period before
-            # switching to the schedule countdown.
+            # Blob returned empty — the session may have just ended. Keep showing
+            # the cached FINAL result (with its enriched standings) until its
+            # standard 3 AM reset, then fall back to the schedule countdown for
+            # the next session — the same reset boundary every other sport uses.
             cached_game = self._ic_timing_cache.get('data')
             _is_live_timing_post = (
                 cached_game and isinstance(cached_game, dict)
                 and cached_game.get('state') == 'post'
                 and not str(cached_game.get('id', '')).startswith('indycar_sched_')
             )
-            if _is_live_timing_post:
-                if not self._ic_timing_cache.get('post_since'):
-                    self._ic_timing_cache['post_since'] = now
-                    self._ic_save_post_since(now)
-                if (now - self._ic_timing_cache['post_since']) <= _IC_POST_GRACE_SECS:
-                    # Populate drivers if missing (e.g. after a restart)
-                    if not (cached_game.get('indycar') or {}).get('drivers'):
-                        self._ic_try_enrich_post_game(cached_game)
-                    self._ic_timing_cache['ts'] = now
-                    return [cached_game]
-                # Grace period expired — fall through to schedule
-                self._ic_timing_cache['post_since'] = None
-                self._ic_save_post_since(None)
-            elif self._ic_timing_cache.get('post_since'):
-                self._ic_timing_cache['post_since'] = None
-                self._ic_save_post_since(None)
+            if _is_live_timing_post and self._ic_post_in_window(cached_game):
+                # Populate drivers if missing (e.g. after a restart)
+                if not (cached_game.get('indycar') or {}).get('drivers'):
+                    self._ic_try_enrich_post_game(cached_game)
+                self._ic_timing_cache['ts'] = now
+                return [cached_game]
             game = self._build_indycar_schedule_game(datetime.now(timezone.utc))
             self._ic_timing_cache['ts'] = now
             self._ic_timing_cache['data'] = game
@@ -860,40 +830,12 @@ class SportsIndycarMixin:
 
         if game:
             game.setdefault('indycar', {})['weather'] = self._fetch_indycar_weather()
-            event_id = game.get('id', '')
 
-            if game.get('state') == 'post':
-                # Layer 1: permanently expired event IDs (auto-learned, survives restarts).
-                if event_id in self._ic_expired_ids:
-                    game = None
-
-                # Layer 2: start_time present → expire 24 h after race start.
-                if game:
-                    start_utc = game.get('startTimeUTC', '')
-                    if start_utc:
-                        try:
-                            start_dt = parse_iso(start_utc)
-                            if start_dt and (datetime.now(timezone.utc) - start_dt).total_seconds() > 24 * 3600:
-                                self._ic_expire_event(event_id)
-                                game = None
-                        except Exception:
-                            pass
-
-                # Layer 3: no start_time → use post_since timer (12 h grace window).
-                # post_since is persisted to disk so restarts don't reset it.
-                if game and not game.get('startTimeUTC'):
-                    if not self._ic_timing_cache.get('post_since'):
-                        self._ic_timing_cache['post_since'] = now
-                        self._ic_save_post_since(now)
-                    if (now - self._ic_timing_cache['post_since']) > _IC_POST_GRACE_SECS:
-                        self._ic_expire_event(event_id)
-                        game = None
-
-            else:
-                # Live or pre — clear post_since if it lingered.
-                if self._ic_timing_cache.get('post_since'):
-                    self._ic_timing_cache['post_since'] = None
-                    self._ic_save_post_since(None)
+            if game.get('state') == 'post' and not self._ic_post_in_window(game):
+                # Finished session is past its standard 3 AM reset — drop it so
+                # the schedule fallback (next session's countdown) takes over.
+                # No per-event expiry timers: the shared window governs reset.
+                game = None
 
             # Persist any real live-timing game (post or live) so a restart
             # doesn't lose the last known session results.
@@ -942,18 +884,20 @@ class SportsIndycarMixin:
         else:
             state = 'pre'
 
-        # For live or recently-finished sessions the blob is authoritative —
-        # never hide them due to a missing start time. For 'pre' sessions
-        # without one (the blob often doesn't announce a start time until
-        # close to the session), fall back to the season's race-day schedule
-        # so a real countdown still shows, like other sports on this ticker.
-        if state == 'pre' and not start_time_utc:
+        # Pre and post sessions both need a start time so they reset on the
+        # standard 3 AM boundary like every other sport. The blob usually
+        # supplies one; fall back to the season race-day schedule, and finally
+        # (post only) to 'now' for a just-finished session the schedule doesn't
+        # list — so it still resets tonight rather than lingering forever.
+        if not start_time_utc and state in ('pre', 'post'):
             sched = self._fetch_indycar_schedule()
             match = _ic_find_schedule_session(sched, datetime.now(timezone.utc)) if sched else None
             if match:
                 start_time_utc = match[2].strftime('%Y-%m-%dT%H:%M:%SZ')
-            else:
+            elif state == 'pre':
                 return None
+            else:
+                start_time_utc = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
         caution = flag_status in CAUTION_FLAGS
 

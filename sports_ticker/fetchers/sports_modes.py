@@ -578,16 +578,9 @@ class SportsModesMixin:
         now_utc = dt.now(timezone.utc)
         now_local = now_utc.astimezone(timezone(timedelta(hours=utc_offset)))
         
-        # Visibility Windows
-        if now_local.hour < 3:
-            visible_start_local = (now_local - timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
-            visible_end_local = now_local.replace(hour=3, minute=0, second=0, microsecond=0)
-        else:
-            visible_start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-            visible_end_local = (now_local + timedelta(days=1)).replace(hour=3, minute=0, second=0, microsecond=0)
-        
-        visible_start_utc = visible_start_local.astimezone(timezone.utc)
-        visible_end_utc = visible_end_local.astimezone(timezone.utc)
+        # Visibility Windows — the single 3 AM-local reset boundary shared by
+        # every sport (racing included, via _apply_racing_visibility).
+        visible_start_utc, visible_end_utc = compute_visibility_window(now_local)
         window_start_utc = (now_local - timedelta(hours=30)).astimezone(timezone.utc)
         window_end_utc = (now_local + timedelta(hours=48)).astimezone(timezone.utc)
 
@@ -756,16 +749,39 @@ class SportsModesMixin:
             return [obj]
         return [self._golf_placeholder_game()]
 
+    def _apply_racing_visibility(self, games):
+        """Drop a finished racing card once it passes the standard 3 AM-local
+        reset boundary — the same window the sports scroll uses — so the
+        dedicated/pinned racing view resets at the exact same instant instead
+        of a rolling N-hours-after-the-session offset. Live and upcoming cards
+        (and loading placeholders without a start time) always pass through.
+        """
+        utc_offset = state.get('utc_offset', -5)
+        now_utc = dt.now(timezone.utc)
+        out = []
+        for g in games or []:
+            st = str(g.get('state', '')).lower()
+            is_post = st == 'post' or 'FINAL' in str(g.get('status', '')).upper()
+            if is_post and g.get('startTimeUTC'):
+                try:
+                    if not racing_start_in_window(parse_iso(g.get('startTimeUTC')), now_utc, utc_offset):
+                        continue
+                except Exception:
+                    pass
+            out.append(g)
+        return out
+
     def _build_indycar_buffer(self):
-        return self._fetch_indycar()
+        return self._apply_racing_visibility(self._fetch_indycar())
 
     def _build_f1_buffer(self):
-        return self._fetch_f1()
+        return self._apply_racing_visibility(self._fetch_f1())
 
     def _build_nascar_buffer(self):
         obj = self._fetch_nascar()
-        if obj:
-            return [obj]
+        games = self._apply_racing_visibility([obj] if obj else [])
+        if games:
+            return games
         return [{
             'id': 'nascar_loading',
             'type': 'racing',
