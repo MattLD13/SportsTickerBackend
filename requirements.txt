@@ -1,6 +1,7 @@
 # Web server
 flask
 flask-cors
+waitress          # production WSGI server (fixed thread pool + idle-connection reaping)
 
 # HTTP
 requests

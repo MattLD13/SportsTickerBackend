@@ -1,0 +1,37 @@
+# Sports Ticker backend (Flask API) — the unit the deploy workflow restarts
+# with `sudo systemctl restart ticker`.
+#
+# Install on the VPS:
+#   sudo cp ticker.service /etc/systemd/system/ticker.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ticker
+#
+# Adjust User/WorkingDirectory to match the deploy target (the GitHub Actions
+# workflow copies the code to /home/<SSH_USER>/).
+
+[Unit]
+Description=Sports Ticker Backend (Flask API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mld
+WorkingDirectory=/home/mld
+ExecStart=/usr/bin/env python3 app.py
+# Without this, an OOM kill or an unhandled crash leaves the site down until
+# someone reboots the box.
+Restart=always
+RestartSec=5
+
+# Bound the service instead of the whole VPS: if the backend ever leaks memory
+# again, the kernel reclaims/kills this unit and systemd restarts it, rather
+# than the host thrashing until it needs a hard reboot. Tune to your VPS size.
+MemoryAccounting=true
+MemoryHigh=400M
+MemoryMax=600M
+
+StandardOutput=append:/home/mld/ticker-backend.log
+StandardError=append:/home/mld/ticker-backend.log
+
+[Install]
+WantedBy=multi-user.target

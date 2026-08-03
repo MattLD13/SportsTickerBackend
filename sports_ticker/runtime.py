@@ -34,5 +34,32 @@ def start_background_workers():
 def run_server():
     start_background_workers()
     port = int(os.environ.get("PORT", 5000))
-    print(f"Starting Flask on port {port}...")
-    app.run(host='0.0.0.0', port=port)
+
+    # Werkzeug's dev server dedicates one OS thread per connection and sets no
+    # socket timeout, so every client that disappears without closing (Pi power
+    # cut, Wi-Fi drop, port scanner) pins a thread and an fd for the lifetime of
+    # the process. Waitress uses a fixed worker pool and reaps idle channels.
+    try:
+        from waitress import serve as _waitress_serve
+    except ImportError:
+        _waitress_serve = None
+
+    if _waitress_serve is not None:
+        print(f"Starting waitress on port {port}...")
+        _waitress_serve(
+            app,
+            host='0.0.0.0',
+            port=port,
+            threads=8,
+            channel_timeout=120,     # drop connections idle longer than this
+            connection_limit=200,
+            ident='sports-ticker',
+        )
+        return
+
+    # Fallback: dev server, but with a socket timeout so an abandoned
+    # keep-alive connection can't hold its thread forever.
+    from werkzeug.serving import WSGIRequestHandler
+    WSGIRequestHandler.timeout = 60
+    print(f"Starting Flask dev server on port {port} (waitress not installed)...")
+    app.run(host='0.0.0.0', port=port, threaded=True)

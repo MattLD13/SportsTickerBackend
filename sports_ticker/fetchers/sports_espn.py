@@ -2,6 +2,13 @@ from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
 from .test_mode import TestMode
 
+# Finished games self-evict once they age out of the visibility window, but
+# only while ESPN still lists them on the scoreboard. Games that drop off the
+# feed would otherwise stay resident forever, so both caches are size-capped.
+_FINAL_GAME_CACHE_MAX = 512
+_POSSESSION_CACHE_MAX = 512
+
+
 class SportsEspnMixin:
     def fetch_single_league(self, league_key, config, conf, window_start_utc, window_end_utc, utc_offset, visible_start_utc, visible_end_utc):
         local_games = []
@@ -227,7 +234,9 @@ class SportsEspnMixin:
                 shootout_data = None
                 
                 poss_raw = sit.get('possession')
-                if poss_raw: self.possession_cache[e['id']] = poss_raw
+                if poss_raw:
+                    self.possession_cache[e['id']] = poss_raw
+                    prune_cache(self.possession_cache, _POSSESSION_CACHE_MAX)
                 elif gst in ('in', 'half'):
                     _cached_poss = self.possession_cache.get(e['id'])
                     if _cached_poss is not None: poss_raw = _cached_poss
@@ -338,6 +347,7 @@ class SportsEspnMixin:
                 # CHANGE C: SAVE FINAL GAMES TO CACHE
                 if gst == 'post' and "FINAL" in s_disp:
                     self.final_game_cache[gid] = game_obj
+                    prune_cache(self.final_game_cache, _FINAL_GAME_CACHE_MAX)
 
         except Exception as e: print(f"Error fetching {league_key}: {e}")
         return local_games

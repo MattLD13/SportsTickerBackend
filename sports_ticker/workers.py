@@ -1,5 +1,6 @@
 # Runtime singleton initialization and background worker loops.
 
+import os
 import threading
 import time
 import traceback
@@ -220,6 +221,48 @@ def music_worker():
             print(f"Music worker error: {e}")
         time.sleep(1)
 
+HOUSEKEEPING_INTERVAL = 900   # 15 minutes
+
+
+def _resource_usage_line():
+    """One-line process health snapshot (Linux /proc; degrades elsewhere)."""
+    rss_txt = 'n/a'
+    fd_txt = 'n/a'
+    try:
+        with open('/proc/self/status') as f:
+            for line in f:
+                if line.startswith('VmRSS:'):
+                    rss_txt = f"{int(line.split()[1]) / 1024:.1f}MB"
+                    break
+    except Exception:
+        pass
+    try:
+        fd_txt = str(len(os.listdir('/proc/self/fd')))
+    except Exception:
+        pass
+    return (f"[HEALTH] rss={rss_txt} threads={threading.active_count()} "
+            f"fds={fd_txt} tickers={len(tickers)}")
+
+
+def housekeeping_worker():
+    """Periodic maintenance: purge stale tickers, log resource usage.
+
+    purge_stale_tickers used to run only at startup, so ticker records
+    auto-created by unknown /data?id= callers accumulated in memory and on
+    disk for as long as the process lived.
+    """
+    while True:
+        time.sleep(HOUSEKEEPING_INTERVAL)
+        try:
+            purge_stale_tickers()
+        except Exception as e:
+            print(f"Housekeeping purge error: {e}")
+        try:
+            print(_resource_usage_line())
+        except Exception:
+            pass
+
+
 def start_background_workers():
     """Start all background worker threads. Called once at server startup."""
     global _background_workers_started
@@ -233,6 +276,7 @@ def start_background_workers():
         ('stocks_worker',  stocks_worker),
         ('music_worker',   music_worker),
         ('flights_worker', flights_worker),
+        ('housekeeping_worker', housekeeping_worker),
     ]
     for name, target in workers:
         threading.Thread(target=target, name=name, daemon=True).start()

@@ -2,6 +2,19 @@ from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
 from .test_mode import TestMode
 
+# Summary payloads are large (~2 MB retained each), so only games touched in
+# the last few minutes are kept — well past the 12s refresh window the live
+# enrichment path actually reads from.
+_MLB_SUMMARY_CACHE_MAX = 24
+_MLB_SUMMARY_CACHE_TTL = 120.0   # read path only trusts entries <12s old anyway
+# Small scalar caches: bounded generously, they only need to outlive a season's
+# worth of live games, not the process.
+_MLB_GAMEPK_CACHE_MAX = 512
+_MLB_CHALLENGE_CACHE_MAX = 512
+_MLB_CHALLENGE_CACHE_TTL = 24 * 3600.0
+_MLB_PLAYER_CACHE_MAX = 4096
+
+
 class SportsMlbMixin:
     def _mlb_abbr_candidates(self, abbr):
         """Return MLB abbreviation aliases so ESPN and Stats API values can match."""
@@ -86,6 +99,7 @@ class SportsMlbMixin:
         if candidates:
             best_pk = sorted(candidates, key=lambda x: (x[0], x[1]))[0][2]
             self._mlb_gamepk_cache[gid] = best_pk
+            prune_cache(self._mlb_gamepk_cache, _MLB_GAMEPK_CACHE_MAX)
             return best_pk
         return None  # Don't cache None — retry on next poll until found
 
@@ -147,7 +161,9 @@ class SportsMlbMixin:
                     'home_used': h_used,
                     'away_rem': a_rem,
                     'away_used': a_used}
+                self._mlb_challenge_cache.pop(pk_str, None)   # re-insert = newest-last
                 self._mlb_challenge_cache[pk_str] = entry
+                prune_cache(self._mlb_challenge_cache, _MLB_CHALLENGE_CACHE_MAX, max_age=_MLB_CHALLENGE_CACHE_TTL)
                 return entry['home_rem'], entry['home_used'], entry['away_rem'], entry['away_used']
         except Exception:
             pass
@@ -202,10 +218,12 @@ class SportsMlbMixin:
                         full = full.split('. ', 1)[1]
                     name = full.upper()
                     self._mlb_player_cache[pid] = name
+                    prune_cache(self._mlb_player_cache, _MLB_PLAYER_CACHE_MAX)
                     return name
             except Exception:
                 pass
         self._mlb_player_cache[pid] = ''   # cache miss so we don't retry every tick
+        prune_cache(self._mlb_player_cache, _MLB_PLAYER_CACHE_MAX)
         return ''
 
     def _mlb_player_id_from_obj(self, person_obj):
@@ -546,7 +564,13 @@ class SportsMlbMixin:
             r = self.session.get(url, params={'event': gid}, headers=HEADERS, timeout=TIMEOUTS['default'])
             if r.status_code == 200:
                 data = r.json()
+                # An ESPN summary payload retains ~2 MB of parsed objects, so
+                # this cache is age- and size-bounded: without it the process
+                # permanently held every game it ever enriched (~30 MB/day in
+                # season) until the VPS ran out of memory.
+                self._mlb_summary_cache.pop(gid, None)   # re-insert = newest-last
                 self._mlb_summary_cache[gid] = {'ts': now, 'data': data}
+                prune_cache(self._mlb_summary_cache, _MLB_SUMMARY_CACHE_MAX, max_age=_MLB_SUMMARY_CACHE_TTL)
                 return data
         except Exception:
             pass

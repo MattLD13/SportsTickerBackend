@@ -12,10 +12,12 @@ except ImportError:
 import requests
 
 # Imported from core — loaded before any route triggers this module.
-from .core import state, tickers, data_lock, save_specific_ticker, TIMEOUTS, parse_iso
+from .core import state, tickers, data_lock, save_specific_ticker, TIMEOUTS, parse_iso, prune_cache
 
 _IP_TZ_CACHE: dict = {}
 _IP_TZ_CACHE_TTL = 12 * 3600  # 12 hours
+# Keyed by client IP, so any public request can add an entry — cap it.
+_IP_TZ_CACHE_MAX = 1024
 
 
 def _extract_client_ip(req) -> str | None:
@@ -121,7 +123,9 @@ def _lookup_timezone_for_ip(ip_addr: str) -> tuple[str | None, float | None]:
             offset_hours = round(float(offset_raw) / 3600.0, 2) if isinstance(offset_raw, (int, float)) else None
             if offset_hours is None:
                 offset_hours = _utc_offset_hours_for_timezone(tz_name)
+            _IP_TZ_CACHE.pop(ip_addr, None)   # re-insert = newest-last
             _IP_TZ_CACHE[ip_addr] = {'timezone': tz_name, 'offset': offset_hours, 'ts': now_ts}
+            prune_cache(_IP_TZ_CACHE, _IP_TZ_CACHE_MAX, max_age=_IP_TZ_CACHE_TTL)
             return tz_name, offset_hours
     except Exception as e:
         print(f"[TZ] ip-api lookup failed for {ip_addr}: {e}")

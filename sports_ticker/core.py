@@ -75,24 +75,53 @@ SERVER_VERSION = f"{_VERSION_DATE} · build {_VERSION_SHORT}"
 # ── Section A: Logging ──
 class Tee(object):
     verbose_debug: bool = False
+    # The log is append-only for the life of the process; rotate it so a
+    # long-running server can't fill the disk.
+    max_bytes: int = 10 * 1024 * 1024
 
     def __init__(self, name, mode):
+        self.path = name
         self.file = open(name, mode, buffering=1, encoding='utf-8')
+        try:
+            self._bytes_written = os.path.getsize(name)
+        except OSError:
+            self._bytes_written = 0
         self.original_stdout = sys.stdout
         self.original_stderr = sys.stderr
         self._lock = threading.Lock()
         self.stdout = self
         self.stderr = self
 
+    def _write_file(self, data):
+        """Write to the log file, rotating when it outgrows max_bytes.
+
+        Caller must hold self._lock.
+        """
+        self.file.write(data)
+        self.file.flush()
+        self._bytes_written += len(data)
+        if self._bytes_written < Tee.max_bytes:
+            return
+        try:
+            self.file.close()
+            os.replace(self.path, f"{self.path}.1")   # keep exactly one backup
+            self.file = open(self.path, 'w', buffering=1, encoding='utf-8')
+            self._bytes_written = 0
+        except Exception:
+            # Never let rotation break logging — fall back to appending.
+            try:
+                self.file = open(self.path, 'a', buffering=1, encoding='utf-8')
+                self._bytes_written = 0
+            except Exception:
+                pass
+
     def write(self, data):
         if '[DEBUG]' in data and not Tee.verbose_debug:
             with self._lock:
-                self.file.write(data)
-                self.file.flush()
+                self._write_file(data)
             return
         with self._lock:
-            self.file.write(data)
-            self.file.flush()
+            self._write_file(data)
             try:
                 self.original_stdout.write(data)
             except UnicodeEncodeError:
@@ -578,6 +607,25 @@ def _materialize_blank_logo_urls(games: list, req) -> None:
             g['home_logo'] = blank_url
         if g.get('away_logo') == BLANK_LOGO_SENTINEL:
             g['away_logo'] = blank_url
+
+
+def prune_cache(cache: dict, max_entries: int, max_age=None):
+    """Bound an in-memory cache so long-running processes can't grow forever.
+
+    Entries whose ``ts`` field is older than ``max_age`` seconds are dropped
+    first, then the oldest-inserted keys are trimmed until at most
+    ``max_entries`` remain. Callers that refresh an existing key should
+    ``pop`` before re-inserting so insertion order stays newest-last.
+    """
+    if max_age is not None:
+        cutoff = time.time() - max_age
+        for key, val in list(cache.items()):
+            if isinstance(val, dict) and val.get('ts', 0) < cutoff:
+                cache.pop(key, None)
+    overflow = len(cache) - max_entries
+    if overflow > 0:
+        for key in list(cache)[:overflow]:
+            cache.pop(key, None)
 
 
 def fetch_json(session, url, *, timeout=None, params=None, headers=None):

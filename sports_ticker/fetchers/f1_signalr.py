@@ -269,6 +269,16 @@ class F1LiveTimingClient:
                     print(f"[F1 SignalR] connection error: {exc}")
             finally:
                 self._connected = False
+                # Always tear the connection down before the next attempt builds
+                # a new one, otherwise each reconnect leaks the previous
+                # transport's thread and socket.
+                conn = self._connection
+                self._connection = None
+                if conn is not None:
+                    try:
+                        conn.stop()
+                    except Exception:
+                        pass
 
             if self._running:
                 time.sleep(10)
