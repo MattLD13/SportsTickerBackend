@@ -287,16 +287,15 @@ class WeatherMixin:
         d.line((0, 0, PANEL_W - 1, 0), fill=DEEP_BLUE)
 
         left_w = 124
-        # Paint the sky as a vertical gradient rather than a flat fill. The old
-        # golden-hour band was a hard on/off over the bottom 8 rows; the horizon
-        # colour now carries that, and fades in and out with the sun.
+        # Flat fill, not a vertical ramp. Sky values live in the bottom tenth of
+        # the range, so 32 rows of interpolation only ever resolve to a handful
+        # of distinct 8-bit steps — four of them at night — and the panel's PWM
+        # quantises those further. On the real hardware it read as three hard
+        # bands rather than a gradient. Weighted toward the horizon so sunrise
+        # and sunset still warm the whole sky.
         top_c, bot_c = sky_colors()
-        for row in range(PANEL_H):
-            c = tuple(
-                int(round(max(0.0, min(255.0, v))))
-                for v in mix(top_c, bot_c, row / float(PANEL_H - 1))
-            )
-            d.line((0, row, left_w, row), fill=c)
+        sky_c = tuple(int(round(max(0.0, min(255.0, v)))) for v in mix(top_c, bot_c, 0.55))
+        d.rectangle((0, 0, left_w, PANEL_H - 1), fill=sky_c)
 
         if precip:
             draw_amb(cur_icon, 0, 0, left_w, 32, anim_t)
