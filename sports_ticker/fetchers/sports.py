@@ -65,6 +65,11 @@ class SportsFetcher(
         # Golf API cache to avoid re-fetching every trigger burst.
         self._golf_cache = {'ts': 0.0, 'game': None}
         self._golf_cache_ttl = 60.0
+        # When the sports slate was last fetched. A refresh rebuilds every mode
+        # in use, so any worker asking for one re-ran the sports fetch — and the
+        # music worker asks once a second. That drove a dozen upstream endpoints
+        # at five times the intended rate until the host was blocked outright.
+        self._last_sports_build = 0.0
         
         self.leagues = { 
             item['id']: item['fetch'] 

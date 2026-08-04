@@ -210,16 +210,50 @@ def stocks_worker():
         time.sleep(1)
 
 def music_worker():
+    last_signature = None
     while True:
         try:
             if _any_ticker_needs('music'):
                 try:
-                    request_refresh('music_worker')
+                    # Only ask for a rebuild when the track or play state
+                    # actually changes. This fired unconditionally every second,
+                    # and a refresh rebuilds every mode in use — so a music-mode
+                    # ticker drove the full sports fetch at 1Hz. The stocks
+                    # worker already follows this pattern.
+                    signature = _music_signature()
+                    if signature != last_signature:
+                        last_signature = signature
+                        request_refresh('music_worker')
                 except Exception as e:
                     print(f"Music Worker Error: {e}")
         except Exception as e:
             print(f"Music worker error: {e}")
         time.sleep(1)
+
+
+_MUSIC_SIG_UNAVAILABLE = ('__unavailable__',)
+
+
+def _music_signature():
+    """Track identity and play state, as a comparable value.
+
+    Deliberately excludes 'status' and situation['progress'] — those carry the
+    elapsed time and change every second, which would make every comparison
+    differ and rebuild nothing but the storm this is meant to stop.
+
+    A failure returns a constant rather than a fresh value, so a transient
+    Spotify error reads as "no change" instead of triggering a refresh per
+    second.
+    """
+    try:
+        item = fetcher.get_music_object(require_enabled=False)
+    except Exception:
+        return _MUSIC_SIG_UNAVAILABLE
+    if not isinstance(item, dict):
+        return ('__nothing__',)
+    sit = item.get('situation') or {}
+    return (item.get('id'), item.get('home_abbr'), item.get('away_abbr'),
+            bool(sit.get('is_playing')))
 
 HOUSEKEEPING_INTERVAL = 900   # 15 minutes
 

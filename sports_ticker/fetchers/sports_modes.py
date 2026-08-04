@@ -876,6 +876,14 @@ class SportsModesMixin:
                         # Sports-like modes share one raw buffer; filtering happens in /data.
                         continue
 
+                    if is_sports and (time.time() - self._last_sports_build) < SPORTS_UPDATE_INTERVAL:
+                        # The slate is still fresh. Rebuilding it means re-hitting
+                        # a dozen upstream endpoints, and every refresh request —
+                        # from any worker, at any cadence — used to do exactly
+                        # that. Keep the existing buffer instead.
+                        sports_built = True
+                        continue
+
                     builder = _dispatch.get(mode, self._build_sports_buffer)
                     try:
                         result = builder()
@@ -891,6 +899,7 @@ class SportsModesMixin:
 
                     if is_sports:
                         sports_built = True
+                        self._last_sports_build = time.time()
                         for sm in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
                             self._set_mode_buffer(sm, result)
 
