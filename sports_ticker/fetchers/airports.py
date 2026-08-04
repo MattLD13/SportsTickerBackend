@@ -5,6 +5,11 @@ from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
 
 
+# Rows the panel shows per side. The board renders four; fetching exactly
+# that avoids carrying rows nothing will draw.
+BOARD_ROWS = 4
+
+
 class AirportMixin:
     def _get_airline_identifiers(self, flight_code):
         code = str(flight_code or '').strip().upper().replace(' ', '')
@@ -189,6 +194,7 @@ class AirportMixin:
                     entry['airline_iata'] = airline_iata
                     entry['airline_logo'] = airline_logo
                     entry['flight_number'] = flight_number or display_id
+                    entry['altitude'] = int(altitude)
                     entry['sort_time'] = now - altitude
                     processed_list.append(entry)
                 except:
@@ -208,8 +214,8 @@ class AirportMixin:
                     seen_keys.add(key)
                     deduped.append(entry)
 
-            self.log("DEBUG", f"FR24 SDK {mode}: {len(flights)} total → {len(processed_list)} at {airport_iata} → returning {min(len(deduped), 2)}")
-            return deduped[:2]
+            self.log("DEBUG", f"FR24 SDK {mode}: {len(flights)} total → {len(processed_list)} at {airport_iata} → returning {min(len(deduped), BOARD_ROWS)}")
+            return deduped[:BOARD_ROWS]
 
         except Exception as e:
             self.log("ERROR", f"FR24 SDK board {mode}: {e}")
@@ -285,17 +291,20 @@ class AirportMixin:
             result.append({
                 'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx',
                 'home_abbr': self.airport_name or self.airport_code_icao,
+                'iata': str(getattr(self, 'airport_code_iata', '') or '').upper(),
                 'away_abbr': self.airport_weather['temp'], 'status': self.airport_weather['cond'], 'is_shown': True
             })
-            for i, arr in enumerate(self.airport_arrivals[:2]):
+            for i, arr in enumerate(self.airport_arrivals[:BOARD_ROWS]):
                 # Use specific status if available, else fallback
                 st = arr.get('status_label', 'ARRIVING')
                 result.append({'type': 'flight_arrival', 'sport': 'flight', 'id': f"arr_{i}", 'status': st,
                                'home_abbr': arr['from'], 'away_abbr': arr['id'],
-                               'other_iata': arr.get('from_iata', ''), 'is_shown': True})
-            for i, dep in enumerate(self.airport_departures[:2]):
+                               'other_iata': arr.get('from_iata', ''),
+                               'altitude': arr.get('altitude'), 'is_shown': True})
+            for i, dep in enumerate(self.airport_departures[:BOARD_ROWS]):
                 st = dep.get('status_label', 'DEPARTING')
                 result.append({'type': 'flight_departure', 'sport': 'flight', 'id': f"dep_{i}", 'status': st,
                                'home_abbr': dep['to'], 'away_abbr': dep['id'],
-                               'other_iata': dep.get('to_iata', ''), 'is_shown': True})
+                               'other_iata': dep.get('to_iata', ''),
+                               'altitude': dep.get('altitude'), 'is_shown': True})
             return result

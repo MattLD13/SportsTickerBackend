@@ -2,9 +2,15 @@ from PIL import Image, ImageDraw
 from ..config import PANEL_W, PANEL_H
 from ..fonts import draw_tiny_text
 
-# Arrival/departure rows run from x=5 to the panel edge at 189 (and 197 to 381),
-# at 5px per character. Reclaiming the logo's 11px took this from 30 to 36.
-ROW_CHARS = 36
+# Airport board layout. Four rows a side on a 6px pitch, starting under the
+# inline header — the filled panel boxes are gone, so structure comes from the
+# divider rule and the inbound/outbound colours rather than from ~4000 dimly
+# lit background pixels, which read as muddy grey on the panel.
+BOARD_ROWS = 4
+CITY_CHARS = 18
+BOARD_RULE = (30, 60, 100)
+BOARD_ALT = (70, 90, 120)
+BOARD_WX = (90, 110, 140)
 
 
 class FlightMixin:
@@ -129,41 +135,47 @@ class FlightMixin:
         img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
 
-        d.rectangle((0, 0, PANEL_W, 6), fill=(20, 30, 45))
-        d.rectangle((0, 7, PANEL_W, 7), fill=(40, 90, 160))
+        code = ''
+        if weather_item:
+            code = str(weather_item.get('iata') or '').strip().upper()
+            if not code:
+                code = str(weather_item.get('home_abbr', '') or '').upper()[:10]
+        # INBOUND and OUTBOUND rather than "NEXT ARRIVAL"/"NEXT DEPARTURE": these
+        # are live aircraft positions, not a schedule, and a low-altitude
+        # departure has already left. Each caption takes the colour of the rows
+        # beneath it.
+        draw_tiny_text(d, 3, 0, f"{code} INBOUND".strip(), self.C_GRN)
+        draw_tiny_text(d, 196, 0, "OUTBOUND", self.C_RED)
 
-        airport_name = str(weather_item.get('home_abbr', 'AIRPORT')) if weather_item else 'AIRPORT'
-        draw_tiny_text(d, 3, 1, airport_name, self.C_BLUE_TXT)
+        if weather_item:
+            wx = "{} {}".format(weather_item.get('away_abbr', '--'),
+                                weather_item.get('status', '')).strip().upper()[:12]
+            if wx:
+                draw_tiny_text(d, PANEL_W - len(wx) * 5 - 3, 0, wx, BOARD_WX)
 
-        weather_temp = str(weather_item.get('away_abbr', '--')) if weather_item else '--'
-        weather_cond = str(weather_item.get('status', '')) if weather_item else ''
-        weather_str = f"{weather_temp} {weather_cond}"
-        wx_w = len(weather_str) * 5
-        draw_tiny_text(d, PANEL_W - wx_w - 3, 1, weather_str, self.C_WHT)
+        d.rectangle((0, 6, PANEL_W, 6), fill=BOARD_RULE)
+        d.rectangle((190, 8, 190, 31), fill=BOARD_RULE)
 
-        d.rectangle((2, 9, 189, 30), fill=(25, 35, 50))
-        draw_tiny_text(d, 5, 10, "NEXT ARRIVAL", self.C_GRY)
-        for i, arr in enumerate(arrivals[:2]):
-            flight_id = str(arr.get('away_abbr', '???'))
-            from_city = str(arr.get('home_abbr', '???'))
-            row_y = 18 + i * 7
-            # No airline logo here: an 8x8 favicon is unreadable and it cost 11px
-            # of a 184px row. The tracker still shows one, at 22x22 where it
-            # actually resolves.
-            text_str = f"{flight_id} FROM {from_city}"[:ROW_CHARS]
-            draw_tiny_text(d, 5, row_y, text_str, self.C_GRN)
-        if not arrivals:
-            draw_tiny_text(d, 5, 18, "--", self.C_GRY)
+        def side(rows, x, edge, colour, empty):
+            if not rows:
+                draw_tiny_text(d, x, 9, empty, self.C_GRY)
+                return
+            for i, r in enumerate(rows[:BOARD_ROWS]):
+                y = 9 + i * 6
+                draw_tiny_text(d, x, y, str(r.get('away_abbr', '???'))[:6], colour)
+                draw_tiny_text(d, x + 34, y, str(r.get('other_iata', '') or '')[:3], self.C_GRY)
+                draw_tiny_text(d, x + 54, y,
+                               str(r.get('home_abbr', '???')).upper()[:CITY_CHARS], self.C_WHT)
+                # Altitude explains the ordering — the list is sorted by it — and
+                # is the one honest "how close is it" the live feed can give.
+                try:
+                    alt = int(r.get('altitude') or 0)
+                except (TypeError, ValueError):
+                    alt = 0
+                if alt > 0:
+                    ft = "{:,}FT".format(alt)
+                    draw_tiny_text(d, edge - len(ft) * 5, y, ft, BOARD_ALT)
 
-        d.rectangle((194, 9, 381, 30), fill=(25, 35, 50))
-        draw_tiny_text(d, 197, 10, "NEXT DEPARTURE", self.C_GRY)
-        for i, dep in enumerate(departures[:2]):
-            flight_id = str(dep.get('away_abbr', '???'))
-            to_city = str(dep.get('home_abbr', '???'))
-            row_y = 18 + i * 7
-            text_str = f"{flight_id} TO {to_city}"[:ROW_CHARS]
-            draw_tiny_text(d, 197, row_y, text_str, self.C_RED)
-        if not departures:
-            draw_tiny_text(d, 197, 18, "--", self.C_GRY)
-
+        side(arrivals, 3, 188, self.C_GRN, "NO INBOUND")
+        side(departures, 196, 381, self.C_RED, "NO OUTBOUND")
         return img
