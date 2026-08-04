@@ -95,20 +95,53 @@ class AirportMixin:
         except Exception:
             return None
 
-    def fetch_fr24_schedule(self, mode='arrivals'):
-        """Get arriving/departing live flights using the FR24 SDK (schedule endpoint is blocked)."""
-        if not self.fr_api:
-            return []
+    @staticmethod
+    def _flight_iata(flight, role):
+        """IATA code for a live flight's origin or destination.
 
+        Read through the same helper for both roles so the two directions
+        cannot drift apart, and tolerate the SDK naming the attribute
+        differently between versions.
+        """
+        names = {
+            'origin': ('origin_airport_iata', 'origin_airport', 'origin'),
+            'destination': ('destination_airport_iata', 'destination_airport',
+                            'destination'),
+        }[role]
+        for name in names:
+            value = str(getattr(flight, name, '') or '').strip().upper()
+            if len(value) == 3 and value.isalpha():
+                return value
+        return ''
+
+    def fetch_fr24_board(self):
+        """Arrivals and departures for the configured airport, from one query.
+
+        These used to run as two concurrent calls to the same SDK client, each
+        pulling the identical global flight list and differing only in how they
+        filtered it. The client is not thread-safe, so the two races and one
+        side comes back empty — which side varied from one refresh to the next,
+        showing as arrivals-only or departures-only. One fetch, two filters.
+        """
+        if not self.fr_api:
+            return [], []
         airport_iata = str(getattr(self, 'airport_code_iata', '') or '').strip().upper()
         if not airport_iata:
-            return []
-
+            return [], []
         try:
             flights = self.fr_api.get_flights()
-            if not flights:
-                return []
+        except Exception as e:
+            self.log("ERROR", f"FR24 SDK get_flights: {e}")
+            return [], []
+        if not flights:
+            self.log("DEBUG", "FR24 SDK: get_flights returned nothing")
+            return [], []
+        return (self._fr24_board_side(flights, airport_iata, 'arrivals'),
+                self._fr24_board_side(flights, airport_iata, 'departures'))
 
+    def _fr24_board_side(self, flights, airport_iata, mode):
+        """Filter one already-fetched flight list down to one side of the board."""
+        try:
             now = int(time.time())
             processed_list = []
 
@@ -121,22 +154,20 @@ class AirportMixin:
                     if not display_id:
                         continue
 
+                    origin = self._flight_iata(flight, 'origin')
+                    dest = self._flight_iata(flight, 'destination')
                     if mode == 'arrivals':
-                        dest = str(getattr(flight, 'destination_airport_iata', '') or '').strip().upper()
                         if dest != airport_iata:
                             continue
-                        other_iata = str(getattr(flight, 'origin_airport_iata', '') or '').strip().upper()
                         entry = {
-                            'from': get_airport_display_name(other_iata),
+                            'from': get_airport_display_name(origin),
                             'status_label': 'ARRIVING',
                         }
                     else:
-                        origin = str(getattr(flight, 'origin_airport_iata', '') or '').strip().upper()
                         if origin != airport_iata:
                             continue
-                        other_iata = str(getattr(flight, 'destination_airport_iata', '') or '').strip().upper()
                         entry = {
-                            'to': get_airport_display_name(other_iata),
+                            'to': get_airport_display_name(dest),
                             'status_label': 'DEPARTING',
                         }
 
@@ -175,7 +206,7 @@ class AirportMixin:
             return deduped[:2]
 
         except Exception as e:
-            self.log("ERROR", f"FR24 SDK Schedule {mode}: {e}")
+            self.log("ERROR", f"FR24 SDK board {mode}: {e}")
             return []
 
     def fetch_airport_weather(self):
@@ -219,13 +250,13 @@ class AirportMixin:
                 return
             self.log("DEBUG", f"Starting airport fetch for {target_code}")
 
-            # Fetch arrivals, departures, and weather in parallel
-            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-                f_arr = pool.submit(self.fetch_fr24_schedule, 'arrivals')
-                f_dep = pool.submit(self.fetch_fr24_schedule, 'departures')
+            # Both sides of the board come from one FR24 query — the SDK client
+            # is not thread-safe and cannot serve two at once. Weather is a
+            # plain HTTP call on a separate session, so it still overlaps.
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+                f_board = pool.submit(self.fetch_fr24_board)
                 f_wx = pool.submit(self.fetch_airport_weather)
-                arrivals = f_arr.result()
-                departures = f_dep.result()
+                arrivals, departures = f_board.result()
                 weather = f_wx.result()
 
             # Single airport-change guard after all three complete
