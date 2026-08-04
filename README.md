@@ -38,7 +38,7 @@ A custom sports ticker built on 6× chained 64×32 HUB75 RGB LED panels (384×32
 
 | Component | Spec |
 |-----------|------|
-| Controller | Raspberry Pi 4 |
+| Controller | Raspberry Pi Zero 2 W |
 | Panels | 6× 64×32 HUB75 RGB LED |
 | Interface | Passive HUB75 adapter board (hzeller `regular` pinout, OE on GPIO18) |
 | Total resolution | 384×32 pixels |
