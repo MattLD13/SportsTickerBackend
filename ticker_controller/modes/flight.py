@@ -2,6 +2,10 @@ from PIL import Image, ImageDraw
 from ..config import PANEL_W, PANEL_H
 from ..fonts import draw_tiny_text
 
+# Arrival/departure rows run from x=5 to the panel edge at 189 (and 197 to 381),
+# at 5px per character. Reclaiming the logo's 11px took this from 30 to 36.
+ROW_CHARS = 36
+
 
 class FlightMixin:
 
@@ -48,20 +52,6 @@ class FlightMixin:
             'KL': 'klm.com',
             'EK': 'emirates.com',
         }.get(code, f"{code.lower()}.com")
-
-    def _draw_flight_logo(self, img, item, x, y, size=(10, 10)):
-        logo_url = self._flight_logo_url(item)
-        if not logo_url:
-            return x
-        try:
-            self.download_and_process_logo(logo_url, size)
-            logo = self.get_logo(logo_url, size)
-            if logo:
-                img.alpha_composite(logo, (x, y))
-                return x + size[0] + 3
-        except Exception:
-            pass
-        return x
 
     def draw_flight_visitor(self, game):
         img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
@@ -157,9 +147,11 @@ class FlightMixin:
             flight_id = str(arr.get('away_abbr', '???'))
             from_city = str(arr.get('home_abbr', '???'))
             row_y = 18 + i * 7
-            text_x = self._draw_flight_logo(img, arr, 5, row_y - 1, size=(8, 8))
-            text_str = f"{flight_id} FROM {from_city}"[:30]
-            draw_tiny_text(d, text_x, row_y, text_str, self.C_GRN)
+            # No airline logo here: an 8x8 favicon is unreadable and it cost 11px
+            # of a 184px row. The tracker still shows one, at 22x22 where it
+            # actually resolves.
+            text_str = f"{flight_id} FROM {from_city}"[:ROW_CHARS]
+            draw_tiny_text(d, 5, row_y, text_str, self.C_GRN)
         if not arrivals:
             draw_tiny_text(d, 5, 18, "--", self.C_GRY)
 
@@ -169,9 +161,8 @@ class FlightMixin:
             flight_id = str(dep.get('away_abbr', '???'))
             to_city = str(dep.get('home_abbr', '???'))
             row_y = 18 + i * 7
-            text_x = self._draw_flight_logo(img, dep, 197, row_y - 1, size=(8, 8))
-            text_str = f"{flight_id} TO {to_city}"[:30]
-            draw_tiny_text(d, text_x, row_y, text_str, self.C_RED)
+            text_str = f"{flight_id} TO {to_city}"[:ROW_CHARS]
+            draw_tiny_text(d, 197, row_y, text_str, self.C_RED)
         if not departures:
             draw_tiny_text(d, 197, 18, "--", self.C_GRY)
 
