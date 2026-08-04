@@ -11,6 +11,10 @@ CITY_CHARS = 18
 BOARD_RULE = (30, 60, 100)
 BOARD_ALT = (70, 90, 120)
 BOARD_WX = (90, 110, 140)
+# "HEAVY SNOW SHOWERS" is the longest WMO description, so 24 clears every
+# condition with the temperature prefix. It right-aligns to x=381 and the
+# OUTBOUND caption ends at 236, leaving 28 characters of room.
+BOARD_WX_CHARS = 24
 
 
 class FlightMixin:
@@ -160,7 +164,12 @@ class FlightMixin:
 
         if weather_item:
             wx = "{} {}".format(weather_item.get('away_abbr', '--'),
-                                weather_item.get('status', '')).strip().upper()[:12]
+                                weather_item.get('status', '')).strip().upper()
+            if len(wx) > BOARD_WX_CHARS:
+                # Trim on a word boundary. A hard cut turned "84F CLEAR SKY"
+                # into "84F CLEAR SK", which reads as a different field
+                # entirely rather than as truncation.
+                wx = wx[:BOARD_WX_CHARS].rsplit(' ', 1)[0]
             if wx:
                 draw_tiny_text(d, PANEL_W - len(wx) * 5 - 3, 0, wx, BOARD_WX)
 
