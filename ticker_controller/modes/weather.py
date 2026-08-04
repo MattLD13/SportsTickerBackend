@@ -9,7 +9,7 @@ from ..fonts import draw_tiny_text, draw_hybrid_text, normalize_special_chars
 # Forecast temperature trend. `gain` scales the edge brightness, `step` draws
 # every Nth pixel for a dashed look, and top/bot set how much vertical travel
 # the week's temperature range is allowed.
-TREND_STYLE = 'dim'
+TREND_STYLE = 'whisper'
 TREND_STYLES = {
     'area': dict(top=11, bot=29, gain=1.00, step=1, fill=True),
     'line': dict(top=11, bot=29, gain=1.00, step=1, fill=False),
