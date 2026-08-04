@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 
 import requests
 import requests.adapters
@@ -158,6 +159,21 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         threading.Thread(target=self.poll_backend, daemon=True).start()
 
     # ================= DISPLAY =================
+    def _present(self, img, target_b):
+        """Push a finished frame to the panels at the given brightness.
+
+        Every path that lights the display goes through here so none of them
+        skip the vsync swap — writing the live framebuffer directly lets a
+        frame land mid-scan, which the panels show as tearing and flicker.
+        """
+        if self.canvas is not None:
+            self.canvas.brightness = target_b
+            self.canvas.SetImage(img)
+            self.canvas = self.matrix.SwapOnVSync(self.canvas)
+        else:
+            self.matrix.brightness = target_b
+            self.matrix.SetImage(img)
+
     def update_display(self, pil_image):
         img = pil_image.convert("RGB")
         if self.inverted:
@@ -168,14 +184,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             bar_w = max(1, int(img.width * dl_done / dl_total))
             draw = ImageDraw.Draw(img)
             draw.line([(0, img.height - 1), (bar_w - 1, img.height - 1)], fill=(0, 80, 0))
-        target_b = int(max(0, min(100, self.brightness * 100)))
-        if self.canvas is not None:
-            self.canvas.brightness = target_b
-            self.canvas.SetImage(img)
-            self.canvas = self.matrix.SwapOnVSync(self.canvas)
-        else:
-            self.matrix.brightness = target_b
-            self.matrix.SetImage(img)
+        self._present(img, int(max(0, min(100, self.brightness * 100))))
 
     # ================= MODE =================
     def set_mode(self, new_mode):
@@ -677,10 +686,11 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                         ImageDraw.Draw(img).line(
                             [(0, PANEL_H - 1), (bar_w - 1, PANEL_H - 1)], fill=(0, 6, 0)
                         )
-                        self.matrix.brightness = 100
-                        self.matrix.SetImage(img)
+                        # Full brightness against a near-black bar colour, so the
+                        # download stays legible without lighting a dark room.
+                        self._present(img, 100)
                     else:
-                        self.matrix.Fill(0, 0, 0)
+                        self._present(Image.new('RGB', (PANEL_W, PANEL_H), (0, 0, 0)), 0)
                     time.sleep(0.5)
                     continue
 
@@ -824,7 +834,10 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                     time.sleep(0.033)
 
             except Exception as e:
+                # ~/ticker.log is the only window into a headless Pi, so keep the
+                # stack — the message alone rarely identifies which mode failed.
                 print(f"Render Error: {e}")
+                traceback.print_exc()
                 time.sleep(0.5)
 
     # ================= BACKEND POLLER =================
