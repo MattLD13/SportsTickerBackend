@@ -147,10 +147,10 @@ def get_ticker_data():
                 g['is_shown'] = True
                 visible_items.append(g)
         
-        # Fallback: If buffer is empty, fetch immediately
+        # Fallback: If buffer is empty, fetch immediately (idle placeholder if needed)
         if not visible_items:
             music_obj = fetcher.get_music_object(require_enabled=False)
-            if music_obj: visible_items.append(music_obj)
+            visible_items.append(music_obj or fetcher._music_placeholder_object())
 
     elif current_mode == 'my_teams':
         _ticker_teams = rec.get('my_teams')

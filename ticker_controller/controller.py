@@ -681,12 +681,22 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                     time.sleep(0.5)
                     continue
 
-                spotify_data = next((g for g in self.static_items if g.get('id') == 'spotify_now'), None)
-                music_is_playing = False
-                if spotify_data:
-                    music_is_playing = spotify_data.get('situation', {}).get('is_playing', False)
-                if self.mode != 'music':
-                    music_is_playing = False
+                music_item = next(
+                    (
+                        g for g in self.static_items
+                        if str(g.get('type', '')).lower() == 'music'
+                        or str(g.get('sport', '')).lower() == 'music'
+                    ),
+                    None,
+                )
+                spotify_now = next((g for g in self.static_items if g.get('id') == 'spotify_now'), None)
+                spotify_playing = bool(
+                    spotify_now and spotify_now.get('situation', {}).get('is_playing', False)
+                )
+                # Dedicated music mode always shows the music card (live/paused/idle/custom).
+                # Other modes only interrupt the strip while Spotify is actively playing.
+                show_music = (self.mode == 'music' and music_item is not None) or spotify_playing
+                active_music = music_item if self.mode == 'music' else spotify_now
 
                 if self.showing_static:
                     if self.bg_strip_ready and self.current_data_hash != self.last_applied_hash:
@@ -700,9 +710,9 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
 
                         if sport.startswith('clock') or game_type in ('music', 'golf', 'masters', 'weather', 'racing') or sport in ('music', 'golf', 'masters', 'indycar', 'f1', 'nascar'):
                             if game_type == 'music' or sport == 'music':
-                                if spotify_data:
-                                    self.static_current_game = spotify_data
-                                    if music_is_playing:
+                                if active_music:
+                                    self.static_current_game = active_music
+                                    if show_music:
                                         self.static_until = time.time() + 2.0
                             self.static_current_image = self.draw_single_game(self.static_current_game)
                             if self.static_current_image:
@@ -771,9 +781,9 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                         self.last_applied_hash = new_hash
                     self.bg_strip_ready = False
 
-                    if music_is_playing and spotify_data:
-                        self.static_current_game = spotify_data
-                        self.static_current_image = self.draw_single_game(spotify_data)
+                    if show_music and active_music:
+                        self.static_current_game = active_music
+                        self.static_current_image = self.draw_single_game(active_music)
                         self.static_until = time.time() + 2.0
                         self.showing_static = True
                         continue
@@ -794,6 +804,10 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                     if self.scroll_sleep > 0:
                         time.sleep(self.scroll_sleep)
                 else:
+                    # Music mode is static-only; always prefer the music card over the
+                    # sports "NO GAMES" empty state. Other modes still skip idle music.
+                    if self.mode == 'music' and self.static_items and self.start_static_display():
+                        continue
                     has_non_music_static = any(
                         str(g.get('type', '')).lower() != 'music' and str(g.get('sport', '')).lower() != 'music'
                         for g in self.static_items
