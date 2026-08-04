@@ -3,110 +3,357 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SportsTicker</title>
+<title>SportsTicker — live scores on a 384×32 LED matrix</title>
+<meta name="description" content="A custom sports ticker: six chained HUB75 LED panels driven by a Flask backend that aggregates live scores, markets, weather, flights and music.">
+<meta name="theme-color" content="#0a0a0a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('dashboard.static', filename='style.css') }}">
+<script>document.documentElement.classList.add('js');</script>
 </head>
 <body>
 
 <header class="header">
   <div class="header-inner">
-    <div class="header-left">
-      <div class="logo">
-        <div class="logo-leds">
-          <span class="led-dot ld1"></span>
-          <span class="led-dot ld2"></span>
-          <span class="led-dot ld3"></span>
-        </div>
-        <span class="logo-text">SportsTicker</span>
-      </div>
-      <span class="ver-chip">v{{ server_version }}&thinsp;<span class="ver-hash">#{{ version_hash[:7] }}</span></span>
-    </div>
+    <a class="logo" href="/">
+      <span class="logo-leds">
+        <span class="led-dot ld1"></span>
+        <span class="led-dot ld2"></span>
+        <span class="led-dot ld3"></span>
+      </span>
+      <span class="logo-text">SportsTicker</span>
+    </a>
+
+    <nav class="nav">
+      <a href="#demo">Demo</a>
+      <a href="#modes">Modes</a>
+      <a href="#coverage">Coverage</a>
+      <a href="#hardware">Hardware</a>
+    </nav>
+
     <div class="header-right">
-      <span class="mode-badge">{{ global_mode.upper().replace('_',' ') }}</span>
+      <span class="chip chip-ghost chip-ver">
+        <span data-led data-led-inline data-led-color="dim" data-led-pad="0">{{ version_hash[:7] }}</span>
+      </span>
+      <span class="chip">
+        <span class="dot-live"></span>
+        <span data-led data-led-inline data-led-color="amber" data-led-pad="0">{{ global_mode.replace('_', ' ') }}</span>
+      </span>
     </div>
   </div>
 </header>
 
-<main>
+<div class="frame">
 
-  <!-- ── SYSTEM STATS ── -->
-  <section class="info-section" style="padding-top:32px;">
-    <div class="container">
+  <!-- ══ HERO ══════════════════════════════════════════════════════════ -->
+  <section class="sec hero" id="demo">
+    <span class="plus tl"></span><span class="plus tr"></span>
 
-      <h2 class="section-heading">System</h2>
+    <span class="hero-badge">
+      <span class="dot-live"></span>
+      <span data-led data-led-inline data-led-color="dim" data-led-pad="0">LIVE FROM THE PANEL</span>
+    </span>
 
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Uptime</div>
-          <div class="stat-value mono">{{ uptime_str }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Active Sports</div>
-          <div class="stat-value">{{ enabled_sports_count }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Version</div>
-          <div class="stat-value mono">v{{ server_version }}</div>
-        </div>
-      </div>
+    <h1>
+      Every
+      <span class="hero-word" data-led data-led-inline data-led-scale="2" data-led-pad="0"
+            data-led-color="white"
+            data-led-cycle="SCORE|FORECAST|STOCK|SONG|SECOND">SCORE</span>
+      you care about, rendered on a 384&times;32
+      <span class="hero-word" data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="amber">matrix</span>
+    </h1>
 
-      <div class="subsection">
-        <h3 class="subsection-title">Active Sports</h3>
-        <div class="sport-pills">
-          {{ sport_html | safe }}
-        </div>
-      </div>
+    <p class="hero-sub">
+      A Flask backend aggregates a dozen live feeds, renders them as pixels, and
+      streams the frames to Raspberry&nbsp;Pi controllers driving six chained
+      HUB75 panels. The board below is the real thing, running right now.
+    </p>
 
-      <!-- ── DISPLAY MODES ── -->
-      <div class="subsection">
-        <h3 class="subsection-title">Display Modes</h3>
-        <div class="mode-table">
-          <div class="mode-row"><span class="mode-key">sports</span><span class="mode-desc">All active sports rotating</span></div>
-          <div class="mode-row"><span class="mode-key">sports_full</span><span class="mode-desc">Full-bleed scoreboard for a pinned game</span></div>
-          <div class="mode-row"><span class="mode-key">soccer_full</span><span class="mode-desc">Full-bleed soccer scoreboard</span></div>
-          <div class="mode-row"><span class="mode-key">live</span><span class="mode-desc">Only show games currently in progress</span></div>
-          <div class="mode-row"><span class="mode-key">my_teams</span><span class="mode-desc">Only show your saved teams</span></div>
-          <div class="mode-row"><span class="mode-key">golf</span><span class="mode-desc">PGA leaderboard scroll</span></div>
-          <div class="mode-row"><span class="mode-key">stocks</span><span class="mode-desc">Stock ticker scroll</span></div>
-          <div class="mode-row"><span class="mode-key">weather</span><span class="mode-desc">Detailed weather card</span></div>
-          <div class="mode-row"><span class="mode-key">music</span><span class="mode-desc">Spotify now playing</span></div>
-          <div class="mode-row"><span class="mode-key">clock</span><span class="mode-desc">Full-screen clock</span></div>
-          <div class="mode-row"><span class="mode-key">flights</span><span class="mode-desc">Airport arrivals / departures board</span></div>
-          <div class="mode-row"><span class="mode-key">flight_tracker</span><span class="mode-desc">Single tracked flight (guest / visitor mode)</span></div>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="#modes">Browse the modes</a>
+      <a class="btn btn-ghost" href="/demo">Open full-screen demo</a>
+    </div>
+
+    <div class="demo"
+         data-ticker-demo
+         data-autorotate="true"
+         data-scroll-rate="{{ scroll_px_s }}"
+         data-modes='{{ demo_modes | tojson }}'>
+      <div class="panel-stage">
+        <div class="panel">
+          <div class="demo-vp" data-demo-vp>
+            <div class="demo-status">CONNECTING TO TICKER...</div>
+          </div>
         </div>
       </div>
-
-      <!-- ── ABOUT ── -->
-      <div class="subsection">
-        <h3 class="subsection-title">About</h3>
-        <p class="about-text">
-          A custom sports ticker built on 6&times; chained 64&times;32 HUB75 RGB LED panels
-          (384&times;32 total). A Flask server runs on an Ubuntu VPS, aggregates live data from
-          a dozen sources, and serves display payloads to one or more Raspberry Pi controllers
-          over the network.
-        </p>
-        <div class="about-tags">
-          <span class="about-tag">Flask</span>
-          <span class="about-tag">Python</span>
-          <span class="about-tag">Raspberry Pi</span>
-          <span class="about-tag">384&times;32 LED Matrix</span>
-          <span class="about-tag">Pillow</span>
-          <span class="about-tag">HUB75</span>
-        </div>
-        <div class="footer-links">
-          <a href="/api/state" class="footer-link">api/state</a>
-          <a href="/api/debug" class="footer-link">api/debug</a>
-          <a href="/leagues" class="footer-link">leagues</a>
-        </div>
+      <div class="demo-controls" data-demo-controls></div>
+      <div class="panel-caption">
+        <span data-led data-led-inline data-led-color="dim" data-led-pad="0">
+          {{ panel_w }}X{{ panel_h }} PIXELS / HUB75 / RENDERED SERVER SIDE
+        </span>
       </div>
-
     </div>
   </section>
 
-</main>
+  <!-- ══ STATUS ════════════════════════════════════════════════════════ -->
+  <section class="sec reveal">
+    <div class="sec-head">
+      <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">01 / STATUS</span>
+      <h2 class="sec-title">
+        What the server is doing
+        <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">now</span>
+      </h2>
+    </div>
+
+    <div class="grid grid-3">
+      <div class="cell stat">
+        <div class="stat-label" data-led data-led-color="dim">UPTIME</div>
+        <div class="stat-value" data-led data-led-scale="2" data-led-color="amber" data-led-fit data-led-group="stat">{{ uptime_str }}</div>
+        <div class="stat-sub">backend process</div>
+      </div>
+      <div class="cell stat">
+        <div class="stat-label" data-led data-led-color="dim">ON THE PANEL</div>
+        <div class="stat-value" data-led data-led-scale="2" data-led-color="amber" data-led-fit data-led-group="stat">{{ live_count }}/{{ active_count }}</div>
+        <div class="stat-sub">of {{ league_count }} feeds enabled</div>
+      </div>
+      <div class="cell stat">
+        <div class="stat-label" data-led data-led-color="dim">MODE</div>
+        <div class="stat-value" data-led data-led-scale="2" data-led-color="amber" data-led-fit data-led-group="stat">{{ global_mode.replace('_', ' ') }}</div>
+        <div class="stat-sub">global display mode</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ MODES ═════════════════════════════════════════════════════════ -->
+  <section class="sec reveal" id="modes">
+    <span class="plus tl"></span><span class="plus tr"></span>
+
+    <div class="sec-head">
+      <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">02 / MODES</span>
+      <h2 class="sec-title">
+        {{ display_modes | length }} ways to fill the
+        <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">panel</span>
+      </h2>
+      <p class="sec-note">
+        Each mode is its own renderer with its own layout, fonts and animation.
+        The controller switches between them on command, or pins one indefinitely.
+      </p>
+    </div>
+
+    <div class="grid grid-3">
+      {% for m in display_modes %}
+      <div class="cell mode{% if m.id == global_mode %} is-current{% endif %}">
+        <div class="mode-key" data-led data-led-color="{% if m.id == global_mode %}amber{% else %}dim{% endif %}" data-led-fit>{{ m.id }}</div>
+        <div class="mode-body">
+          <p class="mode-desc">{{ m.desc }}</p>
+          {% if m.id == global_mode %}<span class="mode-flag">On air</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- ══ COVERAGE ══════════════════════════════════════════════════════ -->
+  <section class="sec reveal" id="coverage">
+    <div class="sec-head">
+      <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">03 / COVERAGE</span>
+      <h2 class="sec-title">
+        Everything it can
+        <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">track</span>
+      </h2>
+      <p class="sec-note">
+        Leagues are toggled per-server, so the board only spends requests on the
+        sports actually in season.
+      </p>
+
+      <div class="legend">
+        <span class="legend-item"><span class="bulb is-live"></span>On the panel now</span>
+        <span class="legend-item"><span class="bulb is-on"></span>Enabled, nothing to show</span>
+        <span class="legend-item"><span class="bulb is-off"></span>Disabled</span>
+      </div>
+    </div>
+
+    <div class="chip-groups">
+      <div>
+        <div class="chip-group-label" data-led data-led-inline data-led-color="dim" data-led-pad="0">LEAGUES</div>
+        <div class="chips">
+          {% for l in sports_leagues %}
+          <span class="led-chip is-{{ l.state }}">
+            <span class="bulb"></span>
+            <span data-led data-led-inline data-led-pad="0"
+                  data-led-color="{{ {'live': 'green', 'on': 'amber', 'off': 'dim'}[l.state] }}">{{ l.label }}</span>
+          </span>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <div class="chip-group-label" data-led data-led-inline data-led-color="dim" data-led-pad="0">MARKETS</div>
+        <div class="chips">
+          {% for l in market_leagues %}
+          <span class="led-chip is-{{ l.state }}">
+            <span class="bulb"></span>
+            <span data-led data-led-inline data-led-pad="0"
+                  data-led-color="{{ {'live': 'green', 'on': 'amber', 'off': 'dim'}[l.state] }}">{{ l.label | replace(' Stocks', '') }}</span>
+          </span>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <div class="chip-group-label" data-led data-led-inline data-led-color="dim" data-led-pad="0">UTILITIES</div>
+        <div class="chips">
+          {% for l in util_leagues %}
+          <span class="led-chip is-{{ l.state }}">
+            <span class="bulb"></span>
+            <span data-led data-led-inline data-led-pad="0"
+                  data-led-color="{{ {'live': 'green', 'on': 'amber', 'off': 'dim'}[l.state] }}">{{ l.label }}</span>
+          </span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ HARDWARE ══════════════════════════════════════════════════════ -->
+  <section class="sec reveal" id="hardware">
+    <span class="plus tl"></span><span class="plus tr"></span>
+
+    <div class="sec-head">
+      <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">04 / HARDWARE</span>
+      <h2 class="sec-title">
+        Built out of panels, not
+        <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">pixels</span>
+      </h2>
+    </div>
+
+    <div class="about-grid">
+      <div class="prose">
+        <p>
+          Six <strong>64&times;32 HUB75 RGB LED panels</strong> chained into a single
+          384&times;32 surface. A Raspberry&nbsp;Pi drives the matrix over a bonnet
+          and runs the controller, which asks the backend what to draw and then
+          composites the frame locally.
+        </p>
+        <p>
+          The backend is a <strong>Flask server on an Ubuntu VPS</strong>. It polls
+          ESPN, OpenF1, market and weather APIs on independent schedules, keeps a
+          snapshot per mode, and hands the controller a pre-shaped payload so the
+          Pi never has to parse a scoreboard feed itself.
+        </p>
+        <p>
+          Everything on this page — the board above included — comes from the same
+          renderer that drives the physical panel. <strong>Nothing here is a mockup.</strong>
+        </p>
+
+        <div class="tags">
+          <span class="tag">Python</span>
+          <span class="tag">Flask</span>
+          <span class="tag">Pillow</span>
+          <span class="tag">Raspberry Pi</span>
+          <span class="tag">HUB75</span>
+          <span class="tag">rpi-rgb-led-matrix</span>
+          <span class="tag">ESPN API</span>
+          <span class="tag">OpenF1</span>
+        </div>
+      </div>
+
+      <div class="spec">
+        <div class="spec-row">
+          <span class="spec-key">Resolution</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="amber">{{ panel_w }}X{{ panel_h }}</span>
+        </div>
+        <div class="spec-row">
+          <span class="spec-key">Panels</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">6 X 64X32</span>
+        </div>
+        <div class="spec-row">
+          <span class="spec-key">Interface</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">HUB75</span>
+        </div>
+        <div class="spec-row">
+          <span class="spec-key">Scroll rate</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ scroll_px_s }} PX/SEC</span>
+        </div>
+        <div class="spec-row">
+          <span class="spec-key">Modes</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ display_modes | length }}</span>
+        </div>
+        <div class="spec-row">
+          <span class="spec-key">Build</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ version_hash[:7] }}</span>
+        </div>
+        <div class="spec-row">
+          <span class="spec-key">Uptime</span>
+          <span data-led data-led-inline data-led-pad="0" data-led-color="white">{{ uptime_str }}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /frame -->
+
+<!-- ══ FOOTER ══════════════════════════════════════════════════════════ -->
+<footer class="footer">
+  <div class="footer-top">
+    <p class="footer-blurb">
+      A personal build: one LED board, one VPS, and a lot of scoreboard feeds
+      that all disagree about what a game state is.
+    </p>
+    <div class="footer-cols">
+      <div class="footer-col">
+        <h4 data-led data-led-inline data-led-color="dim" data-led-pad="0">PAGES</h4>
+        <a href="#demo">Live demo</a>
+        <a href="#modes">Display modes</a>
+        <a href="#coverage">Coverage</a>
+        <a href="#hardware">Hardware</a>
+      </div>
+      <div class="footer-col">
+        <h4 data-led data-led-inline data-led-color="dim" data-led-pad="0">ENDPOINTS</h4>
+        <a href="/api/state">/api/state</a>
+        <a href="/data">/data</a>
+        <a href="/leagues">/leagues</a>
+        <a href="/api/debug">/api/debug</a>
+        <a href="/api/timezone">/api/timezone</a>
+        <a href="/errors">/errors</a>
+      </div>
+      <div class="footer-col">
+        <h4 data-led data-led-inline data-led-color="dim" data-led-pad="0">RENDERERS</h4>
+        <a href="/api/preview/strip.png?mode=sports">/api/preview/strip.png</a>
+        <a href="/api/spotify/now">/api/spotify/now</a>
+        <a href="/api/flight/status">/api/flight/status</a>
+        <a href="/tickers">/tickers</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-word">
+    <div data-led data-led-scale="7" data-led-fit data-led-align="center" data-led-color="dim" data-led-pad="0">SPORTSTICKER</div>
+  </div>
+
+  <div class="footer-meta">
+    <span>{{ server_version }}</span>
+    <span class="spacer"></span>
+    <span>Uptime {{ uptime_str }}</span>
+    <span>{{ panel_w }}&times;{{ panel_h }}</span>
+  </div>
+</footer>
+
+<script src="{{ url_for('dashboard.static', filename='led.js') }}"></script>
+<script src="{{ url_for('dashboard.static', filename='ticker-demo.js') }}"></script>
+<script>
+(function () {
+  if (!('IntersectionObserver' in window)) {
+    document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('is-in'); });
+    return;
+  }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); }
+    });
+  }, { rootMargin: '0px 0px -12% 0px', threshold: 0.05 });
+  document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+})();
+</script>
 
 </body>
 </html>
