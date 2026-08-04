@@ -7,7 +7,7 @@ from flask import render_template
 from . import dashboard
 from ..core import (
     state, tickers, data_lock,
-    normalize_mode,
+    normalize_mode, resolve_ticker_id,
     LEAGUE_OPTIONS, DEFAULT_TICKER_SETTINGS,
     SERVER_VERSION, _VERSION_HASH,
 )
@@ -81,19 +81,41 @@ def _uptime_str(seconds: float) -> str:
     return f"{m}m {s}s"
 
 
+def _active_ticker() -> dict:
+    """The controller whose display this page is describing. Mirrors how
+    /api/state resolves one; with several paired, the one that checked in most
+    recently is the one worth reporting."""
+    tid = resolve_ticker_id()
+    if tid and tid in tickers:
+        return tickers[tid]
+    if not tickers:
+        return {}
+    return max(tickers.values(), key=lambda r: float(r.get('last_seen', 0) or 0))
+
+
+def _display_mode() -> str:
+    """The mode actually on the panel.
+
+    state['mode'] is only the server-wide default. A paired ticker keeps its
+    own mode in its settings and that is what it renders, so reading the global
+    value reports whatever was last set globally rather than what is on screen.
+    """
+    settings = _active_ticker().get('settings') or {}
+    return normalize_mode(settings.get('mode') or state.get('mode', 'sports'))
+
+
 def _scroll_rate_px_s() -> int:
     """The controller advances the strip one pixel per `scroll_speed` seconds,
-    so the on-panel rate is its reciprocal. Prefer a live controller's setting
-    over the shipped default."""
-    speeds = [
-        float(rec.get('settings', {}).get('scroll_speed') or 0)
-        for rec in tickers.values()
-    ]
-    speeds = [s for s in speeds if s > 0]
-    if not speeds:
-        speeds = [float(DEFAULT_TICKER_SETTINGS.get('scroll_speed') or 0.03)]
-    rates = [1.0 / s for s in speeds]            # seconds-per-pixel → pixels-per-second
-    return max(1, round(sum(rates) / len(rates)))
+    so the on-panel rate is its reciprocal. Read it off the same ticker the
+    rest of the page describes."""
+    settings = _active_ticker().get('settings') or {}
+    try:
+        speed = float(settings.get('scroll_speed') or 0)
+    except (TypeError, ValueError):
+        speed = 0
+    if speed <= 0:
+        speed = float(DEFAULT_TICKER_SETTINGS.get('scroll_speed') or 0.03)
+    return max(1, round(1.0 / speed))
 
 
 def _on_air_ids(mode: str) -> set:
@@ -144,9 +166,9 @@ def root():
 
     with data_lock:
         active_sports = dict(state.get('active_sports', {}))
-        global_mode   = state.get('mode', 'sports')
+        display_mode  = _display_mode()
 
-    on_air = _on_air_ids(global_mode)
+    on_air = _on_air_ids(display_mode)
 
     # Keep LEAGUE_OPTIONS order so related leagues stay grouped.
     #   live = on the panel now · on = enabled and polling · off = disabled
@@ -165,7 +187,7 @@ def root():
         version_hash    = _VERSION_HASH,
         server_version  = SERVER_VERSION,
         uptime_str      = _uptime_str(now - _SERVER_START),
-        global_mode     = global_mode,
+        global_mode     = display_mode,
         sports_leagues  = [l for l in leagues if l['type'] == 'sport'],
         util_leagues    = [l for l in leagues if l['type'] == 'util'],
         market_leagues  = [l for l in leagues if l['type'] == 'stock'],
