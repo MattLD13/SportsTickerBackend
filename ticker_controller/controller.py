@@ -105,6 +105,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         self.brightness = 1.0
         self.scroll_sleep = 0.05
         self._next_frame = None  # deadline carried between frames by _pace()
+        self._last_scroll_t = None  # wall clock of the previous scroll advance
         self.inverted = False
         self.is_pairing = False
         self.pairing_code = ""
@@ -184,6 +185,24 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         self._next_frame = deadline
         if deadline > now:
             time.sleep(deadline - now)
+
+    def _scroll_view(self, strip, offset, subpixel):
+        """Crop a panel-sized window from the strip at a fractional offset.
+
+        Whole-pixel steps are what make a slow scroll look choppy: because the
+        speed setting is seconds *per pixel*, slowing it down simply moves the
+        strip less often, and below one pixel per frame the image sits still
+        for several frames and then jumps. Blending the two neighbouring crops
+        renders the in-between positions as brightness instead — the panels
+        have 8 bits of PWM per channel, which is ample for a 1px box filter.
+        """
+        x = int(offset)
+        left = strip.crop((x, 0, x + PANEL_W, PANEL_H))
+        frac = offset - x
+        if not subpixel or frac < 0.02 or x + 1 + PANEL_W > strip.width:
+            return left
+        right = strip.crop((x + 1, 0, x + 1 + PANEL_W, PANEL_H))
+        return Image.blend(left, right, frac)
 
     def _present(self, img, target_b):
         """Push a finished frame to the panels at the given brightness.
@@ -836,12 +855,23 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                         if self.static_items:
                             if self.start_static_display():
                                 continue
-                    x = int(strip_offset)
-                    view = self.active_strip.crop((x, 0, x + PANEL_W, PANEL_H))
-                    self.update_display(view)
-                    strip_offset += 1
+                    # Sub-pixel only helps below one pixel per frame; above that
+                    # whole-pixel crops are both sharper and already smooth.
+                    subpixel = 0 < self.scroll_sleep and FRAME_INTERVAL < self.scroll_sleep
+                    self.update_display(
+                        self._scroll_view(self.active_strip, strip_offset, subpixel)
+                    )
+                    # Advance by wall time rather than one pixel per frame, so the
+                    # frame rate no longer doubles as the speed control. Clamped
+                    # so that resuming from a stall eases in instead of leaping.
+                    now = time.monotonic()
+                    dt = now - (now if self._last_scroll_t is None else self._last_scroll_t)
+                    self._last_scroll_t = now
                     if self.scroll_sleep > 0:
-                        self._pace(self.scroll_sleep)
+                        strip_offset += min(dt, FRAME_INTERVAL * 4) / self.scroll_sleep
+                    else:
+                        strip_offset += 1
+                    self._pace(FRAME_INTERVAL)
                 else:
                     # Music mode is static-only; always prefer the music card over the
                     # sports "NO GAMES" empty state. Other modes still skip idle music.
