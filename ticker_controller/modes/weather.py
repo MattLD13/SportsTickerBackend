@@ -6,6 +6,20 @@ from ..config import PANEL_W, PANEL_H
 from ..fonts import draw_tiny_text, draw_hybrid_text, normalize_special_chars
 
 
+# Forecast temperature trend. `gain` scales the edge brightness, `step` draws
+# every Nth pixel for a dashed look, and top/bot set how much vertical travel
+# the week's temperature range is allowed.
+TREND_STYLE = 'dim'
+TREND_STYLES = {
+    'area': dict(top=11, bot=29, gain=1.00, step=1, fill=True),
+    'line': dict(top=11, bot=29, gain=1.00, step=1, fill=False),
+    'dim':  dict(top=12, bot=29, gain=0.42, step=1, fill=False),
+    'dots': dict(top=12, bot=29, gain=0.60, step=3, fill=False),
+    'band': dict(top=19, bot=29, gain=0.45, step=1, fill=False),
+    'whisper': dict(top=13, bot=28, gain=0.26, step=1, fill=False),
+}
+
+
 class WeatherMixin:
 
     def draw_weather_pixel_art(self, d, icon_name, x, y, t=None):
@@ -380,11 +394,13 @@ class WeatherMixin:
         right_w = PANEL_W - right_start
         col_w = right_w // 5
 
-        for i, day in enumerate(forecast[:5]):
+        def col_bounds(i):
             cx = right_start + (i * col_w)
-            col_right = cx + col_w - 1
-            if i == 4: col_right = PANEL_W - 1
+            return cx, (PANEL_W - 1 if i == 4 else cx + col_w - 1)
 
+        # Pass 1: column backgrounds, so the trend can span all five of them.
+        for i, day in enumerate(forecast[:5]):
+            cx, col_right = col_bounds(i)
             col_icon = day.get('icon', 'cloud')
             col_t = sky_tint(col_icon)
             bg = col_t if i % 2 == 0 else tuple(max(0, c - 1) for c in col_t)
@@ -392,6 +408,53 @@ class WeatherMixin:
             draw_amb(col_icon, cx, 0, col_right - cx + 1, 32, anim_t + i * 1.7)
             if i < 4: d.line((col_right, 3, col_right, 29), fill=DEEP_BLUE)
 
+        # Pass 2: the week's temperature shape, drawn across the whole forecast
+        # region. Five independent numbers do not show whether the week is
+        # warming or which day is the outlier; an edge following each day's high
+        # makes that readable without reading any of them.
+        highs = []
+        for day in forecast[:5]:
+            try:
+                highs.append(float(str(day.get('high', '')).replace('°', '')))
+            except (TypeError, ValueError):
+                highs.append(None)
+        pts = [((sum(col_bounds(i)) / 2.0), h) for i, h in enumerate(highs) if h is not None]
+        cfg = TREND_STYLES.get(TREND_STYLE)
+        if cfg and len(pts) >= 2:
+            lo_t = min(h for _, h in pts)
+            span = max(1.0, max(h for _, h in pts) - lo_t)
+            TOP, BOT = cfg['top'], cfg['bot']
+
+            def trend_at(x):
+                if x <= pts[0][0]:
+                    t = pts[0][1]
+                elif x >= pts[-1][0]:
+                    t = pts[-1][1]
+                else:
+                    for j in range(1, len(pts)):
+                        if x <= pts[j][0]:
+                            x0, t0 = pts[j - 1]
+                            x1, t1 = pts[j]
+                            t = t0 + (t1 - t0) * ((x - x0) / (x1 - x0))
+                            break
+                n = (t - lo_t) / span
+                return int(round(TOP + (1.0 - n) * (BOT - TOP))), n
+
+            for x in range(right_start, PANEL_W):
+                yv, n = trend_at(x)
+                if cfg['fill']:
+                    fill = tuple(int(round(a + (b - a) * n))
+                                 for a, b in zip((5, 12, 24), (28, 12, 5)))
+                    d.line((x, yv + 1, x, 31), fill=fill)
+                if (x - right_start) % cfg['step']:
+                    continue
+                edge = tuple(int(round((a + (b - a) * n) * cfg['gain']))
+                             for a, b in zip((70, 120, 190), (255, 140, 70)))
+                d.point((x, yv), fill=edge)
+
+        # Pass 3: labels, icons and temperatures on top.
+        for i, day in enumerate(forecast[:5]):
+            cx, col_right = col_bounds(i)
             if i == 0:
                 day_str = 'TODAY'
             else:
