@@ -100,17 +100,9 @@ def _try_show_update_ui(step_ref):
         from PIL import Image, ImageDraw, ImageFont
 
         try:
-            from rgbmatrix import RGBMatrix, RGBMatrixOptions
-            options = RGBMatrixOptions()
-            options.rows = 32
-            options.cols = 64
-            options.chain_length = 6
-            options.parallel = 1
-            options.hardware_mapping = "regular"
-            options.gpio_slowdown = 2
-            options.disable_hardware_pulsing = True
-            options.drop_privileges = False
-            matrix = RGBMatrix(options=options)
+            from rgbmatrix import RGBMatrix
+            from ticker_controller.matrix import build_matrix_options
+            matrix = RGBMatrix(options=build_matrix_options())
         except Exception:
             return  # Not on hardware — skip silently
 

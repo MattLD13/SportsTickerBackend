@@ -62,17 +62,15 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             except Exception:
                 EmulatedMatrix = None
         if not use_emulator and RGBMatrix is not None and RGBMatrixOptions is not None:
-            options = RGBMatrixOptions()
-            options.rows = 32
-            options.cols = 64
-            options.chain_length = 6
-            options.parallel = 1
-            options.hardware_mapping = 'regular'
-            options.gpio_slowdown = 2
-            options.disable_hardware_pulsing = True
-            options.drop_privileges = False
-            self.matrix = RGBMatrix(options=options)
+            from .matrix import build_matrix_options
+            self.matrix = RGBMatrix(options=build_matrix_options())
+            # Draw into an offscreen canvas and swap on the panel's vsync, so a
+            # frame never lands halfway through a scan-out — writing the live
+            # framebuffer directly is what makes the display tear and flicker.
+            canvas = self.matrix.CreateFrameCanvas()
+            self.canvas = canvas if hasattr(canvas, 'brightness') else None
         else:
+            self.canvas = None
             if use_emulator and 'EmulatedMatrix' in locals() and EmulatedMatrix is not None:
                 print("  Using EmulatedMatrix (Tkinter) for local display.")
                 scale = int(os.environ.get('TICKER_EMULATOR_SCALE') or 3)
@@ -171,8 +169,13 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             draw = ImageDraw.Draw(img)
             draw.line([(0, img.height - 1), (bar_w - 1, img.height - 1)], fill=(0, 80, 0))
         target_b = int(max(0, min(100, self.brightness * 100)))
-        self.matrix.brightness = target_b
-        self.matrix.SetImage(img)
+        if self.canvas is not None:
+            self.canvas.brightness = target_b
+            self.canvas.SetImage(img)
+            self.canvas = self.matrix.SwapOnVSync(self.canvas)
+        else:
+            self.matrix.brightness = target_b
+            self.matrix.SetImage(img)
 
     # ================= MODE =================
     def set_mode(self, new_mode):

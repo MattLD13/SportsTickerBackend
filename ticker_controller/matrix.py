@@ -30,6 +30,37 @@ except ImportError:
     RGBMatrix = RGBMatrixOptions = None
 
 
+def build_matrix_options():
+    """RGBMatrixOptions for the 6-panel chain on the passive HUB75 adapter.
+
+    The adapter wires OE to GPIO18, so the library *can* time its pulses with
+    the PWM hardware, and software pulsing is what makes a chain this long
+    flicker. It stays opt-in via ``TICKER_HW_PULSE=1`` because the library
+    calls ``exit(1)`` — not a catchable error — when ``snd_bcm2835`` is still
+    loaded, and systemd would restart-loop the ticker with a dark panel.
+    Blacklist the sound module on the Pi first, then set the variable.
+    """
+    options = RGBMatrixOptions()
+    options.rows = PANEL_H
+    options.cols = 64
+    options.chain_length = PANEL_W // 64
+    options.parallel = 1
+    options.hardware_mapping = 'regular'
+    # Pi 4 generally needs 3-4 here; a Zero 2 W is happy at 1-2. The adapter is
+    # passive (no level shifters), so err high rather than low.
+    options.gpio_slowdown = int(os.environ.get('TICKER_GPIO_SLOWDOWN') or 2)
+    options.disable_hardware_pulsing = (
+        os.environ.get('TICKER_HW_PULSE', '') not in ('1', 'true', 'True')
+    )
+    options.drop_privileges = False
+    # 384 columns of 1:16 scan refresh slowly at the default 11 PWM bits, and a
+    # low refresh rate is exactly what the eye reads as flicker. Trading colour
+    # depth for refresh rate is the cheapest win available.
+    options.pwm_bits = int(os.environ.get('TICKER_PWM_BITS') or 8)
+    options.pwm_lsb_nanoseconds = 130
+    return options
+
+
 class NullMatrix:
     """No-op RGB matrix fallback so the app can run off-device (e.g., Windows dev)."""
 
