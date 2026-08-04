@@ -11,6 +11,7 @@ import time
 import traceback
 import uuid
 from datetime import datetime as dt, timezone, timedelta
+from urllib.parse import urlparse
 
 try:
     from zoneinfo import ZoneInfo
@@ -144,8 +145,39 @@ except Exception as e:
     print(f"Logging setup failed: {e}")
 
 # ── Section B: Network / Session ──
+class _HostAwareSession(requests.Session):
+    """Drops per-request headers on hosts that reject them.
+
+    HEADERS in lookups.py is FotMob's set — a browser user agent plus a
+    Referer of https://www.fotmob.com/ — and two dozen call sites pass it to
+    every upstream, ESPN included. ESPN rejects that exact combination with a
+    403 and an HTML body, which reached .json() and surfaced as "Expecting
+    value: line 1 column 1 (char 0)" from every league at once.
+
+    Verified against the live endpoint from one IP: all four headers together
+    return 403, while the Referer alone, the user agent alone, or no custom
+    headers each return 200 with a full slate. It is the fingerprint, not the
+    address — so the fix is to stop sending FotMob's identity to ESPN rather
+    than to change anything about the host.
+
+    Applied here instead of at the call sites so a new ESPN fetcher cannot
+    reintroduce it by copying the surrounding code.
+    """
+
+    _BARE_HEADER_HOSTS = ('espn.com',)
+
+    def request(self, method, url, **kwargs):
+        try:
+            host = urlparse(str(url)).netloc.lower()
+        except Exception:
+            host = ''
+        if any(h in host for h in self._BARE_HEADER_HOSTS):
+            kwargs['headers'] = None
+        return super().request(method, url, **kwargs)
+
+
 def build_pooled_session(pool_size=20, retries=2):
-    session = requests.Session()
+    session = _HostAwareSession()
     adapter = HTTPAdapter(pool_connections=pool_size, pool_maxsize=pool_size, max_retries=retries, pool_block=True)
     session.mount("http://", adapter)
     session.mount("https://", adapter)
