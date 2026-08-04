@@ -258,18 +258,25 @@ class WeatherMixin:
                 # quantised a 43%-vs-54% chance to the same three streaks. Use
                 # the whole table, and carry some of the difference in
                 # brightness too, since count alone is this coarse.
+                # Count alone is too coarse at 51px wide, so vary the streak
+                # length and brightness with it. Three cues moving together make
+                # an 11-point difference in chance actually visible; count on
+                # its own moved by two pixels and read as identical.
                 avail = min(len(_rfx), max(6, rw // 4))
-                shade = 0.55 + 0.45 * density
+                shade = 0.45 + 0.55 * density
+                length = 2 + int(round(3 * density))
                 for j in range(max(1, int(round(avail * density)))):
                     bx0 = rx + int(_rfx[j] * rw)
                     head = ry + int((t * _rsp[j] + _rph[j] * 7) % (rh + 4)) - 2
-                    for k, base in enumerate(((34, 62, 105), (18, 34, 62))):
+                    for k in range(length):
                         yy = head + k
                         # Lean about the column's middle, so a strong tilt slants
                         # the field rather than shoving it off one edge.
                         bx = bx0 + int(round((yy - ry - rh / 2.0) * wind))
                         if ry <= yy < ry + rh and rx <= bx < rx + rw:
-                            d.point((bx, yy), fill=tuple(int(c * shade) for c in base))
+                            fade = shade * (1.0 - k / float(length + 1))
+                            d.point((bx, yy),
+                                    fill=tuple(int(c * fade) for c in (44, 80, 132)))
             if 'snow' in ic:
                 _sfx = [0.06, 0.22, 0.38, 0.55, 0.72, 0.88, 0.14]
                 _ssp = [1.7,  1.4,  1.9,  1.5,  1.8,  1.6,  2.0]
@@ -422,7 +429,12 @@ class WeatherMixin:
                 # A 20% chance of showers should not look like a certainty. The
                 # icon maps both to 'rain', so this is the only place the
                 # difference can show.
-                density = 0.12 + 0.88 * max(0.0, min(1.0, float(pop) / 100.0))
+                # Sigmoid centred on 40%, where forecast chances cluster. Steep
+                # through the middle so neighbouring days separate — 43% and 54%
+                # differ by 0.16 here — and asymptotic at the ends, so the top
+                # of the range keeps resolving instead of clipping. A plain log
+                # curve does the opposite: it would halve that mid-range gap.
+                density = 1.0 / (1.0 + math.exp(-(float(pop) / 100.0 - 0.40) / 0.16))
             gust = day.get('wind')
             if gust is not None:
                 # Lean the falling streaks with the day's peak wind. Calibrated
