@@ -9,6 +9,11 @@ globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')
 # that avoids carrying rows nothing will draw.
 BOARD_ROWS = 4
 
+# How long a good board survives failed fetches before it is allowed to empty.
+# FR24 returns an empty list when throttled, which is indistinguishable from a
+# quiet airport, so hold the last good result rather than blanking the display.
+AIRPORT_HOLD_SECONDS = 300
+
 
 class AirportMixin:
     def _get_airline_identifiers(self, flight_code):
@@ -151,6 +156,28 @@ class AirportMixin:
                     time.sleep(self._FR_RETRY_DELAY)
             return result
 
+    def _airport_bounds(self, degrees=2.0):
+        """FR24 bounds box around the configured airport, or None.
+
+        Filtering the global sample does not surface the traffic that is
+        actually at the airport. LAS — a top-ten US airport — yielded four
+        arrivals and one departure from 1500 flights, and every one was a
+        long-haul at cruise: Manchester and Frankfurt inbound at 38,000ft, the
+        Seoul departure already over the Pacific. The snapshot skews to
+        long-haul, so the short-haul traffic that fills the airport never
+        appears. Asking for the box around the airport returns the aircraft on
+        approach and just departed instead.
+        """
+        code = str(getattr(self, 'airport_code_iata', '') or '').strip().upper()
+        ap = (AIRPORTS_DB or {}).get(code) or {}
+        try:
+            lat = float(ap['lat'])
+            lon = float(ap['lon'])
+        except (KeyError, TypeError, ValueError):
+            return None
+        # north, south, west, east
+        return f"{lat + degrees},{lat - degrees},{lon - degrees},{lon + degrees}"
+
     def fetch_fr24_board(self):
         """Arrivals and departures for the configured airport, from one query.
 
@@ -165,11 +192,23 @@ class AirportMixin:
         airport_iata = str(getattr(self, 'airport_code_iata', '') or '').strip().upper()
         if not airport_iata:
             return [], []
-        try:
-            flights = self._fr_call(self.fr_api.get_flights)
-        except Exception as e:
-            self.log("ERROR", f"FR24 SDK get_flights: {e}")
-            return [], []
+        flights = None
+        bounds = self._airport_bounds()
+        if bounds:
+            try:
+                flights = self._fr_call(self.fr_api.get_flights, bounds=bounds)
+            except TypeError:
+                # SDK build without a bounds parameter — fall through.
+                flights = None
+            except Exception as e:
+                self.log("DEBUG", f"FR24 bounds query failed: {e}")
+                flights = None
+        if not flights:
+            try:
+                flights = self._fr_call(self.fr_api.get_flights)
+            except Exception as e:
+                self.log("ERROR", f"FR24 SDK get_flights: {e}")
+                return [], []
         if not flights:
             self.log("DEBUG", "FR24 SDK: get_flights returned nothing")
             return [], []
@@ -225,7 +264,6 @@ class AirportMixin:
 
                     airline_icao, airline_iata, flight_number = self._get_airline_identifiers(display_id)
                     airline_code = airline_iata or airline_icao
-                    airline_logo = self._get_airline_logo_url(airline_code)
 
                     # Lower altitude = closer to landing (arrivals) or just departed (departures)
                     # Negate altitude so lower altitude sorts first (highest sort_time)
@@ -233,7 +271,6 @@ class AirportMixin:
                     entry['airline'] = airline_code
                     entry['airline_icao'] = airline_icao
                     entry['airline_iata'] = airline_iata
-                    entry['airline_logo'] = airline_logo
                     entry['flight_number'] = flight_number or display_id
                     entry['altitude'] = int(altitude)
                     entry['sort_time'] = now - altitude
@@ -317,9 +354,23 @@ class AirportMixin:
                 self.log("DEBUG", "Airport changed mid-fetch, discarding results")
                 return
 
+            now = time.time()
             with self.lock:
-                self.airport_arrivals = arrivals
-                self.airport_departures = departures
+                if arrivals or departures:
+                    self.airport_arrivals = arrivals
+                    self.airport_departures = departures
+                    self._airport_data_ts = now
+                elif now - getattr(self, '_airport_data_ts', 0.0) > AIRPORT_HOLD_SECONDS:
+                    # Nothing for several minutes running — let it empty rather
+                    # than keep showing aircraft that have long since landed.
+                    self.airport_arrivals = []
+                    self.airport_departures = []
+                else:
+                    # One throttled or failed fetch used to blank a board that
+                    # was correct half a minute earlier. Keep the last good one.
+                    self.log("DEBUG", "empty board fetch — holding previous flights")
+                    arrivals = self.airport_arrivals
+                    departures = self.airport_departures
                 self.airport_weather = weather
             self.log("AIRPORT", f"{target_code}: {len(arrivals)} arr, {len(departures)} dep | Weather: {weather['temp']}")
         except Exception as e:
