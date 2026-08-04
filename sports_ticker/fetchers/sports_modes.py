@@ -1,4 +1,5 @@
 import concurrent.futures
+import traceback
 
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
@@ -865,7 +866,10 @@ class SportsModesMixin:
                 }
 
                 sports_built = False
-                for mode in needed:
+                # Sorted, not raw set order: iteration order over a set of strings
+                # varies per process, so which modes got built before a failure
+                # changed on every restart and the symptom moved around.
+                for mode in sorted(needed):
                     is_sports = mode in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full')
 
                     if is_sports and sports_built:
@@ -873,7 +877,17 @@ class SportsModesMixin:
                         continue
 
                     builder = _dispatch.get(mode, self._build_sports_buffer)
-                    result = builder()
+                    try:
+                        result = builder()
+                    except Exception as e:
+                        # One failing mode must not starve the others. This call
+                        # was unguarded, so any exception aborted the whole pass
+                        # and every mode not yet reached kept its previous
+                        # buffer — which is how a failure in an unrelated mode
+                        # left sports frozen on a finished game.
+                        print(f"[BUFFER] {mode} build failed: {e}")
+                        traceback.print_exc()
+                        continue
 
                     if is_sports:
                         sports_built = True
