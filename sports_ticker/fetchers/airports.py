@@ -160,14 +160,20 @@ class AirportMixin:
                         if dest != airport_iata:
                             continue
                         entry = {
-                            'from': get_airport_display_name(origin),
+                            # City, not airport name: "Newark" rather than
+                            # "Newark Liberty", "Atlanta" rather than
+                            # "Hartsfield/Jackson Atlanta". The IATA code rides
+                            # along so multi-airport cities stay unambiguous.
+                            'from': get_city_name(origin),
+                            'from_iata': origin,
                             'status_label': 'ARRIVING',
                         }
                     else:
                         if origin != airport_iata:
                             continue
                         entry = {
-                            'to': get_airport_display_name(dest),
+                            'to': get_city_name(dest),
+                            'to_iata': dest,
                             'status_label': 'DEPARTING',
                         }
 
@@ -284,8 +290,12 @@ class AirportMixin:
             for i, arr in enumerate(self.airport_arrivals[:2]):
                 # Use specific status if available, else fallback
                 st = arr.get('status_label', 'ARRIVING')
-                result.append({'type': 'flight_arrival', 'sport': 'flight', 'id': f"arr_{i}", 'status': st, 'home_abbr': arr['from'], 'away_abbr': arr['id'], 'is_shown': True})
+                result.append({'type': 'flight_arrival', 'sport': 'flight', 'id': f"arr_{i}", 'status': st,
+                               'home_abbr': arr['from'], 'away_abbr': arr['id'],
+                               'other_iata': arr.get('from_iata', ''), 'is_shown': True})
             for i, dep in enumerate(self.airport_departures[:2]):
                 st = dep.get('status_label', 'DEPARTING')
-                result.append({'type': 'flight_departure', 'sport': 'flight', 'id': f"dep_{i}", 'status': st, 'home_abbr': dep['to'], 'away_abbr': dep['id'], 'is_shown': True})
+                result.append({'type': 'flight_departure', 'sport': 'flight', 'id': f"dep_{i}", 'status': st,
+                               'home_abbr': dep['to'], 'away_abbr': dep['id'],
+                               'other_iata': dep.get('to_iata', ''), 'is_shown': True})
             return result
