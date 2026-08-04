@@ -79,6 +79,57 @@ class FlightTracker(AirportMixin):
 
         raise ValueError(f"Invalid flight code format: {flight_code}")
 
+    @staticmethod
+    def _code_candidates(code):
+        """Every plausible (airline, number) split of a flight code.
+
+        The split is genuinely ambiguous for carriers whose IATA code contains a
+        digit: F92201 is Frontier 2201 or 'F' 92201, and B61004 is JetBlue 1004
+        or 'B' 61004. Return both readings and let the caller decide, rather
+        than guessing — the ambiguity appears on the requested code and on the
+        flight's own fields independently, so guessing wrong on either loses the
+        match. Leading zeros are dropped so UAL0072 and UA72 compare equal.
+        """
+        text = str(code or '').upper().replace(' ', '').replace('-', '')
+        out = []
+        for pattern in (r'^([A-Z]*?)0*(\d+)$',      # shortest alpha prefix
+                        r'^([A-Z]\d)0*(\d+)$',      # IATA code containing a digit
+                        r'^([A-Z]{2,3})0*(\d+)$'):  # plain IATA / ICAO prefix
+            match = re.match(pattern, text)
+            if match:
+                pair = (match.group(1), match.group(2))
+                if pair not in out:
+                    out.append(pair)
+        return out
+
+    @classmethod
+    def _split_flight_code(cls, code):
+        """The single most likely (airline, number) split, or ('', '')."""
+        candidates = cls._code_candidates(code)
+        return candidates[0] if candidates else ('', '')
+
+    @staticmethod
+    def _airline_aliases(*codes):
+        """Every airline code that means the same carrier as any of `codes`.
+
+        Walks the IATA/ICAO maps in both directions and closes over the result,
+        so a lookup succeeds through whichever code the data happens to carry.
+        The maps are also stale in places — RPA resolves to 'RW' where Republic
+        now uses 'YX' — and following both directions recovers from that as long
+        as any one code lines up.
+        """
+        seen = set()
+        pending = [str(c).upper() for c in codes if c]
+        while pending:
+            code = pending.pop()
+            if not code or code in seen:
+                continue
+            seen.add(code)
+            for other in (_ICAO_TO_IATA.get(code), _IATA_TO_ICAO.get(code)):
+                if other:
+                    pending.append(str(other).upper())
+        return seen
+
     def fetch_visitor_tracking(self):
         if not self.track_flight_id: return
         
@@ -288,25 +339,47 @@ class FlightTracker(AirportMixin):
                         search_strings.append(f"{code}{flight_num.zfill(4)}")
             search_strings = [s for s in dict.fromkeys(search_strings) if s]
             
-            # Search for the flight
+            # Match on the number plus any code meaning the same carrier, rather
+            # than on reconstructed strings. The code a passenger holds is often
+            # not the callsign: Republic flies RPA4601 while the ticket and
+            # FR24's own 'number' field say YX4601.
+            wanted = self._code_candidates(raw)
+            want_numbers = {n for _, n in wanted}
+            if flight_num:
+                want_numbers.add(str(flight_num).lstrip('0'))
+            aliases = self._airline_aliases(*[p for p, _ in wanted], icao, iata)
+
             target_flight = None
-            
+            digit_only = {}
             for flight in flights:
-                f_num = (flight.number or "").upper().replace(" ", "")
-                f_call = (flight.callsign or "").upper().replace(" ", "")
-                
-                for search_str in search_strings:
-                    if search_str in [f_num, f_call]:
-                        target_flight = flight
-                        self.log("INFO", f"✓ Found {flight_id}: {f_num} ({f_call})")
+                for field in (getattr(flight, 'number', ''), getattr(flight, 'callsign', '')):
+                    for prefix, digits in self._code_candidates(field):
+                        if digits not in want_numbers:
+                            continue
+                        if prefix and prefix in aliases:
+                            target_flight = flight
+                            break
+                        # Same number under an unrelated prefix — a regional
+                        # operating for a mainline carrier. Keep as a candidate.
+                        digit_only[id(flight)] = flight
+                    if target_flight:
                         break
-                
                 if target_flight:
                     break
-            
+
+            if target_flight:
+                self.log("INFO", f"✓ Found {flight_id}: {target_flight.number} ({target_flight.callsign})")
+            elif len(digit_only) == 1:
+                target_flight = next(iter(digit_only.values()))
+                self.log("INFO", f"✓ {flight_id} matched {target_flight.callsign} "
+                                 f"({target_flight.number}) on flight number alone")
+            elif digit_only:
+                self.log("WARNING", f"{flight_id}: {len(digit_only)} flights share that number, "
+                                    f"none under a known {want_prefix or icao} code")
+
             if not target_flight:
                 self.log("WARNING", f"Flight {flight_id} not found - may not be airborne right now")
-                self.log("DEBUG", f"Searched for: {search_strings}")
+                self.log("DEBUG", f"Wanted #{sorted(want_numbers)} under any of {sorted(aliases)}")
                 return None
             
             # Get detailed information if available
