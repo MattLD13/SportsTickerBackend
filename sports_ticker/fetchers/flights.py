@@ -237,38 +237,56 @@ class FlightTracker(AirportMixin):
                 )
                 return delay_min, status_text, est_arr
             
-            # Parse the flight code
-            icao, iata, flight_num = self.parse_flight_code(flight_id)
-            
+            # Parse the flight code. An unrecognised prefix is not fatal — the
+            # raw code is still searched against every callsign below.
+            try:
+                icao, iata, flight_num = self.parse_flight_code(flight_id)
+            except Exception as e:
+                self.log("DEBUG", f"Could not parse {flight_id} ({e}); searching the code as typed")
+                icao, iata, flight_num = '', '', ''
+
             self.log("INFO", f"Searching for flight {flight_id} (ICAO: {icao}, IATA: {iata}, #: {flight_num})")
             
             # Try airline-filtered search first
-            try:
-                flights = self._fr_call(self.fr_api.get_flights, airline=icao)
-                if flights:
-                    self.log("INFO", f"Got {len(flights)} {icao} flights from API")
-            except Exception as e:
-                self.log("DEBUG", f"Airline filter failed, trying all flights: {e}")
+            flights = None
+            if icao:
+                try:
+                    flights = self._fr_call(self.fr_api.get_flights, airline=icao)
+                    if flights:
+                        self.log("INFO", f"Got {len(flights)} {icao} flights from API")
+                except Exception as e:
+                    self.log("DEBUG", f"Airline filter failed: {e}")
+                    flights = None
+
+            if not flights:
+                # A filter matching nothing returns an empty list rather than
+                # raising, and the fallback only ran on an exception — so any
+                # carrier FR24 does not index under its ICAO code could never be
+                # tracked. RPA4601 parsed correctly and still died here.
+                self.log("DEBUG",
+                         f"Airline filter for {icao or '?'} came back empty; searching all flights")
                 flights = self._fr_call(self.fr_api.get_flights)
                 if flights:
                     self.log("INFO", f"Got {len(flights)} total flights from API")
-            
+
             if not flights:
-                self.log("WARNING", f"No flights returned by API - service may be down")
+                self.log("WARNING", "No flights returned by API - service may be down")
                 return None
-            
-            # Build search variants
-            search_strings = [
-                f"{icao}{flight_num}",      # UAL72, JBU1004
-                f"{iata}{flight_num}",      # UA72, B61004
-            ]
-            
-            # Add zero-padded variants for short flight numbers
-            if len(flight_num) < 4:
-                search_strings.extend([
-                    f"{icao}{flight_num.zfill(4)}",  # UAL0072
-                    f"{iata}{flight_num.zfill(4)}",  # UA0072
-                ])
+
+            # Build search variants. The code as typed goes first: the
+            # OpenFlights map is stale in places — RPA resolves to IATA 'RW'
+            # where Republic now uses 'YX' — so a reconstructed string can miss
+            # a callsign the raw input would have matched exactly.
+            raw = str(flight_id).upper().replace(" ", "")
+            search_strings = [raw]
+            if flight_num:
+                for code in (icao, iata):
+                    if not code:
+                        continue
+                    search_strings.append(f"{code}{flight_num}")
+                    if len(flight_num) < 4:
+                        search_strings.append(f"{code}{flight_num.zfill(4)}")
+            search_strings = [s for s in dict.fromkeys(search_strings) if s]
             
             # Search for the flight
             target_flight = None
