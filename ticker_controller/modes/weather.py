@@ -133,13 +133,60 @@ class WeatherMixin:
         else:
             is_night = now_h < 6 or now_h >= 20
 
-        GOLDEN = 45  # minutes either side of the horizon crossing
-        if sunrise_m is not None and sunset_m is not None:
-            is_sunrise = abs(now_m - sunrise_m) <= GOLDEN
-            is_sunset = abs(now_m - sunset_m) <= GOLDEN
+        # Where the sun is, as a normalised height: +1 at solar noon, 0 at the
+        # horizon, -1 in the dead of night. Driving the palette off this rather
+        # than off clock-hour buckets is what stops the sky stepping between
+        # states — it now slides through dawn and dusk continuously.
+        sr = sunrise_m if sunrise_m is not None else 6 * 60
+        ss = sunset_m if sunset_m is not None else 18 * 60
+        if ss <= sr:
+            ss = sr + 720
+        if sr <= now_m <= ss:
+            elev = math.sin(math.pi * (now_m - sr) / float(ss - sr))
         else:
-            is_sunrise = 6 <= now_h < 8
-            is_sunset = 17 <= now_h < 20
+            night_len = max(1, 1440 - (ss - sr))
+            elev = -math.sin(math.pi * ((now_m - ss) % 1440) / float(night_len))
+        if is_day_flag is not None:
+            # Keep the sign honest if the backend disagrees with the arithmetic.
+            if is_night and elev > 0:
+                elev = -elev
+            elif not is_night and elev < 0:
+                elev = -elev
+
+        # Zenith and horizon colours at each stage of the sun's travel. Every
+        # value stays dark: this is a backdrop for 5px text, not a photograph.
+        SKY_KEYS = (
+            (-1.00, (0, 1,  9), (0,  1, 11)),   # deep night
+            (-0.25, (1, 1, 10), (3,  2, 11)),   # nautical twilight
+            (-0.08, (3, 2, 12), (14, 4,  8)),   # civil twilight, purple horizon
+            ( 0.00, (5, 3, 12), (30, 9,  1)),   # sun on the horizon, peak fire
+            ( 0.10, (6, 5, 14), (26, 10, 2)),   # golden hour
+            ( 0.35, (2, 7, 20), (6,  11, 24)),  # mid morning / afternoon
+            ( 1.00, (1, 8, 24), (3,  12, 30)),  # solar noon
+        )
+
+        def sky_gradient(e):
+            """Interpolate the zenith/horizon pair for a given sun height."""
+            if e <= SKY_KEYS[0][0]:
+                return SKY_KEYS[0][1], SKY_KEYS[0][2]
+            if e >= SKY_KEYS[-1][0]:
+                return SKY_KEYS[-1][1], SKY_KEYS[-1][2]
+            for i in range(1, len(SKY_KEYS)):
+                if e <= SKY_KEYS[i][0]:
+                    lo, hi = SKY_KEYS[i - 1], SKY_KEYS[i]
+                    f = (e - lo[0]) / (hi[0] - lo[0])
+                    return (
+                        tuple(a + (b - a) * f for a, b in zip(lo[1], hi[1])),
+                        tuple(a + (b - a) * f for a, b in zip(lo[2], hi[2])),
+                    )
+
+        # Precipitation moods, blended over the time-of-day colour rather than
+        # replacing it — so rain at midnight reads far darker than rain at noon,
+        # which a fixed tint could not express.
+        PRECIP_MOOD = {'storm': (7, 2, 12), 'rain': (4, 7, 16), 'snow': (9, 11, 20)}
+
+        def mix(a, b, f):
+            return tuple(x + (y - x) * f for x, y in zip(a, b))
 
         def overcast(base):
             """Wash a sky colour toward flat grey in proportion to cloud cover.
@@ -152,7 +199,7 @@ class WeatherMixin:
             if not cloud:
                 return base
             grey = sum(base) / 3.0 + 4.0 * cloud
-            return tuple(max(0, min(255, int(c + (grey - c) * cloud))) for c in base)
+            return tuple(c + (grey - c) * cloud for c in base)
 
         def sky_tint(icon):
             ic = icon.lower()
@@ -212,20 +259,17 @@ class WeatherMixin:
                     if rx <= bx < rx + rw and ry <= by < ry + rh:
                         d.point((bx, by), fill=(40, 60, 100))
 
-        def sky_tint_main(icon, h):
-            ic = icon.lower()
-            # Precipitation keeps its own moody palette — it already implies a
-            # heavy sky, so the overcast wash would only flatten it to grey.
-            if 'storm' in ic: return (5,  0, 10)
-            if 'rain'  in ic: return (0,  3, 12)
-            if 'snow'  in ic: return (2,  4, 14)
-            if is_night:   return overcast((0,  1, 10))
-            if is_sunrise: return overcast((14, 5,  1))
-            if is_sunset:  return overcast((16, 5,  1))
-            if h < 11:     return overcast((2,  5, 16))  # morning
-            if h < 14:     return overcast((1,  7, 20))  # midday
-            if h < 17:     return overcast((2,  6, 15))  # afternoon
-            return               overcast((2,  5, 16))   # early / late daylight
+        def sky_colors():
+            """Final zenith/horizon pair: sun height, then cloud, then precip."""
+            top, bot = sky_gradient(elev)
+            key = next((k for k in PRECIP_MOOD if k in cur_icon.lower()), None)
+            if key:
+                # Precipitation already implies a full deck of cloud, so the grey
+                # wash would only flatten it. Dim by daylight instead.
+                lit = 0.30 + 0.70 * max(0.0, elev)
+                mood = tuple(c * lit for c in PRECIP_MOOD[key])
+                return mix(top, mood, 0.8), mix(bot, mood, 0.8)
+            return overcast(top), overcast(bot)
 
         temp_f = str(game.get('home_abbr', '--')).replace('°', '').strip()
         try:
@@ -242,20 +286,17 @@ class WeatherMixin:
         d.rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), fill=tint)
         d.line((0, 0, PANEL_W - 1, 0), fill=DEEP_BLUE)
 
-        main_tint = sky_tint_main(cur_icon, now_h)
-
         left_w = 124
-        d.rectangle((0, 0, left_w, 31), fill=main_tint)
-
-        if (is_sunrise or is_sunset) and not precip:
-            # Golden hour is a clear-air effect; a heavy deck of cloud simply
-            # goes grey rather than lighting up, so fade it out with cover.
-            warm = (22, 7, 0) if is_sunrise else (20, 6, 1)
-            clear = 1.0 - (cloud or 0.0)
-            for row in range(8):
-                intensity = max(0.0, 1.0 - row * 0.13) * clear
-                c = tuple(int(v * intensity) for v in warm)
-                d.line((0, 31 - row, left_w, 31 - row), fill=c)
+        # Paint the sky as a vertical gradient rather than a flat fill. The old
+        # golden-hour band was a hard on/off over the bottom 8 rows; the horizon
+        # colour now carries that, and fades in and out with the sun.
+        top_c, bot_c = sky_colors()
+        for row in range(PANEL_H):
+            c = tuple(
+                int(round(max(0.0, min(255.0, v))))
+                for v in mix(top_c, bot_c, row / float(PANEL_H - 1))
+            )
+            d.line((0, row, left_w, row), fill=c)
 
         if precip:
             draw_amb(cur_icon, 0, 0, left_w, 32, anim_t)
