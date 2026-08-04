@@ -105,6 +105,55 @@ class WeatherMixin:
         anim_t = time.time()
         DEEP_BLUE = (18, 45, 95)
 
+        # Sky conditions. Every field is optional: the backend and the Pi deploy
+        # independently, so an older backend must still render — it just falls
+        # back to guessing day/night from the clock the way this always did.
+        cloud_pct = sit.get('cloud_cover')
+        cloud = None if cloud_pct is None else max(0.0, min(1.0, float(cloud_pct) / 100.0))
+        precip = any(k in cur_icon.lower() for k in ('rain', 'snow', 'storm'))
+
+        def _minutes(iso):
+            """Minutes past midnight from an Open-Meteo local ISO timestamp."""
+            try:
+                return int(iso[11:13]) * 60 + int(iso[14:16])
+            except (TypeError, ValueError, IndexError):
+                return None
+
+        now_h = datetime.now().hour
+        obs_m = _minutes(sit.get('obs_time'))
+        # The observation timestamp is local to the weather location, so comparing
+        # it against sunrise/sunset avoids reconciling the Pi's timezone.
+        now_m = obs_m if obs_m is not None else now_h * 60 + datetime.now().minute
+        sunrise_m = _minutes(sit.get('sunrise'))
+        sunset_m = _minutes(sit.get('sunset'))
+
+        is_day_flag = sit.get('is_day')
+        if is_day_flag is not None:
+            is_night = not int(is_day_flag)
+        else:
+            is_night = now_h < 6 or now_h >= 20
+
+        GOLDEN = 45  # minutes either side of the horizon crossing
+        if sunrise_m is not None and sunset_m is not None:
+            is_sunrise = abs(now_m - sunrise_m) <= GOLDEN
+            is_sunset = abs(now_m - sunset_m) <= GOLDEN
+        else:
+            is_sunrise = 6 <= now_h < 8
+            is_sunset = 17 <= now_h < 20
+
+        def overcast(base):
+            """Wash a sky colour toward flat grey in proportion to cloud cover.
+
+            Without this an solid deck of cloud renders identically to a clear
+            sky — the palette only ever varied by precipitation and time of day.
+            Real overcast is desaturated and slightly brighter than clear air,
+            since the cloud base reflects ground light back down.
+            """
+            if not cloud:
+                return base
+            grey = sum(base) / 3.0 + 4.0 * cloud
+            return tuple(max(0, min(255, int(c + (grey - c) * cloud))) for c in base)
+
         def sky_tint(icon):
             ic = icon.lower()
             if 'sun'   in ic: return (8, 4, 0)
@@ -113,10 +162,10 @@ class WeatherMixin:
             if 'rain'  in ic: return (0, 4, 14)
             return (2, 2, 7)
 
-        def draw_amb(icon, rx, ry, rw, rh, t):
+        def draw_amb(icon, rx, ry, rw, rh, t, dim=1.0):
             ic = icon.lower()
             n = max(2, rw // 20)
-            if 'sun' in ic:
+            if 'sun' in ic and dim > 0.05:
                 _sx = [8,19,31,44,52,63,71,83,94,107,115,14,37,58,76,99,119,25,68,89,103,42,57,112,33]
                 _sy = [3,11,5,18,8,25,13,3,21,7, 28, 27,14,2, 23,16,10,20,29,5, 18, 9, 25,19,2 ]
                 _sp = [2.1,1.7,2.5,1.9,2.3,1.5,2.0,1.8,2.4,1.6,2.2,2.7,1.4,2.9,1.3,2.6,1.8,2.0,1.5,2.3,1.9,2.4,1.7,2.1,2.8]
@@ -125,10 +174,10 @@ class WeatherMixin:
                 for j in range(n_stars):
                     sx = rx + int(_sx[j] * rw / 124)
                     sy = ry + int(_sy[j] * rh / 32)
-                    bv = int(max(0, math.sin(t * _sp[j] + _ph[j])) ** 2 * 230)
+                    bv = int(max(0, math.sin(t * _sp[j] + _ph[j])) ** 2 * 230 * dim)
                     if bv > 15 and not (74 <= sx <= 121):
                         d.point((sx, sy), fill=(bv, bv, int(bv * 0.88)))
-            elif 'storm' in ic:
+            if 'storm' in ic:
                 fp = t % 6.0
                 if fp < 0.07:
                     glow = int((1.0 - fp / 0.07) * 35)
@@ -136,7 +185,24 @@ class WeatherMixin:
                 elif 3.2 < fp < 3.27:
                     glow = int((1.0 - (fp - 3.2) / 0.07) * 22)
                     d.rectangle((rx, ry, rx + rw - 1, ry + rh - 1), fill=(glow, glow // 2, glow + 12))
-            elif 'snow' in ic:
+            if 'rain' in ic or 'storm' in ic:
+                # Rain was the one common condition with no ambient motion at
+                # all — a flat blue field. Short streaks falling fast enough to
+                # read as rain rather than snow, and a storm gets them under
+                # its lightning too.
+                _rfx = [0.05, 0.17, 0.28, 0.40, 0.51, 0.63, 0.74, 0.86, 0.95, 0.34, 0.68]
+                _rsp = [26.0, 31.0, 23.0, 29.0, 34.0, 25.0, 30.0, 27.0, 32.0, 28.0, 24.0]
+                _rph = [0.0,  5.2,  2.7,  8.1,  3.4,  6.6,  1.2,  7.3,  4.5,  9.0,  2.0]
+                for j in range(min(len(_rfx), max(5, rw // 12))):
+                    bx = rx + int(_rfx[j] * rw)
+                    if not (rx <= bx < rx + rw):
+                        continue
+                    head = ry + int((t * _rsp[j] + _rph[j] * 7) % (rh + 4)) - 2
+                    for k, col in enumerate(((34, 62, 105), (18, 34, 62))):
+                        yy = head + k
+                        if ry <= yy < ry + rh:
+                            d.point((bx, yy), fill=col)
+            if 'snow' in ic:
                 _sfx = [0.06, 0.22, 0.38, 0.55, 0.72, 0.88, 0.14]
                 _ssp = [1.7,  1.4,  1.9,  1.5,  1.8,  1.6,  2.0]
                 _sph = [0.0,  2.1,  1.4,  3.5,  4.8,  0.9,  2.7]
@@ -148,17 +214,18 @@ class WeatherMixin:
 
         def sky_tint_main(icon, h):
             ic = icon.lower()
+            # Precipitation keeps its own moody palette — it already implies a
+            # heavy sky, so the overcast wash would only flatten it to grey.
             if 'storm' in ic: return (5,  0, 10)
             if 'rain'  in ic: return (0,  3, 12)
             if 'snow'  in ic: return (2,  4, 14)
-            if h < 5  or h >= 22: return (0,  1, 10)  # night
-            if h < 6:             return (4,  1,  8)  # pre-dawn
-            if h < 8:             return (14, 5,  1)  # sunrise
-            if h < 11:            return (2,  5, 16)  # morning
-            if h < 14:            return (1,  7, 20)  # midday
-            if h < 17:            return (2,  6, 15)  # afternoon
-            if h < 20:            return (16, 5,  1)  # sunset
-            return                       (7,  1,  9)  # dusk
+            if is_night:   return overcast((0,  1, 10))
+            if is_sunrise: return overcast((14, 5,  1))
+            if is_sunset:  return overcast((16, 5,  1))
+            if h < 11:     return overcast((2,  5, 16))  # morning
+            if h < 14:     return overcast((1,  7, 20))  # midday
+            if h < 17:     return overcast((2,  6, 15))  # afternoon
+            return               overcast((2,  5, 16))   # early / late daylight
 
         temp_f = str(game.get('home_abbr', '--')).replace('°', '').strip()
         try:
@@ -175,26 +242,28 @@ class WeatherMixin:
         d.rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), fill=tint)
         d.line((0, 0, PANEL_W - 1, 0), fill=DEEP_BLUE)
 
-        now_h      = datetime.now().hour
-        main_tint  = sky_tint_main(cur_icon, now_h)
-        is_night   = now_h < 6 or now_h >= 20
-        is_sunrise = 6 <= now_h < 8
-        is_sunset  = 17 <= now_h < 20
+        main_tint = sky_tint_main(cur_icon, now_h)
 
         left_w = 124
         d.rectangle((0, 0, left_w, 31), fill=main_tint)
 
-        if is_sunrise or is_sunset:
+        if (is_sunrise or is_sunset) and not precip:
+            # Golden hour is a clear-air effect; a heavy deck of cloud simply
+            # goes grey rather than lighting up, so fade it out with cover.
             warm = (22, 7, 0) if is_sunrise else (20, 6, 1)
+            clear = 1.0 - (cloud or 0.0)
             for row in range(8):
-                intensity = max(0.0, 1.0 - row * 0.13)
+                intensity = max(0.0, 1.0 - row * 0.13) * clear
                 c = tuple(int(v * intensity) for v in warm)
                 d.line((0, 31 - row, left_w, 31 - row), fill=c)
 
-        if is_night:
-            draw_amb('sun', 0, 0, left_w, 32, anim_t)  # stars always at night
-        else:
+        if precip:
             draw_amb(cur_icon, 0, 0, left_w, 32, anim_t)
+        elif is_night:
+            # Stars thin out as cloud rolls in instead of shining through it.
+            draw_amb('sun', 0, 0, left_w, 32, anim_t, dim=1.0 - (cloud or 0.0))
+        # Clear daylight gets no particles — the old code drew the night-time
+        # starfield whenever the icon was 'sun', including at noon.
         d.line((left_w, 0, left_w, 31), fill=DEEP_BLUE)
 
         location_name = normalize_special_chars(str(game.get('away_abbr', 'CITY')).upper()).strip()

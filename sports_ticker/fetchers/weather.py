@@ -55,7 +55,11 @@ class WeatherFetcher:
             # 3. Fetch Forecast (Independent Step)
             w_data = {}
             try:
-                w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,apparent_temperature,wind_speed_10m,relative_humidity_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
+                # is_day, cloud_cover and the sunrise/sunset pair drive the sky
+                # rendering on the panel — without them it guesses day/night from
+                # hardcoded clock hours and cannot tell overcast from clear. They
+                # ride along in the same request at no extra cost.
+                w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,apparent_temperature,wind_speed_10m,relative_humidity_2m,is_day,cloud_cover&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
                 w_resp = self.session.get(w_url, timeout=TIMEOUTS['slow'])
                 if w_resp.status_code == 200:
                     w_data = w_resp.json()
@@ -96,6 +100,15 @@ class WeatherFetcher:
             if 'uv_index_max' in daily and len(daily['uv_index_max']) > 0:
                 uv = daily['uv_index_max'][0]
 
+            def _first(key):
+                seq = daily.get(key) or []
+                return seq[0] if seq else None
+
+            # All optional: the renderer falls back to its old clock-based guess
+            # when a field is missing, so an older backend still works.
+            is_day = current.get('is_day')
+            cloud_cover = current.get('cloud_cover')
+
             forecast_list = []
             if 'time' in daily:
                 days_count = len(daily['time'])
@@ -120,6 +133,13 @@ class WeatherFetcher:
                 "home_abbr": str(current_temp), 
                 "situation": {
                     "icon": current_icon,
+                    "is_day": int(is_day) if is_day is not None else None,
+                    "cloud_cover": int(round(cloud_cover)) if cloud_cover is not None else None,
+                    # Local to the weather location, so the panel never has to
+                    # reconcile the Pi's timezone with the forecast's.
+                    "obs_time": current.get('time'),
+                    "sunrise": _first('sunrise'),
+                    "sunset": _first('sunset'),
                     "stats": {
                         "aqi": str(aqi),
                         "uv": str(uv),
