@@ -462,8 +462,11 @@
       curIdx = ((idx % modes.length) + modes.length) % modes.length;
       const mode = modes[curIdx];
 
+      // Mode buttons only — the Auto chip shares the .demo-btn class but tracks
+      // whether rotation is on, not which mode is showing. Including it here
+      // switched it off on every mode change, the first paint included.
       if (controls) {
-        controls.querySelectorAll('.demo-btn').forEach((b, i) => {
+        controls.querySelectorAll('.demo-btn:not(.demo-btn-auto)').forEach((b, i) => {
           const on = i === curIdx;
           b.classList.toggle('is-active', on);
           b.setAttribute('aria-pressed', on ? 'true' : 'false');
