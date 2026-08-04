@@ -244,14 +244,12 @@ class FlightTracker(AirportMixin):
             
             # Try airline-filtered search first
             try:
-                with self._fr_lock:
-                    flights = self.fr_api.get_flights(airline=icao)
+                flights = self._fr_call(self.fr_api.get_flights, airline=icao)
                 if flights:
                     self.log("INFO", f"Got {len(flights)} {icao} flights from API")
             except Exception as e:
                 self.log("DEBUG", f"Airline filter failed, trying all flights: {e}")
-                with self._fr_lock:
-                    flights = self.fr_api.get_flights()
+                flights = self._fr_call(self.fr_api.get_flights)
                 if flights:
                     self.log("INFO", f"Got {len(flights)} total flights from API")
             
@@ -296,8 +294,7 @@ class FlightTracker(AirportMixin):
             # Get detailed information if available
             details = None
             try:
-                with self._fr_lock:
-                    details = self.fr_api.get_flight_details(target_flight)
+                details = self._fr_call(self.fr_api.get_flight_details, target_flight)
                 target_flight.set_flight_details(details)
             except Exception as e:
                 self.log("DEBUG", f"Could not get detailed info: {e}")

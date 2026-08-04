@@ -119,6 +119,38 @@ class AirportMixin:
                 return value
         return ''
 
+    # FR24 answers a too-soon call with an empty list rather than an error or a
+    # 429, so spacing is the only way to tell the difference between "no
+    # traffic" and "asked again too fast".
+    _FR_MIN_GAP = 2.0
+    _FR_RETRY_DELAY = 1.5
+
+    def _fr_call(self, fn, *args, **kwargs):
+        """Run one FR24 SDK call: serialised, spaced, and retried once on empty.
+
+        The client is shared by the airport board, the visitor tracker and
+        Flask request threads. Beyond not being thread-safe it also rate-limits
+        silently — the log shows the board receiving 1500 flights and the
+        tracker receiving nothing one second later, then both succeeding on the
+        next pass. Hold the lock across the wait so the spacing applies between
+        callers, not just within one.
+        """
+        with self._fr_lock:
+            result = None
+            for attempt in (0, 1):
+                gap = time.time() - getattr(self, '_fr_last_call', 0.0)
+                if gap < self._FR_MIN_GAP:
+                    time.sleep(self._FR_MIN_GAP - gap)
+                try:
+                    result = fn(*args, **kwargs)
+                finally:
+                    self._fr_last_call = time.time()
+                if result:
+                    return result
+                if attempt == 0:
+                    time.sleep(self._FR_RETRY_DELAY)
+            return result
+
     def fetch_fr24_board(self):
         """Arrivals and departures for the configured airport, from one query.
 
@@ -134,8 +166,7 @@ class AirportMixin:
         if not airport_iata:
             return [], []
         try:
-            with self._fr_lock:
-                flights = self.fr_api.get_flights()
+            flights = self._fr_call(self.fr_api.get_flights)
         except Exception as e:
             self.log("ERROR", f"FR24 SDK get_flights: {e}")
             return [], []
