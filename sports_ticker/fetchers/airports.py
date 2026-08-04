@@ -153,6 +153,15 @@ class AirportMixin:
             for flight in flights:
                 try:
                     altitude = getattr(flight, 'altitude', 0) or 0
+                    on_ground = getattr(flight, 'on_ground', None)
+                    if altitude <= 0 or on_ground in (1, True, '1'):
+                        # Aircraft on the ground still name this airport as
+                        # their origin or destination, and the list is sorted
+                        # lowest-altitude-first — so anything parked or taxiing
+                        # sorted to the very top. Inbound filled with flights
+                        # that had already landed, and they had no altitude to
+                        # show because theirs is zero.
+                        continue
                     callsign = str(getattr(flight, 'callsign', '') or '').strip()
                     number = str(getattr(flight, 'number', '') or '').strip()
                     display_id = callsign or number
