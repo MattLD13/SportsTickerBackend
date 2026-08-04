@@ -254,15 +254,22 @@ class WeatherMixin:
                 _rfx = [0.05, 0.17, 0.28, 0.40, 0.51, 0.63, 0.74, 0.86, 0.95, 0.34, 0.68]
                 _rsp = [26.0, 31.0, 23.0, 29.0, 34.0, 25.0, 30.0, 27.0, 32.0, 28.0, 24.0]
                 _rph = [0.0,  5.2,  2.7,  8.1,  3.4,  6.6,  1.2,  7.3,  4.5,  9.0,  2.0]
-                avail = min(len(_rfx), max(5, rw // 12))
+                # A 51px forecast column only had 5 streak positions, which
+                # quantised a 43%-vs-54% chance to the same three streaks. Use
+                # the whole table, and carry some of the difference in
+                # brightness too, since count alone is this coarse.
+                avail = min(len(_rfx), max(6, rw // 4))
+                shade = 0.55 + 0.45 * density
                 for j in range(max(1, int(round(avail * density)))):
                     bx0 = rx + int(_rfx[j] * rw)
                     head = ry + int((t * _rsp[j] + _rph[j] * 7) % (rh + 4)) - 2
-                    for k, col in enumerate(((34, 62, 105), (18, 34, 62))):
+                    for k, base in enumerate(((34, 62, 105), (18, 34, 62))):
                         yy = head + k
-                        bx = bx0 + int(round((yy - ry) * wind))
+                        # Lean about the column's middle, so a strong tilt slants
+                        # the field rather than shoving it off one edge.
+                        bx = bx0 + int(round((yy - ry - rh / 2.0) * wind))
                         if ry <= yy < ry + rh and rx <= bx < rx + rw:
-                            d.point((bx, yy), fill=col)
+                            d.point((bx, yy), fill=tuple(int(c * shade) for c in base))
             if 'snow' in ic:
                 _sfx = [0.06, 0.22, 0.38, 0.55, 0.72, 0.88, 0.14]
                 _ssp = [1.7,  1.4,  1.9,  1.5,  1.8,  1.6,  2.0]
@@ -271,7 +278,7 @@ class WeatherMixin:
                 for j in range(max(1, int(round(avail * density)))):
                     by = ry + int((t * _ssp[j] + _sph[j] * 4) % (rh + 2))
                     bx = (rx + int(_sfx[j] * rw) + int(math.sin(t * 0.7 + _sph[j]) * 2)
-                          + int(round((by - ry) * wind)))
+                          + int(round((by - ry - rh / 2.0) * wind)))
                     if rx <= bx < rx + rw and ry <= by < ry + rh:
                         d.point((bx, by), fill=(40, 60, 100))
 
@@ -415,12 +422,14 @@ class WeatherMixin:
                 # A 20% chance of showers should not look like a certainty. The
                 # icon maps both to 'rain', so this is the only place the
                 # difference can show.
-                density = 0.15 + 0.85 * max(0.0, min(1.0, float(pop) / 100.0))
+                density = 0.12 + 0.88 * max(0.0, min(1.0, float(pop) / 100.0))
             gust = day.get('wind')
             if gust is not None:
-                # Lean the falling streaks with the day's peak wind. Calm days
-                # stay vertical; a gale visibly drives the rain sideways.
-                wind = max(-0.6, min(0.6, (float(gust) - 8.0) / 30.0))
+                # Lean the falling streaks with the day's peak wind. Calibrated
+                # to what actually turns up — daily maxima cluster around
+                # 5-15mph, and the previous (w-8)/30 leaned by a single pixel
+                # across the whole column at every realistic value.
+                wind = max(-0.9, min(0.9, (float(gust) - 3.0) / 12.0))
             draw_amb(col_icon, cx, 0, col_right - cx + 1, 32, anim_t + i * 1.7,
                      density=density, wind=wind)
             if i < 4: d.line((col_right, 3, col_right, 29), fill=DEEP_BLUE)
