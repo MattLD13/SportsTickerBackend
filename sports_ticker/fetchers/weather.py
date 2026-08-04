@@ -59,7 +59,7 @@ class WeatherFetcher:
                 # rendering on the panel — without them it guesses day/night from
                 # hardcoded clock hours and cannot tell overcast from clear. They
                 # ride along in the same request at no extra cost.
-                w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,apparent_temperature,wind_speed_10m,relative_humidity_2m,is_day,cloud_cover&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
+                w_url = f"https://api.open-meteo.com/v1/forecast?latitude={self.lat}&longitude={self.lon}&current=temperature_2m,weather_code,apparent_temperature,wind_speed_10m,relative_humidity_2m,is_day,cloud_cover&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
                 w_resp = self.session.get(w_url, timeout=TIMEOUTS['slow'])
                 if w_resp.status_code == 200:
                     w_data = w_resp.json()
@@ -121,6 +121,15 @@ class WeatherFetcher:
                             "high": int(round(daily['temperature_2m_max'][i])),
                             "low": int(round(daily['temperature_2m_min'][i]))
                         }
+                        # Chance of rain and peak wind drive how the panel
+                        # animates each column. Added separately from the
+                        # required fields so a missing one costs the extras,
+                        # not the whole day.
+                        for key, field in (("pop", "precipitation_probability_max"),
+                                           ("wind", "wind_speed_10m_max")):
+                            seq = daily.get(field) or []
+                            if i < len(seq) and seq[i] is not None:
+                                f_day[key] = int(round(seq[i]))
                         forecast_list.append(f_day)
                     except: continue
 
