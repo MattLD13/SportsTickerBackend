@@ -170,11 +170,29 @@ def root():
 
     on_air = _on_air_ids(display_mode)
 
+    # The two flight utilities are not entries in active_sports — there is
+    # nothing to toggle, they run off the tracked flight number and the airport
+    # code. Reading them from active_sports made them permanently "Disabled",
+    # including while Flight Tracker was the live mode. Treat them as enabled
+    # when they are configured.
+    configured = {}
+    try:
+        from ..workers import flight_tracker as _tracker
+        if _tracker is not None:
+            configured['flight_tracker'] = bool(str(getattr(_tracker, 'track_flight_id', '') or '').strip())
+            configured['flight_airport'] = bool(str(getattr(_tracker, 'airport_code_iata', '') or '').strip()
+                                                or str(getattr(_tracker, 'airport_code_icao', '') or '').strip())
+    except Exception:
+        pass
+
     # Keep LEAGUE_OPTIONS order so related leagues stay grouped.
     #   live = on the panel now · on = enabled and polling · off = disabled
     leagues = []
     for item in LEAGUE_OPTIONS:
-        enabled = bool(active_sports.get(item['id'], False))
+        if item['id'] in configured:
+            enabled = configured[item['id']]
+        else:
+            enabled = bool(active_sports.get(item['id'], False))
         leagues.append({
             'id':    item['id'],
             'label': item['label'],
