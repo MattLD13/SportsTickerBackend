@@ -42,6 +42,10 @@ from .modes.indycar import (
 from .modes.f1 import F1Mixin
 from .modes.nascar import NascarMixin
 
+# Target period for non-scrolling frames (~30fps). Scrolling uses scroll_sleep,
+# which the backend exposes as the user-facing "scroll_speed" setting.
+FRAME_INTERVAL = 0.033
+
 
 class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin, IndycarMixin, F1Mixin, NascarMixin):
     def __init__(self):
@@ -100,6 +104,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         self.games = []
         self.brightness = 1.0
         self.scroll_sleep = 0.05
+        self._next_frame = None  # deadline carried between frames by _pace()
         self.inverted = False
         self.is_pairing = False
         self.pairing_code = ""
@@ -159,6 +164,27 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         threading.Thread(target=self.poll_backend, daemon=True).start()
 
     # ================= DISPLAY =================
+    def _pace(self, interval):
+        """Sleep until the next frame deadline rather than for a fixed duration.
+
+        A flat ``sleep(interval)`` makes the real frame period *render time +
+        interval*, and render time swings by tens of milliseconds on a Zero 2 W
+        depending on what is being drawn — so the scroll visibly speeds up and
+        slows down with content. Holding a deadline keeps the period constant
+        and absorbs the variation into the sleep instead.
+        """
+        now = time.monotonic()
+        deadline = (now if self._next_frame is None else self._next_frame) + interval
+        if deadline < now:
+            # Rendering is slower than the target period. Rebase on the present
+            # rather than keeping a deadline in the past: that would sprint
+            # through frames to reclaim time, which on a scroll looks like a
+            # jump. Falling behind should just mean running flat out.
+            deadline = now
+        self._next_frame = deadline
+        if deadline > now:
+            time.sleep(deadline - now)
+
     def _present(self, img, target_b):
         """Push a finished frame to the panels at the given brightness.
 
@@ -668,13 +694,13 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                 if self.is_updating:
                     frame = self.draw_update_screen(self._update_step, version=self._update_version)
                     self.update_display(frame)
-                    time.sleep(0.033)
+                    self._pace(FRAME_INTERVAL)
                     continue
 
                 if self.is_pairing:
                     frame = self.draw_pairing_screen()
                     self.update_display(frame)
-                    time.sleep(0.1)
+                    self._pace(0.1)
                     continue
 
                 if self.brightness <= 0.001:
@@ -714,7 +740,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                 if self.showing_static:
                     if self.bg_strip_ready and self.current_data_hash != self.last_applied_hash:
                         self.showing_static = False
-                        time.sleep(0.033)
+                        self._pace(FRAME_INTERVAL)
                         continue
 
                     if self.static_current_game:
@@ -732,14 +758,14 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                                 self.update_display(self.static_current_image)
                             if time.time() >= self.static_until:
                                 self.showing_static = False
-                            time.sleep(0.033)
+                            self._pace(FRAME_INTERVAL)
                             continue
 
                     if self.static_current_image:
                         self.update_display(self.static_current_image)
                     if time.time() >= self.static_until:
                         self.showing_static = False
-                    time.sleep(0.033)
+                    self._pace(FRAME_INTERVAL)
                     continue
 
                 if self.bg_strip_ready:
@@ -815,7 +841,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                     self.update_display(view)
                     strip_offset += 1
                     if self.scroll_sleep > 0:
-                        time.sleep(self.scroll_sleep)
+                        self._pace(self.scroll_sleep)
                 else:
                     # Music mode is static-only; always prefer the music card over the
                     # sports "NO GAMES" empty state. Other modes still skip idle music.
@@ -831,7 +857,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                         self.update_display(self.draw_clock_modern())
                     else:
                         self.update_display(self.draw_no_games_screen())
-                    time.sleep(0.033)
+                    self._pace(FRAME_INTERVAL)
 
             except Exception as e:
                 # ~/ticker.log is the only window into a headless Pi, so keep the
