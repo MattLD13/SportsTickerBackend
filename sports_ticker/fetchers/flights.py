@@ -298,24 +298,41 @@ class FlightTracker(AirportMixin):
 
             self.log("INFO", f"Searching for flight {flight_id} (ICAO: {icao}, IATA: {iata}, #: {flight_num})")
             
-            # Try airline-filtered search first
+            # Everything the code could mean, worked out before any request so
+            # the airline filter can be tried under each of them.
+            raw = str(flight_id).upper().replace(" ", "")
+            wanted = self._code_candidates(raw)
+            want_numbers = {n for _, n in wanted}
+            if flight_num:
+                want_numbers.add(str(flight_num).lstrip('0'))
+            aliases = self._airline_aliases(*[pfx for pfx, _ in wanted], icao, iata)
+
+            # Try the airline filter under each code meaning this carrier. FR24
+            # indexes some regionals under one code and not another —
+            # airline='RPA' returns nothing for Republic — and the unfiltered
+            # fallback is a capped global sample the flight may simply not be
+            # in, so exhausting the filters first is what gives full coverage.
+            filter_codes = [c for c in (icao, iata) if c]
+            filter_codes += [c for c in sorted(aliases) if c not in filter_codes and len(c) in (2, 3)]
+
             flights = None
-            if icao:
+            for code in filter_codes[:3]:
                 try:
-                    flights = self._fr_call(self.fr_api.get_flights, airline=icao)
-                    if flights:
-                        self.log("INFO", f"Got {len(flights)} {icao} flights from API")
+                    flights = self._fr_call(self.fr_api.get_flights, airline=code)
                 except Exception as e:
-                    self.log("DEBUG", f"Airline filter failed: {e}")
+                    self.log("DEBUG", f"Airline filter {code} failed: {e}")
                     flights = None
+                if flights:
+                    self.log("INFO", f"Got {len(flights)} {code} flights from API")
+                    break
+                self.log("DEBUG", f"Airline filter {code} came back empty")
 
             if not flights:
                 # A filter matching nothing returns an empty list rather than
                 # raising, and the fallback only ran on an exception — so any
                 # carrier FR24 does not index under its ICAO code could never be
                 # tracked. RPA4601 parsed correctly and still died here.
-                self.log("DEBUG",
-                         f"Airline filter for {icao or '?'} came back empty; searching all flights")
+                self.log("DEBUG", "No airline filter matched; searching all flights")
                 flights = self._fr_call(self.fr_api.get_flights)
                 if flights:
                     self.log("INFO", f"Got {len(flights)} total flights from API")
@@ -324,31 +341,10 @@ class FlightTracker(AirportMixin):
                 self.log("WARNING", "No flights returned by API - service may be down")
                 return None
 
-            # Build search variants. The code as typed goes first: the
-            # OpenFlights map is stale in places — RPA resolves to IATA 'RW'
-            # where Republic now uses 'YX' — so a reconstructed string can miss
-            # a callsign the raw input would have matched exactly.
-            raw = str(flight_id).upper().replace(" ", "")
-            search_strings = [raw]
-            if flight_num:
-                for code in (icao, iata):
-                    if not code:
-                        continue
-                    search_strings.append(f"{code}{flight_num}")
-                    if len(flight_num) < 4:
-                        search_strings.append(f"{code}{flight_num.zfill(4)}")
-            search_strings = [s for s in dict.fromkeys(search_strings) if s]
-            
             # Match on the number plus any code meaning the same carrier, rather
             # than on reconstructed strings. The code a passenger holds is often
             # not the callsign: Republic flies RPA4601 while the ticket and
             # FR24's own 'number' field say YX4601.
-            wanted = self._code_candidates(raw)
-            want_numbers = {n for _, n in wanted}
-            if flight_num:
-                want_numbers.add(str(flight_num).lstrip('0'))
-            aliases = self._airline_aliases(*[p for p, _ in wanted], icao, iata)
-
             target_flight = None
             digit_only = {}
             for flight in flights:
