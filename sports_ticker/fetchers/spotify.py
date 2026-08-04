@@ -135,7 +135,11 @@ class SpotifyFetcher(threading.Thread):
             self.run_simulation()
             return
 
-        print("✅ Spotify Adaptive Polling Started")
+        has_refresh = bool(self.refresh_token)
+        print(
+            f"✅ Spotify Adaptive Polling Started "
+            f"(refresh_token={'set' if has_refresh else 'MISSING'})"
+        )
 
         sp = None
         while not sp:
