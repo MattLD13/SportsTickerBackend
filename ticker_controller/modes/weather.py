@@ -322,10 +322,10 @@ class WeatherMixin:
 
         if precip:
             draw_amb(cur_icon, 0, 0, left_w, 32, anim_t)
-        elif is_night or 'sun' in cur_icon.lower():
-            # The same twinkle reads as stars at night and as sunny shimmer by
-            # day, which is why it was drawn in daylight too — it is deliberate,
-            # not a stray starfield. Cloud thins it either way.
+        elif is_night:
+            # Night only: the twinkle reads as stars against a dark sky, but as
+            # speckle against a bright one. Thinned by cloud rather than shining
+            # straight through it.
             draw_amb('sun', 0, 0, left_w, 32, anim_t, dim=1.0 - (cloud or 0.0))
         d.line((left_w, 0, left_w, 31), fill=DEEP_BLUE)
 
@@ -430,8 +430,11 @@ class WeatherMixin:
                 # 5-15mph, and the previous (w-8)/30 leaned by a single pixel
                 # across the whole column at every realistic value.
                 wind = max(-0.9, min(0.9, (float(gust) - 3.0) / 12.0))
+            # dim=0 suppresses the twinkle: a column is a whole day, so it would
+            # be the daylight speckle rather than a night sky. Precipitation
+            # effects are unaffected.
             draw_amb(col_icon, cx, 0, col_right - cx + 1, 32, anim_t + i * 1.7,
-                     density=density, wind=wind)
+                     dim=0.0, density=density, wind=wind)
             if i < 4: d.line((col_right, 3, col_right, 29), fill=DEEP_BLUE)
 
         # Pass 2: the week's temperature shape, drawn across the whole forecast
