@@ -313,11 +313,11 @@ class WeatherMixin:
 
         if precip:
             draw_amb(cur_icon, 0, 0, left_w, 32, anim_t)
-        elif is_night:
-            # Stars thin out as cloud rolls in instead of shining through it.
+        elif is_night or 'sun' in cur_icon.lower():
+            # The same twinkle reads as stars at night and as sunny shimmer by
+            # day, which is why it was drawn in daylight too — it is deliberate,
+            # not a stray starfield. Cloud thins it either way.
             draw_amb('sun', 0, 0, left_w, 32, anim_t, dim=1.0 - (cloud or 0.0))
-        # Clear daylight gets no particles — the old code drew the night-time
-        # starfield whenever the icon was 'sun', including at noon.
         d.line((left_w, 0, left_w, 31), fill=DEEP_BLUE)
 
         location_name = normalize_special_chars(str(game.get('away_abbr', 'CITY')).upper()).strip()
