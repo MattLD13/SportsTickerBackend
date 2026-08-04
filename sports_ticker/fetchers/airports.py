@@ -134,7 +134,8 @@ class AirportMixin:
         if not airport_iata:
             return [], []
         try:
-            flights = self.fr_api.get_flights()
+            with self._fr_lock:
+                flights = self.fr_api.get_flights()
         except Exception as e:
             self.log("ERROR", f"FR24 SDK get_flights: {e}")
             return [], []

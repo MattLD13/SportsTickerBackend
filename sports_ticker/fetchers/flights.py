@@ -26,6 +26,12 @@ class FlightTracker(AirportMixin):
         self.wake_event = threading.Event()
         # Initialize FlightRadarAPI SDK if available
         self.fr_api = FlightRadar24API() if FR24_SDK_AVAILABLE else None
+        # The SDK client is not thread-safe, and three separate callers reach
+        # it: the flights worker for the airport board, the same worker for
+        # visitor tracking, and Flask request threads via /api routes. When two
+        # overlap one returns an empty list, which is why tracking a flight
+        # worked only sometimes. Serialise every call through this.
+        self._fr_lock = threading.Lock()
     
     def force_update(self):
         """Signal the flights_worker to immediately fetch new data."""
@@ -238,12 +244,14 @@ class FlightTracker(AirportMixin):
             
             # Try airline-filtered search first
             try:
-                flights = self.fr_api.get_flights(airline=icao)
+                with self._fr_lock:
+                    flights = self.fr_api.get_flights(airline=icao)
                 if flights:
                     self.log("INFO", f"Got {len(flights)} {icao} flights from API")
             except Exception as e:
                 self.log("DEBUG", f"Airline filter failed, trying all flights: {e}")
-                flights = self.fr_api.get_flights()
+                with self._fr_lock:
+                    flights = self.fr_api.get_flights()
                 if flights:
                     self.log("INFO", f"Got {len(flights)} total flights from API")
             
@@ -288,7 +296,8 @@ class FlightTracker(AirportMixin):
             # Get detailed information if available
             details = None
             try:
-                details = self.fr_api.get_flight_details(target_flight)
+                with self._fr_lock:
+                    details = self.fr_api.get_flight_details(target_flight)
                 target_flight.set_flight_details(details)
             except Exception as e:
                 self.log("DEBUG", f"Could not get detailed info: {e}")
