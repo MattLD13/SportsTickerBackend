@@ -292,6 +292,9 @@ class AirportMixin:
                 'type': 'flight_weather', 'sport': 'flight', 'id': 'airport_wx',
                 'home_abbr': self.airport_name or self.airport_code_icao,
                 'iata': str(getattr(self, 'airport_code_iata', '') or '').upper(),
+                # Short city for the board header — the configured airport_name is
+                # the full legal name ("Newark Liberty International Airport").
+                'city': get_city_name(str(getattr(self, 'airport_code_iata', '') or '').upper()),
                 'away_abbr': self.airport_weather['temp'], 'status': self.airport_weather['cond'], 'is_shown': True
             })
             for i, arr in enumerate(self.airport_arrivals[:BOARD_ROWS]):

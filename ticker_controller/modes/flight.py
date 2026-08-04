@@ -135,16 +135,27 @@ class FlightMixin:
         img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
         d = ImageDraw.Draw(img)
 
-        code = ''
+        code, city = '', ''
         if weather_item:
             code = str(weather_item.get('iata') or '').strip().upper()
+            city = str(weather_item.get('city') or '').strip().upper()
             if not code:
                 code = str(weather_item.get('home_abbr', '') or '').upper()[:10]
+        # Airport identity in blue, kept distinct from the green/red captions so
+        # the colours stay meaningful as direction rather than decoration.
+        x = 3
+        if code:
+            draw_tiny_text(d, x, 0, code, self.C_BLUE_TXT)
+            x += len(code) * 5 + 5
+        if city:
+            city = city[:12]
+            draw_tiny_text(d, x, 0, city, self.C_BLUE_TXT)
+            x += len(city) * 5 + 5
         # INBOUND and OUTBOUND rather than "NEXT ARRIVAL"/"NEXT DEPARTURE": these
         # are live aircraft positions, not a schedule, and a low-altitude
         # departure has already left. Each caption takes the colour of the rows
         # beneath it.
-        draw_tiny_text(d, 3, 0, f"{code} INBOUND".strip(), self.C_GRN)
+        draw_tiny_text(d, x, 0, "INBOUND", self.C_GRN)
         draw_tiny_text(d, 196, 0, "OUTBOUND", self.C_RED)
 
         if weather_item:
