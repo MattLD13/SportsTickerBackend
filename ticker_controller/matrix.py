@@ -30,15 +30,29 @@ except ImportError:
     RGBMatrix = RGBMatrixOptions = None
 
 
+def _sound_module_loaded():
+    """True if snd_bcm2835 holds the PWM hardware the matrix library wants.
+
+    This is the same check the library makes, for the same reason — but it
+    responds to the conflict by calling ``exit(1)``, which systemd turns into a
+    restart loop with a dark panel. Testing it here means a Pi that hasn't had
+    the module blacklisted quietly falls back to software pulsing instead.
+    """
+    try:
+        with open('/proc/modules') as f:
+            return 'snd_bcm2835' in f.read()
+    except OSError:
+        return True  # Can't tell — assume the conflict and stay safe.
+
+
 def build_matrix_options():
     """RGBMatrixOptions for the 6-panel chain on the passive HUB75 adapter.
 
-    The adapter wires OE to GPIO18, so the library *can* time its pulses with
-    the PWM hardware, and software pulsing is what makes a chain this long
-    flicker. It stays opt-in via ``TICKER_HW_PULSE=1`` because the library
-    calls ``exit(1)`` — not a catchable error — when ``snd_bcm2835`` is still
-    loaded, and systemd would restart-loop the ticker with a dark panel.
-    Blacklist the sound module on the Pi first, then set the variable.
+    The adapter wires OE to GPIO18, so the library can time its pulses with the
+    PWM hardware, which is both steadier and brighter than software pulsing on
+    a chain this long. That needs ``snd_bcm2835`` blacklisted on the Pi (see
+    setup.sh), so it is enabled automatically when the module is absent rather
+    than assumed. ``TICKER_HW_PULSE=0``/``1`` forces the choice either way.
     """
     options = RGBMatrixOptions()
     options.rows = PANEL_H
@@ -49,9 +63,11 @@ def build_matrix_options():
     # Pi 4 generally needs 3-4 here; a Zero 2 W is happy at 1-2. The adapter is
     # passive (no level shifters), so err high rather than low.
     options.gpio_slowdown = int(os.environ.get('TICKER_GPIO_SLOWDOWN') or 2)
-    options.disable_hardware_pulsing = (
-        os.environ.get('TICKER_HW_PULSE', '') not in ('1', 'true', 'True')
-    )
+    hw_pulse = os.environ.get('TICKER_HW_PULSE', '').strip()
+    if hw_pulse:
+        options.disable_hardware_pulsing = hw_pulse not in ('1', 'true', 'True')
+    else:
+        options.disable_hardware_pulsing = _sound_module_loaded()
     options.drop_privileges = False
     # 384 columns of 1:16 scan refresh slowly at the default 11 PWM bits, and a
     # low refresh rate is exactly what the eye reads as flicker. Trading colour

@@ -57,6 +57,18 @@ else
     echo "  rgbmatrix already available — skipping."
 fi
 
+# The matrix library drives OE with the PWM hardware, which the onboard sound
+# driver also claims. With snd_bcm2835 loaded the library falls back to software
+# pulsing — dimmer and visibly flickery on a 6-panel chain — so get it out of the
+# way. build_matrix_options() detects the module and picks accordingly, so this
+# takes effect on the next reboot rather than needing a flag.
+echo "  Blacklisting snd_bcm2835 so hardware pulsing is available..."
+echo 'blacklist snd_bcm2835' > /etc/modprobe.d/blacklist-rgb-matrix.conf
+sed -i 's/^dtparam=audio=on/dtparam=audio=off/' /boot/firmware/config.txt 2>/dev/null \
+    || sed -i 's/^dtparam=audio=on/dtparam=audio=off/' /boot/config.txt 2>/dev/null \
+    || true
+update-initramfs -u
+
 # ── 5. Sudoers entry so updater can restart services without a password ───────
 echo "[5/7] Configuring sudoers for service restart..."
 SUDOERS_LINE="$USER ALL=(root) NOPASSWD: /bin/systemctl restart ticker-controller, /bin/systemctl restart ticker, /sbin/reboot"
