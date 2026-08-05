@@ -67,8 +67,8 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             except Exception:
                 EmulatedMatrix = None
         if not use_emulator and RGBMatrix is not None and RGBMatrixOptions is not None:
-            from .matrix import build_matrix_options
-            self.matrix = RGBMatrix(options=build_matrix_options())
+            from .matrix import build_matrix
+            self.matrix = build_matrix()
             # Draw into an offscreen canvas and swap on the panel's vsync, so a
             # frame never lands halfway through a scan-out — writing the live
             # framebuffer directly is what makes the display tear and flicker.

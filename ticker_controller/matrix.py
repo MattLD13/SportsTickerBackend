@@ -60,21 +60,50 @@ def build_matrix_options():
     options.chain_length = PANEL_W // 64
     options.parallel = 1
     options.hardware_mapping = 'regular'
-    # Pi 4 generally needs 3-4 here; a Zero 2 W is happy at 1-2. The adapter is
-    # passive (no level shifters), so err high rather than low.
-    options.gpio_slowdown = int(os.environ.get('TICKER_GPIO_SLOWDOWN') or 2)
+    # Shifting 384 bits out per bitplane is dead time with the LEDs off, and it
+    # dominates the frame — so halving the shift clock buys brightness *and*
+    # refresh rate, rather than trading one for the other like every other knob
+    # here. Measured clean on this passive adapter (no flicker, ghosting, or
+    # colour shift); raise it if a different panel batch scrambles pixels.
+    options.gpio_slowdown = int(os.environ.get('TICKER_GPIO_SLOWDOWN') or 1)
     hw_pulse = os.environ.get('TICKER_HW_PULSE', '').strip()
     if hw_pulse:
         options.disable_hardware_pulsing = hw_pulse not in ('1', 'true', 'True')
     else:
         options.disable_hardware_pulsing = _sound_module_loaded()
     options.drop_privileges = False
-    # 384 columns of 1:16 scan refresh slowly at the default 11 PWM bits, and a
-    # low refresh rate is exactly what the eye reads as flicker. Trading colour
-    # depth for refresh rate is the cheapest win available.
+    # Fewer PWM bits is *brighter*, which reads backwards until you know the
+    # library keeps 11 internal bitplanes and displays the top `pwm_bits` of
+    # them: lowering it drops the shortest planes, so on-time barely moves while
+    # one shift-out per plane disappears. 8 measured brighter and faster than 10
+    # or 11 (147Hz vs 102Hz). Below 8 the duty cycle outruns the 5V supply and
+    # white yellows — blue has the highest forward voltage and starves first.
     options.pwm_bits = int(os.environ.get('TICKER_PWM_BITS') or 8)
-    options.pwm_lsb_nanoseconds = 130
+    # Scales every plane's duration, so this is the one knob that lengthens
+    # on-time directly. It is pinned low because the panels are current-limited,
+    # not because 130 is optimal: at 400 the whole field yellows. Raise it
+    # towards 200-260 once the panels have a supply that can hold 5V; past that
+    # refresh alone drops into visible flicker (~55Hz at 400).
+    options.pwm_lsb_nanoseconds = int(os.environ.get('TICKER_PWM_LSB_NS') or 130)
+    if os.environ.get('TICKER_SHOW_REFRESH', '') in ('1', 'true', 'True'):
+        options.show_refresh_rate = 1
     return options
+
+
+def build_matrix():
+    """The configured RGBMatrix, including settings that are not options.
+
+    ``luminanceCorrect`` is a property of the matrix rather than of the option
+    struct, so it cannot live in ``build_matrix_options()``. It gates the
+    library's CIE1931 correction, which is on by default and costs a lot of
+    apparent brightness in the midtones — a nominal 47% grey emits about 20%.
+    ``TICKER_LUMINANCE=0`` trades low-end colour accuracy for that back.
+    """
+    matrix = RGBMatrix(options=build_matrix_options())
+    if os.environ.get('TICKER_LUMINANCE', '') in ('0', 'false', 'False'):
+        if hasattr(matrix, 'luminanceCorrect'):
+            matrix.luminanceCorrect = False
+    return matrix
 
 
 class NullMatrix:
