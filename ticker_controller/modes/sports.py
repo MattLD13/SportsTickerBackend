@@ -218,7 +218,17 @@ class SportsMixin:
             a_logo_cx = W - int(ezW / 2)
 
             # 9 · Score badges — determine positions first so logos can dodge them
-            score_y   = int(H * 0.82)
+            # Real 14pt font instead of the 5×6 bitmap — the score is the thing
+            # you read from across the room, so it gets the height to earn that.
+            score_font = self.big_font
+            score_h    = 11
+            try:
+                _bb = d.textbbox((0, 0), '00', font=score_font)
+                score_h = max(score_h, _bb[3] - _bb[1])
+            except Exception:
+                pass
+            # Keep the taller glyphs off the bottom edge of the panel.
+            score_y   = min(int(H * 0.82), H - (score_h // 2) - 1)
             slot_cx   = int(ezW + playW * 0.05)
             aslot_cx  = int(W - ezW - playW * 0.05)
             h_sc_cx   = slot_cx
@@ -230,7 +240,7 @@ class SportsMixin:
                     h_sc_cx = h_logo_cx   # home score moves into home endzone
 
             # Push logo up when its score badge sits below it in the endzone
-            score_box_top = score_y - (11 // 2)          # top edge of score badge
+            score_box_top = score_y - (score_h // 2)     # top edge of score badge
             logo_top_up   = max(0, score_box_top - LOGO_SZ - 1)  # just above the badge
             h_logo_top = logo_top_up if h_sc_cx == h_logo_cx else logo_top_center
             a_logo_top = logo_top_up if a_sc_cx == a_logo_cx else logo_top_center
@@ -260,18 +270,8 @@ class SportsMixin:
 
             for scx, sc in [(h_sc_cx, h_score), (a_sc_cx, a_score)]:
                 if not sc: continue
-                sw = (len(str(sc)) * 5) + 6
-                sh = 11
-                box_left = scx - (sw // 2)
-                box_top = score_y - (sh // 2)
-                text_w = len(str(sc)) * 5
-                text_h = 6
-                text_x = box_left + ((sw - text_w) // 2)
-                text_y = box_top + ((sh - text_h + 1) // 2)
-                # Conforming black outline: draw text shifted in 4 directions, then white on top
-                for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                    draw_hybrid_text(d, text_x + dx, text_y + dy, str(sc), (0, 0, 0))
-                draw_hybrid_text(d, text_x, text_y, str(sc), (255, 255, 255))
+                self.draw_outlined_text(d, scx, score_y, str(sc), score_font,
+                                        (255, 255, 255), (0, 0, 0, 235))
 
             # 10 · First-down line + LOS line + football
             if 0 <= los <= 100:
@@ -906,90 +906,85 @@ class SportsMixin:
 
     def _draw_baseball_diamond(self, d, W, H, sit):
         """
-        Port of HTML baseballDiamond().
-        cx=W/2, cy=H*0.55, r=H*0.42, bs=H*0.16 (half-diagonal of rotated base).
-        Base positions:  home=(cx,cy+r)  1B=(cx+r,cy)  2B=(cx,cy-r)  3B=(cx-r,cy)
+        Infield drawn on an integer lattice: the diamond centre and its radius are
+        both whole pixels, so every base path is exactly r across and r down and
+        rasterises as a clean 45° run.
 
-        Key fix: the HTML dirt is an SVG arc path that bows UPWARD from below the canvas.
-        Best PIL approximation is a filled ellipse centered at (cx, cy+r*0.1) with
-        rx=r*1.4, ry=r*1.1 — this produces the correct kidney/infield-skin shape.
+        The previous fractional geometry (cy=H*0.55, r=H*0.42) rounded to base
+        centres of home(192,31) first(205,18) 2nd(192,4) third(179,18) — home->1st
+        and 3rd->home came out 13x13, but 1st->2nd and 2nd->3rd came out 13x14, so
+        those two paths rasterised with a doubled step and read as squiggles.
+        Bases are scan-converted for the same reason: a polygon with fractional
+        vertices produces lopsided rows instead of a square on point.
         """
-        cx = W / 2
-        cy = H * 0.55
-        r  = H * 0.42
-        bs = H * 0.16     # half-diagonal — bases are rotated squares drawn as diamonds
+        GRASS_A = (17, 41, 17)
+        GRASS_B = (21, 50, 21)
+        DIRT    = (158, 105, 68)
+        CHALK   = (232, 232, 232)
+
+        cx = W // 2
+        r  = int(round(H * 0.41))   # centre -> base: 13 at H=32
+        cy = int(round(H * 0.53))   # 17 at H=32, so 2nd lands at y=4, home at y=30
+        bk = max(2, int(round(H * 0.13)))   # base half-diagonal: 4 at H=32
 
         home  = (cx,     cy + r)
         first = (cx + r, cy)
         sec   = (cx,     cy - r)
         third = (cx - r, cy)
 
-        # 1 · Alternating grass bands (full width)
+        def pixel_diamond(x, y, k, color):
+            """Filled diamond: row i spans exactly k-|i| pixels either side."""
+            for i in range(-k, k + 1):
+                half = k - abs(i)
+                d.line([(x - half, y + i), (x + half, y + i)], fill=color)
+
+        def diagonal(p0, p1, color):
+            """Exact 45° pixel run, stepping one pixel on both axes per step."""
+            x0, y0 = p0
+            x1, y1 = p1
+            sx = 1 if x1 > x0 else -1
+            sy = 1 if y1 > y0 else -1
+            for i in range(abs(x1 - x0) + 1):
+                d.point((x0 + i * sx, y0 + i * sy), fill=color)
+
+        # 1 · Outfield grass bands
         for i in range(10):
             bx = i * W / 10
-            d.rectangle([bx, 0, bx + W / 10, H],
-                        fill=(17, 41, 17) if i % 2 == 0 else (21, 50, 21))
+            d.rectangle([bx, 0, bx + W / 10, H], fill=GRASS_A if i % 2 == 0 else GRASS_B)
 
-        # 2 · Dirt infield — ellipse centered just below diamond midpoint.
-        #     The HTML uses an SVG arc path whose bottom goes off-canvas (y=home+3=~34)
-        #     and whose curve bows upward; this ellipse replicates that visible shape.
-        dc   = cy + r * 0.1     # ellipse centre y  (~19.0 for H=32)
-        drx  = r * 1.4          # horizontal radius (~18.8)
-        dry  = r * 1.1          # vertical radius   (~14.8)
-        d.ellipse([cx - drx, dc - dry, cx + drx, dc + dry], fill=(158, 105, 68))
+        # 2 · Infield skin — bows up from below the panel, wide enough that all
+        #     three bags sit on dirt rather than poking out into the grass.
+        d.ellipse([cx - r - 7, cy + 3 - r - 8, cx + r + 7, cy + 3 + r + 8], fill=DIRT)
 
-        # 3 · Inner grass diamond  (HTML: polygon with 2-px inset at each vertex)
-        # The top vertex (2nd base) needs a larger inset so the grass doesn't
-        # overlap the base: sec_y=4.2, bs=5.1, so base bottom=9.3 — inset by bs+1
-        d.polygon([
-            (cx,           home[1]  - 2),
-            (first[0] - 2, first[1]),
-            (cx,           sec[1]   + bs + 1),   # clear the base footprint
-            (third[0] + 2, third[1]),
-        ], fill=(17, 41, 17), outline=(158, 105, 68))
+        # 3 · Infield grass, inset so the base paths read as a dirt strip
+        pixel_diamond(cx, cy, r - 3, GRASS_A)
 
-        # 4 · Pitcher's mound + rubber
-        pr = r * 0.22
-        d.ellipse([cx - pr, cy - pr, cx + pr, cy + pr], fill=(158, 105, 68))
-        d.rectangle([cx - 1.5, cy - 0.5, cx + 1.5, cy + 0.5], fill=(255, 255, 255))
+        # 4 · Base paths
+        for p0, p1 in ((home, first), (first, sec), (sec, third), (third, home)):
+            diagonal(p0, p1, CHALK)
 
-        # 5 · Home-plate dirt circle
-        hpr = r * 0.28
-        d.ellipse([home[0] - hpr, home[1] - hpr,
-                   home[0] + hpr, home[1] + hpr], fill=(158, 105, 68))
+        # 5 · Pitcher's mound + rubber
+        pixel_diamond(cx, cy, 3, DIRT)
+        d.line([(cx - 1, cy), (cx + 1, cy)], fill=CHALK)
 
-        # 6 · Base lines
-        for p1, p2 in [(home, first), (first, sec), (sec, third), (third, home)]:
-            d.line([p1, p2], fill=(255, 255, 255, 204), width=1)
+        # 6 · Home-plate dirt circle
+        d.ellipse([home[0] - 5, home[1] - 4, home[0] + 5, home[1] + 4], fill=DIRT)
 
-        # 7 · Bases — rotated squares (diamond polygons)
-        # Note: 2nd base (sec) is at y=cy-r = H*0.13 ≈ 4px from top.
-        # With bs=H*0.16≈5px the top point goes to y≈-1 (off screen).
-        # Clip the top point of 2nd base to y=1 so it stays visible.
+        # 7 · Bases
         def draw_base(pt, on):
-            x, y = pt
-            c = (255, 204, 0) if on else (255, 255, 255)
-            top_y = max(1, y - bs)   # clamp top so it never goes off-canvas
-            d.polygon([
-                (x,      top_y),    # top  (clamped)
-                (x + bs, y),        # right
-                (x,      y + bs),   # bottom
-                (x - bs, y),        # left
-            ], fill=c, outline=(0, 0, 0))
+            pixel_diamond(pt[0], pt[1], bk, (0, 0, 0))
+            pixel_diamond(pt[0], pt[1], bk - 1,
+                          (255, 204, 0) if on else (255, 255, 255))
 
         draw_base(third, sit.get('onThird',  False))
         draw_base(first, sit.get('onFirst',  False))
-        draw_base(sec,   sit.get('onSecond', False))   # draw 2nd last — it's closest to top edge
+        draw_base(sec,   sit.get('onSecond', False))
 
-        # 8 · Home plate — pentagon
-        hp_s = r * 0.12
-        d.polygon([
-            (home[0],         home[1] + hp_s),
-            (home[0] + hp_s,  home[1]),
-            (home[0] + hp_s,  home[1] - hp_s),
-            (home[0] - hp_s,  home[1] - hp_s),
-            (home[0] - hp_s,  home[1]),
-        ], fill=(255, 255, 255), outline=(0, 0, 0))
+        # 8 · Home plate — pentagon, pointing down toward the backstop
+        hx, hy = home
+        d.rectangle([hx - 2, hy - 2, hx + 2, hy - 1], fill=(255, 255, 255))
+        d.line([(hx - 1, hy), (hx + 1, hy)], fill=(255, 255, 255))
+        d.point((hx, hy + 1), fill=(255, 255, 255))
 
     def _draw_basketball_court(self, d, W, H):
         """
