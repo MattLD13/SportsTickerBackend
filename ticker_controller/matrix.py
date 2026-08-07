@@ -78,7 +78,20 @@ def build_matrix_options():
     # one shift-out per plane disappears. 8 measured brighter and faster than 10
     # or 11 (147Hz vs 102Hz). Below 8 the duty cycle outruns the 5V supply and
     # white yellows — blue has the highest forward voltage and starves first.
-    options.pwm_bits = int(os.environ.get('TICKER_PWM_BITS') or 8)
+    #
+    # It still runs at 11, because the planes being dropped are exactly the ones
+    # every dark colour lives in. CIE1931 correction packs the bottom of the
+    # input range into the low bitplanes, so dropping three of them collapses
+    # everything below input 34 — which is the whole of a full-bleed field — into
+    # five output levels. In practice a 100px edge fade rendered as four bands
+    # with a 42px slab of pure black, and greys quantised to a single channel:
+    # grass at (8,28,4) reached the panel as (0,3,0), red and blue simply gone,
+    # which is why it looked relentlessly green and why retuning the palette did
+    # nothing. At 11 the same fade resolves 27 levels and (8,28,4) arrives as
+    # (7,26,4). Turning CIE off instead restores the resolution but flattens
+    # every midtone, which looks far worse. Set TICKER_PWM_BITS=8 to trade the
+    # dark detail back for brightness and refresh.
+    options.pwm_bits = int(os.environ.get('TICKER_PWM_BITS') or 11)
     # Scales every plane's duration, so this is the one knob that lengthens
     # on-time directly. It is pinned low because the panels are current-limited,
     # not because 130 is optimal: at 400 the whole field yellows. Raise it
