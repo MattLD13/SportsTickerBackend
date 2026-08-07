@@ -33,7 +33,8 @@ class SportsFetcher(
     def __init__(self, initial_city, initial_lat, initial_lon):
         self.weather = WeatherFetcher(initial_lat=initial_lat, initial_lon=initial_lon, city=initial_city)
         self.stocks = StockFetcher()
-        self.possession_cache = {} 
+        self.possession_cache = {}
+        self.football_situation_cache = {}  # game id -> last real down & distance
         self.base_url = 'http://site.api.espn.com/apis/site/v2/sports/'
         
         # CHANGE 1: Reduce Pool Size to 15 (Save RAM)

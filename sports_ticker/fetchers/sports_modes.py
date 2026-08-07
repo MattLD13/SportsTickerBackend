@@ -3,7 +3,7 @@ import traceback
 
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
-from .football_situation import normalize_football_situation
+from .football_situation import normalize_football_situation, sticky_football_situation
 from .sports_modes_common import _sports_no_games_placeholder
 from .test_mode import TestMode
 
@@ -332,11 +332,15 @@ class SportsModesMixin:
 
             # The competition situation carries the numeric down/distance/yardLine;
             # the live drive only ever has the short text.
+            _is_half = 'half' in s_disp.lower()
             fb_sit = normalize_football_situation(
-                comp_sit or sit_data, poss_abbr, h_ab, a_ab, halftime=(s_disp == "Halftime")
+                comp_sit or sit_data, poss_abbr, h_ab, a_ab, halftime=_is_half
             )
-            if not fb_sit['downDist'] and s_disp != "Halftime":
+            if not fb_sit['downDist'] and not _is_half:
                 fb_sit['downDist'] = str(sit_data.get('shortDownDistanceText') or '').strip()
+            fb_sit = sticky_football_situation(
+                self.football_situation_cache, game_id, fb_sit, gst, halftime=_is_half
+            )
             is_rz = comp_sit.get('isRedZone', False) or sit_data.get('isRedZone', False)
 
             game_obj = {

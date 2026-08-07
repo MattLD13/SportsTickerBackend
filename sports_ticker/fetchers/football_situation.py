@@ -17,7 +17,19 @@ Two details drive everything here:
   ``possession`` is the team id; the caller resolves it to an abbreviation.
 """
 
+import time
+
+from ..core import prune_cache
+
 _ORDINALS = {1: '1st', 2: '2nd', 3: '3rd', 4: '4th'}
+
+_SITUATION_CACHE_MAX = 512
+
+_BLANK = {
+    'downDist': '', 'downDistFull': '', 'ballOn': '',
+    'down': None, 'yardsToGo': None, 'yardLine': None,
+    'isGoalToGo': False, 'possessionTeam': '',
+}
 
 
 def _int_or_none(value):
@@ -91,11 +103,7 @@ def normalize_football_situation(sit, poss_abbr='', home_abbr='', away_abbr='', 
         ball_on = full_text.split(' at ', 1)[1].strip()
 
     if halftime:
-        return {
-            'downDist': '', 'downDistFull': '', 'ballOn': '',
-            'down': None, 'yardsToGo': None, 'yardLine': None,
-            'isGoalToGo': False, 'possessionTeam': poss_abbr,
-        }
+        return dict(_BLANK, possessionTeam=poss_abbr)
 
     return {
         'downDist': short_text,        # "3rd & 2" — what the ticker shows
@@ -107,3 +115,29 @@ def normalize_football_situation(sit, poss_abbr='', home_abbr='', away_abbr='', 
         'isGoalToGo': bool(goal_to_go),
         'possessionTeam': poss_abbr,
     }
+
+
+def sticky_football_situation(cache, game_id, sit, state='', halftime=False):
+    """Hold the last real down & distance so the ticker doesn't blink.
+
+    ESPN drops the situation block between plays — timeouts, reviews, change of
+    possession, the gap after a score — and the card would otherwise go blank
+    for a poll or two. The last known value stands in until a new one arrives.
+    It is only cleared where there genuinely is no down & distance: before
+    kickoff, at halftime, and once the game is over.
+    """
+    key = str(game_id)
+    if halftime or str(state).lower() in ('pre', 'post', 'final'):
+        cache.pop(key, None)
+        return dict(_BLANK, possessionTeam=sit.get('possessionTeam', ''))
+
+    if sit.get('downDist'):
+        cache.pop(key, None)   # re-insert so insertion order stays newest-last
+        cache[key] = dict(sit, ts=time.time())
+        prune_cache(cache, _SITUATION_CACHE_MAX)
+        return sit
+
+    cached = cache.get(key)
+    if cached:
+        return {k: v for k, v in cached.items() if k != 'ts'}
+    return sit

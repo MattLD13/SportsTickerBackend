@@ -1,6 +1,6 @@
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
-from .football_situation import normalize_football_situation
+from .football_situation import normalize_football_situation, sticky_football_situation
 from .test_mode import TestMode
 
 # Finished games self-evict once they age out of the visibility window, but
@@ -250,8 +250,12 @@ class SportsEspnMixin:
                 if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
                 elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
                 
+                _is_half = 'half' in s_disp.lower()
                 fb_sit = normalize_football_situation(
-                    sit, poss_abbr, h_ab, a_ab, halftime=(s_disp == "Halftime")
+                    sit, poss_abbr, h_ab, a_ab, halftime=_is_half
+                )
+                fb_sit = sticky_football_situation(
+                    self.football_situation_cache, gid, fb_sit, gst, halftime=_is_half
                 )
 
                 game_obj = {
