@@ -135,28 +135,58 @@ def _describe_baseball(delta, play):
     return 'run', 'RUN SCORES'
 
 
+# ESPN names every football play from a fixed vocabulary in its type field.
+# Longest and most specific first, because "Pass Interception Return" holds the
+# word "pass".
+_FOOTBALL_TD_TYPES = (
+    ('interception return', 'pick_six',       'PICK SIX'),
+    ('fumble return',       'fumble_td',      'FUMBLE RETURN TD'),
+    ('fumble recovery',     'fumble_td',      'FUMBLE RETURN TD'),
+    ('kickoff return',      'kick_return_td', 'KICK RETURN TD'),
+    ('punt return',         'punt_return_td', 'PUNT RETURN TD'),
+    ('rushing touchdown',   'rushing_td',     'RUSHING TD'),
+    ('passing touchdown',   'passing_td',     'PASSING TD'),
+)
+
+
 def _describe_football(delta, play):
-    text = f"{play.get('type', '')} {play.get('text', '')}".lower()
-    if 'safety' in text:
+    """Name a football score from the play type, not from the description.
+
+    The type field is a controlled vocabulary: "Rushing Touchdown", "Field Goal
+    Good", "Pass Interception Return". The description is free text and holds
+    player names, which is a trap. An earlier version looked for "pick" in the
+    description, so every touchdown pass thrown by Kenny Pickett, and every one
+    caught by George Pickens, became a PICK SIX.
+    """
+    kind = str(play.get('type', '')).lower()
+    body = str(play.get('text', '')).lower()
+
+    if 'safety' in kind:
         return 'safety', 'SAFETY'
-    if 'interception return touchdown' in text or 'pick' in text and 'touchdown' in text:
-        return 'pick_six', 'PICK SIX'
-    if 'fumble return touchdown' in text or 'fumble recovery touchdown' in text:
-        return 'fumble_td', 'FUMBLE RETURN TD'
-    if 'kickoff return touchdown' in text:
-        return 'kick_return_td', 'KICK RETURN TD'
-    if 'punt return touchdown' in text:
-        return 'punt_return_td', 'PUNT RETURN TD'
-    if 'rushing touchdown' in text or ('touchdown' in text and 'rush' in text):
-        return 'rushing_td', 'RUSHING TD'
-    if 'passing touchdown' in text or ('touchdown' in text and ('pass' in text or 'reception' in text)):
-        return 'passing_td', 'PASSING TD'
+    if 'field goal' in kind:
+        return 'field_goal', 'FIELD GOAL'
+
+    # Six points, or seven and eight when the conversion lands in the same
+    # refresh. Below that the play type does not name the score.
     if delta >= 6:
+        for needle, kind_id, headline in _FOOTBALL_TD_TYPES:
+            if needle in kind:
+                return kind_id, headline
+        # No usable type. The description still names the phase of play, and
+        # these phrases are ESPN's own, not player names.
+        if 'interception return' in body:
+            return 'pick_six', 'PICK SIX'
+        if 'fumble' in body:
+            return 'fumble_td', 'FUMBLE RETURN TD'
+        if ' rush' in body:
+            return 'rushing_td', 'RUSHING TD'
+        if ' pass from' in body:
+            return 'passing_td', 'PASSING TD'
         return 'touchdown', 'TOUCHDOWN'
     if delta == 3:
         return 'field_goal', 'FIELD GOAL'
     if delta == 2:
-        if 'two-point' in text or 'two point' in text:
+        if 'two-point' in kind or 'two point' in kind or 'two-point' in body:
             return 'two_point', '2-PT CONVERSION'
         return 'safety', 'SAFETY'
     return 'extra_point', 'EXTRA POINT'

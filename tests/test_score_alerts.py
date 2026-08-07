@@ -242,3 +242,43 @@ REAL_PLAYS = [
 @pytest.mark.parametrize("runs,text,expected", REAL_PLAYS)
 def test_describer_on_real_espn_play_text(runs, text, expected):
     assert describe_score('mlb', runs, {'text': text})[1] == expected
+
+
+# Real ESPN NFL scoring plays. The type field is a controlled vocabulary and is
+# trustworthy. The description is free text that holds player names, and two of
+# the rows below are the exact plays that a "pick" substring test got wrong.
+
+REAL_NFL_PLAYS = [
+    # (points, type.text, description, expected headline)
+    (7, "Rushing Touchdown", "Saquon Barkley 5 Yd Run (Jake Elliott Kick)", "RUSHING TD"),
+    (7, "Passing Touchdown", "Jaxon Smith-Njigba 28 Yd pass from Sam Darnold (Jason Myers Kick)", "PASSING TD"),
+    (3, "Field Goal Good", "Zane Gonzalez 35 Yd Field Goal", "FIELD GOAL"),
+    (7, "Kickoff Return Touchdown", "Rashid Shaheed 100 Yd Kickoff Return (Jason Myers Kick)", "KICK RETURN TD"),
+    (7, "Punt Return Touchdown", "Marvin Mims Jr. 87 Yd Punt Return (Wil Lutz Kick)", "PUNT RETURN TD"),
+    (2, "Safety", "Team Safety", "SAFETY"),
+    (7, "Interception Return Touchdown", "Jalen Ramsey 40 Yd Interception Return", "PICK SIX"),
+    (7, "Fumble Return Touchdown", "Micah Parsons 12 Yd Fumble Return", "FUMBLE RETURN TD"),
+
+    # ESPN uses these two type strings as well. Both used to fall through to a
+    # bare TOUCHDOWN.
+    (7, "Pass Interception Return", "Alohi Gilman 84 Yd Interception Return (Tyler Loop Kick)", "PICK SIX"),
+    (7, "Sack Opp Fumble Recovery", "Tyler Nubin 27 Yd Fumble Recovery by Brian Burns", "FUMBLE RETURN TD"),
+
+    # A player surname must never decide the headline. Both of these are
+    # ordinary touchdown passes.
+    (7, "Passing Touchdown", "Shedrick Jackson 25 Yd pass from Kenny Pickett (Daniel Carlson Kick)", "PASSING TD"),
+    (7, "Passing Touchdown", "George Pickens 38 Yd pass from Dak Prescott (Brandon Aubrey Kick)", "PASSING TD"),
+]
+
+
+@pytest.mark.parametrize("points,play_type,text,expected", REAL_NFL_PLAYS)
+def test_football_describer_on_real_espn_plays(points, play_type, text, expected):
+    assert describe_score('nfl', points, {'type': play_type, 'text': text})[1] == expected
+
+
+def test_football_falls_back_to_the_description_without_a_type():
+    # The live feed can send a play with no type. The phase words in the
+    # description are ESPN's own, so they are still safe to read.
+    assert describe_score('nfl', 6, {'text': "Barkley 5 Yd Rush"})[1] == "RUSHING TD"
+    assert describe_score('nfl', 6, {'text': "Hill 20 Yd pass from Tua"})[1] == "PASSING TD"
+    assert describe_score('nfl', 6, {})[1] == "TOUCHDOWN"
