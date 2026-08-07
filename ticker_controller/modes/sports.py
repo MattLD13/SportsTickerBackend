@@ -7,8 +7,8 @@ from ..fonts import draw_tiny_text, draw_hybrid_text, normalize_special_chars
 # Width of the darkened band at each edge of a full-bleed card. Anything drawn
 # underneath it has to reach the edge without introducing brightness of its own,
 # so backgrounds taper their detail over the same span.
-SIDE_SCRIM_SOLID = 28
-SIDE_SCRIM_FADE = 62
+SIDE_SCRIM_SOLID = 8
+SIDE_SCRIM_FADE = 92
 SIDE_SCRIM_SPAN = SIDE_SCRIM_SOLID + SIDE_SCRIM_FADE
 
 
@@ -941,14 +941,14 @@ class SportsMixin:
         Bases are scan-converted for the same reason: a polygon with fractional
         vertices produces lopsided rows instead of a square on point.
         """
-        # Saturated on purpose. On the panel these read far more neutral than
-        # they do in a PNG preview: the old grass carried equal red and blue, so
-        # only its green margin separated it from grey, and it came out teal.
-        # The old dirt carried 68 of blue and came out pale pink. Keeping blue
-        # near zero leaves the hue somewhere to go once the panel washes it out.
-        # Preview renders will not show this — verify on hardware.
-        GRASS_A = (6, 38, 3)
-        GRASS_B = (10, 50, 6)
+        # Blue stays near zero because a colour carrying equal red and blue sits
+        # too close to neutral to survive the panel — that is what made the old
+        # grass read teal and the old dirt pale pink. Red sits above blue so the
+        # grass lands olive rather than a pure saturated green, and the two
+        # stripes are only six levels apart so the mow reads as texture instead
+        # of banding. Preview renders will not show this — verify on hardware.
+        GRASS_A = (8, 28, 4)
+        GRASS_B = (11, 34, 6)
         DIRT    = (172, 92, 30)
         CHALK   = (232, 232, 232)
 
