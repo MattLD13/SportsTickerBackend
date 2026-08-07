@@ -17,12 +17,15 @@ Backend package for configuration, data fetching, routes, and mode buffers.
 - Return normalized game objects with `type`, `sport`, `id`, `state`, `status`, `is_shown`, and mode-specific payload keys.
 
 ## Score Alerts
-- `services/score_alerts.py` diffs each new sports buffer against the previous one and turns score increases into described plays ("GRAND SLAM", "POWER PLAY GOAL").
-- Detection is wired into `fetchers/sports_modes.py` at the point the sports buffer is published — the only place both the old and new score exist.
-- Context comes from a `last_play` key on the game object. Fetchers populate it: ESPN via `normalize_last_play`, NHL via `nhl_last_goal`. A sport without it still gets a headline from the score delta alone.
-- `/data` serves alerts under `alerts`, filtered to the ticker's followed teams and to `SPORTS_MODE_FAMILY` modes. A board set to weather/clock/music/flights/golf/racing is never interrupted. The league filter does not apply — a followed team alerts even with its league switched off.
-- `GET /api/debug/score_alert?id=<ticker>` injects a synthetic alert through the same buffer and gating, for checking the takeover on real panels without waiting for a game. It reports `will_display` and `blocked_by` rather than failing silently.
-- Alerts respect `live_delay_seconds`: `recent(delay=...)` holds each one back by the same amount as the content, so the takeover never announces a play before the delayed strip reaches it. Any new consumer of `recent()` must pass the delay too.
+- `services/score_alerts.py` compares each new sports buffer with the previous one. It gives a name to each score increase, such as "GRAND SLAM" or "POWER PLAY GOAL".
+- `fetchers/sports_modes.py` publishes the sports buffer. It runs the detector at that point, the only point where both the old score and the new score exist.
+- Context comes from the `last_play` key on the game object. ESPN fetchers fill it with `normalize_last_play`. NHL fetchers use `nhl_last_goal`.
+- A sport without `last_play` still gets a headline. The detector builds that headline from the score delta alone.
+- `/data` returns alerts under the `alerts` key. It sends an alert only for a followed team, and only to a ticker in a `SPORTS_MODE_FAMILY` mode.
+- The league filter does not apply to alerts. When its league is off, a followed team still shows an alert.
+- Alerts obey `live_delay_seconds`. `recent(delay=...)` holds each alert for the same time as the content. A new caller of `recent()` must pass the delay.
+- `GET /api/debug/score_alert?id=<ticker>` adds a synthetic alert to the same buffer. Use it to see the takeover on real panels without a live game.
+- The debug route reports `will_display` and `blocked_by`. A ticker that stays dark tells you which gate stopped the alert.
 
 ## Racing Payloads
 - IndyCar payload key: `indycar`.

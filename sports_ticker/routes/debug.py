@@ -209,8 +209,8 @@ def get_logs():
 
 
 
-# Showcase headline per sport, used when the caller does not name one. Picked
-# to exercise the widest layout each sport can produce.
+# Demo headline for each sport, used when the caller does not give one. Each
+# one makes the widest layout that its sport can produce.
 _DEMO_HEADLINES = {
     'mlb':    ('GRAND SLAM',      'JUDGE',    4, True,  'Bottom 7'),
     'nhl':    ('POWER PLAY GOAL', 'PANARIN',  1, False, 'P2 6:03'),
@@ -229,22 +229,23 @@ def _demo_profile(sport):
 
 @app.route('/api/debug/score_alert', methods=['GET', 'POST'])
 def api_debug_score_alert():
-    """Fire a synthetic score alert so the takeover can be seen on demand.
+    """Add a synthetic score alert, to show the takeover without a live game.
 
-    Scoring plays cannot be scheduled, so without this the only way to check
-    the full-screen alert on real panels is to sit and wait for a game. The
-    alert is injected into the same buffer the detector writes to and is then
-    delivered, gated, and delayed exactly like a real one — so a board that
-    would not have shown a real alert will not show this either. The response
-    says which gate stopped it.
+    A scoring play cannot be scheduled. This route puts an alert into the same
+    buffer that the detector writes to. That alert then gets the same delivery,
+    the same gating, and the same delay as a real one.
 
-    Query params (all optional):
-      id       ticker id; inferred from X-Client-ID or a single paired ticker
-      team     abbreviation, or "league:ABBR". Defaults to a followed team.
-      sport    league key; defaults to the one on the team entry, else mlb
-      headline overrides the per-sport demo headline
-      detail   scorer name shown under the headline
-      status   clock/inning text for the score panel
+    If a ticker blocks real alerts, it blocks this alert too. The response
+    names the gate that stopped it.
+
+    Query parameters (all optional):
+      id        Ticker id. Defaults to the X-Client-ID header, or to a single
+                paired ticker.
+      team      Abbreviation, or "league:ABBR". Defaults to a followed team.
+      sport     League key. Defaults to the league on the team entry, or mlb.
+      headline  Replaces the demo headline for the sport.
+      detail    Scorer name. Drawn under the headline.
+      status    Clock or inning text for the score panel.
     """
     args = request.args if request.method == 'GET' else (request.json or request.args)
 
