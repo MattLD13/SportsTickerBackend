@@ -146,14 +146,20 @@ def draw_hybrid_text(draw, x, y, text_str, color):
 # ── Sprite helpers ────────────────────────────────────────────────────────────
 
 def draw_football(d, cx, cy):
-    """Tiny football icon (7×3 px)."""
-    brown = (139, 69, 19, 255)
-    fi(d, cx - 2, cy,     5, 1, *brown[:3])
-    fi(d, cx - 3, cy + 1, 7, 1, *brown[:3])
-    fi(d, cx - 2, cy + 2, 5, 1, *brown[:3])
-    fi(d, cx - 1, cy + 1, 1, 1, 255, 255, 255)
-    fi(d, cx,     cy + 1, 1, 1, 255, 255, 255)
-    fi(d, cx + 1, cy + 1, 1, 1, 255, 255, 255)
+    """Possession football (9×5 px), sized to read from across the room."""
+    brown = (150, 75, 20)
+    tip   = (110, 54, 14)
+    fi(d, cx - 2, cy,     5, 1, *brown)
+    fi(d, cx - 3, cy + 1, 7, 1, *brown)
+    fi(d, cx - 4, cy + 2, 9, 1, *brown)
+    fi(d, cx - 3, cy + 3, 7, 1, *brown)
+    fi(d, cx - 2, cy + 4, 5, 1, *brown)
+    # Darker points so the ellipse keeps its shape against a bright logo.
+    fi(d, cx - 4, cy + 2, 1, 1, *tip)
+    fi(d, cx + 4, cy + 2, 1, 1, *tip)
+    # Single lace stripe down the long axis — cross-stitches turn into a blur
+    # at this size and read as a plus sign rather than a football.
+    fi(d, cx - 2, cy + 2, 5, 1, 255, 255, 255)
 
 def draw_base_diamond(d, cx, ty, on1, on2, on3):
     """
@@ -489,7 +495,7 @@ class StadiumRenderer:
             if is_poss_home or is_poss_away:
                 hdr_cx = (h_logo_x + LOGO_SZ // 2 - 1) if is_poss_home \
                          else (a_logo_x + LOGO_SZ // 2 - 1)
-                draw_football(d, hdr_cx, 2)
+                draw_football(d, hdr_cx, 1)   # 5px tall now, still clear of the y=7 rule
 
             if rz:
                 d.rectangle([0, 0, CW - 1, H - 1], outline=(255, 40, 40, 153), width=1)
