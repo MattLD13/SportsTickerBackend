@@ -140,3 +140,11 @@ def test_nhl_headline_parsing():
                       'MTL', names)[:2] == ('MTL', 'VAN')
     # Nothing readable, so nothing is drawn.
     assert _nhl_parse("Notebook 7/1/26", 'MTL', names) == ('', '', '')
+
+
+def test_news_tester_page_renders(client):
+    """The page is served by the backend so it can call the API same-origin."""
+    _ticker('news_page', 'my_teams', ['nhl:NYR'])
+    html = client.get('/debug/news').get_data(as_text=True)
+    for want in ('Blues (NHL)', 'Rangers (NHL)', 'Cardinals (MLB)', 'Giants (NFL)', 'Board'):
+        assert want in html

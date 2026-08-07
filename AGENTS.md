@@ -19,6 +19,7 @@ This repo powers a sports ticker backend plus a Raspberry Pi LED-matrix style co
 - Render live frame: `python tools\fetch_and_render.py --mode indycar --view pin --save indycar_pin_live.png`
 - Render racing previews: `python tools\render_racing_previews.py --mode both --out-dir previews`
 - Render score-alert previews: `python tools\render_score_alerts.py --out-dir previews\score_alerts`
+- Test-page for news banners: open `http://<backend>/debug/news`
 - Push a news banner: `curl -X POST http://<backend>/api/news -H 'Content-Type: application/json' -d '{"kind":"TRADE","sport":"nhl","from":"VAN","to":"NYR","text":"Miller for Kakko"}'`
 - Send a test score alert to a ticker: `curl "http://<backend>/api/debug/score_alert?id=<ticker_id>"`
 - Dump backend JSON: `python tools\dump_backend_snapshot.py --mode f1`

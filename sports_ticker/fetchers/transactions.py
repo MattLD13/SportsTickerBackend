@@ -1,12 +1,11 @@
 """Read real trades from the league feeds.
 
-MLB, the NFL, and the NHL are here. The NBA publishes nothing, so it reaches
-the banner through POST /api/news. See docs/news-banner.md.
-
-Each league needs different handling:
+All four leagues are here, and each publishes something different.
 
 * MLB gives every field separated. Kind, player, old club and new club all
   arrive as data, and nothing is read out of a sentence.
+* The NBA publishes a static file of every player movement since 2015. The kind
+  of move, the receiving club, the player, and the date are all fields.
 * The NFL gives the acting club as data and the rest as English.
 * The NHL gives no transaction feed at all, but it tags its own stories. A
   `transactions` tag says a move happened and a `teamid` tag says who acted.
@@ -511,5 +510,134 @@ def fetch_nhl_transactions(days_back=2, session=None, lookup_color=None, pages=2
             teams=[from_abbr, to_abbr],
             item_id=make_id('nhl', date, from_abbr, to_abbr),
             source='nhl-forge',
+        ))
+    return items
+
+
+# ── NBA ──────────────────────────────────────────────────────────────────────
+
+NBA_MOVEMENT = 'https://stats.nba.com/js/data/playermovement/NBA_Player_Movement.json'
+NBA_TEAMS = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams'
+
+# stats.nba.com refuses a plain request. These are the headers its own site
+# sends, and without them the file comes back as a block page.
+NBA_HEADERS = {
+    'User-Agent': 'Mozilla/5.0',
+    'Referer': 'https://www.nba.com/',
+    'Origin': 'https://www.nba.com',
+    'x-nba-stats-origin': 'stats',
+    'x-nba-stats-token': 'true',
+}
+
+_NBA_CACHE = {'ts': 0.0, 'names': {}}
+
+
+def _nba_names(session=None):
+    """Every club name form to an abbreviation, for the 30 current clubs."""
+    now = time.time()
+    if _NBA_CACHE['names'] and (now - _NBA_CACHE['ts']) < _TEAM_TTL:
+        return _NBA_CACHE['names']
+    try:
+        get = (session or requests).get
+        r = get(NBA_TEAMS, headers=HEADERS, timeout=TIMEOUT)
+        if r.status_code == 200:
+            names = {}
+            for entry in r.json()['sports'][0]['leagues'][0]['teams']:
+                team = entry.get('team') or {}
+                abbr = str(team.get('abbreviation') or '').upper()
+                if not abbr:
+                    continue
+                for field in ('displayName', 'name', 'location'):
+                    value = str(team.get(field) or '').strip().lower()
+                    if value:
+                        names[value] = abbr
+            if names:
+                _NBA_CACHE.update({'names': names, 'ts': now})
+    except Exception as exc:
+        print(f"[TRANSACTIONS] NBA team map failed: {exc}")
+    return _NBA_CACHE['names']
+
+
+def _nba_club(text, names, exclude=''):
+    """Match a club name in free text against the 30 that exist."""
+    low = str(text or '').lower()
+    for name in sorted(names, key=len, reverse=True):
+        if len(name) > 2 and name in low and names[name] != exclude:
+            return names[name]
+    return ''
+
+
+def fetch_nba_transactions(days_back=2, session=None, lookup_color=None):
+    """Return banner items for recent NBA trades.
+
+    The league publishes a static file of every player movement since 2015,
+    with the kind of move, the club, the player, and the date as fields. Each
+    trade row reads "<Club> received <Player> from <Other Club>", so the club
+    on the row is always the receiving side and direction never has to be
+    guessed. Only the origin club is read from the sentence, against the closed
+    set of 30.
+
+    One trade writes a row per piece, including draft considerations with no
+    player at all, so one deal is kept per pair of clubs per day. Rows that name
+    a player are preferred, because "Johni Broome" is a better banner than
+    "draft consideration".
+    """
+    cutoff = ('' if days_back is None
+              else time.strftime('%Y-%m-%d', time.localtime(time.time() - days_back * 86400)))
+
+    try:
+        get = (session or requests).get
+        r = get(NBA_MOVEMENT, headers=NBA_HEADERS, timeout=30)
+        if r.status_code != 200:
+            return []
+        rows = (r.json().get('NBA_Player_Movement') or {}).get('rows') or []
+    except Exception as exc:
+        print(f"[TRANSACTIONS] NBA fetch failed: {exc}")
+        return []
+
+    names = _nba_names(session)
+    if not names:
+        return []
+
+    trades = [r for r in rows
+              if str(r.get('Transaction_Type', '')).lower() == 'trade'
+              and (not cutoff or str(r.get('TRANSACTION_DATE') or '')[:10] >= cutoff)]
+    # A row naming a player wins the deduplication over a bare draft pick.
+    trades.sort(key=lambda r: (str(r.get('TRANSACTION_DATE')), bool(r.get('PLAYER_SLUG'))),
+                reverse=True)
+
+    items, seen = [], set()
+    for row in trades:
+        date = str(row.get('TRANSACTION_DATE') or '')[:10]
+        description = str(row.get('TRANSACTION_DESCRIPTION') or '')
+        to_abbr = _nba_club(str(row.get('TEAM_SLUG') or '').replace('-', ' '), names)
+        if not to_abbr:
+            continue
+        from_abbr = _nba_club(description.split(' from ')[-1], names, exclude=to_abbr)
+        if not from_abbr or from_abbr == to_abbr:
+            continue
+
+        pair = (date, frozenset((from_abbr, to_abbr)))
+        if pair in seen:
+            continue
+        seen.add(pair)
+
+        player = str(row.get('PLAYER_SLUG') or '').replace('-', ' ').title()
+        from_color = to_color = ''
+        if lookup_color:
+            from_color = lookup_color('nba', from_abbr)
+            to_color = lookup_color('nba', to_abbr)
+
+        items.append(build_item(
+            kind='TRADE',
+            text=player or 'draft consideration',
+            sport='nba',
+            from_abbr=from_abbr,
+            to_abbr=to_abbr,
+            from_color=from_color,
+            to_color=to_color,
+            teams=[from_abbr, to_abbr],
+            item_id=make_id('nba', date, from_abbr, to_abbr),
+            source='nba-playermovement',
         ))
     return items

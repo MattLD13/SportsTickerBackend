@@ -1,5 +1,6 @@
 """Root dashboard route."""
 
+import json
 import os
 import time
 
@@ -165,15 +166,46 @@ ALERT_PRESETS = [
 ]
 
 
-@dashboard.route('/debug/alerts')
-def alert_tester():
-    """Serve the page that sends test score alerts.
+# Presets for the news tester, one per league so each fetcher's own shape can
+# be seen on the panel. The two St. Louis clubs are here on purpose: they share
+# the abbreviation STL, so they also test the league-qualified team match.
+NEWS_PRESETS = [
+    {'kind': 'TRADE', 'css': 'trade', 'label': 'Blues (NHL)', 'detail': 'CHI to STL',
+     'body': {'kind': 'TRADE', 'sport': 'nhl', 'from': 'CHI', 'to': 'STL',
+              'text': 'Andre Burakovsky for a 2027 second'}},
+    {'kind': 'TRADE', 'css': 'trade', 'label': 'Rangers (NHL)', 'detail': 'VAN to NYR',
+     'body': {'kind': 'TRADE', 'sport': 'nhl', 'from': 'VAN', 'to': 'NYR',
+              'text': 'J.T. Miller for Kakko and a 2027 first'}},
+    {'kind': 'TRADE', 'css': 'trade', 'label': 'Cardinals (MLB)', 'detail': 'TB to STL',
+     'body': {'kind': 'TRADE', 'sport': 'mlb', 'from': 'TB', 'to': 'STL',
+              'text': 'RHP Ryan Helsley for two prospects'}},
+    {'kind': 'TRADE', 'css': 'trade', 'label': 'Giants (NFL)', 'detail': 'JAX to NYG',
+     'body': {'kind': 'TRADE', 'sport': 'nfl', 'from': 'JAX', 'to': 'NYG',
+              'text': 'RB Tank Bigsby for a 2026 fifth'}},
+    {'kind': 'SIGNS', 'css': 'trade', 'label': 'Signing (NFL)', 'detail': 'FA to NYG',
+     'body': {'kind': 'SIGNS', 'sport': 'nfl', 'from': 'FA', 'to': 'NYG',
+              'text': 'Saquon Barkley to a three-year deal'}},
+    {'kind': 'NEWS', 'css': 'news', 'label': 'Stock news', 'detail': 'stocks mode only',
+     'body': {'domain': 'stocks', 'kind': 'NEWS', 'symbol': 'NVDA',
+              'text': 'Nvidia beats on earnings as data centre demand holds'}},
+]
 
-    The page runs on the backend and not as a separate file. It calls
-    /api/debug/score_alert on the same origin, so it needs no key and no CORS
-    header. The ticker list comes from the server, so the page always shows the
-    tickers that this backend knows.
+
+@dashboard.route('/debug/news')
+def news_tester():
+    """Serve the page that pushes test news banners.
+
+    The same shape as the score alert tester: the server renders the ticker
+    list, the page calls the API on the same origin, and the response says
+    which boards follow a club in the item.
     """
+    return render_template('dashboard/news_tester.html',
+                           tickers=_ticker_rows(),
+                           presets=[dict(p, body=json.dumps(p['body'])) for p in NEWS_PRESETS])
+
+
+def _ticker_rows():
+    """Name, mode, and followed clubs for every ticker this backend knows."""
     with data_lock:
         rows = []
         for tid, rec in tickers.items():
@@ -186,8 +218,20 @@ def alert_tester():
                 'mode': normalize_mode(settings.get('mode') or state.get('mode', 'sports')),
                 'teams': ', '.join(teams[:4]),
             })
+    return rows
 
-    return render_template('dashboard/alert_tester.html', tickers=rows, presets=ALERT_PRESETS)
+
+@dashboard.route('/debug/alerts')
+def alert_tester():
+    """Serve the page that sends test score alerts.
+
+    The page runs on the backend and not as a separate file. It calls
+    /api/debug/score_alert on the same origin, so it needs no key and no CORS
+    header. The ticker list comes from the server, so the page always shows the
+    tickers that this backend knows.
+    """
+    return render_template('dashboard/alert_tester.html',
+                           tickers=_ticker_rows(), presets=ALERT_PRESETS)
 
 
 @dashboard.route('/demo')

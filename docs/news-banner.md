@@ -43,6 +43,7 @@ last line is cut with a full stop. It is never dropped in silence.
 | MLB trades and signings | `sports_ticker/fetchers/transactions.py` | Done |
 | NFL trades | `sports_ticker/fetchers/transactions.py` | Done |
 | NHL trades | `sports_ticker/fetchers/transactions.py` | Done |
+| NBA trades | `sports_ticker/fetchers/transactions.py` | Done |
 | Poll loop, every 10 minutes | `transactions_worker` in `sports_ticker/workers.py` | Done |
 | Push route | `sports_ticker/routes/news.py` | Done |
 | Delivery through `/data` | `_news_for_ticker` in `sports_ticker/routes/state.py` | Done |
@@ -51,6 +52,14 @@ last line is cut with a full stop. It is never dropped in silence.
 The controller does not draw the banner yet. The concept renderer produces the
 artwork, and it has to be moved into `ticker_controller/modes/` and driven from
 `render_loop` before anything reaches a panel.
+
+## Test pages
+
+* `/debug/news` pushes a banner with a button, one preset per league.
+* `/debug/alerts` does the same for the full-screen score alert.
+
+Both are served by the backend, so they call the API on the same origin and
+need no key. Both report whether the selected ticker will show the item.
 
 ## Adding an item by hand
 
@@ -79,7 +88,7 @@ This is the part that decides what can ever be automatic.
 | MLB | `statsapi.mlb.com/api/v1/transactions` | yes | yes | **Built** |
 | NFL | ESPN core API | in the sentence | by name lookup | **Built** |
 | NHL | NHL forge content API | in the headline | by name lookup | **Built** |
-| NBA | none | — | — | Push route only |
+| NBA | `stats.nba.com` player movement | yes | receiving club is data | **Built** |
 
 ### MLB, which is built
 
@@ -157,11 +166,28 @@ Three traps:
 3. **Both clubs publish the same trade**, so one deal is kept per pair of clubs
    per day.
 
-### The NBA, which has no source
+### The NBA, which is built
 
-The NBA publishes no transactions endpoint. `stats.nba.com/stats/leaguetransactions`
-returns 404 under headers that `commonteamyears` and `playerindex` accept, so the
-request is sound and the path does not exist.
+`stats.nba.com/stats/leaguetransactions` returns 404 and does not exist. The
+data is in a static file instead:
+
+    https://stats.nba.com/js/data/playermovement/NBA_Player_Movement.json
+
+It holds every player movement since 2015, about 9700 rows, with
+`Transaction_Type`, `TEAM_SLUG`, `PLAYER_SLUG`, `TRANSACTION_DATE`, and a
+sentence. A trade row reads "LA Clippers received forward Johni Broome from
+Philadelphia 76ers", and the club on the row is always the receiving side, so
+direction is data. Only the origin club is read from the sentence, against the
+closed set of 30.
+
+Two traps:
+
+1. **stats.nba.com blocks a plain request.** It needs the headers its own site
+   sends, including `x-nba-stats-token`. Without them the file comes back as a
+   block page.
+2. **One trade writes a row per piece**, including draft considerations with no
+   player at all. One deal is kept per pair of clubs per day, and a row that
+   names a player wins, because "Johni Broome" beats "draft consideration".
 
 Three further routes were tested and all failed:
 
