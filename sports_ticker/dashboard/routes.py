@@ -149,6 +149,47 @@ def _on_air_ids(mode: str) -> set:
     return ids
 
 
+# Presets for the alert tester. One per team that gets tested by hand, with the
+# play that shows the widest layout for its sport. Both St. Louis clubs are here
+# on purpose: they share the abbreviation STL, so they also test that the
+# league-qualified team match works.
+ALERT_PRESETS = [
+    {'name': 'Rangers',   'team': 'nhl:NYR', 'color': '#0038A8',
+     'headline': 'POWER PLAY GOAL', 'detail': 'PANARIN', 'status': 'P2 6:03'},
+    {'name': 'Giants',    'team': 'nfl:NYG', 'color': '#0B2265',
+     'headline': 'RUSHING TD',      'detail': 'BARKLEY', 'status': 'Q3 8:42'},
+    {'name': 'Cardinals', 'team': 'mlb:STL', 'color': '#C41E3A',
+     'headline': '3-RUN HOMER',     'detail': 'GOLDSCHMIDT', 'status': 'Bottom 6'},
+    {'name': 'Blues',     'team': 'nhl:STL', 'color': '#002F87',
+     'headline': 'HAT TRICK',       'detail': 'KYROU',   'status': 'P3 11:47'},
+]
+
+
+@dashboard.route('/debug/alerts')
+def alert_tester():
+    """Serve the page that sends test score alerts.
+
+    The page runs on the backend and not as a separate file. It calls
+    /api/debug/score_alert on the same origin, so it needs no key and no CORS
+    header. The ticker list comes from the server, so the page always shows the
+    tickers that this backend knows.
+    """
+    with data_lock:
+        rows = []
+        for tid, rec in tickers.items():
+            settings = rec.get('settings', {})
+            teams = rec.get('my_teams')
+            teams = list(state.get('my_teams', [])) if teams is None else list(teams)
+            rows.append({
+                'id': tid,
+                'name': rec.get('name') or tid[:8],
+                'mode': normalize_mode(settings.get('mode') or state.get('mode', 'sports')),
+                'teams': ', '.join(teams[:4]),
+            })
+
+    return render_template('dashboard/alert_tester.html', tickers=rows, presets=ALERT_PRESETS)
+
+
 @dashboard.route('/demo')
 def demo():
     return render_template(
