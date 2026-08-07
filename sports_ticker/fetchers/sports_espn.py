@@ -273,8 +273,7 @@ class SportsEspnMixin:
                     
                     'situation': {
                         'possession': poss_abbr,
-                        'isRedZone': sit.get('isRedZone', False),
-                        **fb_sit,
+                        **fb_sit,   # carries isRedZone, derived and cached
                         'shootout': shootout_data,
                         'powerPlay': False,
                         'emptyNet': False

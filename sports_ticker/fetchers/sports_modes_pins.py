@@ -350,10 +350,11 @@ class SportsModesPinsMixin:
             )
             if not fb_sit['downDist'] and not _is_half:
                 fb_sit['downDist'] = str(sit_data.get('shortDownDistanceText') or '').strip()
+            if sit_data.get('isRedZone') and not _is_half:
+                fb_sit['isRedZone'] = True
             fb_sit = sticky_football_situation(
                 self.football_situation_cache, game_id, fb_sit, gst, halftime=_is_half
             )
-            is_rz = comp_sit.get('isRedZone', False) or sit_data.get('isRedZone', False)
 
             game_obj = {
                 'type': 'scoreboard', 'sport': league_key, 'id': game_id, 'status': s_disp, 'state': gst, 'is_shown': not is_suspended,
@@ -365,8 +366,7 @@ class SportsModesPinsMixin:
                 'estimated_duration': 180,
                 'situation': {
                     'possession': poss_abbr,
-                    'isRedZone': is_rz,
-                    **fb_sit,
+                    **fb_sit,   # carries isRedZone, derived and cached
                     'shootout': None,
                     'powerPlay': False,
                     'emptyNet': False,

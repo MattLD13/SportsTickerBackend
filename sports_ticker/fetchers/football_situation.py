@@ -28,7 +28,7 @@ _SITUATION_CACHE_MAX = 512
 _BLANK = {
     'downDist': '', 'downDistFull': '', 'ballOn': '',
     'down': None, 'yardsToGo': None, 'yardLine': None,
-    'isGoalToGo': False, 'possessionTeam': '',
+    'isGoalToGo': False, 'isRedZone': False, 'possessionTeam': '',
 }
 
 
@@ -87,10 +87,21 @@ def normalize_football_situation(sit, poss_abbr='', home_abbr='', away_abbr='', 
     elif poss_abbr and poss_abbr == home_abbr:
         to_home_goal = False
 
-    goal_to_go = 'goal' in short_text.lower() or 'goal' in full_text.lower()
-    if not goal_to_go and None not in (distance, yard_line, to_home_goal):
+    yards_to_goal = None
+    if yard_line is not None and to_home_goal is not None:
         yards_to_goal = yard_line if to_home_goal else 100 - yard_line
+
+    goal_to_go = 'goal' in short_text.lower() or 'goal' in full_text.lower()
+    if not goal_to_go and distance is not None and yards_to_goal is not None:
         goal_to_go = distance >= yards_to_goal
+
+    # Derive the red zone rather than trusting the flag: the summary feed the
+    # pinned/mode fetchers fall back on carries a drive object with no
+    # isRedZone at all, and the flag disappears along with the rest of the
+    # block between plays.
+    red_zone = bool(sit.get('isRedZone'))
+    if yards_to_goal is not None and yards_to_goal <= 20:
+        red_zone = True
 
     if not short_text:
         if full_text:
@@ -113,6 +124,7 @@ def normalize_football_situation(sit, poss_abbr='', home_abbr='', away_abbr='', 
         'yardsToGo': distance,
         'yardLine': yard_line,         # 0 = home goal line, 100 = away goal line
         'isGoalToGo': bool(goal_to_go),
+        'isRedZone': red_zone,
         'possessionTeam': poss_abbr,
     }
 
