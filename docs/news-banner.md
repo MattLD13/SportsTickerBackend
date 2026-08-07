@@ -47,11 +47,14 @@ last line is cut with a full stop. It is never dropped in silence.
 | Poll loop, every 10 minutes | `transactions_worker` in `sports_ticker/workers.py` | Done |
 | Push route | `sports_ticker/routes/news.py` | Done |
 | Delivery through `/data` | `_news_for_ticker` in `sports_ticker/routes/state.py` | Done |
-| Banner drawing on the panel | `tools/render_news_banner_concepts.py` | **Concept only** |
+| Banner drawing on the panel | `ticker_controller/modes/news_banner.py` | Done |
 
-The controller does not draw the banner yet. The concept renderer produces the
-artwork, and it has to be moved into `ticker_controller/modes/` and driven from
-`render_loop` before anything reaches a panel.
+The banner rides on the scroll rather than replacing it. A score alert freezes
+the strip and blocks the render loop; this is applied to each ordinary scroll
+frame instead, so the strip keeps moving in the half beside it and the scroll
+cadence is untouched.
+
+Render previews with `python toolsender_news_banner.py`.
 
 ## Test pages
 

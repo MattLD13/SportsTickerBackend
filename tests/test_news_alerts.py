@@ -148,3 +148,40 @@ def test_news_tester_page_renders(client):
     html = client.get('/debug/news').get_data(as_text=True)
     for want in ('Blues (NHL)', 'Rangers (NHL)', 'Cardinals (MLB)', 'Giants (NFL)', 'Board'):
         assert want in html
+
+
+def test_banner_rides_on_the_scroll_without_stopping_it():
+    """The one real difference from the score alert.
+
+    A score alert freezes the strip and blocks the loop. A banner holds the
+    left half while the right half keeps moving, so nothing is lost while it
+    is up.
+    """
+    from PIL import Image
+    from ticker_controller.config import PANEL_H, PANEL_W
+    from ticker_controller.modes.news_banner import (
+        BANNER_W, NewsBannerMixin, news_banner_duration, wrap_lines,
+    )
+
+    class _R(NewsBannerMixin):
+        pass
+
+    r = _R()
+    item = {'kind': 'TRADE', 'domain': 'sports', 'from_abbr': 'CHI',
+            'from_color': '#CF0A2C', 'to_abbr': 'STL', 'to_color': '#002F87',
+            'text': 'Andre Burakovsky for a 2027 second'}
+
+    # Two different scroll frames, the banner at the same point in its life.
+    red = Image.new('RGB', (PANEL_W, PANEL_H), (200, 0, 0))
+    blue = Image.new('RGB', (PANEL_W, PANEL_H), (0, 0, 200))
+    a = r.apply_news_banner(red, item, 2.0)
+    b = r.apply_news_banner(blue, item, 2.0)
+
+    assert a.crop((0, 0, BANNER_W, PANEL_H)).tobytes() == b.crop((0, 0, BANNER_W, PANEL_H)).tobytes()
+    assert a.getpixel((PANEL_W - 4, 16)) == (200, 0, 0)      # the ticker shows through
+    assert b.getpixel((PANEL_W - 4, 16)) == (0, 0, 200)
+
+    # Stock news gets a third line; a trade gets two.
+    assert len(wrap_lines('a ' * 60, max_lines=3)) == 3
+    assert len(wrap_lines('a ' * 60, max_lines=2)) == 2
+    assert news_banner_duration({'domain': 'stocks'}) > news_banner_duration(item)

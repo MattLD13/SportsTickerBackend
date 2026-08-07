@@ -42,18 +42,23 @@ from .modes.indycar import (
 from .modes.f1 import F1Mixin
 from .modes.nascar import NascarMixin
 from .modes.score_alert import ScoreAlertMixin, score_alert_duration
+from .modes.news_banner import NewsBannerMixin, news_banner_duration
 
 # An alert is only worth showing while it is still news. A board that was
 # asleep, mid-update, or offline when the run scored should not celebrate it
 # minutes later, so anything older than this is dropped rather than queued.
 SCORE_ALERT_MAX_AGE = 60.0
 
+# A banner is news, not a score. Five minutes late is still worth reading,
+# where a run that has already scrolled past is not.
+NEWS_BANNER_MAX_AGE = 300.0
+
 # Target period for non-scrolling frames (~30fps). Scrolling uses scroll_sleep,
 # which the backend exposes as the user-facing "scroll_speed" setting.
 FRAME_INTERVAL = 0.033
 
 
-class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin, IndycarMixin, F1Mixin, NascarMixin, ScoreAlertMixin):
+class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin, IndycarMixin, F1Mixin, NascarMixin, ScoreAlertMixin, NewsBannerMixin):
     def __init__(self):
         print("Starting Ticker System...")
         self.device_id = get_device_id()
@@ -134,6 +139,12 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         # Score alerts: queued by the poller, drained by the render loop.
         self.pending_alerts = []
         self.seen_alert_ids = {}
+
+        # News banners: same intake, but they ride on the scroll rather than
+        # replacing it, so the render loop holds one as running state.
+        self.pending_news = []
+        self.seen_news_ids = {}
+        self.active_banner = None       # (item, started_at) while one is up
 
         # Music state
         self.VINYL_SIZE = 51
@@ -299,6 +310,40 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         cutoff = now - 600
         for stale in [k for k, ts in self.seen_alert_ids.items() if ts < cutoff]:
             del self.seen_alert_ids[stale]
+
+    def _queue_news_banners(self, payload):
+        """Take newly-seen news banners off a /data response."""
+        items = payload.get('news')
+        if not isinstance(items, list):
+            return
+        now = time.monotonic()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get('id', ''))
+            if not item_id or item_id in self.seen_news_ids:
+                continue
+            self.seen_news_ids[item_id] = now
+            self.pending_news.append((now, item))
+            print(f"  News banner: {item.get('from_abbr')} -> {item.get('to_abbr')} "
+                  f"{item.get('text', '')[:40]}")
+
+        cutoff = now - 3600
+        for stale in [k for k, ts in self.seen_news_ids.items() if ts < cutoff]:
+            del self.seen_news_ids[stale]
+
+    def _next_news_banner(self):
+        """Pop the oldest banner still worth showing.
+
+        A banner is news rather than a score, so it keeps far longer than an
+        alert: five minutes late is still worth reading, where a run is not.
+        """
+        now = time.monotonic()
+        while self.pending_news:
+            queued_at, item = self.pending_news.pop(0)
+            if now - queued_at <= NEWS_BANNER_MAX_AGE:
+                return item
+        return None
 
     def _next_score_alert(self):
         """Pop the oldest alert still worth showing, dropping any that expired."""
@@ -921,6 +966,21 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                                 continue
                     x = int(strip_offset)
                     view = self.active_strip.crop((x, 0, x + PANEL_W, PANEL_H))
+
+                    # A banner rides on top of the scroll rather than replacing
+                    # it, so the strip keeps moving in the half beside it.
+                    if self.active_banner is None and self.pending_news:
+                        item = self._next_news_banner()
+                        if item is not None:
+                            self.active_banner = (item, time.monotonic())
+                    if self.active_banner is not None:
+                        item, started = self.active_banner
+                        elapsed = time.monotonic() - started
+                        if elapsed >= news_banner_duration(item):
+                            self.active_banner = None
+                        else:
+                            view = self.apply_news_banner(view, item, elapsed)
+
                     self.update_display(view)
                     strip_offset += 1
                     if self.scroll_sleep > 0:
@@ -1026,6 +1086,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                 self.inverted = local_conf.get('inverted', False)
 
                 self._queue_score_alerts(data)
+                self._queue_news_banners(data)
 
                 content = data.get('content', {})
                 new_games = content.get('sports', [])
