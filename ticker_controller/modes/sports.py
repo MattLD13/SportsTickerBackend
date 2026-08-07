@@ -948,15 +948,17 @@ class SportsMixin:
         # stripes are only six levels apart so the mow reads as texture instead
         # of banding. Preview renders will not show this — verify on hardware.
         #
-        # The dirt is a light sand rather than a dark clay. It carries real blue,
-        # which is what keeps it off yellow — a warm colour starved of blue reads
-        # yellow, not tan. Note it is the largest bright area on the card and so
-        # the first thing to pull the chain past its current limit, and blue is
-        # what starves first when that happens; if it ever yellows under load,
-        # that is the supply, not this value.
+        # The dirt carries real blue, which is what keeps it off yellow — a warm
+        # colour starved of blue has nowhere to sit but yellow, and at 4% of red
+        # the old value did not have enough to stay brown. Green is the lever if
+        # it ever drifts yellow again, not red: green relative to red is what
+        # reads as yellow, and this sits at about half. It is also the largest
+        # bright area on the card, so it is the first thing to pull the chain
+        # past its current limit — but at 44% total emitted duty it now asks for
+        # slightly less than the value it replaced.
         GRASS_A = (8, 28, 4)
         GRASS_B = (11, 34, 6)
-        DIRT    = (203, 189, 147)   # #CBBD93
+        DIRT    = (153, 111, 49)   # #996F31
         CHALK   = (232, 232, 232)
 
         cx = W // 2
