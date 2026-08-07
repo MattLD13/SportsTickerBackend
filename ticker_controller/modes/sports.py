@@ -53,6 +53,31 @@ class SportsMixin:
     def draw_baseball_hud(self, draw, x, y, o):
         for i in range(3): draw.rectangle((x+(i*4), y, x+(i*4)+1, y+1), fill=((255, 0, 0) if i < o else (40, 40, 40)))
 
+    def _draw_side_scrims(self, img, W, H, solid=28, fade=62, peak=252):
+        """Darken both edges so text and logos stay readable over the field.
+
+        A flat block followed by a straight ramp is continuous in value but not
+        in slope: it goes from level to -3/px in one pixel, which reads as a
+        hard edge where the solid core ends, and the linear tail bands against
+        the alternating grass stripes before stopping abruptly at zero.
+        Smoothstep is flat at both ends, so the core joins the ramp seamlessly
+        and the ramp dies into the field instead of ending on an edge.
+
+        Composited as a separate overlay because drawing alpha ink straight
+        onto an RGBA image replaces pixels rather than blending them.
+        """
+        scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(scrim)
+        for x in range(solid + fade):
+            if x < solid:
+                a = peak
+            else:
+                t = (x - solid) / fade
+                a = int(round(peak * (1 - t * t * (3 - 2 * t))))
+            sd.line([(x, 0), (x, H)], fill=(0, 0, 0, a))
+            sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
+        img.alpha_composite(scrim)
+
     def draw_sport_full_bleed(self, game):
         W = PANEL_W; H = PANEL_H
         img = Image.new("RGBA", (W, H), (0, 0, 0, 255))
@@ -456,17 +481,8 @@ class SportsMixin:
             strikes = sit.get('strikes', 0)
             outs    = sit.get('outs',    0)
 
-            # ── Step 1: side scrims via alpha_composite (correct blending) ──
-            # Drawing alpha lines directly on RGBA replaces pixels instead of blending.
-            # Use a separate overlay and alpha_composite onto the base image.
-            scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-            sd = ImageDraw.Draw(scrim)
-            SOLID, FADE = 45, 80
-            for x in range(SOLID + FADE):
-                a = 250 if x < SOLID else max(0, int(250 * (SOLID + FADE - x) / FADE))
-                sd.line([(x, 0),         (x, H)],         fill=(0, 0, 0, a))
-                sd.line([(W - 1 - x, 0), (W - 1 - x, H)], fill=(0, 0, 0, a))
-            img.alpha_composite(scrim)
+            # ── Step 1: side scrims ─────────────────────────────────────────
+            self._draw_side_scrims(img, W, H)
             # ── Step 2: challenge indicator bars ────────────────────────────────
             # Full-mode MLB spec:
             # - 4px-wide full-height connected team-color strip
