@@ -116,3 +116,27 @@ def test_nfl_trade_parsing():
     assert _nfl_text(desc) == 'S Kyle Dugger'
     # The acting club never matches itself.
     assert _counterparty("Traded RB Tank Bigsby to Philadelphia", needles, 'PHI') == ''
+
+
+def test_nhl_headline_parsing():
+    """Three headline forms cover the league, and each names both clubs.
+
+    Reading a headline is safe here because both halves are closed sets: the
+    club is one of 32, the verb is one of two. Anything else is skipped, so an
+    unreadable headline costs a missed banner and never a wrong one.
+    """
+    from sports_ticker.fetchers.transactions import _nhl_parse
+    names = {'panthers': 'FLA', 'golden knights': 'VGK', 'canadiens': 'MTL',
+             'anaheim ducks': 'ANA', 'anaheim': 'ANA', 'vancouver canucks': 'VAN'}
+
+    # NHL.com form: the clubs are both in the headline, so no tag is needed.
+    assert _nhl_parse("Schmid traded to Panthers by Golden Knights for a pick",
+                      '', names)[:2] == ('VGK', 'FLA')
+    # Club form, inbound. The acting club comes from the teamid tag.
+    assert _nhl_parse("Canadiens acquire forward Sasha Pastujov from the Anaheim Ducks",
+                      'MTL', names)[:2] == ('ANA', 'MTL')
+    # Club form, outbound.
+    assert _nhl_parse("Canadiens trade Brendan Gallagher to the Vancouver Canucks",
+                      'MTL', names)[:2] == ('MTL', 'VAN')
+    # Nothing readable, so nothing is drawn.
+    assert _nhl_parse("Notebook 7/1/26", 'MTL', names) == ('', '', '')

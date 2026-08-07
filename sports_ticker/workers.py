@@ -300,14 +300,16 @@ def housekeeping_worker():
 def transactions_worker():
     """Poll the MLB transaction feed for trades and signings.
 
-    MLB and the NFL publish feeds. The NHL and the NBA publish nothing, so
-    those reach the banner through POST /api/news. See docs/news-banner.md.
+    MLB, the NFL, and the NHL are covered. The NBA publishes nothing, so it
+    reaches the banner through POST /api/news. See docs/news-banner.md.
 
     Trades land in bursts around a deadline and are quiet for weeks either
     side, so this runs on a slow loop. Nothing on screen depends on catching
     one within seconds.
     """
-    from .fetchers.transactions import fetch_mlb_transactions, fetch_nfl_transactions
+    from .fetchers.transactions import (
+        fetch_mlb_transactions, fetch_nfl_transactions, fetch_nhl_transactions,
+    )
     from .services.news_alerts import news_alerts, pick_team_color
 
     def _color(league, abbr):
@@ -318,7 +320,8 @@ def transactions_worker():
 
     while True:
         for league, fetch in (('MLB', fetch_mlb_transactions),
-                              ('NFL', fetch_nfl_transactions)):
+                              ('NFL', fetch_nfl_transactions),
+                              ('NHL', fetch_nhl_transactions)):
             try:
                 added = news_alerts.add_many(fetch(days_back=2, lookup_color=_color))
                 if added:

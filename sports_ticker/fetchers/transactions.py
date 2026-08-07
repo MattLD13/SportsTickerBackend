@@ -1,17 +1,21 @@
 """Read real trades from the league feeds.
 
-MLB and the NFL are here. Neither the NHL nor the NBA publishes anything, so
-those reach the banner through POST /api/news. See docs/news-banner.md.
+MLB, the NFL, and the NHL are here. The NBA publishes nothing, so it reaches
+the banner through POST /api/news. See docs/news-banner.md.
 
-The two leagues need different handling:
+Each league needs different handling:
 
 * MLB gives every field separated. Kind, player, old club and new club all
   arrive as data, and nothing is read out of a sentence.
-* The NFL gives the acting club as data and the rest as English. The other club
-  is named in the description, and that is safe to read only because club names
-  are a closed set of 32. Matching "Philadelphia" against a known list is a
-  lookup. It is not the same as guessing at a word, which is how every
-  touchdown pass thrown by Kenny Pickett once became a PICK SIX.
+* The NFL gives the acting club as data and the rest as English.
+* The NHL gives no transaction feed at all, but it tags its own stories. A
+  `transactions` tag says a move happened and a `teamid` tag says who acted.
+
+Where a club has to be read out of English, it is matched against the league's
+own list of clubs. That is a lookup against a closed set, not a guess at a
+word, which is what turned every touchdown pass thrown by Kenny Pickett into a
+PICK SIX. A headline that does not resolve is skipped, so the failure is a
+missing banner rather than a wrong one.
 """
 
 import re
@@ -325,5 +329,187 @@ def fetch_nfl_transactions(season=None, session=None, lookup_color=None,
             teams=[acting, other],
             item_id=make_id('nfl', row.get('date'), description),
             source='espn-core',
+        ))
+    return items
+
+
+# ── NHL ──────────────────────────────────────────────────────────────────────
+
+FORGE = 'https://forge-dapi.d3.nhle.com/v2/content/en-us/stories'
+NHL_STANDINGS = 'https://api-web.nhle.com/v1/standings/now'
+NHL_TEAMS = 'https://api.nhle.com/stats/rest/en/team'
+
+_NHL_CACHE = {'ts': 0.0, 'by_id': {}, 'names': {}}
+
+
+def _nhl_teams(session=None):
+    """NHL team ids and club names, restricted to the 32 clubs that exist now.
+
+    The stats endpoint lists 62 franchises, including ones folded a century
+    ago. Left unfiltered, "Toronto" matches the 1918 Arenas and a Maple Leafs
+    trade is drawn as TAN.
+    """
+    now = time.time()
+    if _NHL_CACHE['by_id'] and (now - _NHL_CACHE['ts']) < _TEAM_TTL:
+        return _NHL_CACHE['by_id'], _NHL_CACHE['names']
+    try:
+        get = (session or requests).get
+        current, names = set(), {}
+        r = get(NHL_STANDINGS, headers=HEADERS, timeout=TIMEOUT)
+        if r.status_code != 200:
+            return _NHL_CACHE['by_id'], _NHL_CACHE['names']
+        for row in r.json().get('standings', []):
+            tri = (row.get('teamAbbrev') or {}).get('default')
+            if not tri:
+                continue
+            current.add(tri)
+            for key in ('teamName', 'teamCommonName', 'placeName'):
+                value = (row.get(key) or {}).get('default')
+                if value:
+                    names[value.lower()] = tri
+
+        r = get(NHL_TEAMS, headers=HEADERS, timeout=TIMEOUT)
+        by_id = {t['id']: t['triCode'] for t in (r.json().get('data') or [])
+                 if r.status_code == 200 and t.get('triCode') in current}
+        if by_id and names:
+            _NHL_CACHE.update({'by_id': by_id, 'names': names, 'ts': now})
+    except Exception as exc:
+        print(f"[TRANSACTIONS] NHL team map failed: {exc}")
+    return _NHL_CACHE['by_id'], _NHL_CACHE['names']
+
+
+def _nhl_other_club(text, acting, names):
+    """The club named in the headline, matched against the 32 that exist."""
+    low = str(text or '').lower()
+    for name in sorted(names, key=len, reverse=True):
+        # Three letters or fewer would match inside ordinary words.
+        if len(name) > 3 and name in low and names[name] != acting:
+            return names[name]
+    return ''
+
+
+def _nhl_parse(title, acting, names):
+    """Return ``(from_abbr, to_abbr, detail)`` for a trade headline.
+
+    Three forms cover the league. NHL.com writes "Schmid traded to Panthers by
+    Golden Knights". A club writes either "Canadiens acquire Pastujov from the
+    Anaheim Ducks" or "Canadiens trade Gallagher to the Vancouver Canucks".
+
+    Reading a headline is only safe here because both halves are closed sets:
+    the club is one of 32, and the verb is one of two. Anything that does not
+    fit is skipped, so a headline this cannot read costs a missed banner and
+    never a wrong one.
+    """
+    title = str(title or '')
+
+    explicit = re.search(r'^(.*?)\s+trade[d]?\s+to\s+(.+?)\s+by\s+(.+?)(?:\s+for\b|$)',
+                         title, re.I)
+    if explicit:
+        player, to_part, from_part = explicit.groups()
+        return (_nhl_other_club(from_part, '', names),
+                _nhl_other_club(to_part, '', names),
+                player.strip())
+
+    if not acting:
+        return '', '', ''
+
+    inbound = re.search(r'\bacquires?\b(.*?)(?:\s+from\b|$)', title, re.I)
+    if inbound:
+        return _nhl_other_club(title, acting, names), acting, inbound.group(1).strip()
+
+    outbound = re.search(r'\btrades?\b(.*?)(?:\s+to\b|$)', title, re.I)
+    if outbound:
+        return acting, _nhl_other_club(title, acting, names), outbound.group(1).strip()
+
+    return '', '', ''
+
+
+def _nhl_text(detail, title):
+    """Trim the headline down to the piece that moved."""
+    text = re.sub(r'\s*\|.*$', '', str(detail or '')).strip(' ,')
+    text = re.sub(r'^(forward|defenseman|defenceman|goaltender|goalie|centre|center)\s+',
+                  '', text, flags=re.I)
+    if not text:
+        text = re.sub(r'\s*\|.*$', '', str(title or ''))
+    return ' '.join(text.split())[:90]
+
+
+def fetch_nhl_transactions(days_back=2, session=None, lookup_color=None, pages=2):
+    """Return banner items for recent NHL trades.
+
+    The league publishes no transaction feed. It does publish its stories
+    through a content API, and it tags them itself: a story carries a
+    ``transactions`` tag and a ``teamid-N`` tag. That tag is the authority on
+    what a story is about, so nothing here has to decide from prose whether a
+    move happened. Only the two clubs and the direction come from the headline.
+
+    Both clubs often publish the same trade, so one deal is kept per pair of
+    clubs per day.
+    """
+    cutoff = ('' if days_back is None
+              else time.strftime('%Y-%m-%d', time.localtime(time.time() - days_back * 86400)))
+
+    stories = []
+    try:
+        get = (session or requests).get
+        for page in range(max(1, pages)):
+            # The URL is built by hand. This API takes "$limit" and "$skip",
+            # and requests percent-encodes the dollar sign, which the server
+            # then ignores: every page comes back as the same default 25 rows.
+            r = get(f'{FORGE}?tags.slug=transactions&$limit=100&$skip={page * 100}',
+                    headers=HEADERS, timeout=TIMEOUT)
+            if r.status_code != 200:
+                break
+            batch = r.json().get('items', []) or []
+            if not batch:
+                break
+            stories += batch
+    except Exception as exc:
+        print(f"[TRANSACTIONS] NHL fetch failed: {exc}")
+        return []
+
+    by_id, names = _nhl_teams(session)
+    if not by_id:
+        return []
+
+    items, seen_pairs = [], set()
+    for story in stories:
+        date = str(story.get('contentDate') or '')[:10]
+        if cutoff and date < cutoff:
+            continue
+        title = str(story.get('headline') or story.get('title') or '')
+        if not re.search(r'\btrade[sd]?\b|\bacquires?\b', title, re.I):
+            continue
+
+        tags = [str(t.get('slug') or '') for t in (story.get('tags') or [])]
+        team_id = next((int(t.split('-')[1]) for t in tags
+                        if t.startswith('teamid-') and t.split('-')[1].isdigit()), None)
+        acting = by_id.get(team_id, '')
+
+        from_abbr, to_abbr, detail = _nhl_parse(title, acting, names)
+        if not from_abbr or not to_abbr or from_abbr == to_abbr:
+            continue
+
+        pair = (date, frozenset((from_abbr, to_abbr)))
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+
+        from_color = to_color = ''
+        if lookup_color:
+            from_color = lookup_color('nhl', from_abbr)
+            to_color = lookup_color('nhl', to_abbr)
+
+        items.append(build_item(
+            kind='TRADE',
+            text=_nhl_text(detail, title),
+            sport='nhl',
+            from_abbr=from_abbr,
+            to_abbr=to_abbr,
+            from_color=from_color,
+            to_color=to_color,
+            teams=[from_abbr, to_abbr],
+            item_id=make_id('nhl', date, from_abbr, to_abbr),
+            source='nhl-forge',
         ))
     return items

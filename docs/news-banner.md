@@ -42,6 +42,7 @@ last line is cut with a full stop. It is never dropped in silence.
 | Item store | `sports_ticker/services/news_alerts.py` | Done |
 | MLB trades and signings | `sports_ticker/fetchers/transactions.py` | Done |
 | NFL trades | `sports_ticker/fetchers/transactions.py` | Done |
+| NHL trades | `sports_ticker/fetchers/transactions.py` | Done |
 | Poll loop, every 10 minutes | `transactions_worker` in `sports_ticker/workers.py` | Done |
 | Push route | `sports_ticker/routes/news.py` | Done |
 | Delivery through `/data` | `_news_for_ticker` in `sports_ticker/routes/state.py` | Done |
@@ -77,7 +78,7 @@ This is the part that decides what can ever be automatic.
 |---|---|---|---|---|
 | MLB | `statsapi.mlb.com/api/v1/transactions` | yes | yes | **Built** |
 | NFL | ESPN core API | in the sentence | by name lookup | **Built** |
-| NHL | none | — | — | Push route only |
+| NHL | NHL forge content API | in the headline | by name lookup | **Built** |
 | NBA | none | — | — | Push route only |
 
 ### MLB, which is built
@@ -124,12 +125,43 @@ Four things the feed does that the fetcher corrects:
 4. **Trades are rare.** A full season carried 5, against 1276 transactions. The
    rest are signings and releases, which are roster churn rather than news.
 
-### NHL and NBA, which have no source
+### NHL, which is built
 
-Neither league publishes a transactions endpoint. For the NHL I probed seven
-paths across `api-web.nhle.com`, `api.nhle.com`, and `records.nhl.com`. All
-returned 404 while three endpoints the app already uses answered normally at the
-same moment, so the requests were sound and the paths simply do not exist.
+The league publishes no transaction feed, but it does publish its stories, and
+it tags them itself:
+
+    https://forge-dapi.d3.nhle.com/v2/content/en-us/stories?tags.slug=transactions
+
+A story carries a `transactions` tag and a `teamid-N` tag. The tag is the
+authority on what the story is about, so nothing has to decide from prose
+whether a move happened. Only the two clubs and the direction are read from the
+headline, and both are closed sets: the club is one of 32, the verb is one of
+two.
+
+Three headline forms cover the league. NHL.com writes "Schmid traded to Panthers
+by Golden Knights". A club writes "Canadiens acquire Pastujov from the Anaheim
+Ducks" or "Canadiens trade Gallagher to the Vancouver Canucks".
+
+Across 1200 tagged stories this resolves 84 percent of trade headlines. The rest
+are skipped. That is the safe direction: a headline it cannot read costs a
+missed banner, never a wrong one.
+
+Three traps:
+
+1. **The stats endpoint lists 62 franchises**, including clubs folded a century
+   ago. Unfiltered, "Toronto" matches the 1918 Arenas and a Maple Leafs trade is
+   drawn as TAN. Only the 32 in the current standings count.
+2. **`requests` breaks the pagination.** The API takes `$limit` and `$skip`, and
+   requests percent-encodes the dollar sign, which the server ignores. Every
+   page then returns the same default 25 rows. The URL is built by hand.
+3. **Both clubs publish the same trade**, so one deal is kept per pair of clubs
+   per day.
+
+### The NBA, which has no source
+
+The NBA publishes no transactions endpoint. `stats.nba.com/stats/leaguetransactions`
+returns 404 under headers that `commonteamyears` and `playerindex` accept, so the
+request is sound and the path does not exist.
 
 Three further routes were tested and all failed:
 
@@ -137,11 +169,9 @@ Three further routes were tested and all failed:
   idea was that a trade would tag both clubs. It does not work. 32 of 50 MLB
   articles tag exactly two clubs, because a game preview names two clubs. The
   NHL feed even tags a hockey story with the Miami Heat.
-* **NBA `stats.nba.com/stats/leaguetransactions`.** Returns 404. The headers are
-  right, because `commonteamyears` and `playerindex` answer with the same ones.
 * **ProSportsTransactions.** Blocks automated requests.
 
-**To build either one, something has to supply the data:**
+**To build it, something has to supply the data:**
 
 1. **A paid provider.** Sportradar and Stats Perform both carry transactions for
    all four leagues, with the clubs as fields. This is the only route that gives
@@ -149,7 +179,7 @@ Three further routes were tested and all failed:
 2. **A site that publishes structured moves**, such as PuckPedia or Spotrac.
    Neither offers a documented free API, so this means scraping, which breaks
    without warning.
-3. **The push route.** Already built, and it covers both leagues today.
+3. **The push route.** Already built, and it covers the NBA today.
 
 **Do not keyword-match news headlines.** ESPN's news feed is the only other
 thing on offer, and using it means reading English to decide what happened. The
