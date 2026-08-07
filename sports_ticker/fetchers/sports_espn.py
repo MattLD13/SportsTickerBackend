@@ -1,5 +1,6 @@
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
+from .football_situation import normalize_football_situation
 from .test_mode import TestMode
 
 # Finished games self-evict once they age out of the visibility window, but
@@ -249,8 +250,9 @@ class SportsEspnMixin:
                 if str(poss_raw) == str(h['team'].get('id')): poss_abbr = h_ab
                 elif str(poss_raw) == str(a['team'].get('id')): poss_abbr = a_ab
                 
-                down_text = sit.get('downDistanceText') or sit.get('shortDownDistanceText') or ''
-                if s_disp == "Halftime": down_text = ''
+                fb_sit = normalize_football_situation(
+                    sit, poss_abbr, h_ab, a_ab, halftime=(s_disp == "Halftime")
+                )
 
                 game_obj = {
                     'type': 'scoreboard', 'sport': league_key, 'id': gid, 'status': s_disp, 'state': gst, 'is_shown': True,
@@ -268,10 +270,7 @@ class SportsEspnMixin:
                     'situation': {
                         'possession': poss_abbr,
                         'isRedZone': sit.get('isRedZone', False),
-                        'downDist': down_text,
-                        'yardLine': sit.get('yardLine'),
-                        'yardsToGo': sit.get('distance'),
-                        'possessionTeam': sit.get('possessionText', ''),
+                        **fb_sit,
                         'shootout': shootout_data,
                         'powerPlay': False,
                         'emptyNet': False

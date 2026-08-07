@@ -3,6 +3,7 @@ import traceback
 
 from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
+from .football_situation import normalize_football_situation
 from .sports_modes_common import _sports_no_games_placeholder
 from .test_mode import TestMode
 
@@ -329,10 +330,13 @@ class SportsModesMixin:
             if not poss_abbr and str(poss_raw).upper() == h_ab: poss_abbr = h_ab
             elif not poss_abbr and str(poss_raw).upper() == a_ab: poss_abbr = a_ab
 
-            # Prefer competition situation downDistanceText (includes position "at TEAM YARD")
-            down_text = (comp_sit.get('downDistanceText') or comp_sit.get('shortDownDistanceText')
-                         or sit_data.get('shortDownDistanceText') or sit_data.get('description') or '')
-            if s_disp == "Halftime": down_text = ''
+            # The competition situation carries the numeric down/distance/yardLine;
+            # the live drive only ever has the short text.
+            fb_sit = normalize_football_situation(
+                comp_sit or sit_data, poss_abbr, h_ab, a_ab, halftime=(s_disp == "Halftime")
+            )
+            if not fb_sit['downDist'] and s_disp != "Halftime":
+                fb_sit['downDist'] = str(sit_data.get('shortDownDistanceText') or '').strip()
             is_rz = comp_sit.get('isRedZone', False) or sit_data.get('isRedZone', False)
 
             game_obj = {
@@ -346,10 +350,7 @@ class SportsModesMixin:
                 'situation': {
                     'possession': poss_abbr,
                     'isRedZone': is_rz,
-                    'downDist': down_text,
-                    'yardLine': comp_sit.get('yardLine'),
-                    'yardsToGo': comp_sit.get('distance'),
-                    'possessionTeam': comp_sit.get('possessionText', ''),
+                    **fb_sit,
                     'shootout': None,
                     'powerPlay': False,
                     'emptyNet': False,

@@ -140,89 +140,48 @@ class SportsMixin:
                 d.line([(hx, hT - hl), (hx, hT + hl)], fill=(255, 255, 255, op))
                 d.line([(hx, hB - hl), (hx, hB + hl)], fill=(255, 255, 255, op))
 
-            # 5 · Parse LOS and yards-to-go from situation
+            # 5 · Line of scrimmage and yards-to-go.
+            #     `los` is this card's own axis: 0 = left goal line, 100 = right.
+            #     Note the home_/away_ key swap at the top of this method — home_ab
+            #     here is the *visiting* team (drawn left), away_ab is the host.
+            #     ESPN's situation.yardLine is measured from the host's goal line
+            #     ("CAR 33" with ARI at home is 67), which sits at the right edge,
+            #     so the ESPN value is mirrored onto this axis exactly once.
+            dd_text = sit.get('downDist', '') or sit.get('downDistFull', '')
+            spot_text = sit.get('downDistFull', '') or sit.get('ballOn', '') or dd_text
+
             los, ytg = -1, 10
-            dd_text  = sit.get('downDist', '')
-            at_team = ''
-            is_goal_to_go = False
-            drive_to_right = None  # True => offense driving toward right endzone
-            parsed_yard = None
-            if ' at ' in dd_text:
-                after = dd_text.split(' at ', 1)[1].strip().split()
-                if len(after) >= 2:
-                    team, yard_s = after[0].upper(), after[1]
-                    at_team = team
+            espn_yl = sit.get('yardLine')
+            if espn_yl is not None:
+                los = max(0, min(100, 100 - int(espn_yl)))
+            elif ' at ' in spot_text:
+                # Fallback for payloads without the numeric field: "... at CAR 33".
+                after = spot_text.split(' at ', 1)[1].strip().split()
+                if len(after) == 1 and after[0] == '50':
+                    los = 50
+                elif len(after) >= 2:
+                    team = after[0].upper()
                     try:
-                        yard = int(yard_s)
-                        parsed_yard = yard
+                        yard = int(after[1])
                         los = yard if team == home_ab else (100 - yard if team == away_ab else 50)
                     except ValueError:
                         pass
-            if '&' in dd_text and los >= 0:
-                ytg_raw = dd_text.split('&', 1)[1].strip().split()[0].lower()
-                if ytg_raw in ('goal', 'gl'):
-                    is_goal_to_go = True
-                else:
-                    try: ytg = int(ytg_raw)
-                    except ValueError: ytg = 10
-            elif ' and ' in dd_text.lower() and los >= 0:
-                # ESPN downDistanceText uses "and" (e.g. "3rd and 7 at KC 48")
-                before_at = dd_text.split(' at ')[0] if ' at ' in dd_text else dd_text
-                parts = before_at.lower().split(' and ')
-                if len(parts) >= 2:
-                    ytg_raw = parts[1].strip().split()[0].rstrip('.,')
-                    if ytg_raw in ('goal', 'gl', 'goal:'):
-                        is_goal_to_go = True
-                    else:
-                        try: ytg = int(ytg_raw)
-                        except ValueError: pass
 
-            # Fallback: use numeric yardLine/yardsToGo fields if text parsing gave no LOS
-            if los < 0 and sit.get('yardLine') is not None:
-                raw_yl = int(sit.get('yardLine', 50))
-                pos_team = str(sit.get('possessionTeam', sit.get('yardLineTeam', ''))).upper()
-                if pos_team == home_ab:
-                    los = raw_yl
-                elif pos_team == away_ab:
-                    los = 100 - raw_yl
-                else:
-                    los = raw_yl if raw_yl <= 50 else 100 - raw_yl
-                if sit.get('yardsToGo') is not None:
-                    ytg = max(1, int(sit.get('yardsToGo', 10)))
+            if sit.get('yardsToGo') is not None:
+                ytg = max(1, int(sit['yardsToGo']))
+            elif '&' in dd_text:
+                ytg_raw = dd_text.split('&', 1)[1].strip().split()[0].lower().rstrip('.,')
+                try: ytg = max(1, int(ytg_raw))
+                except ValueError: ytg = 10
 
-            # Infer drive direction once and use it everywhere (FD line + red-zone).
-            if poss_ab == home_ab:
-                drive_to_right = True
-            elif poss_ab == away_ab:
-                drive_to_right = False
+            # Each team attacks the opposite end zone, so the visiting team (home_ab
+            # after the swap, drawn on the left) drives to the right.
+            drive_to_right = poss_ab != away_ab
 
-            # Goal-to-go marker is most reliable for direction when possession is noisy.
-            if is_goal_to_go and at_team:
-                if poss_ab in (home_ab, away_ab):
-                    if at_team == poss_ab:
-                        # Offense on its own side: attacking opposite endzone.
-                        drive_to_right = (poss_ab == home_ab)
-                    else:
-                        # Offense in opponent territory: attacking that side's endzone.
-                        drive_to_right = (at_team == away_ab)
-                elif at_team == home_ab:
-                    drive_to_right = False
-                elif at_team == away_ab:
-                    drive_to_right = True
-
-            if drive_to_right is None:
-                drive_to_right = True
-
+            is_goal_to_go = bool(sit.get('isGoalToGo')) or 'goal' in dd_text.lower()
             if is_goal_to_go and los >= 0:
-                if parsed_yard is not None:
-                    ytg = max(1, parsed_yard)
-                    los = max(0, min(100, 100 - parsed_yard if drive_to_right else parsed_yard))
-                else:
-                    goal_line = 100 if drive_to_right else 0
-                    ytg = max(1, abs(goal_line - los))
-                    # For goal-to-go visuals, place LOS near the attacking goal line
-                    # so the ball/FD/red-zone all live on the scoring side.
-                    los = max(0, min(100, 100 - ytg if drive_to_right else ytg))
+                # First down is the goal line itself, however short the distance reads.
+                ytg = max(1, (100 - los) if drive_to_right else los)
 
             # 6 · Red zone tint
             is_rz = sit.get('isRedZone', False)
@@ -239,7 +198,11 @@ class SportsMixin:
 
             # 7 · Center text overlay (period + context, matching HTML getBgText)
             prd     = self.shorten_status(game.get('status', ''), sport)
-            ctx     = dd_text.split(' at ')[0].strip() if ' at ' in dd_text else dd_text
+            # The field card has room for the spot ("1st & 10 at ARI 42"); the
+            # compact ticker row shows only the short "1st & 10".
+            ctx     = sit.get('downDistFull', '') or dd_text
+            if not ctx and dd_text and sit.get('ballOn'):
+                ctx = f"{dd_text} at {sit['ballOn']}"
             ctx_clr = (255, 136, 0) if is_rz else (240, 216, 0)
             cx_mid  = W // 2
             if prd or ctx:

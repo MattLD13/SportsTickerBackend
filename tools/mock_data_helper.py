@@ -81,7 +81,17 @@ def get_mock_payloads(mode, state_opt, away_abbr, home_abbr):
     
     # --- NFL MOCK ---
     if mode in ("nfl", "all"):
-        sit = {"down": "3rd", "togo": "4", "yardline": "NYG 32", "possession": home_abbr or "NYG"} if is_in_progress else {}
+        _home = home_abbr or "NYG"
+        sit = {
+            "possession": _home,
+            "downDist": "3rd & 4",
+            "downDistFull": f"3rd & 4 at {_home} 32",
+            "ballOn": f"{_home} 32",
+            "down": 3, "yardsToGo": 4,
+            "yardLine": 32,           # absolute: 0 = home goal line
+            "isGoalToGo": False,
+            "isRedZone": False,
+        } if is_in_progress else {}
         games.append(make_mock_game(
             sport="nfl",
             game_id=4012345,

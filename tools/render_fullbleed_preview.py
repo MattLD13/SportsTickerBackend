@@ -35,10 +35,14 @@ MOCK_GAMES = [
         away_score=24, home_score=27,
         status="Q4 - 1:47", state="in",
         situation={
-            "down": "3rd", "togo": "6", "yardline": "BUF 22",
             "possession": "KC",
-            "downDistanceText": "3rd & 6 at BUF 22",
-            "redZone": True,
+            "downDist": "3rd & 6",
+            "downDistFull": "3rd & 6 at BUF 12",
+            "ballOn": "BUF 12",
+            "down": 3, "yardsToGo": 6,
+            "yardLine": 88,           # absolute: 0 = home (KC) goal line
+            "isGoalToGo": False,
+            "isRedZone": True,
         }
     ) | {
         "home_color": "#E31837", "away_color": "#00338D",
