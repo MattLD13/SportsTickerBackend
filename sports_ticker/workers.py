@@ -300,14 +300,14 @@ def housekeeping_worker():
 def transactions_worker():
     """Poll the MLB transaction feed for trades and signings.
 
-    Only MLB has a feed that names both clubs. Everything else reaches the
-    banner through POST /api/news. See docs/news-banner.md.
+    MLB and the NFL publish feeds. The NHL and the NBA publish nothing, so
+    those reach the banner through POST /api/news. See docs/news-banner.md.
 
     Trades land in bursts around a deadline and are quiet for weeks either
     side, so this runs on a slow loop. Nothing on screen depends on catching
     one within seconds.
     """
-    from .fetchers.transactions import fetch_mlb_transactions
+    from .fetchers.transactions import fetch_mlb_transactions, fetch_nfl_transactions
     from .services.news_alerts import news_alerts, pick_team_color
 
     def _color(league, abbr):
@@ -317,13 +317,14 @@ def transactions_worker():
             return '#8B93A3'
 
     while True:
-        try:
-            items = fetch_mlb_transactions(days_back=2, lookup_color=_color)
-            added = news_alerts.add_many(items)
-            if added:
-                print(f"[TRANSACTIONS] {len(added)} new MLB item(s)")
-        except Exception as e:
-            print(f"Transactions worker error: {e}")
+        for league, fetch in (('MLB', fetch_mlb_transactions),
+                              ('NFL', fetch_nfl_transactions)):
+            try:
+                added = news_alerts.add_many(fetch(days_back=2, lookup_color=_color))
+                if added:
+                    print(f"[TRANSACTIONS] {len(added)} new {league} item(s)")
+            except Exception as e:
+                print(f"Transactions worker error ({league}): {e}")
         time.sleep(600)
 
 

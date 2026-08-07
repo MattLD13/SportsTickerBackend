@@ -1,15 +1,20 @@
 """Read real trades from the league feeds.
 
-Only MLB is here, and that is a coverage fact rather than an omission. The
-league publishes its own transaction feed, free and without a key, and it gives
-the four fields the banner needs already separated: what kind of move, which
-player, which club he left, which club he joined. Nothing has to be read out of
-a sentence.
+MLB and the NFL are here. Neither the NHL nor the NBA publishes anything, so
+those reach the banner through POST /api/news. See docs/news-banner.md.
 
-No other league offers that today. See docs/news-banner.md for what each of the
-others would need.
+The two leagues need different handling:
+
+* MLB gives every field separated. Kind, player, old club and new club all
+  arrive as data, and nothing is read out of a sentence.
+* The NFL gives the acting club as data and the rest as English. The other club
+  is named in the description, and that is safe to read only because club names
+  are a closed set of 32. Matching "Philadelphia" against a known list is a
+  lookup. It is not the same as guessing at a word, which is how every
+  touchdown pass thrown by Kenny Pickett once became a PICK SIX.
 """
 
+import re
 import time
 
 import requests
@@ -183,4 +188,142 @@ def fetch_mlb_transactions(days_back=2, session=None, lookup_color=None):
         ))
 
     items.sort(key=lambda i: i['id'])
+    return items
+
+
+# ── NFL ──────────────────────────────────────────────────────────────────────
+
+ESPN_CORE = 'http://sports.core.api.espn.com/v2/sports/football/leagues/nfl'
+ESPN_SITE = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl'
+
+_NFL_CACHE = {'ts': 0.0, 'by_id': {}, 'needles': []}
+
+
+def _nfl_teams(session=None):
+    """ESPN team id to abbreviation, plus the names to search a sentence for.
+
+    Needles are sorted longest first so "New York Jets" wins over "New York",
+    and both Giants and Jets stay distinguishable.
+    """
+    now = time.time()
+    if _NFL_CACHE['by_id'] and (now - _NFL_CACHE['ts']) < _TEAM_TTL:
+        return _NFL_CACHE['by_id'], _NFL_CACHE['needles']
+    try:
+        get = (session or requests).get
+        r = get(f'{ESPN_SITE}/teams', headers=HEADERS, timeout=TIMEOUT)
+        if r.status_code == 200:
+            by_id, needles = {}, []
+            for entry in r.json()['sports'][0]['leagues'][0]['teams']:
+                team = entry.get('team') or {}
+                abbr = str(team.get('abbreviation') or '').upper()
+                if not abbr:
+                    continue
+                by_id[str(team.get('id'))] = abbr
+                for field in ('displayName', 'location', 'name'):
+                    value = str(team.get(field) or '').strip()
+                    if value:
+                        needles.append((value.lower(), abbr))
+            if by_id:
+                needles.sort(key=lambda n: len(n[0]), reverse=True)
+                _NFL_CACHE.update({'by_id': by_id, 'needles': needles, 'ts': now})
+    except Exception as exc:
+        print(f"[TRANSACTIONS] NFL team map failed: {exc}")
+    return _NFL_CACHE['by_id'], _NFL_CACHE['needles']
+
+
+def _counterparty(description, needles, acting):
+    """The other club in the sentence, matched against the closed set of 32."""
+    low = str(description or '').lower()
+    for needle, abbr in needles:
+        if abbr != acting and needle in low:
+            return abbr
+    return ''
+
+
+def _nfl_text(description):
+    """Keep the traded piece, drop the club and anything bundled after it.
+
+    ESPN writes unrelated moves into the same field: "Traded S Kyle Dugger to
+    the Pittsburgh Steelers. Signed S John Saunders Jr. to the active roster."
+    Only the first sentence is the trade.
+    """
+    text = str(description or '').split('.')[0]
+    text = re.sub(r'^\s*traded\s+', '', text, flags=re.I)
+    text = re.split(r'\s+to\s+(?:the\s+)?', text, maxsplit=1, flags=re.I)[0]
+    return ' '.join(text.split()).strip()
+
+
+def fetch_nfl_transactions(season=None, session=None, lookup_color=None,
+                           days_back=2, pages=1, limit=500):
+    """Return banner items for NFL trades.
+
+    Trades are rare. A whole season carried seven, against 1276 transactions in
+    total, so everything else here is a signing or a release and is roster churn
+    rather than news.
+
+    Both clubs file their own entry for one trade. Only the sending side is
+    kept, which reads "Traded X to Y", because the receiving side reads
+    "Received X from a trade with Y" and would draw the same deal backwards.
+
+    ESPN returns newest first, so one page covers about seven weeks. Rows older
+    than ``days_back`` are dropped: without that, the first run after a restart
+    would put every trade of the season on the panel at once.
+    """
+    season = season or time.strftime('%Y')
+    cutoff = ('' if days_back is None
+              else time.strftime('%Y-%m-%d', time.localtime(time.time() - days_back * 86400)))
+
+    rows = []
+    try:
+        get = (session or requests).get
+        for page in range(1, max(1, pages) + 1):
+            r = get(f'{ESPN_CORE}/seasons/{season}/transactions',
+                    params={'limit': limit, 'page': page},
+                    headers=HEADERS, timeout=TIMEOUT)
+            if r.status_code != 200:
+                break
+            body = r.json()
+            rows += body.get('items', []) or []
+            if page >= int(body.get('pageCount') or 1):
+                break
+    except Exception as exc:
+        print(f"[TRANSACTIONS] NFL fetch failed: {exc}")
+        return []
+
+    by_id, needles = _nfl_teams(session)
+    items = []
+    for row in rows:
+        description = str(row.get('description') or '')
+        if not re.match(r'\s*traded\b', description, re.I):
+            continue
+        if days_back is not None and str(row.get('date') or '')[:10] < cutoff:
+            continue
+
+        ref = str((row.get('team') or {}).get('$ref') or '')
+        match = re.search(r'/teams/(\d+)', ref)
+        acting = by_id.get(match.group(1)) if match else ''
+        if not acting:
+            continue
+
+        other = _counterparty(description, needles, acting)
+        if not other:
+            continue
+
+        from_color = to_color = ''
+        if lookup_color:
+            from_color = lookup_color('nfl', acting)
+            to_color = lookup_color('nfl', other)
+
+        items.append(build_item(
+            kind='TRADE',
+            text=_nfl_text(description),
+            sport='nfl',
+            from_abbr=acting,
+            to_abbr=other,
+            from_color=from_color,
+            to_color=to_color,
+            teams=[acting, other],
+            item_id=make_id('nfl', row.get('date'), description),
+            source='espn-core',
+        ))
     return items

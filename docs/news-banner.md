@@ -41,6 +41,7 @@ last line is cut with a full stop. It is never dropped in silence.
 |---|---|---|
 | Item store | `sports_ticker/services/news_alerts.py` | Done |
 | MLB trades and signings | `sports_ticker/fetchers/transactions.py` | Done |
+| NFL trades | `sports_ticker/fetchers/transactions.py` | Done |
 | Poll loop, every 10 minutes | `transactions_worker` in `sports_ticker/workers.py` | Done |
 | Push route | `sports_ticker/routes/news.py` | Done |
 | Delivery through `/data` | `_news_for_ticker` in `sports_ticker/routes/state.py` | Done |
@@ -75,9 +76,9 @@ This is the part that decides what can ever be automatic.
 | League | Source | Player | Both clubs | State |
 |---|---|---|---|---|
 | MLB | `statsapi.mlb.com/api/v1/transactions` | yes | yes | **Built** |
-| NFL | ESPN core API | in the sentence only | no | Needs work, see below |
-| NHL | none found | — | — | Blocked |
-| NBA | none found | — | — | Blocked |
+| NFL | ESPN core API | in the sentence | by name lookup | **Built** |
+| NHL | none | — | — | Push route only |
+| NBA | none | — | — | Push route only |
 
 ### MLB, which is built
 
@@ -95,27 +96,50 @@ Two things the feed does that the fetcher has to correct:
    club is parsed from the start of the sentence instead. Get this wrong and the
    arrow points against the detail printed under it.
 
-### NFL, which needs work
+### NFL, which is built
 
 ESPN carries transactions, but only for the NFL, and the path needs a season:
 
     http://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/2025/transactions
 
-Each item holds `date`, `description`, and one `team` reference. There is no
-player field and no counterparty. So the banner can show `--> NYG` and a
-sentence, but not `TB --> NYG`.
+Each item holds `date`, `description`, and one `team` reference. The acting club
+is data. Everything else is English.
 
-**To build it:** decide whether one club is enough. If it is, the work is small:
-resolve the `$ref` to a team, and reuse the MLB grouping. If both clubs are
-needed, the second club has to be read out of the sentence, which is guesswork
-and the reason this is not built.
+The other club is read out of the sentence, and that is safe here only because
+club names are a closed set of 32. Matching "Philadelphia" or "the Pittsburgh
+Steelers" against a known list is a lookup. It is not the same as guessing at a
+word, which is what turned every Kenny Pickett touchdown pass into a PICK SIX.
 
-### NHL and NBA, which are blocked
+Four things the feed does that the fetcher corrects:
+
+1. **Both clubs file the same trade.** One reads "Traded X to Y" and the other
+   "Received X from a trade with Y". Only the sending side is kept, or the same
+   deal is drawn twice, once backwards.
+2. **Unrelated moves share a field.** "Traded S Kyle Dugger to the Pittsburgh
+   Steelers. Signed S John Saunders Jr. to the active roster." Only the first
+   sentence is the trade.
+3. **Rows are newest first,** so one page covers about seven weeks. Anything
+   older than two days is dropped, or the first run after a restart puts a whole
+   season of trades on the panel at once.
+4. **Trades are rare.** A full season carried 5, against 1276 transactions. The
+   rest are signings and releases, which are roster churn rather than news.
+
+### NHL and NBA, which have no source
 
 Neither league publishes a transactions endpoint. For the NHL I probed seven
 paths across `api-web.nhle.com`, `api.nhle.com`, and `records.nhl.com`. All
 returned 404 while three endpoints the app already uses answered normally at the
 same moment, so the requests were sound and the paths simply do not exist.
+
+Three further routes were tested and all failed:
+
+* **ESPN news with team tags.** An article carries structured team ids, so the
+  idea was that a trade would tag both clubs. It does not work. 32 of 50 MLB
+  articles tag exactly two clubs, because a game preview names two clubs. The
+  NHL feed even tags a hockey story with the Miami Heat.
+* **NBA `stats.nba.com/stats/leaguetransactions`.** Returns 404. The headers are
+  right, because `commonteamyears` and `playerindex` answer with the same ones.
+* **ProSportsTransactions.** Blocks automated requests.
 
 **To build either one, something has to supply the data:**
 

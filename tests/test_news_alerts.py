@@ -95,3 +95,24 @@ def test_pick_team_color_never_returns_black():
     assert pick_team_color({'color': 'C41E3A', 'alt_color': '0C2340'}) == '#C41E3A'
     assert pick_team_color({'color': '000000', 'alt_color': 'FDB827'}) == '#FDB827'
     assert pick_team_color({}) == '#8B93A3'
+
+
+def test_nfl_trade_parsing():
+    """ESPN gives the acting club as data and the rest as English.
+
+    The other club is safe to read only because names are a closed set of 32,
+    so this is a lookup rather than a guess.
+    """
+    from sports_ticker.fetchers.transactions import _counterparty, _nfl_text
+    needles = sorted(
+        [('pittsburgh steelers', 'PIT'), ('pittsburgh', 'PIT'), ('steelers', 'PIT'),
+         ('philadelphia eagles', 'PHI'), ('philadelphia', 'PHI'), ('eagles', 'PHI'),
+         ('new england patriots', 'NE'), ('new england', 'NE')],
+        key=lambda n: len(n[0]), reverse=True)
+
+    desc = "Traded S Kyle Dugger to the Pittsburgh Steelers. Signed S John Saunders Jr."
+    assert _counterparty(desc, needles, 'NE') == 'PIT'
+    # Only the first sentence is the trade; the signing is a separate move.
+    assert _nfl_text(desc) == 'S Kyle Dugger'
+    # The acting club never matches itself.
+    assert _counterparty("Traded RB Tank Bigsby to Philadelphia", needles, 'PHI') == ''
