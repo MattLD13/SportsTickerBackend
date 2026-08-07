@@ -941,9 +941,15 @@ class SportsMixin:
         Bases are scan-converted for the same reason: a polygon with fractional
         vertices produces lopsided rows instead of a square on point.
         """
-        GRASS_A = (17, 41, 17)
-        GRASS_B = (21, 50, 21)
-        DIRT    = (158, 105, 68)
+        # Saturated on purpose. On the panel these read far more neutral than
+        # they do in a PNG preview: the old grass carried equal red and blue, so
+        # only its green margin separated it from grey, and it came out teal.
+        # The old dirt carried 68 of blue and came out pale pink. Keeping blue
+        # near zero leaves the hue somewhere to go once the panel washes it out.
+        # Preview renders will not show this — verify on hardware.
+        GRASS_A = (6, 38, 3)
+        GRASS_B = (10, 50, 6)
+        DIRT    = (172, 92, 30)
         CHALK   = (232, 232, 232)
 
         cx = W // 2
