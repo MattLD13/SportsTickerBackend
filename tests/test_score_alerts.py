@@ -200,3 +200,45 @@ def test_team_is_followed():
     assert not team_is_followed(teams, "nfl", "LV")    # bare abbr, ambiguous
     assert not team_is_followed(teams, "mlb", "")
     assert not team_is_followed(set(), "mlb", "NYY")
+
+
+# ── real ESPN play text ──────────────────────────────────────────────────────
+# Every string below is copied from an ESPN MLB summary feed, not invented.
+# ESPN writes the whole play as one sentence, so a clean hit and a runner who
+# advanced on a throw appear in the same line. That is what broke the first
+# version of the describer.
+
+REAL_PLAYS = [
+    # (runs, ESPN text, expected headline)
+    (4, "Durbin homered to left center (401 feet), Rafaela scored, Contreras scored and Yoshida scored.", "GRAND SLAM"),
+    (4, "Hicks homered to right (402 feet), Palacios scored, Walls scored and Aranda scored.", "GRAND SLAM"),
+    (3, "Neto homered to center (411 feet), Meckler and Schanuel scored.", "3-RUN HOMER"),
+    (2, "Serven homered to left center (391 feet), Butler scored.", "2-RUN HOMER"),
+    (1, "Pozo homered to left center (397 feet).", "SOLO HOMER"),
+    (1, "Schanuel hit sacrifice fly to right, Meckler scored, Trout to third.", "SAC FLY"),
+    (1, "Mesa Jr. hit sacrifice bunt to first, Walls scored.", "SAC BUNT"),
+    (2, "Soderstrom singled to center, Bolte and White scored, Heim to second.", "2-RUN SINGLE"),
+    (2, "Martinez singled to center, DeLauter scored and Ramirez scored, Lowe to second.", "2-RUN SINGLE"),
+    (1, "Suarez walked, McLain scored, Bleday to second, Stewart to third.", "WALKED IN"),
+
+    # A hit plus a fielding error on the same play is still the hit.
+    (1, "Dingler singled to right, Torres scored on throwing error by right fielder Ward, Dingler to second.", "RBI SINGLE"),
+    (2, "C. Montgomery singled to center, Vargas scored on error and Grichuk scored on throwing error.", "2-RUN SINGLE"),
+    (1, "Gilbert singled to right, Susac scored on fielding error by right fielder Nimmo.", "RBI SINGLE"),
+
+    # The run itself is charged to the error here, so the error is the story.
+    (1, "Crow-Armstrong scored on throwing error by catcher Valenzuela, Suzuki stole second.", "RUN ON ERROR"),
+
+    # A runner who takes a base on a throw did not score on it.
+    (1, "Baldwin grounded into fielder's choice to second, Thomas scored, Jarvis safe at second on fielding error.", "RUN SCORES"),
+
+    # "double play" must not read as a double.
+    (1, "Machado grounded into double play, shortstop to second to first, Tatis Jr. scored, Rengifo out at second.", "RUN SCORES"),
+    (1, "Butler grounded into double play, second to shortstop to first, Heim scored, Muncy out at second.", "RUN SCORES"),
+    (1, "Machado grounded out to shortstop, Cronenworth scored, Rengifo to second, Tatis Jr. to third.", "RUN SCORES"),
+]
+
+
+@pytest.mark.parametrize("runs,text,expected", REAL_PLAYS)
+def test_describer_on_real_espn_play_text(runs, text, expected):
+    assert describe_score('mlb', runs, {'text': text})[1] == expected

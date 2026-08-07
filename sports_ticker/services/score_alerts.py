@@ -16,6 +16,7 @@ same alert can be served to several devices, and to one device several times,
 without it firing twice.
 """
 
+import re
 import threading
 import time
 
@@ -95,22 +96,40 @@ def _describe_baseball(delta, play):
         return 'solo_hr', 'SOLO HOMER'
     if 'sacrifice fly' in text or 'sac fly' in text:
         return 'sac_fly', 'SAC FLY'
+    if 'sacrifice bunt' in text or 'sac bunt' in text:
+        return 'sac_bunt', 'SAC BUNT'
+
+    # Hits come before the error and wild-pitch checks. ESPN writes the whole
+    # play in one sentence, so a clean RBI single reads "Dingler singled to
+    # right, Torres scored on throwing error by right fielder Ward" when a
+    # second runner takes an extra base. An 'error' test placed first calls
+    # that play RUN ON ERROR, which is the wrong name for a single.
+    #
+    # The patterns need word boundaries. "grounded into double play" contains
+    # "double", and "to second" appears in almost every line.
+    for pattern, kind, noun in (
+        (r'\btripled\b|\btriple to\b', 'rbi_triple', 'TRIPLE'),
+        (r'\bdoubled\b|\bdouble to\b', 'rbi_double', 'DOUBLE'),
+        (r'\bsingled\b|\bsingle to\b', 'rbi_single', 'SINGLE'),
+    ):
+        if re.search(pattern, text):
+            return kind, (f"{delta}-RUN {noun}" if delta > 1 else f"RBI {noun}")
+
     if 'wild pitch' in text:
         return 'wild_pitch', 'WILD PITCH'
     if 'passed ball' in text:
         return 'passed_ball', 'PASSED BALL'
     if 'balk' in text:
         return 'balk', 'BALK'
-    if 'error' in text:
-        return 'error', 'RUN ON ERROR'
-    if 'walk' in text and 'walked' in text:
+    if 'walked' in text:
         return 'walk_in', 'WALKED IN'
-    if 'doubled' in text or 'double' == play.get('type', '').lower():
-        return 'rbi_double', f"{delta}-RUN DOUBLE" if delta > 1 else 'RBI DOUBLE'
-    if 'tripled' in text or 'triple' == play.get('type', '').lower():
-        return 'rbi_triple', f"{delta}-RUN TRIPLE" if delta > 1 else 'RBI TRIPLE'
-    if 'singled' in text or 'single' == play.get('type', '').lower():
-        return 'rbi_single', f"{delta}-RUN SINGLE" if delta > 1 else 'RBI SINGLE'
+
+    # Only when the run itself is charged to the error. A runner who takes an
+    # extra base on a throw ("Jarvis safe at second on error") did not score
+    # on it, and that play is a plain run.
+    if re.search(r'scored on [^,]*\berror\b', text):
+        return 'error', 'RUN ON ERROR'
+
     if delta >= 2:
         return 'runs', f"{delta} RUNS SCORE"
     return 'run', 'RUN SCORES'
