@@ -8,8 +8,10 @@ from ..core import (
     SPORTS_MODE_FAMILY, NON_SCOREBOARD_TYPES, HIDDEN_STATUS_KEYWORDS, _ACTIVE_STATES,
     _get_ticker_timezone_context, _apply_timezone_to_game_times,
     _materialize_blank_logo_urls, _maybe_update_ticker_timezone_from_request,
+    team_is_followed,
     SERVER_VERSION,
 )
+from ..services.score_alerts import score_alerts
 from ..workers import request_refresh, fetcher
 
 
@@ -62,6 +64,10 @@ def get_ticker_data():
         return jsonify({ "status": "pairing", "code": rec['pairing_code'], "ticker_id": ticker_id })
 
     t_settings = rec['settings']
+
+    # A ticker with no saved list falls back to the global one (always empty).
+    _ticker_teams = rec.get('my_teams')
+    followed_teams = set(state.get('my_teams', []) if _ticker_teams is None else _ticker_teams)
 
     # Per-ticker mode: use the ticker's own mode setting, fall back to global.
     # Dashboard previews may request any mode without persisting a ticker/global
@@ -153,15 +159,11 @@ def get_ticker_data():
             visible_items.append(music_obj or fetcher._music_placeholder_object())
 
     elif current_mode == 'my_teams':
-        _ticker_teams = rec.get('my_teams')
-        saved_teams = set(state.get('my_teams', []) if _ticker_teams is None else _ticker_teams)
-        COLLISION_ABBRS = {'LV'}
         for g in raw_games:
             sport = _sport_for_data_mode(g.get('sport', ''))
             if not active_sports.get(sport, True): continue
-            h_ab, a_ab = str(g.get('home_abbr', '')).upper(), str(g.get('away_abbr', '')).upper()
-            in_home = f"{sport}:{h_ab}" in saved_teams or (h_ab in saved_teams and h_ab not in COLLISION_ABBRS)
-            in_away = f"{sport}:{a_ab}" in saved_teams or (a_ab in saved_teams and a_ab not in COLLISION_ABBRS)
+            in_home = team_is_followed(followed_teams, sport, g.get('home_abbr'))
+            in_away = team_is_followed(followed_teams, sport, g.get('away_abbr'))
             if in_home or in_away:
                 g_copy = g.copy()
                 g_copy['sport'] = sport
@@ -276,15 +278,48 @@ def get_ticker_data():
         if rec.get('update_version'):
             g_config['update_version'] = rec['update_version']
         rec['update_requested'] = False
-        
+
     return jsonify({
         "status": "sleep" if is_sleep else "ok",
         "version": SERVER_VERSION,
         "ticker_id": ticker_id,
         "global_config": g_config,
         "local_config": response_local_config,
-        "content": { "sports": visible_items }
+        "content": { "sports": visible_items },
+        "alerts": _score_alerts_for_ticker(
+            t_settings, followed_teams, current_mode, delay_seconds, request),
     })
+
+
+def _score_alerts_for_ticker(t_settings, followed_teams, mode, delay_seconds, req):
+    """Recent scoring plays by a followed team, for the full-screen takeover.
+
+    Sports-family modes only. A board deliberately set to the weather, the
+    clock, a flight, or a race is not asking about scores, and a takeover there
+    reads as an interruption rather than an update. Within the family it stays
+    independent of the league filter, so a followed team still lights the panel
+    up even when its league is switched off.
+
+    Gated here rather than on the ticker so the decision follows the mode the
+    server actually resolved — a pinned golf or racing game remaps the mode,
+    and the board would otherwise alert over a leaderboard.
+
+    ``delay_seconds`` is the same live delay applied to the content above, and
+    it has to be applied here too or the takeover spoils the play before the
+    viewer's stream reaches it.
+    """
+    if mode not in SPORTS_MODE_FAMILY:
+        return []
+    if not followed_teams or not t_settings.get('score_alerts', True):
+        return []
+
+    alerts = [
+        a for a in score_alerts.recent(delay=delay_seconds)
+        if team_is_followed(followed_teams, a['sport'], a['team_abbr'])
+    ]
+    if alerts:
+        _materialize_blank_logo_urls(alerts, req, logo_keys=('team_logo', 'opp_logo'))
+    return alerts
 
 
 @app.route('/api/state', methods=['GET'])
@@ -373,7 +408,6 @@ def api_state():
         ]
     processed_games = []
     saved_teams = set(response_settings.get('my_teams', []))
-    COLLISION_ABBRS = {'LV'}
     _active_sports = state.get('active_sports', {})
 
     for g in raw_games:
@@ -386,10 +420,8 @@ def api_state():
             should_show = True
 
         if current_mode == 'my_teams':
-            h_ab = str(game_copy.get('home_abbr', '')).upper()
-            a_ab = str(game_copy.get('away_abbr', '')).upper()
-            in_home = f"{sport}:{h_ab}" in saved_teams or (h_ab in saved_teams and h_ab not in COLLISION_ABBRS)
-            in_away = f"{sport}:{a_ab}" in saved_teams or (a_ab in saved_teams and a_ab not in COLLISION_ABBRS)
+            in_home = team_is_followed(saved_teams, sport, game_copy.get('home_abbr'))
+            in_away = team_is_followed(saved_teams, sport, game_copy.get('away_abbr'))
             if not (in_home or in_away):
                 should_show = False
         elif current_mode == 'live':

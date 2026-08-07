@@ -268,6 +268,25 @@ SPORTS_MODE_FAMILY = ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'
 NON_SCOREBOARD_TYPES = ('music', 'clock', 'weather', 'stock_ticker', 'flight_visitor', 'masters')
 HIDDEN_STATUS_KEYWORDS = frozenset({"postponed", "suspended", "canceled", "ppd"})
 
+# Abbreviations that mean different teams in different leagues. A bare "LV" in
+# a followed-teams list cannot be resolved, so only the league-qualified form
+# counts for those.
+COLLISION_ABBRS = frozenset({'LV'})
+
+
+def team_is_followed(saved_teams, sport, abbr):
+    """True when a followed-teams list covers this team.
+
+    Entries are stored league-qualified ("mlb:NYY"); older ones are bare
+    abbreviations, which still match as long as they are unambiguous.
+    """
+    ab = str(abbr or '').upper()
+    if not ab or not saved_teams:
+        return False
+    if f"{str(sport or '').lower()}:{ab}" in saved_teams:
+        return True
+    return ab in saved_teams and ab not in COLLISION_ABBRS
+
 
 def normalize_mode(mode, fallback='sports'):
     normalized = MODE_MIGRATIONS.get(mode, mode)
@@ -339,6 +358,7 @@ DEFAULT_TICKER_SETTINGS = {
     "panel_count": 2,
     "live_delay_mode": False,
     "live_delay_seconds": 45,
+    "score_alerts": True,
     "utc_offset": -5,
     "timezone_name": "",
 }
@@ -628,17 +648,16 @@ def _blank_logo_url_for_request(req) -> str:
     return BLANK_LOGO_URL
 
 
-def _materialize_blank_logo_urls(games: list, req) -> None:
+def _materialize_blank_logo_urls(games: list, req, logo_keys=('home_logo', 'away_logo')) -> None:
     if not isinstance(games, list):
         return
     blank_url = _blank_logo_url_for_request(req)
     for g in games:
         if not isinstance(g, dict):
             continue
-        if g.get('home_logo') == BLANK_LOGO_SENTINEL:
-            g['home_logo'] = blank_url
-        if g.get('away_logo') == BLANK_LOGO_SENTINEL:
-            g['away_logo'] = blank_url
+        for key in logo_keys:
+            if g.get(key) == BLANK_LOGO_SENTINEL:
+                g[key] = blank_url
 
 
 def prune_cache(cache: dict, max_entries: int, max_age=None):

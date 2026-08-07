@@ -27,7 +27,11 @@ TINY_FONT_MAP = {
     '>': [0x4, 0x2, 0x1, 0x2, 0x4], '[': [0x6, 0x4, 0x4, 0x4, 0x6], ']': [0x6, 0x2, 0x2, 0x2, 0x6],
     '"': [0xA, 0xA, 0x0, 0x0, 0x0], ';': [0x0, 0x4, 0x0, 0x4, 0x8], '~': [0x0, 0x0, 0x0, 0x0, 0x0],
     '(': [0x2, 0x4, 0x4, 0x4, 0x2], ')': [0x4, 0x2, 0x2, 0x2, 0x4],
-    '▲': [0x4, 0xE, 0x1F, 0x0, 0x0], '▼': [0x1F, 0xE, 0x4, 0x0, 0x0],
+    # Columns map 0x8,0x4,0x2,0x1,0x10 left-to-right, so a centred apex is 0x2
+    # and a centred middle row is 0x7 — not 0x4/0xE, which lean the triangle
+    # a column to the left and were never visible while these glyphs were
+    # unreachable through normalize_special_chars.
+    '▲': [0x2, 0x7, 0x1F, 0x0, 0x0], '▼': [0x1F, 0x7, 0x2, 0x0, 0x0],
 }
 
 HYBRID_FONT_MAP = {
@@ -93,7 +97,14 @@ def normalize_special_chars(text):
         return text
     result = []
     for char in str(text):
-        if char in SPECIAL_CHAR_MAP:
+        # A glyph the pixel fonts can actually draw needs no substituting. The
+        # ASCII fallback below turns anything non-ASCII into '?', which made
+        # the '▲'/'▼' entries in TINY_FONT_MAP unreachable through
+        # draw_tiny_text — the only callers drawing inning arrows had to carry
+        # their own copies of the bitmaps to get at them.
+        if char in TINY_FONT_MAP or char in HYBRID_FONT_MAP:
+            result.append(char)
+        elif char in SPECIAL_CHAR_MAP:
             result.append(SPECIAL_CHAR_MAP[char])
         elif char.upper() in SPECIAL_CHAR_MAP:
             result.append(SPECIAL_CHAR_MAP[char.upper()])

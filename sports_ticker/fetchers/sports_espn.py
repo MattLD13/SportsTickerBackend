@@ -2,6 +2,7 @@ from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
 from .football_situation import normalize_football_situation, sticky_football_situation
 from .test_mode import TestMode
+from ..services.score_alerts import normalize_last_play
 
 # Finished games self-evict once they age out of the visibility window, but
 # only while ESPN still lists them on the scoreboard. Games that drop off the
@@ -271,6 +272,14 @@ class SportsEspnMixin:
                     'home_seed': str(h_seed),
                     'away_seed': str(a_seed),
                     
+                    # Prose for the last play, kept beside the numbers so the
+                    # score-alert detector can say "GRAND SLAM" rather than "+4".
+                    'last_play': normalize_last_play(
+                        sit.get('lastPlay'),
+                        home_abbr=h_ab, away_abbr=a_ab,
+                        home_id=h['team'].get('id'), away_id=a['team'].get('id'),
+                    ),
+
                     'situation': {
                         'possession': poss_abbr,
                         **fb_sit,   # carries isRedZone, derived and cached

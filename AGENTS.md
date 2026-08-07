@@ -2,6 +2,11 @@
 
 This repo powers a sports ticker backend plus a Raspberry Pi LED-matrix style controller/emulator.
 
+- Make architectural decisions for the long term. Do not accept a stopgap that only works for now and is meant to be replaced later.
+- Do not preserve backward compatibility.
+- Choose the simplest implementation that fully meets the current requirements.
+- Prefer established, well-maintained libraries over custom implementations.
+
 ## Main Pieces
 - `sports_ticker/`: Flask backend, data fetchers, routes, persistence, mode buffers.
 - `ticker_controller/`: display renderer/controller for 384x32 LED frames.
@@ -13,6 +18,8 @@ This repo powers a sports ticker backend plus a Raspberry Pi LED-matrix style co
 - Compile touched Python: `python -m py_compile path\to\file.py`
 - Render live frame: `python tools\fetch_and_render.py --mode indycar --view pin --save indycar_pin_live.png`
 - Render racing previews: `python tools\render_racing_previews.py --mode both --out-dir previews`
+- Render score-alert previews: `python tools\render_score_alerts.py --out-dir previews\score_alerts`
+- Fire a test score alert on a real board: `curl "http://<backend>/api/debug/score_alert?id=<ticker_id>"`
 - Dump backend JSON: `python tools\dump_backend_snapshot.py --mode f1`
 
 ## Development Notes

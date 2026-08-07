@@ -6,6 +6,7 @@ globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')
 from .football_situation import normalize_football_situation, sticky_football_situation
 from .sports_modes_common import _sports_no_games_placeholder
 from .test_mode import TestMode
+from ..services.score_alerts import score_alerts
 
 spotify_fetcher = None
 flight_tracker = None
@@ -905,6 +906,15 @@ class SportsModesMixin:
                     if is_sports:
                         sports_built = True
                         self._last_sports_build = time.time()
+
+                        # Compare against the previous slate before the new one
+                        # is published — this is the only point where both
+                        # versions of every score exist.
+                        try:
+                            score_alerts.ingest(result)
+                        except Exception as alert_err:
+                            print(f"[ALERTS] score detection failed: {alert_err}")
+
                         for sm in ('sports', 'live', 'my_teams', 'sports_full', 'soccer_full'):
                             self._set_mode_buffer(sm, result)
 

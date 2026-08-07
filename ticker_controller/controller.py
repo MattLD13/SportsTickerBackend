@@ -41,13 +41,19 @@ from .modes.indycar import (
 )
 from .modes.f1 import F1Mixin
 from .modes.nascar import NascarMixin
+from .modes.score_alert import ScoreAlertMixin, score_alert_duration
+
+# An alert is only worth showing while it is still news. A board that was
+# asleep, mid-update, or offline when the run scored should not celebrate it
+# minutes later, so anything older than this is dropped rather than queued.
+SCORE_ALERT_MAX_AGE = 60.0
 
 # Target period for non-scrolling frames (~30fps). Scrolling uses scroll_sleep,
 # which the backend exposes as the user-facing "scroll_speed" setting.
 FRAME_INTERVAL = 0.033
 
 
-class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin, IndycarMixin, F1Mixin, NascarMixin):
+class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin, IndycarMixin, F1Mixin, NascarMixin, ScoreAlertMixin):
     def __init__(self):
         print("Starting Ticker System...")
         self.device_id = get_device_id()
@@ -124,6 +130,10 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         self.static_current_game = None
         self.last_applied_hash = ""
         self.current_data_hash = ""
+
+        # Score alerts: queued by the poller, drained by the render loop.
+        self.pending_alerts = []
+        self.seen_alert_ids = {}
 
         # Music state
         self.VINYL_SIZE = 51
@@ -258,6 +268,64 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
             except Exception as ex:
                 print(f"  Flight config push failed: {ex}")
         threading.Thread(target=_push, daemon=True).start()
+
+    # ================= SCORE ALERTS =================
+    def _queue_score_alerts(self, payload):
+        """Take newly-seen scoring alerts off a /data response.
+
+        The backend keeps serving an alert for a short window rather than
+        handing it out once, so a dropped poll doesn't lose it. De-duplication
+        is by alert id here; freshness is measured from when *this* board first
+        saw it, because the Pi's clock and the server's need not agree.
+        """
+        alerts = payload.get('alerts')
+        if not isinstance(alerts, list):
+            return
+
+        now = time.monotonic()
+        for alert in alerts:
+            if not isinstance(alert, dict):
+                continue
+            alert_id = str(alert.get('id', ''))
+            if not alert_id or alert_id in self.seen_alert_ids:
+                continue
+            self.seen_alert_ids[alert_id] = now
+            self.pending_alerts.append((now, alert))
+            print(f"  Score alert: {alert.get('team_abbr')} {alert.get('headline')}")
+            for size in ((24, 24), (16, 16)):
+                self.executor.submit(self.download_and_process_logo, alert.get('team_logo'), size)
+
+        # Ids are only needed for as long as the backend might re-serve them.
+        cutoff = now - 600
+        for stale in [k for k, ts in self.seen_alert_ids.items() if ts < cutoff]:
+            del self.seen_alert_ids[stale]
+
+    def _next_score_alert(self):
+        """Pop the oldest alert still worth showing, dropping any that expired."""
+        now = time.monotonic()
+        while self.pending_alerts:
+            queued_at, alert = self.pending_alerts.pop(0)
+            if now - queued_at <= SCORE_ALERT_MAX_AGE:
+                return alert
+        return None
+
+    def run_score_alert(self, alert, under=None):
+        """Take over the panel for the length of one alert.
+
+        ``under`` is the frame that was on screen when the alert fired. It is
+        held still for the duration and revealed again by the closing shutters,
+        so the scroll picks up exactly where it left off instead of jumping.
+        """
+        duration = score_alert_duration(alert)
+        started = time.monotonic()
+        while self.running:
+            elapsed = time.monotonic() - started
+            if elapsed >= duration:
+                break
+            if self.brightness <= 0.001:
+                break
+            self.update_display(self.draw_score_alert(alert, elapsed, under))
+            self._pace(FRAME_INTERVAL)
 
     # ================= PAIRING SCREEN =================
     def draw_pairing_screen(self):
@@ -720,6 +788,21 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                     time.sleep(0.5)
                     continue
 
+                # A followed team scoring outranks whatever is on screen. The
+                # backend only sends alerts to a board in a sports mode, so
+                # there is no mode check to repeat here.
+                if self.pending_alerts:
+                    alert = self._next_score_alert()
+                    if alert is not None:
+                        under = None
+                        if self.active_strip is not None:
+                            x = int(strip_offset)
+                            under = self.active_strip.crop((x, 0, x + PANEL_W, PANEL_H))
+                        elif self.static_current_image is not None:
+                            under = self.static_current_image
+                        self.run_score_alert(alert, under)
+                        continue
+
                 music_item = next(
                     (
                         g for g in self.static_items
@@ -941,6 +1024,8 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
 
                 self.scroll_sleep = local_conf.get('scroll_speed', 0.05)
                 self.inverted = local_conf.get('inverted', False)
+
+                self._queue_score_alerts(data)
 
                 content = data.get('content', {})
                 new_games = content.get('sports', [])

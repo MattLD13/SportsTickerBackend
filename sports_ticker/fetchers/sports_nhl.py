@@ -2,6 +2,47 @@ from .. import core as _core
 globals().update({k: v for k, v in vars(_core).items() if not k.startswith('__')})
 from .test_mode import TestMode
 
+
+def _nhl_text(value):
+    """NHL payloads carry localized strings as {'default': 'Matthews'}."""
+    if isinstance(value, dict):
+        return str(value.get('default', '') or '')
+    return str(value or '')
+
+
+def nhl_last_goal(landing):
+    """Describe the most recent goal in a gamecenter landing payload.
+
+    The NHL feed is far richer than a score delta: it names the strength the
+    goal was scored at and how many the scorer has on the night, which is the
+    difference between "GOAL" and "POWER PLAY GOAL" or "HAT TRICK".
+    """
+    if not isinstance(landing, dict):
+        return {}
+    scoring = ((landing.get('summary') or {}).get('scoring')) or []
+    latest = None
+    for period in scoring:
+        for goal in (period.get('goals') or []):
+            if isinstance(goal, dict):
+                latest = goal
+    if not latest:
+        return {}
+
+    scorer = _nhl_text(latest.get('name')) or ' '.join(
+        p for p in (_nhl_text(latest.get('firstName')), _nhl_text(latest.get('lastName'))) if p
+    )
+    raw_abbr = _nhl_text(latest.get('teamAbbrev'))
+    return {
+        'text': '',
+        'type': 'goal',
+        'team': ABBR_MAPPING.get(raw_abbr, raw_abbr).upper(),
+        'athlete': scorer.strip(),
+        'strength': str(latest.get('strength', '') or '').lower(),
+        'modifier': str(latest.get('goalModifier', '') or '').lower(),
+        'goals_to_date': latest.get('goalsToDate'),
+    }
+
+
 class SportsNhlMixin:
     def _fetch_nhl_native(self, conf, window_start_utc, window_end_utc, visible_start_utc, visible_end_utc):
         games_found = []
@@ -79,7 +120,8 @@ class SportsNhlMixin:
                     if st in ['SUSP', 'SUSPENDED', 'PPD', 'POSTPONED']:
                         map_st = 'post'
 
-                    disp = "Scheduled"; pp = False; poss = ""; en = False; shootout_data = None 
+                    disp = "Scheduled"; pp = False; poss = ""; en = False; shootout_data = None
+                    last_play = {}
                     dur = self.calculate_game_timing('nhl', g_utc, 1, st)
                     
                     g_local = g_dt.astimezone(_local_tz)
@@ -97,6 +139,7 @@ class SportsNhlMixin:
                         try:
                             d2 = landing_futures[gid].result()
                             if d2:
+                                last_play = nhl_last_goal(d2)
                                 h_sc = str(d2['homeTeam'].get('score', h_sc)); a_sc = str(d2['awayTeam'].get('score', a_sc))
                                 pd = d2.get('periodDescriptor', {})
                                 clk = d2.get('clock', {}); time_rem = clk.get('timeRemaining', '00:00')
@@ -148,6 +191,7 @@ class SportsNhlMixin:
                         'away_color': f"#{a_info['color']}", 'away_alt_color': f"#{a_info['alt_color']}",
                         'startTimeUTC': g_utc,
                         'estimated_duration': dur,
+                        'last_play': last_play,
                         'situation': { 'powerPlay': pp, 'possession': poss, 'emptyNet': en, 'shootout': shootout_data }
                     })
             return games_found

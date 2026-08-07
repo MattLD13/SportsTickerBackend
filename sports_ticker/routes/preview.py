@@ -13,6 +13,7 @@ from ..routes_runtime import app
 from ..core import (
     state, normalize_mode,
     NON_SCOREBOARD_TYPES, HIDDEN_STATUS_KEYWORDS, _ACTIVE_STATES,
+    team_is_followed,
 )
 from ..workers import fetcher
 from ticker_controller.controller import TickerStreamer as _PreviewTickerStreamer
@@ -411,7 +412,6 @@ def _filter_preview_games(games: list, mode: str) -> list:
     """Apply the same visible-mode filtering the web dashboard detail panel uses."""
     active_sports = state.get('active_sports', {})
     saved_teams = set(state.get('my_teams', []))
-    collision_abbrs = {'LV'}
     visible = []
 
     for g in games:
@@ -425,10 +425,8 @@ def _filter_preview_games(games: list, mode: str) -> list:
             should_show = active_sports.get(sport, True)
 
         if mode == 'my_teams':
-            h_ab = str(game.get('home_abbr', '')).upper()
-            a_ab = str(game.get('away_abbr', '')).upper()
-            in_home = f"{sport}:{h_ab}" in saved_teams or (h_ab in saved_teams and h_ab not in collision_abbrs)
-            in_away = f"{sport}:{a_ab}" in saved_teams or (a_ab in saved_teams and a_ab not in collision_abbrs)
+            in_home = team_is_followed(saved_teams, sport, game.get('home_abbr'))
+            in_away = team_is_followed(saved_teams, sport, game.get('away_abbr'))
             should_show = should_show and (in_home or in_away)
         elif mode == 'live':
             should_show = should_show and game.get('state') in _ACTIVE_STATES

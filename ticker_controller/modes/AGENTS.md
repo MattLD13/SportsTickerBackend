@@ -11,3 +11,9 @@ Mode-specific drawing code for the LED ticker.
 ## Racing
 - `indycar.py` contains the shared racing card layout.
 - `f1.py` adapts F1 data into the racing layout and draws generated cars from team colors.
+
+## Score Alerts
+- `score_alert.py` draws the full-screen takeover for a followed team's scoring play.
+- It preempts whatever is on screen, so it is driven straight from `render_loop`, not from `draw_single_game`.
+- Whether an alert fires at all is the backend's call — it only sends them to a board in a sports mode. Do not add a second mode check here.
+- The backend supplies the headline text; this module only lays it out.

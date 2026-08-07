@@ -5,13 +5,14 @@ from flask import request, jsonify
 from ..routes_runtime import app
 from ..core import (
     state, tickers, data_lock,
-    resolve_ticker_id,
+    resolve_ticker_id, normalize_mode, team_is_followed, SPORTS_MODE_FAMILY,
     _maybe_update_ticker_timezone_from_request, _extract_timezone_from_request_headers,
     _extract_client_ip, _lookup_timezone_for_ip,
     _lookup_timezone_for_current_connection, _lookup_timezone_for_latlon,
     _get_ticker_timezone_context,
 )
-from ..workers import sync_test_mode_from_state
+from ..services.score_alerts import score_alerts
+from ..workers import sync_test_mode_from_state, fetcher
 from ..fetchers_runtime import TestMode
 
 @app.route('/api/timezone', methods=['GET'])
@@ -207,3 +208,108 @@ def get_logs():
         return f"Error: {str(e)}", 500
 
 
+
+# Showcase headline per sport, used when the caller does not name one. Picked
+# to exercise the widest layout each sport can produce.
+_DEMO_HEADLINES = {
+    'mlb':    ('GRAND SLAM',      'JUDGE',    4, True,  'Bottom 7'),
+    'nhl':    ('POWER PLAY GOAL', 'PANARIN',  1, False, 'P2 6:03'),
+    'nfl':    ('RUSHING TD',      'BARKLEY',  6, False, 'Q3 8:42'),
+    'nba':    ('3-POINTER',       'CURRY',    3, False, 'Q4 3:19'),
+    'soccer': ('GOAL',            'SAKA',     1, False, "67'"),
+}
+
+
+def _demo_profile(sport):
+    for key, profile in _DEMO_HEADLINES.items():
+        if str(sport).startswith(key):
+            return profile
+    return ('SCORE', '', 1, False, '')
+
+
+@app.route('/api/debug/score_alert', methods=['GET', 'POST'])
+def api_debug_score_alert():
+    """Fire a synthetic score alert so the takeover can be seen on demand.
+
+    Scoring plays cannot be scheduled, so without this the only way to check
+    the full-screen alert on real panels is to sit and wait for a game. The
+    alert is injected into the same buffer the detector writes to and is then
+    delivered, gated, and delayed exactly like a real one — so a board that
+    would not have shown a real alert will not show this either. The response
+    says which gate stopped it.
+
+    Query params (all optional):
+      id       ticker id; inferred from X-Client-ID or a single paired ticker
+      team     abbreviation, or "league:ABBR". Defaults to a followed team.
+      sport    league key; defaults to the one on the team entry, else mlb
+      headline overrides the per-sport demo headline
+      detail   scorer name shown under the headline
+      status   clock/inning text for the score panel
+    """
+    args = request.args if request.method == 'GET' else (request.json or request.args)
+
+    ticker_id = args.get('id') or resolve_ticker_id(client_id=request.headers.get('X-Client-ID'))
+    if not ticker_id or ticker_id not in tickers:
+        return jsonify({
+            "status": "error",
+            "message": "Ticker not found. Provide ?id=<ticker_id>",
+            "known_tickers": list(tickers.keys())[:20],
+        }), 404
+
+    rec = tickers[ticker_id]
+    settings = rec.get('settings', {})
+    _ticker_teams = rec.get('my_teams')
+    followed = list(state.get('my_teams', []) if _ticker_teams is None else _ticker_teams)
+
+    # Default to a team this board actually follows, so the plain no-argument
+    # call does the useful thing instead of firing something it will discard.
+    entry = str(args.get('team') or (followed[0] if followed else 'mlb:NYY'))
+    if ':' in entry:
+        sport, abbr = entry.split(':', 1)
+    else:
+        sport, abbr = (args.get('sport') or 'mlb'), entry
+    sport = str(args.get('sport') or sport).strip().lower()
+    abbr = abbr.strip().upper()
+
+    headline, detail, points, big, status = _demo_profile(sport)
+    info = fetcher.lookup_team_info_from_cache(sport, abbr)
+    logo = fetcher.get_corrected_logo(
+        sport, abbr, f"https://a.espncdn.com/i/teamlogos/{sport}/500/{abbr.lower()}.png")
+
+    alert = score_alerts.inject({
+        'id': f"debug:{abbr}:{time.time():.0f}",
+        'game_id': 'debug', 'sport': sport, 'side': 'home',
+        'kind': 'debug', 'big': bool(big), 'points': points,
+        'headline': str(args.get('headline') or headline).upper(),
+        'detail': str(args.get('detail') or detail).upper(),
+        'status': str(args.get('status') or status),
+        'team_abbr': abbr, 'team_logo': logo,
+        'team_color': f"#{info.get('color', '000000')}",
+        'team_alt_color': f"#{info.get('alt_color', '444444')}",
+        'opp_abbr': 'OPP', 'opp_logo': '', 'opp_color': '#444444',
+        'home_abbr': abbr, 'away_abbr': 'OPP',
+        'home_score': points + 2, 'away_score': 2,
+    })
+
+    # Report every gate, so a board that stays dark explains itself rather than
+    # sending someone hunting through the render loop.
+    mode = normalize_mode(settings.get('mode') or state.get('mode', 'sports'))
+    delay = settings.get('live_delay_seconds', 0) if settings.get('live_delay_mode') else 0
+    blockers = []
+    if mode not in SPORTS_MODE_FAMILY:
+        blockers.append(f"ticker mode is '{mode}', alerts are sports-modes only")
+    if not settings.get('score_alerts', True):
+        blockers.append("score_alerts is disabled for this ticker")
+    if not team_is_followed(set(followed), sport, abbr):
+        blockers.append(f"{sport}:{abbr} is not in this ticker's my_teams")
+
+    return jsonify({
+        "status": "ok" if not blockers else "blocked",
+        "ticker_id": ticker_id,
+        "alert": alert,
+        "will_display": not blockers,
+        "blocked_by": blockers,
+        "delay_seconds": delay,
+        "expect_on_panel_in": f"~{delay + 1}s" if not blockers else None,
+        "my_teams": followed,
+    })
