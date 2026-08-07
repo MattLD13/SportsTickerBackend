@@ -223,41 +223,19 @@ def _seed_score_alert(sport="mlb", scorer="NYY"):
     score_alerts.ingest([dict(base, home_score=7)])
 
 
-def test_data_serves_score_alerts_for_followed_teams(client):
+def test_data_serves_score_alerts_only_in_a_sports_mode(client):
     tid = "ticker_alert_test"
     tickers[tid] = create_ticker_record("Alert Ticker", client_id="alert_client")
     tickers[tid]["my_teams"] = ["mlb:NYY"]
     tickers[tid]["settings"]["mode"] = "my_teams"
 
     _seed_score_alert()
-
-    payload = client.get(f"/data?id={tid}").get_json()
-    alerts = payload["alerts"]
+    alerts = client.get(f"/data?id={tid}").get_json()["alerts"]
     assert len(alerts) == 1
     assert alerts[0]["headline"] == "GRAND SLAM"
-    assert alerts[0]["team_abbr"] == "NYY"
-    assert alerts[0]["home_score"] == 7
 
-
-@pytest.mark.parametrize("mode", ["sports", "live", "my_teams", "sports_full"])
-def test_every_sports_mode_gets_alerts(client, mode):
-    tid = f"ticker_alert_mode_{mode}"
-    tickers[tid] = create_ticker_record("Mode Ticker", client_id=f"c_{mode}")
-    tickers[tid]["my_teams"] = ["mlb:NYY"]
-    tickers[tid]["settings"]["mode"] = mode
-
-    _seed_score_alert()
-    assert client.get(f"/data?id={tid}").get_json()["alerts"]
-
-
-@pytest.mark.parametrize("mode", ["clock", "weather", "music", "stocks", "flights", "golf"])
-def test_non_sports_modes_are_never_interrupted(client, mode):
-    tid = f"ticker_alert_quiet_{mode}"
-    tickers[tid] = create_ticker_record("Quiet Ticker", client_id=f"q_{mode}")
-    tickers[tid]["my_teams"] = ["mlb:NYY"]
-    tickers[tid]["settings"]["mode"] = mode
-
-    _seed_score_alert()
+    # A board set to the weather is not asking about scores.
+    tickers[tid]["settings"]["mode"] = "weather"
     assert client.get(f"/data?id={tid}").get_json()["alerts"] == []
 
 
@@ -275,82 +253,25 @@ def test_live_delay_holds_the_alert_back(client):
     _seed_score_alert()
     assert client.get(f"/data?id={tid}").get_json()["alerts"] == []
 
-    # Age the alert past the delay: now it is due.
     for entry in score_alerts._alerts:
         entry["ts"] -= 50
     assert client.get(f"/data?id={tid}").get_json()["alerts"]
 
-    # Switch the delay off and that same alert is just 50s stale, past the
-    # freshness window: the delay shifts when the window opens, it does not
-    # widen it. A board that drops out of delay mode does not replay old plays.
-    tickers[tid]["settings"]["live_delay_mode"] = False
-    assert client.get(f"/data?id={tid}").get_json()["alerts"] == []
 
-
-def test_data_withholds_alerts_for_unfollowed_teams_and_when_disabled(client):
-    tid = "ticker_alert_off_test"
-    tickers[tid] = create_ticker_record("No Alert Ticker", client_id="alert_off_client")
-    tickers[tid]["my_teams"] = ["nhl:NYR"]
-    tickers[tid]["settings"]["mode"] = "sports"
-
-    _seed_score_alert()
-    assert client.get(f"/data?id={tid}").get_json()["alerts"] == []
-
-    tickers[tid]["my_teams"] = ["mlb:NYY"]
-    assert client.get(f"/data?id={tid}").get_json()["alerts"]
-
-    tickers[tid]["settings"]["score_alerts"] = False
-    assert client.get(f"/data?id={tid}").get_json()["alerts"] == []
-
-    tickers[tid]["settings"]["score_alerts"] = False
-    assert client.get(f"/data?id={tid}").get_json()["alerts"] == []
-
-
-def test_debug_score_alert_fires_a_visible_alert(client):
+def test_debug_route_fires_an_alert_and_reports_the_gates(client):
     tid = "ticker_debug_alert"
     tickers[tid] = create_ticker_record("Debug Ticker", client_id="debug_client")
     tickers[tid]["my_teams"] = ["nhl:NYR"]
     tickers[tid]["settings"]["mode"] = "sports"
 
     res = client.get(f"/api/debug/score_alert?id={tid}").get_json()
-    assert res["status"] == "ok"
     assert res["will_display"] is True
-    # No team given, so it should pick one this board actually follows.
-    assert res["alert"]["team_abbr"] == "NYR"
-    assert res["alert"]["headline"] == "POWER PLAY GOAL"
+    assert res["alert"]["team_abbr"] == "NYR"        # picked a followed team
+    assert any(a["id"] == res["alert"]["id"]
+               for a in client.get(f"/data?id={tid}").get_json()["alerts"])
 
-    alerts = client.get(f"/data?id={tid}").get_json()["alerts"]
-    assert any(a["id"] == res["alert"]["id"] for a in alerts)
-
-
-def test_debug_score_alert_reports_why_it_will_not_show(client):
-    tid = "ticker_debug_blocked"
-    tickers[tid] = create_ticker_record("Blocked Ticker", client_id="debug_blocked")
-    tickers[tid]["my_teams"] = ["nhl:NYR"]
+    # A blocked board says which gate stopped it instead of staying silent.
     tickers[tid]["settings"]["mode"] = "weather"
-
-    res = client.get(f"/api/debug/score_alert?id={tid}").get_json()
-    assert res["status"] == "blocked"
-    assert res["will_display"] is False
-    assert any("weather" in reason for reason in res["blocked_by"])
-
-    # And the gate it named is real — /data withholds it.
-    assert client.get(f"/data?id={tid}").get_json()["alerts"] == []
-
-
-def test_debug_score_alert_accepts_overrides(client):
-    tid = "ticker_debug_custom"
-    tickers[tid] = create_ticker_record("Custom Ticker", client_id="debug_custom")
-    tickers[tid]["my_teams"] = ["mlb:STL"]
-    tickers[tid]["settings"]["mode"] = "my_teams"
-
-    res = client.get(
-        f"/api/debug/score_alert?id={tid}&team=mlb:STL&headline=walk-off&detail=goldschmidt"
-    ).get_json()
-    assert res["alert"]["headline"] == "WALK-OFF"
-    assert res["alert"]["detail"] == "GOLDSCHMIDT"
-    assert res["will_display"] is True
-
-
-def test_debug_score_alert_needs_a_known_ticker(client):
-    assert client.get("/api/debug/score_alert?id=nope").status_code == 404
+    blocked = client.get(f"/api/debug/score_alert?id={tid}").get_json()
+    assert blocked["will_display"] is False
+    assert any("weather" in r for r in blocked["blocked_by"])

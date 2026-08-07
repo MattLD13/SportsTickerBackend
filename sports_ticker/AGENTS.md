@@ -10,6 +10,11 @@ Backend package for configuration, data fetching, routes, and mode buffers.
 - `routes/state.py`: `/data`, `/api/state`, pin filtering, per-ticker response shaping.
 - `routes/preview.py`: backend PNG preview rendering.
 
+## Tests
+- Keep them few. One test for each behaviour, not one for each input.
+- Put table cases in a single test that loops. Ten inputs stay one test.
+- Cover the happy path, the main refusal, and any bug that real data found.
+
 ## Fetcher Pattern
 - Specialized fetchers live in `fetchers/sports_<name>.py`.
 - Mix them into `SportsFetcher` in `fetchers/sports.py`.
