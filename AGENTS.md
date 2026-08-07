@@ -22,6 +22,14 @@ This repo powers a sports ticker backend plus a Raspberry Pi LED-matrix style co
 - Send a test score alert to a ticker: `curl "http://<backend>/api/debug/score_alert?id=<ticker_id>"`
 - Dump backend JSON: `python tools\dump_backend_snapshot.py --mode f1`
 
+## Writing
+- Write documentation, comments, docstrings, and commit messages in Simplified Technical English.
+- Use 20 words for an instruction sentence and 25 words for an explanation sentence.
+- Put a condition before its command: "If the build fails, read the log."
+- Use only the modals can, will, and must. Do not use should, may, might, could, or would.
+- Use the active voice. Use no semicolons. Use one word for each concept.
+- Leave code, identifiers, commands, file paths, and quoted errors exact.
+
 ## Development Notes
 - Use live/backend render tools for UI verification. Avoid adding dummy-only render tests unless they supplement live renders.
 - The display target is `384x32`; tiny layout changes matter. Always render a PNG after UI changes.
