@@ -956,15 +956,16 @@ class SportsMixin:
         #     three bags sit on dirt rather than poking out into the grass.
         d.ellipse([cx - r - 7, cy + 3 - r - 8, cx + r + 7, cy + 3 + r + 8], fill=DIRT)
 
-        # 3 · Infield grass, inset so the base paths read as a dirt strip
-        pixel_diamond(cx, cy, r - 3, GRASS_A)
+        # 3 · Infield grass, inset far enough that the base paths read as a dirt
+        #     strip and the grass corners stay clear of the bags
+        pixel_diamond(cx, cy, r - 4, GRASS_A)
 
         # 4 · Base paths
         for p0, p1 in ((home, first), (first, sec), (sec, third), (third, home)):
             diagonal(p0, p1, CHALK)
 
         # 5 · Pitcher's mound + rubber
-        pixel_diamond(cx, cy, 3, DIRT)
+        d.ellipse([cx - 3, cy - 2, cx + 3, cy + 2], fill=DIRT)
         d.line([(cx - 1, cy), (cx + 1, cy)], fill=CHALK)
 
         # 6 · Home-plate dirt circle
