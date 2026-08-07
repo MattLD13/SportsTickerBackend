@@ -54,7 +54,8 @@ the strip and blocks the render loop; this is applied to each ordinary scroll
 frame instead, so the strip keeps moving in the half beside it and the scroll
 cadence is untouched.
 
-Render previews with `python toolsender_news_banner.py`.
+Render previews with `python tools
+ender_news_banner.py`.
 
 ## Test pages
 
@@ -81,6 +82,10 @@ The response lists which tickers follow a club in the item, so a board that
 stays blank explains itself.
 
 `GET /api/news` lists what is currently held.
+
+A pushed item gets a fresh id every time, so the same banner can be sent again
+and again. A fetched item keeps a stable id instead, so a feed cannot re-emit
+one trade on every poll.
 
 ## League coverage
 

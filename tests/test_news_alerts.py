@@ -59,6 +59,14 @@ def test_push_then_serve_to_a_following_board(client):
     assert len(news) == 1
     assert (news[0]['from_abbr'], news[0]['to_abbr']) == ('VAN', 'NYR')
 
+    # The same banner can be pushed again. De-duplication is there to stop a
+    # feed re-emitting one trade on every poll, not to stop a person repeating
+    # themselves on purpose.
+    again = client.post('/api/news', json=TRADE).get_json()
+    assert again['status'] == 'ok'
+    assert again['item']['id'] != res['item']['id']
+    assert len(client.get(f'/data?id={tid}').get_json()['news']) == 2
+
 
 def test_each_domain_stays_in_its_own_mode(client):
     news_alerts.clear()

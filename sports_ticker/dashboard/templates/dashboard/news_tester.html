@@ -125,11 +125,6 @@
     const b = $('banner');
     $('out').textContent = JSON.stringify(data, null, 2);
     if (data.status === 'error') { fail(data.message); return; }
-    if (data.status === 'duplicate') {
-      b.className = 'banner bad';
-      b.textContent = 'Already pushed. The same banner is only stored once.';
-      return;
-    }
     const following = (data.tickers_following || []).includes(ticker);
     b.className = following ? 'banner ok' : 'banner bad';
     const item = data.item || {};

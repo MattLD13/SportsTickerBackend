@@ -1,19 +1,26 @@
 """Push a news banner onto the board by hand.
 
-Only MLB publishes a transaction feed that names both clubs. The NHL, the NBA,
-and the NFL do not, so for those leagues there is nothing to read and nothing to
-detect. This route is the answer for them: you send the four fields the banner
-draws, and it appears. See docs/news-banner.md.
+All four leagues now read their own feeds, so this is no longer the only way a
+trade reaches the panel. It stays for the things a feed will never carry: a
+move reported before the league posts it, or anything you simply want on
+screen. See docs/news-banner.md.
 
-It is also how anything the fetchers will never know about gets on screen, such
-as a signing reported before the league posts it.
+It is also what the test page at /debug/news calls.
+
+A pushed item gets a fresh id every time, so the same banner can be sent again
+and again. That is the one deliberate difference from a fetched item, which
+keeps a stable id so a feed cannot re-emit one trade on every poll.
 """
+
+import time
 
 from flask import jsonify, request
 
 from ..routes_runtime import app
 from ..core import state, tickers, team_is_followed
-from ..services.news_alerts import SPORTS, STOCKS, build_item, news_alerts, pick_team_color
+from ..services.news_alerts import (
+    SPORTS, STOCKS, build_item, make_id, news_alerts, pick_team_color,
+)
 from ..workers import fetcher
 
 _ALLOWED_DOMAINS = (SPORTS, STOCKS)
@@ -82,11 +89,14 @@ def api_news():
         from_color=_team_color(sport, from_abbr),
         to_color=_team_color(sport, to_abbr),
         teams=[a for a in (from_abbr, to_abbr, symbol) if a and a != 'FA'],
+        # A pushed item gets a fresh id every time, so the same banner can be
+        # sent again. De-duplication is there to stop a *feed* re-emitting one
+        # trade on every poll. A person who pushes the same thing twice means
+        # to see it twice, which is the whole point of the test page.
+        item_id=make_id('push', time.time_ns(), text),
         source='push',
     )
     stored = news_alerts.add(item)
-    if stored is None:
-        return jsonify({'status': 'duplicate', 'item': item}), 200
 
     # Say which boards will show it, rather than leaving the caller to guess
     # why nothing happened.
