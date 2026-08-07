@@ -193,3 +193,20 @@ def test_banner_rides_on_the_scroll_without_stopping_it():
     assert len(wrap_lines('a ' * 60, max_lines=3)) == 3
     assert len(wrap_lines('a ' * 60, max_lines=2)) == 2
     assert news_banner_duration({'domain': 'stocks'}) > news_banner_duration(item)
+
+
+def test_stock_news_filters_to_the_company():
+    """Yahoo's per-symbol feed is sector-wide, so it needs filtering.
+
+    A query for NVDA returns Cloudflare and Calumet headlines. Only about a
+    third of the feed names the company at all. Finnhub filters at the source
+    and needs none of this.
+    """
+    from sports_ticker.fetchers.stock_news import _is_about
+
+    words = {'nvidia'}
+    assert _is_about('Nvidia ends week up more than 10%', 'NVDA', words)
+    assert _is_about('NVDA Stock Returns To Familiar Ground', 'NVDA', words)
+    assert not _is_about("More Than Half of Cloudflare's Traffic Is Not Human", 'NVDA', words)
+    # The ticker must be a whole word, or "C" would match every headline.
+    assert not _is_about('A company reported earnings', 'C', set())

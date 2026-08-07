@@ -44,7 +44,8 @@ last line is cut with a full stop. It is never dropped in silence.
 | NFL trades | `sports_ticker/fetchers/transactions.py` | Done |
 | NHL trades | `sports_ticker/fetchers/transactions.py` | Done |
 | NBA trades | `sports_ticker/fetchers/transactions.py` | Done |
-| Poll loop, every 10 minutes | `transactions_worker` in `sports_ticker/workers.py` | Done |
+| Stock headlines | `sports_ticker/fetchers/stock_news.py` | Done |
+| Poll loop, every 10 minutes | `news_worker` in `sports_ticker/workers.py` | Done |
 | Push route | `sports_ticker/routes/news.py` | Done |
 | Delivery through `/data` | `_news_for_ticker` in `sports_ticker/routes/state.py` | Done |
 | Banner drawing on the panel | `ticker_controller/modes/news_banner.py` | Done |
@@ -86,6 +87,30 @@ stays blank explains itself.
 A pushed item gets a fresh id every time, so the same banner can be sent again
 and again. A fetched item keeps a stable id instead, so a feed cannot re-emit
 one trade on every poll.
+
+## Stock news
+
+Two sources, chosen by whether a Finnhub key is set.
+
+* **Finnhub** is the primary. The quote fetcher already runs on those keys, and
+  its company-news endpoint is filtered by symbol at the source.
+* **Yahoo RSS** is the fallback and needs no key, which matches the way the
+  quote fetcher drops into simulation mode without one.
+
+The fallback needs filtering that Finnhub does not. Yahoo's per-symbol feed is
+sector-wide: a query for NVDA returns Cloudflare and Calumet headlines, and only
+about a third of the feed names the company. A headline is kept only when it
+names the ticker or the company. Company names come from Yahoo's search
+endpoint, cached for a day, with the generic half dropped so "corporation" does
+not match everything.
+
+One headline per symbol per poll, freshest first, six in total. The feed carries
+twenty per symbol and a board showing all of them would be a news ticker rather
+than a stock ticker.
+
+Symbols come from the stock sectors that are switched on. The day's move comes
+from the quote cache the stocks worker already keeps, so this adds no price
+request.
 
 ## League coverage
 

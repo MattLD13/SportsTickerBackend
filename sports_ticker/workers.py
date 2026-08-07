@@ -297,20 +297,22 @@ def housekeeping_worker():
             pass
 
 
-def transactions_worker():
-    """Poll the MLB transaction feed for trades and signings.
+def news_worker():
+    """Poll every news source the banner draws from.
 
-    All four leagues are covered. POST /api/news still exists for anything the
-    feeds will never carry. See docs/news-banner.md.
+    Four league transaction feeds, and company headlines for the stock symbols
+    on the board. POST /api/news still exists for anything the feeds will never
+    carry. See docs/news-banner.md.
 
-    Trades land in bursts around a deadline and are quiet for weeks either
-    side, so this runs on a slow loop. Nothing on screen depends on catching
-    one within seconds.
+    News lands in bursts and is quiet for long stretches either side, so this
+    runs on a slow loop. Nothing on screen depends on catching an item within
+    seconds, unlike a score.
     """
     from .fetchers.transactions import (
         fetch_mlb_transactions, fetch_nba_transactions,
         fetch_nfl_transactions, fetch_nhl_transactions,
     )
+    from .fetchers.stock_news import fetch_stock_news
     from .services.news_alerts import news_alerts, pick_team_color
 
     def _color(league, abbr):
@@ -329,8 +331,43 @@ def transactions_worker():
                 if added:
                     print(f"[TRANSACTIONS] {len(added)} new {league} item(s)")
             except Exception as e:
-                print(f"Transactions worker error ({league}): {e}")
+                print(f"News worker error ({league}): {e}")
+
+        try:
+            added = news_alerts.add_many(_fetch_stock_news(fetch_stock_news))
+            if added:
+                print(f"[NEWS] {len(added)} new stock headline(s)")
+        except Exception as e:
+            print(f"News worker error (stocks): {e}")
+
         time.sleep(600)
+
+
+def _fetch_stock_news(fetch):
+    """Headlines for the symbols in the stock sectors that are switched on.
+
+    The day's move comes from the quote cache the stocks worker already keeps,
+    so this adds no extra price request.
+    """
+    stocks = fetcher.stocks
+    with data_lock:
+        active = [k for k, v in state.get('active_sports', {}).items()
+                  if k.startswith('stock_') and v]
+    symbols = sorted({s for key in active for s in _STOCK_LISTS.get(key, [])})
+    if not symbols:
+        return []
+
+    def quote(symbol):
+        row = (stocks.market_cache or {}).get(symbol) or {}
+        try:
+            return float(str(row.get('change_pct') or '').rstrip('%'))
+        except (TypeError, ValueError):
+            return None
+
+    return fetch(symbols,
+                 session=getattr(stocks, 'session', None),
+                 api_key=(stocks.api_keys[0] if stocks.api_keys else None),
+                 quote=quote)
 
 
 def start_background_workers():
@@ -346,7 +383,7 @@ def start_background_workers():
         ('stocks_worker',  stocks_worker),
         ('music_worker',   music_worker),
         ('flights_worker', flights_worker),
-        ('transactions_worker', transactions_worker),
+        ('news_worker',     news_worker),
         ('housekeeping_worker', housekeeping_worker),
     ]
     for name, target in workers:
