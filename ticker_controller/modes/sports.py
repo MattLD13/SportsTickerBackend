@@ -4,6 +4,13 @@ from PIL import Image, ImageDraw
 from ..config import PANEL_W, PANEL_H
 from ..fonts import draw_tiny_text, draw_hybrid_text, normalize_special_chars
 
+# Width of the darkened band at each edge of a full-bleed card. Anything drawn
+# underneath it has to reach the edge without introducing brightness of its own,
+# so backgrounds taper their detail over the same span.
+SIDE_SCRIM_SOLID = 28
+SIDE_SCRIM_FADE = 62
+SIDE_SCRIM_SPAN = SIDE_SCRIM_SOLID + SIDE_SCRIM_FADE
+
 
 class SportsMixin:
 
@@ -53,7 +60,8 @@ class SportsMixin:
     def draw_baseball_hud(self, draw, x, y, o):
         for i in range(3): draw.rectangle((x+(i*4), y, x+(i*4)+1, y+1), fill=((255, 0, 0) if i < o else (40, 40, 40)))
 
-    def _draw_side_scrims(self, img, W, H, solid=28, fade=62, peak=252):
+    def _draw_side_scrims(self, img, W, H, solid=SIDE_SCRIM_SOLID,
+                          fade=SIDE_SCRIM_FADE, peak=252):
         """Darken both edges so text and logos stay readable over the field.
 
         A flat block followed by a straight ramp is continuous in value but not
@@ -963,10 +971,23 @@ class SportsMixin:
             for i in range(abs(x1 - x0) + 1):
                 d.point((x0 + i * sx, y0 + i * sy), fill=color)
 
-        # 1 · Outfield grass bands
-        for i in range(10):
-            bx = i * W / 10
-            d.rectangle([bx, 0, bx + W / 10, H], fill=GRASS_A if i % 2 == 0 else GRASS_B)
+        # 1 · Outfield grass, mown in stripes that only start once the scrim has
+        #     let go. A stripe boundary inside the scrim span breaks the fade:
+        #     the light stripe running x=38..77 climbed brighter than the field
+        #     beyond the fade, then dropped 12 levels at its edge, so instead of
+        #     a ramp to black you saw a bright band floating in the gradient.
+        #     Holding stripe contrast at zero for the whole span and easing it in
+        #     over the next 40px leaves the fade strictly monotonic.
+        STRIPE_EASE = 40
+        for x in range(W):
+            t = (min(x, W - 1 - x) - SIDE_SCRIM_SPAN) / STRIPE_EASE
+            t = max(0.0, min(1.0, t))
+            if t > 0 and int(x * 10 / W) % 2:
+                col = tuple(int(round(a + (b - a) * t))
+                            for a, b in zip(GRASS_A, GRASS_B))
+            else:
+                col = GRASS_A
+            d.line([(x, 0), (x, H)], fill=col)
 
         # 2 · Infield skin — bows up from below the panel, wide enough that all
         #     three bags sit on dirt rather than poking out into the grass.
