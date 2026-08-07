@@ -27,6 +27,12 @@ Backend package for configuration, data fetching, routes, and mode buffers.
 - `GET /api/debug/score_alert?id=<ticker>` adds a synthetic alert to the same buffer. Use it to see the takeover on real panels without a live game.
 - The debug route reports `will_display` and `blocked_by`. A ticker that stays dark tells you which gate stopped the alert.
 
+## News Banner
+- Half-width banner for trades and stock news. It is not the score alert, and it does not take the whole panel.
+- `services/news_alerts.py` holds the items. `fetchers/transactions.py` reads MLB trades. `routes/news.py` accepts pushed ones.
+- `/data` returns them under `news`, in the matching mode only: trades in a sports mode, stock news in stocks mode.
+- Only MLB publishes a feed that names both clubs. Read `docs/news-banner.md` before adding another league.
+
 ## Racing Payloads
 - IndyCar payload key: `indycar`.
 - F1 payload key: `f1`.

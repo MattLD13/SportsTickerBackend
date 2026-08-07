@@ -23,6 +23,7 @@ from .routes.flight import api_airport_lookup, debug_flight_tracking, get_airlin
 from .routes.debug import api_debug, api_hardware, api_timezone_debug, get_logs
 from .routes.preview import preview_strip
 from .routes.nascar import nascar_carbadge
+from .routes.news import api_news
 from .dashboard import dashboard as _dashboard_bp
 app.register_blueprint(_dashboard_bp)
 
@@ -36,4 +37,5 @@ __all__ = [
     'api_debug', 'api_hardware', 'api_timezone_debug', 'get_logs',
     'preview_strip',
     'nascar_carbadge',
+    'api_news',
 ]

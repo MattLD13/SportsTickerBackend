@@ -12,6 +12,9 @@ from ..core import (
     SERVER_VERSION,
 )
 from ..services.score_alerts import score_alerts
+from ..services.news_alerts import (
+    SPORTS as NEWS_SPORTS, STOCKS as NEWS_STOCKS, news_alerts,
+)
 from ..workers import request_refresh, fetcher
 
 
@@ -288,7 +291,26 @@ def get_ticker_data():
         "content": { "sports": visible_items },
         "alerts": _score_alerts_for_ticker(
             t_settings, followed_teams, current_mode, delay_seconds, request),
+        "news": _news_for_ticker(followed_teams, current_mode, delay_seconds),
     })
+
+
+def _news_for_ticker(followed_teams, mode, delay_seconds):
+    """Half-width banner items: trades in a sports mode, stock news in stocks.
+
+    Each domain stays in its own mode. A trade never appears over the market
+    scroll, and a market headline never appears over the scores.
+    """
+    if mode in SPORTS_MODE_FAMILY:
+        items = news_alerts.recent(domain=NEWS_SPORTS, delay=delay_seconds)
+        # A trade concerns two clubs, and following either one is enough.
+        return [
+            i for i in items
+            if any(team_is_followed(followed_teams, i['sport'], a) for a in i['teams'])
+        ]
+    if mode == 'stocks':
+        return news_alerts.recent(domain=NEWS_STOCKS, delay=delay_seconds)
+    return []
 
 
 def _score_alerts_for_ticker(t_settings, followed_teams, mode, delay_seconds, req):

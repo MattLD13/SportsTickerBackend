@@ -297,6 +297,36 @@ def housekeeping_worker():
             pass
 
 
+def transactions_worker():
+    """Poll the MLB transaction feed for trades and signings.
+
+    Only MLB has a feed that names both clubs. Everything else reaches the
+    banner through POST /api/news. See docs/news-banner.md.
+
+    Trades land in bursts around a deadline and are quiet for weeks either
+    side, so this runs on a slow loop. Nothing on screen depends on catching
+    one within seconds.
+    """
+    from .fetchers.transactions import fetch_mlb_transactions
+    from .services.news_alerts import news_alerts, pick_team_color
+
+    def _color(league, abbr):
+        try:
+            return pick_team_color(fetcher.lookup_team_info_from_cache(league, abbr))
+        except Exception:
+            return '#8B93A3'
+
+    while True:
+        try:
+            items = fetch_mlb_transactions(days_back=2, lookup_color=_color)
+            added = news_alerts.add_many(items)
+            if added:
+                print(f"[TRANSACTIONS] {len(added)} new MLB item(s)")
+        except Exception as e:
+            print(f"Transactions worker error: {e}")
+        time.sleep(600)
+
+
 def start_background_workers():
     """Start all background worker threads. Called once at server startup."""
     global _background_workers_started
@@ -310,6 +340,7 @@ def start_background_workers():
         ('stocks_worker',  stocks_worker),
         ('music_worker',   music_worker),
         ('flights_worker', flights_worker),
+        ('transactions_worker', transactions_worker),
         ('housekeeping_worker', housekeeping_worker),
     ]
     for name, target in workers:
