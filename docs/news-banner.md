@@ -117,21 +117,22 @@ generic half dropped so "corporation" does not match everything.
 
 ### The model layer
 
-Off by default. Set a key and it turns on:
+On by default, and it needs no account. It runs on OVHcloud's anonymous tier:
+no key, no signup, no credit card, and an OpenAI-compatible endpoint serving
+Llama 3.3 70B. The anonymous limit is two requests a minute per address,
+against the one request per ten-minute poll this makes.
 
-    HEADLINE_AI_KEY=...        # or GROQ_API_KEY
-    HEADLINE_AI_URL=...        # default: Groq
-    HEADLINE_AI_MODEL=...      # default: llama-3.1-8b-instant
+Everything can be overridden, and a key is sent only when one is set, so any
+OpenAI-compatible provider works if the anonymous tier ever goes away:
 
-Any OpenAI-compatible endpoint works, so the provider is a matter of which key
-is set. Groq is the default because its free tier needs no credit card and
-allows 14,400 requests a day, against the one request per poll this makes.
-Cerebras and OpenRouter speak the same protocol; point the URL and model at
-either and nothing else changes.
+    HEADLINE_AI_URL=...        # default: OVHcloud, anonymous
+    HEADLINE_AI_MODEL=...      # default: Meta-Llama-3_3-70B-Instruct
+    HEADLINE_AI_KEY=...        # optional, only if the endpoint wants one
 
 Finnhub filters by symbol at the source, so the model runs only on the keyless
-path. When no model key is set, or the call fails for any reason, the word rule
-stands. A model that is down costs relevance, never the whole feed.
+news path. A 429, a timeout, an unreadable reply, or any other failure returns
+no opinion and the word rule stands. A busy model costs relevance, never the
+whole feed.
 
 One headline per symbol per poll, freshest first, six in total. The feed carries
 twenty per symbol and a board showing all of them would be a news ticker rather

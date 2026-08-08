@@ -17,12 +17,13 @@ class _Session:
     """Stands in for requests, so the parsing is testable without a key."""
 
     def __init__(self, reply=None, boom=False):
-        self.reply, self.boom, self.sent = reply or _Reply(), boom, None
+        self.reply, self.boom = reply or _Reply(), boom
+        self.sent, self.headers = None, {}
 
     def post(self, url, headers=None, json=None, timeout=None):
         if self.boom:
             raise RuntimeError('network down')
-        self.sent = json
+        self.sent, self.headers = json, headers or {}
         return self.reply
 
 
@@ -47,9 +48,7 @@ def test_the_word_rule_separates_naming_from_being_about():
     assert not _is_subject(PAIRS[1][1], 'AAPL', {'apple'})
 
 
-def test_the_model_layer_reads_a_reply_and_fails_safe(monkeypatch):
-    monkeypatch.setenv('HEADLINE_AI_KEY', 'test-key')
-
+def test_the_model_layer_reads_a_reply_and_fails_safe():
     # A small model wraps the array in prose or a fence often enough to matter.
     assert parse_reply('Here you go:\n```json\n[2, 3]\n```', 3) == {1, 2}
     assert parse_reply('[1]', 3) == {0}
@@ -65,6 +64,12 @@ def test_the_model_layer_reads_a_reply_and_fails_safe(monkeypatch):
     assert keep_relevant(PAIRS, _Session(boom=True)) is None
     assert keep_relevant(PAIRS, _Session(_Reply(status=429))) is None
 
-    monkeypatch.delenv('HEADLINE_AI_KEY')
-    monkeypatch.delenv('GROQ_API_KEY', raising=False)
-    assert keep_relevant(PAIRS) is None       # no key, no opinion
+    # The anonymous tier answers 429 when it is busy. That is normal, and it
+    # means no opinion rather than an empty feed.
+    assert keep_relevant(PAIRS, _Session(_Reply(status=429))) is None
+
+    # No key is sent unless one is configured, because the default endpoint
+    # takes none.
+    session = _Session()
+    keep_relevant(PAIRS, session)
+    assert session.headers.get('Authorization') is None
