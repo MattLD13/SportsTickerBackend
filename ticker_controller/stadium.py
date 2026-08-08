@@ -65,6 +65,27 @@ PF = {
     ' ':[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
 }
 
+def inning_half(status, game=None):
+    """Which half of the inning it is: 'top', 'bot', or 'break'.
+
+    ESPN sends "Top 5th", "Bot 5th", "Mid 5th" and "End 5th". An earlier test
+    looked for "T " in the upper-cased status, which matches "BOT 5TH", so every
+    bottom half read as a top half and the count sat on the wrong club.
+
+    Mid and End are between halves. Neither arrow is true there, so they get
+    their own answer rather than falling through to one.
+    """
+    up = str(status or '').upper()
+    if isinstance(game, dict) and 'isTop' in game:
+        return 'top' if game['isTop'] else 'bot'
+    # "^5TH" and "V5TH" are the shortened forms the compact strip uses.
+    if 'TOP' in up or up.startswith('^'):
+        return 'top'
+    if 'BOT' in up or up.startswith('V'):
+        return 'bot'
+    return 'break'
+
+
 # ── Low-level drawing helpers ─────────────────────────────────────────────────
 
 def _clamp(v): return max(0, min(255, int(v)))
@@ -542,17 +563,18 @@ class StadiumRenderer:
             on2     = bool(sit.get('onSecond', g.get('on2', False)))
             on3     = bool(sit.get('onThird',  g.get('on3', False)))
 
-            status_up = status.upper()
-            is_top = 'TOP' in status_up or 'T ' in status_up
-            if 'isTop' in g:
-                is_top = bool(g['isTop'])
+            half = inning_half(status, g)
+            is_top = half == 'top'
+            is_bot = half == 'bot'
 
             fi(d, 0, 0, CW, 8, 0, 0, 0)
             fi(d, 0, 7, CW, 1, 55, 76, 130)
 
             inn_match = re.search(r'\d+', status)
             inn_num = inn_match.group() if inn_match else ''
-            arrow_glyph = '▲' if is_top else '▼'
+            # Between halves there is no half to point at, so neither arrow is
+            # true. A dash says "inning break" instead of guessing a direction.
+            arrow_glyph = '▲' if is_top else ('▼' if is_bot else '-')
             arrow_w = pf_w(arrow_glyph)
             num_w = pf_w(inn_num)
             total_w = arrow_w + num_w
@@ -566,6 +588,8 @@ class StadiumRenderer:
             bs_w = pf_w(b_glyph) + pf_w('-') + pf_w(s_glyph)
             batting_side = _side_from_value(sit.get('possession', '') or g.get('poss', ''))
             if batting_side is None:
+                # The visitors bat in the top. Between halves the home side is
+                # up next, so it takes the count.
                 batting_side = 'away' if is_top else 'home'
             bs_hdr_x = (h_logo_x + LOGO_SZ // 2 - bs_w // 2) if batting_side == 'home' \
                        else (a_logo_x + LOGO_SZ // 2 - bs_w // 2)
