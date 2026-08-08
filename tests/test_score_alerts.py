@@ -150,7 +150,7 @@ def test_walkoff():
     assert run([(5, 3, 'Bot 9th', 'in'), (6, 3, 'Bot 9th', 'in')]) == ['SOLO HOME RUN']
     assert run([(3, 3, 'Bot 8th', 'in'), (4, 3, 'Bot 8th', 'in')]) == ['SOLO HOME RUN']
     # The visitors scoring is never a walk-off. It reads RUN SCORES rather than
-    # SOLO HOMER because the attached play belongs to the home side, so it is
+    # SOLO HOME RUN because the attached play belongs to the home side, so it is
     # correctly ignored as context for the other team's run.
     assert run([(3, 3, 'Top 9th', 'in'), (3, 4, 'Top 9th', 'in')]) == ['RUN SCORES']
 

@@ -42,14 +42,14 @@ def alert(**kwargs) -> dict:
 
 ALERTS = [
     ("mlb_grand_slam", alert(
-        sport="mlb", kind="grand_slam", headline="GRAND SLAM", detail="JUDGE",
+        sport="mlb", kind="grand_slam", headline="GRAND SLAM", detail="JUDGE - 441 FT - 41ST HR",
         points=4, big=True, status="BOT 7",
         team_abbr="NYY", team_color="#132448", team_alt_color="#C4CED3",
         opp_abbr="BOS", home_abbr="NYY", away_abbr="BOS",
         home_score=9, away_score=3, team_logo=espn_logo("mlb", "nyy"),
     )),
     ("mlb_solo_hr", alert(
-        sport="mlb", kind="solo_hr", headline="SOLO HOMER", detail="SOTO",
+        sport="mlb", kind="solo_hr", headline="SOLO HOME RUN", detail="SOTO - 397 FT - 12TH HR",
         points=1, status="TOP 4",
         team_abbr="NYY", team_color="#132448", team_alt_color="#C4CED3",
         opp_abbr="TOR", home_abbr="TOR", away_abbr="NYY",

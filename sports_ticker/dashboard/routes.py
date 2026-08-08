@@ -8,10 +8,11 @@ from flask import render_template
 from . import dashboard
 from ..core import (
     state, tickers, data_lock,
-    normalize_mode, resolve_ticker_id,
+    normalize_mode, resolve_ticker_id, effective_active_sports,
     LEAGUE_OPTIONS, DEFAULT_TICKER_SETTINGS,
     SERVER_VERSION, _VERSION_HASH,
 )
+from ..services.telemetry import fleet_health, server_snapshot
 
 PANEL_W, PANEL_H = 384, 32
 
@@ -82,6 +83,42 @@ def _uptime_str(seconds: float) -> str:
     return f"{m}m {s}s"
 
 
+def _ago_str(seconds) -> str:
+    """How long ago something happened, short enough for a table cell."""
+    if seconds is None:
+        return 'never'
+    secs = int(max(0, seconds))
+    if secs < 60:
+        return f"{secs}s ago"
+    if secs < 3600:
+        return f"{secs // 60}m ago"
+    if secs < 86400:
+        return f"{secs // 3600}h ago"
+    return f"{secs // 86400}d ago"
+
+
+def _fleet_rows() -> list:
+    """Every board, formatted for the page.
+
+    A missing value prints as a dash rather than a zero. A board that never
+    reported a temperature and a board sitting at 0 °C must not read the same.
+    """
+    rows = []
+    for board in fleet_health():
+        rows.append({
+            'name':        board['name'],
+            'id':          board['id'][:8],
+            'link':        board['link'],
+            'mode':        board['mode'].replace('_', ' '),
+            'last_poll':   _ago_str(board['last_poll_ago']),
+            'uptime':      _uptime_str(board['uptime']) if board['uptime'] else '—',
+            'temp':        f"{board['temp_c']:.0f}C" if board['temp_c'] is not None else '—',
+            'build':       board['build'] or '—',
+            'dark_reason': board['dark_reason'],
+        })
+    return rows
+
+
 def _active_ticker() -> dict:
     """The controller whose display this page is describing. Mirrors how
     /api/state resolves one; with several paired, the one that checked in most
@@ -119,7 +156,7 @@ def _scroll_rate_px_s() -> int:
     return max(1, round(1.0 / speed))
 
 
-def _on_air_ids(mode: str) -> set:
+def _on_air_ids(mode: str, active: dict) -> set:
     """League / utility ids that actually have something on the panel right now,
     as opposed to merely being enabled and polled."""
     current = normalize_mode(mode)
@@ -127,7 +164,6 @@ def _on_air_ids(mode: str) -> set:
     if current in _MODE_TO_UTIL:
         return {_MODE_TO_UTIL[current]}
 
-    active = state.get('active_sports', {})
     if current == 'stocks':
         return {sid for sid, on in active.items() if on and sid.startswith('stock_')}
 
@@ -160,7 +196,7 @@ ALERT_PRESETS = [
     {'name': 'Giants',    'team': 'nfl:NYG', 'color': '#0B2265',
      'headline': 'RUSHING TD',      'detail': 'BARKLEY', 'status': 'Q3 8:42'},
     {'name': 'Cardinals', 'team': 'mlb:STL', 'color': '#C41E3A',
-     'headline': '3-RUN HOMER',     'detail': 'GOLDSCHMIDT', 'status': 'Bottom 6'},
+     'headline': '3-RUN HOME RUN',  'detail': 'GOLDSCHMIDT - 401 FT - 9TH HR', 'status': 'Bottom 6'},
     {'name': 'Blues',     'team': 'nhl:STL', 'color': '#002F87',
      'headline': 'HAT TRICK',       'detail': 'KYROU',   'status': 'P3 11:47'},
 ]
@@ -250,10 +286,13 @@ def root():
     now = time.time()
 
     with data_lock:
-        active_sports = dict(state.get('active_sports', {}))
+        # The page describes one board, so it must read that board's leagues.
+        # Reading the global map showed a league as enabled that this panel had
+        # switched off for itself.
+        active_sports = effective_active_sports(_active_ticker())
         display_mode  = _display_mode()
 
-    on_air = _on_air_ids(display_mode)
+    on_air = _on_air_ids(display_mode, active_sports)
 
     # The two flight utilities are not entries in active_sports — there is
     # nothing to toggle, they run off the tracked flight number and the airport
@@ -285,11 +324,17 @@ def root():
             'state': 'live' if (enabled and item['id'] in on_air) else ('on' if enabled else 'off'),
         })
 
+    fleet = _fleet_rows()
+
     return render_template(
         'dashboard/index.html',
         version_hash    = _VERSION_HASH,
         server_version  = SERVER_VERSION,
         uptime_str      = _uptime_str(now - _SERVER_START),
+        fleet           = fleet,
+        fleet_online    = sum(1 for b in fleet if b['link'] == 'online'),
+        fleet_dark      = sum(1 for b in fleet if b['dark_reason']),
+        server_health   = server_snapshot(),
         global_mode     = display_mode,
         sports_leagues  = [l for l in leagues if l['type'] == 'sport'],
         util_leagues    = [l for l in leagues if l['type'] == 'util'],

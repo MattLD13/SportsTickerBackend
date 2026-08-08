@@ -87,7 +87,7 @@ ALERTS = {
         home_score=17, away_score=14, team_logo=espn_logo("nfl", "nyg"),
     ),
     "cardinals": alert(
-        sport="mlb", kind="three_run_hr", headline="3-RUN HOMER", detail="GOLDSCHMIDT",
+        sport="mlb", kind="three_run_hr", headline="3-RUN HOME RUN", detail="GOLDSCHMIDT - 401 FT",
         points=3, big=True, status="Bottom 6", team_abbr="STL", team_color="#C41E3A",
         team_alt_color="#0C2340", opp_abbr="CHC", home_abbr="STL", away_abbr="CHC",
         home_score=6, away_score=2, team_logo=espn_logo("mlb", "stl"),
