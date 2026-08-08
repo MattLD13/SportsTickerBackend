@@ -26,6 +26,7 @@ Backend package for configuration, data fetching, routes, and mode buffers.
 - `fetchers/sports_modes.py` publishes the sports buffer. It runs the detector at that point, the only point where both the old score and the new score exist.
 - Context comes from the `last_play` key on the game object. ESPN fetchers fill it with `normalize_last_play`. NHL fetchers use `nhl_last_goal`.
 - A sport without `last_play` still gets a headline. The detector builds that headline from the score delta alone.
+- Baseball adds a walk-off test on top of the play name: the home side takes the lead in the bottom of the ninth or later. It is the one score taken from a game already marked final, because it ends the game as it lands.
 - `/data` returns alerts under the `alerts` key. It sends an alert only for a followed team, and only to a ticker in a `SPORTS_MODE_FAMILY` mode.
 - The league filter does not apply to alerts. When its league is off, a followed team still shows an alert.
 - Alerts obey `live_delay_seconds`. `recent(delay=...)` holds each alert for the same time as the content. A new caller of `recent()` must pass the delay.

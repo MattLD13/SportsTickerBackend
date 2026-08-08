@@ -119,3 +119,43 @@ def test_team_is_followed():
     assert not team_is_followed(teams, "nfl", "NYY")   # league-qualified
     assert team_is_followed(teams, "nfl", "BOS")       # bare, unambiguous
     assert not team_is_followed(teams, "nfl", "LV")    # bare, ambiguous
+
+
+def test_walkoff():
+    """The home side takes the lead in the bottom of the ninth or later.
+
+    Three things must hold together: the home side scored, it was level or
+    behind and is now ahead, and the visitors have no at-bat left.
+    """
+    def run(frames):
+        t = ScoreAlertTracker()
+        out = []
+        for home, away, status, state in frames:
+            out += t.ingest([dict(game(home=home, away=away, state=state),
+                                  status=status,
+                                  last_play={'text': 'Goldschmidt homered to left',
+                                             'team': 'NYY'})])
+        return [a['headline'] for a in out]
+
+    # The play still says how it happened, so the two are combined.
+    assert run([(2, 3, 'Bot 9th', 'in'), (4, 3, 'Bot 9th', 'in')]) == ['WALK-OFF HOMER']
+    assert run([(3, 3, 'Bot 10th', 'in'), (7, 3, 'Bot 10th', 'in')]) == ['WALK-OFF SLAM']
+
+    # A walk-off ends the game as it lands, so the feed often flips the score
+    # and the state in the same poll. The live check must not eat it.
+    assert run([(3, 3, 'Bot 9th', 'in'), (4, 3, 'FINAL', 'post')]) == ['WALK-OFF HOMER']
+
+    # Not walk-offs: only ties it, already ahead, too early, or the visitors.
+    assert run([(2, 3, 'Bot 9th', 'in'), (3, 3, 'Bot 9th', 'in')]) == ['SOLO HOMER']
+    assert run([(5, 3, 'Bot 9th', 'in'), (6, 3, 'Bot 9th', 'in')]) == ['SOLO HOMER']
+    assert run([(3, 3, 'Bot 8th', 'in'), (4, 3, 'Bot 8th', 'in')]) == ['SOLO HOMER']
+    # The visitors scoring is never a walk-off. It reads RUN SCORES rather than
+    # SOLO HOMER because the attached play belongs to the home side, so it is
+    # correctly ignored as context for the other team's run.
+    assert run([(3, 3, 'Top 9th', 'in'), (3, 4, 'Top 9th', 'in')]) == ['RUN SCORES']
+
+    # It earns the long hold.
+    t = ScoreAlertTracker()
+    t.ingest([dict(game(home=3, away=3), status='Bot 9th')])
+    alert = t.ingest([dict(game(home=4, away=3), status='Bot 9th')])[0]
+    assert alert['kind'] == 'walk_off' and alert['big'] is True

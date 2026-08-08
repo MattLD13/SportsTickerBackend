@@ -84,6 +84,68 @@ def _last_name(full_name):
     return parts[-1].upper()[:12]
 
 
+# A walk-off can only happen from the ninth on, because before that the
+# visitors still get to bat again.
+_WALKOFF_MIN_INNING = 9
+
+_WALKOFF_LABELS = {
+    'grand_slam':   'WALK-OFF SLAM',
+    'three_run_hr': 'WALK-OFF HOMER',
+    'two_run_hr':   'WALK-OFF HOMER',
+    'solo_hr':      'WALK-OFF HOMER',
+    'sac_fly':      'WALK-OFF SAC FLY',
+    'sac_bunt':     'WALK-OFF BUNT',
+    'rbi_single':   'WALK-OFF SINGLE',
+    'rbi_double':   'WALK-OFF DOUBLE',
+    'rbi_triple':   'WALK-OFF TRIPLE',
+    'walk_in':      'WALK-OFF WALK',
+    'wild_pitch':   'WALK-OFF WILD PITCH',
+    'passed_ball':  'WALK-OFF PASSED BALL',
+    'balk':         'WALK-OFF BALK',
+    'error':        'WALK-OFF ERROR',
+}
+
+
+def baseball_half_inning(status):
+    """Return ``(half, inning)`` from a baseball status, or ``('', 0)``.
+
+    ``half`` is 'top', 'bot', or '' between halves and once the game is over.
+    "^7TH" and "V7TH" are the shortened forms the compact strip uses.
+    """
+    text = str(status or '').upper()
+    number = re.search(r'\d+', text)
+    inning = int(number.group()) if number else 0
+    if 'TOP' in text or text.startswith('^'):
+        return 'top', inning
+    # "BOTTOM" starts with "BOT", so one test covers both.
+    if 'BOT' in text or text.startswith('V'):
+        return 'bot', inning
+    return '', inning
+
+
+def is_walkoff(sport, side, before, after, status, prev_status=''):
+    """True when the home side just took the lead and ended the game.
+
+    Three things have to hold at once: the home side scored, it was level or
+    behind and is now ahead, and it is the bottom of the ninth or later.
+
+    The status is read from whichever of the two polls still names an inning.
+    A walk-off ends the game, so the feed often flips to FINAL in the very poll
+    that carries the winning run, and by then the inning is gone.
+    """
+    if _sport_family(sport) != 'baseball' or side != 'home':
+        return False
+    prev_home, prev_away = before
+    home, away = after
+    if not (prev_home <= prev_away and home > away):
+        return False
+    for text in (status, prev_status):
+        half, inning = baseball_half_inning(text)
+        if half:
+            return half == 'bot' and inning >= _WALKOFF_MIN_INNING
+    return False
+
+
 def _describe_baseball(delta, play):
     text = f"{play.get('text', '')} {play.get('type', '')}".lower()
     if 'grand slam' in text or ('home run' in text and delta >= 4) or ('homer' in text and delta >= 4):
@@ -259,6 +321,7 @@ _DESCRIBERS = {
 # Plays that earn a longer hold. These are the ones a fan wants to look up for,
 # not the ones that scroll past while they're in the kitchen.
 _BIG_KINDS = frozenset({
+    'walk_off',
     'grand_slam', 'three_run_hr', 'hat_trick', 'pick_six', 'fumble_td',
     'kick_return_td', 'punt_return_td', 'shorthanded', 'empty_net',
     'penalty_shot', 'safety',
@@ -318,16 +381,18 @@ class ScoreAlertTracker:
                 if home is None or away is None:
                     continue
 
+                status = str(game.get('status', ''))
                 previous = self._scores.get(gid)
-                self._scores[gid] = (home, away)
+                self._scores[gid] = (home, away, status)
 
                 # A game seen for the first time has no "before" to compare
                 # against — every live game would fire on the first poll after a
                 # restart otherwise.
                 if previous is None:
                     continue
-                if str(game.get('state', '')).lower() not in _LIVE_STATES:
-                    continue
+
+                prev_status = previous[2] if len(previous) > 2 else ''
+                is_live = str(game.get('state', '')).lower() in _LIVE_STATES
 
                 for side, new_score, old_score in (
                     ('home', home, previous[0]),
@@ -338,12 +403,23 @@ class ScoreAlertTracker:
                         continue
 
                     sport = str(game.get('sport', '')).lower()
+                    walkoff = is_walkoff(sport, side, (previous[0], previous[1]),
+                                         (home, away), status, prev_status)
+
+                    # A walk-off is the one score worth taking from a game that
+                    # has already gone final. It ends the game as it lands, so
+                    # the live check would throw away the best play in baseball
+                    # whenever the feed flips both fields in the same poll.
+                    if not is_live and not walkoff:
+                        continue
+
                     if self._suppress(gid, side, sport, delta, now):
                         self._last_team_score[(gid, side)] = now
                         continue
                     self._last_team_score[(gid, side)] = now
 
-                    alert = self._build_alert(game, side, delta, home, away, now)
+                    alert = self._build_alert(game, side, delta, home, away, now,
+                                              walkoff=walkoff)
                     self._alerts.append(alert)
                     emitted.append(alert)
 
@@ -360,7 +436,8 @@ class ScoreAlertTracker:
 
         return emitted
 
-    def _build_alert(self, game, side, delta, home_score, away_score, now):
+    def _build_alert(self, game, side, delta, home_score, away_score, now,
+                     walkoff=False):
         other = 'away' if side == 'home' else 'home'
         sport = str(game.get('sport', '')).lower()
         play = game.get('last_play') if isinstance(game.get('last_play'), dict) else {}
@@ -374,6 +451,11 @@ class ScoreAlertTracker:
             play = {}
 
         kind, headline = describe_score(sport, delta, play)
+        if walkoff:
+            # The play still says how it happened, so the two are combined
+            # rather than one replacing the other.
+            headline = _WALKOFF_LABELS.get(kind, 'WALK-OFF')
+            kind = 'walk_off'
         athlete = _last_name(play.get('athlete') or play.get('scorer'))
 
         return {
