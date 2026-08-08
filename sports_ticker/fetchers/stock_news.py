@@ -9,9 +9,11 @@ Two sources, chosen by whether a Finnhub key is configured.
 
 The fallback needs filtering that Finnhub does not. Yahoo's per-symbol feed is
 sector-wide: a query for NVDA returns Cloudflare and Calumet headlines, and only
-about a third of the feed names the company at all. A headline is kept only when
-it names the ticker or the company, which leaves the ones actually worth a
-banner: "Nvidia ends week up more than 10% as AI chip fears ease".
+about a third of the feed names the company at all.
+
+Naming a company is also not the same as being about it, so relevance is judged
+twice. A cheap word rule runs always, and an optional model reads what survives.
+See services/headline_filter.py.
 
 One headline per symbol per poll. The feed carries twenty, and a board that
 showed all of them would be a news ticker rather than a stock ticker.
@@ -23,6 +25,7 @@ import time
 
 import requests
 
+from ..services.headline_filter import keep_relevant
 from ..services.news_alerts import STOCKS, build_item, make_id
 
 FINNHUB_NEWS = 'https://finnhub.io/api/v1/company-news'
@@ -64,12 +67,33 @@ def _company_words(symbol, session=None):
     return words
 
 
+# How far into a headline the company may appear and still be its subject.
+SUBJECT_WORDS = 4
+
+
 def _is_about(headline, symbol, words):
-    """True when the headline names the ticker or the company."""
+    """True when the headline names the ticker or the company anywhere."""
     low = str(headline or '').lower()
     if re.search(rf'\b{re.escape(symbol.lower())}\b', low):
         return True
     return any(w in low for w in words)
+
+
+def _is_subject(headline, symbol, words, limit=SUBJECT_WORDS):
+    """True when the company sits near the front, where a subject sits.
+
+    "AEye to Participate in J.P. Morgan Auto Conference" names the bank five
+    words in and is about AEye. Naming a company is not the same as being about
+    it, and position is the cheapest signal that tells the two apart.
+
+    This is a rule and not comprehension, so it also drops a good headline such
+    as "Tim Cook Says There's No Better Person to Take Over at Apple". The model
+    layer recovers those. This is what runs when no model key is set.
+    """
+    head = ' '.join(str(headline or '').split()[:limit]).lower()
+    if re.search(rf'\b{re.escape(symbol.lower())}\b', head):
+        return True
+    return any(w in head for w in words)
 
 
 def _finnhub_news(symbol, api_key, session, since):
@@ -132,8 +156,10 @@ def fetch_stock_news(symbols, session=None, api_key=None, quote=None,
     without the move only tells half the story.
     """
     since = time.time() - max_age_hours * 3600
-    items = []
 
+    # 1. Gather. A few per symbol, so the relevance pass has something to
+    #    choose between rather than one headline to accept or reject.
+    candidates = []
     for symbol in symbols:
         symbol = str(symbol).upper()
         try:
@@ -142,12 +168,26 @@ def fetch_stock_news(symbols, session=None, api_key=None, quote=None,
         except Exception as exc:
             print(f"[STOCK NEWS] {symbol} failed: {exc}")
             continue
-        if not rows:
-            continue
+        for stamp, headline in sorted(rows, key=lambda r: r[0], reverse=True)[:3]:
+            candidates.append((stamp, symbol, headline))
 
-        # One per symbol, the freshest. The feed carries twenty.
-        stamp, headline = max(rows, key=lambda r: r[0])
+    # 2. Judge relevance, but only on the keyless path. Finnhub filters by
+    #    symbol at the source, so its headlines are already about the company.
+    if candidates and not api_key:
+        kept = keep_relevant([(s, h) for _, s, h in candidates], session)
+        if kept is None:
+            # No model, or the call failed. The word rule stands in.
+            kept = {i for i, (_, s, h) in enumerate(candidates)
+                    if _is_subject(h, s, _company_words(s, session))}
+        candidates = [c for i, c in enumerate(candidates) if i in kept]
 
+    # 3. One per symbol, the freshest that survived.
+    best = {}
+    for stamp, symbol, headline in sorted(candidates, key=lambda c: c[0], reverse=True):
+        best.setdefault(symbol, (stamp, headline))
+
+    items = []
+    for symbol, (stamp, headline) in best.items():
         pct = None
         if quote:
             try:

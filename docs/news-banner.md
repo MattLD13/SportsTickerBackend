@@ -99,10 +99,39 @@ Two sources, chosen by whether a Finnhub key is set.
 
 The fallback needs filtering that Finnhub does not. Yahoo's per-symbol feed is
 sector-wide: a query for NVDA returns Cloudflare and Calumet headlines, and only
-about a third of the feed names the company. A headline is kept only when it
-names the ticker or the company. Company names come from Yahoo's search
-endpoint, cached for a day, with the generic half dropped so "corporation" does
-not match everything.
+about a third of the feed names the company.
+
+Naming a company is not the same as being about it. "AEye to Participate in
+J.P. Morgan Auto Conference" names the bank and is about AEye. Two layers sort
+that out, and the second is optional.
+
+1. **A word rule.** The company must appear in the first four words, where a
+   subject sits. Free and instant, and it drops the AEye headline. It also
+   drops a few good ones, such as "Tim Cook Says There's No Better Person to
+   Take Over at Apple", where the company arrives last.
+2. **A model**, which reads the shortlist and answers properly. It recovers the
+   ones the rule loses. One request per poll, all candidates batched.
+
+Company names come from Yahoo's search endpoint, cached for a day, with the
+generic half dropped so "corporation" does not match everything.
+
+### The model layer
+
+Off by default. Set a key and it turns on:
+
+    HEADLINE_AI_KEY=...        # or GROQ_API_KEY
+    HEADLINE_AI_URL=...        # default: Groq
+    HEADLINE_AI_MODEL=...      # default: llama-3.1-8b-instant
+
+Any OpenAI-compatible endpoint works, so the provider is a matter of which key
+is set. Groq is the default because its free tier needs no credit card and
+allows 14,400 requests a day, against the one request per poll this makes.
+Cerebras and OpenRouter speak the same protocol; point the URL and model at
+either and nothing else changes.
+
+Finnhub filters by symbol at the source, so the model runs only on the keyless
+path. When no model key is set, or the call fails for any reason, the word rule
+stands. A model that is down costs relevance, never the whole feed.
 
 One headline per symbol per poll, freshest first, six in total. The feed carries
 twenty per symbol and a board showing all of them would be a news ticker rather
