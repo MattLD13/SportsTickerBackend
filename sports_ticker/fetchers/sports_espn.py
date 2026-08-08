@@ -304,6 +304,15 @@ class SportsEspnMixin:
                         sit.get('pitcherName') or sit.get('pitcher_name') or ''
                     )
                     _mlb_stats = self._mlb_extract_situation_stats(sit, _bat_obj, _pit_obj)
+
+                    # The batter's season home run count, for the alert detail.
+                    # It rides on the payload already fetched, so a home run
+                    # costs no extra request to say "28th HR".
+                    _season_hr = self._mlb_find_stat_value(
+                        [sit.get('batterStats'), sit, _bat_obj], {'homeRuns', 'hr', 'HR'}
+                    )
+                    if _season_hr and isinstance(game_obj.get('last_play'), dict):
+                        game_obj['last_play']['season_hr'] = _season_hr
                     _batter_avg = _mlb_stats.get('batter_avg', '')
                     _batter_h = _mlb_stats.get('batter_h', '')
                     _batter_ab = _mlb_stats.get('batter_ab', '')

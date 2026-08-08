@@ -90,9 +90,9 @@ _WALKOFF_MIN_INNING = 9
 
 _WALKOFF_LABELS = {
     'grand_slam':   'WALK-OFF SLAM',
-    'three_run_hr': 'WALK-OFF HOMER',
-    'two_run_hr':   'WALK-OFF HOMER',
-    'solo_hr':      'WALK-OFF HOMER',
+    'three_run_hr': 'WALK-OFF HOME RUN',
+    'two_run_hr':   'WALK-OFF HOME RUN',
+    'solo_hr':      'WALK-OFF HOME RUN',
     'sac_fly':      'WALK-OFF SAC FLY',
     'sac_bunt':     'WALK-OFF BUNT',
     'rbi_single':   'WALK-OFF SINGLE',
@@ -146,16 +146,43 @@ def is_walkoff(sport, side, before, after, status, prev_status=''):
     return False
 
 
+_HR_KINDS = frozenset({'grand_slam', 'three_run_hr', 'two_run_hr', 'solo_hr'})
+
+
+def home_run_stats(play):
+    """Distance and season total for a home run, when the feed carries them.
+
+    ESPN writes the distance into the play text itself — "Neto homered to
+    center (411 feet)" — so it costs no extra request. The season total comes
+    from the batter's own stat block on the same payload.
+    """
+    stats = {}
+    distance = re.search(r'\((\d{3})\s*feet\)', str(play.get('text') or ''), re.I)
+    if distance:
+        stats['distance_ft'] = int(distance.group(1))
+    season = _int_or_none(play.get('season_hr'))
+    if season:
+        stats['season_hr'] = season
+    return stats
+
+
+def _ordinal(n):
+    """28 -> 28th. Used for a season home run count."""
+    if 10 <= n % 100 <= 20:
+        return f"{n}TH"
+    return f"{n}{ {1: 'ST', 2: 'ND', 3: 'RD'}.get(n % 10, 'TH') }"
+
+
 def _describe_baseball(delta, play):
     text = f"{play.get('text', '')} {play.get('type', '')}".lower()
     if 'grand slam' in text or ('home run' in text and delta >= 4) or ('homer' in text and delta >= 4):
         return 'grand_slam', 'GRAND SLAM'
     if 'home run' in text or 'homer' in text or 'homered' in text:
         if delta >= 3:
-            return 'three_run_hr', '3-RUN HOMER'
+            return 'three_run_hr', '3-RUN HOME RUN'
         if delta == 2:
-            return 'two_run_hr', '2-RUN HOMER'
-        return 'solo_hr', 'SOLO HOMER'
+            return 'two_run_hr', '2-RUN HOME RUN'
+        return 'solo_hr', 'SOLO HOME RUN'
     if 'sacrifice fly' in text or 'sac fly' in text:
         return 'sac_fly', 'SAC FLY'
     if 'sacrifice bunt' in text or 'sac bunt' in text:
@@ -458,6 +485,16 @@ class ScoreAlertTracker:
             kind = 'walk_off'
         athlete = _last_name(play.get('athlete') or play.get('scorer'))
 
+        # A home run earns its numbers. The distance is the one every fan asks
+        # for, and the season total says whether this is a regular event.
+        stats = home_run_stats(play) if kind in _HR_KINDS or kind == 'walk_off' else {}
+        detail_parts = [athlete] if athlete else []
+        if stats.get('distance_ft'):
+            detail_parts.append(f"{stats['distance_ft']} FT")
+        if stats.get('season_hr'):
+            detail_parts.append(f"{_ordinal(stats['season_hr'])} HR")
+        detail = ' - '.join(detail_parts)
+
         return {
             'id': f"{game.get('id')}:{home_score}-{away_score}:{side}",
             'game_id': str(game.get('id', '')),
@@ -466,7 +503,8 @@ class ScoreAlertTracker:
             'side': side,
             'kind': kind,
             'headline': headline,
-            'detail': athlete,
+            'stats': stats,
+            'detail': detail,
             'points': delta,
             'big': kind in _BIG_KINDS,
             'team_abbr': scorer_abbr,

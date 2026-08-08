@@ -60,7 +60,7 @@ def test_the_live_delay_holds_an_alert_back_until_it_is_due():
 def test_describe_score_across_the_sports():
     cases = [
         ("mlb", 4, {"text": "Judge homered to left"}, "GRAND SLAM"),
-        ("mlb", 1, {"text": "Soto homered to right"}, "SOLO HOMER"),
+        ("mlb", 1, {"text": "Soto homered to right"}, "SOLO HOME RUN"),
         ("mlb", 1, {}, "RUN SCORES"),
         ("nfl", 6, {"type": "Rushing Touchdown"}, "RUSHING TD"),
         ("nfl", 3, {"type": "Field Goal Good"}, "FIELD GOAL"),
@@ -82,7 +82,7 @@ def test_real_mlb_play_text():
     """
     cases = [
         (4, "Durbin homered to left center (401 feet), Rafaela scored, Contreras scored and Yoshida scored.", "GRAND SLAM"),
-        (3, "Neto homered to center (411 feet), Meckler and Schanuel scored.", "3-RUN HOMER"),
+        (3, "Neto homered to center (411 feet), Meckler and Schanuel scored.", "3-RUN HOME RUN"),
         (1, "Schanuel hit sacrifice fly to right, Meckler scored, Trout to third.", "SAC FLY"),
         # A hit with a fielding error on the same play is still the hit.
         (1, "Dingler singled to right, Torres scored on throwing error by right fielder Ward.", "RBI SINGLE"),
@@ -138,17 +138,17 @@ def test_walkoff():
         return [a['headline'] for a in out]
 
     # The play still says how it happened, so the two are combined.
-    assert run([(2, 3, 'Bot 9th', 'in'), (4, 3, 'Bot 9th', 'in')]) == ['WALK-OFF HOMER']
+    assert run([(2, 3, 'Bot 9th', 'in'), (4, 3, 'Bot 9th', 'in')]) == ['WALK-OFF HOME RUN']
     assert run([(3, 3, 'Bot 10th', 'in'), (7, 3, 'Bot 10th', 'in')]) == ['WALK-OFF SLAM']
 
     # A walk-off ends the game as it lands, so the feed often flips the score
     # and the state in the same poll. The live check must not eat it.
-    assert run([(3, 3, 'Bot 9th', 'in'), (4, 3, 'FINAL', 'post')]) == ['WALK-OFF HOMER']
+    assert run([(3, 3, 'Bot 9th', 'in'), (4, 3, 'FINAL', 'post')]) == ['WALK-OFF HOME RUN']
 
     # Not walk-offs: only ties it, already ahead, too early, or the visitors.
-    assert run([(2, 3, 'Bot 9th', 'in'), (3, 3, 'Bot 9th', 'in')]) == ['SOLO HOMER']
-    assert run([(5, 3, 'Bot 9th', 'in'), (6, 3, 'Bot 9th', 'in')]) == ['SOLO HOMER']
-    assert run([(3, 3, 'Bot 8th', 'in'), (4, 3, 'Bot 8th', 'in')]) == ['SOLO HOMER']
+    assert run([(2, 3, 'Bot 9th', 'in'), (3, 3, 'Bot 9th', 'in')]) == ['SOLO HOME RUN']
+    assert run([(5, 3, 'Bot 9th', 'in'), (6, 3, 'Bot 9th', 'in')]) == ['SOLO HOME RUN']
+    assert run([(3, 3, 'Bot 8th', 'in'), (4, 3, 'Bot 8th', 'in')]) == ['SOLO HOME RUN']
     # The visitors scoring is never a walk-off. It reads RUN SCORES rather than
     # SOLO HOMER because the attached play belongs to the home side, so it is
     # correctly ignored as context for the other team's run.
@@ -159,3 +159,19 @@ def test_walkoff():
     t.ingest([dict(game(home=3, away=3), status='Bot 9th')])
     alert = t.ingest([dict(game(home=4, away=3), status='Bot 9th')])[0]
     assert alert['kind'] == 'walk_off' and alert['big'] is True
+
+
+def test_home_run_stats():
+    """The distance is already in the play text, so it costs no extra request."""
+    from sports_ticker.services.score_alerts import home_run_stats
+
+    play = {'text': 'Judge homered to left center (441 feet), Soto scored.',
+            'team': 'NYY', 'athlete': 'A. Judge', 'season_hr': 41}
+    assert home_run_stats(play) == {'distance_ft': 441, 'season_hr': 41}
+    assert home_run_stats({'text': 'Donovan singled to right'}) == {}
+
+    t = ScoreAlertTracker()
+    t.ingest([game(home=2, away=3)])
+    alert = t.ingest([game(home=4, away=3, last_play=play)])[0]
+    assert alert['headline'] == '2-RUN HOME RUN'
+    assert alert['detail'] == 'JUDGE - 441 FT - 41ST HR'
