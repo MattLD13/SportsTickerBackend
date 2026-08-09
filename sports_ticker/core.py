@@ -198,7 +198,11 @@ STOCKS_UPDATE_INTERVAL = 30
 WORKER_THREAD_COUNT = 10
 API_TIMEOUT = 7.0
 
-data_lock = threading.Lock()
+# Reentrant, because the helpers that read shared state take it themselves and
+# are also called from inside blocks that already hold it. A plain Lock makes
+# that combination deadlock, and which call path reaches it is not obvious at
+# the call site.
+data_lock = threading.RLock()
 
 TIMEOUTS = {
     'default': 7,
@@ -286,6 +290,61 @@ def team_is_followed(saved_teams, sport, abbr):
     if f"{str(sport or '').lower()}:{ab}" in saved_teams:
         return True
     return ab in saved_teams and ab not in COLLISION_ABBRS
+
+
+def effective_active_sports(rec):
+    """The league switches that apply to one ticker.
+
+    The global map is the default. A ticker stores only the leagues it
+    disagrees about, so a league added later still arrives with the global
+    default rather than missing from a stale full copy.
+    """
+    with data_lock:
+        merged = dict(state.get('active_sports', {}))
+        override = (rec or {}).get('active_sports')
+        if isinstance(override, dict):
+            for key, on in override.items():
+                if key in _VALID_LEAGUE_IDS:
+                    merged[key] = bool(on)
+    return merged
+
+
+def union_active_sports():
+    """Every league that any board wants, so one fetch serves the whole fleet.
+
+    The fetchers work from this. Narrowing it to what a single ticker asked
+    for happens per request, in effective_active_sports. A ticker can only add
+    a league here, never remove one, because the global value still applies to
+    every ticker that holds no opinion.
+    """
+    with data_lock:
+        merged = dict(state.get('active_sports', {}))
+        for rec in tickers.values():
+            override = rec.get('active_sports')
+            if not isinstance(override, dict):
+                continue
+            for key, on in override.items():
+                if on and key in _VALID_LEAGUE_IDS:
+                    merged[key] = True
+    return merged
+
+
+def set_ticker_active_sports(rec, updates):
+    """Record one ticker's disagreements with the global league switches.
+
+    A league that matches the global value is dropped instead of stored, so a
+    later global change still reaches this ticker. When nothing is left the
+    ticker follows the global map again.
+    """
+    with data_lock:
+        globals_map = dict(state.get('active_sports', {}))
+        override = dict(rec.get('active_sports') or {})
+        for key, on in updates.items():
+            if key in _VALID_LEAGUE_IDS:
+                override[key] = bool(on)
+        override = {k: v for k, v in override.items() if globals_map.get(k) != v}
+        rec['active_sports'] = override or None
+    return rec['active_sports']
 
 
 def normalize_mode(mode, fallback='sports'):
@@ -429,6 +488,10 @@ for t_file in ticker_files:
             t_data['settings'].pop('active_sports', None)
             if 'my_teams' not in t_data: t_data['my_teams'] = None
             elif t_data.get('my_teams') == []: t_data['my_teams'] = None
+            # None means "follow the global league switches". An empty override
+            # says the same thing, so store the one form.
+            if not isinstance(t_data.get('active_sports'), dict) or not t_data['active_sports']:
+                t_data['active_sports'] = None
             if 'clients' not in t_data: t_data['clients'] = []
             tickers[tid] = t_data
     except Exception as e:
@@ -565,6 +628,7 @@ def create_ticker_record(name="Ticker", client_id=None, paired=True):
         "name": name,
         "settings": DEFAULT_TICKER_SETTINGS.copy(),
         "my_teams": None,
+        "active_sports": None,
         "clients": [client_id] if client_id else [],
         "paired": paired,
         "pairing_code": generate_pairing_code(),

@@ -27,6 +27,7 @@
 
     <nav class="nav">
       <a href="#demo">Demo</a>
+      <a href="#fleet">Fleet</a>
       <a href="#modes">Modes</a>
       <a href="#coverage">Coverage</a>
       <a href="#hardware">Hardware</a>
@@ -125,12 +126,70 @@
     </div>
   </section>
 
+  <!-- ══ FLEET ═════════════════════════════════════════════════════════ -->
+  <section class="sec reveal" id="fleet">
+    <span class="plus tl"></span><span class="plus tr"></span>
+
+    <div class="sec-head">
+      <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">02 / FLEET</span>
+      <h2 class="sec-title">
+        Every board, and why it is
+        <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">dark</span>
+      </h2>
+      <p class="sec-note">
+        Each controller reports its uptime, temperature and build on the same
+        poll it uses to ask for content. A panel showing nothing says which gate
+        is holding it, so a dark board never has to be guessed at.
+        Machine-readable at <a href="/api/health">/api/health</a>.
+      </p>
+
+      <div class="legend">
+        <span class="legend-item"><span class="bulb is-live"></span>Polling now</span>
+        <span class="legend-item"><span class="bulb is-on"></span>Slow to answer</span>
+        <span class="legend-item"><span class="bulb is-off"></span>Not answering</span>
+      </div>
+    </div>
+
+    {% if fleet %}
+    <div class="fleet">
+      <div class="fleet-row fleet-head">
+        <span>Board</span><span>Link</span><span>Mode</span>
+        <span>Last poll</span><span>Uptime</span><span>Temp</span><span>Build</span>
+      </div>
+      {% for b in fleet %}
+      <div class="fleet-row is-{{ b.link }}">
+        <span class="fleet-name">{{ b.name }}<em>{{ b.id }}</em></span>
+        <span class="fleet-link"><span class="bulb"></span>{{ b.link }}</span>
+        <span data-led data-led-inline data-led-pad="0" data-led-color="dim">{{ b.mode }}</span>
+        <span>{{ b.last_poll }}</span>
+        <span>{{ b.uptime }}</span>
+        <span>{{ b.temp }}</span>
+        <span class="fleet-build">{{ b.build }}</span>
+        {% if b.dark_reason %}
+        <span class="fleet-why">Dark — {{ b.dark_reason }}</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="fleet-foot">
+      <span>{{ fleet_online }}/{{ fleet | length }} polling</span>
+      <span>{{ fleet_dark }} dark</span>
+      <span class="spacer"></span>
+      <span>server {{ server_health.rss_mb or '—' }}MB · {{ server_health.threads }} threads
+            · {{ server_health.fds or '—' }} fds</span>
+    </div>
+    {% else %}
+    <div class="fleet-empty">No controller has ever checked in with this server.</div>
+    {% endif %}
+  </section>
+
   <!-- ══ MODES ═════════════════════════════════════════════════════════ -->
   <section class="sec reveal" id="modes">
     <span class="plus tl"></span><span class="plus tr"></span>
 
     <div class="sec-head">
-      <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">02 / MODES</span>
+      <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">03 / MODES</span>
       <h2 class="sec-title">
         {{ display_modes | length }} ways to fill the
         <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">panel</span>
@@ -157,7 +216,7 @@
   <!-- ══ COVERAGE ══════════════════════════════════════════════════════ -->
   <section class="sec reveal" id="coverage">
     <div class="sec-head">
-      <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">03 / COVERAGE</span>
+      <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">04 / COVERAGE</span>
       <h2 class="sec-title">
         Everything it can
         <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">track</span>
@@ -219,7 +278,7 @@
     <span class="plus tl"></span><span class="plus tr"></span>
 
     <div class="sec-head">
-      <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">04 / HARDWARE</span>
+      <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">05 / HARDWARE</span>
       <h2 class="sec-title">
         Built out of panels, not
         <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">pixels</span>
@@ -309,6 +368,7 @@
       </div>
       <div class="footer-col">
         <h4 data-led data-led-inline data-led-color="dim" data-led-pad="0">ENDPOINTS</h4>
+        <a href="/api/health">/api/health</a>
         <a href="/api/state">/api/state</a>
         <a href="/data">/data</a>
         <a href="/leagues">/leagues</a>

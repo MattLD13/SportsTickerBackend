@@ -3,7 +3,7 @@ from flask import request, jsonify
 from ..routes_runtime import app
 from ..core import (
     state, tickers, data_lock,
-    normalize_mode, _normalize_single_pin,
+    normalize_mode, _normalize_single_pin, effective_active_sports,
     resolve_ticker_id, create_ticker_record, save_specific_ticker, generate_pairing_code,
     SPORTS_MODE_FAMILY, NON_SCOREBOARD_TYPES, HIDDEN_STATUS_KEYWORDS, _ACTIVE_STATES,
     _get_ticker_timezone_context, _apply_timezone_to_game_times,
@@ -12,10 +12,24 @@ from ..core import (
     SERVER_VERSION,
 )
 from ..services.score_alerts import score_alerts
+from ..services.telemetry import record_from_request
 from ..services.news_alerts import (
     SPORTS as NEWS_SPORTS, STOCKS as NEWS_STOCKS, news_alerts,
 )
 from ..workers import request_refresh, fetcher
+
+
+def _stock_row_wanted(row, active_sports):
+    """True when this board still follows the sector a stock row came from.
+
+    The stocks buffer carries every sector the fleet asked for, so the sector
+    filter has to run per response rather than at fetch time. A row from before
+    ``list_id`` existed has no sector to check, so it is shown.
+    """
+    list_id = row.get('list_id')
+    if not list_id:
+        return True
+    return bool(active_sports.get(list_id, False))
 
 
 def _no_games_placeholder_object(now_label: str = ''):
@@ -55,6 +69,10 @@ def get_ticker_data():
 
     rec = tickers[ticker_id]
     rec['last_seen'] = time.time()
+
+    # Health the board reports about itself, carried on the poll it already
+    # makes. /api/health and the dashboard read it back.
+    record_from_request(rec, request)
 
     # Auto-detect ticker timezone from its public IP (ip-api.com) and persist.
     _maybe_update_ticker_timezone_from_request(ticker_id, request)
@@ -142,7 +160,9 @@ def get_ticker_data():
         ]
     else:
         raw_games = fetcher.get_mode_snapshot(current_mode, delay_seconds)
-    active_sports = state.get('active_sports', {})
+    # This board's own league switches, which fall back to the global map for
+    # every league it holds no opinion about.
+    active_sports = effective_active_sports(rec)
     visible_items = []
 
     def _sport_for_data_mode(sport_name: str) -> str:
@@ -236,7 +256,8 @@ def get_ticker_data():
         for g in raw_games:
             g_type, g_sport = g.get('type', ''), g.get('sport', '')
             match = False
-            if current_mode == 'stocks' and g_type == 'stock_ticker': match = True
+            if current_mode == 'stocks' and g_type == 'stock_ticker':
+                match = _stock_row_wanted(g, active_sports)
             elif current_mode == 'weather' and g_type == 'weather': match = True
             elif current_mode == 'clock' and g_type == 'clock': match = True
             elif current_mode == 'masters' and (g_type == 'masters' or str(g_sport).lower() == 'masters'): match = True
@@ -358,7 +379,8 @@ def api_state():
         response_settings = dict(state)
     if ticker_id and ticker_id in tickers:
         response_settings.update(tickers[ticker_id]['settings'])
-        response_settings['active_sports'] = dict(state['active_sports'])  # global always wins
+        # This board's own leagues, global map as the default for the rest.
+        response_settings['active_sports'] = effective_active_sports(tickers[ticker_id])
         _t_teams = tickers[ticker_id].get('my_teams')
         # None = use global fallback (always []); non-empty list = ticker's saved teams
         response_settings['my_teams'] = list(state.get('my_teams', [])) if _t_teams is None else _t_teams
@@ -430,7 +452,7 @@ def api_state():
         ]
     processed_games = []
     saved_teams = set(response_settings.get('my_teams', []))
-    _active_sports = state.get('active_sports', {})
+    _active_sports = response_settings.get('active_sports', {})
 
     for g in raw_games:
         game_copy = g.copy()
@@ -466,7 +488,7 @@ def api_state():
             if g_type != 'music':
                 should_show = False
         elif current_mode == 'stocks':
-            if g_type != 'stock_ticker':
+            if g_type != 'stock_ticker' or not _stock_row_wanted(game_copy, _active_sports):
                 should_show = False
         elif current_mode == 'weather':
             if g_type != 'weather':

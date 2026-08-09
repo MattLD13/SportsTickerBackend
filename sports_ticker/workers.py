@@ -1,6 +1,5 @@
 # Runtime singleton initialization and background worker loops.
 
-import os
 import threading
 import time
 import traceback
@@ -8,9 +7,10 @@ from . import fetchers_runtime as _fetchers
 from .core import (
     state, tickers, data_lock,
     SPORTS_UPDATE_INTERVAL, _normalize_single_pin, _STOCK_LISTS,
-    Tee, tee_instance, purge_stale_tickers,
+    Tee, tee_instance, purge_stale_tickers, union_active_sports,
 )
 from .fetchers_runtime import TestMode, SportsFetcher, SpotifyFetcher, FlightTracker
+from .services.telemetry import server_snapshot_line
 
 # Restore TestMode from persisted state (only active when debug_mode is on)
 if state.get('debug_mode'):
@@ -196,8 +196,9 @@ def stocks_worker():
     while True:
         try:
             if _any_ticker_needs('stocks'):
-                with data_lock:
-                    active_sports = state['active_sports']
+                # Union across the fleet: one board switching a sector on has
+                # to rebuild the buffer even when the global map leaves it off.
+                active_sports = union_active_sports()
                 active_key = frozenset(k for k, v in active_sports.items() if k.startswith('stock_') and v)
                 if active_key != _last_active_key:
                     _last_active_key = active_key
@@ -258,26 +259,6 @@ def _music_signature():
 HOUSEKEEPING_INTERVAL = 900   # 15 minutes
 
 
-def _resource_usage_line():
-    """One-line process health snapshot (Linux /proc; degrades elsewhere)."""
-    rss_txt = 'n/a'
-    fd_txt = 'n/a'
-    try:
-        with open('/proc/self/status') as f:
-            for line in f:
-                if line.startswith('VmRSS:'):
-                    rss_txt = f"{int(line.split()[1]) / 1024:.1f}MB"
-                    break
-    except Exception:
-        pass
-    try:
-        fd_txt = str(len(os.listdir('/proc/self/fd')))
-    except Exception:
-        pass
-    return (f"[HEALTH] rss={rss_txt} threads={threading.active_count()} "
-            f"fds={fd_txt} tickers={len(tickers)}")
-
-
 def housekeeping_worker():
     """Periodic maintenance: purge stale tickers, log resource usage.
 
@@ -292,7 +273,9 @@ def housekeeping_worker():
         except Exception as e:
             print(f"Housekeeping purge error: {e}")
         try:
-            print(_resource_usage_line())
+            # The same snapshot that /api/health serves, so the log and the
+            # dashboard cannot disagree about the numbers.
+            print(server_snapshot_line())
         except Exception:
             pass
 
@@ -350,9 +333,8 @@ def _fetch_stock_news(fetch):
     so this adds no extra price request.
     """
     stocks = fetcher.stocks
-    with data_lock:
-        active = [k for k, v in state.get('active_sports', {}).items()
-                  if k.startswith('stock_') and v]
+    active = [k for k, v in union_active_sports().items()
+              if k.startswith('stock_') and v]
     symbols = sorted({s for key in active for s in _STOCK_LISTS.get(key, [])})
     if not symbols:
         return []

@@ -6,7 +6,7 @@ from ..core import (
     state, tickers, data_lock,
     normalize_mode, _normalize_single_pin, VALID_MODES, _VALID_LEAGUE_IDS,
     lookup_and_auto_fill_airport, resolve_ticker_id, create_ticker_record,
-    save_specific_ticker, save_global_config,
+    save_specific_ticker, save_global_config, set_ticker_active_sports,
 )
 from ..workers import request_refresh, fetcher, flight_tracker, sync_test_mode_from_state
 
@@ -186,11 +186,17 @@ def api_config():
                         # else: global my_teams always stays [] — ignore untargeted team updates
                         continue
 
-                # HANDLE ACTIVE SPORTS — only accept keys that exist in LEAGUE_OPTIONS
+                # HANDLE ACTIVE SPORTS — per-ticker isolation, same rule as mode.
+                # A targeted request sets that board's leagues only, so two
+                # boards in one house can follow different sports. Only keys
+                # that exist in LEAGUE_OPTIONS are accepted.
                 if k == 'active_sports' and isinstance(v, dict):
-                    for ak, av in v.items():
-                        if ak in _VALID_LEAGUE_IDS:
-                            state['active_sports'][ak] = av
+                    if target_id and target_id in tickers:
+                        set_ticker_active_sports(tickers[target_id], v)
+                    else:
+                        for ak, av in v.items():
+                            if ak in _VALID_LEAGUE_IDS:
+                                state['active_sports'][ak] = av
                     continue
                 
                 # HANDLE MODE — per-ticker isolation

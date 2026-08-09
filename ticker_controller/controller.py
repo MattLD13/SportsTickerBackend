@@ -43,6 +43,7 @@ from .modes.f1 import F1Mixin
 from .modes.nascar import NascarMixin
 from .modes.score_alert import ScoreAlertMixin, score_alert_duration
 from .modes.news_banner import NewsBannerMixin, news_banner_duration
+from .telemetry import poll_headers
 
 # An alert is only worth showing while it is still news. A board that was
 # asleep, mid-update, or offline when the run scored should not celebrate it
@@ -56,6 +57,13 @@ NEWS_BANNER_MAX_AGE = 300.0
 # Target period for non-scrolling frames (~30fps). Scrolling uses scroll_sleep,
 # which the backend exposes as the user-facing "scroll_speed" setting.
 FRAME_INTERVAL = 0.033
+
+# How long the board keeps drawing the last payload after the backend stops
+# answering. The poller runs twice a second, so a minute is roughly 120 missed
+# polls — far past a dropped packet or a backend restart, and short enough that
+# nobody reads a dead score as a live one. Past this the panel says it is
+# offline instead of holding a frame that no longer means anything.
+OFFLINE_AFTER = 60.0
 
 
 class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMixin, MiscMixin, IndycarMixin, F1Mixin, NascarMixin, ScoreAlertMixin, NewsBannerMixin):
@@ -181,6 +189,11 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         self.is_updating = False
         self._update_step = "Updating..."
         self._update_version = ""
+
+        # Last time the backend answered with a payload this board could read.
+        # Starts now, so a board that boots without a network shows its normal
+        # startup screen for the grace period before it reports the link down.
+        self.last_contact = time.monotonic()
 
         threading.Thread(target=self.poll_backend, daemon=True).start()
 
@@ -833,6 +846,16 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                     time.sleep(0.5)
                     continue
 
+                # Nothing below this point can be trusted once the backend has
+                # been silent long enough: the strip, the static pages and the
+                # queued alerts were all built from a payload that has since
+                # gone stale. Say the link is down instead of showing them.
+                offline_for = time.monotonic() - self.last_contact
+                if offline_for >= OFFLINE_AFTER:
+                    self.update_display(self.draw_offline_screen(offline_for))
+                    self._pace(FRAME_INTERVAL)
+                    continue
+
                 # A followed team scoring outranks whatever is on screen. The
                 # backend only sends alerts to a board in a sports mode, so
                 # there is no mode check to repeat here.
@@ -1022,12 +1045,16 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         while self.running:
             try:
                 url = f"{BACKEND_URL}/data?id={self.device_id}"
-                r = session.get(url, timeout=5, verify=False)
+                r = session.get(url, timeout=5, verify=False, headers=poll_headers())
                 if r.status_code != 200:
                     time.sleep(2)
                     continue
 
                 data = r.json()
+                # Only a parsed response counts as contact. A reachable server
+                # that answers with something unreadable leaves the board just
+                # as blind as an unreachable one, and the panel must say so.
+                self.last_contact = time.monotonic()
                 server_status = data.get('status', 'active')
 
                 if server_status == 'pairing':

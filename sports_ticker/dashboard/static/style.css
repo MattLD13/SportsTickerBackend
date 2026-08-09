@@ -527,6 +527,64 @@ a { color: inherit; text-decoration: none; }
   white-space: nowrap;
 }
 
+/* ── Fleet table ──────────────────────────────────────────────────────────── */
+.fleet { border: 1px solid var(--line); background: var(--panel); }
+.fleet-row {
+  display: grid;
+  grid-template-columns: 2fr 1.1fr 1.2fr 1fr 1fr .8fr 1.3fr;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.fleet-row:last-child { border-bottom: 0; }
+.fleet-head {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--text-mute);
+}
+.fleet-name { color: var(--text-hi); display: flex; align-items: baseline; gap: 8px; }
+.fleet-name em {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--text-mute);
+  font-variant-numeric: tabular-nums;
+}
+.fleet-link { display: inline-flex; align-items: center; gap: 8px; text-transform: capitalize; }
+.fleet-row.is-online  .bulb { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.fleet-row.is-stale   .bulb { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.fleet-row.is-offline .bulb,
+.fleet-row.is-never   .bulb { background: #333; box-shadow: none; }
+.fleet-row.is-offline, .fleet-row.is-never { opacity: .62; }
+.fleet-build { font-variant-numeric: tabular-nums; color: var(--text-mute); }
+/* The reason spans the full row under it: it is a sentence, not a column. */
+.fleet-why {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--amber);
+  opacity: .8;
+}
+.fleet-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin-top: 16px;
+  font-size: 12.5px;
+  color: var(--text-mute);
+}
+.fleet-foot .spacer { flex: 1; }
+.fleet-empty {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 26px 20px;
+  color: var(--text-mute);
+  font-size: 13.5px;
+}
+
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 .footer { border-top: 1px solid var(--line); }
 .footer-top {
@@ -616,6 +674,11 @@ body.demo-page {
   .hero { padding-top: 66px; }
   .hero-actions { margin-bottom: 40px; }
   .grid-3 { grid-template-columns: 1fr; }
+  /* Seven columns cannot fit a phone. Keep the board, its link and the one
+     number that says whether it is answering, and drop the rest. */
+  .fleet-row { grid-template-columns: 1.6fr 1fr 1fr; gap: 10px; }
+  .fleet-row > :nth-child(3),
+  .fleet-row > :nth-child(n+5):not(.fleet-why) { display: none; }
   .demo-btn { font-size: 12.5px; height: 33px; padding: 0 13px; }
   .footer-cols { gap: 34px; margin-left: 0; }
   .plus { display: none; }

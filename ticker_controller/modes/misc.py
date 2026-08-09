@@ -6,6 +6,18 @@ from ..config import PANEL_W, PANEL_H
 from ..fonts import draw_tiny_text
 
 
+def _offline_elapsed_label(seconds) -> str:
+    """How long the link has been down, in one unit that fits the panel."""
+    secs = int(max(0, seconds))
+    if secs < 60:
+        return f"{secs}S"
+    if secs < 3600:
+        return f"{secs // 60}M"
+    if secs < 86400:
+        return f"{secs // 3600}H"
+    return f"{secs // 86400}D"
+
+
 class MiscMixin:
 
     def draw_stock_card(self, game):
@@ -152,6 +164,49 @@ class MiscMixin:
         bar_width = int((total_seconds / 60.0) * PANEL_W)
         d.rectangle((0, 31, PANEL_W, 31), fill=(30, 30, 30))
         d.rectangle((0, 31, bar_width, 31), fill=(0, 200, 255))
+        return img
+
+    def draw_offline_screen(self, offline_for):
+        """Panel shown while the backend has stopped answering.
+
+        The clock is the one thing a board can still tell the truth about with
+        no network, so it carries the panel. Everything else on screen exists to
+        stop a held scoreboard reading as a live one: an amber bar instead of
+        the clock mode's cyan, a blinking dot, and how long the link has been
+        down.
+        """
+        img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
+        d = ImageDraw.Draw(img)
+        now = datetime.now()
+        amber = (255, 170, 0)
+
+        date_str = now.strftime("%A %B %d").upper()
+        w_date = d.textlength(date_str, font=self.tiny)
+        d.text(((PANEL_W - w_date) / 2, -1), date_str, font=self.tiny, fill=(150, 150, 150))
+
+        time_str = now.strftime("%I:%M").lstrip('0')
+        w_time = d.textlength(time_str, font=self.clock_giant)
+        d.text(((PANEL_W - w_time) / 2, 4), time_str, font=self.clock_giant, fill=(210, 210, 210))
+
+        # Right-hand badge: the reason the rest of the panel is empty.
+        label = "NO LINK"
+        elapsed = _offline_elapsed_label(offline_for)
+        w_label = d.textlength(label, font=self.tiny)
+        w_elapsed = d.textlength(elapsed, font=self.tiny)
+        right = PANEL_W - 3
+        d.text((right - w_label, 6), label, font=self.tiny, fill=amber)
+        d.text((right - w_elapsed, 16), elapsed, font=self.tiny, fill=(150, 110, 0))
+
+        # A slow blink says the board is still running and still trying, which a
+        # frozen frame cannot.
+        if int(time.time() * 2) % 2 == 0:
+            bx = int(right - w_label - 6)
+            d.ellipse((bx, 7, bx + 3, 10), fill=amber)
+
+        # The clock mode fills this row with a cyan progress bar. An amber rail
+        # here says at a glance that this is not that screen, without lighting
+        # a dark room the way a full-brightness row would.
+        d.rectangle((0, 31, PANEL_W - 1, 31), fill=(90, 60, 0))
         return img
 
     def draw_no_games_screen(self):

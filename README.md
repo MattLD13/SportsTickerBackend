@@ -207,6 +207,7 @@ google-genai     Gemini AI fallback lookups
 | `GET` | `/data?id=<tid>` | Display payload for a ticker. Unknown IDs are auto-created. |
 | `GET` | `/api/state?id=<tid>` | Full settings + all games with `is_shown` flags |
 | `GET` | `/leagues` | All available sports, utilities, stock groups |
+| `GET` | `/api/health` | Fleet health — per-ticker link, uptime, temperature, build |
 | `GET` | `/` | Status page — version, uptime, paired tickers, active sports |
 
 ### Pairing
@@ -233,6 +234,35 @@ google-genai     Gemini AI fallback lookups
   "pinned_game": "nhl:123456"
 }
 ```
+
+`mode` and `active_sports` are per-ticker when `ticker_id` is given, and global
+otherwise. Two boards in one house can follow different leagues.
+
+A ticker stores only the leagues it disagrees with the global map about. The
+server fetches the union across the fleet and each `/data` response is narrowed
+to what that board asked for, so one board switching a league on never costs
+another board a request.
+
+### Health
+
+`GET /api/health` — the server process, plus every board it knows about:
+
+```json
+{
+  "server":  { "rss_mb": 96.4, "threads": 14, "fds": 62, "tickers": 3 },
+  "tickers": [{
+    "name": "Kitchen", "link": "online", "mode": "sports",
+    "last_poll_ago": 0.4, "uptime": 92000, "temp_c": 51.2,
+    "build": "r412+abc1234", "dark_reason": null
+  }]
+}
+```
+
+Each controller reports `uptime`, `temp_c` (controller SoC, not the panels) and
+`build` as headers on the `/data` poll it already makes, so this costs no extra
+request. `link` is `online` under 15 s since the last poll, `stale` under 120 s,
+`offline` past that. `dark_reason` names the gate holding a panel that shows
+nothing — offline, unpaired, or asleep at brightness 0.
 
 ### Flights
 
@@ -287,5 +317,8 @@ GET  /errors
 
 ## Notes
 
+- If the backend stops answering for 60 s, the panel drops the last payload and
+  draws the clock with an amber `NO LINK` badge. A held scoreboard must never
+  read as a live one.
 - `[DEBUG]` prefixed log lines go to `ticker.log` only — console stays clean
 - Backend runs on Ubuntu, controller on Pi — they're the same repo, deployed independently

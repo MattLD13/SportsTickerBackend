@@ -149,5 +149,10 @@ class StockFetcher:
         label = _LEAGUE_LABEL_MAP.get(list_key, "MARKET")
         for sym in self.lists.get(list_key, []):
             obj = self.get_stock_obj(sym, label)
-            if obj: res.append(obj)
+            if obj:
+                # The buffer holds every sector the fleet wants, so each row has
+                # to say which one it came from. /data drops the sectors that
+                # the receiving board switched off.
+                obj['list_id'] = list_key
+                res.append(obj)
         return res

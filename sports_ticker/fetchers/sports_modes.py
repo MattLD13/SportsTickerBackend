@@ -549,10 +549,16 @@ class SportsModesMixin:
         return filtered
 
     def _build_sports_buffer(self):
-        """Fetch all active sports leagues and return sorted game list."""
+        """Fetch all active sports leagues and return sorted game list.
+
+        The league set is the union across the fleet, not the global map. Each
+        board keeps its own switches, so one that follows a league the global
+        map has off still needs those games in the buffer. Narrowing back down
+        to what a single board asked for happens per request, in /data.
+        """
         with data_lock:
             conf = {
-                'active_sports': state.get('active_sports', {}),
+                'active_sports': union_active_sports(),
                 'mode': state.get('mode', 'sports'),
                 'utc_offset': state.get('utc_offset', -5),
                 'debug_mode': state.get('debug_mode', False),
@@ -708,8 +714,9 @@ class SportsModesMixin:
         return self._filter_and_sort_games(all_games, visible_start_utc, visible_end_utc)
 
     def _build_stocks_buffer(self):
-        with data_lock:
-            active_sports = dict(state['active_sports'])
+        # Every sector any board wants. /data drops the ones a given board has
+        # switched off.
+        active_sports = union_active_sports()
         games = []
         for item in LEAGUE_OPTIONS:
             if item['type'] == 'stock' and active_sports.get(item['id'], False):
