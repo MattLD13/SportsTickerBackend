@@ -9,6 +9,7 @@ from ..core import (
     _get_ticker_timezone_context, _apply_timezone_to_game_times,
     _materialize_blank_logo_urls, _maybe_update_ticker_timezone_from_request,
     team_is_followed, is_safe_ticker_id,
+    STOCK_NEWS_ENABLED,
     SERVER_VERSION,
 )
 from ..services.score_alerts import score_alerts
@@ -333,6 +334,8 @@ def _news_for_ticker(followed_teams, mode, delay_seconds):
             if any(team_is_followed(followed_teams, i['sport'], a) for a in i['teams'])
         ]
     if mode == 'stocks':
+        if not STOCK_NEWS_ENABLED:
+            return []
         return news_alerts.recent(domain=NEWS_STOCKS, delay=delay_seconds)
     return []
 

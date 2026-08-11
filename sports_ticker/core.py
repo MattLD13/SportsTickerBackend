@@ -41,7 +41,7 @@ except ImportError:
     PIL_AVAILABLE = False
 
 try:
-    from FlightRadar24.api import FlightRadar24API
+    from FlightRadarAPI import FlightRadar24API
     FR24_SDK_AVAILABLE = True
 except ImportError:
     FR24_SDK_AVAILABLE = False
@@ -198,6 +198,7 @@ SPORTS_UPDATE_INTERVAL = 5.0
 STOCKS_UPDATE_INTERVAL = 30
 WORKER_THREAD_COUNT = 10
 API_TIMEOUT = 7.0
+STOCK_NEWS_ENABLED = False
 
 # Reentrant, because the helpers that read shared state take it themselves and
 # are also called from inside blocks that already hold it. A plain Lock makes

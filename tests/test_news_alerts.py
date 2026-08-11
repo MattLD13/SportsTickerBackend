@@ -71,9 +71,10 @@ def test_push_then_serve_to_a_following_board(client):
 def test_each_domain_stays_in_its_own_mode(client):
     news_alerts.clear()
     client.post('/api/news', json=TRADE)
-    client.post('/api/news', json={'domain': 'stocks', 'symbol': 'NVDA',
-                                   'text': 'Nvidia beats on earnings'})
-    for mode, expect_kind in (('my_teams', 'TRADE'), ('stocks', 'NEWS'), ('weather', None)):
+    stock_push = client.post('/api/news', json={'domain': 'stocks', 'symbol': 'NVDA',
+                                                'text': 'Nvidia beats on earnings'})
+    assert stock_push.status_code == 410
+    for mode, expect_kind in (('my_teams', 'TRADE'), ('stocks', None), ('weather', None)):
         tid = _ticker(f'news_{mode}', mode, ['nhl:NYR'])
         news = client.get(f'/data?id={tid}').get_json()['news']
         assert [n['kind'] for n in news] == ([expect_kind] if expect_kind else [])

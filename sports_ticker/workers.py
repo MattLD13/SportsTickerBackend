@@ -7,6 +7,7 @@ from . import fetchers_runtime as _fetchers
 from .core import (
     state, tickers, data_lock,
     SPORTS_UPDATE_INTERVAL, _normalize_single_pin, _STOCK_LISTS,
+    STOCK_NEWS_ENABLED,
     Tee, tee_instance, purge_stale_tickers, union_active_sports,
 )
 from .fetchers_runtime import TestMode, SportsFetcher, SpotifyFetcher, FlightTracker
@@ -295,7 +296,6 @@ def news_worker():
         fetch_mlb_transactions, fetch_nba_transactions,
         fetch_nfl_transactions, fetch_nhl_transactions,
     )
-    from .fetchers.stock_news import fetch_stock_news
     from .services.news_alerts import news_alerts, pick_team_color
 
     def _color(league, abbr):
@@ -316,12 +316,14 @@ def news_worker():
             except Exception as e:
                 print(f"News worker error ({league}): {e}")
 
-        try:
-            added = news_alerts.add_many(_fetch_stock_news(fetch_stock_news))
-            if added:
-                print(f"[NEWS] {len(added)} new stock headline(s)")
-        except Exception as e:
-            print(f"News worker error (stocks): {e}")
+        if STOCK_NEWS_ENABLED:
+            from .fetchers.stock_news import fetch_stock_news
+            try:
+                added = news_alerts.add_many(_fetch_stock_news(fetch_stock_news))
+                if added:
+                    print(f"[NEWS] {len(added)} new stock headline(s)")
+            except Exception as e:
+                print(f"News worker error (stocks): {e}")
 
         time.sleep(600)
 

@@ -13,6 +13,7 @@ python-dotenv
 
 # Airport code lookup (flight tracker)
 airportsdata
+FlightRadarAPI==1.5.1
 
 # Spotify integration
 spotipy

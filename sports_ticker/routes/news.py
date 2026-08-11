@@ -17,7 +17,7 @@ import time
 from flask import jsonify, request
 
 from ..routes_runtime import app
-from ..core import state, tickers, team_is_followed
+from ..core import state, tickers, team_is_followed, STOCK_NEWS_ENABLED
 from ..services.news_alerts import (
     SPORTS, STOCKS, build_item, make_id, news_alerts, pick_team_color,
 )
@@ -55,6 +55,8 @@ def api_news():
     """
     if request.method == 'GET':
         domain = request.args.get('domain')
+        if domain == STOCKS and not STOCK_NEWS_ENABLED:
+            return jsonify({'status': 'ok', 'news': []})
         return jsonify({'status': 'ok', 'news': news_alerts.recent(domain=domain)})
 
     body = request.json or {}
@@ -78,6 +80,8 @@ def api_news():
         return jsonify({'status': 'error', 'message': 'to is required for a sports item'}), 400
     if domain == STOCKS and not symbol:
         return jsonify({'status': 'error', 'message': 'symbol is required for a stocks item'}), 400
+    if domain == STOCKS and not STOCK_NEWS_ENABLED:
+        return jsonify({'status': 'disabled', 'message': 'Stock news is disabled'}), 410
 
     item = build_item(
         kind=body.get('kind') or ('NEWS' if domain == STOCKS else 'TRADE'),
