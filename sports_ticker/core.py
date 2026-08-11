@@ -187,6 +187,7 @@ def build_pooled_session(pool_size=20, retries=2):
 TICKER_DATA_DIR = "ticker_data"
 if not os.path.exists(TICKER_DATA_DIR):
     os.makedirs(TICKER_DATA_DIR)
+_TICKER_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 GLOBAL_CONFIG_FILE = "global_config.json"
 STOCK_CACHE_FILE = "stock_cache.json"
 GAME_CACHE_FILE = "game_cache.json"
@@ -604,7 +605,14 @@ if _deprecated_leagues_pending_save:
 def save_specific_ticker(tid):
     if tid not in tickers: return
     try:
-        filepath = os.path.join(TICKER_DATA_DIR, f"{tid}.json")
+        if not is_safe_ticker_id(tid):
+            print(f"Error saving ticker {tid}: invalid ticker id")
+            return
+        data_root = os.path.realpath(TICKER_DATA_DIR)
+        filepath = os.path.realpath(os.path.join(data_root, f"{tid}.json"))
+        if os.path.dirname(filepath) != data_root:
+            print(f"Error saving ticker {tid}: path escapes ticker data directory")
+            return
         save_json_atomically(filepath, tickers[tid])
         print(f"💾 Saved Ticker: {tid}")
     except Exception as e:
@@ -652,6 +660,11 @@ def resolve_ticker_id(explicit_id=None, client_id=None, allow_single=True):
     if not ticker_id and allow_single and len(tickers) == 1:
         ticker_id = list(tickers.keys())[0]
     return ticker_id
+
+
+def is_safe_ticker_id(tid):
+    """Return True when a ticker ID is safe for URL and filename use."""
+    return bool(_TICKER_ID_RE.fullmatch(str(tid or '').strip()))
 
 
 def pair_client_to_ticker(rec, client_id, friendly_name=None):

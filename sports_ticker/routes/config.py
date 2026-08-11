@@ -5,6 +5,7 @@ from ..routes_runtime import app
 from ..core import (
     state, tickers, data_lock,
     normalize_mode, _normalize_single_pin, VALID_MODES, _VALID_LEAGUE_IDS,
+    is_safe_ticker_id,
     lookup_and_auto_fill_airport, resolve_ticker_id, create_ticker_record,
     save_specific_ticker, save_global_config, set_ticker_active_sports,
 )
@@ -49,7 +50,10 @@ def api_config():
         cid = request.headers.get('X-Client-ID')
 
         # 1. Determine which ticker is being targeted
-        target_id = resolve_ticker_id(new_data.get('ticker_id') or request.args.get('id'), cid)
+        requested_id = new_data.get('ticker_id') or request.args.get('id')
+        if requested_id and not is_safe_ticker_id(requested_id):
+            return jsonify({"error": "Invalid ticker ID"}), 400
+        target_id = resolve_ticker_id(requested_id, cid)
 
         # If a specific ticker is targeted but doesn't exist yet, create it so
         # mode and other settings are applied locally instead of falling back to
@@ -283,6 +287,8 @@ def api_config():
 
 @app.route('/ticker/<tid>', methods=['POST'])
 def update_settings(tid):
+    if not is_safe_ticker_id(tid):
+        return jsonify({"error": "Invalid ticker ID"}), 400
     if tid not in tickers: return jsonify({"error":"404"}), 404
 
     cid = request.headers.get('X-Client-ID')
@@ -312,5 +318,4 @@ def update_settings(tid):
     
     print(f"✅ Updated Settings for {tid}: {data}") 
     return jsonify({"success": True})
-
 

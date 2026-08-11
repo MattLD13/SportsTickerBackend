@@ -4,6 +4,7 @@ from ..routes_runtime import app
 from ..core import (
     tickers,
     pair_client_to_ticker, create_ticker_record, save_specific_ticker, generate_pairing_code,
+    is_safe_ticker_id,
 )
 
 @app.route('/pair', methods=['POST'])
@@ -47,6 +48,8 @@ def pair_ticker_by_id():
     friendly_name = request.json.get('name', 'My Ticker')
     
     if not cid or not tid: return jsonify({"success": False}), 400
+    if not is_safe_ticker_id(tid):
+        return jsonify({"success": False, "message": "Invalid ticker ID"}), 400
 
     if cid == tid:
         return jsonify({"success": False, "message": "Hardware must pair with a code"}), 403
@@ -92,6 +95,8 @@ def register_ticker():
 
 @app.route('/ticker/<tid>/unpair', methods=['POST'])
 def unpair(tid):
+    if not is_safe_ticker_id(tid):
+        return jsonify({"error": "Invalid ticker ID"}), 400
     cid = request.headers.get('X-Client-ID')
     if tid in tickers and cid in tickers[tid]['clients']:
         tickers[tid]['clients'].remove(cid)
@@ -108,4 +113,3 @@ def list_tickers():
     for uid, rec in tickers.items():
         if cid in rec.get('clients', []): res.append({ "id": uid, "name": rec.get('name', 'Ticker'), "settings": rec['settings'], "last_seen": rec.get('last_seen', 0) })
     return jsonify(res)
-

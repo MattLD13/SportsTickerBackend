@@ -8,7 +8,7 @@ from ..core import (
     SPORTS_MODE_FAMILY, NON_SCOREBOARD_TYPES, HIDDEN_STATUS_KEYWORDS, _ACTIVE_STATES,
     _get_ticker_timezone_context, _apply_timezone_to_game_times,
     _materialize_blank_logo_urls, _maybe_update_ticker_timezone_from_request,
-    team_is_followed,
+    team_is_followed, is_safe_ticker_id,
     SERVER_VERSION,
 )
 from ..services.score_alerts import score_alerts
@@ -53,6 +53,9 @@ def _no_games_placeholder_object(now_label: str = ''):
 @app.route('/data', methods=['GET'])
 def get_ticker_data():
     ticker_id = request.args.get('id')
+
+    if ticker_id and not is_safe_ticker_id(ticker_id):
+        return jsonify({"status": "error", "message": "Invalid ticker ID"}), 400
     
     # 1. Resolve Ticker ID
     ticker_id = resolve_ticker_id(ticker_id)
@@ -542,6 +545,9 @@ def api_pin_games():
         payload = request.json or {}
         ticker_id = payload.get('ticker_id') or request.args.get('id')
         cid = request.headers.get('X-Client-ID')
+
+        if ticker_id and not is_safe_ticker_id(ticker_id):
+            return jsonify({"error": "Invalid ticker ID"}), 400
 
         ticker_id = resolve_ticker_id(ticker_id, cid)
 
