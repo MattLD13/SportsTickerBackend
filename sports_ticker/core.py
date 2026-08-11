@@ -1,6 +1,7 @@
 # ── Standard library ──
 import glob
 import json
+import logging
 import os
 import random
 import re
@@ -45,6 +46,14 @@ try:
     FR24_SDK_AVAILABLE = True
 except ImportError:
     FR24_SDK_AVAILABLE = False
+
+
+class _FR24DecodedGzipWarningFilter(logging.Filter):
+    def filter(self, record):
+        return "failed to decode Content-Encoding='gzip'" not in record.getMessage()
+
+
+logging.getLogger('FlightRadarAPI.request').addFilter(_FR24DecodedGzipWarningFilter())
 
 load_dotenv()
 

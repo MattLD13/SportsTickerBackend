@@ -192,28 +192,78 @@ class AirportMixin:
         airport_iata = str(getattr(self, 'airport_code_iata', '') or '').strip().upper()
         if not airport_iata:
             return [], []
-        flights = None
-        bounds = self._airport_bounds()
-        if bounds:
-            try:
-                flights = self._fr_call(self.fr_api.get_flights, bounds=bounds)
-            except TypeError:
-                # SDK build without a bounds parameter — fall through.
-                flights = None
-            except Exception as e:
-                self.log("DEBUG", f"FR24 bounds query failed: {e}")
-                flights = None
-        if not flights:
-            try:
-                flights = self._fr_call(self.fr_api.get_flights)
-            except Exception as e:
-                self.log("ERROR", f"FR24 SDK get_flights: {e}")
-                return [], []
-        if not flights:
-            self.log("DEBUG", "FR24 SDK: get_flights returned nothing")
+        try:
+            details = self._fr_call(
+                self.fr_api.get_airport_details, airport_iata, flight_limit=20
+            )
+        except Exception as e:
+            self.log("ERROR", f"FR24 airport schedule: {e}")
             return [], []
-        return (self._fr24_board_side(flights, airport_iata, 'arrivals'),
-                self._fr24_board_side(flights, airport_iata, 'departures'))
+        if not details:
+            self.log("DEBUG", "FR24 airport schedule returned nothing")
+            return [], []
+        return (self._fr24_schedule_side(details, 'arrivals'),
+                self._fr24_schedule_side(details, 'departures'))
+
+    def _fr24_schedule_side(self, details, mode):
+        """Convert one FR24 airport schedule side to ticker rows."""
+        try:
+            schedule = (details.get('airport', {}).get('pluginData', {})
+                         .get('schedule', {}).get(mode, {}))
+            flights = schedule.get('data') or []
+            role = 'origin' if mode == 'arrivals' else 'destination'
+            city_key = 'from' if mode == 'arrivals' else 'to'
+            iata_key = f'{city_key}_iata'
+            status_label = 'ARRIVING' if mode == 'arrivals' else 'DEPARTING'
+            now = int(time.time())
+            rows = []
+
+            for item in flights:
+                flight = item.get('flight') or {}
+                identification = flight.get('identification') or {}
+                display_id = str((identification.get('number') or {}).get('default')
+                                 or identification.get('callsign') or '').strip()
+                airport = ((flight.get('airport') or {}).get(role) or {})
+                code = str((airport.get('code') or {}).get('iata') or '').upper()
+                if not display_id or len(code) != 3:
+                    continue
+
+                time_info = flight.get('time') or {}
+                point = 'arrival' if mode == 'arrivals' else 'departure'
+                scheduled = self._parse_ts((time_info.get('scheduled') or {}).get(point))
+                estimated = self._parse_ts((time_info.get('estimated') or {}).get(point))
+                actual = self._parse_ts((time_info.get('real') or {}).get(point))
+                event_time = actual or estimated or scheduled
+                if event_time and event_time < now - 3600:
+                    continue
+
+                airline_icao, airline_iata, flight_number = self._get_airline_identifiers(display_id)
+                rows.append({
+                    'id': display_id,
+                    'airline': airline_iata or airline_icao,
+                    'airline_icao': airline_icao,
+                    'airline_iata': airline_iata,
+                    'flight_number': flight_number or display_id,
+                    city_key: get_city_name(code),
+                    iata_key: code,
+                    'status_label': status_label,
+                    'altitude': None,
+                    'sort_time': event_time or now,
+                })
+
+            rows.sort(key=lambda row: row['sort_time'])
+            deduped = []
+            seen = set()
+            for row in rows:
+                key = (row['id'], row[iata_key])
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(row)
+            self.log("DEBUG", f"FR24 airport {mode}: {len(flights)} scheduled → {min(len(deduped), BOARD_ROWS)} rows")
+            return deduped[:BOARD_ROWS]
+        except Exception as e:
+            self.log("ERROR", f"FR24 airport schedule {mode}: {e}")
+            return []
 
     def _fr24_board_side(self, flights, airport_iata, mode):
         """Filter one already-fetched flight list down to one side of the board."""

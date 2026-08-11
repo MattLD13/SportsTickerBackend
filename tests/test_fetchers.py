@@ -4,6 +4,8 @@ import pytest
 from sports_ticker.fetchers.test_mode import TestMode
 from sports_ticker.fetchers.weather import WeatherFetcher
 from sports_ticker.fetchers.stocks import StockFetcher
+from sports_ticker.fetchers.airports import AirportMixin
+import sports_ticker.fetchers.airports as airport_fetcher
 
 def test_test_mode_configuration():
     # Reset
@@ -159,3 +161,45 @@ def test_stock_fetcher_simulation(clean_state):
     tech_list = fetcher.get_list("tech")
     assert len(tech_list) == 1
     assert tech_list[0]["home_abbr"] == "AAPL"
+
+
+def test_airport_schedule_populates_both_board_sides(monkeypatch):
+    class AirportBoard(AirportMixin):
+        airport_code_iata = "EWR"
+        fr_api = None
+
+        def log(self, *args):
+            pass
+
+        def _fr_call(self, fn, *args, **kwargs):
+            return fn(*args, **kwargs)
+
+    def flight(number, airport_role, code, point, timestamp):
+        return {
+            "flight": {
+                "identification": {"number": {"default": number}},
+                "airport": {airport_role: {"code": {"iata": code}}},
+                "time": {"scheduled": {point: timestamp}},
+            }
+        }
+
+    details = {
+        "airport": {"pluginData": {"schedule": {
+            "arrivals": {"data": [flight("UA100", "origin", "ORD", "arrival", 11_000)]},
+            "departures": {"data": [flight("UA101", "destination", "SFO", "departure", 11_200)]},
+        }}}
+    }
+    board = AirportBoard()
+    board.fr_api = type("API", (), {
+        "get_airport_details": lambda self, code, flight_limit: details,
+        "get_flights": lambda self: pytest.fail("Airport board must not use the global feed"),
+    })()
+    monkeypatch.setattr(airport_fetcher.time, "time", lambda: 10_000)
+    monkeypatch.setattr(airport_fetcher, "get_city_name", lambda code: {"ORD": "Chicago", "SFO": "San Francisco"}[code])
+
+    arrivals, departures = board.fetch_fr24_board()
+
+    assert arrivals[0]["id"] == "UA100"
+    assert arrivals[0]["from"] == "Chicago"
+    assert departures[0]["id"] == "UA101"
+    assert departures[0]["to"] == "San Francisco"
