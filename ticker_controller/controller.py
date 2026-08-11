@@ -1058,23 +1058,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                 server_status = data.get('status', 'active')
 
                 if server_status == 'pairing':
-                    print(f"Server requests pairing. Auto-pairing as {self.device_id}...")
-                    try:
-                        r_pair = session.post(
-                            f"{BACKEND_URL}/pair/id",
-                            json={"id": self.device_id, "name": "Ticker"},
-                            headers={"X-Client-ID": self.device_id},
-                            timeout=5, verify=False
-                        )
-                        if r_pair.status_code == 200 and r_pair.json().get('success'):
-                            print("Auto-pairing successful!")
-                            self.is_pairing = False
-                            time.sleep(0.5)
-                            continue
-                        else:
-                            print(f"Auto-pairing failed: {r_pair.text}")
-                    except Exception as pair_ex:
-                        print(f"Auto-pairing error: {pair_ex}")
+                    # Keep the board in pairing mode until the app pairs it.
                     self.is_pairing = True
                     self.pairing_code = data.get('code', '------')
                     time.sleep(1)
