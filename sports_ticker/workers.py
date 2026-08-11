@@ -175,8 +175,16 @@ def _any_ticker_needs(*modes):
 
 
 def sports_worker():
-    try: fetcher.fetch_all_teams()
-    except Exception as e: print(f"Team fetch error: {e}")
+    # Boot normally loads the catalog before clients can request it. Retry here
+    # if that request failed, so transient startup network failures recover.
+    with data_lock:
+        catalog = state.get('all_teams_data', {})
+        team_catalog_ready = bool(catalog.get('soccer_epl')) and bool(catalog.get('soccer_champ'))
+    if not team_catalog_ready:
+        try:
+            fetcher.fetch_all_teams()
+        except Exception as e:
+            print(f"Team fetch error: {e}")
 
     while True:
         try:
@@ -361,6 +369,14 @@ def start_background_workers():
         if _background_workers_started:
             return
         _background_workers_started = True
+
+    # Do this before the listening server starts. ESPN's English league roster
+    # endpoints then supply the current Premier League and Championship clubs
+    # after promotion and relegation, rather than the prior boot's choices.
+    try:
+        fetcher.fetch_all_teams()
+    except Exception as e:
+        print(f"Team catalog startup refresh error: {e}")
 
     workers = [
         ('sports_worker',  sports_worker),

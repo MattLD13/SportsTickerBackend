@@ -154,6 +154,7 @@ class SportsGeneralMixin:
         except Exception as e: print(f"Error fetching teams for {league_key}: {e}")
 
     def fetch_all_teams(self):
+        """Replace the team catalog with the current league rosters."""
         try:
             teams_catalog = {k: [] for k in self.leagues.keys()}
             # Per-league seen-ID sets for O(1) deduplication (replaces any() linear scan)
@@ -206,7 +207,10 @@ class SportsGeneralMixin:
             with data_lock:
                 state['all_teams_data'] = teams_catalog
             self._teams_abbr_index = new_index
-        except Exception as e: print(f"Global Team Fetch Error: {e}")
+            return True
+        except Exception as e:
+            print(f"Global Team Fetch Error: {e}")
+            return False
 
     def check_shootout(self, game, summary=None):
         if summary:
@@ -269,4 +273,3 @@ class SportsGeneralMixin:
             if r.status_code == 200: return r.json()
         except: pass
         return None
-
