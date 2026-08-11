@@ -47,6 +47,9 @@ def pair_ticker_by_id():
     friendly_name = request.json.get('name', 'My Ticker')
     
     if not cid or not tid: return jsonify({"success": False}), 400
+
+    if cid == tid:
+        return jsonify({"success": False, "message": "Hardware must pair with a code"}), 403
     
     if tid in tickers:
         pair_client_to_ticker(tickers[tid], cid, friendly_name)
@@ -105,5 +108,4 @@ def list_tickers():
     for uid, rec in tickers.items():
         if cid in rec.get('clients', []): res.append({ "id": uid, "name": rec.get('name', 'Ticker'), "settings": rec['settings'], "last_seen": rec.get('last_seen', 0) })
     return jsonify(res)
-
 

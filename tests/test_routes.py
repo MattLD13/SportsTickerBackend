@@ -130,16 +130,27 @@ def test_unknown_hardware_enters_pairing_mode(client):
     assert tickers[client_id]["paired"] is False
     assert tickers[client_id]["clients"] == []
 
+    auto_pair_response = client.post(
+        "/pair/id",
+        json={"id": client_id, "name": "Hardware"},
+        headers=headers,
+    )
+
+    assert auto_pair_response.status_code == 403
+    assert tickers[client_id]["paired"] is False
+    assert tickers[client_id]["clients"] == []
+
+    app_headers = {"X-Client-ID": "mobile_app_client"}
     pair_response = client.post(
         "/pair/id",
         json={"id": client_id, "name": "New Hardware"},
-        headers=headers,
+        headers=app_headers,
     )
 
     assert pair_response.status_code == 200
     assert pair_response.get_json()["success"] is True
     assert tickers[client_id]["paired"] is True
-    assert tickers[client_id]["clients"] == [client_id]
+    assert tickers[client_id]["clients"] == ["mobile_app_client"]
 
 
 def test_get_data_empty_sports_returns_no_games_placeholder(client, monkeypatch):
