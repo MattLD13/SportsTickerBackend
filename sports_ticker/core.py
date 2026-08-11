@@ -48,12 +48,14 @@ except ImportError:
     FR24_SDK_AVAILABLE = False
 
 
-class _FR24DecodedGzipWarningFilter(logging.Filter):
+class _FR24DecodedContentWarningFilter(logging.Filter):
     def filter(self, record):
-        return "failed to decode Content-Encoding='gzip'" not in record.getMessage()
+        message = record.getMessage()
+        return not ("APIRequest.get_content: failed to decode Content-Encoding=" in message
+                    and "Assuming the transport already decompressed" in message)
 
 
-logging.getLogger('FlightRadarAPI.request').addFilter(_FR24DecodedGzipWarningFilter())
+logging.getLogger('FlightRadarAPI.request').addFilter(_FR24DecodedContentWarningFilter())
 
 load_dotenv()
 

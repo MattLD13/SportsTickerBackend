@@ -5,6 +5,7 @@ from sports_ticker.fetchers.test_mode import TestMode
 from sports_ticker.fetchers.weather import WeatherFetcher
 from sports_ticker.fetchers.stocks import StockFetcher
 from sports_ticker.fetchers.airports import AirportMixin
+from sports_ticker.fetchers.flights import FlightTracker
 import sports_ticker.fetchers.airports as airport_fetcher
 
 def test_test_mode_configuration():
@@ -203,3 +204,37 @@ def test_airport_schedule_populates_both_board_sides(monkeypatch):
     assert arrivals[0]["from"] == "Chicago"
     assert departures[0]["id"] == "UA101"
     assert departures[0]["to"] == "San Francisco"
+
+
+def test_flight_tracker_uses_exact_live_search_when_feed_omits_flight():
+    class FlightAPI:
+        def get_flights(self, **kwargs):
+            return []
+
+        def search(self, code):
+            assert code == "AAL2338"
+            return {"live": [{"id": "live-id", "detail": {
+                "flight": "AA2338", "callsign": "AAL2338",
+                "schd_from": "DFW", "schd_to": "EWR",
+                "lat": 33.0, "lon": -96.0, "ac_type": "A321",
+            }}]}
+
+        def get_flight_details(self, flight):
+            assert flight.id == "live-id"
+            return {
+                "time": {"scheduled": {"arrival": 2_000}, "estimated": {"arrival": 2_100}},
+                "aircraft": {"model": {"code": "A321", "text": "Airbus A321"}},
+                "trail": [{"lat": 34.0, "lng": -95.0, "alt": 28_000, "spd": 450}],
+            }
+
+    tracker = FlightTracker()
+    tracker.fr_api = FlightAPI()
+    tracker._fr_call = lambda fn, *args, **kwargs: fn(*args, **kwargs)
+
+    result = tracker.fetch_fr24_flight("AAL2338")
+
+    assert result["origin"] == "DFW"
+    assert result["destination"] == "EWR"
+    assert result["altitude"] == 28_000
+    assert result["speed_kts"] == 450
+    assert result["is_live"] is True

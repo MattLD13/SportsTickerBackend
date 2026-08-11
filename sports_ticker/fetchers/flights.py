@@ -130,6 +130,46 @@ class FlightTracker(AirportMixin):
                     pending.append(str(other).upper())
         return seen
 
+    def _find_live_fr24_search(self, flight_code, aliases, wanted_numbers):
+        """Find an exact live flight through FR24's search endpoint."""
+        try:
+            response = self._fr_call(self.fr_api.search, flight_code)
+        except Exception as e:
+            self.log("DEBUG", f"FR24 live search failed: {e}")
+            return None
+
+        matches = []
+        requested = str(flight_code).upper().replace(' ', '').replace('-', '')
+        for item in (response or {}).get('live', []):
+            details = item.get('detail') or {}
+            score = 0
+            for value in (details.get('flight'), details.get('callsign')):
+                compact = str(value or '').upper().replace(' ', '').replace('-', '')
+                if compact == requested:
+                    score = max(score, 2)
+                for prefix, number in self._code_candidates(compact):
+                    if number in wanted_numbers and prefix in aliases:
+                        score = max(score, 1)
+            if score:
+                matches.append((score, item, details))
+
+        if not matches:
+            return None
+        _, item, details = max(matches, key=lambda match: match[0])
+        return type('FR24SearchFlight', (), {
+            'id': str(item.get('id') or ''),
+            'number': str(details.get('flight') or ''),
+            'callsign': str(details.get('callsign') or ''),
+            'origin_airport_iata': str(details.get('schd_from') or ''),
+            'destination_airport_iata': str(details.get('schd_to') or ''),
+            'latitude': details.get('lat'),
+            'longitude': details.get('lon'),
+            'altitude': 0,
+            'ground_speed': 0,
+            'aircraft_code': str(details.get('ac_type') or ''),
+            'aircraft_model': '',
+        })()
+
     def fetch_visitor_tracking(self):
         if not self.track_flight_id: return
         
@@ -338,8 +378,8 @@ class FlightTracker(AirportMixin):
                     self.log("INFO", f"Got {len(flights)} total flights from API")
 
             if not flights:
-                self.log("WARNING", "No flights returned by API - service may be down")
-                return None
+                self.log("DEBUG", "No flights returned by API. Trying exact live search.")
+                flights = []
 
             # Match on the number plus any code meaning the same carrier, rather
             # than on reconstructed strings. The code a passenger holds is often
@@ -371,7 +411,13 @@ class FlightTracker(AirportMixin):
                                  f"({target_flight.number}) on flight number alone")
             elif digit_only:
                 self.log("WARNING", f"{flight_id}: {len(digit_only)} flights share that number, "
-                                    f"none under a known {want_prefix or icao} code")
+                                    f"none under a known {icao or iata} code")
+
+            if not target_flight:
+                target_flight = self._find_live_fr24_search(raw, aliases, want_numbers)
+                if target_flight:
+                    self.log("INFO", f"✓ Found {flight_id} through FR24 live search: "
+                             f"{target_flight.number} ({target_flight.callsign})")
 
             if not target_flight:
                 self.log("WARNING", f"Flight {flight_id} not found - may not be airborne right now")
@@ -382,15 +428,25 @@ class FlightTracker(AirportMixin):
             details = None
             try:
                 details = self._fr_call(self.fr_api.get_flight_details, target_flight)
-                target_flight.set_flight_details(details)
+                if hasattr(target_flight, 'set_flight_details'):
+                    target_flight.set_flight_details(details)
+                trail = (details or {}).get('trail') or []
+                if trail:
+                    position = trail[0]
+                    target_flight.latitude = position.get('lat', target_flight.latitude)
+                    target_flight.longitude = position.get('lng', target_flight.longitude)
+                    target_flight.altitude = position.get('alt', target_flight.altitude)
+                    target_flight.ground_speed = position.get('spd', target_flight.ground_speed)
             except Exception as e:
                 self.log("DEBUG", f"Could not get detailed info: {e}")
 
             delay_min, status_text, est_arr = _extract_delay_minutes(details)
 
             # Aircraft type: prefer detailed model from FR24, fall back to ICAO type code normalization
-            fr24_model = getattr(target_flight, 'aircraft_model', None) or ''
-            icao_type = getattr(target_flight, 'aircraft_code', None) or ''
+            fr24_model = (getattr(target_flight, 'aircraft_model', None) or
+                          ((details or {}).get('aircraft', {}).get('model', {}) or {}).get('text', ''))
+            icao_type = (getattr(target_flight, 'aircraft_code', None) or
+                         ((details or {}).get('aircraft', {}).get('model', {}) or {}).get('code', ''))
             aircraft_type = normalize_aircraft_type(icao_type, fr24_model if fr24_model else None)
             if aircraft_type:
                 self.log("INFO", f"Aircraft type for {flight_id}: {aircraft_type} (code: {icao_type})")
