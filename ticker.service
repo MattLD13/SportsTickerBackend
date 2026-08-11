@@ -5,8 +5,7 @@
 #   sudo cp ticker.service /etc/systemd/system/ticker.service
 #   sudo systemctl daemon-reload && sudo systemctl enable --now ticker
 #
-# Adjust User/WorkingDirectory to match the deploy target (the GitHub Actions
-# workflow copies the code to /home/<SSH_USER>/).
+# The deploy workflow copies the code to /home/ubuntu/.
 
 [Unit]
 Description=Sports Ticker Backend (Flask API)
@@ -15,23 +14,28 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=mld
-WorkingDirectory=/home/mld
+User=ubuntu
+WorkingDirectory=/home/ubuntu
 ExecStart=/usr/bin/env python3 app.py
 # Without this, an OOM kill or an unhandled crash leaves the site down until
 # someone reboots the box.
 Restart=always
 RestartSec=5
 
+# The A1.Flex host provides 12 GB RAM. Keep enough memory available for the
+# operating system while allowing image work, caches, and concurrent refreshes.
+LimitNOFILE=8192
+TasksMax=256
+
 # Bound the service instead of the whole VPS: if the backend ever leaks memory
 # again, the kernel reclaims/kills this unit and systemd restarts it, rather
 # than the host thrashing until it needs a hard reboot. Tune to your VPS size.
 MemoryAccounting=true
-MemoryHigh=400M
-MemoryMax=600M
+MemoryHigh=4G
+MemoryMax=8G
 
-StandardOutput=append:/home/mld/ticker-backend.log
-StandardError=append:/home/mld/ticker-backend.log
+StandardOutput=append:/home/ubuntu/ticker-backend.log
+StandardError=append:/home/ubuntu/ticker-backend.log
 
 [Install]
 WantedBy=multi-user.target

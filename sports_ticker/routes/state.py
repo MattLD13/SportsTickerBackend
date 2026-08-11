@@ -62,9 +62,9 @@ def get_ticker_data():
 
     # Auto-create ticker if ID is unknown
     if ticker_id not in tickers:
-        # Hardware device self-authorizes: its device_id is both the ticker key
-        # and its client identity, so add it to clients automatically.
-        tickers[ticker_id] = create_ticker_record(client_id=ticker_id)
+        # New hardware must display its pairing code before it gains access.
+        # Keep the device ID as the record key, but add the client only after pairing.
+        tickers[ticker_id] = create_ticker_record(paired=False)
         save_specific_ticker(ticker_id)
 
     rec = tickers[ticker_id]

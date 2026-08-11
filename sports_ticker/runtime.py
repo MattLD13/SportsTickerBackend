@@ -46,11 +46,12 @@ def run_server():
 
     if _waitress_serve is not None:
         print(f"Starting waitress on port {port}...")
+        waitress_threads = int(os.environ.get("WAITRESS_THREADS", 12))
         _waitress_serve(
             app,
             host='0.0.0.0',
             port=port,
-            threads=8,
+            threads=waitress_threads,
             channel_timeout=120,     # drop connections idle longer than this
             connection_limit=200,
             ident='sports-ticker',

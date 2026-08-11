@@ -116,6 +116,32 @@ def test_get_data_and_state(client):
     assert "active_sports" in state_payload["settings"]
 
 
+def test_unknown_hardware_enters_pairing_mode(client):
+    client_id = "new_hardware_client"
+    headers = {"X-Client-ID": client_id}
+
+    response = client.get(f"/data?id={client_id}", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "pairing"
+    assert payload["code"].isdigit()
+    assert len(payload["code"]) == 6
+    assert tickers[client_id]["paired"] is False
+    assert tickers[client_id]["clients"] == []
+
+    pair_response = client.post(
+        "/pair/id",
+        json={"id": client_id, "name": "New Hardware"},
+        headers=headers,
+    )
+
+    assert pair_response.status_code == 200
+    assert pair_response.get_json()["success"] is True
+    assert tickers[client_id]["paired"] is True
+    assert tickers[client_id]["clients"] == [client_id]
+
+
 def test_get_data_empty_sports_returns_no_games_placeholder(client, monkeypatch):
     tid = "ticker_empty_games_test"
     tickers[tid] = create_ticker_record("Empty Games Ticker", client_id="empty_client")

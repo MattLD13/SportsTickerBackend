@@ -56,7 +56,7 @@ jobs:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_KEY }}
-          source:   "app.py,sports_ticker/**,requirements.txt,*.json,ticker_controller/**,updater.py,VERSION"
+          source:   "app.py,sports_ticker/**,requirements.txt,*.json,ticker_controller/**,updater.py,ticker.service,VERSION"
           target:   "/home/${{ secrets.SSH_USER }}/"
 
       - name: Write .env and restart backend
@@ -81,6 +81,8 @@ jobs:
             echo "SPOTIFY_PASSWORD=${{ secrets.SPOTIFY_PASSWORD }}"    >> .env
             echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"        >> .env
             chmod 600 .env
+            sudo cp "/home/${{ secrets.SSH_USER }}/ticker.service" /etc/systemd/system/ticker.service
+            sudo systemctl daemon-reload
 
             # ── Install deps ──────────────────────────────────────────────
             pip3 install -r requirements.txt --break-system-packages 2>/dev/null \
