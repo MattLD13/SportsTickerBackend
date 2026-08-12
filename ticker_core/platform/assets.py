@@ -82,7 +82,7 @@ class LongTermAssetCache(AssetView):
 
     def __init__(self, directory: Path | str, *, prepared: PreparedAssetStore | None = None) -> None:
         self.originals = PersistentAssetStore(directory)
-        self.prepared = prepared or PreparedAssetStore()
+        self.prepared = prepared or PreparedAssetStore(directory=Path(directory) / "prepared")
 
     @property
     def revision(self) -> int:

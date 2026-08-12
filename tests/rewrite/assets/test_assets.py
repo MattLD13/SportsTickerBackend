@@ -27,6 +27,24 @@ def test_coordinator_reuses_persistent_original_bytes(tmp_path) -> None:
     assert calls == [request.url]
 
 
+def test_coordinator_reuses_prepared_logo_after_restart(tmp_path) -> None:
+    """Load a prepared logo from the long-term cache without refetching it."""
+    raw = _png()
+    request = AssetRequest("https://assets.example/logo.png", "logo", (8, 8))
+    writer = AssetCoordinator(tmp_path, fetch=lambda _url: raw)
+    try:
+        assert writer.prefetch((request,))[0].result() is not None
+    finally:
+        writer.close()
+
+    reader = AssetCoordinator(tmp_path, fetch=lambda _url: (_ for _ in ()).throw(AssertionError("Refetched prepared logo.")))
+    try:
+        assert reader.long_term.prepared.contains(request)
+        assert reader.image(request.url, request.processor, request.size) is not None
+    finally:
+        reader.close()
+
+
 def test_content_cache_recovers_then_expires_last_good_payload(tmp_path) -> None:
     clock = [0.0]
     cache = ShortTermContentCache(tmp_path / "last-good.json", ttl=300, clock=lambda: clock[0])
