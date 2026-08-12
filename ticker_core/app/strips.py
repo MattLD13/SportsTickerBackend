@@ -55,7 +55,9 @@ class StripRepository:
 
     def get(self, payload_key: str | None) -> Image.Image | None:
         """Return the strip for the current payload."""
-        if payload_key != self._payload_key or self._image is None:
+        # Alerts and news change the response fingerprint but do not change
+        # scrolling pixels. Keep the existing strip while those overlays run.
+        if self._image is None:
             return None
         return self._image
 

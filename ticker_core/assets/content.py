@@ -46,8 +46,12 @@ class ShortTermContentCache:
     def store(self, payload: Mapping[str, Any]) -> CachedContent:
         """Replace cached content after a fresh parsed backend response."""
         saved_at = self._clock()
-        entry = CachedContent(_thaw_mapping(payload), saved_at, saved_at + self.ttl)
-        self._write(entry)
+        frozen_payload = _thaw_mapping(payload)
+        entry = CachedContent(frozen_payload, saved_at, saved_at + self.ttl)
+        # The Pi polls twice per second. Avoid a synchronous disk replace when
+        # the backend repeats the same payload, because it steals frame time.
+        if self._memory is None or self._memory.payload != frozen_payload:
+            self._write(entry)
         self._memory = entry
         return entry
 

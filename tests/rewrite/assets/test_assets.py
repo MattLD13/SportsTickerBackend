@@ -39,6 +39,22 @@ def test_content_cache_recovers_then_expires_last_good_payload(tmp_path) -> None
     assert cache.load() is None
 
 
+def test_content_cache_keeps_repeated_payloads_in_memory(tmp_path) -> None:
+    """Avoid rewriting the same payload on every backend poll."""
+    clock = [0.0]
+    path = tmp_path / "last-good.json"
+    cache = ShortTermContentCache(path, ttl=300, clock=lambda: clock[0])
+    payload = {"content": {"sports": [{"id": "game"}]}}
+
+    cache.store(payload)
+    first_write = path.stat().st_mtime_ns
+    clock[0] = 0.5
+    cache.store(payload)
+
+    assert path.stat().st_mtime_ns == first_write
+    assert cache.remaining(cache.load()) == 300
+
+
 def test_planner_extracts_every_family_without_mode_filtering() -> None:
     content = [
         {"id": "game", "home_logo": "sports-home", "away_logo": "sports-away"},
