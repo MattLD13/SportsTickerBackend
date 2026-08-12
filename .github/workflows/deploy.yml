@@ -28,6 +28,7 @@ jobs:
               - '*.json'
             controller:
               - 'ticker_controller/**'
+              - 'ticker_core/**'
               - 'updater.py'
               - 'ticker-controller.service'
               - 'setup.sh'

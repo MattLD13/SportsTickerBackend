@@ -1,0 +1,5 @@
+"""Physical display constants."""
+
+PANEL_WIDTH = 384
+PANEL_HEIGHT = 32
+PANEL_SIZE = (PANEL_WIDTH, PANEL_HEIGHT)

@@ -1,0 +1,73 @@
+"""Operating-system actions exposed without display runtime policy."""
+
+from __future__ import annotations
+
+import subprocess
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from typing import Any, Protocol, runtime_checkable
+
+
+@dataclass(frozen=True, slots=True)
+class WiFiNetwork:
+    """A visible wireless network."""
+
+    ssid: str
+
+
+@runtime_checkable
+class PlatformCommands(Protocol):
+    """System actions requested by controller policy."""
+
+    def reboot(self) -> None:
+        """Request a host reboot."""
+
+    def run_update(self, command: Sequence[str]) -> None:
+        """Start the supplied update command."""
+
+    def list_wifi_networks(self) -> list[WiFiNetwork]:
+        """Return visible Wi-Fi networks."""
+
+    def connect_wifi(self, ssid: str, password: str, *, interface: str = "wlan0") -> None:
+        """Connect an interface to Wi-Fi."""
+
+
+class SubprocessPlatformCommands:
+    """Use system commands for Pi platform actions."""
+
+    def __init__(
+        self,
+        *,
+        run: Callable[..., Any] = subprocess.run,
+        spawn: Callable[..., Any] = subprocess.Popen,
+        reboot_command: Sequence[str] = ("reboot",),
+    ) -> None:
+        self._run = run
+        self._spawn = spawn
+        self._reboot_command = tuple(reboot_command)
+
+    def reboot(self) -> None:
+        self._spawn(list(self._reboot_command))
+
+    def run_update(self, command: Sequence[str]) -> None:
+        if not command:
+            raise ValueError("Update command must not be empty.")
+        self._spawn(list(command))
+
+    def list_wifi_networks(self) -> list[WiFiNetwork]:
+        result = self._run(
+            ["nmcli", "-t", "-f", "SSID", "dev", "wifi", "list"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        names = {name.strip() for name in result.stdout.splitlines() if name.strip()}
+        return [WiFiNetwork(ssid=name) for name in sorted(names)]
+
+    def connect_wifi(self, ssid: str, password: str, *, interface: str = "wlan0") -> None:
+        if not ssid:
+            raise ValueError("Wi-Fi SSID must not be empty.")
+        self._run(
+            ["nmcli", "dev", "wifi", "connect", ssid, "password", password, "ifname", interface],
+            check=True,
+        )

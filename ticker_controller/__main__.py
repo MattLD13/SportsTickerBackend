@@ -1,8 +1,7 @@
-from .controller import TickerStreamer
+"""Start the rewrite while the existing service unit migrates."""
+
+from ticker_core.__main__ import main
+
 
 if __name__ == "__main__":
-    ticker = TickerStreamer()
-    try:
-        ticker.render_loop()
-    except KeyboardInterrupt:
-        ticker.running = False
+    main()

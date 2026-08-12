@@ -2,11 +2,11 @@
 """
 OTA updater for the Sports Ticker.
 
-Called by ticker_controller when the backend signals an update is available.
+Called by the Pi ticker when the backend signals an update is available.
   1. Shows an update UI on the LED matrix (unless --no-display is passed)
   2. git pull
   3. pip install if requirements.txt changed
-  4. Restarts the ticker-controller systemd service (which replaces this process)
+  4. Restarts the ticker-controller systemd service
 
 Usage:
   python3 updater.py               # standalone with LED display
@@ -29,7 +29,8 @@ SERVICE_NAME = "ticker-controller"
 SERVICE_MAP = [
     ("sports_ticker/",      "ticker"),              # Flask backend
     ("app.py",              "ticker"),
-    ("ticker_controller/",  SERVICE_NAME),          # LED controller package
+    ("ticker_controller/",  SERVICE_NAME),          # Temporary service entry point
+    ("ticker_core/",        SERVICE_NAME),          # Rewrite Pi application
     ("updater.py",          SERVICE_NAME),
 ]
 

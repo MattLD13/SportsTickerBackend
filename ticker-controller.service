@@ -1,5 +1,5 @@
 [Unit]
-Description=Sports Ticker Controller (LED Display)
+Description=Sports Ticker Pi Display
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=60
@@ -9,7 +9,7 @@ StartLimitBurst=5
 Type=simple
 User=root
 WorkingDirectory=/home/mld
-ExecStart=/usr/bin/env python3 -m ticker_controller
+ExecStart=/usr/bin/env python3 -m ticker_core
 Restart=always
 RestartSec=5
 StandardOutput=append:/home/pi/ticker.log
