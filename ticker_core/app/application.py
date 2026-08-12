@@ -195,11 +195,13 @@ class TickerApplication:
 
     def _accept_fresh(self, response: TickerResponse) -> None:
         """Persist, prefetch, accept, and render one validated backend response."""
+        previous = self._runtime.snapshot
         self._cache.store(response.data)
         self._assets.prefetch_payload(response)
-        self._runtime.accept_response(response)
+        current = self._runtime.accept_response(response)
         self._disconnected = False
-        self._rebuild_strip()
+        if _strip_changed(previous, current):
+            self._rebuild_strip()
         self._apply_global_commands(response)
 
     def _handle_failure(self, event: PollFailed) -> None:
@@ -268,6 +270,14 @@ class TickerApplication:
             if self._update_service is not None:
                 self._update_service.finish_update()
             self._runtime.finish_update()
+
+
+def _strip_changed(previous, current) -> bool:
+    """Return if scrolling pixels or the selected renderer can change."""
+
+    if previous is None:
+        return True
+    return previous.mode != current.mode or previous.content != current.content
 
 
 def _default_update_command(repository: Path) -> tuple[str, ...]:

@@ -39,7 +39,11 @@ class Assets:
 class Strips:
     """Avoid pixel work while testing lifecycle state."""
 
+    def __init__(self) -> None:
+        self.builds = 0
+
     def build(self, *args):
+        self.builds += 1
         return None
 
 
@@ -133,5 +137,45 @@ def test_fresh_content_keeps_connection_icon_until_cache_expiry(tmp_path) -> Non
         clock[0] = 301.0
         expired = application.step()
         assert expired.kind is FrameKind.OFFLINE
+    finally:
+        application.close()
+
+
+def test_same_poll_payload_does_not_rebuild_the_scroll_strip(tmp_path) -> None:
+    """Keep frame work outside unchanged backend polls."""
+    wall = datetime(2026, 8, 11, tzinfo=timezone.utc)
+    runtime = TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: wall)
+    strips = Strips()
+    application = TickerApplication(
+        client=Client(),
+        poller=IdlePoller(),
+        cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=Assets(),
+        runtime=runtime,
+        strips=strips,
+        frames=Frames(),
+        pacer=FramePacer(lambda: 0.0),
+        sink=Sink(),
+        commands=Commands(),
+        device_id="ticker-1",
+        repository=tmp_path,
+        wall_clock=lambda: wall,
+    )
+    response = TickerResponse.from_payload(
+        {
+            "status": "ok",
+            "local_config": {"mode": "sports"},
+            "global_config": {},
+            "content": {"sports": [{"id": "game", "type": "game", "sport": "nba"}]},
+        }
+    )
+    try:
+        application.start()
+        application._events.put(PollSucceeded(response))
+        application.step()
+        application._events.put(PollSucceeded(response))
+        application.step()
+
+        assert strips.builds == 1
     finally:
         application.close()
