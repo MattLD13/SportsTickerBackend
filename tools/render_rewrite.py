@@ -74,6 +74,17 @@ def normalize_snapshot(value: object, requested_mode: str) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError("The backend response must be an object or a list.")
     data = dict(value)
+    if data.get("api_version") == "v2":
+        records: list[dict[str, Any]] = []
+        for values in _items_mapping(data.get("content")):
+            for envelope in _items(values):
+                rendered = dict(envelope.get("data") or {})
+                rendered["id"] = envelope.get("id", rendered.get("id", ""))
+                rendered["family"] = envelope.get("family", rendered.get("family", ""))
+                rendered["kind"] = envelope.get("kind", rendered.get("kind", ""))
+                rendered["is_shown"] = envelope.get("is_shown", True)
+                records.append(rendered)
+        return {"mode": requested_mode, "content": {"sports": records}}
     content = data.get("content")
     if not isinstance(content, Mapping):
         games = data.get("games", data.get("raw_games", ()))
@@ -87,6 +98,12 @@ def normalize_snapshot(value: object, requested_mode: str) -> dict[str, Any]:
 def _items(value: object) -> list[dict[str, Any]]:
     """Keep only JSON object content records."""
     return [dict(item) for item in value if isinstance(item, Mapping)] if isinstance(value, list) else []
+
+
+def _items_mapping(value: object) -> tuple[object, ...]:
+    """Return v2 family record lists without accepting arbitrary scalar values."""
+
+    return tuple(value.values()) if isinstance(value, Mapping) else ()
 
 
 def content_items(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -122,6 +139,7 @@ def render_snapshot(
     now: datetime | None = None,
     asset_directory: Path | str = Path("ticker_data/rewrite_assets"),
     prefetch: bool = True,
+    pinned: bool = False,
 ) -> Image.Image:
     """Render one rewrite frame using its catalog and asset coordinator."""
     from ticker_core.bootstrap import create_default_content_catalog
@@ -145,6 +163,9 @@ def render_snapshot(
             from ticker_core.features.utility import UtilityRenderer
 
             return panel_image(UtilityRenderer(load_default_font_set()).empty(context))
+        item = dict(item)
+        if pinned and selected_mode is DisplayMode.SPORTS:
+            item["sports_presentation"] = "pinned"
         catalog = create_default_content_catalog(coordinator)
         rendered = catalog.render(context, ContentScene(item, str(selected_mode)))
         return panel_image(rendered.image)
@@ -165,11 +186,12 @@ def main() -> int:
     parser.add_argument("--datetime", type=parse_datetime, default=None, help="Use this ISO time for deterministic output.")
     parser.add_argument("--assets", type=Path, default=Path("ticker_data/rewrite_assets"), help="Store long-term assets here.")
     parser.add_argument("--no-prefetch", action="store_true", help="Do not fetch missing assets before rendering.")
+    parser.add_argument("--pinned", action="store_true", help="Render the selected sports item in its full pinned layout.")
     parser.add_argument("--output", type=Path, default=Path("previews/rewrite.png"), help="Save the 384x32 PNG here.")
     arguments = parser.parse_args()
     try:
         snapshot = load_snapshot(arguments.snapshot, arguments.url, arguments.endpoint, arguments.ticker_id, arguments.mode, 10.0)
-        image = render_snapshot(snapshot, arguments.mode, item_id=arguments.item_id, index=arguments.index, now=arguments.datetime, asset_directory=arguments.assets, prefetch=not arguments.no_prefetch)
+        image = render_snapshot(snapshot, arguments.mode, item_id=arguments.item_id, index=arguments.index, now=arguments.datetime, asset_directory=arguments.assets, prefetch=not arguments.no_prefetch, pinned=arguments.pinned)
         arguments.output.parent.mkdir(parents=True, exist_ok=True)
         image.save(arguments.output)
         print(f"Saved {arguments.output} ({image.width}x{image.height})")
