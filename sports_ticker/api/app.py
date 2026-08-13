@@ -15,6 +15,7 @@ def create_app(application: BackendApplication) -> Flask:
     """Create a Flask application from an injected backend application."""
 
     app = Flask("sports_ticker.api")
+    app.json.sort_keys = False
     register_routes(app, application)
     app.register_blueprint(dashboard_v2)
     return app

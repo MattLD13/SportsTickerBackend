@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from math import isfinite
 from types import MappingProxyType
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sports_ticker.domain import ContentItem, DisplaySettings
 
@@ -40,7 +41,7 @@ class EspnScoreboardProvider:
         self._stale_cache = SettingsResultCache()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
-        """Fetch each configured and active league, retaining partial results."""
+        """Fetch current scoreboard events from each configured active league."""
 
         if not isinstance(settings, DisplaySettings):
             raise TypeError("settings must be DisplaySettings")
@@ -56,6 +57,8 @@ class EspnScoreboardProvider:
             try:
                 payload = self.client.get_json(url, timeout=self.timeout)
                 for event in _events(payload):
+                    if not _is_current_event(event, timezone_name=settings.timezone):
+                        continue
                     try:
                         items.append(_content_item(league, event))
                     except (KeyError, TypeError, ValueError) as exc:
@@ -70,7 +73,7 @@ class EspnScoreboardProvider:
             error="; ".join(errors) if errors else None,
         )
         result = ProviderResult(
-            content=tuple(items),
+            content=tuple(sorted(items, key=_content_sort_key)),
             observed_at=datetime.now(timezone.utc),
             health=health,
         )
@@ -123,6 +126,77 @@ def _events(payload: Any) -> tuple[Mapping[str, Any], ...]:
     if not isinstance(events, Sequence) or isinstance(events, (str, bytes)):
         raise TypeError("events must be an array")
     return tuple(events)
+
+
+def _is_current_event(
+    event: Mapping[str, Any],
+    *,
+    timezone_name: str = "",
+    now: datetime | None = None,
+) -> bool:
+    """Match the original local-day window that ends at 3 AM."""
+
+    status = _mapping(_mapping(event.get("status")).get("type"))
+    state = _text(status.get("state"), "pre").strip().lower()
+    if state in {"in", "half", "crit"}:
+        return True
+
+    starts_at = _event_time(event.get("date"))
+    if starts_at is None:
+        return False
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    local_now = current.astimezone(_display_timezone(timezone_name))
+    if local_now.hour < 3:
+        visible_start = (local_now - timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        visible_end = local_now.replace(hour=3, minute=0, second=0, microsecond=0)
+    else:
+        visible_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        visible_end = (local_now + timedelta(days=1)).replace(
+            hour=3, minute=0, second=0, microsecond=0
+        )
+    return visible_start.astimezone(timezone.utc) <= starts_at < visible_end.astimezone(timezone.utc)
+
+
+def _display_timezone(value: str) -> ZoneInfo:
+    """Use the ticker time zone or the established New York default."""
+
+    try:
+        return ZoneInfo(value.strip() or "America/New_York")
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("America/New_York")
+
+
+def _event_time(value: object) -> datetime | None:
+    """Read one ESPN event start time as a UTC datetime."""
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
+
+
+def _content_sort_key(item: ContentItem) -> tuple[int, str, str, str, str]:
+    """Keep the original scoreboard order after all leagues merge."""
+
+    data = item.data
+    canonical = _mapping(data.get("canonical"))
+    state = _text(canonical.get("state"), "pre").lower()
+    status = _text(canonical.get("status")).upper()
+    priority = 3 if state == "post" or "FINAL" in status else 2
+    return (
+        priority,
+        _text(data.get("date"), "9999"),
+        _text(canonical.get("league")),
+        _text(canonical.get("home_abbr")),
+        _text(canonical.get("away_abbr")),
+    )
 
 
 def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:

@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 from sports_ticker.domain import DisplaySettings
 
+from .espn import _is_current_event
 from .http import JsonHttpClient, UrllibJsonHttpClient
 
 
@@ -34,7 +35,7 @@ class EspnGolfSource:
         del settings
         payload = self._client.get_json(ESPN_GOLF_URL, timeout=self._timeout)
         event = _first_event(payload)
-        if event is None:
+        if event is None or not _is_current_event(event, timezone_name=settings.timezone):
             return {"content": []}
         competition = _first_mapping(event.get("competitions"))
         players = [_golf_player(value) for value in _mappings(competition.get("competitors"))]
@@ -73,7 +74,7 @@ class EspnRacingSource:
         for series, url in ESPN_RACING_URLS.items():
             payload = self._client.get_json(url, timeout=self._timeout)
             event = _first_event(payload)
-            if event is None:
+            if event is None or not _is_current_event(event, timezone_name=settings.timezone):
                 continue
             for competition in _mappings(event.get("competitions")) or ({},):
                 records.append(_racing_record(series, event, competition))

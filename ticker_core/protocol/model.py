@@ -16,6 +16,20 @@ JsonScalar: TypeAlias = str | int | float | bool | None
 FrozenJson: TypeAlias = JsonScalar | tuple["FrozenJson", ...] | Mapping[str, "FrozenJson"]
 
 
+_CONTENT_FAMILY_ORDER = {
+    "sports": 0,
+    "golf": 1,
+    "racing": 2,
+    "weather": 3,
+    "music": 4,
+    "flights": 5,
+    "airports": 6,
+    "stock": 7,
+    "clock": 8,
+    "status": 9,
+}
+
+
 class PayloadValidationError(ValueError):
     """Report an invalid version two backend response."""
 
@@ -274,7 +288,8 @@ class TickerResponse:
         settings = TickerSettings.from_payload(data.get("settings", {}))
         content_root = _mapping(data.get("content", {}), "response.content")
         content: list[ContentItem] = []
-        for family, records in content_root.items():
+        for family in sorted(content_root, key=lambda value: (_CONTENT_FAMILY_ORDER.get(value, 99), value)):
+            records = content_root[family]
             if not isinstance(records, tuple):
                 raise PayloadValidationError(f"response.content.{family} must be a list")
             for index, item in enumerate(_items(records, f"response.content.{family}")):
