@@ -15,6 +15,7 @@ class FakeResponse:
     payload: Any = None
     text: str = "response body"
     json_error: ValueError | None = None
+    content: bytes = b""
 
     def json(self) -> Any:
         if self.json_error:
@@ -51,6 +52,18 @@ def test_fetch_data_preserves_deployed_endpoint_and_telemetry_headers() -> None:
     assert options["headers"] == {"X-Ticker-Build": "r1+x"}
     assert options["timeout"] == 7
     assert options["verify"] is False
+
+
+def test_fetch_data_reuses_an_identical_body_without_revalidating() -> None:
+    payload = {"status": "ok", "content": {"sports": []}}
+    session = FakeSession(FakeResponse(payload=payload, content=b'{"status":"ok"}'))
+    client = BackendClient("https://ticker.test", session=session)
+
+    first = client.fetch_data("pi-1")
+    session.response = FakeResponse(json_error=ValueError("must not parse again"), content=b'{"status":"ok"}')
+    second = client.fetch_data("pi-1")
+
+    assert second is first
 
 
 def test_pushes_local_setting_and_flight_config_with_device_header() -> None:

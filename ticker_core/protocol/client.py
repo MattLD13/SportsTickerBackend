@@ -61,6 +61,8 @@ class BackendClient:
         self.timeout_seconds = timeout_seconds
         self.verify_tls = verify_tls
         self.session = session or requests.Session()
+        self._last_data_body: bytes | None = None
+        self._last_data_response: TickerResponse | None = None
         if session is None:
             adapter = HTTPAdapter(pool_connections=1, pool_maxsize=1)
             self.session.mount("http://", adapter)
@@ -82,11 +84,17 @@ class BackendClient:
             params={"id": device_id},
             headers=dict(telemetry_headers or {}),
         )
+        body = response.content
+        if body and body == self._last_data_body and self._last_data_response is not None:
+            return self._last_data_response
         payload = self._json_object(response, "GET /data")
         try:
-            return TickerResponse.from_payload(payload)
+            parsed = TickerResponse.from_payload(payload)
         except PayloadValidationError as error:
             raise BackendPayloadError(str(error)) from error
+        self._last_data_body = body
+        self._last_data_response = parsed
+        return parsed
 
     def get_data(self, device_id: str, telemetry_headers: Mapping[str, str] | None = None) -> TickerResponse:
         """Fetch display data through the legacy method name."""

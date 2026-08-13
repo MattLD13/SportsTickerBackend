@@ -67,7 +67,7 @@ def test_content_cache_keeps_repeated_payloads_in_memory(tmp_path) -> None:
     cache.store(payload)
     first_write = path.stat().st_mtime_ns
     clock[0] = 0.5
-    cache.store(payload)
+    cache.refresh()
 
     assert path.stat().st_mtime_ns == first_write
     assert cache.remaining(cache.load()) == 300

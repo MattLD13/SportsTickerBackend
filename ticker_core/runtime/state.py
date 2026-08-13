@@ -275,6 +275,12 @@ class TickerRuntime:
         """Accept one parsed backend response without polling it."""
         return self._accept_response(response, stale=False, stale_for=0.0, expires_in=None)
 
+    def confirm_connection(self) -> None:
+        """Keep current display state while recording a duplicate poll reply."""
+        self._last_contact = self._monotonic()
+        self._disconnected_at = None
+        self._content_expires_at = None
+
     def mark_disconnected(self, *, expires_in: float) -> None:
         """Show connection loss while retaining valid content until expiry."""
         if expires_in < 0:

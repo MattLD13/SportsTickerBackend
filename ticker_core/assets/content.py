@@ -55,6 +55,14 @@ class ShortTermContentCache:
         self._memory = entry
         return entry
 
+    def refresh(self) -> CachedContent | None:
+        """Extend an unchanged in-memory payload without copying or disk I/O."""
+        if self._memory is None:
+            return None
+        saved_at = self._clock()
+        self._memory = CachedContent(self._memory.payload, saved_at, saved_at + self.ttl)
+        return self._memory
+
     def load(self) -> CachedContent | None:
         """Return valid cached content or no content after expiry."""
         entry = self._memory or self._read()

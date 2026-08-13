@@ -146,11 +146,12 @@ def test_same_poll_payload_does_not_rebuild_the_scroll_strip(tmp_path) -> None:
     wall = datetime(2026, 8, 11, tzinfo=timezone.utc)
     runtime = TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: wall)
     strips = Strips()
+    assets = Assets()
     application = TickerApplication(
         client=Client(),
         poller=IdlePoller(),
         cache=ShortTermContentCache(tmp_path / "content.json"),
-        assets=Assets(),
+        assets=assets,
         runtime=runtime,
         strips=strips,
         frames=Frames(),
@@ -177,5 +178,6 @@ def test_same_poll_payload_does_not_rebuild_the_scroll_strip(tmp_path) -> None:
         application.step()
 
         assert strips.builds == 1
+        assert assets.payloads == [response]
     finally:
         application.close()

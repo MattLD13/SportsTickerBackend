@@ -39,6 +39,9 @@ class ContentCache(Protocol):
     def store(self, payload: Mapping[str, object]):
         """Store one fresh backend payload."""
 
+    def refresh(self):
+        """Extend the in-memory lifetime of unchanged payload data."""
+
     def load(self):
         """Return one non-expired saved payload."""
 
@@ -208,6 +211,13 @@ class TickerApplication:
     def _accept_fresh(self, response: TickerResponse) -> None:
         """Persist, prefetch, accept, and render one validated backend response."""
         previous = self._runtime.snapshot
+        if previous is not None and previous.key == response.payload_key:
+            refresh = getattr(self._cache, "refresh", None)
+            if callable(refresh):
+                refresh()
+            self._runtime.confirm_connection()
+            self._disconnected = False
+            return
         self._cache.store(response.data)
         self._assets.prefetch_payload(response)
         current = self._runtime.accept_response(response)
