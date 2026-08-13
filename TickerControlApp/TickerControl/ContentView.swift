@@ -69,6 +69,33 @@ struct AirportFlight: Decodable, Hashable, Sendable {
     let other_iata: String?
     let altitude: String?
 }
+struct WeatherForecast: Decodable, Hashable, Sendable {
+    let day: String?
+    let icon: String?
+    let high: String?
+    let low: String?
+    let pop: String?
+
+    enum CodingKeys: String, CodingKey { case day, icon, high, low, pop }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        day = try? c.decode(String.self, forKey: .day)
+        icon = try? c.decode(String.self, forKey: .icon)
+        high = Self.text(c, key: .high)
+        low = Self.text(c, key: .low)
+        pop = Self.text(c, key: .pop)
+    }
+
+    private static func text(
+        _ container: KeyedDecodingContainer<CodingKeys>, key: CodingKeys
+    ) -> String? {
+        if let value = try? container.decode(String.self, forKey: key) { return value }
+        if let value = try? container.decode(Int.self, forKey: key) { return String(value) }
+        if let value = try? container.decode(Double.self, forKey: key) { return String(format: "%.0f", value) }
+        return nil
+    }
+}
 struct Situation: Decodable, Hashable, Sendable {
     let possession: String?
     let downDist: String?
@@ -154,6 +181,7 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     let airportWeather: AirportWeather?
     let arrivals: [AirportFlight]?
     let departures: [AirportFlight]?
+    let forecast: [WeatherForecast]?
     
     var safeHomeAbbr: String { home_abbr ?? "" }
     var safeAwayAbbr: String { away_abbr ?? "" }
@@ -163,7 +191,7 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     var safeAwayID: String { away_id ?? safeAwayAbbr }
     
     enum CodingKeys: String, CodingKey {
-        case id, sport, status, state, home_abbr, home_id, home_score, home_logo, home_color, home_alt_color, away_abbr, away_id, away_score, away_logo, away_color, away_alt_color, is_shown, situation, type, tourney_name, guest_name, route, origin_city, dest_city, alt, dist, eta_str, speed, progress, is_live, delay_min, is_delayed, name, artist, cover, duration, feels, wind, humidity, airportWeather = "weather", arrivals, departures
+        case id, sport, status, state, home_abbr, home_id, home_score, home_logo, home_color, home_alt_color, away_abbr, away_id, away_score, away_logo, away_color, away_alt_color, is_shown, situation, type, tourney_name, guest_name, route, origin_city, dest_city, alt, dist, eta_str, speed, progress, is_live, delay_min, is_delayed, name, artist, cover, duration, feels, wind, humidity, airportWeather = "weather", arrivals, departures, forecast
     }
     
     init(from decoder: Decoder) throws {
@@ -204,6 +232,7 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
         airportWeather = try? c.decode(AirportWeather.self, forKey: .airportWeather)
         arrivals = try? c.decode([AirportFlight].self, forKey: .arrivals)
         departures = try? c.decode([AirportFlight].self, forKey: .departures)
+        forecast = try? c.decode([WeatherForecast].self, forKey: .forecast)
         if let dmin = try? c.decode(Int.self, forKey: .delay_min) { delay_min = dmin }
         else if let dminD = try? c.decode(Double.self, forKey: .delay_min) { delay_min = Int(dminD) }
         else { delay_min = nil }
@@ -1478,7 +1507,7 @@ struct StockFeedCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
-struct WeatherFeedCard: View {
+struct WeatherLocationCard: View {
     let game: Game
 
     var body: some View {
@@ -1495,10 +1524,7 @@ struct WeatherFeedCard: View {
                 Text(game.status.capitalized).font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            VStack(alignment: .trailing, spacing: 5) {
-                Text("\(game.safeHomeAbbr)°").font(.system(size: 27, weight: .bold, design: .rounded)).foregroundStyle(.white)
-                Text(weatherDetails).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-            }
+            Text("NOW").font(.caption2.weight(.bold)).foregroundStyle(.blue)
         }
         .padding(12)
         .background(Color.white.opacity(0.08))
@@ -1506,9 +1532,64 @@ struct WeatherFeedCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    private var weatherDetails: String {
-        [game.feels.map { "Feels \($0)°" }, game.wind.map { "\($0) mph" }]
+}
+struct WeatherCurrentCard: View {
+    let game: Game
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "thermometer.medium")
+                .font(.system(size: 28)).foregroundStyle(.orange)
+                .frame(width: 54, height: 54)
+                .background(Color.orange.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 5) {
+                Text("CURRENT TEMPERATURE").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                Text("Feels like \(game.feels ?? game.safeHomeAbbr)°")
+                    .font(.headline).foregroundStyle(.white)
+                Text(currentDetails).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Text("\(game.safeHomeAbbr)°")
+                .font(.system(size: 30, weight: .bold, design: .rounded)).foregroundStyle(.white)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.orange.opacity(0.35), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var currentDetails: String {
+        [game.wind.map { "Wind \($0) mph" }, game.humidity.map { "Humidity \($0)%" }]
             .compactMap { $0 }.joined(separator: " · ")
+    }
+}
+struct WeatherTodayCard: View {
+    let game: Game
+
+    private var today: WeatherForecast? { game.forecast?.first }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: weatherIcon(for: today?.icon ?? game.status))
+                .font(.system(size: 28)).foregroundStyle(.cyan)
+                .frame(width: 54, height: 54)
+                .background(Color.cyan.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 5) {
+                Text("\(today?.day?.uppercased() ?? "TODAY") FORECAST")
+                    .font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                Text("High \(today?.high ?? "—")°  ·  Low \(today?.low ?? "—")°")
+                    .font(.headline).foregroundStyle(.white)
+                Text(today?.pop.map { "\($0)% precipitation chance" } ?? "Forecast updating")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.cyan.opacity(0.35), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 struct TrackedFlightFeedCard: View {
@@ -1548,30 +1629,28 @@ struct TrackedFlightFeedCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
-struct AirportFeedCard: View {
+struct AirportLocationCard: View {
     let game: Game
 
     private var airport: AirportWeather? { game.airportWeather }
-    private var arrivals: [AirportFlight] { game.arrivals ?? [] }
-    private var departures: [AirportFlight] { game.departures ?? [] }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: "airplane.departure").font(.title2).foregroundStyle(.cyan)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(airport?.iata ?? "AIRPORT").font(.headline).foregroundStyle(.white)
-                    Text(airport?.city ?? "Live airport activity").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                if let weather = airport, !weather.away_abbr.orEmpty.isEmpty {
-                    Text(weather.away_abbr ?? "").font(.headline).foregroundStyle(.white)
-                    Image(systemName: weatherIcon(for: weather.status ?? "")).foregroundStyle(.cyan)
-                }
+        HStack(spacing: 14) {
+            Image(systemName: "airplane.departure").font(.title2).foregroundStyle(.cyan)
+                .frame(width: 54, height: 54)
+                .background(Color.cyan.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("AIRPORT ACTIVITY").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                Text(airport?.iata ?? "AIRPORT").font(.headline).foregroundStyle(.white)
+                Text(airport?.city ?? "Live airport activity").font(.caption).foregroundStyle(.secondary)
             }
-            HStack(spacing: 18) {
-                AirportFeedLane(title: "ARR", icon: "airplane.arrival", flights: arrivals, color: .green)
-                AirportFeedLane(title: "DEP", icon: "airplane.departure", flights: departures, color: .orange)
+            Spacer(minLength: 0)
+            if let weather = airport, !weather.away_abbr.orEmpty.isEmpty {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Image(systemName: weatherIcon(for: weather.status ?? "")).foregroundStyle(.cyan)
+                    Text(weather.away_abbr ?? "").font(.caption.weight(.bold)).foregroundStyle(.white)
+                }
             }
         }
         .padding(12)
@@ -1580,21 +1659,36 @@ struct AirportFeedCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
-struct AirportFeedLane: View {
+struct AirportScheduleFeedCard: View {
     let title: String
     let icon: String
     let flights: [AirportFlight]
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Label(title, systemImage: icon).font(.caption2.weight(.bold)).foregroundStyle(color)
-            Text(flights.first?.home_abbr ?? "No flights")
-                .font(.caption.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
-            Text(flights.first?.other_iata ?? "Waiting for schedule")
-                .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        HStack(spacing: 14) {
+            Image(systemName: icon).font(.title2).foregroundStyle(color)
+                .frame(width: 54, height: 54)
+                .background(color.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.caption2.weight(.bold)).foregroundStyle(color)
+                Text(flights.first?.home_abbr ?? "No scheduled flights")
+                    .font(.headline).foregroundStyle(.white).lineLimit(1)
+                Text(destinationText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Text("\(flights.count)").font(.title3.weight(.bold)).foregroundStyle(color)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(color.opacity(0.35), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var destinationText: String {
+        guard let first = flights.first else { return "Waiting for schedule" }
+        return first.other_iata ?? first.altitude ?? "Airport schedule"
     }
 }
 
@@ -2285,13 +2379,27 @@ struct HomeView: View {
                             StockFeedCard(game: game)
                         }
                         ForEach(splitGames.weather) { game in
-                            WeatherFeedCard(game: game)
+                            WeatherLocationCard(game: game)
+                            WeatherCurrentCard(game: game)
+                            WeatherTodayCard(game: game)
                         }
                         ForEach(splitGames.trackedFlights) { game in
                             TrackedFlightFeedCard(game: game)
                         }
                         ForEach(splitGames.airports) { game in
-                            AirportFeedCard(game: game)
+                            AirportLocationCard(game: game)
+                            AirportScheduleFeedCard(
+                                title: "ARRIVALS",
+                                icon: "airplane.arrival",
+                                flights: game.arrivals ?? [],
+                                color: .green
+                            )
+                            AirportScheduleFeedCard(
+                                title: "DEPARTURES",
+                                icon: "airplane.departure",
+                                flights: game.departures ?? [],
+                                color: .orange
+                            )
                         }
                         ForEach(splitGames.other) { game in
                             GameRow(game: game, leagueLabel: leagueLabels[game.sport], isPinned: vm.isPinned(game))
