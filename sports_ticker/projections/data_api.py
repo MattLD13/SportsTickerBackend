@@ -11,6 +11,13 @@ from ..providers.contracts import ProviderHealth
 
 
 _SPORTS_FAMILIES = frozenset(("sports", "golf", "racing"))
+_MODE_FAMILIES = {
+    "sports": _SPORTS_FAMILIES,
+    "live": _SPORTS_FAMILIES,
+    "my_teams": frozenset(("sports",)),
+    "stocks": frozenset(("stock",)),
+    "flight_tracker": frozenset(("flights",)),
+}
 
 
 def project_data_v2(
@@ -94,13 +101,24 @@ def select_display_content(
     mode = str(settings.get("mode") or "sports").strip().lower()
     if mode == "pairing":
         return {}
-    families = _SPORTS_FAMILIES if mode == "sports" else frozenset((mode,))
+    families = _MODE_FAMILIES.get(mode, frozenset((mode,)))
     selected = {
         family: list(items)
         for family, items in content.items()
         if family in families and items
     }
     pinned = str(settings.get("pinned_content_id") or "").strip()
+    if mode == "live":
+        selected = {
+            family: [item for item in items if _item_state(item) == "in"]
+            for family, items in selected.items()
+        }
+    if mode == "my_teams":
+        selected = {
+            family: [item for item in items if _matches_my_team(item, settings)]
+            for family, items in selected.items()
+        }
+    selected = {family: items for family, items in selected.items() if items}
     if mode == "sports" and pinned:
         selected = {
             family: [item for item in items if str(item.get("id") or "") == pinned]
@@ -108,6 +126,32 @@ def select_display_content(
         }
         selected = {family: items for family, items in selected.items() if items}
     return selected
+
+
+def _item_state(item: Mapping[str, Any]) -> str:
+    """Read the canonical state from one projected content item."""
+
+    data = item.get("data")
+    return str(data.get("state") or "").strip().lower() if isinstance(data, Mapping) else ""
+
+
+def _matches_my_team(item: Mapping[str, Any], settings: Mapping[str, Any]) -> bool:
+    """Keep one sports item when either competitor is a selected team."""
+
+    selected = settings.get("my_teams")
+    if not isinstance(selected, (list, tuple, set, frozenset)):
+        return False
+    data = item.get("data")
+    if not isinstance(data, Mapping):
+        return False
+    sport = str(data.get("sport") or "").strip().lower()
+    teams = {
+        f"{sport}:{str(data.get(key) or '').strip().upper()}".upper()
+        for key in ("home_abbr", "away_abbr")
+        if sport and str(data.get(key) or "").strip()
+    }
+    configured = {str(team).strip().upper() for team in selected}
+    return bool(teams.intersection(configured))
 
 
 def _content_item(item: ContentItem) -> dict[str, Any]:

@@ -25,6 +25,14 @@ _LEAGUE_LABELS = {
     "soccer_champions_league": "Champions League",
     "soccer_mls": "MLS",
 }
+_MODE_SYMBOLS = {
+    "sports": "sportscourt.fill",
+    "stocks": "chart.line.uptrend.xyaxis",
+    "music": "music.note",
+    "flights": "airplane.arrival",
+    "weather": "cloud.sun.fill",
+    "clock": "clock.fill",
+}
 
 
 class EspnTeamCatalog:
@@ -62,6 +70,11 @@ class EspnTeamCatalog:
             for league in self._paths
         )
 
+    def modes(self) -> tuple[dict[str, str], ...]:
+        """Return the controller mode symbols in their stable display order."""
+
+        return tuple({"id": identifier, "symbol": symbol} for identifier, symbol in _MODE_SYMBOLS.items())
+
     def teams(self, league: str) -> tuple[dict[str, str], ...]:
         """Return all teams for one configured ESPN league."""
 
@@ -95,9 +108,37 @@ def _teams(payload: object, league: str) -> tuple[dict[str, str], ...]:
         abbreviation = str(team.get("abbreviation") or "").strip().upper()
         if not abbreviation:
             continue
-        logo = str(team.get("logo") or "").strip()
-        values.append({"id": f"{league}:{abbreviation}", "abbr": abbreviation, "logo": logo})
+        values.append(
+            {
+                "id": f"{league}:{abbreviation}",
+                "abbr": abbreviation,
+                "logo": _logo(team),
+            }
+        )
     return tuple(sorted({item["id"]: item for item in values}.values(), key=lambda item: item["abbr"]))
+
+
+def _logo(team: Mapping[str, object]) -> str:
+    """Return the standard ESPN logo from one team catalog record."""
+
+    direct = str(team.get("logo") or "").strip()
+    if direct:
+        return direct
+    logos = team.get("logos")
+    if not isinstance(logos, Sequence) or isinstance(logos, (str, bytes)):
+        return ""
+    for value in logos:
+        logo = value if isinstance(value, Mapping) else {}
+        relations = logo.get("rel")
+        relation_values = relations if isinstance(relations, Sequence) and not isinstance(relations, (str, bytes)) else ()
+        if "default" in relation_values:
+            return str(logo.get("href") or "").strip()
+    for value in logos:
+        logo = value if isinstance(value, Mapping) else {}
+        href = str(logo.get("href") or "").strip()
+        if href:
+            return href
+    return ""
 
 
 __all__ = ["EspnTeamCatalog"]

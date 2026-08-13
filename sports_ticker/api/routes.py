@@ -83,6 +83,11 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
         catalog = _catalog(application)
         return jsonify({"leagues": list(catalog.leagues())})
 
+    @app.get("/api/v2/catalog/modes")
+    def catalog_modes():
+        catalog = _catalog(application)
+        return jsonify({"modes": list(catalog.modes())})
+
     @app.get("/api/v2/catalog/leagues/<league_id>/teams")
     def catalog_teams(league_id: str):
         catalog = _catalog(application)
