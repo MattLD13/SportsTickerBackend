@@ -39,6 +39,7 @@ def _display_settings(value: DisplaySettings | Mapping[str, Any] | None) -> Disp
         active_sports = {}
     return DisplaySettings(
         active_sports=active_sports,
+        my_teams=value.get("my_teams", ()),
         mode=value.get("mode", "sports"),
         sports_presentation=value.get("sports_presentation", "rotation"),
         pinned_content_id=value.get("pinned_content_id", ""),

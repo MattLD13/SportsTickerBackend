@@ -45,6 +45,7 @@ def _dump(value: Any) -> str:
 def _display_payload(settings: DisplaySettings) -> dict[str, Any]:
     return {
         "active_sports": dict(settings.active_sports),
+        "my_teams": list(settings.my_teams),
         "mode": settings.mode,
         "sports_presentation": settings.sports_presentation,
         "pinned_content_id": settings.pinned_content_id,
@@ -74,6 +75,7 @@ def _display_settings(value: DisplaySettings | Mapping[str, Any] | None) -> Disp
         return DisplaySettings()
     return DisplaySettings(
         active_sports=value.get("active_sports", {}),
+        my_teams=value.get("my_teams", ()),
         mode=value.get("mode", "sports"),
         sports_presentation=value.get("sports_presentation", "rotation"),
         pinned_content_id=value.get("pinned_content_id", ""),
@@ -745,7 +747,7 @@ class TickerRepository:
         current_time = time.time() if now is None else float(now)
         with self._transaction():
             row = self._connection.execute(
-                "SELECT ticker_id FROM ticker_pairing WHERE pairing_code = ? AND paired = 0",
+                "SELECT ticker_id FROM ticker_pairing WHERE pairing_code = ?",
                 (code,),
             ).fetchone()
             if row is None:
@@ -766,6 +768,44 @@ class TickerRepository:
             ).fetchone()
             if ticker_row is None:
                 raise KeyError(ticker_id)
+            return self._read_record(ticker_row)
+
+    def issue_pairing_code(self, ticker_id: str, pairing_code: str) -> TickerRecord:
+        """Issue one unused controller pairing code for an existing ticker."""
+
+        identifier = str(ticker_id).strip()
+        code = str(pairing_code).strip()
+        if not identifier or not code:
+            raise ValueError("ticker ID and pairing code are required")
+        with self._transaction():
+            self._require_ticker_locked(identifier)
+            existing = self._connection.execute(
+                "SELECT ticker_id FROM ticker_pairing WHERE pairing_code = ?",
+                (code,),
+            ).fetchone()
+            if existing is not None and str(existing["ticker_id"]) != identifier:
+                raise ValueError("pairing code is already in use")
+            pairing_row = self._connection.execute(
+                "SELECT paired FROM ticker_pairing WHERE ticker_id = ?",
+                (identifier,),
+            ).fetchone()
+            if pairing_row is None:
+                self._connection.execute(
+                    "INSERT INTO ticker_pairing "
+                    "(ticker_id, pairing_code, paired, client_ids_json) VALUES (?, ?, ?, ?)",
+                    (identifier, code, 0, _dump(())),
+                )
+            else:
+                self._connection.execute(
+                    "UPDATE ticker_pairing SET pairing_code = ? WHERE ticker_id = ?",
+                    (code, identifier),
+                )
+            ticker_row = self._connection.execute(
+                "SELECT ticker_id, name, created_at, updated_at FROM tickers WHERE ticker_id = ?",
+                (identifier,),
+            ).fetchone()
+            if ticker_row is None:
+                raise KeyError(identifier)
             return self._read_record(ticker_row)
 
     def authorize_controller(

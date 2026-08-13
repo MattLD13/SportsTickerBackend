@@ -52,6 +52,9 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
 
 # pytest / coverage
 .pytest_cache/

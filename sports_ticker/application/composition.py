@@ -31,6 +31,7 @@ class BackendApplication:
         *,
         runtime: object | None = None,
         spotify_service: object | None = None,
+        catalog: object | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         """Capture infrastructure through dependency injection."""
@@ -40,6 +41,7 @@ class BackendApplication:
         self.scheduler = scheduler
         self.runtime = runtime
         self.spotify_service = spotify_service
+        self.catalog = catalog
         self._clock = clock
         self._close_lock = Lock()
         self._closed = False
@@ -83,6 +85,20 @@ class BackendApplication:
         )
         self._register_scheduler_ticker(ticker.ticker_id)
         return ticker, token
+
+    def issue_pairing_code(self, ticker_id: str) -> str:
+        """Issue one unique six-digit code for another controller."""
+
+        identifier = str(ticker_id).strip()
+        for _ in range(10):
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            try:
+                self.repository.issue_pairing_code(identifier, code)
+                return code
+            except ValueError as error:
+                if str(error) != "pairing code is already in use":
+                    raise
+        raise RuntimeError("could not issue a unique pairing code")
 
     def authorize_controller(self, ticker_id: str, token: str) -> bool:
         """Validate one opaque controller token for one ticker."""

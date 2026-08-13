@@ -17,6 +17,7 @@ from sports_ticker.fleet import PairingState, TickerRepository
 from sports_ticker.integrations import SpotifyConfig, SpotifyIntegrationService, SpotifyMusicSource
 from sports_ticker.providers import (
     EspnScoreboardProvider,
+    EspnTeamCatalog,
     FlightsProvider,
     GolfProvider,
     MusicProvider,
@@ -84,6 +85,7 @@ def create_production_application(
         snapshots,
         scheduler=scheduler,
         spotify_service=spotify,
+        catalog=EspnTeamCatalog(_SCOREBOARD_PATHS),
     )
     runtime = BackendRuntime(
         scheduler,

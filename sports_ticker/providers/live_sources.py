@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from math import isfinite
@@ -52,7 +53,7 @@ class EspnGolfSource:
                     "golf": {
                         "event_name": str(event.get("name") or "PGA TOUR"),
                         "year": _mapping(event.get("season")).get("year", datetime.now(timezone.utc).year),
-                        "round": status["text"],
+                        "round": _golf_round(status["text"]),
                         "players": players,
                     },
                 }
@@ -348,6 +349,13 @@ def _status(event: Mapping[str, Any], competition: Mapping[str, Any]) -> dict[st
         "state": str(kind.get("state") or "pre").lower(),
         "text": str(kind.get("shortDetail") or kind.get("detail") or kind.get("description") or "Scheduled"),
     }
+
+
+def _golf_round(status: str) -> str:
+    """Return a compact golf round label when ESPN provides one."""
+
+    match = re.search(r"\bround\s*(\d+)\b", status, re.IGNORECASE)
+    return f"R{match.group(1)}" if match else status
 
 
 def _mappings(value: object) -> tuple[Mapping[str, Any], ...]:

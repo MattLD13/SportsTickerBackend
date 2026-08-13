@@ -68,6 +68,7 @@ def normalize_settings(value: DisplaySettings | Mapping[str, Any] | None) -> Dis
         active_sports = {}
     return DisplaySettings(
         active_sports=dict(active_sports),
+        my_teams=value.get("my_teams", ()),
         mode=str(value.get("mode", "sports")),
         sports_presentation=value.get("sports_presentation", "rotation"),
         pinned_content_id=value.get("pinned_content_id", ""),

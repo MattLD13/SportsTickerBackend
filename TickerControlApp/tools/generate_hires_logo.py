@@ -14,7 +14,7 @@ from pathlib import Path
 import requests
 from PIL import Image, ImageDraw, ImageFilter
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from ticker_controller.stadium import StadiumRenderer
@@ -141,7 +141,7 @@ IOS_ICONS = [
 
 
 def main() -> None:
-    out = ROOT / "ios_icons"
+    out = ROOT / "design" / "ios_icons"
     asset_dir = out / "AppIcon.appiconset"
     asset_dir.mkdir(parents=True, exist_ok=True)
 
@@ -178,11 +178,11 @@ def main() -> None:
     (asset_dir / "Contents.json").write_text(json.dumps(contents, indent=2))
 
     print(f"\nDone.")
-    print(f"  Raw frame:  ios_icons/ticker_frame_raw.png")
-    print(f"  Fullres:    ios_icons/ticker_frame_fullres.png")
-    print(f"  Master:     ios_icons/AppIcon_master_2048.png")
-    print(f"  Base 1024:  ios_icons/AppIcon_base_1024.png")
-    print(f"  Icon set:   ios_icons/AppIcon.appiconset/")
+    print("  Raw frame:  design/ios_icons/ticker_frame_raw.png")
+    print("  Fullres:    design/ios_icons/ticker_frame_fullres.png")
+    print("  Master:     design/ios_icons/AppIcon_master_2048.png")
+    print("  Base 1024:  design/ios_icons/AppIcon_base_1024.png")
+    print("  Icon set:   design/ios_icons/AppIcon.appiconset/")
 
 
 if __name__ == "__main__":

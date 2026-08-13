@@ -62,6 +62,7 @@ def _settings_value(settings: DisplaySettings) -> dict[str, Any]:
         raise TypeError("snapshot settings must be DisplaySettings")
     return {
         "active_sports": _json_value(settings.active_sports),
+        "my_teams": list(settings.my_teams),
         "mode": settings.mode,
         "sports_presentation": settings.sports_presentation,
         "pinned_content_id": settings.pinned_content_id,

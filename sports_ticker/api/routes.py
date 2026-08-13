@@ -78,6 +78,16 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
             }
         )
 
+    @app.get("/api/v2/catalog/leagues")
+    def catalog_leagues():
+        catalog = _catalog(application)
+        return jsonify({"leagues": list(catalog.leagues())})
+
+    @app.get("/api/v2/catalog/leagues/<league_id>/teams")
+    def catalog_teams(league_id: str):
+        catalog = _catalog(application)
+        return jsonify({"teams": list(catalog.teams(league_id))})
+
     @app.get("/api/v2/tickers")
     def list_tickers():
         return jsonify({"tickers": [_ticker_value(item) for item in application.list_tickers()]})
@@ -102,6 +112,16 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
                 "ticker_id": ticker.ticker_id,
                 "controller_token": token,
                 "paired": True,
+            }
+        ), 201
+
+    @app.post("/api/v2/tickers/<ticker_id>/pairing-code")
+    def issue_pairing_code(ticker_id: str):
+        identifier = _controller_ticker_owner(application, ticker_id)
+        return jsonify(
+            {
+                "ticker_id": identifier,
+                "pairing_code": application.issue_pairing_code(identifier),
             }
         ), 201
 
@@ -343,6 +363,15 @@ def _spotify_service(application: BackendApplication):
     return service
 
 
+def _catalog(application: BackendApplication):
+    """Return the configured controller catalog service."""
+
+    catalog = application.catalog
+    if catalog is None:
+        raise ApiError("team catalog is not configured", 503, "catalog_unavailable")
+    return catalog
+
+
 def _controller_ticker_owner(application: BackendApplication, ticker_id: str) -> str:
     """Require one opaque controller token for one ticker-owned integration."""
 
@@ -391,6 +420,7 @@ def _ticker_value(ticker: Any) -> dict[str, Any]:
 def _display_settings_value(settings: DisplaySettings) -> dict[str, Any]:
     return {
         "active_sports": _json_value(settings.active_sports),
+        "my_teams": list(settings.my_teams),
         "mode": settings.mode,
         "sports_presentation": settings.sports_presentation,
         "pinned_content_id": settings.pinned_content_id,

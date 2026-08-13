@@ -3,6 +3,7 @@ import Foundation
 import Combine
 import UIKit
 import CoreLocation
+import Security
 // ==========================================
 // MARK: - 0. EXTENSIONS
 // ==========================================
@@ -47,6 +48,8 @@ struct LeagueOption: Decodable, Identifiable, Hashable, Sendable {
     let type: String
     let enabled: Bool?
 }
+struct V2LeagueCatalog: Decodable, Sendable { let leagues: [LeagueOption] }
+struct V2TeamCatalog: Decodable, Sendable { let teams: [TeamData] }
 struct ShootoutData: Decodable, Hashable, Sendable {
     let away: [String]?
     let home: [String]?
@@ -221,8 +224,10 @@ struct TickerState: Codable, Sendable {
     var flight_submode: String
     var pinned_game: String?
     var pinned_games: [String]
+    var sports_presentation: String
+    var pinned_content_id: String
     enum CodingKeys: String, CodingKey {
-        case active_sports, mode, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id, track_flight_id, track_guest_name, airport_code_iata, airport_code_icao, airport_name, flight_submode, pinned_game, pinned_games
+        case active_sports, mode, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id, track_flight_id, track_guest_name, airport_code_iata, airport_code_icao, airport_name, flight_submode, pinned_game, pinned_games, sports_presentation, pinned_content_id
     }
     
     // === 1. ROBUST DECODER ===
@@ -275,10 +280,12 @@ struct TickerState: Codable, Sendable {
         } else {
             pinned_games = []
         }
+        sports_presentation = (try? container.decode(String.self, forKey: .sports_presentation)) ?? "rotation"
+        pinned_content_id = (try? container.decode(String.self, forKey: .pinned_content_id)) ?? pinned_games.first ?? ""
     }
     
     // === 2. BETTER DEFAULTS (Fixes "NFL Only" bug) ===
-    init(active_sports: [String: Bool]? = nil, mode: String = "sports", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil, track_flight_id: String = "", track_guest_name: String = "", airport_code_iata: String = "EWR", airport_code_icao: String = "KEWR", airport_name: String = "Newark", flight_submode: String = "airport", pinned_game: String? = nil, pinned_games: [String] = []) {
+    init(active_sports: [String: Bool]? = nil, mode: String = "sports", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil, track_flight_id: String = "", track_guest_name: String = "", airport_code_iata: String = "EWR", airport_code_icao: String = "KEWR", airport_name: String = "Newark", flight_submode: String = "airport", pinned_game: String? = nil, pinned_games: [String] = [], sports_presentation: String = "rotation", pinned_content_id: String = "") {
         
         // Default to ALL sports if none provided
         self.active_sports = active_sports ?? TickerState.defaultActiveSports
@@ -303,41 +310,161 @@ struct TickerState: Codable, Sendable {
         self.flight_submode = flight_submode
         self.pinned_game = pinned_game
         self.pinned_games = pinned_games
+        self.sports_presentation = sports_presentation
+        self.pinned_content_id = pinned_content_id
     }
-    // Empty — league defaults are filled dynamically from /api/leagues once connected
+    // Empty values use the server defaults for every league.
     static var defaultActiveSports: [String: Bool] { [:] }
 }
-struct APIResponse: Decodable, Sendable {
+struct V2DataResponse: Decodable, Sendable {
     let settings: TickerState
-    let games: [Game]
+    let content: [String: [V2ContentItem]]
+    let meta: V2DataMeta
+
+    var games: [Game] {
+        let preferredFamilies = ["sports", "golf", "racing", "weather", "music", "flights", "airports", "clock", "status", "stock"]
+        let orderedFamilies = preferredFamilies.filter(content.keys.contains) + content.keys.filter { !preferredFamilies.contains($0) }.sorted()
+        return orderedFamilies.flatMap { content[$0, default: []] }.compactMap(Game.init(content:))
+    }
 }
-struct DeviceSettings: Codable, Sendable {
-    var brightness: Int
+struct V2DataMeta: Decodable, Sendable { let pairing: V2PairingMeta? }
+struct V2PairingMeta: Decodable, Sendable { let paired: Bool; let code: String? }
+struct JSONValue: Codable, Sendable {
+    let value: AnySendableValue
+
+    nonisolated init(value: AnySendableValue) {
+        self.value = value
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { value = .null }
+        else if let value = try? container.decode(Bool.self) { self.value = .bool(value) }
+        else if let value = try? container.decode(Double.self) { self.value = .number(value) }
+        else if let value = try? container.decode(String.self) { self.value = .string(value) }
+        else if let value = try? container.decode([String: JSONValue].self) { self.value = .object(value) }
+        else if let value = try? container.decode([JSONValue].self) { self.value = .array(value) }
+        else { throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported JSON value") }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch value {
+        case .null: try container.encodeNil()
+        case .bool(let item): try container.encode(item)
+        case .number(let item): try container.encode(item)
+        case .string(let item): try container.encode(item)
+        case .object(let item): try container.encode(item)
+        case .array(let item): try container.encode(item)
+        }
+    }
+}
+
+enum AnySendableValue: Sendable {
+    case null
+    case bool(Bool)
+    case number(Double)
+    case string(String)
+    case object([String: JSONValue])
+    case array([JSONValue])
+}
+
+struct V2ContentItem: Decodable, Sendable {
+    let id: String
+    let family: String
+    let kind: String
+    let is_shown: Bool
+    let data: [String: JSONValue]
+}
+
+extension Game {
+    nonisolated init?(content: V2ContentItem) {
+        var payload = content.data
+        payload["id"] = JSONValue(value: .string(content.id))
+        payload["sport"] = payload["sport"] ?? JSONValue(value: .string(content.family))
+        payload["status"] = payload["status"] ?? JSONValue(value: .string(""))
+        payload["type"] = payload["type"] ?? JSONValue(value: .string(content.kind))
+        payload["is_shown"] = JSONValue(value: .bool(content.is_shown))
+        guard let encoded = try? JSONEncoder().encode(payload) else { return nil }
+        guard let game = try? JSONDecoder().decode(Game.self, from: encoded) else { return nil }
+        self = game
+    }
+}
+
+struct DeviceSettings: Sendable {
+    var brightness: Double
     var scroll_speed: Double
     var scroll_seamless: Bool?
     var inverted: Bool?
     var live_delay_mode: Bool?
     var live_delay_seconds: Int?
 }
-struct TickerDevice: Identifiable, Decodable, Sendable {
+
+struct V2Ticker: Decodable, Sendable {
+    let ticker_id: String
+    let id: String
+    let name: String
+    let display_settings: V2DisplaySettings
+    let device: V2Device
+
+    enum CodingKeys: String, CodingKey { case ticker_id, name, display_settings, device }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ticker_id = try container.decode(String.self, forKey: .ticker_id)
+        id = ticker_id
+        name = try container.decode(String.self, forKey: .name)
+        display_settings = try container.decode(V2DisplaySettings.self, forKey: .display_settings)
+        device = try container.decode(V2Device.self, forKey: .device)
+    }
+
+    var tickerDevice: TickerDevice {
+        TickerDevice(
+            id: ticker_id,
+            name: name,
+            settings: DeviceSettings(
+                brightness: display_settings.brightness,
+                scroll_speed: display_settings.scroll_speed,
+                scroll_seamless: display_settings.scroll_seamless,
+                inverted: display_settings.inverted,
+                live_delay_mode: display_settings.live_delay_mode,
+                live_delay_seconds: Int(display_settings.live_delay_seconds)
+            ),
+            last_seen: device.last_seen_at
+        )
+    }
+}
+
+struct V2TickerList: Decodable, Sendable { let tickers: [V2Ticker] }
+
+struct V2Device: Decodable, Sendable { let last_seen_at: Double? }
+
+struct V2DisplaySettings: Decodable, Sendable {
+    let brightness: Double
+    let scroll_speed: Double
+    let scroll_seamless: Bool?
+    let inverted: Bool?
+    let live_delay_mode: Bool?
+    let live_delay_seconds: Double
+}
+
+struct TickerDevice: Identifiable, Sendable {
     let id: String
     let name: String
     var settings: DeviceSettings
     let last_seen: Double?
 }
-struct PairResponse: Decodable, Sendable {
-    let success: Bool
-    let message: String?
+struct PairingExchangeResponse: Decodable, Sendable {
     let ticker_id: String?
+    let controller_token: String
 }
+struct PairingCodeResponse: Decodable, Sendable { let pairing_code: String }
+
+struct SpotifyAuthorization: Decodable, Sendable { let attempt_id: String; let authorization_url: URL }
+struct SpotifyStatus: Decodable, Sendable { let connected: Bool; let status: String; let display_name: String? }
 // ==========================================
 // MARK: - 2. VIEW MODEL
 // ==========================================
-import SwiftUI
-import Foundation
-import Combine
-import UIKit
-import CoreLocation
 @MainActor
 class TickerViewModel: ObservableObject {
     @Published var games: [Game] = []
@@ -374,6 +501,12 @@ class TickerViewModel: ObservableObject {
     @Published var weatherLocInput: String = "New York"
     @Published var connectionStatus: String = "Connecting..."
     @Published var statusColor: Color = .gray
+    @Published var spotifyStatus: String = "Checking Spotify..."
+    @Published var spotifyAccountName: String?
+    @Published var spotifyError: String?
+    @Published var isConnectingSpotify = false
+    @Published var pairCodeAlertMessage = ""
+    @Published var showingPairCodeAlert = false
     
     // LOCKING MECHANISM (Stops updates while you tap)
     @Published var isEditing: Bool = false
@@ -391,19 +524,10 @@ class TickerViewModel: ObservableObject {
         raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
     func pinID(for game: Game) -> String {
-        let gid = game.id.trimmingCharacters(in: .whitespacesAndNewlines)
-        if gid.contains(":") { return normalizedPin(gid) }
-        return normalizedPin("\(game.sport):\(gid)")
+        normalizedPin(game.id)
     }
     func isPinned(_ game: Game) -> Bool {
         pinnedGameIDs.contains(pinID(for: game))
-    }
-    
-    private var clientID: String {
-        if let saved = UserDefaults.standard.string(forKey: "clientID") { return saved }
-        let newID = UUID().uuidString
-        UserDefaults.standard.set(newID, forKey: "clientID")
-        return newID
     }
     
     // PERSISTENT ID TRACKING
@@ -411,6 +535,54 @@ class TickerViewModel: ObservableObject {
     private var savedTickerID: String? {
         get { UserDefaults.standard.string(forKey: "latchedTickerID") }
         set { UserDefaults.standard.set(newValue, forKey: "latchedTickerID") }
+    }
+
+    private func controllerToken(for tickerID: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "matt.TickerControl.controller-token",
+            kSecAttrAccount as String: tickerID,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func saveControllerToken(_ token: String, for tickerID: String) {
+        removeControllerToken(for: tickerID)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "matt.TickerControl.controller-token",
+            kSecAttrAccount as String: tickerID,
+            kSecValueData as String: Data(token.utf8),
+        ]
+        SecItemAdd(query as CFDictionary, nil)
+    }
+
+    private func removeControllerToken(for tickerID: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "matt.TickerControl.controller-token",
+            kSecAttrAccount as String: tickerID,
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    private func tickerURL(_ tickerID: String, suffix: String = "") -> URL? {
+        let identifier = tickerID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? tickerID
+        return URL(string: "\(getBaseURL())/api/v2/tickers/\(identifier)\(suffix)")
+    }
+
+    private func authorizedRequest(url: URL, method: String) -> URLRequest? {
+        guard let tickerID = savedTickerID, let token = controllerToken(for: tickerID) else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return request
     }
     
     init() {
@@ -420,8 +592,8 @@ class TickerViewModel: ObservableObject {
         // Initial Data Load
         fetchData()
         fetchLeagueOptions()
-        fetchAllTeams()
         fetchDevices()
+        fetchSpotifyStatus()
         
         // Adaptive poll: 0.5 s hyper-poll during burst window, 1 s otherwise.
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
@@ -467,12 +639,11 @@ class TickerViewModel: ObservableObject {
     func fetchData() {
         let base = getBaseURL()
         if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
-        
-        var urlString = "\(base)/api/state"
-        if let targetID = self.devices.first?.id ?? self.savedTickerID {
-            urlString += "?id=\(targetID)"
+        guard let tickerID = savedTickerID, let url = tickerURL(tickerID, suffix: "/data") else {
+            self.isServerReachable = true
+            self.updateOverallStatus()
+            return
         }
-        guard let url = URL(string: urlString) else { return }
         
         URLSession.shared.dataTask(with: url) { data, _, error in
             if let error = error {
@@ -486,7 +657,7 @@ class TickerViewModel: ObservableObject {
             guard let data = data else { return }
             
             do {
-                let decoded = try JSONDecoder().decode(APIResponse.self, from: data)
+                let decoded = try JSONDecoder().decode(V2DataResponse.self, from: data)
                 
                 DispatchQueue.main.async {
                     self.isServerReachable = true
@@ -495,22 +666,28 @@ class TickerViewModel: ObservableObject {
                     // Other modes: strict filter so only the relevant content shows.
                     let effectiveMode = (self.state.mode == "sports_full") ? "sports" : self.state.mode
                     let isSportsFilterMode = ["sports", "live", "my_teams"].contains(effectiveMode)
-                    self.games = decoded.games
-                        .filter { $0.is_shown || isSportsFilterMode }
-                        .sorted { g1, g2 in
+                    self.games = Array(decoded.games.enumerated()
+                        .filter { $0.element.is_shown || isSportsFilterMode }
+                        .sorted { left, right in
+                            let g1 = left.element
+                            let g2 = right.element
                             let p1 = self.isPinned(g1)
                             let p2 = self.isPinned(g2)
                             if p1 != p2 { return p1 }
                             if g1.is_shown != g2.is_shown { return g1.is_shown }
                             if g1.type == "stock_ticker" && g2.type != "stock_ticker" { return true }
                             if g1.state == "in" && g2.state != "in" { return true }
-                            return false
+                            return left.offset < right.offset
                         }
+                        .map(\.element))
                     
-                    let decodedPins = decoded.settings.pinned_games.map { self.normalizedPin($0) }
+                    let decodedPins = decoded.settings.pinned_content_id.isEmpty ? [] : [self.normalizedPin(decoded.settings.pinned_content_id)]
                     self.pinnedGameIDs = Array(Set(decodedPins)).sorted()
                     if !self.isEditing {
                         self.state = decoded.settings
+                        self.state.ticker_id = tickerID
+                        self.state.pinned_games = decodedPins
+                        self.state.pinned_game = decodedPins.first
                         if !self.state.my_teams.isEmpty {
                             print("📥 Synced State: \(self.state.my_teams.count) teams loaded.")
                         }
@@ -575,44 +752,21 @@ class TickerViewModel: ObservableObject {
         startBurstPolling()
         sendPinnedGames()
     }
-    func sendPinnedGames() {
-        let targetID = devices.first?.id ?? savedTickerID
-        guard let tickerID = targetID,
-              let url = URL(string: "\(getBaseURL())/api/pin_games") else { return }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let singlePin = pinnedGameIDs.first ?? ""
-        let payloadPins: [String] = singlePin.isEmpty ? [] : [singlePin]
-        let body: [String: Any] = ["ticker_id": tickerID, "game_ids": payloadPins]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        URLSession.shared.dataTask(with: request).resume()
-    }
+    func sendPinnedGames() { saveSettings() }
     // === 4. SAVE SETTINGS (Write) ===
     func saveSettings() {
         self.isEditing = true   // LOCK: block polling while save is in-flight
-        let targetID = self.devices.first?.id ?? self.savedTickerID
-        
-        guard let validID = targetID else {
+        guard let validID = self.savedTickerID, let url = tickerURL(validID) else {
             self.isEditing = false
             return
         }
-        let base = getBaseURL()
-        var urlString = "\(base)/api/config"
-        urlString += "?id=\(validID)"
-        guard let url = URL(string: urlString) else {
-            self.isEditing = false
-            return
-        }
-        
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID") // This matches the Python check
         
         do {
-            request.httpBody = try JSONEncoder().encode(state)
-            print("📤 Saving settings to \(urlString)")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["display_settings": v2DisplaySettingsPayload()])
+            print("📤 Saving settings to \(url.absoluteString)")
             currentSaveTask?.cancel()
             currentSaveTask = URLSession.shared.dataTask(with: request) { data, response, error in
                 if let error = error {
@@ -638,21 +792,6 @@ class TickerViewModel: ObservableObject {
                     }
                 }
                 // =============================
-                // Apply auto-filled airport info immediately from response
-                if let data = data,
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    DispatchQueue.main.async {
-                        if let iata = json["airport_code_iata"] as? String, !iata.isEmpty {
-                            self.state.airport_code_iata = iata
-                        }
-                        if let icao = json["airport_code_icao"] as? String, !icao.isEmpty {
-                            self.state.airport_code_icao = icao
-                        }
-                        if let name = json["airport_name"] as? String, !name.isEmpty {
-                            self.state.airport_name = name
-                        }
-                    }
-                }
                 // During a burst poll window (mode just switched) unlock isEditing quickly
                 // so the 1-s burst polls can start immediately. Outside burst, keep the
                 // 2.5-s delay so team-toggle debounce timers have time to settle.
@@ -666,52 +805,92 @@ class TickerViewModel: ObservableObject {
             currentSaveTask?.resume()
         } catch { print("Save Error") }
     }
+
+    private func v2DisplaySettingsPayload(
+        brightness: Double? = nil,
+        scrollSpeed: Double? = nil,
+        seamless: Bool? = nil,
+        inverted: Bool? = nil,
+        liveDelayMode: Bool? = nil,
+        liveDelaySeconds: Int? = nil
+    ) -> [String: Any] {
+        let pinned = pinnedGameIDs.first ?? state.pinned_content_id
+        let mode: String
+        switch state.mode {
+        case "flight_tracker": mode = "flights"
+        case "live", "my_teams", "stocks": mode = "sports"
+        default: mode = state.mode
+        }
+        return [
+            "active_sports": state.active_sports,
+            "my_teams": state.my_teams,
+            "mode": mode,
+            "sports_presentation": pinned.isEmpty ? "rotation" : "pinned",
+            "pinned_content_id": pinned,
+            "brightness": brightness ?? devices.first?.settings.brightness ?? 100,
+            "inverted": inverted ?? devices.first?.settings.inverted ?? false,
+            "timezone": TimeZone.current.identifier,
+            "weather_city": state.weather_city,
+            "weather_lat": state.weather_lat,
+            "weather_lon": state.weather_lon,
+            "airport_code_iata": state.airport_code_iata,
+            "airport_code_icao": state.airport_code_icao,
+            "airport_name": state.airport_name,
+            "track_flight_id": state.track_flight_id,
+            "track_guest_name": state.track_guest_name,
+            "live_delay_mode": liveDelayMode ?? devices.first?.settings.live_delay_mode ?? false,
+            "live_delay_seconds": liveDelaySeconds ?? devices.first?.settings.live_delay_seconds ?? 45,
+            "scroll_seamless": seamless ?? state.scroll_seamless,
+            "scroll_speed": scrollSpeed ?? state.scroll_speed,
+            "score_alerts": true,
+        ]
+    }
     
     // --- STANDARD HELPERS ---
     
     func fetchLeagueOptions() {
         let base = getBaseURL()
-        guard let url = URL(string: "\(base)/leagues") else { return }
+        guard let url = URL(string: "\(base)/api/v2/catalog/leagues") else { return }
         URLSession.shared.dataTask(with: url) { data, _, _ in
-            if let d = data, let decoded = try? JSONDecoder().decode([LeagueOption].self, from: d) {
+            if let d = data, let decoded = try? JSONDecoder().decode(V2LeagueCatalog.self, from: d) {
                 DispatchQueue.main.async {
-                    self.leagueOptions = decoded
-                    // Backfill any league keys missing from active_sports using the server's default
-                    for opt in decoded where self.state.active_sports[opt.id] == nil {
-                        self.state.active_sports[opt.id] = opt.enabled ?? true
+                    self.leagueOptions = decoded.leagues
+                    if let firstLeague = decoded.leagues.first(where: { $0.type == "sport" }) {
+                        self.fetchTeams(for: firstLeague.id)
                     }
                 }
             }
         }.resume()
     }
     
-    func fetchAllTeams() {
+    func fetchTeams(for leagueID: String) {
+        if allTeams[leagueID] != nil { return }
         let base = getBaseURL()
-        guard let url = URL(string: "\(base)/api/teams") else { return }
+        let identifier = leagueID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? leagueID
+        guard let url = URL(string: "\(base)/api/v2/catalog/leagues/\(identifier)/teams") else { return }
         URLSession.shared.dataTask(with: url) { data, _, _ in
-            if let d = data, let decoded = try? JSONDecoder().decode([String: [TeamData]].self, from: d) {
-                DispatchQueue.main.async { self.allTeams = decoded }
+            if let d = data, let decoded = try? JSONDecoder().decode(V2TeamCatalog.self, from: d) {
+                DispatchQueue.main.async { self.allTeams[leagueID] = decoded.teams }
             }
         }.resume()
     }
     
     func fetchDevices() {
         let base = getBaseURL()
-        guard let url = URL(string: "\(base)/tickers") else { return }
+        guard let url = URL(string: "\(base)/api/v2/tickers") else { return }
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        
-        URLSession.shared.dataTask(with: request) { data, _, _ in
-            if let d = data, let decoded = try? JSONDecoder().decode([TickerDevice].self, from: d) {
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            if let d = data, let decoded = try? JSONDecoder().decode(V2TickerList.self, from: d) {
                 DispatchQueue.main.async {
                     // A valid /tickers response proves the server is reachable.
                     // Without this, a race where fetchDevices() finishes before
                     // fetchData() would call updateOverallStatus() while
                     // isServerReachable is still false, showing "Server Offline".
                     self.isServerReachable = true
-                    self.devices = decoded
+                    let localTickerID = self.savedTickerID
+                    self.devices = decoded.tickers
+                        .filter { localTickerID == nil || $0.ticker_id == localTickerID }
+                        .map(\.tickerDevice)
                     // === FIX: AUTO-LOGOUT LOGIC ===
                     // If the server says we have NO paired devices, we must forget the saved ID.
                     if self.devices.isEmpty {
@@ -765,18 +944,16 @@ class TickerViewModel: ObservableObject {
     
     func pairTicker(code: String, name: String) {
             let base = getBaseURL()
-            guard let url = URL(string: "\(base)/pair") else {
+            guard let url = URL(string: "\(base)/api/v2/pairings/exchange") else {
                 self.pairError = "Invalid Server URL"
                 return
             }
             
-            let body: [String: Any] = ["code": code, "name": name]
+            let body: [String: Any] = ["pairing_code": code]
             
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            // CRITICAL: Ensure Client ID is sent. This is the key the server uses to "whitelist" the app.
-            req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
             
             do {
                 req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -792,7 +969,7 @@ class TickerViewModel: ObservableObject {
                 }
                 
                 // Check HTTP Status Code
-                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 201 {
                      DispatchQueue.main.async { self.pairError = "Server Error (Status: \(httpResponse.statusCode))" }
                      return
                 }
@@ -803,25 +980,15 @@ class TickerViewModel: ObservableObject {
                 }
                 
                 // Decode Response
-                if let res = try? JSONDecoder().decode(PairResponse.self, from: d) {
+                if let res = try? JSONDecoder().decode(PairingExchangeResponse.self, from: d), let newID = res.ticker_id {
                     DispatchQueue.main.async {
-                        if res.success {
-                            self.showPairSuccess = true
-                            
-                            // 1. Latch onto the new Ticker ID immediately
-                            if let newID = res.ticker_id {
-                                self.savedTickerID = newID
-                                print("✅ Pair Successful. Latching ID: \(newID)")
-                            }
-                            
-                            // 2. Refresh everything
-                            self.fetchDevices()
-                            self.fetchData()
-                            
-                        } else {
-                            // Show the specific error message from the server if available
-                            self.pairError = res.message ?? "Invalid Pairing Code"
-                        }
+                        self.showPairSuccess = true
+                        self.savedTickerID = newID
+                        self.saveControllerToken(res.controller_token, for: newID)
+                        self.updateTickerName(name, tickerID: newID)
+                        self.fetchDevices()
+                        self.fetchData()
+                        self.fetchSpotifyStatus()
                     }
                 } else {
                     DispatchQueue.main.async { self.pairError = "Failed to process server response" }
@@ -830,66 +997,40 @@ class TickerViewModel: ObservableObject {
         }
     
     func pairTickerByID(id: String, name: String) {
-            let base = getBaseURL(); guard let url = URL(string: "\(base)/pair/id") else { return }
-            let body: [String: Any] = ["id": id, "name": name]
-            var req = URLRequest(url: url); req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-            URLSession.shared.dataTask(with: req) { data, _, _ in
-                 if let d = data, let res = try? JSONDecoder().decode(PairResponse.self, from: d) {
-                     DispatchQueue.main.async {
-                         if res.success {
-                             self.showPairSuccess = true
-                             self.savedTickerID = res.ticker_id // 1. Save ID
-                             self.fetchDevices()                // 2. Update Status
-                             
-                             // === FIX: FORCE DATA RELOAD ===
-                             print("🔗 Pair successful. Fetching teams for \(res.ticker_id ?? "unknown")...")
-                             self.fetchData()                   // 3. GET TEAMS NOW
-                             // ==============================
-                             
-                         } else { self.pairError = res.message }
-                     }
-                 }
-            }.resume()
+            self.pairError = "Pair with the six-digit code shown on the Ticker."
         }
     
     func unpairTicker(id: String) {
         devices.removeAll { $0.id == id }
-        if savedTickerID == id { savedTickerID = nil } // Clear latch
+        if savedTickerID == id {
+            savedTickerID = nil
+            removeControllerToken(for: id)
+        }
         updateOverallStatus()
-        let base = getBaseURL(); guard let url = URL(string: "\(base)/ticker/\(id)/unpair") else { return }
-        var req = URLRequest(url: url); req.httpMethod = "POST"; req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        URLSession.shared.dataTask(with: req).resume()
     }
     
     // ==========================================
     // MARK: - FIX: UPDATE SETTINGS (With Auth & Debugging)
     // ==========================================
     func updateDeviceSettings(id: String, brightness: Double? = nil, speed: Double? = nil, seamless: Bool? = nil, inverted: Bool? = nil, liveDelayMode: Bool? = nil, delaySeconds: Int? = nil) {
-        let base = getBaseURL()
-        guard let url = URL(string: "\(base)/ticker/\(id)") else {
+        guard let url = tickerURL(id) else {
             print("❌ Invalid URL for device update")
             return
         }
-        
-        var body: [String: Any] = [:]
-        
-        // Map UI values to Server Keys
-        if let b = brightness { body["brightness"] = Int(b * 100) }
-        if let s = speed { body["scroll_speed"] = s }
-        if let sm = seamless { body["scroll_seamless"] = sm }
-        if let inv = inverted { body["inverted"] = inv }
-        if let dm = liveDelayMode { body["live_delay_mode"] = dm }
-        if let ds = delaySeconds { body["live_delay_seconds"] = ds }
-        
-        print("📤 Sending Update to \(id): \(body)") // DEBUG LOG
+        let body = ["display_settings": v2DisplaySettingsPayload(
+            brightness: brightness.map { $0 * 100 },
+            scrollSpeed: speed,
+            seamless: seamless,
+            inverted: inverted,
+            liveDelayMode: liveDelayMode,
+            liveDelaySeconds: delaySeconds
+        )]
+
+        print("📤 Sending Update to \(id): \(body)")
         
         var req = URLRequest(url: url)
-        req.httpMethod = "POST"
+        req.httpMethod = "PATCH"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        // CRITICAL: Auth Header
-        req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
         
         do {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -915,41 +1056,121 @@ class TickerViewModel: ObservableObject {
             }
         }.resume()
     }
-    
-    // ==========================================
-    // MARK: - FIX: REBOOT (With Auth)
-    // ==========================================
-    func reboot() {
-        let base = getBaseURL()
-        guard let url = URL(string: "\(base)/api/hardware") else { return }
-        
-        // We set the global flag, so we don't strictly need a specific ID,
-        // but passing auth is good practice.
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(self.clientID, forHTTPHeaderField: "X-Client-ID")
-        
-        let body: [String: Any] = ["action": "reboot"]
-        
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        
-        print("🔌 Sending Reboot Command...")
-        URLSession.shared.dataTask(with: req) { _, response, _ in
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
-                print("✅ Reboot Command Accepted")
-            } else {
-                print("❌ Reboot Command Failed")
+
+    private func updateTickerName(_ name: String, tickerID: String) {
+        guard let url = tickerURL(tickerID) else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["name": name])
+        URLSession.shared.dataTask(with: request).resume()
+    }
+
+    func fetchSpotifyStatus() {
+        guard let tickerID = savedTickerID,
+              let url = tickerURL(tickerID, suffix: "/integrations/spotify"),
+              let request = authorizedRequest(url: url, method: "GET") else {
+            spotifyStatus = "Connect a Ticker first"
+            spotifyAccountName = nil
+            return
+        }
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            guard let data, let status = try? JSONDecoder().decode(SpotifyStatus.self, from: data) else {
+                DispatchQueue.main.async { self.spotifyStatus = "Spotify unavailable" }
+                return
+            }
+            DispatchQueue.main.async {
+                self.spotifyStatus = status.connected ? "Connected" : "Not connected"
+                self.spotifyAccountName = status.display_name
+                self.spotifyError = nil
+            }
+        }.resume()
+    }
+
+    func connectSpotify() {
+        guard let tickerID = savedTickerID,
+              let url = tickerURL(tickerID, suffix: "/integrations/spotify/authorizations"),
+              let request = authorizedRequest(url: url, method: "POST") else {
+            spotifyError = "Pair with a Ticker before connecting Spotify."
+            return
+        }
+        isConnectingSpotify = true
+        spotifyError = nil
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            guard error == nil,
+                  let response = response as? HTTPURLResponse,
+                  response.statusCode == 201,
+                  let data,
+                  let authorization = try? JSONDecoder().decode(SpotifyAuthorization.self, from: data) else {
+                DispatchQueue.main.async {
+                    self.isConnectingSpotify = false
+                    self.spotifyError = "Spotify authorization could not start."
+                }
+                return
+            }
+            DispatchQueue.main.async {
+                self.isConnectingSpotify = false
+                UIApplication.shared.open(authorization.authorization_url)
+            }
+        }.resume()
+    }
+
+    func disconnectSpotify() {
+        guard let tickerID = savedTickerID,
+              let url = tickerURL(tickerID, suffix: "/integrations/spotify"),
+              let request = authorizedRequest(url: url, method: "DELETE") else { return }
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            DispatchQueue.main.async {
+                if (response as? HTTPURLResponse)?.statusCode == 200 {
+                    self.spotifyStatus = "Not connected"
+                    self.spotifyAccountName = nil
+                    self.spotifyError = nil
+                } else {
+                    self.spotifyError = "Spotify could not disconnect."
+                }
+            }
+        }.resume()
+    }
+
+    func handleSpotifyCallback(_ url: URL) {
+        guard url.query?.contains("attempt_id=") == true else { return }
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let status = components?.queryItems?.first(where: { $0.name == "status" })?.value
+        if status == "connected" {
+            fetchSpotifyStatus()
+        } else {
+            spotifyError = "Spotify authorization did not complete."
+        }
+    }
+
+    func showPairCode(for tickerID: String) {
+        guard let url = tickerURL(tickerID, suffix: "/pairing-code"),
+              let request = authorizedRequest(url: url, method: "POST") else { return }
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            DispatchQueue.main.async {
+                if (response as? HTTPURLResponse)?.statusCode == 201,
+                   let data,
+                   let pairing = try? JSONDecoder().decode(PairingCodeResponse.self, from: data) {
+                    self.pairCodeAlertMessage = pairing.pairing_code
+                } else {
+                    self.pairCodeAlertMessage = "A pairing code could not be created."
+                }
+                self.showingPairCodeAlert = true
             }
         }.resume()
     }
     
+    // ==========================================
+    // MARK: - REBOOT
+    // ==========================================
+    func reboot() {
+        connectionStatus = "Reboot is not available from the V2 API"
+        statusColor = .orange
+    }
+    
     func sendDebug() {
-        let base = getBaseURL(); guard let url = URL(string: "\(base)/api/debug") else { return }
-        var req = URLRequest(url: url); req.httpMethod = "POST"; req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = ["debug_mode": state.debug_mode, "custom_date": state.custom_date ?? NSNull()]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        URLSession.shared.dataTask(with: req).resume()
+        connectionStatus = "Debug controls are not available from the V2 API"
+        statusColor = .orange
     }
 }
 // ==========================================
@@ -1052,6 +1273,8 @@ struct GameRow: View {
         guard let s = game.situation, let p = s.possession else { return false }
         let pClean = p.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         if pClean.isEmpty { return false }
+        if pClean == "HOME" { return isHome }
+        if pClean == "AWAY" { return !isHome }
         let abbr = (isHome ? game.safeHomeAbbr : game.safeAwayAbbr).uppercased()
         let id = (isHome ? game.home_id : game.away_id) ?? ""
         let logo = isHome ? game.safeHomeLogo : game.safeAwayLogo
@@ -1628,7 +1851,9 @@ struct ContentView: View {
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .padding(.horizontal, 20).padding(.bottom, 20)
             .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
-        }.preferredColorScheme(.dark)
+        }
+        .preferredColorScheme(.dark)
+        .onOpenURL { vm.handleSpotifyCallback($0) }
     }
 }
 struct HomeView: View {
@@ -1775,6 +2000,7 @@ struct ModesView: View {
                 vm.state.active_sports[first] = true
             }
         }
+        if target == "music" { vm.fetchSpotifyStatus() }
         vm.startBurstPolling()
         vm.saveSettings()
     }
@@ -2023,13 +2249,34 @@ struct ModesView: View {
                                 }
                                 Spacer()
                             }.padding().liquidGlass()
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(vm.spotifyStatus).font(.caption).foregroundStyle(.secondary)
+                                    if let accountName = vm.spotifyAccountName {
+                                        Text(accountName).font(.caption).foregroundStyle(.gray)
+                                    }
+                                }
+                                Spacer()
+                                if vm.spotifyStatus == "Connected" {
+                                    Button("Disconnect") { vm.disconnectSpotify() }
+                                        .font(.caption).foregroundStyle(.red)
+                                } else {
+                                    Button(vm.isConnectingSpotify ? "Connecting..." : "Connect") { vm.connectSpotify() }
+                                        .font(.caption).foregroundStyle(.green)
+                                        .disabled(vm.isConnectingSpotify)
+                                }
+                            }
+                            .padding().liquidGlass()
+                            if let error = vm.spotifyError {
+                                Text(error).font(.caption).foregroundStyle(.red)
+                            }
                         }
                     } else if vm.state.mode == "stocks" {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("MARKET SECTORS").font(.caption).bold().foregroundStyle(.secondary)
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
                                 ForEach(stockOptions) { opt in
-                                    let isActive = vm.state.active_sports[opt.id] ?? false
+                                    let isActive = vm.state.active_sports[opt.id] ?? true
                                     Button {
                                         // 1. CLEAR ALL OTHER STOCKS FIRST
                                         // This forces a "Single Select" behavior
@@ -2057,7 +2304,7 @@ struct ModesView: View {
                             Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
                                 ForEach(sportsOptions) { opt in
-                                    let isActive = vm.state.active_sports[opt.id] ?? false
+                                    let isActive = vm.state.active_sports[opt.id] ?? true
                                     Button {
                                         vm.state.active_sports[opt.id] = !isActive
                                         vm.saveSettings()
@@ -2107,9 +2354,7 @@ struct TeamsView: View {
     var sportsOptions: [LeagueOption] {
         vm.leagueOptions.filter { opt in
             guard opt.type == "sport" else { return false }
-            guard vm.state.active_sports[opt.id] == true else { return false }
-            if let teams = vm.allTeams[opt.id], !teams.isEmpty { return true }
-            return false
+            return vm.state.active_sports[opt.id] != false
         }
     }
     
@@ -2141,7 +2386,7 @@ struct TeamsView: View {
                     if !sportsOptions.isEmpty {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 10) {
                             ForEach(sportsOptions) { opt in
-                                Button { selectedLeague = opt.id } label: {
+                                Button { selectedLeague = opt.id; vm.fetchTeams(for: opt.id) } label: {
                                     Text(opt.label).bold().font(.caption)
                                         .frame(maxWidth: .infinity).padding(.vertical, 8)
                                         .background(selectedLeague == opt.id ? Color.blue : Color(white: 0.2))
@@ -2201,6 +2446,13 @@ struct TeamsView: View {
         .onAppear {
             if !sportsOptions.isEmpty && (selectedLeague.isEmpty || !sportsOptions.contains(where: { $0.id == selectedLeague })) {
                 selectedLeague = sportsOptions.first?.id ?? ""
+                vm.fetchTeams(for: selectedLeague)
+            }
+        }
+        .onChange(of: vm.leagueOptions) { _ in
+            if !sportsOptions.isEmpty && (selectedLeague.isEmpty || !sportsOptions.contains(where: { $0.id == selectedLeague })) {
+                selectedLeague = sportsOptions.first?.id ?? ""
+                vm.fetchTeams(for: selectedLeague)
             }
         }
     }
@@ -2221,7 +2473,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Server URL").font(.caption).foregroundColor(.gray)
                         TextField("https://...", text: $vm.serverURL).textFieldStyle(.plain).padding(10).background(Color.black.opacity(0.2)).cornerRadius(8).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1))).foregroundColor(.white)
-                            .onSubmit { vm.fetchData(); vm.fetchLeagueOptions(); vm.fetchAllTeams(); vm.fetchDevices() }
+                            .onSubmit { vm.fetchData(); vm.fetchLeagueOptions(); vm.fetchDevices() }
                     }.padding().liquidGlass()
                 }.padding(.horizontal)
                 
@@ -2425,9 +2677,17 @@ struct DeviceRow: View {
             HStack {
                 Button(action: { UIPasteboard.general.string = device.id }) { Label("Copy ID", systemImage: "doc.on.doc").font(.caption).bold() }
                 Spacer()
+                Button(action: { vm.showPairCode(for: device.id) }) { Label("Show Pair Code", systemImage: "number").font(.caption).bold() }
+                Spacer()
                 Button(action: { vm.unpairTicker(id: device.id) }) { Label("Unpair", systemImage: "trash").font(.caption).bold().foregroundColor(.red) }
             }
-        }.padding().liquidGlass()
+        }
+        .padding().liquidGlass()
+        .alert("Pair Code", isPresented: $vm.showingPairCodeAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(vm.pairCodeAlertMessage)
+        }
     }
 }
 struct PairingView: View {
@@ -2451,5 +2711,3 @@ struct PairingView: View {
         }
     }
 }
-
-

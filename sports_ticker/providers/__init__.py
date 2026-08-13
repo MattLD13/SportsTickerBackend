@@ -1,6 +1,7 @@
 """Provider ports and canonical payload normalization."""
 
 from .contracts import Provider, ProviderHealth, ProviderPort, ProviderResult
+from .catalog import EspnTeamCatalog
 from .espn import EspnScoreboardProvider
 from .features import (
     FeaturePayload,
@@ -29,6 +30,7 @@ __all__ = [
     "ProviderPort",
     "ProviderResult",
     "EspnScoreboardProvider",
+    "EspnTeamCatalog",
     "FeaturePayload",
     "FeatureProviders",
     "FeatureSource",

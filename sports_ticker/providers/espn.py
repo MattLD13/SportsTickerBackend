@@ -325,7 +325,12 @@ def _display_situation(
     competitors = _competitors(competition.get("competitors"))
     home = _find_side(competitors, "home")
     away = _find_side(competitors, "away")
-    if possession and possession == str(_mapping(home.get("team")).get("id") or ""):
+    possession_key = possession.casefold()
+    if possession_key in {"home", "home_team"}:
+        result["possession"] = home_abbr
+    elif possession_key in {"away", "away_team"}:
+        result["possession"] = away_abbr
+    elif possession and possession == str(_mapping(home.get("team")).get("id") or ""):
         result["possession"] = home_abbr
     elif possession and possession == str(_mapping(away.get("team")).get("id") or ""):
         result["possession"] = away_abbr

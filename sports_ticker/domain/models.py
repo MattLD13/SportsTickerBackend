@@ -83,6 +83,7 @@ class DisplaySettings:
     """Represent the complete immutable settings needed by ticker modes."""
 
     active_sports: Mapping[str, bool] = field(default_factory=dict)
+    my_teams: tuple[str, ...] = ()
     mode: str = "sports"
     sports_presentation: str = "rotation"
     pinned_content_id: str = ""
@@ -112,6 +113,12 @@ class DisplaySettings:
             for sport, enabled in active_sports.items()
         }
         object.__setattr__(self, "active_sports", MappingProxyType(normalized))
+        teams = self.my_teams if isinstance(self.my_teams, (list, tuple, set, frozenset)) else ()
+        object.__setattr__(
+            self,
+            "my_teams",
+            tuple(dict.fromkeys(str(team).strip() for team in teams if str(team).strip())),
+        )
         mode = str(self.mode).strip().lower() or "sports"
         if mode not in DISPLAY_MODES:
             choices = ", ".join(DISPLAY_MODES)
