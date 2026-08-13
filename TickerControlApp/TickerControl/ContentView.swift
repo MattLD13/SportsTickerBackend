@@ -4,6 +4,7 @@ import Combine
 import UIKit
 import CoreLocation
 import Security
+import AuthenticationServices
 // ==========================================
 // MARK: - 0. EXTENSIONS
 // ==========================================
@@ -519,6 +520,7 @@ class TickerViewModel: ObservableObject {
     private var devicesTimer: Timer?
     private var saveDebounceTimer: Timer?
     private var currentSaveTask: URLSessionDataTask?
+    private var spotifyAuthorizationSession: ASWebAuthenticationSession?
     private var lastFetchTime: Date = .distantPast
     // After a mode switch, poll every 1s for 30s so the UI and hardware
     // board confirm the new state almost immediately.
@@ -1146,8 +1148,27 @@ class TickerViewModel: ObservableObject {
                 return
             }
             DispatchQueue.main.async {
-                self.isConnectingSpotify = false
-                UIApplication.shared.open(authorization.authorization_url)
+                let session = ASWebAuthenticationSession(
+                    url: authorization.authorization_url,
+                    callbackURLScheme: "tickercontrol"
+                ) { [weak self] callbackURL, error in
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        self.spotifyAuthorizationSession = nil
+                        self.isConnectingSpotify = false
+                        if let callbackURL {
+                            self.handleSpotifyCallback(callbackURL)
+                        } else {
+                            self.spotifyError = error?.localizedDescription ?? "Spotify authorization was cancelled."
+                        }
+                    }
+                }
+                self.spotifyAuthorizationSession = session
+                if !session.start() {
+                    self.spotifyAuthorizationSession = nil
+                    self.isConnectingSpotify = false
+                    self.spotifyError = "Spotify authorization could not open."
+                }
             }
         }.resume()
     }

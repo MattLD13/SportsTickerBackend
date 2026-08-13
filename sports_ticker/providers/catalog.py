@@ -7,6 +7,8 @@ from threading import Lock
 from time import monotonic
 from typing import Any
 
+from sports_ticker.markets import MARKET_GROUPS
+
 from .http import JsonHttpClient, UrllibJsonHttpClient
 
 
@@ -60,7 +62,7 @@ class EspnTeamCatalog:
     def leagues(self) -> tuple[dict[str, object], ...]:
         """Return the configured sports leagues in a stable controller format."""
 
-        return tuple(
+        sports = tuple(
             {
                 "id": league,
                 "label": _LEAGUE_LABELS.get(league, league.replace("_", " ").title()),
@@ -69,6 +71,16 @@ class EspnTeamCatalog:
             }
             for league in self._paths
         )
+        markets = tuple(
+            {
+                "id": group.id,
+                "label": group.label,
+                "type": "stock",
+                "enabled": True,
+            }
+            for group in MARKET_GROUPS
+        )
+        return (*sports, *markets)
 
     def modes(self) -> tuple[dict[str, str], ...]:
         """Return the controller mode symbols in their stable display order."""

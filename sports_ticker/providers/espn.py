@@ -18,6 +18,9 @@ from .logo_overrides import corrected_logo
 from .stale_cache import SettingsResultCache
 
 
+_MLB_SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event={}"
+
+
 class EspnScoreboardProvider:
     """Fetch explicitly enabled ESPN scoreboard leagues into canonical content."""
 
@@ -62,7 +65,10 @@ class EspnScoreboardProvider:
                     if not _is_current_event(event, timezone_name=settings.timezone):
                         continue
                     try:
-                        items.append(_content_item(league, event))
+                        item = _content_item(league, event)
+                        if league == "mlb" and str(item.data.get("state") or "").lower() == "in":
+                            item = self._enrich_mlb_item(item)
+                        items.append(item)
                     except (KeyError, TypeError, ValueError) as exc:
                         errors.append(f"{league} event: {exc}")
             except Exception as exc:
@@ -108,6 +114,30 @@ class EspnScoreboardProvider:
                 provider="espn",
                 error=f"stale: {error}",
             ),
+        )
+
+    def _enrich_mlb_item(self, item: ContentItem) -> ContentItem:
+        """Add the live MLB facts used by the full-screen baseball renderer."""
+
+        try:
+            summary = self.client.get_json(
+                _MLB_SUMMARY_URL.format(item.id), timeout=self.timeout
+            )
+            details = _mlb_summary_details(summary)
+        except Exception:
+            return item
+        if not details:
+            return item
+        data = dict(item.data)
+        situation = dict(_mapping(data.get("situation")))
+        situation.update(details)
+        data["situation"] = situation
+        return ContentItem(
+            id=item.id,
+            family=item.family,
+            kind=item.kind,
+            is_shown=item.is_shown,
+            data=data,
         )
 
 
@@ -335,6 +365,107 @@ def _display_situation(
     elif possession and possession == str(_mapping(away.get("team")).get("id") or ""):
         result["possession"] = away_abbr
     return result
+
+
+def _mlb_summary_details(payload: Any) -> dict[str, Any]:
+    """Extract the small live MLB detail set used by the full panel."""
+
+    summary = _mapping(payload)
+    situation = _mapping(summary.get("situation"))
+    if not situation:
+        return {}
+    batter_id = _mlb_person_id(situation.get("batter"))
+    pitcher_id = _mlb_person_id(situation.get("pitcher"))
+    players = _mlb_players(_mapping(summary.get("boxscore")))
+    batter = players.get(batter_id, {})
+    pitcher = players.get(pitcher_id, {})
+    result: dict[str, Any] = {
+        "balls": _mlb_number(situation.get("balls")),
+        "strikes": _mlb_number(situation.get("strikes")),
+        "outs": _mlb_number(situation.get("outs")),
+        "onFirst": bool(situation.get("onFirst")),
+        "onSecond": bool(situation.get("onSecond")),
+        "onThird": bool(situation.get("onThird")),
+        "batter_name": batter.get("name", ""),
+        "batter_h": _mlb_value(batter.get("batting"), "hits"),
+        "batter_ab": _mlb_value(batter.get("batting"), "atBats"),
+        "batter_avg": _mlb_value(batter.get("batting"), "avg"),
+        "pitcher_name": pitcher.get("name", ""),
+        "pitcher_pitches": _mlb_value(pitcher.get("pitching"), "pitches"),
+    }
+    result.update(_mlb_last_pitch(summary, situation))
+    return {key: value for key, value in result.items() if value not in (None, "")}
+
+
+def _mlb_players(boxscore: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Index summary player names and boxscore columns by ESPN athlete ID."""
+
+    players: dict[str, dict[str, Any]] = {}
+    for team in _sequence(boxscore.get("players")):
+        for block in _sequence(_mapping(team).get("statistics")):
+            values = _mapping(block)
+            keys = tuple(str(value) for value in _sequence(values.get("keys")))
+            category = "batting" if "atBats" in keys else "pitching" if "pitches" in keys else ""
+            if not category:
+                continue
+            for row in _sequence(values.get("athletes")):
+                record = _mapping(row)
+                athlete = _mapping(record.get("athlete"))
+                identifier = str(athlete.get("id") or "").strip()
+                if not identifier:
+                    continue
+                stats = {
+                    key: value
+                    for key, value in zip(keys, _sequence(record.get("stats")))
+                }
+                entry = players.setdefault(identifier, {})
+                entry["name"] = str(athlete.get("displayName") or entry.get("name") or "")
+                entry[category] = stats
+    return players
+
+
+def _mlb_last_pitch(summary: Mapping[str, Any], situation: Mapping[str, Any]) -> dict[str, Any]:
+    """Read pitch speed and type from the summary play matching lastPlay."""
+
+    last = _mapping(situation.get("lastPlay"))
+    identifier = str(last.get("id") or "")
+    play = next(
+        (item for item in _sequence(summary.get("plays")) if str(_mapping(item).get("id") or "") == identifier),
+        {},
+    )
+    data = _mapping(play)
+    speed = _mlb_number(data.get("pitchVelocity") or data.get("velocity") or data.get("speed"))
+    pitch = _mapping(data.get("pitchType"))
+    abbreviation = str(pitch.get("abbreviation") or data.get("pitchTypeAbbreviation") or "").strip()
+    full = str(pitch.get("text") or data.get("pitchTypeText") or "").strip()
+    return {
+        "last_pitch_speed": speed,
+        "last_pitch_type": abbreviation or full,
+        "last_pitch_type_abbr": abbreviation,
+        "last_pitch_type_full": full,
+    }
+
+
+def _mlb_person_id(value: Any) -> str:
+    return str(_mapping(value).get("playerId") or _mapping(value).get("id") or "").strip()
+
+
+def _mlb_value(values: Any, key: str) -> str:
+    value = _mapping(values).get(key)
+    return "" if value is None else str(value).strip()
+
+
+def _mlb_number(value: Any) -> int:
+    try:
+        return int(float(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _sequence(value: Any) -> tuple[Any, ...]:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return tuple(value)
+    return ()
 
 
 def _hex_color(value: Any) -> str:
