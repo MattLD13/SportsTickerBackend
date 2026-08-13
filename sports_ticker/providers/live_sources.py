@@ -32,7 +32,6 @@ class EspnGolfSource:
         self._timeout = _timeout(timeout)
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
-        del settings
         payload = self._client.get_json(ESPN_GOLF_URL, timeout=self._timeout)
         event = _first_event(payload)
         if event is None or not _is_current_event(event, timezone_name=settings.timezone):
@@ -69,7 +68,6 @@ class EspnRacingSource:
         self._timeout = _timeout(timeout)
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
-        del settings
         records: list[dict[str, object]] = []
         for series, url in ESPN_RACING_URLS.items():
             payload = self._client.get_json(url, timeout=self._timeout)
