@@ -2372,6 +2372,10 @@ struct HomeView: View {
                     if vm.games.isEmpty {
                         Text("No active items found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     } else {
+                        ForEach(splitGames.other) { game in
+                            GameRow(game: game, leagueLabel: leagueLabels[game.sport], isPinned: vm.isPinned(game))
+                                .onTapGesture { vm.togglePin(game) }
+                        }
                         ForEach(splitGames.music) { game in
                             MusicNowPlayingCard(game: game)
                         }
@@ -2400,10 +2404,6 @@ struct HomeView: View {
                                 flights: game.departures ?? [],
                                 color: .orange
                             )
-                        }
-                        ForEach(splitGames.other) { game in
-                            GameRow(game: game, leagueLabel: leagueLabels[game.sport], isPinned: vm.isPinned(game))
-                                .onTapGesture { vm.togglePin(game) }
                         }
                     }
                 }.padding(.horizontal)
