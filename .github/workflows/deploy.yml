@@ -22,11 +22,11 @@ jobs:
         with:
           filters: |
             backend:
-              - 'app.py'
               - 'sports_ticker/**'
               - 'requirements.txt'
               - '*.json'
               - 'ticker.service'
+              - '.github/workflows/deploy.yml'
             controller:
               - 'ticker_controller/**'
               - 'ticker_core/**'
@@ -90,6 +90,7 @@ jobs:
             echo "TICKER_VERIFY_TLS=true" >> .env
             echo "TICKER_DEPLOY_TOKEN=${{ secrets.POOP_ADMIN_PASSWORD }}" >> .env
             chmod 600 .env
+            sudo rm -f /etc/systemd/system/ticker.service.d/oci.conf
             sudo cp "/home/${{ secrets.SSH_USER }}/ticker.service" /etc/systemd/system/ticker.service
             sudo systemctl daemon-reload
 
