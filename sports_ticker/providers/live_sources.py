@@ -192,7 +192,12 @@ class FinnhubStockSource:
             percent = _number(quote.get("dp"))
             timestamp = _number(quote.get("t"))
             if timestamp > 0 and self._clock() - timestamp > 30:
-                candle = self._latest_candle(symbol, key, previous_close=_number(quote.get("pc")))
+                try:
+                    candle = self._latest_candle(
+                        symbol, key, previous_close=_number(quote.get("pc"))
+                    )
+                except Exception:
+                    candle = None
                 if candle is not None:
                     price, change, percent = candle
             return {
