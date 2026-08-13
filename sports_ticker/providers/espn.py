@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from math import isfinite
 import re
@@ -19,7 +20,7 @@ from .sports_display import SportsDisplayProjector
 from .stale_cache import SettingsResultCache
 
 
-_MLB_SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event={}"
+_DETAIL_LEAGUES = frozenset(("mlb", "nhl"))
 
 
 class EspnScoreboardProvider:
@@ -40,6 +41,11 @@ class EspnScoreboardProvider:
             if str(league).strip() and str(url).strip()
         }
         self.scoreboard_urls = MappingProxyType(urls)
+        self._summary_urls = {
+            league: _summary_url(url)
+            for league, url in urls.items()
+            if league in _DETAIL_LEAGUES or league.startswith("soccer")
+        }
         self.client = client or UrllibJsonHttpClient()
         self.timeout = float(timeout)
         if not isfinite(self.timeout) or self.timeout <= 0:
@@ -68,8 +74,6 @@ class EspnScoreboardProvider:
                         continue
                     try:
                         item = self._display.project(_content_item(league, event), event)
-                        if league == "mlb" and str(item.data.get("state") or "").lower() == "in":
-                            item = self._enrich_mlb_item(item)
                         items.append(item)
                     except (KeyError, TypeError, ValueError) as exc:
                         errors.append(f"{league} event: {exc}")
@@ -77,6 +81,7 @@ class EspnScoreboardProvider:
                 failed_sources += 1
                 errors.append(f"{league}: {exc}")
 
+        items = self._enrich_live_items(items)
         health = ProviderHealth(
             healthy=not errors,
             provider="espn",
@@ -118,16 +123,26 @@ class EspnScoreboardProvider:
             ),
         )
 
-    def _enrich_mlb_item(self, item: ContentItem) -> ContentItem:
-        """Add the live MLB facts used by the full-screen baseball renderer."""
+    def _enrich_live_item(self, league: str, item: ContentItem) -> ContentItem:
+        """Add detailed live facts after scoreboard projection completes."""
+
+        if str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}:
+            return item
+        template = self._summary_urls.get(league)
+        if not template:
+            return item
 
         try:
-            summary = self.client.get_json(
-                _MLB_SUMMARY_URL.format(item.id), timeout=self.timeout
-            )
-            details = _mlb_summary_details(summary)
+            summary = self.client.get_json(template.format(item.id), timeout=self.timeout)
         except Exception:
             return item
+        details = (
+            _mlb_summary_details(summary)
+            if league == "mlb"
+            else _nhl_summary_details(summary, item.data)
+            if league == "nhl"
+            else _soccer_summary_details(summary, item.data)
+        )
         if not details:
             return item
         data = dict(item.data)
@@ -141,6 +156,32 @@ class EspnScoreboardProvider:
             is_shown=item.is_shown,
             data=data,
         )
+
+    def _enrich_live_items(self, items: Sequence[ContentItem]) -> list[ContentItem]:
+        """Fetch live game details concurrently without blocking other scoreboards."""
+
+        indexed = list(enumerate(items))
+        targets = [
+            (index, item)
+            for index, item in indexed
+            if str(item.data.get("state") or "").lower() in {"in", "half", "crit"}
+            and str(item.data.get("sport") or "") in self._summary_urls
+        ]
+        if not targets:
+            return list(items)
+        enriched = list(items)
+        workers = min(8, len(targets))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ticker-details") as pool:
+            futures = {
+                pool.submit(self._enrich_live_item, str(item.data.get("sport") or ""), item): index
+                for index, item in targets
+            }
+            for future, index in futures.items():
+                try:
+                    enriched[index] = future.result()
+                except Exception:
+                    continue
+        return enriched
 
 
 
@@ -368,6 +409,170 @@ def _display_situation(
     elif possession and possession == str(_mapping(away.get("team")).get("id") or ""):
         result["possession"] = away_abbr
     return result
+
+
+def _summary_url(scoreboard_url: str) -> str:
+    """Derive the matching ESPN event-summary endpoint from one scoreboard URL."""
+
+    endpoint = scoreboard_url.split("?", 1)[0].rstrip("/")
+    base = endpoint.rsplit("/scoreboard", 1)[0]
+    return f"{base}/summary?event={{}}"
+
+
+def _nhl_summary_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
+    """Read power-play, empty-net, and shootout state from a live NHL summary."""
+
+    summary = _mapping(payload)
+    competition = _first_mapping(_mapping(summary.get("header")).get("competitions"))
+    source = _mapping(summary.get("situation")) or _mapping(competition.get("situation"))
+    if not source and not competition:
+        return {}
+    home_abbr = str(item.get("home_abbr") or "")
+    away_abbr = str(item.get("away_abbr") or "")
+    details = _display_situation(competition, home_abbr=home_abbr, away_abbr=away_abbr)
+    details["powerPlay"] = bool(
+        source.get("powerPlay") or source.get("isPowerPlay") or source.get("hasPowerPlay")
+    )
+    details["emptyNet"] = bool(source.get("emptyNet") or source.get("isEmptyNet"))
+    code = str(source.get("situationCode") or "")
+    if len(code) >= 4 and code[:4].isdigit():
+        away_goalie, away_skaters, home_skaters, home_goalie = (int(value) for value in code[:4])
+        if away_skaters > home_skaters:
+            details["powerPlay"] = True
+            details["possession"] = away_abbr
+        elif home_skaters > away_skaters:
+            details["powerPlay"] = True
+            details["possession"] = home_abbr
+        if away_goalie == 0:
+            details["emptyNet"] = True
+            details["emptyNetSide"] = away_abbr
+        elif home_goalie == 0:
+            details["emptyNet"] = True
+            details["emptyNetSide"] = home_abbr
+    shootout = _shootout_summary(summary)
+    if shootout is not None:
+        details["shootout"] = shootout
+    return details
+
+
+def _soccer_summary_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
+    """Read goal, red-card, and penalty facts from an ESPN soccer summary."""
+
+    summary = _mapping(payload)
+    competition = _first_mapping(_mapping(summary.get("header")).get("competitions"))
+    source = _mapping(summary.get("situation")) or _mapping(competition.get("situation"))
+    home_abbr = str(item.get("home_abbr") or "")
+    away_abbr = str(item.get("away_abbr") or "")
+    details = _display_situation(competition, home_abbr=home_abbr, away_abbr=away_abbr)
+    goals: list[dict[str, Any]] = []
+    cards: list[dict[str, Any]] = []
+    for play in _summary_plays(summary):
+        text = " ".join(
+            str(value or "")
+            for value in (
+                play.get("type"), play.get("text"), play.get("shortText"), play.get("description")
+            )
+        ).lower()
+        if "goal" not in text and "red" not in text:
+            continue
+        team = _summary_team_abbr(play, competition, home_abbr, away_abbr)
+        event = {
+            "is_home": team == home_abbr,
+            "label": _summary_player(play),
+            "minute": _summary_clock(play),
+        }
+        if "goal" in text:
+            goals.append(event)
+        if "red" in text:
+            cards.append(event)
+    if goals:
+        details["goal_events"] = goals
+    if cards:
+        details["red_cards"] = cards
+    shootout = _shootout_summary(summary)
+    if shootout is not None:
+        details["shootout"] = shootout
+    if source.get("possession"):
+        details["possession"] = _summary_team_abbr(source, competition, home_abbr, away_abbr)
+    return details
+
+
+def _summary_plays(summary: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    """Return event-like summary records without depending on one ESPN shape."""
+
+    records: list[Mapping[str, Any]] = []
+    for key in ("scoringPlays", "plays", "events"):
+        records.extend(_mapping(value) for value in _sequence(summary.get(key)))
+    return tuple(record for record in records if record)
+
+
+def _summary_team_abbr(
+    value: Mapping[str, Any],
+    competition: Mapping[str, Any],
+    home_abbr: str,
+    away_abbr: str,
+) -> str:
+    """Resolve an ESPN team identifier to the compact display abbreviation."""
+
+    raw = value.get("team") or value.get("teamId") or value.get("team_id") or value.get("possession")
+    team = _mapping(raw)
+    candidate = str(team.get("abbreviation") or team.get("id") or raw or "").strip()
+    if candidate.upper() in {home_abbr.upper(), away_abbr.upper()}:
+        return candidate.upper()
+    for competitor in _competitors(competition.get("competitors")):
+        source = _mapping(competitor.get("team"))
+        if candidate and candidate == str(source.get("id") or ""):
+            return home_abbr if str(competitor.get("homeAway") or "").lower() == "home" else away_abbr
+    return ""
+
+
+def _summary_player(play: Mapping[str, Any]) -> str:
+    """Return the scorer or carded player's compact surname."""
+
+    athlete = _mapping(play.get("athlete") or play.get("player"))
+    text = str(
+        athlete.get("displayName")
+        or athlete.get("shortName")
+        or play.get("athleteName")
+        or play.get("playerName")
+        or ""
+    ).strip()
+    return text.split()[-1].upper()[:12] if text else ""
+
+
+def _summary_clock(play: Mapping[str, Any]) -> str:
+    """Return one compact event time for soccer side-lane labels."""
+
+    clock = _mapping(play.get("clock"))
+    value = clock.get("displayValue") or clock.get("value") or play.get("time") or ""
+    text = str(value).strip()
+    return text if not text or text.endswith("'") else f"{text}'"
+
+
+def _shootout_summary(summary: Mapping[str, Any]) -> dict[str, list[str]] | None:
+    """Normalize penalty attempts when ESPN exposes them in the event summary."""
+
+    raw = summary.get("shootout") or summary.get("shootoutDetails") or summary.get("penaltyShootout")
+    source = _mapping(raw)
+    if not source:
+        return None
+
+    def side(name: str) -> list[str]:
+        values = _sequence(source.get(name) or source.get(f"{name}Results"))
+        outcome: list[str] = []
+        for value in values:
+            item = _mapping(value)
+            text = str(item.get("result") or item.get("outcome") or value).lower()
+            outcome.append(
+                "goal" if text in {"goal", "score", "scored", "made"}
+                else "miss" if text in {"miss", "missed", "save", "saved", "failed"}
+                else "pending"
+            )
+        return outcome
+
+    home = side("home")
+    away = side("away")
+    return {"home": home, "away": away} if home or away else None
 
 
 def _mlb_summary_details(payload: Any) -> dict[str, Any]:
