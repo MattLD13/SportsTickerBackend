@@ -136,6 +136,7 @@ class SpotifyConnection:
     scopes: tuple[str, ...]
     refresh_token_ciphertext: str
     status: str = "connected"
+    priority: bool = False
     connected_at: float = 0.0
     updated_at: float = 0.0
 
@@ -155,6 +156,7 @@ class SpotifyConnection:
         object.__setattr__(self, "scopes", scopes)
         object.__setattr__(self, "refresh_token_ciphertext", ciphertext)
         object.__setattr__(self, "status", status)
+        object.__setattr__(self, "priority", bool(self.priority))
         object.__setattr__(self, "connected_at", float(self.connected_at))
         object.__setattr__(self, "updated_at", float(self.updated_at))
 

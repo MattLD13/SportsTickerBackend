@@ -219,14 +219,16 @@ class TickerRepository:
                 """,
                 """
                 CREATE TABLE IF NOT EXISTS spotify_connections (
-                    ticker_id TEXT PRIMARY KEY,
+                    ticker_id TEXT NOT NULL,
                     spotify_account_id TEXT NOT NULL,
                     display_name TEXT NOT NULL,
                     scopes_json TEXT NOT NULL,
                     refresh_token_ciphertext TEXT NOT NULL,
                     status TEXT NOT NULL CHECK (status IN ('connected', 'reauthorization_required')),
+                    priority INTEGER NOT NULL DEFAULT 0 CHECK (priority IN (0, 1)),
                     connected_at REAL NOT NULL,
                     updated_at REAL NOT NULL,
+                    PRIMARY KEY (ticker_id, spotify_account_id),
                     FOREIGN KEY (ticker_id) REFERENCES tickers(ticker_id) ON DELETE CASCADE
                 );
                 """,
@@ -258,6 +260,42 @@ class TickerRepository:
             )
             for statement in schema:
                 self._connection.execute(statement)
+            self._migrate_spotify_connections_locked()
+            self._connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS spotify_connections_one_priority "
+                "ON spotify_connections(ticker_id) WHERE priority = 1"
+            )
+
+    def _migrate_spotify_connections_locked(self) -> None:
+        """Replace the former one-account table while preserving its account."""
+
+        columns = {
+            str(row["name"])
+            for row in self._connection.execute("PRAGMA table_info(spotify_connections)")
+        }
+        if "priority" in columns:
+            return
+        self._connection.execute(
+            "CREATE TABLE spotify_connections_next ("
+            "ticker_id TEXT NOT NULL, spotify_account_id TEXT NOT NULL, "
+            "display_name TEXT NOT NULL, scopes_json TEXT NOT NULL, "
+            "refresh_token_ciphertext TEXT NOT NULL, "
+            "status TEXT NOT NULL CHECK (status IN ('connected', 'reauthorization_required')), "
+            "priority INTEGER NOT NULL DEFAULT 0 CHECK (priority IN (0, 1)), "
+            "connected_at REAL NOT NULL, updated_at REAL NOT NULL, "
+            "PRIMARY KEY (ticker_id, spotify_account_id), "
+            "FOREIGN KEY (ticker_id) REFERENCES tickers(ticker_id) ON DELETE CASCADE)"
+        )
+        self._connection.execute(
+            "INSERT INTO spotify_connections_next "
+            "(ticker_id, spotify_account_id, display_name, scopes_json, "
+            "refresh_token_ciphertext, status, priority, connected_at, updated_at) "
+            "SELECT ticker_id, spotify_account_id, display_name, scopes_json, "
+            "refresh_token_ciphertext, status, 0, connected_at, updated_at "
+            "FROM spotify_connections"
+        )
+        self._connection.execute("DROP TABLE spotify_connections")
+        self._connection.execute("ALTER TABLE spotify_connections_next RENAME TO spotify_connections")
 
     @contextmanager
     def _transaction(self) -> Iterator[None]:
@@ -664,7 +702,7 @@ class TickerRepository:
         return self.remove_expired_events(now=now)
 
     def save_spotify_connection(self, connection: SpotifyConnection) -> SpotifyConnection:
-        """Create or replace one encrypted Spotify connection."""
+        """Create or update one encrypted Spotify connection."""
 
         if not isinstance(connection, SpotifyConnection):
             raise TypeError("connection must be SpotifyConnection")
@@ -673,10 +711,9 @@ class TickerRepository:
             self._connection.execute(
                 "INSERT INTO spotify_connections "
                 "(ticker_id, spotify_account_id, display_name, scopes_json, "
-                "refresh_token_ciphertext, status, connected_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(ticker_id) DO UPDATE SET "
-                "spotify_account_id = excluded.spotify_account_id, "
+                "refresh_token_ciphertext, status, priority, connected_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(ticker_id, spotify_account_id) DO UPDATE SET "
                 "display_name = excluded.display_name, scopes_json = excluded.scopes_json, "
                 "refresh_token_ciphertext = excluded.refresh_token_ciphertext, "
                 "status = excluded.status, updated_at = excluded.updated_at",
@@ -687,25 +724,57 @@ class TickerRepository:
                     _dump(connection.scopes),
                     connection.refresh_token_ciphertext,
                     connection.status,
+                    int(connection.priority),
                     connection.connected_at,
                     connection.updated_at,
                 ),
             )
-        return self.get_spotify_connection(connection.ticker_id)  # type: ignore[return-value]
+        return self.get_spotify_connection(
+            connection.ticker_id, connection.spotify_account_id
+        )  # type: ignore[return-value]
 
-    def get_spotify_connection(self, ticker_id: str) -> SpotifyConnection | None:
+    def get_spotify_connection(
+        self, ticker_id: str, spotify_account_id: str | None = None
+    ) -> SpotifyConnection | None:
         """Read one encrypted Spotify connection for backend-only use."""
 
         identifier = str(ticker_id).strip()
+        account_id = str(spotify_account_id).strip()
+        clause = "WHERE ticker_id = ?"
+        values: tuple[str, ...] = (identifier,)
+        if account_id:
+            clause += " AND spotify_account_id = ?"
+            values = (identifier, account_id)
         with self._lock:
             row = self._connection.execute(
                 "SELECT ticker_id, spotify_account_id, display_name, scopes_json, "
-                "refresh_token_ciphertext, status, connected_at, updated_at "
-                "FROM spotify_connections WHERE ticker_id = ?",
-                (identifier,),
+                "refresh_token_ciphertext, status, priority, connected_at, updated_at "
+                f"FROM spotify_connections {clause} "
+                "ORDER BY priority DESC, connected_at ASC LIMIT 1",
+                values,
             ).fetchone()
         if row is None:
             return None
+        return self._spotify_connection_from_row(row)
+
+    def list_spotify_connections(self, ticker_id: str) -> tuple[SpotifyConnection, ...]:
+        """Read every encrypted Spotify connection for one ticker."""
+
+        identifier = str(ticker_id).strip()
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT ticker_id, spotify_account_id, display_name, scopes_json, "
+                "refresh_token_ciphertext, status, priority, connected_at, updated_at "
+                "FROM spotify_connections WHERE ticker_id = ? "
+                "ORDER BY priority DESC, connected_at ASC",
+                (identifier,),
+            ).fetchall()
+        return tuple(self._spotify_connection_from_row(row) for row in rows)
+
+    @staticmethod
+    def _spotify_connection_from_row(row: sqlite3.Row) -> SpotifyConnection:
+        """Build one Spotify connection from a database row."""
+
         return SpotifyConnection(
             ticker_id=row["ticker_id"],
             spotify_account_id=row["spotify_account_id"],
@@ -713,23 +782,63 @@ class TickerRepository:
             scopes=tuple(json.loads(row["scopes_json"])),
             refresh_token_ciphertext=row["refresh_token_ciphertext"],
             status=row["status"],
+            priority=bool(row["priority"]),
             connected_at=row["connected_at"],
             updated_at=row["updated_at"],
         )
 
-    def delete_spotify_connection(self, ticker_id: str) -> bool:
-        """Delete one ticker Spotify connection and every pending OAuth attempt."""
+    def set_spotify_priority(
+        self, ticker_id: str, spotify_account_id: str | None
+    ) -> tuple[SpotifyConnection, ...]:
+        """Set one preferred account, or clear the account preference."""
 
         identifier = str(ticker_id).strip()
+        account_id = str(spotify_account_id or "").strip()
         with self._transaction():
             self._require_ticker_locked(identifier)
+            if account_id:
+                row = self._connection.execute(
+                    "SELECT 1 FROM spotify_connections "
+                    "WHERE ticker_id = ? AND spotify_account_id = ?",
+                    (identifier, account_id),
+                ).fetchone()
+                if row is None:
+                    raise KeyError(account_id)
             self._connection.execute(
-                "DELETE FROM spotify_oauth_attempts WHERE ticker_id = ?", (identifier,)
+                "UPDATE spotify_connections SET priority = 0 WHERE ticker_id = ?",
+                (identifier,),
             )
-            cursor = self._connection.execute(
-                "DELETE FROM spotify_connections WHERE ticker_id = ?", (identifier,)
-            )
-            return cursor.rowcount == 1
+            if account_id:
+                self._connection.execute(
+                    "UPDATE spotify_connections SET priority = 1 "
+                    "WHERE ticker_id = ? AND spotify_account_id = ?",
+                    (identifier, account_id),
+                )
+        return self.list_spotify_connections(identifier)
+
+    def delete_spotify_connection(
+        self, ticker_id: str, spotify_account_id: str | None = None
+    ) -> bool:
+        """Delete one Spotify connection, or all ticker connections when omitted."""
+
+        identifier = str(ticker_id).strip()
+        account_id = str(spotify_account_id or "").strip()
+        with self._transaction():
+            self._require_ticker_locked(identifier)
+            if not account_id:
+                self._connection.execute(
+                    "DELETE FROM spotify_oauth_attempts WHERE ticker_id = ?", (identifier,)
+                )
+                cursor = self._connection.execute(
+                    "DELETE FROM spotify_connections WHERE ticker_id = ?", (identifier,)
+                )
+            else:
+                cursor = self._connection.execute(
+                    "DELETE FROM spotify_connections "
+                    "WHERE ticker_id = ? AND spotify_account_id = ?",
+                    (identifier, account_id),
+                )
+            return cursor.rowcount > 0
 
     def exchange_pairing_code(
         self,

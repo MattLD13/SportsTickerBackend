@@ -213,6 +213,36 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
         deleted = _spotify_service(application).disconnect(identifier)
         return jsonify({"disconnected": deleted, "ticker_id": identifier})
 
+    @app.delete("/api/v2/tickers/<ticker_id>/integrations/spotify/<spotify_account_id>")
+    def disconnect_spotify_account(ticker_id: str, spotify_account_id: str):
+        identifier = _controller_ticker_owner(application, ticker_id)
+        deleted = _spotify_service(application).disconnect(identifier, spotify_account_id)
+        return jsonify(
+            {
+                "disconnected": deleted,
+                "ticker_id": identifier,
+                "spotify_account_id": str(spotify_account_id).strip(),
+            }
+        )
+
+    @app.patch("/api/v2/tickers/<ticker_id>/integrations/spotify/priority")
+    def set_spotify_priority(ticker_id: str):
+        identifier = _controller_ticker_owner(application, ticker_id)
+        payload = _json_object()
+        _check_keys(payload, {"spotify_account_id"})
+        account_id = payload.get("spotify_account_id")
+        if account_id is not None and (
+            not isinstance(account_id, str) or not account_id.strip()
+        ):
+            raise ApiError(
+                "spotify_account_id must be a non-empty string or null",
+                400,
+                "invalid_request",
+            )
+        return jsonify(
+            _spotify_service(application).set_priority(identifier, account_id)
+        )
+
     @app.get("/api/v2/integrations/spotify/callback")
     def spotify_callback():
         if request.args.get("error"):

@@ -289,31 +289,68 @@ class SpotifyIntegrationService:
         return {"attempt_id": attempt.attempt_id, "ticker_id": attempt.ticker_id, "status": "connected"}
 
     def status(self, ticker_id: str) -> dict[str, object]:
-        """Return safe connection state without any credential material."""
+        """Return safe state for every Spotify account linked to one ticker."""
 
-        connection = self._repository.get_spotify_connection(_ticker_id(ticker_id))
-        if connection is None:
-            return {"connected": False, "status": "not_connected"}
+        connections = self._repository.list_spotify_connections(_ticker_id(ticker_id))
+        accounts = [_connection_status_value(item) for item in connections]
+        selected = next((item for item in connections if item.priority), None)
+        primary = selected or (connections[0] if connections else None)
         return {
-            "connected": connection.status == "connected",
-            "status": connection.status,
-            "spotify_account_id": connection.spotify_account_id,
-            "display_name": connection.display_name,
-            "scopes": list(connection.scopes),
-            "updated_at": connection.updated_at,
+            "connected": any(item.status == "connected" for item in connections),
+            "status": "connected" if any(item.status == "connected" for item in connections) else "not_connected",
+            "accounts": accounts,
+            "priority_account_id": selected.spotify_account_id if selected else None,
+            "spotify_account_id": primary.spotify_account_id if primary else None,
+            "display_name": primary.display_name if primary else None,
         }
 
-    def disconnect(self, ticker_id: str) -> bool:
-        """Remove one ticker-owned Spotify authorization."""
+    def disconnect(self, ticker_id: str, spotify_account_id: str | None = None) -> bool:
+        """Remove one Spotify account, or all accounts when no account is named."""
 
-        return self._repository.delete_spotify_connection(_ticker_id(ticker_id))
+        identifier = _ticker_id(ticker_id)
+        deleted = self._repository.delete_spotify_connection(identifier, spotify_account_id)
+        if spotify_account_id:
+            with self._playback_lock:
+                self._playback_windows.pop(f"{identifier}:{spotify_account_id}", None)
+        else:
+            with self._playback_lock:
+                for key in tuple(self._playback_windows):
+                    if key.startswith(f"{identifier}:"):
+                        self._playback_windows.pop(key, None)
+        return deleted
+
+    def set_priority(self, ticker_id: str, spotify_account_id: str | None) -> dict[str, object]:
+        """Set the account that controls ticker music selection."""
+
+        self._repository.set_spotify_priority(_ticker_id(ticker_id), spotify_account_id)
+        return self.status(ticker_id)
 
     def playback(self, ticker_id: str) -> Mapping[str, Any]:
-        """Return safe current playback data for one ticker connection."""
+        """Return the preferred account, or the first account now playing."""
 
-        connection = self._repository.get_spotify_connection(_ticker_id(ticker_id))
-        if connection is None or connection.status != "connected":
+        identifier = _ticker_id(ticker_id)
+        connections = self._repository.list_spotify_connections(identifier)
+        if not connections:
             return _connection_record("reauthorization_required")
+        preferred = next((item for item in connections if item.priority), None)
+        if preferred is not None:
+            return self._playback_for_connection(preferred)
+        fallback: Mapping[str, Any] | None = None
+        for connection in connections:
+            if connection.status != "connected":
+                continue
+            record = self._playback_for_connection(connection)
+            if bool(record.get("is_playing")):
+                return record
+            if fallback is None:
+                fallback = record
+        return fallback or _connection_record("reauthorization_required")
+
+    def _playback_for_connection(self, connection: SpotifyConnection) -> Mapping[str, Any]:
+        """Fetch one account safely and preserve its distinct artwork window."""
+
+        if connection.status != "connected":
+            return _connection_record("reauthorization_required", connection)
         try:
             refresh_token = self._decrypt(connection.refresh_token_ciphertext)
             tokens = self._http.refresh_access_token(refresh_token, self._config)
@@ -329,18 +366,22 @@ class SpotifyIntegrationService:
                         scopes=connection.scopes,
                         refresh_token_ciphertext=self._encrypt(next_refresh),
                         status="connected",
+                        priority=connection.priority,
                         connected_at=connection.connected_at,
                         updated_at=now,
                     )
                 )
             playback = self._http.get_playback(access_token)
-            record = self._windowed_playback(ticker_id, playback, access_token)
+            record = self._windowed_playback(connection, playback, access_token)
             record["fetch_ts"] = float(self._clock())
+            record["spotify_account_id"] = connection.spotify_account_id
+            record["connection_name"] = connection.display_name
+            record["priority"] = connection.priority
             return record
         except SpotifyIntegrationError as error:
             if "invalid_grant" in str(error).lower() or "unauthorized" in str(error).lower():
                 self._mark_reauthorization(connection)
-                return _connection_record("reauthorization_required")
+                return _connection_record("reauthorization_required", connection)
             raise
         except InvalidToken as error:
             self._mark_reauthorization(connection)
@@ -356,6 +397,7 @@ class SpotifyIntegrationService:
                 scopes=connection.scopes,
                 refresh_token_ciphertext=connection.refresh_token_ciphertext,
                 status="reauthorization_required",
+                priority=connection.priority,
                 connected_at=connection.connected_at,
                 updated_at=now,
             )
@@ -363,7 +405,7 @@ class SpotifyIntegrationService:
 
     def _windowed_playback(
         self,
-        ticker_id: str,
+        connection: SpotifyConnection,
         playback: Mapping[str, Any] | None,
         access_token: str,
     ) -> dict[str, Any]:
@@ -376,13 +418,14 @@ class SpotifyIntegrationService:
         if not identifier:
             return _playback_record(playback, None)
         with self._playback_lock:
-            previous = self._playback_windows.get(ticker_id)
+            previous = self._playback_windows.get(_playback_window_key(connection))
         queue = self._http.get_queue(access_token) if previous is None or previous.current_id != identifier else None
         record = _playback_record(playback, queue)
         cover = str(record.get("cover") or "")
         queued = tuple(str(value) for value in record.get("next_covers", ()) if str(value))
         with self._playback_lock:
-            current = self._playback_windows.get(ticker_id)
+            key = _playback_window_key(connection)
+            current = self._playback_windows.get(key)
             if current is not None and current.current_id == identifier:
                 record["last_cover"] = current.previous_cover
                 record["next_covers"] = list(current.next_covers)
@@ -393,7 +436,7 @@ class SpotifyIntegrationService:
                 previous_cover=current.current_cover if current is not None else "",
                 next_covers=queued[:3],
             )
-            self._playback_windows[ticker_id] = window
+            self._playback_windows[key] = window
         record["last_cover"] = window.previous_cover
         record["next_covers"] = list(window.next_covers)
         return record
@@ -463,8 +506,12 @@ def _playback_record(playback: Mapping[str, Any] | None, queue: Mapping[str, Any
     }
 
 
-def _connection_record(status: str) -> dict[str, Any]:
-    return {
+def _connection_record(
+    status: str, connection: SpotifyConnection | None = None
+) -> dict[str, Any]:
+    """Return a non-playing card that identifies its linked account when known."""
+
+    record = {
         "id": "spotify:connection",
         "family": "music",
         "kind": "spotify",
@@ -477,6 +524,35 @@ def _connection_record(status: str) -> dict[str, Any]:
         "next_covers": [],
         "source": "spotify",
     }
+    if connection is not None:
+        record.update(
+            {
+                "spotify_account_id": connection.spotify_account_id,
+                "connection_name": connection.display_name,
+                "priority": connection.priority,
+            }
+        )
+    return record
+
+
+def _connection_status_value(connection: SpotifyConnection) -> dict[str, object]:
+    """Project one Spotify connection without encrypted credential material."""
+
+    return {
+        "spotify_account_id": connection.spotify_account_id,
+        "display_name": connection.display_name,
+        "status": connection.status,
+        "connected": connection.status == "connected",
+        "priority": connection.priority,
+        "scopes": list(connection.scopes),
+        "updated_at": connection.updated_at,
+    }
+
+
+def _playback_window_key(connection: SpotifyConnection) -> str:
+    """Return an artwork window key isolated by ticker and Spotify account."""
+
+    return f"{connection.ticker_id}:{connection.spotify_account_id}"
 
 
 def _required_text(value: Mapping[str, Any], key: str, *, fallback: str | None = None) -> str:

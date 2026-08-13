@@ -132,6 +132,10 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     let is_live: Bool?
     let delay_min: Int?
     let is_delayed: Bool?
+    let name: String?
+    let artist: String?
+    let cover: String?
+    let duration: Double?
     
     var safeHomeAbbr: String { home_abbr ?? "" }
     var safeAwayAbbr: String { away_abbr ?? "" }
@@ -141,7 +145,7 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     var safeAwayID: String { away_id ?? safeAwayAbbr }
     
     enum CodingKeys: String, CodingKey {
-        case id, sport, status, state, home_abbr, home_id, home_score, home_logo, home_color, home_alt_color, away_abbr, away_id, away_score, away_logo, away_color, away_alt_color, is_shown, situation, type, tourney_name, guest_name, route, origin_city, dest_city, alt, dist, eta_str, speed, progress, is_live, delay_min, is_delayed
+        case id, sport, status, state, home_abbr, home_id, home_score, home_logo, home_color, home_alt_color, away_abbr, away_id, away_score, away_logo, away_color, away_alt_color, is_shown, situation, type, tourney_name, guest_name, route, origin_city, dest_city, alt, dist, eta_str, speed, progress, is_live, delay_min, is_delayed, name, artist, cover, duration
     }
     
     init(from decoder: Decoder) throws {
@@ -172,6 +176,10 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
         eta_str = try? c.decode(String.self, forKey: .eta_str)
         is_live = try? c.decode(Bool.self, forKey: .is_live)
         is_delayed = try? c.decode(Bool.self, forKey: .is_delayed)
+        name = try? c.decode(String.self, forKey: .name)
+        artist = try? c.decode(String.self, forKey: .artist)
+        cover = try? c.decode(String.self, forKey: .cover)
+        duration = try? c.decode(Double.self, forKey: .duration)
         if let dmin = try? c.decode(Int.self, forKey: .delay_min) { delay_min = dmin }
         else if let dminD = try? c.decode(Double.self, forKey: .delay_min) { delay_min = Int(dminD) }
         else { delay_min = nil }
@@ -464,7 +472,21 @@ struct PairingExchangeResponse: Decodable, Sendable {
 struct PairingCodeResponse: Decodable, Sendable { let pairing_code: String }
 
 struct SpotifyAuthorization: Decodable, Sendable { let attempt_id: String; let authorization_url: URL }
-struct SpotifyStatus: Decodable, Sendable { let connected: Bool; let status: String; let display_name: String? }
+struct SpotifyAccount: Decodable, Identifiable, Sendable {
+    let spotify_account_id: String
+    let display_name: String
+    let status: String
+    let connected: Bool
+    let priority: Bool
+    var id: String { spotify_account_id }
+}
+struct SpotifyStatus: Decodable, Sendable {
+    let connected: Bool
+    let status: String
+    let display_name: String?
+    let accounts: [SpotifyAccount]
+    let priority_account_id: String?
+}
 // ==========================================
 // MARK: - 2. VIEW MODEL
 // ==========================================
@@ -507,6 +529,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     @Published var statusColor: Color = .gray
     @Published var spotifyStatus: String = "Checking Spotify..."
     @Published var spotifyAccountName: String?
+    @Published var spotifyAccounts: [SpotifyAccount] = []
     @Published var spotifyError: String?
     @Published var isConnectingSpotify = false
     @Published var pairCodeAlertMessage = ""
@@ -1112,6 +1135,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
               let request = authorizedRequest(url: url, method: "GET") else {
             spotifyStatus = "Connect a Ticker first"
             spotifyAccountName = nil
+            spotifyAccounts = []
             return
         }
         URLSession.shared.dataTask(with: request) { data, response, _ in
@@ -1122,6 +1146,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             DispatchQueue.main.async {
                 self.spotifyStatus = status.connected ? "Connected" : "Not connected"
                 self.spotifyAccountName = status.display_name
+                self.spotifyAccounts = status.accounts
                 self.spotifyError = nil
             }
         }.resume()
@@ -1182,18 +1207,40 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         return windows.first(where: \.isKeyWindow) ?? ASPresentationAnchor()
     }
 
-    func disconnectSpotify() {
+    func disconnectSpotify(accountID: String? = nil) {
         guard let tickerID = savedTickerID,
-              let url = tickerURL(tickerID, suffix: "/integrations/spotify"),
+              let url = tickerURL(
+                tickerID,
+                suffix: accountID.map { "/integrations/spotify/\($0)" } ?? "/integrations/spotify"
+              ),
               let request = authorizedRequest(url: url, method: "DELETE") else { return }
         URLSession.shared.dataTask(with: request) { _, response, _ in
             DispatchQueue.main.async {
                 if (response as? HTTPURLResponse)?.statusCode == 200 {
-                    self.spotifyStatus = "Not connected"
-                    self.spotifyAccountName = nil
                     self.spotifyError = nil
+                    self.fetchSpotifyStatus()
                 } else {
                     self.spotifyError = "Spotify could not disconnect."
+                }
+            }
+        }.resume()
+    }
+
+    func setSpotifyPriority(accountID: String?) {
+        guard let tickerID = savedTickerID,
+              let url = tickerURL(tickerID, suffix: "/integrations/spotify/priority"),
+              var request = authorizedRequest(url: url, method: "PATCH") else { return }
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(
+            withJSONObject: ["spotify_account_id": accountID ?? NSNull()]
+        )
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            DispatchQueue.main.async {
+                if (response as? HTTPURLResponse)?.statusCode == 200 {
+                    self.spotifyError = nil
+                    self.fetchSpotifyStatus()
+                } else {
+                    self.spotifyError = "Spotify priority could not update."
                 }
             }
         }.resume()
@@ -1310,6 +1357,55 @@ struct ScrollBtn: View {
 struct TeamLogoView: View {
     let url: String?; let abbr: String; let size: CGFloat
     var body: some View { AsyncImage(url: URL(string: url ?? "")) { phase in if let image = phase.image { image.resizable().scaledToFit() } else { Text(abbr).font(.system(size: size * 0.4, weight: .bold)).foregroundColor(.white.opacity(0.8)) } }.frame(width: size, height: size) }
+}
+struct MusicNowPlayingCard: View {
+    let game: Game
+
+    private var isPlaying: Bool { game.status == "playing" }
+    private var progress: Double {
+        guard let duration = game.duration, duration > 0 else { return 0 }
+        return min(max(Double(game.progress ?? 0) / duration, 0), 1)
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            AsyncImage(url: URL(string: game.cover ?? "")) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFill()
+                } else {
+                    Image(systemName: "music.note")
+                        .font(.title2).foregroundStyle(.green)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.green.opacity(0.14))
+                }
+            }
+            .frame(width: 58, height: 58)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Image(systemName: isPlaying ? "waveform" : "pause.fill")
+                        .font(.caption).foregroundStyle(isPlaying ? .green : .secondary)
+                    Text(isPlaying ? "NOW PLAYING" : "SPOTIFY")
+                        .font(.caption2.weight(.bold)).foregroundStyle(isPlaying ? .green : .secondary)
+                }
+                Text(game.name ?? "No active Spotify playback")
+                    .font(.headline).foregroundStyle(.white).lineLimit(1)
+                Text(game.artist ?? "Choose an account in Music settings")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                ProgressView(value: progress)
+                    .tint(.green).opacity(game.duration == nil ? 0 : 1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.green.opacity(isPlaying ? 0.55 : 0.2), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
 }
 struct GameRow: View {
     let game: Game
@@ -1928,19 +2024,22 @@ struct HomeView: View {
 
     private var filterMode: String { vm.state.mode == "sports_full" ? "sports" : vm.state.mode }
     private var leagueLabels: [String: String] { vm.leagueLabels }
-    private var splitGames: (other: [Game], airport: [Game]) { partitionedGames }
+    private var splitGames: (other: [Game], airport: [Game], music: [Game]) { partitionedGames }
 
-    private var partitionedGames: (other: [Game], airport: [Game]) {
+    private var partitionedGames: (other: [Game], airport: [Game], music: [Game]) {
         var airport: [Game] = []
+        var music: [Game] = []
         var other: [Game] = []
         for g in vm.games {
-            if g.sport == "flight" && (g.type == "flight_weather" || g.type == "flight_arrival" || g.type == "flight_departure") {
+            if g.type == "spotify" {
+                music.append(g)
+            } else if g.sport == "flight" && (g.type == "flight_weather" || g.type == "flight_arrival" || g.type == "flight_departure") {
                 airport.append(g)
             } else {
                 other.append(g)
             }
         }
-        return (other, airport)
+        return (other, airport, music)
     }
 
     var body: some View {
@@ -1970,6 +2069,9 @@ struct HomeView: View {
                     if vm.games.isEmpty {
                         Text("No active items found.").frame(maxWidth: .infinity).padding().liquidGlass().foregroundStyle(.secondary)
                     } else {
+                        ForEach(splitGames.music) { game in
+                            MusicNowPlayingCard(game: game)
+                        }
                         ForEach(splitGames.other) { game in
                             GameRow(game: game, leagueLabel: leagueLabels[game.sport], isPinned: vm.isPinned(game))
                                 .onTapGesture { vm.togglePin(game) }
@@ -2330,16 +2432,45 @@ struct ModesView: View {
                                     }
                                 }
                                 Spacer()
-                                if vm.spotifyStatus == "Connected" {
-                                    Button("Disconnect") { vm.disconnectSpotify() }
-                                        .font(.caption).foregroundStyle(.red)
-                                } else {
-                                    Button(vm.isConnectingSpotify ? "Connecting..." : "Connect") { vm.connectSpotify() }
-                                        .font(.caption).foregroundStyle(.green)
-                                        .disabled(vm.isConnectingSpotify)
-                                }
+                                Button(vm.isConnectingSpotify ? "Connecting..." : "Add account") { vm.connectSpotify() }
+                                    .font(.caption).foregroundStyle(.green)
+                                    .disabled(vm.isConnectingSpotify)
                             }
                             .padding().liquidGlass()
+                            if !vm.spotifyAccounts.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("CONNECTED ACCOUNTS").font(.caption2).bold().foregroundStyle(.secondary)
+                                    ForEach(vm.spotifyAccounts) { account in
+                                        HStack(spacing: 10) {
+                                            Image(systemName: account.priority ? "star.fill" : "person.crop.circle")
+                                                .foregroundStyle(account.priority ? .yellow : .secondary)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(account.display_name).font(.subheadline).bold().foregroundStyle(.white)
+                                                Text(account.priority ? "Priority account" : "Auto-select when playing")
+                                                    .font(.caption2).foregroundStyle(.secondary)
+                                            }
+                                            Spacer()
+                                            Button(account.priority ? "Priority" : "Prioritize") {
+                                                vm.setSpotifyPriority(accountID: account.spotify_account_id)
+                                            }
+                                            .font(.caption).foregroundStyle(account.priority ? .yellow : .green)
+                                            Button(role: .destructive) {
+                                                vm.disconnectSpotify(accountID: account.spotify_account_id)
+                                            } label: {
+                                                Image(systemName: "trash")
+                                            }
+                                            .font(.caption)
+                                        }
+                                        .padding(10).liquidGlass()
+                                    }
+                                    if vm.spotifyAccounts.contains(where: { $0.priority }) {
+                                        Button("Use whichever account is playing") {
+                                            vm.setSpotifyPriority(accountID: nil)
+                                        }
+                                        .font(.caption).foregroundStyle(.green)
+                                    }
+                                }
+                            }
                             if let error = vm.spotifyError {
                                 Text(error).font(.caption).foregroundStyle(.red)
                             }
