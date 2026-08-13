@@ -14,8 +14,8 @@ Environment=TICKER_VERIFY_TLS=true
 ExecStart=/usr/bin/env python3 -m ticker_core
 Restart=always
 RestartSec=5
-StandardOutput=append:/home/pi/ticker.log
-StandardError=append:/home/pi/ticker.log
+StandardOutput=append:/home/mld/ticker.log
+StandardError=append:/home/mld/ticker.log
 
 [Install]
 WantedBy=multi-user.target
