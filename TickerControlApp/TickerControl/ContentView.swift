@@ -469,7 +469,7 @@ struct SpotifyStatus: Decodable, Sendable { let connected: Bool; let status: Str
 // MARK: - 2. VIEW MODEL
 // ==========================================
 @MainActor
-class TickerViewModel: ObservableObject {
+class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
     @Published var games: [Game] = []
     @Published var allTeams: [String: [TeamData]] = [:]
     @Published var leagueOptions: [LeagueOption] = []
@@ -593,6 +593,7 @@ class TickerViewModel: ObservableObject {
     init() {
         let savedURL = UserDefaults.standard.string(forKey: "serverURL") ?? "https://ticker.mattdicks.org"
         self.serverURL = savedURL
+        super.init()
         
         // Initial Data Load
         fetchData()
@@ -1163,6 +1164,7 @@ class TickerViewModel: ObservableObject {
                         }
                     }
                 }
+                session.presentationContextProvider = self
                 self.spotifyAuthorizationSession = session
                 if !session.start() {
                     self.spotifyAuthorizationSession = nil
@@ -1171,6 +1173,13 @@ class TickerViewModel: ObservableObject {
                 }
             }
         }.resume()
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+        return windows.first(where: \.isKeyWindow) ?? ASPresentationAnchor()
     }
 
     func disconnectSpotify() {
