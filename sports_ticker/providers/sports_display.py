@@ -1,0 +1,363 @@
+"""Build stable sport display facts from ESPN scoreboard records."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+import re
+from typing import Any
+
+from sports_ticker.domain import ContentItem
+
+
+_FOOTBALL = frozenset(("nfl", "ncf_fbs", "ncf_fcs"))
+_BASKETBALL = frozenset(("nba", "march_madness"))
+_ORDINALS = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}
+
+
+@dataclass(slots=True)
+class SportsDisplayProjector:
+    """Own sport status, facts, and short-lived live state for one provider."""
+
+    _football: dict[str, dict[str, Any]] = field(default_factory=dict)
+    _possession: dict[str, str] = field(default_factory=dict)
+
+    def project(self, item: ContentItem, event: Mapping[str, Any]) -> ContentItem:
+        """Return one renderer-ready item without exposing ESPN display quirks."""
+
+        data = dict(item.data)
+        competition = _first_mapping(event.get("competitions"))
+        league = str(data.get("sport") or "").lower()
+        state = str(data.get("state") or "pre").lower()
+        prior = _mapping(data.get("situation"))
+        situation = _situation(
+            league,
+            competition,
+            home_abbr=str(data.get("home_abbr") or ""),
+            away_abbr=str(data.get("away_abbr") or ""),
+        )
+        if prior.get("clock"):
+            situation["clock"] = prior["clock"]
+        data["status"] = _status(league, state, event, competition, data)
+        data["situation"] = self._stable_situation(
+            item.id, league, state, str(data["status"]), situation
+        )
+        if league == "march_madness":
+            data.update(_seeds(competition))
+        return ContentItem(
+            id=item.id,
+            family=item.family,
+            kind=item.kind,
+            is_shown=item.is_shown,
+            data=data,
+        )
+
+    def _stable_situation(
+        self,
+        identifier: str,
+        league: str,
+        state: str,
+        status: str,
+        situation: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Keep possession and football down data through ESPN's empty polls."""
+
+        live = state in {"in", "half", "crit"}
+        halftime = "half" in status.lower()
+        possession = str(situation.get("possession") or "")
+        if possession:
+            self._possession[identifier] = possession
+        elif live and not halftime:
+            situation["possession"] = self._possession.get(identifier, "")
+        else:
+            self._possession.pop(identifier, None)
+
+        if league not in _FOOTBALL:
+            return situation
+        if not live or halftime:
+            self._football.pop(identifier, None)
+            return situation
+        if situation.get("downDist"):
+            self._football[identifier] = dict(situation)
+        elif identifier in self._football:
+            cached = dict(self._football[identifier])
+            cached["possession"] = situation.get("possession") or cached.get("possession", "")
+            return cached
+        return situation
+
+
+def _status(
+    league: str,
+    state: str,
+    event: Mapping[str, Any],
+    competition: Mapping[str, Any],
+    data: Mapping[str, Any],
+) -> str:
+    """Return the exact concise status language used by the ticker layouts."""
+
+    status = _mapping(event.get("status"))
+    kind = _mapping(status.get("type"))
+    detail = str(
+        kind.get("shortDetail") or kind.get("detail") or data.get("status") or ""
+    ).strip()
+    clock = str(status.get("displayClock") or status.get("clock") or "").strip()
+    period = _integer(status.get("period"), _integer(kind.get("period"), 0))
+    if not clock:
+        clock = str(_mapping(competition.get("situation")).get("clock") or "").strip()
+    upper = detail.upper()
+
+    if state == "pre":
+        return str(data.get("status") or detail or "TBD")
+    if "POSTPON" in upper or "CANCEL" in upper or "SUSPEND" in upper or "DELAY" in upper:
+        return detail.split(",", 1)[0].title()
+    if state == "half" or "HALFTIME" in upper or upper in {"HT", "HALF"}:
+        return "Half" if league.startswith("soccer") else "Halftime"
+    if "FINAL" in upper or state in {"post", "final"}:
+        return _final_status(league, upper, period)
+    if league in _FOOTBALL:
+        return _period_status("Q", period, clock, overtime_base=4)
+    if league in _BASKETBALL:
+        if league == "march_madness" and period in {1, 2}:
+            return f"H{period} {clock}".strip()
+        return _period_status("Q", period, clock, overtime_base=4)
+    if league == "nhl":
+        return _period_status("P", period, clock, overtime_base=3)
+    if league.startswith("soccer"):
+        if period >= 3 or "ET" in upper:
+            return f"ET {clock}'".strip() if clock else "ET"
+        return f"{clock}'" if clock else detail
+    if league == "mlb":
+        return _baseball_status(detail)
+    return detail or str(data.get("status") or state)
+
+
+def _situation(
+    league: str,
+    competition: Mapping[str, Any],
+    *,
+    home_abbr: str,
+    away_abbr: str,
+) -> dict[str, Any]:
+    """Return all facts consumed by compact and pinned renderer ports."""
+
+    source = _mapping(competition.get("situation"))
+    possession = _possession(source.get("possession"), competition, home_abbr, away_abbr)
+    if league in _FOOTBALL:
+        return _football_situation(source, possession, home_abbr, away_abbr)
+    if league == "mlb":
+        return {
+            "balls": _integer(source.get("balls")),
+            "strikes": _integer(source.get("strikes")),
+            "outs": _integer(source.get("outs")),
+            "onFirst": bool(source.get("onFirst")),
+            "onSecond": bool(source.get("onSecond")),
+            "onThird": bool(source.get("onThird")),
+            "possession": possession,
+        }
+    if league == "nhl":
+        return {
+            "possession": possession,
+            "powerPlay": _boolean_any(source, "powerPlay", "isPowerPlay", "hasPowerPlay"),
+            "emptyNet": _boolean_any(source, "emptyNet", "isEmptyNet"),
+            "emptyNetSide": _possession(
+                source.get("emptyNetSide") or source.get("emptyNetTeam"),
+                competition,
+                home_abbr,
+                away_abbr,
+            ),
+            "shootout": _shootout(source.get("shootout") or source.get("shootoutDetails")),
+        }
+    if league.startswith("soccer"):
+        return {
+            "possession": possession,
+            "shootout": _shootout(source.get("shootout") or source.get("shootoutDetails")),
+            "goal_events": _events(source.get("goalEvents") or source.get("goals"), home_abbr, away_abbr),
+            "red_cards": _events(source.get("redCards") or source.get("cards"), home_abbr, away_abbr),
+        }
+    return {"possession": possession}
+
+
+def _football_situation(
+    source: Mapping[str, Any], possession: str, home_abbr: str, away_abbr: str
+) -> dict[str, Any]:
+    """Normalize football down, spot, first-down, and red-zone facts."""
+
+    full = str(source.get("downDistanceText") or "").strip()
+    short = str(source.get("shortDownDistanceText") or "").strip()
+    down = _integer_or_none(source.get("down"))
+    distance = _integer_or_none(source.get("distance"))
+    yard_line = _integer_or_none(source.get("yardLine"))
+    if yard_line is None:
+        yard_line = _yard_line(full, home_abbr, away_abbr)
+    if yard_line is not None:
+        yard_line = max(0, min(100, yard_line))
+    if not short:
+        short = full.split(" at ", 1)[0].strip()
+    if not short and down in _ORDINALS and distance is not None:
+        short = f"{_ORDINALS[down]} & {distance}"
+    ball_on = str(source.get("possessionText") or "").strip()
+    if not ball_on and " at " in full:
+        ball_on = full.split(" at ", 1)[1].strip()
+    to_goal = None
+    if possession.upper() == away_abbr.upper():
+        to_goal = yard_line
+    elif possession.upper() == home_abbr.upper() and yard_line is not None:
+        to_goal = 100 - yard_line
+    goal_to_go = "goal" in short.lower() or "goal" in full.lower()
+    if to_goal is not None and distance is not None and distance >= to_goal:
+        goal_to_go = True
+    return {
+        "possession": possession,
+        "downDist": short,
+        "downDistFull": full,
+        "ballOn": ball_on,
+        "down": down,
+        "yardsToGo": distance,
+        "yardLine": yard_line,
+        "isGoalToGo": goal_to_go,
+        "isRedZone": bool(source.get("isRedZone")) or bool(to_goal is not None and to_goal <= 20),
+    }
+
+
+def _final_status(league: str, detail: str, period: int) -> str:
+    """Keep final overtime and shootout labels visible on compact cards."""
+
+    if league == "nhl":
+        if "SO" in detail or "SHOOTOUT" in detail or period >= 5:
+            return "FINAL S/O"
+        if period >= 4:
+            return f"FINAL OT{period - 3 if period > 4 else ''}"
+    if league in _FOOTBALL | _BASKETBALL and period > 4:
+        return f"FINAL OT{period - 4 if period > 5 else ''}"
+    return "FINAL"
+
+
+def _period_status(prefix: str, period: int, clock: str, *, overtime_base: int) -> str:
+    if period > overtime_base:
+        extra = period - overtime_base
+        label = f"OT{extra if extra > 1 else ''}"
+    else:
+        label = f"{prefix}{period}" if period else prefix
+    return f"{label} {clock}".strip()
+
+
+def _baseball_status(value: str) -> str:
+    text = value.replace("Inning", "").replace("inning", "").strip()
+    text = re.sub(r"^TOP\s+", "Top ", text, flags=re.IGNORECASE)
+    text = re.sub(r"^BOTTOM\s+", "Bottom ", text, flags=re.IGNORECASE)
+    return text or "In Progress"
+
+
+def _seeds(competition: Mapping[str, Any]) -> dict[str, str]:
+    competitors = _competitors(competition.get("competitors"))
+    home = _find_side(competitors, "home")
+    away = _find_side(competitors, "away")
+    return {
+        "home_seed": _seed(home),
+        "away_seed": _seed(away),
+    }
+
+
+def _seed(competitor: Mapping[str, Any]) -> str:
+    value = _mapping(competitor.get("curatedRank")).get("current")
+    return "" if value in (None, "", 99, "99") else str(value)
+
+
+def _possession(value: object, competition: Mapping[str, Any], home_abbr: str, away_abbr: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    folded = text.casefold()
+    if folded in {"home", "home_team"}:
+        return home_abbr
+    if folded in {"away", "away_team"}:
+        return away_abbr
+    for competitor, abbreviation in ((_find_side(_competitors(competition.get("competitors")), "home"), home_abbr), (_find_side(_competitors(competition.get("competitors")), "away"), away_abbr)):
+        team = _mapping(competitor.get("team"))
+        if text == str(team.get("id") or "") or folded == abbreviation.casefold():
+            return abbreviation
+    return ""
+
+
+def _yard_line(text: str, home_abbr: str, away_abbr: str) -> int | None:
+    if " at " not in text:
+        return None
+    parts = text.split(" at ", 1)[1].strip().split()
+    if len(parts) == 1:
+        return 50 if _integer_or_none(parts[0]) == 50 else None
+    if len(parts) < 2:
+        return None
+    yard = _integer_or_none(parts[1])
+    if yard is None:
+        return None
+    return yard if parts[0].upper() == home_abbr.upper() else 100 - yard if parts[0].upper() == away_abbr.upper() else None
+
+
+def _shootout(value: object) -> dict[str, list[str]] | None:
+    source = _mapping(value)
+    if not source:
+        return None
+    return {
+        "away": _results(source.get("away") or source.get("awayResults")),
+        "home": _results(source.get("home") or source.get("homeResults")),
+    }
+
+
+def _results(value: object) -> list[str]:
+    result: list[str] = []
+    for entry in _sequence(value):
+        text = str(_mapping(entry).get("result") or entry).lower()
+        result.append("goal" if text in {"goal", "made", "score"} else "miss" if text in {"miss", "failed", "save"} else "pending")
+    return result
+
+
+def _events(value: object, home_abbr: str, away_abbr: str) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for entry in _sequence(value):
+        source = _mapping(entry)
+        team = str(source.get("team") or source.get("teamAbbreviation") or "")
+        result.append({
+            "is_home": team.upper() == home_abbr.upper(),
+            "label": str(source.get("displayName") or source.get("athlete") or source.get("name") or ""),
+            "minute": str(source.get("clock") or source.get("time") or ""),
+        })
+    return result
+
+
+def _boolean_any(source: Mapping[str, Any], *keys: str) -> bool:
+    return any(bool(source.get(key)) for key in keys)
+
+
+def _integer(value: object, default: int = 0) -> int:
+    result = _integer_or_none(value)
+    return default if result is None else result
+
+
+def _integer_or_none(value: object) -> int | None:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _mapping(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _sequence(value: object) -> tuple[object, ...]:
+    return tuple(value) if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else ()
+
+
+def _competitors(value: object) -> tuple[Mapping[str, Any], ...]:
+    return tuple(item for item in _sequence(value) if isinstance(item, Mapping))
+
+
+def _find_side(competitors: Sequence[Mapping[str, Any]], side: str) -> Mapping[str, Any]:
+    return next((item for item in competitors if str(item.get("homeAway") or "").lower() == side), {})
+
+
+def _first_mapping(value: object) -> Mapping[str, Any]:
+    return _mapping(_sequence(value)[0]) if _sequence(value) else {}
+
+
+__all__ = ["SportsDisplayProjector"]
