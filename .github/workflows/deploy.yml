@@ -104,11 +104,8 @@ jobs:
   signal-fleet:
     runs-on: ubuntu-latest
     needs: [changes, deploy-backend]
-    # Run even if deploy-backend was skipped (controller-only push)
-    if: |
-      always() &&
-      needs.changes.outputs.controller == 'true' &&
-      (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
+    # Keep Pi updates manual. Automatic OTA creates an unwanted panel popup.
+    if: ${{ false }}
     steps:
       - uses: actions/checkout@v4
         with:
