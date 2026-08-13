@@ -18,7 +18,7 @@ Legacy modules remain output oracles during parity work. The new entry point wil
 
 ## User modes
 
-The application exposes six modes: `sports`, `weather`, `music`, `flights`, `airports`, and `clock`.
+The application exposes seven modes: `sports`, `weather`, `music`, `flights`, `airports`, `stock`, and `clock`.
 
 Golf and racing are sports content. A pinned sports item uses `sports_presentation: pinned` and its canonical content ID.
 

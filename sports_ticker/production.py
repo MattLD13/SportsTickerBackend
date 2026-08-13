@@ -97,6 +97,9 @@ def create_production_application(
     app.extensions["sports_ticker.snapshot_store"] = snapshots
     app.extensions["sports_ticker.scheduler"] = scheduler
     app.extensions["sports_ticker.runtime"] = runtime
+    app.config["DASHBOARD_ASSET_CACHE"] = Path(
+        os.environ.get("TICKER_DASHBOARD_ASSET_CACHE", path.parent / "dashboard-assets")
+    )
     app.config["VERSION"] = _build_version()
     return app
 
@@ -113,6 +116,10 @@ def start_runtime(app: Flask) -> Callable[[], None]:
     def stop() -> None:
         runtime.stop()
         thread.join(timeout=8)
+        assets = app.extensions.get("sports_ticker.dashboard_assets")
+        close_assets = getattr(assets, "close", None)
+        if callable(close_assets):
+            close_assets()
         app.extensions["sports_ticker.backend_application"].close()
 
     return stop

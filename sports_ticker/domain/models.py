@@ -25,6 +25,7 @@ DISPLAY_MODES: tuple[str, ...] = (
     "music",
     "flights",
     "airports",
+    "stock",
     "clock",
 )
 

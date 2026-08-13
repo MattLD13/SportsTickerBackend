@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from functools import lru_cache
+from concurrent.futures import wait
 from io import BytesIO
 import os
 from pathlib import Path
+from threading import active_count
 from time import monotonic
 
 from flask import abort, current_app, render_template, request, send_file
 from PIL import Image, ImageDraw
-
-from sports_ticker.projections import select_display_content
 
 from . import dashboard_v2
 
@@ -30,11 +29,11 @@ def index():
     snapshot = application.get_snapshot(ticker.ticker_id) if ticker is not None else None
     content = snapshot.content if snapshot is not None else ()
     active_sports = settings.active_sports if settings is not None else {}
-    sports = _league_rows(active_sports, content, "sports")
-    utilities = _utility_rows(content)
-    markets = _league_rows(active_sports, content, "stock")
     fleet = _fleet_rows(tickers)
     visible = _display_content(application, ticker.ticker_id) if ticker is not None else {}
+    sports = _league_rows(active_sports, visible)
+    utilities = _utility_rows(visible)
+    markets = _market_rows(content, visible)
     shown = sum(len(items) for items in visible.values())
     return render_template(
         "dashboard/index.html",
@@ -49,9 +48,8 @@ def index():
         sports_leagues=sports,
         util_leagues=utilities,
         market_leagues=markets,
-        live_count=shown,
-        active_count=shown,
-        league_count=len(sports) + len(utilities) + len(markets),
+        panel_cards=shown,
+        feed_count=len(sports) + len(utilities) + len(markets),
         display_modes=_display_modes(),
         demo_modes=_demo_modes(),
         panel_w=384,
@@ -140,24 +138,47 @@ def _fleet_rows(tickers) -> list[dict[str, object]]:
     return rows
 
 
-def _league_rows(active_sports, content, family: str) -> list[dict[str, str]]:
-    """Build complete original coverage chips from V2 configuration."""
+def _league_rows(active_sports, visible) -> list[dict[str, str]]:
+    """Build every supported league chip from selected ticker content."""
 
-    records = {str(item.data.get("sport", item.family)).lower() for item in content if item.family == family}
     available = (
         "nfl", "mlb", "nhl", "nba", "ncf_fbs", "ncf_fcs", "march_madness",
         "soccer_epl", "soccer_fa_cup", "soccer_champ", "soccer_champions_league", "soccer_mls",
-    ) if family == "sports" else ("stock",) if family == "stock" else ()
+    )
+    records = _visible_sports(visible)
     names = tuple(dict.fromkeys((*available, *(str(value).lower() for value in active_sports), *records)))
-    return [
-        {"id": name, "label": name.replace("_", " ").upper(), "state": "live" if name in records else "on"}
-        for name in names if active_sports.get(name, True)
-    ]
+    rows = []
+    for name in names:
+        enabled = bool(active_sports.get(name, True))
+        state = "off" if not enabled else "live" if name in records else "on"
+        rows.append({"id": name, "label": name.replace("_", " ").upper(), "state": state})
+    return rows
 
 
-def _utility_rows(content) -> list[dict[str, str]]:
+def _market_rows(content, visible) -> list[dict[str, str]]:
+    """Show individual configured market symbols instead of one stock label."""
+
+    configured = ["SPY", "QQQ", "DIA", "IWM"]
+    for item in content:
+        if getattr(item, "family", "") != "stock":
+            continue
+        data = getattr(item, "data", {})
+        symbol = str(data.get("symbol") or data.get("home_abbr") or "").upper()
+        if symbol and symbol not in configured:
+            configured.append(symbol)
+    shown = {
+        str((item.get("data") or {}).get("symbol") or (item.get("data") or {}).get("home_abbr") or "").upper()
+        for item in visible.get("stock", ())
+        if isinstance(item, dict)
+    }
+    return [{"id": symbol.lower(), "label": symbol, "state": "live" if symbol in shown else "on"} for symbol in configured]
+
+
+def _utility_rows(visible) -> list[dict[str, str]]:
+    """Show a utility as live only when the selected mode can render it."""
+
     families = ("weather", "music", "flights", "airports", "golf", "racing", "clock")
-    shown = {item.family for item in content}
+    shown = set(visible)
     return [{"id": name, "label": name.replace("_", " ").upper(), "state": "live" if name in shown else "on"} for name in families]
 
 
@@ -168,6 +189,7 @@ def _display_modes() -> list[dict[str, str]]:
         {"id": "music", "name": "Music", "desc": "Connected Spotify playback", "group": "Data"},
         {"id": "flights", "name": "Flights", "desc": "Tracked visitor flight", "group": "Flight"},
         {"id": "airports", "name": "Airports", "desc": "Arrivals and departures", "group": "Flight"},
+        {"id": "stock", "name": "Stocks", "desc": "Live market index quotes", "group": "Data"},
         {"id": "clock", "name": "Clock", "desc": "Full panel time and date", "group": "Data"},
     ]
 
@@ -179,29 +201,42 @@ def _demo_modes() -> list[dict[str, str]]:
         {"id": "music", "label": "Music", "kind": "static"},
         {"id": "flights", "label": "Flights", "kind": "static"},
         {"id": "airports", "label": "Airports", "kind": "static"},
+        {"id": "stock", "label": "Stocks", "kind": "scroll"},
         {"id": "clock", "label": "Clock", "kind": "canvas"},
     ]
 
 
 def _display_content(application, ticker_id: str, *, mode: str | None = None) -> dict[str, list[dict[str, object]]]:
-    data = application.project_data(ticker_id)
-    settings = dict(data["settings"])
-    if mode is not None:
-        settings["mode"] = mode
-        settings["pinned_content_id"] = ""
-    return select_display_content(data["content"], settings)
+    data = application.project_data(ticker_id, mode=mode)
+    return data["content"]
 
 
-class _PreviewAssets:
-    def image(self, url: str, processor: str, size: tuple[int, int]):
-        del url, processor, size
-        return None
+def _preview_assets():
+    """Return the long-term server cache used by the public panel renderer."""
+
+    assets = current_app.extensions.get("sports_ticker.dashboard_assets")
+    if assets is not None:
+        return assets
+    from ticker_core.platform.assets import AssetCoordinator
+
+    directory = Path(current_app.config.get("DASHBOARD_ASSET_CACHE", "ticker_data/dashboard-assets"))
+    assets = AssetCoordinator(directory)
+    assets.start()
+    current_app.extensions["sports_ticker.dashboard_assets"] = assets
+    return assets
 
 
-@lru_cache(maxsize=1)
-def _preview_catalog():
+def _preview_catalog(assets):
+    """Build the content catalog once around the shared image cache."""
+
+    catalog = current_app.extensions.get("sports_ticker.dashboard_preview_catalog")
+    if catalog is not None:
+        return catalog
     from ticker_core.bootstrap import create_default_content_catalog
-    return create_default_content_catalog(_PreviewAssets())
+
+    catalog = create_default_content_catalog(assets)
+    current_app.extensions["sports_ticker.dashboard_preview_catalog"] = catalog
+    return catalog
 
 
 def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> Image.Image:
@@ -213,10 +248,14 @@ def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> I
         image = Image.new("RGB", (384, 32), "black")
         ImageDraw.Draw(image).text((8, 10), f"NO {mode.upper()} DATA", fill="white")
         return image
-    catalog = _preview_catalog()
+    assets = _preview_assets()
+    source_items = [dict(item.get("data") or {}) for item in items]
+    futures = assets.prefetch_payload({"content": {"sports": source_items}})
+    wait(futures, timeout=5)
+    catalog = _preview_catalog(assets)
     context = RenderContext(datetime.now())
     cards = [catalog.render(context, ContentScene(dict(item.get("data") or {}), mode)).image.convert("RGBA") for item in items]
-    if mode != "sports":
+    if mode not in {"sports", "stock"}:
         return cards[0].convert("RGB")
     width = sum(card.width + 1 for card in cards)
     strip = Image.new("RGBA", (max(384, width), 32), "black")
@@ -248,4 +287,19 @@ def _server_health() -> dict[str, object]:
         fds: int | str = len(os.listdir("/proc/self/fd"))
     except OSError:
         fds = "-"
-    return {"rss_mb": rss_mb, "threads": "-", "fds": fds}
+    return {"rss_mb": rss_mb, "threads": active_count(), "fds": fds}
+
+
+def _visible_sports(visible) -> set[str]:
+    """Read selected league names without confusing fetched and rendered data."""
+
+    names = set()
+    for item in visible.get("sports", ()):
+        if not isinstance(item, dict):
+            continue
+        data = item.get("data") or {}
+        if isinstance(data, dict):
+            name = str(data.get("sport") or data.get("league") or "").lower()
+            if name:
+                names.add(name)
+    return names

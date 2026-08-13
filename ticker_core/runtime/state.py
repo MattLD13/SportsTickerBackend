@@ -25,7 +25,7 @@ from .model import (
 
 
 T = TypeVar("T")
-CANONICAL_MODES = frozenset({"sports", "weather", "music", "flights", "airports", "clock", "pairing"})
+CANONICAL_MODES = frozenset({"sports", "weather", "music", "flights", "airports", "stock", "clock", "pairing"})
 
 
 def _value(source: object, name: str, default: T) -> T | Any:
@@ -150,6 +150,8 @@ def classify_content(
         return ContentClassification((), tuple(item for item in others if _is_visitor_flight(item)))
     if selected_mode == "airports":
         return ContentClassification((), tuple(item for item in others if _is_airport(item)))
+    if selected_mode == "stock":
+        return ContentClassification((), tuple(item for item in others if _is_stock(item)))
     if selected_mode == "clock":
         return ContentClassification((), tuple(item for item in others if _is_clock(item)))
     sports = tuple(item for item in others if _is_sports(item))
@@ -620,6 +622,11 @@ def _is_clock(item: Content) -> bool:
     return item.sport.lower() == "clock" or item.sport.lower().startswith("clock")
 
 
+def _is_stock(item: Content) -> bool:
+    """Return if one item belongs to the market mode."""
+    return item.type.lower() == "stock_ticker" or item.sport.lower() == "stock"
+
+
 def _is_sports(item: Content) -> bool:
     """Return if one item belongs in the sports mode."""
     return not (
@@ -627,5 +634,6 @@ def _is_sports(item: Content) -> bool:
         or _is_music(item)
         or _is_visitor_flight(item)
         or _is_airport(item)
+        or _is_stock(item)
         or _is_clock(item)
     )

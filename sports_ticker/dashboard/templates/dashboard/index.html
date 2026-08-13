@@ -115,8 +115,8 @@
       </div>
       <div class="cell stat">
         <div class="stat-label" data-led data-led-color="dim">ON THE PANEL</div>
-        <div class="stat-value" data-led data-led-scale="2" data-led-color="amber" data-led-fit data-led-group="stat">{{ live_count }}/{{ active_count }}</div>
-        <div class="stat-sub">of {{ league_count }} feeds enabled</div>
+        <div class="stat-value" data-led data-led-scale="2" data-led-color="amber" data-led-fit data-led-group="stat">{{ panel_cards }}</div>
+        <div class="stat-sub">cards ready in {{ global_mode.replace('_', ' ') }} mode</div>
       </div>
       <div class="cell stat">
         <div class="stat-label" data-led data-led-color="dim">MODE</div>
@@ -133,14 +133,14 @@
     <div class="sec-head">
       <span class="sec-label" data-led data-led-inline data-led-color="amber" data-led-pad="0">02 / FLEET</span>
       <h2 class="sec-title">
-        Every board, and why it is
-        <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">dark</span>
+        Every board, and its
+        <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="white">status</span>
       </h2>
       <p class="sec-note">
         Each controller reports its uptime, temperature and build on the same
-        poll it uses to ask for content. A panel showing nothing says which gate
-        is holding it, so a dark board never has to be guessed at.
-        Machine-readable at <a href="/api/health">/api/health</a>.
+        poll it uses to ask for content. An offline controller reports its last
+        known state, so it never needs to be guessed at.
+        Machine-readable at <a href="/api/v2/health">/api/v2/health</a>.
       </p>
 
       <div class="legend">
@@ -166,7 +166,7 @@
         <span>{{ b.temp }}</span>
         <span class="fleet-build">{{ b.build }}</span>
         {% if b.dark_reason %}
-        <span class="fleet-why">Dark — {{ b.dark_reason }}</span>
+        <span class="fleet-why">Offline: {{ b.dark_reason }}</span>
         {% endif %}
       </div>
       {% endfor %}
@@ -174,7 +174,7 @@
 
     <div class="fleet-foot">
       <span>{{ fleet_online }}/{{ fleet | length }} polling</span>
-      <span>{{ fleet_dark }} dark</span>
+      <span>{{ fleet_dark }} offline</span>
       <span class="spacer"></span>
       <span>server {{ server_health.rss_mb or '—' }}MB · {{ server_health.threads }} threads
             · {{ server_health.fds or '—' }} fds</span>
@@ -368,20 +368,13 @@
       </div>
       <div class="footer-col">
         <h4 data-led data-led-inline data-led-color="dim" data-led-pad="0">ENDPOINTS</h4>
-        <a href="/api/health">/api/health</a>
-        <a href="/api/state">/api/state</a>
-        <a href="/data">/data</a>
-        <a href="/leagues">/leagues</a>
-        <a href="/api/debug">/api/debug</a>
-        <a href="/api/timezone">/api/timezone</a>
-        <a href="/errors">/errors</a>
+        <a href="/api/v2/health">/api/v2/health</a>
+        <a href="/api/v2/tickers">/api/v2/tickers</a>
       </div>
       <div class="footer-col">
         <h4 data-led data-led-inline data-led-color="dim" data-led-pad="0">RENDERERS</h4>
         <a href="/api/preview/strip.png?mode=sports">/api/preview/strip.png</a>
-        <a href="/api/spotify/now">/api/spotify/now</a>
-        <a href="/api/flight/status">/api/flight/status</a>
-        <a href="/tickers">/tickers</a>
+        <a href="/demo">/demo</a>
       </div>
     </div>
   </div>

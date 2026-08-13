@@ -11,6 +11,7 @@ class DisplayMode(StrEnum):
     MUSIC = "music"
     FLIGHTS = "flights"
     AIRPORTS = "airports"
+    STOCK = "stock"
     CLOCK = "clock"
 
 

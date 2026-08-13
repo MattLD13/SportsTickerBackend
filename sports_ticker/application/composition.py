@@ -150,6 +150,8 @@ class BackendApplication:
         self,
         ticker_id: str,
         meta: Mapping[str, Any] | None = None,
+        *,
+        mode: str | None = None,
     ) -> dict[str, Any]:
         """Project one snapshot with active durable events appended."""
 
@@ -176,6 +178,8 @@ class BackendApplication:
         )
         if ticker.pairing is None or not ticker.pairing.paired:
             settings["mode"] = "pairing"
+        elif mode is not None:
+            settings["mode"] = str(mode).strip().lower()
         data["content"] = select_display_content(data["content"], settings)
         pairing = ticker.pairing
         data["meta"]["pairing"] = {
