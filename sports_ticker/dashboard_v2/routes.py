@@ -1,11 +1,18 @@
-"""Render the original public dashboard from version two data."""
+"""Render the established public dashboard from version two data."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from functools import lru_cache
+from io import BytesIO
+import os
+from pathlib import Path
 from time import monotonic
 
-from flask import current_app, render_template
+from flask import abort, current_app, render_template, request, send_file
+from PIL import Image, ImageDraw
+
+from sports_ticker.projections import select_display_content
 
 from . import dashboard_v2
 
@@ -13,7 +20,7 @@ from . import dashboard_v2
 @dashboard_v2.get("/")
 @dashboard_v2.get("/dashboard")
 def index():
-    """Render the original landing page with the current v2 snapshot."""
+    """Render the original landing page with current V2 fleet facts."""
 
     application = current_app.extensions["sports_ticker.backend_application"]
     tickers = application.list_tickers()
@@ -26,95 +33,135 @@ def index():
     sports = _league_rows(active_sports, content, "sports")
     utilities = _utility_rows(content)
     markets = _league_rows(active_sports, content, "stock")
-    health = application.scheduler_health() or {}
-    fleet = _fleet_rows(tickers, mode)
-    shown = sum(1 for item in content if item.is_shown)
-    version = _version_hash()
+    fleet = _fleet_rows(tickers)
+    visible = _display_content(application, ticker.ticker_id) if ticker is not None else {}
+    shown = sum(len(items) for items in visible.values())
     return render_template(
         "dashboard/index.html",
-        version_hash=version,
-        server_version=f"v2 {version}",
+        version_hash=_version_hash(),
+        server_version=_version_hash(),
         uptime_str=_uptime(),
         fleet=fleet,
         fleet_online=sum(1 for item in fleet if item["link"] == "online"),
-        fleet_dark=0,
-        server_health={"rss_mb": "—", "threads": "—", "fds": "—"},
+        fleet_dark=sum(1 for item in fleet if item["dark_reason"]),
+        server_health=_server_health(),
         global_mode=mode,
         sports_leagues=sports,
         util_leagues=utilities,
         market_leagues=markets,
         live_count=shown,
-        active_count=sum(1 for item in sports + utilities + markets if item["state"] != "off"),
+        active_count=shown,
         league_count=len(sports) + len(utilities) + len(markets),
         display_modes=_display_modes(),
         demo_modes=_demo_modes(),
         panel_w=384,
         panel_h=32,
         scroll_px_s=round(1 / settings.scroll_speed) if settings and settings.scroll_speed else 33,
-        provider_health=health,
     )
+
+
+@dashboard_v2.get("/demo")
+def demo():
+    """Render the original full-screen panel demo from V2 snapshot data."""
+
+    application = current_app.extensions["sports_ticker.backend_application"]
+    tickers = application.list_tickers()
+    settings = tickers[0].display_settings if tickers else None
+    return render_template(
+        "demo_ticker.html",
+        demo_modes=_demo_modes(),
+        panel_w=384,
+        panel_h=32,
+        scroll_px_s=round(1 / settings.scroll_speed) if settings and settings.scroll_speed else 33,
+    )
+
+
+@dashboard_v2.get("/api/preview/strip.png")
+def preview_strip():
+    """Render one no-hardware panel preview from current V2 data."""
+
+    mode = str(request.args.get("mode") or "sports").strip().lower()
+    if mode not in {item["id"] for item in _demo_modes()}:
+        abort(404)
+    application = current_app.extensions["sports_ticker.backend_application"]
+    tickers = application.list_tickers()
+    if not tickers:
+        abort(404)
+    image = _render_preview(_display_content(application, tickers[0].ticker_id, mode=mode), mode)
+    output = BytesIO()
+    image.save(output, format="PNG")
+    output.seek(0)
+    return send_file(output, mimetype="image/png", max_age=0)
 
 
 _STARTED_AT = monotonic()
 
 
 def _version_hash() -> str:
-    """Read the deployed build identifier without starting an extra service."""
+    """Read the deployed source build identifier."""
 
-    return str(current_app.config.get("VERSION", "v2"))[:7]
+    configured = str(current_app.config.get("VERSION") or "").strip()
+    if configured:
+        return configured[:12]
+    try:
+        return Path(os.environ.get("TICKER_VERSION_FILE", "VERSION")).read_text(encoding="utf-8").strip()[:12] or "unknown"
+    except OSError:
+        return "unknown"
 
 
 def _uptime() -> str:
-    """Format the current process uptime for the original status panel."""
-
     seconds = int(monotonic() - _STARTED_AT)
     hours, seconds = divmod(seconds, 3600)
     minutes, seconds = divmod(seconds, 60)
     return f"{hours}h {minutes}m" if hours else f"{minutes}m {seconds}s"
 
 
-def _fleet_rows(tickers, mode: str) -> list[dict[str, object]]:
-    """Project device health into the established landing-page fleet table."""
+def _fleet_rows(tickers) -> list[dict[str, object]]:
+    """Project Pi heartbeat metadata into established fleet rows."""
 
     now = datetime.now(timezone.utc).timestamp()
     rows = []
     for ticker in tickers:
         last_seen = ticker.device.last_seen_at
         age = None if last_seen is None else max(0, int(now - last_seen))
-        link = "online" if age is not None and age < 90 else "off"
+        metadata = ticker.device.metadata
+        temperature = metadata.get("temperature_c")
         rows.append({
             "name": ticker.name,
             "id": ticker.ticker_id[:8],
-            "link": link,
-            "mode": mode.replace("_", " "),
+            "link": "online" if age is not None and age < 90 else "off",
+            "mode": ("pairing" if not ticker.pairing.paired else ticker.display_settings.mode).replace("_", " "),
             "last_poll": "never" if age is None else f"{age}s ago",
-            "uptime": "—",
-            "temp": "—",
-            "build": "v2",
-            "dark_reason": "" if link == "online" else "No recent heartbeat",
+            "uptime": _duration(metadata.get("uptime_seconds")),
+            "temp": f"{float(temperature):.0f}C" if isinstance(temperature, (int, float)) else "-",
+            "build": str(metadata.get("build") or "-"),
+            "dark_reason": "" if age is not None and age < 90 else "No recent heartbeat",
         })
     return rows
 
 
 def _league_rows(active_sports, content, family: str) -> list[dict[str, str]]:
-    """Build original coverage chips from v2 settings and current content."""
+    """Build complete original coverage chips from V2 configuration."""
 
-    records = {item.data.get("sport", item.family) for item in content if item.family == family}
-    names = sorted({str(value).lower() for value in active_sports} | {str(value).lower() for value in records})
-    return [{"id": name, "label": name.replace("_", " ").upper(), "state": "live" if name in records else "on"} for name in names]
+    records = {str(item.data.get("sport", item.family)).lower() for item in content if item.family == family}
+    available = (
+        "nfl", "mlb", "nhl", "nba", "ncf_fbs", "ncf_fcs", "march_madness",
+        "soccer_epl", "soccer_fa_cup", "soccer_champ", "soccer_champions_league", "soccer_mls",
+    ) if family == "sports" else ("stock",) if family == "stock" else ()
+    names = tuple(dict.fromkeys((*available, *(str(value).lower() for value in active_sports), *records)))
+    return [
+        {"id": name, "label": name.replace("_", " ").upper(), "state": "live" if name in records else "on"}
+        for name in names if active_sports.get(name, True)
+    ]
 
 
 def _utility_rows(content) -> list[dict[str, str]]:
-    """Build original utility chips from the published v2 families."""
-
     families = ("weather", "music", "flights", "airports", "golf", "racing", "clock")
     shown = {item.family for item in content}
     return [{"id": name, "label": name.replace("_", " ").upper(), "state": "live" if name in shown else "on"} for name in families]
 
 
 def _display_modes() -> list[dict[str, str]]:
-    """Describe only the canonical v2 display modes."""
-
     return [
         {"id": "sports", "name": "Sports", "desc": "Scores, golf, and racing", "group": "Sports"},
         {"id": "weather", "name": "Weather", "desc": "Current local conditions", "group": "Data"},
@@ -126,8 +173,79 @@ def _display_modes() -> list[dict[str, str]]:
 
 
 def _demo_modes() -> list[dict[str, str]]:
-    """Retain original page controls until v2 preview frames are added."""
+    return [
+        {"id": "sports", "label": "Sports", "kind": "scroll"},
+        {"id": "weather", "label": "Weather", "kind": "static"},
+        {"id": "music", "label": "Music", "kind": "static"},
+        {"id": "flights", "label": "Flights", "kind": "static"},
+        {"id": "airports", "label": "Airports", "kind": "static"},
+        {"id": "clock", "label": "Clock", "kind": "canvas"},
+    ]
 
-    return [{"id": "clock", "label": "Clock", "kind": "canvas"}]
 
-    return render_template("dashboard_v2/index.html")
+def _display_content(application, ticker_id: str, *, mode: str | None = None) -> dict[str, list[dict[str, object]]]:
+    data = application.project_data(ticker_id)
+    settings = dict(data["settings"])
+    if mode is not None:
+        settings["mode"] = mode
+        settings["pinned_content_id"] = ""
+    return select_display_content(data["content"], settings)
+
+
+class _PreviewAssets:
+    def image(self, url: str, processor: str, size: tuple[int, int]):
+        del url, processor, size
+        return None
+
+
+@lru_cache(maxsize=1)
+def _preview_catalog():
+    from ticker_core.bootstrap import create_default_content_catalog
+    return create_default_content_catalog(_PreviewAssets())
+
+
+def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> Image.Image:
+    from ticker_core.context import RenderContext
+    from ticker_core.rendering import ContentScene
+
+    items = [item for records in content.values() for item in records if isinstance(item, dict)]
+    if not items:
+        image = Image.new("RGB", (384, 32), "black")
+        ImageDraw.Draw(image).text((8, 10), f"NO {mode.upper()} DATA", fill="white")
+        return image
+    catalog = _preview_catalog()
+    context = RenderContext(datetime.now())
+    cards = [catalog.render(context, ContentScene(dict(item.get("data") or {}), mode)).image.convert("RGBA") for item in items]
+    if mode != "sports":
+        return cards[0].convert("RGB")
+    width = sum(card.width + 1 for card in cards)
+    strip = Image.new("RGBA", (max(384, width), 32), "black")
+    x = 0
+    draw = ImageDraw.Draw(strip)
+    for card in cards:
+        draw.line((x, 0, x, 31), fill=(45, 45, 45, 255))
+        x += 1
+        strip.alpha_composite(card, (x, 0))
+        x += card.width
+    return strip.convert("RGB")
+
+
+def _duration(value: object) -> str:
+    if not isinstance(value, (int, float)):
+        return "-"
+    hours, remainder = divmod(max(0, int(value)), 3600)
+    minutes, _ = divmod(remainder, 60)
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+
+def _server_health() -> dict[str, object]:
+    try:
+        import resource
+        rss_mb: float | str = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1)
+    except ImportError:
+        rss_mb = "-"
+    try:
+        fds: int | str = len(os.listdir("/proc/self/fd"))
+    except OSError:
+        fds = "-"
+    return {"rss_mb": rss_mb, "threads": "-", "fds": fds}

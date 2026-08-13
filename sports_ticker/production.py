@@ -97,6 +97,7 @@ def create_production_application(
     app.extensions["sports_ticker.snapshot_store"] = snapshots
     app.extensions["sports_ticker.scheduler"] = scheduler
     app.extensions["sports_ticker.runtime"] = runtime
+    app.config["VERSION"] = _build_version()
     return app
 
 
@@ -152,6 +153,19 @@ def _positive_float(value: object) -> float:
     if result <= 0:
         raise ValueError("TICKER_REFRESH_TICK_SECONDS must be positive")
     return result
+
+
+def _build_version() -> str:
+    """Read the deployed Git build identifier without a Git process."""
+
+    explicit = os.environ.get("TICKER_BUILD", "").strip()
+    if explicit:
+        return explicit
+    path = Path(os.environ.get("TICKER_VERSION_FILE", "VERSION"))
+    try:
+        return path.read_text(encoding="utf-8").strip() or "unknown"
+    except OSError:
+        return "unknown"
 
 
 def _provision_initial_ticker(repository: TickerRepository) -> None:
