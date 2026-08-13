@@ -1382,6 +1382,51 @@ struct SituationPill: View {
             .cornerRadius(4).overlay(RoundedRectangle(cornerRadius: 4).stroke(color.opacity(0.3), lineWidth: 1))
     }
 }
+struct FootballPossessionContext: View {
+    let downDist: String?
+    let isRedZone: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "football.fill")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.yellow)
+            if let downDist, !downDist.isEmpty {
+                SituationPill(text: downDist, color: .yellow)
+            }
+            if isRedZone {
+                SituationPill(text: "RED ZONE", color: .red)
+            }
+        }
+    }
+}
+struct BaseballBattingContext: View {
+    let balls: Int
+    let strikes: Int
+    let outs: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "baseball.fill")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white)
+            HStack(spacing: 3) {
+                count("B", value: balls, color: .green)
+                count("S", value: strikes, color: .yellow)
+                count("O", value: outs, color: .red)
+            }
+            .padding(.horizontal, 6).padding(.vertical, 3)
+            .background(Color.white.opacity(0.12))
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.white.opacity(0.16), lineWidth: 1))
+            .cornerRadius(4)
+        }
+    }
+
+    @ViewBuilder private func count(_ label: String, value: Int, color: Color) -> some View {
+        Text(label).font(.system(size: 8, weight: .black)).foregroundStyle(color)
+        Text("\(value)").font(.system(size: 10, weight: .black)).foregroundStyle(.white)
+    }
+}
 struct ShootoutBubbles: View {
     let results: [String]
     let maxDots: Int
@@ -1706,9 +1751,6 @@ struct GameRow: View {
         guard let s = game.situation else { return "" }
         if let en = s.emptyNet, en { return "EMPTY NET" }
         if let pp = s.powerPlay, pp { return "PWR PLAY" }
-        if let dd = s.downDist { return dd }
-        if let rz = s.isRedZone, rz { return "RED ZONE" }
-        if let b = s.balls, let str = s.strikes, let o = s.outs { return "\(b)-\(str), \(o) Out" }
         return ""
     }
     
@@ -1734,9 +1776,46 @@ struct GameRow: View {
         if logo.contains("/\(pClean).png") || logo.contains("/\(pClean).svg") { return true }
         return false
     }
+
+    var isFootball: Bool {
+        ["nfl", "ncf_fbs", "ncf_fcs"].contains(game.sport)
+    }
+
+    var isBaseball: Bool { game.sport == "mlb" }
+
+    var hasBaseballCount: Bool {
+        guard let s = game.situation else { return false }
+        return s.balls != nil && s.strikes != nil && s.outs != nil
+    }
+
+    func isBattingTeam(isHome: Bool) -> Bool {
+        guard isBaseball, hasBaseballCount else { return false }
+        if hasPossession(isHome: isHome) { return true }
+        let status = game.status.lowercased()
+        if status.hasPrefix("top") { return !isHome }
+        if status.hasPrefix("bot") || status.hasPrefix("bottom") { return isHome }
+        return false
+    }
+
+    func ownsFootballContext(isHome: Bool) -> Bool {
+        guard isFootball, game.situation != nil else { return false }
+        return hasPossession(isHome: isHome)
+    }
+
+    @ViewBuilder func teamLiveContext(isHome: Bool) -> some View {
+        if ownsFootballContext(isHome: isHome), let s = game.situation {
+            FootballPossessionContext(downDist: s.downDist, isRedZone: s.isRedZone == true)
+        } else if isBattingTeam(isHome: isHome), let s = game.situation,
+                  let balls = s.balls, let strikes = s.strikes, let outs = s.outs {
+            BaseballBattingContext(balls: balls, strikes: strikes, outs: outs)
+        } else if !activeSituation.isEmpty, hasPossession(isHome: isHome) {
+            SituationPill(text: activeSituation, color: situationColor)
+        }
+    }
     
     var isSituationGlobal: Bool {
         guard game.situation != nil else { return false }
+        if isFootball || isBaseball { return false }
         return !activeSituation.isEmpty && !hasPossession(isHome: true) && !hasPossession(isHome: false)
     }
     
@@ -2008,7 +2087,7 @@ struct GameRow: View {
                                     .padding(.horizontal, 4).padding(.vertical, 2)
                                     .background(Color.black.opacity(0.3)).cornerRadius(4)
                             }
-                            else if !activeSituation.isEmpty, hasPossession(isHome: false) { SituationPill(text: activeSituation, color: situationColor) }
+                            else { teamLiveContext(isHome: false) }
                             Spacer(); Text(game.away_score).font(.headline).bold().foregroundColor(.white)
                         }
                         HStack {
@@ -2019,7 +2098,7 @@ struct GameRow: View {
                                     .padding(.horizontal, 4).padding(.vertical, 2)
                                     .background(Color.black.opacity(0.3)).cornerRadius(4)
                             }
-                            else if !activeSituation.isEmpty, hasPossession(isHome: true) { SituationPill(text: activeSituation, color: situationColor) }
+                            else { teamLiveContext(isHome: true) }
                             Spacer(); Text(game.home_score).font(.headline).bold().foregroundColor(.white)
                         }
                     }
