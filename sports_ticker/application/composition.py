@@ -100,6 +100,19 @@ class BackendApplication:
                     raise
         raise RuntimeError("could not issue a unique pairing code")
 
+    def unpair_ticker(self, ticker_id: str) -> tuple[TickerRecord, str]:
+        """Revoke controller access and return one new pairing code."""
+
+        identifier = str(ticker_id).strip()
+        for _ in range(10):
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            try:
+                return self.repository.unpair_ticker(identifier, code), code
+            except ValueError as error:
+                if str(error) != "pairing code is already in use":
+                    raise
+        raise RuntimeError("could not issue a unique pairing code")
+
     def authorize_controller(self, ticker_id: str, token: str) -> bool:
         """Validate one opaque controller token for one ticker."""
 

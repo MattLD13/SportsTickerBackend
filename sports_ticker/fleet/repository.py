@@ -808,6 +808,49 @@ class TickerRepository:
                 raise KeyError(identifier)
             return self._read_record(ticker_row)
 
+    def unpair_ticker(self, ticker_id: str, pairing_code: str) -> TickerRecord:
+        """Revoke one controller and reset the ticker to pairing mode."""
+
+        identifier = str(ticker_id).strip()
+        code = str(pairing_code).strip()
+        if not identifier or not code:
+            raise ValueError("ticker ID and pairing code are required")
+        with self._transaction():
+            self._require_ticker_locked(identifier)
+            existing = self._connection.execute(
+                "SELECT ticker_id FROM ticker_pairing WHERE pairing_code = ?",
+                (code,),
+            ).fetchone()
+            if existing is not None and str(existing["ticker_id"]) != identifier:
+                raise ValueError("pairing code is already in use")
+            self._connection.execute(
+                "DELETE FROM controller_sessions WHERE ticker_id = ?", (identifier,)
+            )
+            self._connection.execute(
+                "DELETE FROM spotify_oauth_attempts WHERE ticker_id = ?", (identifier,)
+            )
+            self._connection.execute(
+                "DELETE FROM spotify_connections WHERE ticker_id = ?", (identifier,)
+            )
+            self._connection.execute(
+                "INSERT INTO ticker_pairing "
+                "(ticker_id, pairing_code, paired, client_ids_json) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(ticker_id) DO UPDATE SET pairing_code = excluded.pairing_code, "
+                "paired = excluded.paired, client_ids_json = excluded.client_ids_json",
+                (identifier, code, 0, _dump(())),
+            )
+            self._connection.execute(
+                "UPDATE tickers SET updated_at = ? WHERE ticker_id = ?",
+                (time.time(), identifier),
+            )
+            row = self._connection.execute(
+                "SELECT ticker_id, name, created_at, updated_at FROM tickers WHERE ticker_id = ?",
+                (identifier,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(identifier)
+            return self._read_record(row)
+
     def authorize_controller(
         self,
         ticker_id: str,

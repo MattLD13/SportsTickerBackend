@@ -130,6 +130,18 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
             }
         ), 201
 
+    @app.delete("/api/v2/tickers/<ticker_id>/pairing")
+    def unpair_ticker(ticker_id: str):
+        identifier = _controller_ticker_owner(application, ticker_id)
+        ticker, code = application.unpair_ticker(identifier)
+        return jsonify(
+            {
+                "ticker_id": ticker.ticker_id,
+                "paired": False,
+                "pairing_code": code,
+            }
+        )
+
     @app.get("/api/v2/tickers/<ticker_id>")
     def get_ticker(ticker_id: str):
         ticker = _require_ticker(application, ticker_id)

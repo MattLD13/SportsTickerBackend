@@ -1026,12 +1026,25 @@ class TickerViewModel: ObservableObject {
         }
     
     func unpairTicker(id: String) {
-        devices.removeAll { $0.id == id }
-        if savedTickerID == id {
-            savedTickerID = nil
-            removeControllerToken(for: id)
-        }
-        updateOverallStatus()
+        guard let url = tickerURL(id, suffix: "/pairing"),
+              let request = authorizedRequest(url: url, method: "DELETE") else { return }
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            guard (response as? HTTPURLResponse)?.statusCode == 200,
+                  let data,
+                  let pairing = try? JSONDecoder().decode(PairingCodeResponse.self, from: data) else {
+                return
+            }
+            DispatchQueue.main.async {
+                self.devices.removeAll { $0.id == id }
+                self.games.removeAll()
+                self.removeControllerToken(for: id)
+                if self.savedTickerID == id {
+                    self.savedTickerID = nil
+                }
+                self.connectionStatus = "Ticker unpaired. Code: \(pairing.pairing_code)"
+                self.statusColor = .orange
+            }
+        }.resume()
     }
     
     // ==========================================
