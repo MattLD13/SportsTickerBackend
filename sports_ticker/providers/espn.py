@@ -225,7 +225,7 @@ def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:
         status = _SCHEDULED_DATE_PREFIX.sub("", status)
         time_match = _SCHEDULED_TIME.search(status)
         if time_match:
-            status = f"{time_match.group('time')}{time_match.group('meridiem')}"
+            status = f"{time_match.group('time')} {time_match.group('meridiem')}"
     clock = _text(
         status_obj.get("displayClock")
         or status_obj.get("clock")
