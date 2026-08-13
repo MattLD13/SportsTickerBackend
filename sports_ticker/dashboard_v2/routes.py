@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from concurrent.futures import wait
+from collections.abc import Mapping
 from io import BytesIO
 import os
 from pathlib import Path
@@ -249,12 +250,12 @@ def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> I
         ImageDraw.Draw(image).text((8, 10), f"NO {mode.upper()} DATA", fill="white")
         return image
     assets = _preview_assets()
-    source_items = [dict(item.get("data") or {}) for item in items]
-    futures = assets.prefetch_payload({"content": {"sports": source_items}})
+    render_items = [_render_item(item) for item in items]
+    futures = assets.prefetch_payload({"content": {"sports": render_items}})
     wait(futures, timeout=5)
     catalog = _preview_catalog(assets)
     context = RenderContext(datetime.now())
-    cards = [catalog.render(context, ContentScene(dict(item.get("data") or {}), mode)).image.convert("RGBA") for item in items]
+    cards = [catalog.render(context, ContentScene(item, mode)).image.convert("RGBA") for item in render_items]
     if mode not in {"sports", "stock"}:
         return cards[0].convert("RGB")
     width = sum(card.width + 1 for card in cards)
@@ -303,3 +304,21 @@ def _visible_sports(visible) -> set[str]:
             if name:
                 names.add(name)
     return names
+
+
+def _render_item(item: Mapping[str, object]) -> dict[str, object]:
+    """Use the exact protocol adapter before the shared renderer sees content."""
+
+    from ticker_core.protocol import ContentItem
+
+    return _thaw_preview(ContentItem.from_payload(item, "preview.content").data)
+
+
+def _thaw_preview(value: object) -> object:
+    """Copy immutable protocol values into renderer-friendly containers."""
+
+    if isinstance(value, Mapping):
+        return {str(key): _thaw_preview(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_preview(item) for item in value]
+    return value
