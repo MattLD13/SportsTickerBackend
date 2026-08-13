@@ -14,6 +14,7 @@ from sports_ticker.domain import ContentItem, DisplaySettings
 
 from .contracts import ProviderHealth, ProviderResult
 from .http import JsonHttpClient, UrllibJsonHttpClient
+from .logo_overrides import corrected_logo
 from .stale_cache import SettingsResultCache
 
 
@@ -230,6 +231,8 @@ def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:
 
     home_team = _team(home)
     away_team = _team(away)
+    home_team["logo"] = corrected_logo(league, home_team["abbreviation"], home_team["logo"])
+    away_team["logo"] = corrected_logo(league, away_team["abbreviation"], away_team["logo"])
     display_data = {
         "type": "scoreboard",
         "sport": league,
