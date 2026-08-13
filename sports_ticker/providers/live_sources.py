@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import os
 import re
+import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from math import isfinite
+from pathlib import Path
+from threading import Lock
+from time import monotonic, sleep, time
 from typing import Any
 from urllib.parse import urlencode
 
@@ -24,6 +28,13 @@ ESPN_RACING_URLS = {
     "nascar": "https://site.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard",
 }
 FINNHUB_QUOTE_URL = "https://finnhub.io/api/v1/quote"
+FINNHUB_CANDLE_URL = "https://finnhub.io/api/v1/stock/candle"
+_ETF_LOGO_DOMAINS = {
+    "QQQ": "invesco.com",
+    "SPY": "spdrs.com",
+    "IWM": "ishares.com",
+    "DIA": "statestreet.com",
+}
 
 
 class EspnGolfSource:
@@ -82,29 +93,51 @@ class EspnRacingSource:
 
 
 class FinnhubStockSource:
-    """Read selected market quotes through the configured Finnhub key pool."""
+    """Read selected market quotes with rate limits and durable last-known values."""
 
     def __init__(
         self,
         client: JsonHttpClient | None = None,
         *,
         timeout: float = 10.0,
+        cache_path: Path | str | None = None,
+        clock: callable = time,
+        monotonic_clock: callable = monotonic,
+        sleeper: callable = sleep,
     ) -> None:
         self._client = client or UrllibJsonHttpClient()
         self._timeout = _timeout(timeout)
-        self._keys = tuple(
+        self._keys = tuple(dict.fromkeys(
             value
-            for name in ("FINNHUB_KEY_1", "FINNHUB_KEY_2", "FINNHUB_KEY_3", "FINNHUB_KEY_4", "FINNHUB_KEY_5")
+            for name in (
+                "FINNHUB_API_KEY", "FINNHUB_KEY_1", "FINNHUB_KEY_2",
+                "FINNHUB_KEY_3", "FINNHUB_KEY_4", "FINNHUB_KEY_5",
+            )
             if (value := os.environ.get(name, "").strip())
+        ))
+        self._clock = clock
+        self._monotonic = monotonic_clock
+        self._sleep = sleeper
+        self._cache_path = Path(
+            cache_path or os.environ.get("TICKER_STOCK_CACHE_PATH", "ticker_data/stocks.json")
         )
+        self._quotes = self._load_cache()
         self._next_key = 0
+        self._request_interval = 1.1 / len(self._keys) if self._keys else 0.0
+        self._last_request = float("-inf")
+        self._request_lock = Lock()
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
-        if not self._keys:
-            return {"content": []}
         records: list[dict[str, object]] = []
+        changed = False
         for group in selected_market_groups(settings.active_sports):
-            records.extend(self._group_records(group.id, group.label, group.symbols))
+            group_records, group_changed = self._group_records(
+                group.id, group.label, group.symbols
+            )
+            records.extend(group_records)
+            changed = changed or group_changed
+        if changed:
+            self._save_cache()
         return {"content": records}
 
     def _group_records(
@@ -112,39 +145,148 @@ class FinnhubStockSource:
         group_id: str,
         group_label: str,
         symbols: Sequence[str],
-    ) -> list[dict[str, object]]:
-        """Fetch each selected symbol while retaining its market group."""
+    ) -> tuple[list[dict[str, object]], bool]:
+        """Fetch selected symbols in display order and retain cached quote failures."""
 
         records: list[dict[str, object]] = []
+        changed = False
         for symbol in symbols:
-            key = self._keys[self._next_key % len(self._keys)]
-            self._next_key += 1
-            quote = self._client.get_json(
-                f"{FINNHUB_QUOTE_URL}?{urlencode({'symbol': symbol, 'token': key})}",
-                timeout=self._timeout,
-            )
-            if not isinstance(quote, Mapping) or not _positive(quote.get("c")):
+            quote = self._fetch_quote(symbol) if self._keys else None
+            if quote is not None:
+                self._quotes[symbol] = quote
+                changed = True
+            quote = quote or self._quotes.get(symbol)
+            if quote is None:
                 continue
-            price = float(quote["c"])
-            change = _number(quote.get("d"))
-            percent = _number(quote.get("dp"))
             records.append(
                 {
                     "id": f"stock:{symbol}",
                     "type": "stock_ticker",
                     "sport": "stock",
                     "market_group": group_id,
+                    "list_id": group_id,
                     "symbol": symbol,
                     "home_abbr": symbol,
-                    "home_score": f"{price:.2f}",
-                    "away_score": f"{percent:+.2f}%",
-                    "home_logo": f"https://financialmodelingprep.com/image-stock/{symbol}.png",
-                    "situation": {"change": f"{change:+.2f}"},
+                    "home_score": quote["price"],
+                    "away_score": quote["change_pct"],
+                    "home_logo": _stock_logo_url(symbol),
+                    "situation": {"change": quote["change_amount"]},
                     "status": group_label,
                     "state": "in",
                 }
             )
-        return records
+        return records, changed
+
+    def _fetch_quote(self, symbol: str) -> dict[str, str] | None:
+        """Fetch one quote, with a close-price fallback after market data ages."""
+
+        key = self._next_api_key()
+        if not key:
+            return None
+        try:
+            quote = self._get_json(FINNHUB_QUOTE_URL, symbol=symbol, token=key)
+            if not isinstance(quote, Mapping) or not _positive(quote.get("c")):
+                return None
+            price = _number(quote.get("c"))
+            change = _number(quote.get("d"))
+            percent = _number(quote.get("dp"))
+            timestamp = _number(quote.get("t"))
+            if timestamp > 0 and self._clock() - timestamp > 30:
+                candle = self._latest_candle(symbol, key, previous_close=_number(quote.get("pc")))
+                if candle is not None:
+                    price, change, percent = candle
+            return {
+                "price": f"{price:.2f}",
+                "change_amount": f"{change:+.2f}",
+                "change_pct": f"{percent:+.2f}%",
+            }
+        except Exception:
+            return None
+
+    def _latest_candle(
+        self, symbol: str, key: str, *, previous_close: float
+    ) -> tuple[float, float, float] | None:
+        """Use the latest one-minute close when the quote timestamp is stale."""
+
+        now = int(self._clock())
+        candle = self._get_json(
+            FINNHUB_CANDLE_URL,
+            symbol=symbol,
+            resolution="1",
+            **{"from": now - 1800, "to": now, "token": key},
+        )
+        closes = candle.get("c") if isinstance(candle, Mapping) else None
+        if not isinstance(closes, Sequence) or isinstance(closes, (str, bytes)) or not closes:
+            return None
+        latest = _number(closes[-1])
+        if latest <= 0:
+            return None
+        reference = previous_close if previous_close > 0 else latest
+        change = latest - reference
+        return latest, change, (change / reference) * 100 if reference else 0.0
+
+    def _next_api_key(self) -> str:
+        """Rotate configured keys in stable order."""
+
+        key = self._keys[self._next_key % len(self._keys)]
+        self._next_key += 1
+        return key
+
+    def _get_json(self, endpoint: str, **query: object) -> Mapping[str, object]:
+        """Make one paced Finnhub request through the injected JSON client."""
+
+        with self._request_lock:
+            delay = self._request_interval - (self._monotonic() - self._last_request)
+            if delay > 0:
+                self._sleep(delay)
+            self._last_request = self._monotonic()
+        result = self._client.get_json(
+            f"{endpoint}?{urlencode(query)}", timeout=self._timeout
+        )
+        return result if isinstance(result, Mapping) else {}
+
+    def _load_cache(self) -> dict[str, dict[str, str]]:
+        """Load valid last-known quote values without allowing malformed cache data."""
+
+        try:
+            payload = json.loads(self._cache_path.read_text(encoding="utf-8"))
+            values = payload.get("quotes", payload) if isinstance(payload, Mapping) else {}
+            return {
+                str(symbol).upper(): {
+                    "price": str(data["price"]),
+                    "change_amount": str(data["change_amount"]),
+                    "change_pct": str(data["change_pct"]),
+                }
+                for symbol, data in values.items()
+                if isinstance(data, Mapping)
+                and all(key in data for key in ("price", "change_amount", "change_pct"))
+            }
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return {}
+
+    def _save_cache(self) -> None:
+        """Persist last-known valid quotes atomically for a backend restart."""
+
+        temporary = self._cache_path.with_name(f".{self._cache_path.name}.tmp")
+        try:
+            self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(
+                json.dumps({"quotes": self._quotes}, sort_keys=True, separators=(",", ":")),
+                encoding="utf-8",
+            )
+            os.replace(temporary, self._cache_path)
+        except OSError:
+            temporary.unlink(missing_ok=True)
+
+
+def _stock_logo_url(symbol: str) -> str:
+    """Return one stable stock logo URL that the Pi caches by URL and size."""
+
+    clean = str(symbol).strip().upper()
+    domain = _ETF_LOGO_DOMAINS.get(clean)
+    if domain:
+        return f"https://logo.clearbit.com/{domain}"
+    return f"https://financialmodelingprep.com/image-stock/{clean.replace('.', '-')}.png"
 
 
 class FlightRadarSource:
