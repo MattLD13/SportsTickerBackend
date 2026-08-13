@@ -9,6 +9,7 @@ import secrets
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from threading import Lock
 from typing import Any, Callable, Protocol
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
@@ -29,6 +30,16 @@ SPOTIFY_SCOPES = ("user-read-playback-state", "user-read-currently-playing")
 
 class SpotifyIntegrationError(RuntimeError):
     """Report a safe Spotify integration failure."""
+
+
+@dataclass(frozen=True, slots=True)
+class _PlaybackWindow:
+    """Keep the prior cover and three queued covers for one ticker."""
+
+    current_id: str
+    current_cover: str
+    previous_cover: str
+    next_covers: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +200,8 @@ class SpotifyIntegrationService:
         self._http = http or UrllibSpotifyHttpClient()
         self._clock = clock
         self._cipher = Fernet(config.encryption_key.encode("ascii"))
+        self._playback_windows: dict[str, _PlaybackWindow] = {}
+        self._playback_lock = Lock()
 
     @property
     def callback_uri(self) -> str:
@@ -321,8 +334,7 @@ class SpotifyIntegrationService:
                     )
                 )
             playback = self._http.get_playback(access_token)
-            queue = self._http.get_queue(access_token)
-            return _playback_record(playback, queue)
+            return self._windowed_playback(ticker_id, playback, access_token)
         except SpotifyIntegrationError as error:
             if "invalid_grant" in str(error).lower() or "unauthorized" in str(error).lower():
                 self._mark_reauthorization(connection)
@@ -346,6 +358,43 @@ class SpotifyIntegrationService:
                 updated_at=now,
             )
         )
+
+    def _windowed_playback(
+        self,
+        ticker_id: str,
+        playback: Mapping[str, Any] | None,
+        access_token: str,
+    ) -> dict[str, Any]:
+        """Keep one previous cover and the next three covers across polls."""
+
+        item = playback.get("item") if isinstance(playback, Mapping) else None
+        if not isinstance(item, Mapping):
+            return _playback_record(playback, None)
+        identifier = str(item.get("id") or "").strip()
+        if not identifier:
+            return _playback_record(playback, None)
+        with self._playback_lock:
+            previous = self._playback_windows.get(ticker_id)
+        queue = self._http.get_queue(access_token) if previous is None or previous.current_id != identifier else None
+        record = _playback_record(playback, queue)
+        cover = str(record.get("cover") or "")
+        queued = tuple(str(value) for value in record.get("next_covers", ()) if str(value))
+        with self._playback_lock:
+            current = self._playback_windows.get(ticker_id)
+            if current is not None and current.current_id == identifier:
+                record["last_cover"] = current.previous_cover
+                record["next_covers"] = list(current.next_covers)
+                return record
+            window = _PlaybackWindow(
+                current_id=identifier,
+                current_cover=cover,
+                previous_cover=current.current_cover if current is not None else "",
+                next_covers=queued[:3],
+            )
+            self._playback_windows[ticker_id] = window
+        record["last_cover"] = window.previous_cover
+        record["next_covers"] = list(window.next_covers)
+        return record
 
     def _encrypt(self, value: str) -> str:
         return self._cipher.encrypt(str(value).encode("utf-8")).decode("ascii")
@@ -385,6 +434,7 @@ def _playback_record(playback: Mapping[str, Any] | None, queue: Mapping[str, Any
             "name": "No active Spotify playback",
             "artist": "",
             "cover": "",
+            "last_cover": "",
             "next_covers": [],
         }
     album = item.get("album") if isinstance(item.get("album"), Mapping) else {}
@@ -403,6 +453,7 @@ def _playback_record(playback: Mapping[str, Any] | None, queue: Mapping[str, Any
         "name": str(item.get("name") or "Unknown track"),
         "artist": artist,
         "cover": cover,
+        "last_cover": "",
         "next_covers": next_covers,
         "duration": float(item.get("duration_ms") or 0) / 1000.0,
         "progress": float(playback.get("progress_ms") or 0) / 1000.0,
@@ -420,6 +471,7 @@ def _connection_record(status: str) -> dict[str, Any]:
         "name": "Connect Spotify" if status == "reauthorization_required" else "Spotify unavailable",
         "artist": "Open the ticker app to connect Spotify",
         "cover": "",
+        "last_cover": "",
         "next_covers": [],
         "source": "spotify",
     }
