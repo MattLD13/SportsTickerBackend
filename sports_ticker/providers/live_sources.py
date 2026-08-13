@@ -38,7 +38,7 @@ class EspnGolfSource:
             return {"content": []}
         competition = _first_mapping(event.get("competitions"))
         players = [_golf_player(value) for value in _mappings(competition.get("competitors"))]
-        players = [value for value in players if value is not None]
+        players = _rank_golf_players(value for value in players if value is not None)
         status = _status(event, competition)
         return {
             "content": [
@@ -285,13 +285,33 @@ def _golf_player(value: Mapping[str, Any]) -> dict[str, object] | None:
     round_scores = _mappings(value.get("linescores"))
     holes = _mappings(round_scores[0].get("linescores")) if round_scores else ()
     return {
-        "pos": value.get("order", "-"),
+        "pos": "-",
         "name": name,
         "total": value.get("score", 0),
         "today": round_scores[0].get("displayValue") if round_scores else None,
         "thru": len(holes),
         "holes": [item.get("value") for item in holes[:18]],
     }
+
+
+def _rank_golf_players(players: object) -> list[dict[str, object]]:
+    """Assign competition ranks so equal totals share a tied position."""
+
+    rows = [dict(value) for value in players if isinstance(value, Mapping)]
+    totals = [str(row.get("total") or "").strip().upper() for row in rows]
+    rank = 1
+    index = 0
+    while index < len(rows):
+        total = totals[index]
+        end = index + 1
+        while end < len(rows) and totals[end] == total:
+            end += 1
+        group_size = end - index
+        for row in rows[index:end]:
+            row["pos"] = f"T{rank}" if group_size > 1 and total else str(rank) if total else "-"
+        rank += group_size
+        index = end
+    return rows
 
 
 def _airport_rows(value: object, counterpart: str) -> list[dict[str, object]]:
