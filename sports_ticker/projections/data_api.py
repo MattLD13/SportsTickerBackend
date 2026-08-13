@@ -10,7 +10,7 @@ from ..domain import CONTENT_FAMILIES, ContentItem, DisplaySettings, TickerSnaps
 from ..providers.contracts import ProviderHealth
 
 
-_SPORTS_FAMILIES = frozenset(("sports", "golf", "racing", "stock"))
+_SPORTS_FAMILIES = frozenset(("sports", "golf", "racing"))
 _MODE_FAMILIES = {
     "sports": _SPORTS_FAMILIES,
     "live": _SPORTS_FAMILIES,

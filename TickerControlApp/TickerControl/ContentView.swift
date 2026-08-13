@@ -2379,8 +2379,10 @@ struct HomeView: View {
                         ForEach(splitGames.music) { game in
                             MusicNowPlayingCard(game: game)
                         }
-                        ForEach(splitGames.stocks) { game in
-                            StockFeedCard(game: game)
+                        if filterMode == "stock" {
+                            ForEach(splitGames.stocks) { game in
+                                StockFeedCard(game: game)
+                            }
                         }
                         ForEach(splitGames.weather) { game in
                             WeatherLocationCard(game: game)
