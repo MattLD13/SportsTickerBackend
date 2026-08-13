@@ -215,13 +215,6 @@ class RefreshScheduler:
         """Run due jobs once and return ticker IDs published in this pass."""
 
         current = self._monotonic() if now is None else float(now)
-        due = tuple(
-            job for job in self._providers.values() if current >= job.next_due
-        )
-        if not due:
-            return ()
-
-        wall_now = self._wall_clock()
         settings_by_ticker: dict[str, DisplaySettings] = {}
         failures_by_ticker: dict[str, list[str]] = {}
         for ticker in self._tickers.values():
@@ -233,6 +226,24 @@ class RefreshScheduler:
                 failures_by_ticker.setdefault(ticker.ticker_id, []).append(
                     f"settings: {_error_text(error)}"
                 )
+
+        due_by_name = {
+            job.name: job
+            for job in self._providers.values()
+            if current >= job.next_due
+        }
+        for job in self._providers.values():
+            for ticker_id, settings in settings_by_ticker.items():
+                cached = job.data_by_ticker.get(ticker_id)
+                if cached is None and job.health.last_success is not None:
+                    due_by_name[job.name] = job
+                elif cached is not None and cached.settings != settings:
+                    due_by_name[job.name] = job
+        due = tuple(due_by_name.values())
+        if not due:
+            return ()
+
+        wall_now = self._wall_clock()
 
         for job in due:
             advanced = _advance_due(job.next_due, current, job.interval)
@@ -312,10 +323,8 @@ class RefreshScheduler:
                 else:
                     published.append(ticker_id)
                 continue
-            try:
-                raise RuntimeError("provider data is not ready for ticker")
-            except Exception as error:
-                self._record_refresh_failure(due, error)
+            # A provider can wait for its first successful fetch.
+            # Keep its own health result. Skip unrelated health changes.
 
         return tuple(published)
 
