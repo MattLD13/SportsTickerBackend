@@ -6,9 +6,9 @@ from flask import Blueprint
 dashboard_v2 = Blueprint(
     "dashboard_v2",
     __name__,
-    template_folder="templates",
-    static_folder="static",
-    static_url_path="/dashboard/static/v2",
+    template_folder="../dashboard/templates",
+    static_folder="../dashboard/static",
+    static_url_path="/dashboard/static",
 )
 
 from . import routes as _routes  # noqa: E402,F401
