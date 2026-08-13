@@ -26,6 +26,10 @@ class MusicAnimationState:
     dominant: tuple[int, int, int] = (29, 185, 84)
     spindle: str = "black"
     visualizer: tuple[float, ...] = (2.0,) * 16
+    artwork: Image.Image | None = None
+    previous_artwork: Image.Image | None = None
+    previous_dominant: tuple[int, int, int] = (29, 185, 84)
+    fade_alpha: float = 1.0
 
 
 class MusicRenderer:
@@ -64,8 +68,25 @@ class MusicRenderer:
         cover_url = str(game.get("cover") or game.get("home_logo") or "")
         title = str(game.get("name") or game.get("away_abbr") or "Unknown")
         artist = str(game.get("artist") or game.get("home_abbr") or "Unknown")
-        artwork = self._logos.get(cover_url, (self._cover_size, self._cover_size)) if cover_url else None
+        loaded_artwork = self._logos.get(cover_url, (self._cover_size, self._cover_size)) if cover_url else None
+        artwork = state.artwork if state.cover_url == cover_url and state.artwork is not None else loaded_artwork
+        previous_artwork = state.previous_artwork
+        previous_dominant = state.previous_dominant
+        fade_alpha = state.fade_alpha
         dominant, spindle = self._colors(artwork, state.dominant, state.spindle)
+        if cover_url != state.cover_url or (artwork is not None and state.artwork is None):
+            previous_artwork = state.artwork
+            if previous_artwork is None:
+                last_cover = str(game.get("last_cover") or "")
+                previous_artwork = self._logos.get(last_cover, (self._cover_size, self._cover_size)) if last_cover else None
+            previous_dominant = state.dominant
+            fade_alpha = 0.5 if previous_artwork is not None and artwork is not None else 1.0
+        fade_alpha = min(1.0, fade_alpha + 0.1 * elapsed)
+        smooth_alpha = fade_alpha * fade_alpha * (3.0 - 2.0 * fade_alpha)
+        ui_color = tuple(
+            int(previous_dominant[index] + (dominant[index] - previous_dominant[index]) * smooth_alpha)
+            for index in range(3)
+        )
         next_state = replace(
             state,
             cover_url=cover_url,
@@ -74,14 +95,20 @@ class MusicRenderer:
             previous_time=now,
             dominant=dominant,
             spindle=spindle,
+            artwork=artwork,
+            previous_artwork=previous_artwork,
+            previous_dominant=previous_dominant,
+            fade_alpha=fade_alpha,
         )
         image = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
         draw = ImageDraw.Draw(image)
         composite = self._scratch.copy()
-        if artwork is not None:
-            cover = ImageOps.fit(artwork.convert("RGBA"), (self._cover_size, self._cover_size), centering=(0.5, 0.5))
-            cover.putalpha(self._mask)
-            composite.paste(cover, ((self._vinyl_size - self._cover_size) // 2,) * 2, cover)
+        current_cover = self._cover_artwork(artwork)
+        prior_cover = self._cover_artwork(previous_artwork)
+        if current_cover is not None:
+            if prior_cover is not None and smooth_alpha < 1.0:
+                current_cover = Image.blend(prior_cover, current_cover, smooth_alpha)
+            composite.paste(current_cover, ((self._vinyl_size - self._cover_size) // 2,) * 2, current_cover)
         inner = ImageDraw.Draw(composite)
         inner.ellipse((22, 22, 28, 28), fill="#222")
         inner.ellipse((23, 23, 27, 27), fill=spindle)
@@ -90,15 +117,23 @@ class MusicRenderer:
         text_x = 60
         self._scroll_text(image, title, self._fonts.medium, text_x, 0, 188, next_state.scroll, "white")
         self._scroll_text(image, artist, self._fonts.tiny, text_x + 16, 17, 172, next_state.scroll, (180, 180, 180))
-        draw.ellipse((text_x, 15, text_x + 12, 27), fill=dominant)
+        draw.ellipse((text_x, 15, text_x + 12, 27), fill=ui_color)
         for y0, y1, x0, x1 in ((18, 24, 63, 69), (20, 26, 63, 69), (22, 27, 64, 68)):
             draw.arc((x0, y0, x1, y1), 190, 350, fill="black", width=1)
-        heights = self._visualizer(draw, 248, 6, 80, 20, playing, now, dominant, state.visualizer)
+        heights = self._visualizer(draw, 248, 6, 80, 20, playing, now, ui_color, state.visualizer)
         next_state = replace(next_state, visualizer=heights)
-        draw.rectangle((0, 31, int(PANEL_W * max(0.0, min(1.0, local_progress / duration))), 31), fill=dominant)
+        draw.rectangle((0, 31, int(PANEL_W * max(0.0, min(1.0, local_progress / duration))), 31), fill=ui_color)
         remaining = f"-{self._time_text(duration - local_progress)}"
         draw.text((PANEL_W - draw.textlength(remaining, font=self._fonts.tiny) - 5, 10), remaining, font=self._fonts.tiny, fill="white")
         return image, next_state
+
+    def _cover_artwork(self, artwork: Image.Image | None) -> Image.Image | None:
+        """Fit one prepared cover into the centered vinyl label."""
+        if artwork is None:
+            return None
+        cover = ImageOps.fit(artwork.convert("RGBA"), (self._cover_size, self._cover_size), centering=(0.5, 0.5))
+        cover.putalpha(self._mask)
+        return cover
 
     def _visualizer(self, draw: ImageDraw.ImageDraw, x: int, y: int, width: int, height: int, playing: bool, now: float, color: tuple[int, int, int], old: tuple[float, ...]) -> tuple[float, ...]:
         del width

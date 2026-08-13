@@ -58,7 +58,7 @@ _INTERVALS: Final = {
     "racing": 15.0,
     "stock": 60.0,
     "flights": 30.0,
-    "music": 10.0,
+    "music": 0.6,
     "news": 30.0,
     "clock": 3600.0,
 }
@@ -90,7 +90,7 @@ def create_production_application(
     runtime = BackendRuntime(
         scheduler,
         application.event_service,
-        poll_interval=_positive_float(os.environ.get("TICKER_REFRESH_TICK_SECONDS", "1")),
+        poll_interval=_positive_float(os.environ.get("TICKER_REFRESH_TICK_SECONDS", "0.2")),
     )
     application.runtime = runtime
     app = create_app(application)

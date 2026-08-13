@@ -334,7 +334,9 @@ class SpotifyIntegrationService:
                     )
                 )
             playback = self._http.get_playback(access_token)
-            return self._windowed_playback(ticker_id, playback, access_token)
+            record = self._windowed_playback(ticker_id, playback, access_token)
+            record["fetch_ts"] = float(self._clock())
+            return record
         except SpotifyIntegrationError as error:
             if "invalid_grant" in str(error).lower() or "unauthorized" in str(error).lower():
                 self._mark_reauthorization(connection)
