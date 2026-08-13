@@ -1041,6 +1041,7 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
         adapter = requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=1)
         session.mount('http://', adapter)
         session.mount('https://', adapter)
+        next_poll = time.monotonic()
 
         while self.running:
             try:
@@ -1218,7 +1219,15 @@ class TickerStreamer(SportsMixin, WeatherMixin, GolfMixin, MusicMixin, FlightMix
                     last_hash = current_hash
 
                 _backoff = 1.0
-                time.sleep(0.5)
+                # Keep a 500 ms start-to-start cadence. The old trailing sleep
+                # added the request time to every cycle, turning a 350 ms
+                # request into an 850 ms data delay.
+                next_poll += 0.5
+                now = time.monotonic()
+                if next_poll > now:
+                    time.sleep(next_poll - now)
+                else:
+                    next_poll = now
 
             except Exception as e:
                 print(f"Poll Error: {e}")

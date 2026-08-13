@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from queue import Queue
 from threading import Event
+from time import monotonic
 from typing import Protocol
 
 from ticker_core.protocol import BackendClient, DisplayPayload, PollBackoff
@@ -59,6 +60,7 @@ class BackendPoller:
     def run(self, stop: Event, events: Queue[PollEvent]) -> None:
         """Poll until the stop event interrupts a delay."""
         backoff = PollBackoff()
+        next_poll = monotonic()
         while not stop.is_set():
             try:
                 payload = self._client.fetch_data(self._device_id, self._telemetry_headers())
@@ -70,5 +72,12 @@ class BackendPoller:
                 continue
             backoff = backoff.after_success()
             events.put(PollSucceeded(payload))
-            if stop.wait(self._success_interval):
+            next_poll += self._success_interval
+            now = monotonic()
+            if next_poll <= now:
+                next_poll = now
+                delay = 0.0
+            else:
+                delay = next_poll - now
+            if stop.wait(delay):
                 return

@@ -1,6 +1,8 @@
 from queue import Queue
 from threading import Event
 
+import pytest
+
 from ticker_core.app import BackendPoller, PollFailed, PollSucceeded
 
 
@@ -37,7 +39,7 @@ def test_poller_publishes_success_and_uses_regular_interval():
     event = events.get_nowait()
     assert isinstance(event, PollSucceeded)
     assert event.payload is payload
-    assert stop.delays == [0.5]
+    assert stop.delays == [pytest.approx(0.5, abs=0.01)]
     assert client.calls == [("ticker-1", {"X": "1"})]
 
 

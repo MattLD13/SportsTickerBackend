@@ -889,7 +889,7 @@ class SportsModesMixin:
                         # Sports-like modes share one raw buffer; filtering happens in /data.
                         continue
 
-                    if is_sports and (time.time() - self._last_sports_build) < SPORTS_UPDATE_INTERVAL:
+                    if is_sports and (time.time() - self._last_sports_build) < self.sports_refresh_interval():
                         # The slate is still fresh. Rebuilding it means re-hitting
                         # a dozen upstream endpoints, and every refresh request —
                         # from any worker, at any cadence — used to do exactly

@@ -6,7 +6,7 @@ import traceback
 from . import fetchers_runtime as _fetchers
 from .core import (
     state, tickers, data_lock,
-    SPORTS_UPDATE_INTERVAL, _normalize_single_pin, _STOCK_LISTS,
+    SPORTS_WORKER_INTERVAL, _normalize_single_pin, _STOCK_LISTS,
     STOCK_NEWS_ENABLED,
     Tee, tee_instance, purge_stale_tickers, union_active_sports,
 )
@@ -195,10 +195,10 @@ def sports_worker():
                 except Exception as e:
                     print(f"Sports Worker Error: {e}")
             execution_time = time.time() - start_time
-            time.sleep(max(0, SPORTS_UPDATE_INTERVAL - execution_time))
+            time.sleep(max(0, SPORTS_WORKER_INTERVAL - execution_time))
         except Exception as e:
             print(f"Sports Worker Fatal Error (recovering): {e}")
-            time.sleep(SPORTS_UPDATE_INTERVAL)
+            time.sleep(SPORTS_WORKER_INTERVAL)
 
 def stocks_worker():
     _last_active_key = None

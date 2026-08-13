@@ -78,3 +78,12 @@ class SportsFetcher(
             if item['type'] == 'sport' and 'fetch' in item 
         }
 
+    def sports_refresh_interval(self) -> float:
+        """Use the short poll interval only while a game is live."""
+        with self._mode_buffer_lock:
+            games = self._mode_buffers.get('sports', ())
+        for game in games:
+            if str(game.get('state', '')).lower() in {'in', 'half', 'crit'}:
+                return LIVE_SPORTS_UPDATE_INTERVAL
+        return SPORTS_UPDATE_INTERVAL
+
