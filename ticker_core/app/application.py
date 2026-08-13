@@ -100,6 +100,7 @@ class TickerApplication:
         self._strip_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ticker-strip")
         self._strip_future: Future[object] | None = None
         self._pending_strip: tuple[str, tuple[object, ...], RenderContext, str] | None = None
+        self._timing = _FrameTiming(enabled=_enabled("TICKER_FRAME_TIMING_LOG"))
 
     @property
     def runtime(self) -> TickerRuntime:
@@ -138,6 +139,7 @@ class TickerApplication:
 
     def step(self) -> FrameDecision:
         """Process queued backend work and present one paced frame decision."""
+        started_at = monotonic()
         if not self._started:
             self.start()
         self.process_events()
@@ -147,7 +149,9 @@ class TickerApplication:
         self._push_requested_modes()
         decision = self._runtime.next_frame()
         frame = self._frames.build(decision)
+        present_started_at = monotonic()
         self._sink.present(frame, brightness=decision.brightness, inverted=decision.inverted)
+        self._timing.record(started_at, present_started_at, monotonic())
         self._last_decision = decision
         return decision
 
@@ -327,6 +331,53 @@ def _strip_changed(previous, current) -> bool:
     if previous is None:
         return True
     return previous.mode != current.mode or previous.strip_key != current.strip_key
+
+
+class _FrameTiming:
+    """Report one low-cost live frame timing summary each second."""
+
+    def __init__(self, *, enabled: bool) -> None:
+        self._enabled = enabled
+        self._report_started_at: float | None = None
+        self._previous_started_at: float | None = None
+        self._frames = 0
+        self._max_interval_ms = 0.0
+        self._max_work_ms = 0.0
+        self._max_present_ms = 0.0
+
+    def record(self, started_at: float, present_started_at: float, finished_at: float) -> None:
+        """Keep only maxima, then write one summary without frame log spam."""
+        if not self._enabled:
+            return
+        if self._report_started_at is None:
+            self._report_started_at = started_at
+        if self._previous_started_at is not None:
+            self._max_interval_ms = max(self._max_interval_ms, (started_at - self._previous_started_at) * 1000)
+        self._previous_started_at = started_at
+        self._frames += 1
+        self._max_work_ms = max(self._max_work_ms, (present_started_at - started_at) * 1000)
+        self._max_present_ms = max(self._max_present_ms, (finished_at - present_started_at) * 1000)
+        elapsed = finished_at - self._report_started_at
+        if elapsed < 1.0:
+            return
+        print(
+            "ticker-frame-timing "
+            f"fps={self._frames / elapsed:.1f} "
+            f"interval_max_ms={self._max_interval_ms:.1f} "
+            f"work_max_ms={self._max_work_ms:.1f} "
+            f"present_max_ms={self._max_present_ms:.1f}",
+            flush=True,
+        )
+        self._report_started_at = finished_at
+        self._frames = 0
+        self._max_interval_ms = 0.0
+        self._max_work_ms = 0.0
+        self._max_present_ms = 0.0
+
+
+def _enabled(name: str) -> bool:
+    """Read one common true environment setting."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
 
 
 def _default_update_command(repository: Path) -> tuple[str, ...]:
