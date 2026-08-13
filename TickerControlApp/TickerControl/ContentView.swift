@@ -643,7 +643,8 @@ class TickerViewModel: ObservableObject {
     func fetchData() {
         let base = getBaseURL()
         if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
-        guard let tickerID = savedTickerID ?? (devices.count == 1 ? devices[0].id : nil),
+        guard let tickerID = savedTickerID,
+              controllerToken(for: tickerID) != nil,
               let url = tickerURL(tickerID, suffix: "/data") else {
             self.isServerReachable = true
             self.updateOverallStatus()
@@ -785,7 +786,9 @@ class TickerViewModel: ObservableObject {
                         DispatchQueue.main.async {
                             print("⛔ Access Denied. Unpairing local app.")
                             self.isEditing = false
+                            self.removeControllerToken(for: validID)
                             self.savedTickerID = nil
+                            self.games = []
                             self.devices.removeAll()
                             self.updateOverallStatus()
                         }
@@ -903,20 +906,22 @@ class TickerViewModel: ObservableObject {
                     // fetchData() would call updateOverallStatus() while
                     // isServerReachable is still false, showing "Server Offline".
                     self.isServerReachable = true
-                    let localTickerID = self.savedTickerID
-                    self.devices = decoded.tickers
-                        .filter { localTickerID == nil || $0.ticker_id == localTickerID }
-                        .map(\.tickerDevice)
-                    if localTickerID == nil && self.devices.count == 1 {
-                        self.fetchData()
+                    guard let localTickerID = self.savedTickerID,
+                          self.controllerToken(for: localTickerID) != nil else {
+                        self.devices = []
+                        self.games = []
+                        self.updateOverallStatus()
+                        return
                     }
+                    self.devices = decoded.tickers
+                        .filter { $0.ticker_id == localTickerID }
+                        .map(\.tickerDevice)
                     // === FIX: AUTO-LOGOUT LOGIC ===
                     // If the server says we have NO paired devices, we must forget the saved ID.
                     if self.devices.isEmpty {
-                        if self.savedTickerID != nil {
-                            print("🚫 Server reports no paired devices. Clearing latched ID.")
-                            self.savedTickerID = nil
-                        }
+                        self.removeControllerToken(for: localTickerID)
+                        self.games = []
+                        self.savedTickerID = nil
                     }
                     // ==============================
                     self.updateOverallStatus()
