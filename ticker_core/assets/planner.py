@@ -122,9 +122,9 @@ def _flight_logo_url(item: Mapping[str, Any]) -> str:
         code = str(item.get(key) or "").strip().upper().replace(" ", "")
         if len(code) in (2, 3) and code.isalnum():
             return f"https://www.google.com/s2/favicons?domain={_airline_domain(code)}&sz=64"
-    flight_id = str(item.get("away_abbr") or item.get("id") or "").strip().upper().replace(" ", "")
-    if len(flight_id) >= 2 and flight_id[:2].isalpha():
-        return f"https://www.google.com/s2/favicons?domain={_airline_domain(flight_id[:2])}&sz=64"
+    flight_id = str(item.get("away_abbr") or "").strip().upper().replace(" ", "")
+    if len(flight_id) in (2, 3) and flight_id.isalnum():
+        return f"https://www.google.com/s2/favicons?domain={_airline_domain(flight_id)}&sz=64"
     return ""
 
 

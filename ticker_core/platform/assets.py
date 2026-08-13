@@ -152,7 +152,7 @@ class AssetCoordinator(AssetView):
             self._executor = None
 
     def _schedule(self, request: AssetRequest) -> Future[Image.Image | None]:
-        if self.long_term.prepared.contains(request):
+        if self.long_term.prepared.contains_memory(request):
             done: Future[Image.Image | None] = Future()
             done.set_result(self.long_term.prepared.get(request))
             return done
@@ -174,6 +174,10 @@ class AssetCoordinator(AssetView):
                 del self._inflight[request]
 
     def _prepare(self, request: AssetRequest) -> Image.Image | None:
+        # Persistent images are decoded in this worker. The display loop only
+        # sees already prepared memory images.
+        if self.long_term.prepared.contains(request):
+            return self.long_term.prepared.get(request)
         raw = self.long_term.originals.load(request.url)
         if raw is None:
             try:

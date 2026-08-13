@@ -39,6 +39,7 @@ class PayloadSnapshot:
     """Store one complete server response at a monotonic time."""
 
     key: str
+    strip_key: str
     received_at: float
     status: str
     pairing_code: str

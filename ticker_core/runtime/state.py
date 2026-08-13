@@ -75,6 +75,35 @@ def _fingerprint(response: object, content: tuple[Content, ...]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _strip_fingerprint(content: tuple[Content, ...], mode: str) -> str:
+    """Build one key for scrolling pixels, excluding alerts and settings."""
+    values = {
+        "mode": mode,
+        "content": [
+            {
+                "id": item.id,
+                "type": item.type,
+                "sport": item.sport,
+                "data": _plain_json(item.data),
+            }
+            for item in content
+        ],
+    }
+    encoded = json.dumps(values, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _plain_json(value: object) -> object:
+    """Convert immutable protocol values into stable JSON values."""
+    if isinstance(value, Mapping):
+        return {str(key): _plain_json(child) for key, child in value.items()}
+    if isinstance(value, tuple):
+        return [_plain_json(child) for child in value]
+    if isinstance(value, list):
+        return [_plain_json(child) for child in value]
+    return value
+
+
 def classify_content(items: tuple[Content, ...] | tuple[object, ...], mode: str) -> ContentClassification:
     """Classify content for one canonical app mode."""
     selected_mode = _canonical_mode(mode)
@@ -290,6 +319,8 @@ class TickerRuntime:
         if isinstance(source_content, Mapping):
             source_content = source_content.get("sports", ())
         content = tuple(_content(item) for item in source_content if _mapping(item))
+        previous_mode = self._mode
+        previous_classification = self._classification
         server_mode = _canonical_mode(str(_value(local, "mode", "sports")))
         if self._mode_override is None:
             self._mode = server_mode
@@ -299,6 +330,7 @@ class TickerRuntime:
         scroll_interval = _interval(_value(local, "scroll_speed", 0.05), 0.05)
         snapshot = PayloadSnapshot(
             key=_fingerprint(response, content),
+            strip_key=_strip_fingerprint(content, self._mode),
             received_at=now,
             status=status,
             pairing_code=str(_value(response, "pairing_code", _value(response, "code", "------"))),
@@ -312,10 +344,14 @@ class TickerRuntime:
             cache_expires_at=now + expires_in if expires_in is not None else None,
         )
         self._snapshot = snapshot
-        self._classification = classify_content(content, self._mode)
-        self._active_static = None
-        self._static_until = 0.0
-        self._static_index = 0
+        classification = classify_content(content, self._mode)
+        self._classification = classification
+        if previous_mode != self._mode or previous_classification.static != classification.static:
+            self._active_static = None
+            self._static_until = 0.0
+            self._static_index = 0
+        if previous_mode != self._mode or (not classification.scrolling and self._strip is not None):
+            self._clear_strip()
         if bool(_value(global_config, "update", False)) and self._update is None:
             version = str(_value(global_config, "update_version", ""))
             self._update = UpdateRequest(version)
@@ -325,14 +361,14 @@ class TickerRuntime:
             self._queue_events(_value(response, "news", ()), self._news, self._seen_news, self.config.news_dedupe_age)
         return snapshot
 
-    def install_strip(self, payload_key: str, strip: StripLayout | None) -> bool:
+    def install_strip(self, strip_key: str, strip: StripLayout | None) -> bool:
         """Install a completed strip only for the current payload."""
-        if self._snapshot is None or self._snapshot.key != payload_key:
+        if self._snapshot is None or strip_key not in {self._snapshot.strip_key, self._snapshot.key}:
             return False
         previous = self._strip
         previous_offset = self._strip_offset
         self._strip = strip
-        self._strip_key = payload_key if strip else None
+        self._strip_key = self._snapshot.strip_key if strip else None
         if strip is None:
             self._strip_offset = 0
         elif previous is None:
@@ -446,7 +482,7 @@ class TickerRuntime:
             inverted=snapshot.inverted if snapshot else False,
             wall_time=wall_time,
             mode=snapshot.mode if snapshot else self._mode,
-            payload_key=snapshot.key if snapshot else None,
+            payload_key=snapshot.strip_key if snapshot else None,
             news=self._active_news.data if self._active_news else None,
             news_elapsed=self._monotonic() - self._active_news.started_at if self._active_news else None,
             stale=snapshot.stale if snapshot else False,

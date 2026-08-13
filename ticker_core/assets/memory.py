@@ -78,7 +78,23 @@ class PreparedAssetStore(AssetView):
         """Return if a fresh positive or negative entry exists."""
         entry = self._items.get(request)
         if entry is None:
-            return self._load_disk(request) is not None
+            image = self._load_disk(request)
+            if image is None:
+                return False
+            self._remember(request, image)
+            return True
+        if entry.expires_at < self._clock():
+            del self._items[request]
+            self._revision += 1
+            return False
+        self._items.move_to_end(request)
+        return True
+
+    def contains_memory(self, request: AssetRequest) -> bool:
+        """Return if a fresh result is already available without disk access."""
+        entry = self._items.get(request)
+        if entry is None:
+            return False
         if entry.expires_at < self._clock():
             del self._items[request]
             self._revision += 1

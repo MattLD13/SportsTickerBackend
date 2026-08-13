@@ -200,6 +200,21 @@ def test_news_attaches_to_a_static_mode_and_expires() -> None:
     assert ticker.next_frame().news is None
 
 
+def test_identical_poll_keeps_the_current_static_page_timing() -> None:
+    clocks = Clocks()
+    ticker = runtime(clocks)
+    full = {"mode": "sports_full", "brightness": 100, "scroll_speed": 0.05}
+    response = Response(local_config=full, content=(item("a"), item("b")))
+    ticker.accept_response(response)
+    assert ticker.next_frame().content.id == "a"
+
+    clocks.advance(1)
+    ticker.accept_response(response)
+    clocks.advance(2.1)
+
+    assert ticker.next_frame().content.id == "b"
+
+
 def test_mode_rejects_noncanonical_values() -> None:
     clocks = Clocks()
     ticker = runtime(clocks)

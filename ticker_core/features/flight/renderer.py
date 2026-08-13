@@ -159,8 +159,10 @@ class FlightRenderer:
             code = str(item.get(key) or "").strip().upper().replace(" ", "")
             if len(code) in (2, 3) and code.isalnum():
                 return f"https://www.google.com/s2/favicons?domain={FlightRenderer._domain(code)}&sz=64"
-        code = str(item.get("away_abbr") or item.get("id") or "").strip().upper().replace(" ", "")[:2]
-        return f"https://www.google.com/s2/favicons?domain={FlightRenderer._domain(code)}&sz=64" if code.isalpha() else ""
+        code = str(item.get("away_abbr") or "").strip().upper().replace(" ", "")
+        if len(code) in (2, 3) and code.isalnum():
+            return f"https://www.google.com/s2/favicons?domain={FlightRenderer._domain(code)}&sz=64"
+        return ""
 
     @staticmethod
     def _domain(code: str) -> str:

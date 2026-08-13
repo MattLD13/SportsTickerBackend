@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
+from concurrent.futures import Future, ThreadPoolExecutor
 from threading import Event, Thread, current_thread
 from time import monotonic
 import os
@@ -95,6 +96,10 @@ class TickerApplication:
         self._reboot_latched = False
         self._update_latched = False
         self._asset_revision = self._asset_revision_now()
+        self._asset_dirty_at: float | None = None
+        self._strip_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ticker-strip")
+        self._strip_future: Future[object] | None = None
+        self._pending_strip: tuple[str, tuple[object, ...], RenderContext, str] | None = None
 
     @property
     def runtime(self) -> TickerRuntime:
@@ -136,7 +141,9 @@ class TickerApplication:
         if not self._started:
             self.start()
         self.process_events()
+        self._install_completed_strip()
         self._rebuild_strip_after_asset_change()
+        self._install_completed_strip()
         self._push_requested_modes()
         decision = self._runtime.next_frame()
         frame = self._frames.build(decision)
@@ -169,6 +176,7 @@ class TickerApplication:
             self._poll_thread.join(timeout=6)
             self._poll_thread = None
         self._assets.close()
+        self._strip_worker.shutdown(wait=True, cancel_futures=True)
         self._client.close()
         self._sink.clear()
         close_sink = getattr(self._sink, "close", None)
@@ -218,23 +226,64 @@ class TickerApplication:
         self._runtime.mark_disconnected(expires_in=expires_in)
 
     def _rebuild_strip(self) -> None:
+        """Queue one replacement strip without delaying the next frame."""
         snapshot = self._runtime.snapshot
         if snapshot is None:
             return
-        layout = self._strips.build(
-            snapshot.key,
-            self._runtime.classification.scrolling,
+        request = (
+            snapshot.strip_key,
+            tuple(self._runtime.classification.scrolling),
             RenderContext(self._wall_clock()),
             self._runtime.mode,
         )
-        self._runtime.install_strip(snapshot.key, layout)
-        self._asset_revision = self._asset_revision_now()
+        prepare = getattr(self._strips, "prepare", None)
+        install = getattr(self._strips, "install", None)
+        if not callable(prepare) or not callable(install):
+            layout = self._strips.build(*request)
+            self._runtime.install_strip(snapshot.strip_key, layout)
+            self._asset_revision = self._asset_revision_now()
+            return
+        self._pending_strip = request
+        self._start_pending_strip()
+
+    def _start_pending_strip(self) -> None:
+        """Start the newest queued strip after the active build finishes."""
+        if self._strip_future is not None and not self._strip_future.done():
+            return
+        if self._pending_strip is None:
+            return
+        request = self._pending_strip
+        self._pending_strip = None
+        prepare = getattr(self._strips, "prepare")
+        self._strip_future = self._strip_worker.submit(prepare, *request)
+
+    def _install_completed_strip(self) -> None:
+        """Swap a completed strip only when it still matches current content."""
+        future = self._strip_future
+        if future is None or not future.done():
+            return
+        self._strip_future = None
+        try:
+            prepared = future.result()
+        except Exception:
+            self._start_pending_strip()
+            return
+        snapshot = self._runtime.snapshot
+        if snapshot is not None and getattr(prepared, "key", None) == snapshot.strip_key:
+            install = getattr(self._strips, "install")
+            install(prepared)
+            self._runtime.install_strip(snapshot.strip_key, getattr(prepared, "layout", None))
+        self._start_pending_strip()
 
     def _rebuild_strip_after_asset_change(self) -> None:
         """Refresh scrolling cards after background asset work changes images."""
         revision = self._asset_revision_now()
         if revision != self._asset_revision:
+            self._asset_revision = revision
+            self._asset_dirty_at = monotonic()
+        if self._asset_dirty_at is not None and monotonic() - self._asset_dirty_at >= 0.15:
             self._rebuild_strip()
+            self._asset_dirty_at = None
 
     def _asset_revision_now(self) -> int | None:
         """Read the optional prepared-image revision without I/O."""
@@ -277,7 +326,7 @@ def _strip_changed(previous, current) -> bool:
 
     if previous is None:
         return True
-    return previous.mode != current.mode or previous.content != current.content
+    return previous.mode != current.mode or previous.strip_key != current.strip_key
 
 
 def _default_update_command(repository: Path) -> tuple[str, ...]:

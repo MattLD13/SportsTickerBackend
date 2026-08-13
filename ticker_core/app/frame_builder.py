@@ -40,11 +40,12 @@ class FrameBuilder:
         self._news_banners = news_banners
         self._strips = strips
         self._connection_status = connection_status or ConnectionLostOverlay()
-        self._last_visible: Image.Image | None = None
+        self._last_base: Image.Image | None = None
 
     def build(self, decision: FrameDecision) -> Image.Image:
         """Build a complete `384x32` frame."""
         context = RenderContext(decision.wall_time)
+        base = True
         if decision.kind in {FrameKind.STOPPED, FrameKind.SLEEP}:
             frame = Image.new("RGB", (384, 32), "black")
         elif decision.kind == FrameKind.UPDATE:
@@ -54,10 +55,11 @@ class FrameBuilder:
         elif decision.kind == FrameKind.OFFLINE:
             frame = self._utility.offline(context, decision.offline_for or 0.0)
         elif decision.kind == FrameKind.SCORE_ALERT:
+            base = False
             frame = self._score_alerts.render(
                 decision.alert or {},
                 decision.alert_elapsed or 0.0,
-                self._last_visible,
+                self._last_base,
             )
         elif decision.kind == FrameKind.STATIC and decision.content is not None:
             frame = self._render_content(context, decision.content, decision.mode)
@@ -66,13 +68,13 @@ class FrameBuilder:
         else:
             frame = self._utility.empty(context)
         frame = self._panel_frame(frame)
-        if decision.news is not None and decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP}:
+        if base and decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP}:
+            self._last_base = frame.copy()
+        if decision.news is not None and decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP, FrameKind.SCORE_ALERT}:
             frame = self._news_banners.apply(frame, decision.news, decision.news_elapsed or 0.0)
         frame = self._panel_frame(frame)
         if decision.connection_lost and decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP, FrameKind.OFFLINE}:
             frame = self._connection_status.apply(frame)
-        if decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP}:
-            self._last_visible = frame.copy()
         return frame
 
     @staticmethod
@@ -92,6 +94,8 @@ class FrameBuilder:
     def _scroll_frame(self, decision: FrameDecision) -> Image.Image:
         strip = self._strips.get(decision.payload_key)
         if strip is None:
+            if self._last_base is not None:
+                return self._last_base.copy()
             return self._utility.empty(RenderContext(decision.wall_time))
         offset = max(0, decision.scroll_offset or 0)
         return strip.crop((offset, 0, offset + 384, 32))
