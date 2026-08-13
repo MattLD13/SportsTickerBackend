@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from math import isfinite
+import re
 from types import MappingProxyType
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -219,6 +220,8 @@ def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:
         or status_obj.get("displayValue")
         or state,
     )
+    if state == "pre":
+        status = _SCHEDULED_DATE_PREFIX.sub("", status)
     clock = _text(
         status_obj.get("displayClock")
         or status_obj.get("clock")
@@ -334,6 +337,9 @@ def _hex_color(value: Any) -> str:
     except ValueError:
         return ""
     return f"#{text.upper()}"
+
+
+_SCHEDULED_DATE_PREFIX = re.compile(r"^\d{1,2}/\d{1,2}\s*-\s*")
 
 
 def _first_mapping(value: Any) -> Mapping[str, Any]:
