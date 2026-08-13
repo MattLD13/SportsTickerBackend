@@ -158,13 +158,29 @@ def _provision_initial_ticker(repository: TickerRepository) -> None:
     """Create the first local ticker once when a deployment declares its ID."""
 
     ticker_id = os.environ.get("TICKER_INITIAL_TICKER_ID", "").strip()
-    if not ticker_id or repository.get_ticker(ticker_id) is not None:
+    if not ticker_id:
+        return
+    existing = repository.get_ticker(ticker_id)
+    if existing is not None:
+        if _initial_ticker_is_paired() and not existing.pairing.paired:
+            repository.update_ticker(ticker_id, pairing=PairingState(paired=True))
         return
     repository.create_ticker(
         ticker_id,
         name=os.environ.get("TICKER_INITIAL_TICKER_NAME", "Ticker"),
-        pairing=PairingState(pairing_code=f"{secrets.randbelow(1_000_000):06d}"),
+        pairing=(
+            PairingState(paired=True)
+            if _initial_ticker_is_paired()
+            else PairingState(pairing_code=f"{secrets.randbelow(1_000_000):06d}")
+        ),
     )
+
+
+def _initial_ticker_is_paired() -> bool:
+    """Return the one-time migration setting for the known initial ticker."""
+
+    value = os.environ.get("TICKER_INITIAL_TICKER_PAIRED", "").strip().lower()
+    return value in {"1", "true", "yes"}
 
 
 def _scoreboard_url(league: str, path: str) -> str:

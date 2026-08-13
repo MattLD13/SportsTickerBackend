@@ -86,6 +86,7 @@ jobs:
             echo "TICKER_DATABASE_PATH=/home/${{ secrets.SSH_USER }}/ticker_data/ticker-v2.sqlite3" >> .env
             echo "TICKER_INITIAL_TICKER_ID=722c59f4-fce3-4735-b072-faaa2f579a0a" >> .env
             echo "TICKER_INITIAL_TICKER_NAME=Personal Ticker" >> .env
+            echo "TICKER_INITIAL_TICKER_PAIRED=true" >> .env
             echo "TICKER_VERIFY_TLS=true" >> .env
             echo "TICKER_DEPLOY_TOKEN=${{ secrets.POOP_ADMIN_PASSWORD }}" >> .env
             chmod 600 .env
