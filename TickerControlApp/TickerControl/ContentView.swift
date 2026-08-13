@@ -613,7 +613,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         return request
     }
     
-    init() {
+    override init() {
         let savedURL = UserDefaults.standard.string(forKey: "serverURL") ?? "https://ticker.mattdicks.org"
         self.serverURL = savedURL
         super.init()
@@ -1232,7 +1232,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
               var request = authorizedRequest(url: url, method: "PATCH") else { return }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(
-            withJSONObject: ["spotify_account_id": accountID ?? NSNull()]
+            withJSONObject: ["spotify_account_id": accountID as Any]
         )
         URLSession.shared.dataTask(with: request) { _, response, _ in
             DispatchQueue.main.async {
