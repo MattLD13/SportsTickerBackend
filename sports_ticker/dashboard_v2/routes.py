@@ -147,8 +147,9 @@ def _league_rows(active_sports, visible) -> list[dict[str, str]]:
     available = (
         "nfl", "mlb", "nhl", "nba", "ncf_fbs", "ncf_fcs", "march_madness",
         "soccer_epl", "soccer_fa_cup", "soccer_champ", "soccer_champions_league", "soccer_mls",
+        "golf", "racing",
     )
-    records = _visible_sports(visible)
+    records = _visible_sports(visible) | {family for family in ("golf", "racing") if family in visible}
     names = tuple(dict.fromkeys((*available, *(str(value).lower() for value in active_sports), *records)))
     rows = []
     for name in names:
@@ -176,7 +177,7 @@ def _market_rows(visible) -> list[dict[str, str]]:
 def _utility_rows(visible) -> list[dict[str, str]]:
     """Show a utility as live only when the selected mode can render it."""
 
-    families = ("weather", "music", "flights", "airports", "golf", "racing", "clock")
+    families = ("weather", "music", "flights", "airports", "clock")
     shown = set(visible)
     return [{"id": name, "label": name.replace("_", " ").upper(), "state": "live" if name in shown else "on"} for name in families]
 
