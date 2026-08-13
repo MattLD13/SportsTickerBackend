@@ -147,9 +147,8 @@ def _league_rows(active_sports, visible) -> list[dict[str, str]]:
     available = (
         "nfl", "mlb", "nhl", "nba", "ncf_fbs", "ncf_fcs", "march_madness",
         "soccer_epl", "soccer_fa_cup", "soccer_champ", "soccer_champions_league", "soccer_mls",
-        "golf", "racing",
     )
-    records = _visible_sports(visible) | {family for family in ("golf", "racing") if family in visible}
+    records = _visible_sports(visible)
     names = tuple(dict.fromkeys((*available, *(str(value).lower() for value in active_sports), *records)))
     rows = []
     for name in names:
