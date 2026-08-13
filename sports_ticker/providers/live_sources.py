@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from sports_ticker.domain import DisplaySettings
+from sports_ticker.markets import selected_market_groups
 
 from .espn import _is_current_event
 from .http import JsonHttpClient, UrllibJsonHttpClient
@@ -87,11 +88,9 @@ class FinnhubStockSource:
         self,
         client: JsonHttpClient | None = None,
         *,
-        symbols: Sequence[str] = ("SPY", "QQQ", "DIA", "IWM"),
         timeout: float = 10.0,
     ) -> None:
         self._client = client or UrllibJsonHttpClient()
-        self._symbols = tuple(_symbols(symbols))
         self._timeout = _timeout(timeout)
         self._keys = tuple(
             value
@@ -101,11 +100,23 @@ class FinnhubStockSource:
         self._next_key = 0
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
-        del settings
         if not self._keys:
             return {"content": []}
         records: list[dict[str, object]] = []
-        for symbol in self._symbols:
+        for group in selected_market_groups(settings.active_sports):
+            records.extend(self._group_records(group.id, group.label, group.symbols))
+        return {"content": records}
+
+    def _group_records(
+        self,
+        group_id: str,
+        group_label: str,
+        symbols: Sequence[str],
+    ) -> list[dict[str, object]]:
+        """Fetch each selected symbol while retaining its market group."""
+
+        records: list[dict[str, object]] = []
+        for symbol in symbols:
             key = self._keys[self._next_key % len(self._keys)]
             self._next_key += 1
             quote = self._client.get_json(
@@ -122,17 +133,18 @@ class FinnhubStockSource:
                     "id": f"stock:{symbol}",
                     "type": "stock_ticker",
                     "sport": "stock",
+                    "market_group": group_id,
                     "symbol": symbol,
                     "home_abbr": symbol,
                     "home_score": f"{price:.2f}",
                     "away_score": f"{percent:+.2f}%",
                     "home_logo": f"https://financialmodelingprep.com/image-stock/{symbol}.png",
                     "situation": {"change": f"{change:+.2f}"},
-                    "status": "MARKET",
+                    "status": group_label,
                     "state": "in",
                 }
             )
-        return {"content": records}
+        return records
 
 
 class FlightRadarSource:

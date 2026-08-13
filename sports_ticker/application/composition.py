@@ -196,6 +196,8 @@ class BackendApplication:
             settings["mode"] = "pairing"
         elif mode is not None:
             settings["mode"] = str(mode).strip().lower()
+            settings["sports_presentation"] = "rotation"
+            settings["pinned_content_id"] = ""
         data["content"] = select_display_content(data["content"], settings)
         pairing = ticker.pairing
         data["meta"]["pairing"] = {

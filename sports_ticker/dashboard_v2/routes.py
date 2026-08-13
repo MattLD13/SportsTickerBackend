@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from concurrent.futures import wait
+from collections.abc import Mapping
 from io import BytesIO
 import os
 from pathlib import Path
@@ -12,6 +13,8 @@ from time import monotonic
 
 from flask import abort, current_app, render_template, request, send_file
 from PIL import Image, ImageDraw
+
+from sports_ticker.markets import MARKET_GROUPS
 
 from . import dashboard_v2
 
@@ -33,7 +36,7 @@ def index():
     visible = _display_content(application, ticker.ticker_id) if ticker is not None else {}
     sports = _league_rows(active_sports, visible)
     utilities = _utility_rows(visible)
-    markets = _market_rows(content, visible)
+    markets = _market_rows(visible)
     shown = sum(len(items) for items in visible.values())
     return render_template(
         "dashboard/index.html",
@@ -155,29 +158,25 @@ def _league_rows(active_sports, visible) -> list[dict[str, str]]:
     return rows
 
 
-def _market_rows(content, visible) -> list[dict[str, str]]:
-    """Show individual configured market symbols instead of one stock label."""
+def _market_rows(visible) -> list[dict[str, str]]:
+    """Show every stock group as available until it reaches the panel."""
 
-    configured = ["SPY", "QQQ", "DIA", "IWM"]
-    for item in content:
-        if getattr(item, "family", "") != "stock":
-            continue
-        data = getattr(item, "data", {})
-        symbol = str(data.get("symbol") or data.get("home_abbr") or "").upper()
-        if symbol and symbol not in configured:
-            configured.append(symbol)
     shown = {
-        str((item.get("data") or {}).get("symbol") or (item.get("data") or {}).get("home_abbr") or "").upper()
+        str((item.get("data") or {}).get("market_group") or "").lower()
         for item in visible.get("stock", ())
         if isinstance(item, dict)
     }
-    return [{"id": symbol.lower(), "label": symbol, "state": "live" if symbol in shown else "on"} for symbol in configured]
+    rows = []
+    for group in MARKET_GROUPS:
+        state = "live" if group.id in shown else "on"
+        rows.append({"id": group.id, "label": group.label, "state": state})
+    return rows
 
 
 def _utility_rows(visible) -> list[dict[str, str]]:
     """Show a utility as live only when the selected mode can render it."""
 
-    families = ("weather", "music", "flights", "airports", "golf", "racing", "clock")
+    families = ("weather", "music", "flights", "airports", "clock")
     shown = set(visible)
     return [{"id": name, "label": name.replace("_", " ").upper(), "state": "live" if name in shown else "on"} for name in families]
 
@@ -185,11 +184,11 @@ def _utility_rows(visible) -> list[dict[str, str]]:
 def _display_modes() -> list[dict[str, str]]:
     return [
         {"id": "sports", "name": "Sports", "desc": "Scores, golf, and racing", "group": "Sports"},
+        {"id": "stock", "name": "Stocks", "desc": "Live market groups", "group": "Data"},
         {"id": "weather", "name": "Weather", "desc": "Current local conditions", "group": "Data"},
         {"id": "music", "name": "Music", "desc": "Connected Spotify playback", "group": "Data"},
         {"id": "flights", "name": "Flights", "desc": "Tracked visitor flight", "group": "Flight"},
         {"id": "airports", "name": "Airports", "desc": "Arrivals and departures", "group": "Flight"},
-        {"id": "stock", "name": "Stocks", "desc": "Live market index quotes", "group": "Data"},
         {"id": "clock", "name": "Clock", "desc": "Full panel time and date", "group": "Data"},
     ]
 
@@ -197,11 +196,11 @@ def _display_modes() -> list[dict[str, str]]:
 def _demo_modes() -> list[dict[str, str]]:
     return [
         {"id": "sports", "label": "Sports", "kind": "scroll"},
+        {"id": "stock", "label": "Stocks", "kind": "scroll"},
         {"id": "weather", "label": "Weather", "kind": "static"},
         {"id": "music", "label": "Music", "kind": "static"},
         {"id": "flights", "label": "Flights", "kind": "static"},
         {"id": "airports", "label": "Airports", "kind": "static"},
-        {"id": "stock", "label": "Stocks", "kind": "scroll"},
         {"id": "clock", "label": "Clock", "kind": "canvas"},
     ]
 
@@ -249,12 +248,12 @@ def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> I
         ImageDraw.Draw(image).text((8, 10), f"NO {mode.upper()} DATA", fill="white")
         return image
     assets = _preview_assets()
-    source_items = [dict(item.get("data") or {}) for item in items]
-    futures = assets.prefetch_payload({"content": {"sports": source_items}})
+    render_items = [_render_item(item) for item in items]
+    futures = assets.prefetch_payload({"content": {"sports": render_items}})
     wait(futures, timeout=5)
     catalog = _preview_catalog(assets)
     context = RenderContext(datetime.now())
-    cards = [catalog.render(context, ContentScene(dict(item.get("data") or {}), mode)).image.convert("RGBA") for item in items]
+    cards = [catalog.render(context, ContentScene(item, mode)).image.convert("RGBA") for item in render_items]
     if mode not in {"sports", "stock"}:
         return cards[0].convert("RGB")
     width = sum(card.width + 1 for card in cards)
@@ -303,3 +302,21 @@ def _visible_sports(visible) -> set[str]:
             if name:
                 names.add(name)
     return names
+
+
+def _render_item(item: Mapping[str, object]) -> dict[str, object]:
+    """Use the exact protocol adapter before the shared renderer sees content."""
+
+    from ticker_core.protocol import ContentItem
+
+    return _thaw_preview(ContentItem.from_payload(item, "preview.content").data)
+
+
+def _thaw_preview(value: object) -> object:
+    """Copy immutable protocol values into renderer-friendly containers."""
+
+    if isinstance(value, Mapping):
+        return {str(key): _thaw_preview(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_preview(item) for item in value]
+    return value

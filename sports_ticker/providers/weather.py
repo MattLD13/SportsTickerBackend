@@ -161,6 +161,11 @@ def _content_item(
         "forecast": forecast,
     }
     data = {
+        "type": "weather",
+        "sport": "weather",
+        "home_abbr": str(temperature),
+        "away_abbr": settings.weather_city,
+        "status": icon.upper(),
         "city": settings.weather_city,
         "temperature": temperature,
         "temp": temperature,
