@@ -57,6 +57,18 @@ struct ShootoutData: Decodable, Hashable, Sendable {
     let away: [String]?
     let home: [String]?
 }
+struct AirportWeather: Decodable, Hashable, Sendable {
+    let iata: String?
+    let city: String?
+    let away_abbr: String?
+    let status: String?
+}
+struct AirportFlight: Decodable, Hashable, Sendable {
+    let away_abbr: String?
+    let home_abbr: String?
+    let other_iata: String?
+    let altitude: String?
+}
 struct Situation: Decodable, Hashable, Sendable {
     let possession: String?
     let downDist: String?
@@ -136,6 +148,12 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     let artist: String?
     let cover: String?
     let duration: Double?
+    let feels: String?
+    let wind: String?
+    let humidity: String?
+    let airportWeather: AirportWeather?
+    let arrivals: [AirportFlight]?
+    let departures: [AirportFlight]?
     
     var safeHomeAbbr: String { home_abbr ?? "" }
     var safeAwayAbbr: String { away_abbr ?? "" }
@@ -145,7 +163,7 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
     var safeAwayID: String { away_id ?? safeAwayAbbr }
     
     enum CodingKeys: String, CodingKey {
-        case id, sport, status, state, home_abbr, home_id, home_score, home_logo, home_color, home_alt_color, away_abbr, away_id, away_score, away_logo, away_color, away_alt_color, is_shown, situation, type, tourney_name, guest_name, route, origin_city, dest_city, alt, dist, eta_str, speed, progress, is_live, delay_min, is_delayed, name, artist, cover, duration
+        case id, sport, status, state, home_abbr, home_id, home_score, home_logo, home_color, home_alt_color, away_abbr, away_id, away_score, away_logo, away_color, away_alt_color, is_shown, situation, type, tourney_name, guest_name, route, origin_city, dest_city, alt, dist, eta_str, speed, progress, is_live, delay_min, is_delayed, name, artist, cover, duration, feels, wind, humidity, airportWeather = "weather", arrivals, departures
     }
     
     init(from decoder: Decoder) throws {
@@ -180,6 +198,12 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
         artist = try? c.decode(String.self, forKey: .artist)
         cover = try? c.decode(String.self, forKey: .cover)
         duration = try? c.decode(Double.self, forKey: .duration)
+        feels = Self.text(c, key: .feels)
+        wind = Self.text(c, key: .wind)
+        humidity = Self.text(c, key: .humidity)
+        airportWeather = try? c.decode(AirportWeather.self, forKey: .airportWeather)
+        arrivals = try? c.decode([AirportFlight].self, forKey: .arrivals)
+        departures = try? c.decode([AirportFlight].self, forKey: .departures)
         if let dmin = try? c.decode(Int.self, forKey: .delay_min) { delay_min = dmin }
         else if let dminD = try? c.decode(Double.self, forKey: .delay_min) { delay_min = Int(dminD) }
         else { delay_min = nil }
@@ -205,6 +229,15 @@ struct Game: Identifiable, Decodable, Hashable, Sendable {
         if let `as` = try? c.decode(String.self, forKey: .away_score) { away_score = `as` }
         else if let asInt = try? c.decode(Int.self, forKey: .away_score) { away_score = String(asInt) }
         else { away_score = "0" }
+    }
+
+    private static func text(
+        _ container: KeyedDecodingContainer<CodingKeys>, key: CodingKeys
+    ) -> String? {
+        if let value = try? container.decode(String.self, forKey: key) { return value }
+        if let value = try? container.decode(Int.self, forKey: key) { return String(value) }
+        if let value = try? container.decode(Double.self, forKey: key) { return String(format: "%.0f", value) }
+        return nil
     }
 }
 struct TeamData: Decodable, Identifiable, Hashable, Sendable {
@@ -1407,6 +1440,167 @@ struct MusicNowPlayingCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
+struct StockFeedCard: View {
+    let game: Game
+
+    private var isUp: Bool { !game.away_score.contains("-") }
+    private var changeColor: Color { isUp ? .green : .red }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            AsyncImage(url: URL(string: game.safeHomeLogo)) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFit().padding(7)
+                } else {
+                    Text(game.safeHomeAbbr.prefix(4)).font(.caption.weight(.heavy))
+                }
+            }
+            .frame(width: 54, height: 54)
+            .background(changeColor.opacity(0.13))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("MARKETS").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                Text(game.safeHomeAbbr).font(.headline).foregroundStyle(.white)
+                Text(game.status.isEmpty ? "Live quote" : game.status)
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 5) {
+                Text("$\(game.home_score)").font(.headline.weight(.bold)).foregroundStyle(.white)
+                Label("\(game.situation?.change ?? "")  \(game.away_score)", systemImage: isUp ? "arrow.up.right" : "arrow.down.right")
+                    .font(.caption2.weight(.bold)).foregroundStyle(changeColor)
+            }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(changeColor.opacity(0.35), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+struct WeatherFeedCard: View {
+    let game: Game
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: weatherIcon(for: game.status))
+                .font(.system(size: 30)).foregroundStyle(.yellow)
+                .frame(width: 54, height: 54)
+                .background(Color.blue.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 5) {
+                Text("LOCAL WEATHER").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                Text(game.safeAwayAbbr.isEmpty ? "Weather" : game.safeAwayAbbr)
+                    .font(.headline).foregroundStyle(.white)
+                Text(game.status.capitalized).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 5) {
+                Text("\(game.safeHomeAbbr)°").font(.system(size: 27, weight: .bold, design: .rounded)).foregroundStyle(.white)
+                Text(weatherDetails).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.blue.opacity(0.35), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var weatherDetails: String {
+        [game.feels.map { "Feels \($0)°" }, game.wind.map { "\($0) mph" }]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+}
+struct TrackedFlightFeedCard: View {
+    let game: Game
+
+    private var active: Bool { game.is_live == true }
+    private var delayed: Bool { game.is_delayed == true || (game.delay_min ?? 0) >= 15 }
+    private var accent: Color { delayed ? .red : (active ? .orange : .secondary) }
+    private var progress: Double { min(max(Double(game.progress ?? 0) / 100, 0), 1) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                Image(systemName: "airplane.circle.fill").font(.title2).foregroundStyle(accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(game.guest_name ?? game.id).font(.headline).foregroundStyle(.white)
+                    Text(game.route ?? "Tracked flight").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(game.status.uppercased()).font(.caption2.weight(.bold)).foregroundStyle(accent)
+            }
+            HStack {
+                Text(game.origin_city ?? "—").font(.caption.weight(.bold)).foregroundStyle(.white)
+                Spacer()
+                Image(systemName: "airplane").font(.caption).foregroundStyle(accent)
+                Spacer()
+                Text(game.dest_city ?? "—").font(.caption.weight(.bold)).foregroundStyle(.white)
+            }
+            ProgressView(value: progress).tint(accent).opacity(game.progress == nil ? 0 : 1)
+            if let eta = game.eta_str, !eta.isEmpty {
+                Text("ETA \(eta)").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(accent.opacity(0.35), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+struct AirportFeedCard: View {
+    let game: Game
+
+    private var airport: AirportWeather? { game.airportWeather }
+    private var arrivals: [AirportFlight] { game.arrivals ?? [] }
+    private var departures: [AirportFlight] { game.departures ?? [] }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "airplane.departure").font(.title2).foregroundStyle(.cyan)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(airport?.iata ?? "AIRPORT").font(.headline).foregroundStyle(.white)
+                    Text(airport?.city ?? "Live airport activity").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let weather = airport, !weather.away_abbr.orEmpty.isEmpty {
+                    Text(weather.away_abbr ?? "").font(.headline).foregroundStyle(.white)
+                    Image(systemName: weatherIcon(for: weather.status ?? "")).foregroundStyle(.cyan)
+                }
+            }
+            HStack(spacing: 18) {
+                AirportFeedLane(title: "ARR", icon: "airplane.arrival", flights: arrivals, color: .green)
+                AirportFeedLane(title: "DEP", icon: "airplane.departure", flights: departures, color: .orange)
+            }
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.cyan.opacity(0.35), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+struct AirportFeedLane: View {
+    let title: String
+    let icon: String
+    let flights: [AirportFlight]
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label(title, systemImage: icon).font(.caption2.weight(.bold)).foregroundStyle(color)
+            Text(flights.first?.home_abbr ?? "No flights")
+                .font(.caption.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
+            Text(flights.first?.other_iata ?? "Waiting for schedule")
+                .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private extension String? {
+    var orEmpty: String { self ?? "" }
+}
 struct GameRow: View {
     let game: Game
     let leagueLabel: String?
@@ -2024,22 +2218,37 @@ struct HomeView: View {
 
     private var filterMode: String { vm.state.mode == "sports_full" ? "sports" : vm.state.mode }
     private var leagueLabels: [String: String] { vm.leagueLabels }
-    private var splitGames: (other: [Game], airport: [Game], music: [Game]) { partitionedGames }
+    private var splitGames: (
+        other: [Game], music: [Game], stocks: [Game], weather: [Game],
+        trackedFlights: [Game], airports: [Game]
+    ) { partitionedGames }
 
-    private var partitionedGames: (other: [Game], airport: [Game], music: [Game]) {
-        var airport: [Game] = []
+    private var partitionedGames: (
+        other: [Game], music: [Game], stocks: [Game], weather: [Game],
+        trackedFlights: [Game], airports: [Game]
+    ) {
         var music: [Game] = []
+        var stocks: [Game] = []
+        var weather: [Game] = []
+        var trackedFlights: [Game] = []
+        var airports: [Game] = []
         var other: [Game] = []
         for g in vm.games {
             if g.type == "spotify" {
                 music.append(g)
-            } else if g.sport == "flight" && (g.type == "flight_weather" || g.type == "flight_arrival" || g.type == "flight_departure") {
-                airport.append(g)
+            } else if g.type == "stock_ticker" || g.sport == "stock" {
+                stocks.append(g)
+            } else if g.type == "weather" || g.sport == "weather" {
+                weather.append(g)
+            } else if g.type == "flight_visitor" {
+                trackedFlights.append(g)
+            } else if g.type == "flight_airport_hud" || g.sport == "airport" {
+                airports.append(g)
             } else {
                 other.append(g)
             }
         }
-        return (other, airport, music)
+        return (other, music, stocks, weather, trackedFlights, airports)
     }
 
     var body: some View {
@@ -2072,12 +2281,21 @@ struct HomeView: View {
                         ForEach(splitGames.music) { game in
                             MusicNowPlayingCard(game: game)
                         }
+                        ForEach(splitGames.stocks) { game in
+                            StockFeedCard(game: game)
+                        }
+                        ForEach(splitGames.weather) { game in
+                            WeatherFeedCard(game: game)
+                        }
+                        ForEach(splitGames.trackedFlights) { game in
+                            TrackedFlightFeedCard(game: game)
+                        }
+                        ForEach(splitGames.airports) { game in
+                            AirportFeedCard(game: game)
+                        }
                         ForEach(splitGames.other) { game in
                             GameRow(game: game, leagueLabel: leagueLabels[game.sport], isPinned: vm.isPinned(game))
                                 .onTapGesture { vm.togglePin(game) }
-                        }
-                        if !splitGames.airport.isEmpty {
-                            AirportBoardView(flights: splitGames.airport)
                         }
                     }
                 }.padding(.horizontal)
