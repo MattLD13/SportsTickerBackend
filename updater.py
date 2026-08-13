@@ -14,6 +14,7 @@ Usage:
 """
 
 import os
+import pwd
 import subprocess
 import sys
 import threading
@@ -47,8 +48,16 @@ def _ensure_safe_directory():
 
 
 def _git(*args, check=True, capture=True):
+    command = ["git", "-C", PROJECT_DIR, *args]
+    # The matrix service needs root, but root must not own source files after
+    # an OTA pull. Run Git as the repository owner whenever the updater starts
+    # from that service.
+    if getattr(os, "geteuid", lambda: -1)() == 0:
+        owner = pwd.getpwuid(os.stat(PROJECT_DIR).st_uid).pw_name
+        if owner != "root":
+            command = ["sudo", "-u", owner, *command]
     return subprocess.run(
-        ["git", "-C", PROJECT_DIR, *args],
+        command,
         capture_output=capture,
         text=True,
         check=check,

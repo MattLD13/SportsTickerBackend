@@ -33,6 +33,10 @@ else
     git clone "$REPO_URL" "$PROJECT_DIR"
 fi
 
+# The matrix service runs as root, but developers and OTA Git operations use
+# the named board user. Keep source ownership with that user.
+chown -R "$USER:$USER" "$PROJECT_DIR"
+
 # Allow root to run git in this directory (service runs as root)
 git config --global --add safe.directory "$PROJECT_DIR"
 
