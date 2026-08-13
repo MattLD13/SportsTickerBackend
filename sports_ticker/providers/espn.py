@@ -223,6 +223,9 @@ def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:
     )
     if state == "pre":
         status = _SCHEDULED_DATE_PREFIX.sub("", status)
+        time_match = _SCHEDULED_TIME.search(status)
+        if time_match:
+            status = f"{time_match.group('time')}{time_match.group('meridiem')}"
     clock = _text(
         status_obj.get("displayClock")
         or status_obj.get("clock")
@@ -343,6 +346,7 @@ def _hex_color(value: Any) -> str:
 
 
 _SCHEDULED_DATE_PREFIX = re.compile(r"^\d{1,2}/\d{1,2}\s*-\s*")
+_SCHEDULED_TIME = re.compile(r"(?P<time>\d{1,2}:\d{2})\s*(?P<meridiem>[AP]M)\b")
 
 
 def _first_mapping(value: Any) -> Mapping[str, Any]:
