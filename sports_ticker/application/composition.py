@@ -13,7 +13,7 @@ from typing import Any, Callable
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.fleet import DeviceMetadata, TickerRecord, TickerRepository
 from sports_ticker.providers import ProviderHealth
-from sports_ticker.projections import project_data_v2
+from sports_ticker.projections import project_data_v2, select_display_content
 
 from .events import EventService, event_to_mapping
 from .scheduler import RefreshScheduler, SchedulerHealth
@@ -176,6 +176,7 @@ class BackendApplication:
         )
         if ticker.pairing is None or not ticker.pairing.paired:
             settings["mode"] = "pairing"
+        data["content"] = select_display_content(data["content"], settings)
         pairing = ticker.pairing
         data["meta"]["pairing"] = {
             "paired": bool(pairing is not None and pairing.paired),

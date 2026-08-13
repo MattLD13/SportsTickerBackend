@@ -10,6 +10,9 @@ from ..domain import CONTENT_FAMILIES, ContentItem, DisplaySettings, TickerSnaps
 from ..providers.contracts import ProviderHealth
 
 
+_SPORTS_FAMILIES = frozenset(("sports", "golf", "racing"))
+
+
 def project_data_v2(
     snapshot: TickerSnapshot,
     health: ProviderHealth | Mapping[str, Any],
@@ -81,6 +84,31 @@ def _settings_value(settings: DisplaySettings) -> dict[str, Any]:
     }
 
 
+def select_display_content(
+    content: Mapping[str, list[dict[str, Any]]],
+    settings: Mapping[str, Any],
+) -> dict[str, list[dict[str, Any]]]:
+    """Return only records that the receiving panel can show now."""
+
+    mode = str(settings.get("mode") or "sports").strip().lower()
+    if mode == "pairing":
+        return {}
+    families = _SPORTS_FAMILIES if mode == "sports" else frozenset((mode,))
+    selected = {
+        family: list(items)
+        for family, items in content.items()
+        if family in families and items
+    }
+    pinned = str(settings.get("pinned_content_id") or "").strip()
+    if mode == "sports" and pinned:
+        selected = {
+            family: [item for item in items if str(item.get("id") or "") == pinned]
+            for family, items in selected.items()
+        }
+        selected = {family: items for family, items in selected.items() if items}
+    return selected
+
+
 def _content_item(item: ContentItem) -> dict[str, Any]:
     """Serialize one canonical content item without retaining its object."""
 
@@ -133,4 +161,4 @@ def _json_value(value: Any) -> Any:
     raise TypeError(f"value of type {type(value).__name__} is not JSON-ready")
 
 
-__all__ = ["project_data_v2"]
+__all__ = ["project_data_v2", "select_display_content"]

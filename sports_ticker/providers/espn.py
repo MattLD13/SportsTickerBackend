@@ -186,16 +186,15 @@ def _content_sort_key(item: ContentItem) -> tuple[int, str, str, str, str]:
     """Keep the original scoreboard order after all leagues merge."""
 
     data = item.data
-    canonical = _mapping(data.get("canonical"))
-    state = _text(canonical.get("state"), "pre").lower()
-    status = _text(canonical.get("status")).upper()
+    state = _text(data.get("state"), "pre").lower()
+    status = _text(data.get("status")).upper()
     priority = 3 if state == "post" or "FINAL" in status else 2
     return (
         priority,
-        _text(data.get("date"), "9999"),
-        _text(canonical.get("league")),
-        _text(canonical.get("home_abbr")),
-        _text(canonical.get("away_abbr")),
+        _text(data.get("startTimeUTC"), "9999"),
+        _text(data.get("sport")),
+        _text(data.get("home_abbr")),
+        _text(data.get("away_abbr")),
     )
 
 
@@ -228,30 +227,38 @@ def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:
 
     home_team = _team(home)
     away_team = _team(away)
-    canonical = {
-        "league": league,
+    display_data = {
+        "type": "scoreboard",
+        "sport": league,
+        "id": event_id,
         "state": state,
         "status": status,
-        "clock": clock,
+        "startTimeUTC": _text(event.get("date")),
+        "estimated_duration": 180,
         "home_abbr": home_team["abbreviation"],
         "home_score": home_team["score"],
         "home_logo": home_team["logo"],
+        "home_color": home_team["color"],
+        "home_alt_color": home_team["alt_color"],
         "away_abbr": away_team["abbreviation"],
         "away_score": away_team["score"],
         "away_logo": away_team["logo"],
+        "away_color": away_team["color"],
+        "away_alt_color": away_team["alt_color"],
+        "situation": _display_situation(
+            competition,
+            home_abbr=home_team["abbreviation"],
+            away_abbr=away_team["abbreviation"],
+        ),
     }
-    source_data = dict(event)
-    source_data["source_event"] = event
-    source_data["source_provider"] = "espn"
-    source_data.setdefault("source", "espn")
-    source_data.setdefault("league", league)
-    source_data["canonical"] = canonical
+    if clock:
+        display_data["situation"]["clock"] = clock
     return ContentItem(
         id=event_id,
         family="sports",
         kind="scoreboard",
         is_shown=True,
-        data=source_data,
+        data=display_data,
     )
 
 
@@ -281,9 +288,52 @@ def _team(competitor: Mapping[str, Any]) -> Mapping[str, Any]:
             or source.get("shortDisplayName")
             or source.get("displayName")
         ),
-        "score": competitor.get("score", competitor.get("displayScore")),
+        "score": _text(competitor.get("score", competitor.get("displayScore"))),
         "logo": None if logo is None else str(logo),
+        "color": _hex_color(source.get("color")),
+        "alt_color": _hex_color(source.get("alternateColor")),
     }
+
+
+def _display_situation(
+    competition: Mapping[str, Any],
+    *,
+    home_abbr: str,
+    away_abbr: str,
+) -> dict[str, Any]:
+    """Keep only live facts that a 384 by 32 renderer can draw."""
+
+    source = _mapping(competition.get("situation"))
+    allowed = (
+        "balls", "strikes", "outs", "onFirst", "onSecond", "onThird",
+        "down", "distance", "yardLine", "downDistanceText",
+        "shortDownDistanceText", "isRedZone", "powerPlay", "emptyNet",
+        "period", "periodName", "batterName", "pitcherName",
+        "batterAvg", "pitcherPitches", "lastPitchSpeed", "lastPitchType",
+    )
+    result = {key: source[key] for key in allowed if key in source}
+    possession = str(source.get("possession") or "").strip()
+    competitors = _competitors(competition.get("competitors"))
+    home = _find_side(competitors, "home")
+    away = _find_side(competitors, "away")
+    if possession and possession == str(_mapping(home.get("team")).get("id") or ""):
+        result["possession"] = home_abbr
+    elif possession and possession == str(_mapping(away.get("team")).get("id") or ""):
+        result["possession"] = away_abbr
+    return result
+
+
+def _hex_color(value: Any) -> str:
+    """Return a renderer-ready six digit color or an empty value."""
+
+    text = _text(value).strip().lstrip("#")
+    if len(text) != 6:
+        return ""
+    try:
+        int(text, 16)
+    except ValueError:
+        return ""
+    return f"#{text.upper()}"
 
 
 def _first_mapping(value: Any) -> Mapping[str, Any]:
