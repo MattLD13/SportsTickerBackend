@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import os
 import secrets
@@ -36,7 +35,6 @@ class SpotifyConfig:
     """Contain deployment-owned Spotify OAuth configuration."""
 
     client_id: str
-    client_secret: str
     callback_uri: str
     app_return_uri: str
     encryption_key: str
@@ -45,7 +43,6 @@ class SpotifyConfig:
     def __post_init__(self) -> None:
         for value, name in (
             (self.client_id, "client ID"),
-            (self.client_secret, "client secret"),
             (self.callback_uri, "callback URI"),
             (self.app_return_uri, "app return URI"),
             (self.encryption_key, "encryption key"),
@@ -61,7 +58,6 @@ class SpotifyConfig:
         except (ValueError, UnicodeEncodeError) as error:
             raise ValueError("Spotify encryption key is not a Fernet key") from error
         object.__setattr__(self, "client_id", str(self.client_id).strip())
-        object.__setattr__(self, "client_secret", str(self.client_secret).strip())
         object.__setattr__(self, "callback_uri", callback)
         object.__setattr__(self, "app_return_uri", app_return)
         object.__setattr__(self, "encryption_key", str(self.encryption_key).strip())
@@ -73,7 +69,6 @@ class SpotifyConfig:
 
         return cls(
             client_id=os.environ.get("SPOTIFY_CLIENT_ID", ""),
-            client_secret=os.environ.get("SPOTIFY_CLIENT_SECRET", ""),
             callback_uri=os.environ.get("SPOTIFY_CALLBACK_URI", ""),
             app_return_uri=os.environ.get("SPOTIFY_APP_RETURN_URI", ""),
             encryption_key=os.environ.get("SPOTIFY_TOKEN_ENCRYPTION_KEY", ""),
@@ -127,11 +122,11 @@ class UrllibSpotifyHttpClient:
         return self._get("/me/player/queue", access_token)
 
     def _token(self, values: Mapping[str, str], config: SpotifyConfig) -> Mapping[str, Any]:
-        credentials = base64.b64encode(f"{config.client_id}:{config.client_secret}".encode("utf-8")).decode("ascii")
+        payload = {"client_id": config.client_id, **values}
         request = Request(
             SPOTIFY_TOKEN_URL,
-            data=urlencode(values).encode("utf-8"),
-            headers={"Authorization": f"Basic {credentials}", "Content-Type": "application/x-www-form-urlencoded"},
+            data=urlencode(payload).encode("utf-8"),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
             method="POST",
         )
         return self._json(request)
