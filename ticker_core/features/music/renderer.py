@@ -55,12 +55,14 @@ class MusicRenderer:
         elapsed = 0.0 if state.previous_time is None else max(0.0, now - state.previous_time)
         situation = game.get("situation", {})
         situation = situation if isinstance(situation, dict) else {}
-        playing = bool(situation.get("is_playing", False))
-        progress = self._number(situation.get("progress"))
-        fetch_time = self._number(situation.get("fetch_ts"), now)
-        duration = max(1.0, self._number(situation.get("duration"), 1.0))
+        playing = bool(game.get("is_playing", situation.get("is_playing", False)))
+        progress = self._number(game.get("progress", situation.get("progress")))
+        fetch_time = self._number(game.get("fetch_ts", situation.get("fetch_ts")), now)
+        duration = max(1.0, self._number(game.get("duration", situation.get("duration")), 1.0))
         local_progress = min(duration, progress + (now - fetch_time) if playing else progress)
-        cover_url = str(game.get("home_logo") or "")
+        cover_url = str(game.get("cover") or game.get("home_logo") or "")
+        title = str(game.get("name") or game.get("away_abbr") or "Unknown")
+        artist = str(game.get("artist") or game.get("home_abbr") or "Unknown")
         artwork = self._logos.get(cover_url, (self._cover_size, self._cover_size)) if cover_url else None
         dominant, spindle = self._colors(artwork, state.dominant, state.spindle)
         next_state = replace(
@@ -85,8 +87,8 @@ class MusicRenderer:
         rotated = composite.rotate(next_state.rotation, resample=Image.Resampling.BICUBIC)
         image.paste(rotated, (4, -9), rotated)
         text_x = 60
-        self._scroll_text(image, str(game.get("away_abbr", "Unknown")), self._fonts.medium, text_x, 0, 188, next_state.scroll, "white")
-        self._scroll_text(image, str(game.get("home_abbr", "Unknown")), self._fonts.tiny, text_x + 16, 17, 172, next_state.scroll, (180, 180, 180))
+        self._scroll_text(image, title, self._fonts.medium, text_x, 0, 188, next_state.scroll, "white")
+        self._scroll_text(image, artist, self._fonts.tiny, text_x + 16, 17, 172, next_state.scroll, (180, 180, 180))
         draw.ellipse((text_x, 15, text_x + 12, 27), fill=dominant)
         for y0, y1, x0, x1 in ((18, 24, 63, 69), (20, 26, 63, 69), (22, 27, 64, 68)):
             draw.arc((x0, y0, x1, y1), 190, 350, fill="black", width=1)
