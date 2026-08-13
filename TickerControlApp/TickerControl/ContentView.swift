@@ -475,7 +475,7 @@ class TickerViewModel: ObservableObject {
     @Published var modeSymbols: [String: String] = [:]
     var leagueLabels: [String: String] { Dictionary(uniqueKeysWithValues: leagueOptions.map { ($0.id, $0.label) }) }
     var isSportsMode: Bool {
-        !["stocks", "weather", "clock", "music", "flights", "flight_tracker"].contains(state.mode)
+        !["stock", "weather", "clock", "music", "flights", "airports"].contains(state.mode)
     }
     
     // THE SOURCE OF TRUTH
@@ -623,8 +623,8 @@ class TickerViewModel: ObservableObject {
         switch mode {
         case "music":                      return 1.0
         case "sports", "sports_full", "live", "my_teams": return 1.0
-        case "flights", "flight_tracker":  return 60.0
-        case "stocks":                     return 30.0
+        case "flights", "airports":         return 60.0
+        case "stock":                       return 30.0
         case "weather", "clock":           return 600.0
         default:                           return 5.0
         }
@@ -686,9 +686,9 @@ class TickerViewModel: ObservableObject {
                         }
                         .map(\.element))
                     
-                    let decodedPins = decoded.settings.pinned_content_id.isEmpty ? [] : [self.normalizedPin(decoded.settings.pinned_content_id)]
-                    self.pinnedGameIDs = Array(Set(decodedPins)).sorted()
                     if !self.isEditing {
+                        let decodedPins = decoded.settings.pinned_content_id.isEmpty ? [] : [self.normalizedPin(decoded.settings.pinned_content_id)]
+                        self.pinnedGameIDs = Array(Set(decodedPins)).sorted()
                         self.state = decoded.settings
                         self.state.ticker_id = tickerID
                         self.state.pinned_games = decodedPins
@@ -743,19 +743,18 @@ class TickerViewModel: ObservableObject {
             pinnedGameIDs.removeAll()
             state.pinned_games = []
             state.pinned_game = nil
-            state.mode = "sports"
-            saveSettings()
+            state.pinned_content_id = ""
+            state.sports_presentation = "rotation"
         } else {
             pinnedGameIDs = [scoped]
             state.pinned_games = [scoped]
             state.pinned_game = scoped
-            if state.mode != "sports" {
-                state.mode = "sports"
-                saveSettings()
-            }
+            state.pinned_content_id = scoped
+            state.sports_presentation = "pinned"
+            state.mode = "sports"
         }
         startBurstPolling()
-        sendPinnedGames()
+        saveSettings()
     }
     func sendPinnedGames() { saveSettings() }
     // === 4. SAVE SETTINGS (Write) ===
@@ -797,12 +796,7 @@ class TickerViewModel: ObservableObject {
                     }
                 }
                 // =============================
-                // During a burst poll window (mode just switched) unlock isEditing quickly
-                // so the 1-s burst polls can start immediately. Outside burst, keep the
-                // 2.5-s delay so team-toggle debounce timers have time to settle.
-                let unlockDelay: TimeInterval = Date() < self.burstPollUntil ? 0.3 : 2.5
-                DispatchQueue.main.asyncAfter(deadline: .now() + unlockDelay) {
-                    if self.saveDebounceTimer?.isValid == true { return }
+                DispatchQueue.main.async {
                     self.isEditing = false
                     self.fetchData()
                 }
@@ -819,7 +813,7 @@ class TickerViewModel: ObservableObject {
         liveDelayMode: Bool? = nil,
         liveDelaySeconds: Int? = nil
     ) -> [String: Any] {
-        let pinned = pinnedGameIDs.first ?? state.pinned_content_id
+        let pinned = pinnedGameIDs.first ?? ""
         return [
             "active_sports": state.active_sports,
             "my_teams": state.my_teams,
@@ -889,7 +883,7 @@ class TickerViewModel: ObservableObject {
     func modeSymbol(for mode: String) -> String {
         modeSymbols[mode] ?? [
             "sports": "sportscourt.fill",
-            "stocks": "chart.line.uptrend.xyaxis",
+            "stock": "chart.line.uptrend.xyaxis",
             "music": "music.note",
             "flights": "airplane.arrival",
             "weather": "cloud.sun.fill",
@@ -2017,21 +2011,28 @@ struct ModesView: View {
     }
     
     func setCategory(_ target: String) {
+        if target != "sports" {
+            vm.pinnedGameIDs.removeAll()
+            vm.state.pinned_games = []
+            vm.state.pinned_game = nil
+            vm.state.pinned_content_id = ""
+            vm.state.sports_presentation = "rotation"
+        }
         switch target {
         case "flights":
-            // Preserve current sub-mode (airport vs track) when re-selecting Flights.
-            if vm.state.mode != "flights" && vm.state.mode != "flight_tracker" {
-                vm.state.mode = "flights"
+            // Default Flights to the airport board. Track selects the visitor card.
+            if vm.state.mode != "flights" && vm.state.mode != "airports" {
+                vm.state.mode = "airports"
                 vm.state.flight_submode = "airport"
             }
-        case "stocks", "weather", "clock", "music":
+        case "stock", "weather", "clock", "music":
             vm.state.mode = target
             vm.state.flight_submode = ""
         default:
             vm.state.mode = "sports"
             vm.state.flight_submode = ""
         }
-        if target == "stocks" {
+        if target == "stock" {
             let stockKeys = stockOptions.map { $0.id }
             let hasStock = stockKeys.contains { vm.state.active_sports[$0] == true }
             if !hasStock, let first = stockKeys.first {
@@ -2043,7 +2044,7 @@ struct ModesView: View {
         vm.saveSettings()
     }
     private func setFlightSubmode(_ submode: String) {
-        vm.state.mode = submode == "track" ? "flight_tracker" : "flights"
+        vm.state.mode = submode == "track" ? "flights" : "airports"
         vm.state.flight_submode = submode
         vm.startBurstPolling()
         vm.saveSettings()
@@ -2078,13 +2079,12 @@ struct ModesView: View {
                 .padding(.horizontal).padding(.top, 80)
                 
                 LazyVGrid(columns: modeColumns, spacing: 15) {
-                    let utilities = ["stocks", "weather", "clock", "music", "flights"]
-                    // flight_tracker is a sub-variant of flights; show Flights tile as selected.
-                    let displayMode = vm.state.mode == "flight_tracker" ? "flights" : vm.state.mode
+                    let utilities = ["stock", "weather", "clock", "music", "flights", "airports"]
+                    let displayMode = ["flights", "airports"].contains(vm.state.mode) ? "flights" : vm.state.mode
                     let activeCategory = utilities.contains(displayMode) ? displayMode : "sports"
                     
                     ModeTile(title: "Sports", icon: vm.modeSymbol(for: "sports"), val: "sports", cur: activeCategory) { setCategory("sports") }
-                    ModeTile(title: "Stocks", icon: vm.modeSymbol(for: "stocks"), val: "stocks", cur: activeCategory) { setCategory("stocks") }
+                    ModeTile(title: "Stocks", icon: vm.modeSymbol(for: "stock"), val: "stock", cur: activeCategory) { setCategory("stock") }
                     ModeTile(title: "Music", icon: vm.modeSymbol(for: "music"), val: "music", cur: activeCategory) { setCategory("music") }
                     ModeTile(title: "Flights", icon: vm.modeSymbol(for: "flights"), val: "flights", cur: activeCategory) { setCategory("flights") }
                     ModeTile(title: "Weather", icon: vm.modeSymbol(for: "weather"), val: "weather", cur: activeCategory) { setCategory("weather") }
@@ -2093,7 +2093,7 @@ struct ModesView: View {
                 .padding(.horizontal)
                 
                 VStack(alignment: .leading, spacing: 20) {
-                    if vm.state.mode == "flights" || vm.state.mode == "flight_tracker" {
+                    if vm.state.mode == "flights" || vm.state.mode == "airports" {
                         VStack(alignment: .leading, spacing: 16) {
                             Text("FLIGHTS MODE").font(.caption).bold().foregroundStyle(.secondary)
                             HStack(spacing: 10) {
@@ -2104,9 +2104,9 @@ struct ModesView: View {
                                         .font(.subheadline).bold()
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(vm.state.mode == "flights" ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
+                                        .background(vm.state.mode == "airports" ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
                                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(vm.state.mode == "flights" ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
+                                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(vm.state.mode == "airports" ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
                                         .foregroundColor(.white)
                                 }
                                 Button {
@@ -2116,14 +2116,14 @@ struct ModesView: View {
                                         .font(.subheadline).bold()
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
-                                        .background(vm.state.mode == "flight_tracker" ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
+                                        .background(vm.state.mode == "flights" ? Color.blue.opacity(0.8) : Color.white.opacity(0.05))
                                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(vm.state.mode == "flight_tracker" ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
+                                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(vm.state.mode == "flights" ? Color.blue : Color.white.opacity(0.1), lineWidth: 1))
                                         .foregroundColor(.white)
                                 }
                             }
                             .padding().liquidGlass()
-                            if vm.state.mode == "flights" {
+                            if vm.state.mode == "airports" {
                                 VStack(alignment: .leading, spacing: 10) {
                                     HStack {
                                         Image(systemName: "building.2.fill").font(.title2).foregroundStyle(.cyan)
@@ -2309,7 +2309,7 @@ struct ModesView: View {
                                 Text(error).font(.caption).foregroundStyle(.red)
                             }
                         }
-                    } else if vm.state.mode == "stocks" {
+                    } else if vm.state.mode == "stock" {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("MARKET SECTORS").font(.caption).bold().foregroundStyle(.secondary)
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {

@@ -6,6 +6,7 @@ import time
 import hashlib
 import secrets
 from collections.abc import Mapping
+from dataclasses import replace
 from math import isfinite
 from threading import Lock
 from typing import Any, Callable
@@ -188,23 +189,16 @@ class BackendApplication:
         snapshot = self.get_snapshot(identifier)
         if snapshot is None:
             raise KeyError(f"ticker snapshot not found: {identifier}")
-        self.event_service.remove_expired()
-        data = project_data_v2(
-            snapshot,
-            self.provider_health(),
-            {"stale": False} if meta is None else meta,
-        )
         ticker = self.repository.get_ticker(identifier)
         if ticker is None:
             raise KeyError(f"ticker not found: {identifier}")
-        settings = data["settings"]
-        settings.update(
-            {
-                "weather_city": snapshot.effective_settings.weather_city,
-                "weather_lat": snapshot.effective_settings.weather_lat,
-                "weather_lon": snapshot.effective_settings.weather_lon,
-            }
+        self.event_service.remove_expired()
+        data = project_data_v2(
+            replace(snapshot, effective_settings=ticker.display_settings),
+            self.provider_health(),
+            {"stale": False} if meta is None else meta,
         )
+        settings = data["settings"]
         if ticker.pairing is None or not ticker.pairing.paired:
             settings["mode"] = "pairing"
         elif mode is not None:

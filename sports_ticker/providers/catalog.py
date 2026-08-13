@@ -27,7 +27,7 @@ _LEAGUE_LABELS = {
 }
 _MODE_SYMBOLS = {
     "sports": "sportscourt.fill",
-    "stocks": "chart.line.uptrend.xyaxis",
+    "stock": "chart.line.uptrend.xyaxis",
     "music": "music.note",
     "flights": "airplane.arrival",
     "weather": "cloud.sun.fill",
