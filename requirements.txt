@@ -1,25 +1,7 @@
-# Web server
 flask
-flask-cors
-waitress          # production WSGI server (fixed thread pool + idle-connection reaping)
-
-# HTTP
+waitress
 requests
-websocket-client
-signalrcore
-
-# Environment / config
 python-dotenv
-
-# Airport code lookup (flight tracker)
-airportsdata
 FlightRadarAPI==1.5.1
-
-# Spotify integration
-spotipy
-
-# AI / Gemini (golf caddie commentary)
-google-genai
-
-# Logo image processing
+cryptography
 Pillow

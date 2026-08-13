@@ -1,4 +1,4 @@
-"""Validate and preserve backend display payloads."""
+"""Validate version two ticker responses at the Pi boundary."""
 
 from __future__ import annotations
 
@@ -11,22 +11,19 @@ from typing import Any, TypeAlias
 
 from ticker_core._enum import StrEnum
 
-from .mode_translation import translate_server_mode
-
 
 JsonScalar: TypeAlias = str | int | float | bool | None
 FrozenJson: TypeAlias = JsonScalar | tuple["FrozenJson", ...] | Mapping[str, "FrozenJson"]
 
 
 class PayloadValidationError(ValueError):
-    """Report an invalid backend payload."""
+    """Report an invalid version two backend response."""
 
 
 class DeviceState(StrEnum):
-    """Name the states the backend sends to a ticker."""
+    """Name the effective display state from the version two settings."""
 
-    ACTIVE = "ok"
-    SLEEP = "sleep"
+    ACTIVE = "active"
     PAIRING = "pairing"
 
 
@@ -97,22 +94,62 @@ def canonical_payload_hash(payload: Mapping[str, Any]) -> str:
     frozen = _mapping(payload, "payload")
     try:
         encoded = json.dumps(
-            _thaw(frozen),
-            allow_nan=False,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
+            _thaw(frozen), allow_nan=False, ensure_ascii=False,
+            separators=(",", ":"), sort_keys=True,
         ).encode("utf-8")
     except (TypeError, ValueError) as error:
         raise PayloadValidationError("payload is not canonical JSON") from error
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _render_data(family: str, kind: str, data: Mapping[str, FrozenJson]) -> Mapping[str, FrozenJson]:
+    """Prepare canonical item data for the existing 384x32 renderer catalog."""
+
+    rendered = dict(data)
+    canonical = data.get("canonical")
+    if isinstance(canonical, Mapping):
+        for key, value in canonical.items():
+            rendered[key] = value
+    rendered["family"] = family
+    rendered["kind"] = kind
+    rendered["type"] = _renderer_type(family, kind)
+    if not str(rendered.get("sport", "")).strip():
+        rendered["sport"] = _renderer_sport(family, kind, rendered)
+    return _mapping(rendered, "content.data")
+
+
+def _renderer_type(family: str, kind: str) -> str:
+    if family == "stock":
+        return "stock_ticker"
+    if family == "flights":
+        return "flight_visitor"
+    if family == "airports":
+        return "flight_airport_hud"
+    return kind
+
+
+def _renderer_sport(family: str, kind: str, data: Mapping[str, FrozenJson]) -> str:
+    if family == "sports":
+        canonical = data.get("canonical")
+        if isinstance(canonical, Mapping):
+            league = canonical.get("league")
+            if isinstance(league, str) and league:
+                return league
+        league = data.get("league")
+        return str(league) if league is not None else "sports"
+    if family in {"flights", "airports"}:
+        return "flight"
+    return family or kind
+
+
 @dataclass(frozen=True, slots=True)
-class _DataItem(Mapping[str, FrozenJson]):
-    """Keep one validated backend object without dropping fields."""
+class ContentItem(Mapping[str, FrozenJson]):
+    """Represent one canonical version two content item."""
 
     id: str
+    family: str
+    kind: str
+    is_shown: bool
     data: Mapping[str, FrozenJson]
 
     def __getitem__(self, key: str) -> FrozenJson:
@@ -124,148 +161,155 @@ class _DataItem(Mapping[str, FrozenJson]):
     def __len__(self) -> int:
         return len(self.data)
 
-    def get(self, key: str, default: Any = None) -> FrozenJson | Any:
-        return self.data.get(key, default)
+    @classmethod
+    def from_payload(cls, payload: Any, path: str) -> "ContentItem":
+        envelope = _mapping(payload, path)
+        identifier = _string(envelope.get("id"), f"{path}.id")
+        family = _string(envelope.get("family"), f"{path}.family")
+        kind = _string(envelope.get("kind"), f"{path}.kind")
+        if not identifier or not family or not kind:
+            raise PayloadValidationError(f"{path} needs non-empty id, family, and kind")
+        return cls(
+            id=identifier,
+            family=family,
+            kind=kind,
+            is_shown=_boolean(envelope.get("is_shown"), f"{path}.is_shown", True),
+            data=_render_data(family, kind, _mapping(envelope.get("data", {}), f"{path}.data")),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayItem(Mapping[str, FrozenJson]):
+    """Represent a version two alert or news overlay for the renderer."""
+
+    id: str
+    kind: str
+    data: Mapping[str, FrozenJson]
+
+    def __getitem__(self, key: str) -> FrozenJson:
+        return self.data[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.data)
+
+    def __len__(self) -> int:
+        return len(self.data)
 
     @classmethod
-    def from_payload(cls, payload: Any, path: str) -> "_DataItem":
-        data = _mapping(payload, path)
-        item_id = data.get("id")
-        if not isinstance(item_id, str) or not item_id.strip():
-            raise PayloadValidationError(f"{path}.id must be a non-empty string")
-        return cls(id=item_id, data=data)
+    def from_payload(cls, payload: Any, path: str) -> "OverlayItem":
+        envelope = _mapping(payload, path)
+        identifier = _string(envelope.get("event_id"), f"{path}.event_id")
+        kind = _string(envelope.get("kind"), f"{path}.kind")
+        if not identifier or not kind:
+            raise PayloadValidationError(f"{path} needs non-empty event_id and kind")
+        event = dict(_mapping(envelope.get("payload", {}), f"{path}.payload"))
+        event.setdefault("id", identifier)
+        event.setdefault("event_id", identifier)
+        event.setdefault("kind", kind)
+        return cls(identifier, kind, _mapping(event, f"{path}.payload"))
+
+
+Alert = OverlayItem
+NewsItem = OverlayItem
 
 
 @dataclass(frozen=True, slots=True)
-class ContentItem(_DataItem):
-    """Represent one display content item."""
-
-
-@dataclass(frozen=True, slots=True)
-class Alert(_DataItem):
-    """Represent one score alert."""
-
-
-@dataclass(frozen=True, slots=True)
-class NewsItem(_DataItem):
-    """Represent one news banner."""
-
-
-@dataclass(frozen=True, slots=True)
-class LocalConfig:
-    """Expose display settings and retain all backend settings."""
+class TickerSettings:
+    """Expose display settings from the canonical version two response."""
 
     mode: str
+    sports_presentation: str
+    pinned_content_id: str
     brightness: float
     scroll_speed: float
     inverted: bool
     data: Mapping[str, FrozenJson]
 
     @classmethod
-    def from_payload(cls, payload: Any) -> "LocalConfig":
-        data = _mapping(payload, "local_config")
-        mode = _string(data.get("mode"), "local_config.mode", default="sports")
-        assert mode is not None
+    def from_payload(cls, payload: Any) -> "TickerSettings":
+        data = _mapping(payload, "settings")
+        mode = _string(data.get("mode"), "settings.mode", default="sports")
+        presentation = _string(data.get("sports_presentation"), "settings.sports_presentation", default="rotation")
+        pinned = _string(data.get("pinned_content_id"), "settings.pinned_content_id", default="")
+        assert mode is not None and presentation is not None and pinned is not None
         return cls(
-            mode=translate_server_mode(mode),
-            brightness=_number(data.get("brightness"), "local_config.brightness", 100.0),
-            scroll_speed=_number(data.get("scroll_speed"), "local_config.scroll_speed", 0.05),
-            inverted=_boolean(data.get("inverted"), "local_config.inverted", False),
-            data=data,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class GlobalConfig:
-    """Expose global device commands and retain all backend settings."""
-
-    update: bool
-    update_version: str
-    reboot: bool
-    data: Mapping[str, FrozenJson]
-
-    @classmethod
-    def from_payload(cls, payload: Any) -> "GlobalConfig":
-        data = _mapping(payload, "global_config")
-        update_version = _string(data.get("update_version"), "global_config.update_version", default="")
-        assert update_version is not None
-        return cls(
-            update=_boolean(data.get("update"), "global_config.update", False),
-            update_version=update_version,
-            reboot=_boolean(data.get("reboot"), "global_config.reboot", False),
+            mode=mode.strip().lower() or "sports",
+            sports_presentation=presentation.strip().lower() or "rotation",
+            pinned_content_id=pinned.strip(),
+            brightness=_number(data.get("brightness"), "settings.brightness", 100.0),
+            scroll_speed=_number(data.get("scroll_speed"), "settings.scroll_speed", 0.05),
+            inverted=_boolean(data.get("inverted"), "settings.inverted", False),
             data=data,
         )
 
 
 @dataclass(frozen=True, slots=True)
 class TickerResponse:
-    """Represent one complete `/data` response."""
+    """Represent one complete `/api/v2/tickers/<id>/data` response."""
 
     status: DeviceState
+    ticker_id: str
     pairing_code: str | None
-    ticker_id: str | None
-    local_config: LocalConfig
-    global_config: GlobalConfig
+    settings: TickerSettings
     content: tuple[ContentItem, ...]
     alerts: tuple[Alert, ...]
     news: tuple[NewsItem, ...]
+    update_version: str | None
     payload_key: str
     data: Mapping[str, FrozenJson]
 
     @property
     def fingerprint(self) -> str:
-        """Return the canonical response fingerprint."""
-
         return self.payload_key
 
     @classmethod
     def from_payload(cls, payload: Any) -> "TickerResponse":
         data = _mapping(payload, "response")
-        raw_status = _string(data.get("status"), "response.status", default="ok")
-        assert raw_status is not None
-        try:
-            status = DeviceState(raw_status)
-        except ValueError as error:
-            raise PayloadValidationError(f"response.status has unsupported value {raw_status!r}") from error
+        if data.get("api_version") != "v2":
+            raise PayloadValidationError("response.api_version must be v2")
+        snapshot = _mapping(data.get("snapshot"), "response.snapshot")
+        ticker_id = _string(snapshot.get("ticker_id"), "response.snapshot.ticker_id")
+        if not ticker_id or not ticker_id.strip():
+            raise PayloadValidationError("response.snapshot.ticker_id must be a non-empty string")
+        settings = TickerSettings.from_payload(data.get("settings", {}))
+        content_root = _mapping(data.get("content", {}), "response.content")
+        content: list[ContentItem] = []
+        for family, records in content_root.items():
+            if not isinstance(records, tuple):
+                raise PayloadValidationError(f"response.content.{family} must be a list")
+            for index, item in enumerate(_items(records, f"response.content.{family}")):
+                parsed = ContentItem.from_payload(item, f"response.content.{family}[{index}]")
+                if parsed.family != family:
+                    raise PayloadValidationError(f"response.content.{family}[{index}].family does not match its group")
+                content.append(parsed)
 
-        code = data.get("code")
-        if code is not None and not isinstance(code, str):
-            raise PayloadValidationError("response.code must be a string")
-        ticker_id = data.get("ticker_id")
-        if ticker_id is not None and not isinstance(ticker_id, str):
-            raise PayloadValidationError("response.ticker_id must be a string")
-
-        content_root = data.get("content", MappingProxyType({}))
-        content_data = _mapping(content_root, "response.content")
-        sports = content_data.get("sports", ())
-        if sports == ():
-            content: tuple[ContentItem, ...] = ()
-        else:
-            content = tuple(
-                ContentItem.from_payload(item, f"response.content.sports[{index}]")
-                for index, item in enumerate(_items(sports, "response.content.sports"))
-            )
-
-        def build_items(name: str, item_type: type[_DataItem]) -> tuple[_DataItem, ...]:
-            raw_items = data.get(name, ())
-            if raw_items == ():
-                return ()
-            return tuple(
-                item_type.from_payload(item, f"response.{name}[{index}]")
-                for index, item in enumerate(_items(raw_items, f"response.{name}"))
-            )
-
-        alerts = tuple(build_items("alerts", Alert))
-        news = tuple(build_items("news", NewsItem))
+        events = _mapping(data.get("events", {}), "response.events")
+        alerts = tuple(
+            OverlayItem.from_payload(item, f"response.events.alerts[{index}]")
+            for index, item in enumerate(_items(events.get("alerts", ()), "response.events.alerts"))
+        )
+        news = tuple(
+            OverlayItem.from_payload(item, f"response.events.news[{index}]")
+            for index, item in enumerate(_items(events.get("news", ()), "response.events.news"))
+        )
+        meta = _mapping(data.get("meta", {}), "response.meta")
+        pairing = _mapping(meta.get("pairing", {}), "response.meta.pairing")
+        pairing_code = pairing.get("code")
+        if pairing_code is not None and not isinstance(pairing_code, str):
+            raise PayloadValidationError("response.meta.pairing.code must be a string")
+        update = _mapping(meta.get("update", {}), "response.meta.update")
+        update_version = update.get("version")
+        if update_version is not None and not isinstance(update_version, str):
+            raise PayloadValidationError("response.meta.update.version must be a string")
         return cls(
-            status=status,
-            pairing_code=code,
-            ticker_id=ticker_id,
-            local_config=LocalConfig.from_payload(data.get("local_config", {})),
-            global_config=GlobalConfig.from_payload(data.get("global_config", {})),
-            content=content,
+            status=DeviceState.PAIRING if settings.mode == "pairing" else DeviceState.ACTIVE,
+            ticker_id=ticker_id.strip(),
+            pairing_code=pairing_code,
+            settings=settings,
+            content=tuple(content),
             alerts=alerts,
             news=news,
+            update_version=update_version.strip() if isinstance(update_version, str) else None,
             payload_key=canonical_payload_hash(data),
             data=data,
         )

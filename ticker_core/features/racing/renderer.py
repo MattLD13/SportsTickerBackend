@@ -19,7 +19,6 @@ from .assets import RacingAssetService
 
 PANEL_WIDTH = 384
 PANEL_HEIGHT = 32
-_FULL_MODES = {"sports_full"}
 _NON_FLAG_STATES = {"WARM", "COLD", "FINAL", "OFFICIAL", "UNOFFICIAL", "ENDED", "STANDBY"}
 
 
@@ -59,7 +58,7 @@ class RacingRenderer:
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render a racing scroll card or a full leaderboard."""
-        if scene.mode.lower() in _FULL_MODES:
+        if scene.item.get("sports_presentation") == "pinned":
             return RenderedContent(self._render_full(scene.item, scene.elapsed), static=True)
         return RenderedContent(self._render_scroll(scene.item), static=False)
 

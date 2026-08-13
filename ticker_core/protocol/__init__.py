@@ -1,8 +1,8 @@
 """Define the Pi and backend protocol boundary."""
 
 from .client import (
-    CONFIG_ENDPOINT,
-    DATA_ENDPOINT,
+    DATA_ENDPOINT_TEMPLATE,
+    HEARTBEAT_ENDPOINT_TEMPLATE,
     TICKER_ENDPOINT_TEMPLATE,
     BackendClient,
     BackendError,
@@ -15,16 +15,14 @@ from .model import (
     ContentItem,
     DisplayPayload,
     DeviceState,
-    GlobalConfig,
-    LocalConfig,
     NewsItem,
     PayloadValidationError,
+    TickerSettings,
     TickerResponse,
     canonical_payload_hash,
 )
-from .mode_translation import translate_server_mode
 from .polling import PollBackoff
-from .telemetry import TelemetrySnapshot, build_poll_headers
+from .telemetry import TelemetrySnapshot
 
 __all__ = [
     "Alert",
@@ -33,20 +31,16 @@ __all__ = [
     "BackendHttpError",
     "BackendPayloadError",
     "BackendTransportError",
-    "CONFIG_ENDPOINT",
     "ContentItem",
     "DisplayPayload",
-    "DATA_ENDPOINT",
+    "DATA_ENDPOINT_TEMPLATE",
     "DeviceState",
-    "GlobalConfig",
-    "LocalConfig",
+    "HEARTBEAT_ENDPOINT_TEMPLATE",
     "NewsItem",
     "PayloadValidationError",
     "PollBackoff",
     "TelemetrySnapshot",
     "TICKER_ENDPOINT_TEMPLATE",
     "TickerResponse",
-    "build_poll_headers",
     "canonical_payload_hash",
-    "translate_server_mode",
 ]

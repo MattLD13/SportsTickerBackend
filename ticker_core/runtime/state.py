@@ -25,23 +25,26 @@ from .model import (
 
 
 T = TypeVar("T")
-CANONICAL_MODES = frozenset({"sports", "sports_full", "weather", "music", "flights", "clock"})
+CANONICAL_MODES = frozenset({"sports", "weather", "music", "flights", "airports", "clock", "pairing"})
 
 
 def _value(source: object, name: str, default: T) -> T | Any:
     """Read one named value from a mapping or object."""
+    attribute = getattr(source, name, None)
+    if attribute is not None:
+        return attribute
     if isinstance(source, Mapping):
         return source.get(name, default)
-    return getattr(source, name, default)
+    return default
 
 
 def _mapping(source: object) -> Mapping[str, Any]:
     """Return an item mapping from protocol data."""
-    if isinstance(source, Mapping):
-        return source
     data = getattr(source, "data", None)
     if isinstance(data, Mapping):
         return data
+    if isinstance(source, Mapping):
+        return source
     return {}
 
 
@@ -104,7 +107,13 @@ def _plain_json(value: object) -> object:
     return value
 
 
-def classify_content(items: tuple[Content, ...] | tuple[object, ...], mode: str) -> ContentClassification:
+def classify_content(
+    items: tuple[Content, ...] | tuple[object, ...],
+    mode: str,
+    *,
+    sports_presentation: str = "rotation",
+    pinned_content_id: str = "",
+) -> ContentClassification:
     """Classify content for one canonical app mode."""
     selected_mode = _canonical_mode(mode)
     normalized = tuple(entry if isinstance(entry, Content) else _content(entry) for entry in items)
@@ -138,12 +147,16 @@ def classify_content(items: tuple[Content, ...] | tuple[object, ...], mode: str)
     if selected_mode == "music":
         return ContentClassification((), tuple(item for item in others if _is_music(item)))
     if selected_mode == "flights":
-        return ContentClassification((), tuple(item for item in others if _is_flight(item)))
+        return ContentClassification((), tuple(item for item in others if _is_visitor_flight(item)))
+    if selected_mode == "airports":
+        return ContentClassification((), tuple(item for item in others if _is_airport(item)))
     if selected_mode == "clock":
         return ContentClassification((), tuple(item for item in others if _is_clock(item)))
     sports = tuple(item for item in others if _is_sports(item))
-    if selected_mode == "sports_full":
-        return ContentClassification((), sports)
+    if selected_mode == "sports" and sports_presentation == "pinned":
+        pinned = tuple(item for item in sports if item.id == pinned_content_id)
+        selected = pinned or sports[:1]
+        return ContentClassification((), tuple(_pinned_sports(item) for item in selected))
     return ContentClassification(sports, ())
 
 
@@ -204,6 +217,7 @@ class TickerRuntime:
         self._mode_requests: deque[ModeRequest] = deque()
         self._update: UpdateRequest | None = None
         self._update_request_pending = False
+        self._update_started_at = 0.0
         self._strip: StripLayout | None = None
         self._strip_key: str | None = None
         self._strip_offset = 0
@@ -319,38 +333,42 @@ class TickerRuntime:
             self._disconnected_at = None
             self._content_expires_at = None
         status = str(_value(response, "status", "active")).lower()
-        local = _value(response, "local_config", {})
-        global_config = _value(response, "global_config", {})
+        settings = _value(response, "settings", {})
         source_content = _value(response, "content", ())
         if isinstance(source_content, Mapping):
             source_content = source_content.get("sports", ())
         content = tuple(_content(item) for item in source_content if _mapping(item))
         previous_mode = self._mode
         previous_classification = self._classification
-        server_mode = _canonical_mode(str(_value(local, "mode", "sports")))
+        server_mode = _canonical_mode(str(_value(settings, "mode", "sports")))
         if self._mode_override is None:
             self._mode = server_mode
         elif server_mode == self._mode_override:
             self._mode_override = None
-        brightness = 0.0 if status == "sleep" else _brightness(_value(local, "brightness", 100))
-        scroll_interval = _interval(_value(local, "scroll_speed", 0.05), 0.05)
+        brightness = _brightness(_value(settings, "brightness", 100))
+        scroll_interval = _interval(_value(settings, "scroll_speed", 0.05), 0.05)
         snapshot = PayloadSnapshot(
             key=_fingerprint(response, content),
             strip_key=_strip_fingerprint(content, self._mode),
             received_at=now,
             status=status,
-            pairing_code=str(_value(response, "pairing_code", _value(response, "code", "------"))),
+            pairing_code=str(_value(response, "pairing_code", "------") or "------"),
             mode=self._mode,
             brightness=brightness,
             scroll_interval=scroll_interval,
-            inverted=bool(_value(local, "inverted", False)),
+            inverted=bool(_value(settings, "inverted", False)),
             content=content,
             source_received_at=now - stale_for,
             stale=stale,
             cache_expires_at=now + expires_in if expires_in is not None else None,
         )
         self._snapshot = snapshot
-        classification = classify_content(content, self._mode)
+        classification = classify_content(
+            content,
+            self._mode,
+            sports_presentation=str(_value(settings, "sports_presentation", "rotation")).lower(),
+            pinned_content_id=str(_value(settings, "pinned_content_id", "")),
+        )
         self._classification = classification
         if previous_mode != self._mode or previous_classification.static != classification.static:
             self._active_static = None
@@ -358,13 +376,14 @@ class TickerRuntime:
             self._static_index = 0
         if previous_mode != self._mode or (not classification.scrolling and self._strip is not None):
             self._clear_strip()
-        if bool(_value(global_config, "update", False)) and self._update is None:
-            version = str(_value(global_config, "update_version", ""))
-            self._update = UpdateRequest(version)
-            self._update_request_pending = True
         if not stale:
             self._queue_events(_value(response, "alerts", ()), self._alerts, self._seen_alerts, self.config.alert_dedupe_age)
             self._queue_events(_value(response, "news", ()), self._news, self._seen_news, self.config.news_dedupe_age)
+            update_version = str(_value(response, "update_version", "") or "").strip()
+            if update_version and (self._update is None or self._update.version != update_version):
+                self._update = UpdateRequest(update_version)
+                self._update_request_pending = True
+                self._update_started_at = now
         return snapshot
 
     def install_strip(self, strip_key: str, strip: StripLayout | None) -> bool:
@@ -393,7 +412,14 @@ class TickerRuntime:
         if not self._running:
             return self._decision(FrameKind.STOPPED, 0.0, wall_time)
         if self._update is not None:
-            return self._decision(FrameKind.UPDATE, self.config.frame_interval, wall_time, update_version=self._update.version)
+            progress = min(0.95, 0.12 + max(0.0, now - self._update_started_at) / 20.0)
+            return self._decision(
+                FrameKind.UPDATE,
+                self.config.frame_interval,
+                wall_time,
+                update_version=self._update.version,
+                update_progress=progress,
+            )
         snapshot = self._snapshot
         if snapshot is not None and snapshot.status == "pairing":
             return self._decision(FrameKind.PAIRING, self.config.pairing_interval, wall_time, pairing_code=snapshot.pairing_code)
@@ -571,9 +597,22 @@ def _is_music(item: Content) -> bool:
     return item.type.lower() == "music" or item.sport.lower() == "music"
 
 
-def _is_flight(item: Content) -> bool:
-    """Return if one item belongs to flights mode."""
-    return item.type.lower() in {"flight_visitor", "flight_airport_hud"}
+def _is_visitor_flight(item: Content) -> bool:
+    """Return if one item belongs to the tracked-flight mode."""
+    return item.type.lower() == "flight_visitor"
+
+
+def _is_airport(item: Content) -> bool:
+    """Return if one item belongs to the airport mode."""
+    return item.type.lower() == "flight_airport_hud"
+
+
+def _pinned_sports(item: Content) -> Content:
+    """Mark one selected sports item for its full-panel renderer."""
+
+    data = dict(item.data)
+    data["sports_presentation"] = "pinned"
+    return Content(item.id, item.type, item.sport, frozen_mapping(data))
 
 
 def _is_clock(item: Content) -> bool:
@@ -582,5 +621,11 @@ def _is_clock(item: Content) -> bool:
 
 
 def _is_sports(item: Content) -> bool:
-    """Return if one item belongs to either sports mode."""
-    return not (_is_weather(item) or _is_music(item) or _is_flight(item) or _is_clock(item))
+    """Return if one item belongs in the sports mode."""
+    return not (
+        _is_weather(item)
+        or _is_music(item)
+        or _is_visitor_flight(item)
+        or _is_airport(item)
+        or _is_clock(item)
+    )

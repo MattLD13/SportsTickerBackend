@@ -41,10 +41,10 @@ chown -R "$USER:$USER" "$PROJECT_DIR"
 git config --global --add safe.directory "$PROJECT_DIR"
 
 # ── 3. Python dependencies ───────────────────────────────────────────────────
-echo "[3/7] Installing Python requirements (ticker controller)..."
+echo "[3/7] Installing Python requirements..."
 cd "$PROJECT_DIR"
-$PYTHON -m pip install -r ticker_controller/requirements.txt --break-system-packages 2>/dev/null \
-    || $PYTHON -m pip install -r ticker_controller/requirements.txt
+$PYTHON -m pip install -r requirements.txt --break-system-packages 2>/dev/null \
+    || $PYTHON -m pip install -r requirements.txt
 
 # ── 4. RGB Matrix library ─────────────────────────────────────────────────────
 echo "[4/7] Installing rpi-rgb-led-matrix Python bindings..."

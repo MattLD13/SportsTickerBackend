@@ -156,6 +156,7 @@ class TickerApplication:
         self._sink.present(frame, brightness=decision.brightness, inverted=decision.inverted)
         self._timing.record(started_at, present_started_at, monotonic())
         self._last_decision = decision
+        self._launch_requested_update()
         return decision
 
     def process_events(self) -> None:
@@ -224,7 +225,6 @@ class TickerApplication:
         self._disconnected = False
         if _strip_changed(previous, current):
             self._rebuild_strip()
-        self._apply_global_commands(response)
 
     def _handle_failure(self, event: PollFailed) -> None:
         """Keep content during one outage and go offline after cache expiry."""
@@ -311,28 +311,27 @@ class TickerApplication:
             except Exception:
                 pass
 
-    def _apply_global_commands(self, response: TickerResponse) -> None:
-        global_config = response.global_config
-        if global_config.reboot:
-            if not self._reboot_latched:
-                self._commands.reboot()
-                self._reboot_latched = True
-        else:
-            self._reboot_latched = False
-        update = self._runtime.take_update_request()
-        if global_config.update:
-            if update is not None and not self._update_latched:
-                if self._update_service is not None:
-                    self._update_service.request_update(update.version)
-                else:
-                    self._commands.run_update(self._update_command)
-                    self._runtime.finish_update()
-                self._update_latched = True
-        else:
-            self._update_latched = False
-            if self._update_service is not None:
-                self._update_service.finish_update()
-            self._runtime.finish_update()
+    def _launch_requested_update(self) -> None:
+        """Acknowledge one server request, then start the non-blocking updater."""
+
+        request = self._runtime.take_update_request()
+        if request is None or self._update_latched:
+            return
+        acknowledge = getattr(self._client, "acknowledge_update", None)
+        if not callable(acknowledge):
+            return
+        try:
+            result = acknowledge(self._device_id, request.version)
+        except Exception:
+            return
+        if not bool(result.get("acknowledged")):
+            return
+        self._update_latched = True
+        if self._update_service is not None:
+            self._update_service.request_update(request.version)
+            return
+        self._commands.run_update(self._update_command)
+
 
 
 def _strip_changed(previous, current) -> bool:

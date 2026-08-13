@@ -169,6 +169,26 @@ class UtilityRenderer:
             draw.rectangle((0, 31, int(max(0.0, min(1.0, progress)) * PANEL_W), 31), fill=(0, 200, 100))
         return image
 
+    def update_overlay(self, frame: Image.Image, progress: float, version: str = "") -> Image.Image:
+        """Overlay one compact update status and progress bar on a base frame."""
+
+        image = frame.convert("RGBA")
+        overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        left, top, right, bottom = PANEL_W - 128, 19, PANEL_W - 3, 30
+        draw.rounded_rectangle((left, top, right, bottom), radius=2, fill=(0, 0, 0, 225))
+        tiny_text(draw, left + 4, top + 1, "UPDATING", (100, 220, 255), self._fonts.tiny)
+        if version:
+            text = version.upper()[-10:]
+            tiny_text(draw, right - len(text) * 5 - 3, top + 1, text, (185, 195, 210), self._fonts.tiny)
+        bar_left, bar_top, bar_right = left + 4, bottom - 3, right - 4
+        draw.rectangle((bar_left, bar_top, bar_right, bottom - 1), fill=(25, 55, 65, 255))
+        width = bar_right - bar_left
+        fill = bar_left + round(width * max(0.0, min(1.0, progress)))
+        draw.rectangle((bar_left, bar_top, fill, bottom - 1), fill=(0, 200, 120, 255))
+        image.alpha_composite(overlay)
+        return image.convert("RGB")
+
     def pairing(self, context: RenderContext, code: str | None) -> Image.Image:
         """Render the pairing panel."""
         image = Image.new("RGB", (PANEL_W, PANEL_H), "black")

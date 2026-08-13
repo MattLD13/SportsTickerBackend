@@ -18,11 +18,11 @@ Legacy modules remain output oracles during parity work. The new entry point wil
 
 ## User modes
 
-The application exposes six modes: `sports`, `sports_full`, `weather`, `music`, `flights`, and `clock`.
+The application exposes six modes: `sports`, `weather`, `music`, `flights`, `airports`, and `clock`.
 
-Golf and racing are sports content. They scroll in `sports` and fill the panel in `sports_full`.
+Golf and racing are sports content. A pinned sports item uses `sports_presentation: pinned` and its canonical content ID.
 
-Flight visitor and airport scenes share `flights`. Alerts compose over the active mode.
+Tracked visitor flights use `flights`. Airport activity uses `airports`. Alerts compose over the active mode.
 
 ## Asset cache
 
@@ -53,7 +53,7 @@ The controller resolves one display action for each frame.
 
 ## Completion contract
 
-- The backend keeps the existing `/data`, settings, and flight configuration endpoints.
+- The backend uses only `GET /api/v2/tickers/<ticker_id>/data`, `PATCH /api/v2/tickers/<ticker_id>`, and `POST /api/v2/tickers/<ticker_id>/heartbeat`.
 - The app keeps mode, brightness, speed, inversion, pairing, sleep, reboot, and update behavior.
 - Every renderer returns the same panel pixels for equivalent deterministic inputs.
 - Animation receives explicit time values and never reads hidden controller clocks.

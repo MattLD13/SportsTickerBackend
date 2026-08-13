@@ -48,8 +48,6 @@ def content_family(item: Mapping[str, Any], mode: str) -> str:
         return "leaderboard"
     if item_type in {"flight_visitor", "flight_airport_hud"}:
         return "flight"
-    if lowered_mode == "sports_full":
-        return "sports"
     return "scoreboard"
 
 

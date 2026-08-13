@@ -33,7 +33,7 @@ class GolfRenderer:
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render the mode-selected golf view."""
-        if scene.mode.lower() == "sports_full":
+        if scene.item.get("sports_presentation") == "pinned":
             image, _ = self.full(context, scene.item, GolfAnimationState())
             return RenderedContent(image, static=True)
         return RenderedContent(self.scroll(scene.item), static=False)

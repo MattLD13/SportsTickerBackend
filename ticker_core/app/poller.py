@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from queue import Queue
 from threading import Event
 from time import monotonic
-from typing import Protocol
+from typing import Any, Protocol
 
 from ticker_core.protocol import BackendClient, DisplayPayload, PollBackoff
 
@@ -45,25 +45,34 @@ class BackendPoller:
         client: BackendClient,
         device_id: str,
         *,
-        telemetry_headers: Callable[[], Mapping[str, str]],
+        telemetry: Callable[[], object],
         success_interval: float = 0.5,
+        heartbeat_interval: float = 30.0,
     ) -> None:
         if not device_id:
             raise ValueError("A device id is required.")
         if success_interval < 0:
             raise ValueError("The poll interval cannot be negative.")
+        if heartbeat_interval <= 0:
+            raise ValueError("The heartbeat interval must be positive.")
         self._client = client
         self._device_id = device_id
-        self._telemetry_headers = telemetry_headers
+        self._telemetry = telemetry
         self._success_interval = success_interval
+        self._heartbeat_interval = heartbeat_interval
 
     def run(self, stop: Event, events: Queue[PollEvent]) -> None:
         """Poll until the stop event interrupts a delay."""
         backoff = PollBackoff()
         next_poll = monotonic()
+        next_heartbeat = next_poll
         while not stop.is_set():
             try:
-                payload = self._client.fetch_data(self._device_id, self._telemetry_headers())
+                payload = self._client.fetch_data(self._device_id)
+                now = monotonic()
+                if now >= next_heartbeat:
+                    self._send_heartbeat()
+                    next_heartbeat = now + self._heartbeat_interval
             except Exception as error:
                 backoff = backoff.after_failure()
                 events.put(PollFailed(error, backoff.delay_seconds))
@@ -81,3 +90,20 @@ class BackendPoller:
                 delay = next_poll - now
             if stop.wait(delay):
                 return
+
+    def _send_heartbeat(self) -> None:
+        """Report device facts without turning heartbeat failure into link loss."""
+
+        heartbeat = getattr(self._client, "heartbeat", None)
+        if not callable(heartbeat):
+            return
+        snapshot = self._telemetry()
+        metadata: dict[str, Any] = {}
+        for name in ("uptime_seconds", "build", "python", "temperature_c"):
+            value = getattr(snapshot, name, None)
+            if value is not None:
+                metadata[name] = value
+        try:
+            heartbeat(self._device_id, metadata)
+        except Exception:
+            return

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1018">
+  <title>SportsTicker / v2 control</title>
+  <link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='dashboard_v2/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/dashboard" aria-label="SportsTicker v2 dashboard">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>SPORTSTICKER <em>V2</em></span>
+    </a>
+    <div class="top-status">
+      <span class="status-dot" data-health-dot></span>
+      <span data-health-label>Connecting</span>
+      <span class="muted">/</span>
+      <span class="mono" data-updated>—</span>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="intro">
+      <div>
+        <p class="eyebrow">OPERATIONS / CONTROL SURFACE</p>
+        <h1>Fleet control, without the guesswork.</h1>
+        <p class="lede">A live view of every v2 ticker, its last published snapshot, and the content waiting on the panel.</p>
+      </div>
+      <button class="button button-quiet" type="button" data-refresh>Refresh now <span aria-hidden="true">↻</span></button>
+    </section>
+
+    <section class="health-strip" aria-label="Backend health">
+      <div class="health-main"><span class="status-dot" data-health-dot></span><strong data-health-summary>Checking backend health</strong></div>
+      <div class="health-stat"><span>API</span><b class="mono">v2</b></div>
+      <div class="health-stat"><span>Providers</span><b data-provider-count>—</b></div>
+      <div class="health-stat"><span>Tickers</span><b data-ticker-count>—</b></div>
+    </section>
+
+    <div class="workspace">
+      <aside class="fleet-panel panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">FLEET</p><h2>Tickers</h2></div>
+          <span class="count-badge" data-ticker-count>—</span>
+        </div>
+        <div class="ticker-list" data-ticker-list>
+          <div class="empty-state">Loading tickers…</div>
+        </div>
+        <form class="fleet-create" data-create-ticker-form>
+          <p class="eyebrow">ADD TICKER</p>
+          <label>Ticker ID<input name="ticker_id" type="text" placeholder="ticker-lobby" required autocomplete="off"></label>
+          <label>Name<input name="name" type="text" placeholder="Lobby ticker" autocomplete="off"></label>
+          <button class="button button-primary" type="submit">Create ticker</button>
+        </form>
+      </aside>
+
+      <section class="detail-column">
+        <div class="panel snapshot-panel">
+          <div class="panel-heading detail-heading">
+            <div>
+              <p class="eyebrow">SELECTED TICKER</p>
+              <h2 data-selected-name>—</h2>
+              <p class="subline"><span class="mono" data-selected-id>—</span> <span class="sep">·</span> <span data-selected-device>Device not seen</span></p>
+            </div>
+            <div class="snapshot-meta">
+              <span class="pill" data-snapshot-health>NO SNAPSHOT</span>
+              <span class="mono">REV <b data-snapshot-revision>—</b></span>
+              <span class="mono" data-snapshot-age>—</span>
+            </div>
+          </div>
+
+          <div class="mode-banner">
+            <span class="eyebrow">ON PANEL</span>
+            <strong data-selected-mode>—</strong>
+            <span class="mode-summary" data-content-summary>Waiting for a snapshot.</span>
+          </div>
+
+          <div class="content-grid" data-content-grid>
+            <div class="empty-state">Select a ticker to inspect its snapshot.</div>
+          </div>
+        </div>
+
+        <div class="controls-grid">
+          <section class="panel form-panel">
+            <div class="panel-heading"><div><p class="eyebrow">CONFIGURATION</p><h2>Display settings</h2></div><span class="save-state" data-settings-state></span></div>
+            <form data-settings-form>
+              <div class="form-grid">
+                <label>Mode<select name="mode" data-setting="mode"><option value="sports">Sports</option><option value="weather">Weather</option><option value="music">Music</option><option value="flights">Flights</option><option value="airports">Airports</option><option value="clock">Clock</option></select></label>
+                <label>Sports presentation<select name="sports_presentation" data-setting="sports_presentation"><option value="rotation">Rotation</option><option value="pinned">Pinned</option></select></label>
+                <label>Pinned content ID<input name="pinned_content_id" data-setting="pinned_content_id" type="text" placeholder="Canonical sports, golf, or racing ID"></label>
+                <label>Brightness<input name="brightness" data-setting="brightness" type="number" min="0" max="100" step="1"></label>
+                <label>Timezone<input name="timezone" data-setting="timezone" type="text" placeholder="America/New_York"></label>
+                <label>Weather city<input name="weather_city" data-setting="weather_city" type="text"></label>
+                <label>Scroll speed<input name="scroll_speed" data-setting="scroll_speed" type="number" min="0.005" max="1" step="0.005"></label>
+                <label class="check-label"><input name="inverted" data-setting="inverted" type="checkbox"> Invert display</label>
+                <label class="check-label"><input name="live_delay_mode" data-setting="live_delay_mode" type="checkbox"> Delayed live mode</label>
+                <label class="check-label"><input name="score_alerts" data-setting="score_alerts" type="checkbox"> Score alerts enabled</label>
+              </div>
+              <button class="button button-primary" type="submit">Save settings</button>
+            </form>
+          </section>
+
+          <section class="panel form-panel">
+            <div class="panel-heading"><div><p class="eyebrow">OVERLAYS</p><h2>Push an event</h2></div></div>
+            <div class="tab-row" role="tablist"><button class="tab is-active" type="button" data-overlay-tab="alert">Score alert</button><button class="tab" type="button" data-overlay-tab="news">News</button></div>
+            <form class="overlay-form" data-overlay-form="alert">
+              <label>Headline<input name="headline" type="text" placeholder="POWER PLAY GOAL" required></label>
+              <div class="form-grid compact"><label>Detail<input name="detail" type="text" placeholder="PANARIN"></label><label>Status<input name="status" type="text" placeholder="P2 6:03"></label></div>
+              <label>TTL seconds<input name="ttl_seconds" type="number" value="60" min="1" step="1"></label>
+              <button class="button button-alert" type="submit">Send score alert</button>
+            </form>
+            <form class="overlay-form is-hidden" data-overlay-form="news">
+              <label>Text<input name="text" type="text" placeholder="Headline or overlay text" required></label>
+              <div class="form-grid compact"><label>Kind<input name="kind" type="text" value="news"></label><label>Sport<input name="sport" type="text" placeholder="nhl"></label></div>
+              <div class="form-grid compact"><label>From<input name="from" type="text" placeholder="VAN"></label><label>To<input name="to" type="text" placeholder="NYR"></label></div>
+              <label>TTL seconds<input name="ttl_seconds" type="number" value="60" min="1" step="1"></label>
+              <button class="button button-news" type="submit">Send news overlay</button>
+            </form>
+            <p class="form-feedback" data-overlay-feedback aria-live="polite"></p>
+          </section>
+        </div>
+
+        <section class="panel inspector-panel">
+          <div class="panel-heading"><div><p class="eyebrow">RAW PROJECTION</p><h2>Snapshot inspector</h2></div><button class="button button-quiet button-small" type="button" data-copy-json>Copy JSON</button></div>
+          <pre class="json-view" data-json-view>—</pre>
+        </section>
+      </section>
+    </div>
+    <p class="global-feedback" data-global-feedback aria-live="polite"></p>
+  </main>
+
+  <script src="{{ url_for('dashboard_v2.static', filename='dashboard_v2/app.js') }}"></script>
+</body>
+</html>

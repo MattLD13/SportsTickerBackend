@@ -129,7 +129,7 @@ class SportsRenderer:
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render one score card or a 384 pixel full display."""
-        if scene.mode.lower() == "sports_full":
+        if scene.item.get("sports_presentation") == "pinned":
             return RenderedContent(self.render_full(scene.item), static=False)
         return RenderedContent(self.render_strip((scene.item,)), static=False)
 

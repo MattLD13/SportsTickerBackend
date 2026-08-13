@@ -110,6 +110,7 @@ class FrameDecision:
     news_elapsed: float | None = None
     pairing_code: str | None = None
     update_version: str | None = None
+    update_progress: float | None = None
     offline_for: float | None = None
     stale: bool = False
     stale_for: float = 0.0

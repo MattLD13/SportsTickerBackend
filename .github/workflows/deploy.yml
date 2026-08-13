@@ -26,6 +26,7 @@ jobs:
               - 'sports_ticker/**'
               - 'requirements.txt'
               - '*.json'
+              - 'ticker.service'
             controller:
               - 'ticker_controller/**'
               - 'ticker_core/**'
@@ -38,8 +39,10 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   deploy-backend:
     runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.backend == 'true'
+    needs: [changes, signal-fleet]
+    if: |
+      needs.changes.outputs.backend == 'true' &&
+      (needs.signal-fleet.result == 'success' || needs.signal-fleet.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +60,7 @@ jobs:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_KEY }}
-          source:   "app.py,sports_ticker/**,requirements.txt,*.json,ticker_controller/**,updater.py,ticker.service,VERSION"
+          source:   "sports_ticker/**,requirements.txt,ticker.service,VERSION"
           target:   "/home/${{ secrets.SSH_USER }}/"
 
       - name: Write .env and restart backend
@@ -77,10 +80,14 @@ jobs:
             echo "FINNHUB_KEY_5=${{ secrets.FINNHUB_KEY_5 }}"          >> .env
             echo "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}"  >> .env
             echo "SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}" >> .env
-            echo "SPOTIFY_REFRESH_TOKEN=${{ secrets.SPOTIFY_REFRESH_TOKEN }}" >> .env
-            echo "SPOTIFY_USERNAME=${{ secrets.SPOTIFY_USERNAME }}"    >> .env
-            echo "SPOTIFY_PASSWORD=${{ secrets.SPOTIFY_PASSWORD }}"    >> .env
-            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"        >> .env
+            echo "SPOTIFY_CALLBACK_URI=${{ secrets.SPOTIFY_CALLBACK_URI }}" >> .env
+            echo "SPOTIFY_APP_RETURN_URI=${{ secrets.SPOTIFY_APP_RETURN_URI }}" >> .env
+            echo "SPOTIFY_TOKEN_ENCRYPTION_KEY=${{ secrets.SPOTIFY_TOKEN_ENCRYPTION_KEY }}" >> .env
+            echo "TICKER_DATABASE_PATH=/home/${{ secrets.SSH_USER }}/ticker_data/ticker-v2.sqlite3" >> .env
+            echo "TICKER_INITIAL_TICKER_ID=722c59f4-fce3-4735-b072-faaa2f579a0a" >> .env
+            echo "TICKER_INITIAL_TICKER_NAME=Personal Ticker" >> .env
+            echo "TICKER_VERIFY_TLS=true" >> .env
+            echo "TICKER_DEPLOY_TOKEN=${{ secrets.POOP_ADMIN_PASSWORD }}" >> .env
             chmod 600 .env
             sudo cp "/home/${{ secrets.SSH_USER }}/ticker.service" /etc/systemd/system/ticker.service
             sudo systemctl daemon-reload
@@ -88,9 +95,6 @@ jobs:
             # ── Install deps ──────────────────────────────────────────────
             pip3 install -r requirements.txt --break-system-packages 2>/dev/null \
               || pip3 install -r requirements.txt
-            # librespot / protobuf not on PyPI as clean packages; install best-effort
-            pip3 install librespot protobuf \
-              --break-system-packages 2>/dev/null || true
 
             # ── Restart backend ───────────────────────────────────────────
             echo "Restarting ticker (backend)..."
@@ -103,25 +107,32 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   signal-fleet:
     runs-on: ubuntu-latest
-    needs: [changes, deploy-backend]
-    # Run even if deploy-backend was skipped (controller-only push)
-    if: |
-      always() &&
-      needs.changes.outputs.controller == 'true' &&
-      (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
+    needs: changes
+    if: needs.changes.outputs.controller == 'true'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Send update signal to all tickers
+      - name: Send update signal to the personal ticker
         run: |
-          echo "Controller code changed — signalling fleet..."
+          echo "Controller code changed — signalling ticker..."
           COUNT=$(git rev-list --count HEAD)
           SHA=$(git rev-parse --short HEAD)
           VERSION="r${COUNT}+${SHA}"
           echo "New version: ${VERSION}"
-          curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+          TICKER_ID="722c59f4-fce3-4735-b072-faaa2f579a0a"
+          V2_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "https://ticker.mattdicks.org/api/v2/tickers/${TICKER_ID}/updates" \
+            -H "Content-Type: application/json" \
+            -H "X-Deployment-Token: ${{ secrets.POOP_ADMIN_PASSWORD }}" \
+            -d "{\"version\":\"${VERSION}\"}")
+          if [ "$V2_STATUS" = "201" ]; then
+            echo "Queued v2 update."
+            exit 0
+          fi
+          echo "v2 endpoint returned HTTP ${V2_STATUS}. Using the one-time legacy cutover signal."
+          curl --fail --silent --show-error \
             -X POST https://ticker.mattdicks.org/api/hardware \
             -H "Content-Type: application/json" \
             -d "{\"action\":\"update\",\"ticker_id\":\"all\",\"version\":\"${VERSION}\"}"

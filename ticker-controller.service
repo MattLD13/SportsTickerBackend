@@ -9,7 +9,9 @@ StartLimitBurst=5
 Type=simple
 User=root
 WorkingDirectory=/home/mld
-ExecStart=/usr/bin/env python3 -m ticker_controller
+Environment=TICKER_DATA_DIR=/home/mld/ticker
+Environment=TICKER_VERIFY_TLS=true
+ExecStart=/usr/bin/env python3 -m ticker_core
 Restart=always
 RestartSec=5
 StandardOutput=append:/home/pi/ticker.log

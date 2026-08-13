@@ -16,7 +16,7 @@ Wants=network-online.target
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu
-ExecStart=/usr/bin/env python3 app.py
+ExecStart=/usr/bin/env python3 -m sports_ticker.server
 # Without this, an OOM kill or an unhandled crash leaves the site down until
 # someone reboots the box.
 Restart=always

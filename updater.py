@@ -30,7 +30,6 @@ SERVICE_NAME = "ticker-controller"
 SERVICE_MAP = [
     ("sports_ticker/",      "ticker"),              # Flask backend
     ("app.py",              "ticker"),
-    ("ticker_controller/",  SERVICE_NAME),          # Temporary service entry point
     ("ticker_core/",        SERVICE_NAME),          # Rewrite Pi application
     ("updater.py",          SERVICE_NAME),
 ]
@@ -104,14 +103,15 @@ def restart_service(name):
 # ── Optional LED matrix display ───────────────────────────────────────────────
 
 def _try_show_update_ui(step_ref):
-    """Background thread: drive the LED matrix with the update screen."""
+    """Keep standalone updates headless because the controller owns its overlay."""
+    return
     try:
         import math
         from PIL import Image, ImageDraw, ImageFont
 
         try:
             from rgbmatrix import RGBMatrix
-            from ticker_controller.matrix import build_matrix_options
+            from ticker_core.drivers import RgbMatrixSettings
             matrix = RGBMatrix(options=build_matrix_options())
         except Exception:
             return  # Not on hardware — skip silently

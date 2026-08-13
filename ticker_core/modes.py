@@ -7,10 +7,10 @@ class DisplayMode(StrEnum):
     """Name one selectable ticker mode."""
 
     SPORTS = "sports"
-    SPORTS_FULL = "sports_full"
     WEATHER = "weather"
     MUSIC = "music"
     FLIGHTS = "flights"
+    AIRPORTS = "airports"
     CLOCK = "clock"
 
 

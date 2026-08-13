@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from ticker_core.protocol import TelemetrySnapshot, build_poll_headers
+from ticker_core.protocol import TelemetrySnapshot
 
 
 class HealthCollector:
@@ -37,10 +37,6 @@ class HealthCollector:
             python=sys.version.split()[0],
             temperature_c=self._temperature(),
         )
-
-    def headers(self) -> dict[str, str]:
-        """Return headers for one backend poll."""
-        return build_poll_headers(self.snapshot())
 
     def _temperature(self) -> float | None:
         try:

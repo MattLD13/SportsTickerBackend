@@ -1,5 +1,6 @@
-"""Sports Ticker backend package."""
+"""Version two Sports Ticker backend package.
 
-from .runtime import create_app, create_runtime, run_server, start_background_workers
+Importing this package performs no runtime configuration or service startup.
+"""
 
-__all__ = ["create_app", "create_runtime", "run_server", "start_background_workers"]
+__all__: list[str] = []

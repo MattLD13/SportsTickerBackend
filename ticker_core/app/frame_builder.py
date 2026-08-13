@@ -49,7 +49,12 @@ class FrameBuilder:
         if decision.kind in {FrameKind.STOPPED, FrameKind.SLEEP}:
             frame = Image.new("RGB", (384, 32), "black")
         elif decision.kind == FrameKind.UPDATE:
-            frame = self._utility.update(context, version=decision.update_version or "")
+            base = False
+            frame = self._utility.update_overlay(
+                self._last_base or self._utility.empty(context),
+                decision.update_progress or 0.0,
+                decision.update_version or "",
+            )
         elif decision.kind == FrameKind.PAIRING:
             frame = self._utility.pairing(context, decision.pairing_code)
         elif decision.kind == FrameKind.OFFLINE:
