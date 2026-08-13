@@ -157,7 +157,7 @@ def classify_content(
     if selected_mode == "airports":
         return ContentClassification((), tuple(item for item in others if _is_airport(item)))
     if selected_mode == "stock":
-        return ContentClassification((), tuple(item for item in others if _is_stock(item)))
+        return ContentClassification(tuple(item for item in others if _is_stock(item)), ())
     if selected_mode == "clock":
         return ContentClassification((), tuple(item for item in others if _is_clock(item)))
     sports = tuple(item for item in others if _is_sports(item))
