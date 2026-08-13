@@ -35,8 +35,8 @@ class AssetPlanner:
         for key in ("from_logo", "to_logo"):
             _add(requests, item.get(key), "logo", (24, 24))
         if item_type == "music" or sport == "music":
-            for key in ("home_logo", "artwork", "cover_url", "album_art"):
-                _add(requests, item.get(key), "artwork", (42, 42))
+            for key in ("cover", "home_logo", "artwork", "cover_url", "album_art"):
+                _add(requests, item.get(key), "logo", (42, 42))
             for url in (*_urls(item.get("next_logos")), *_urls(item.get("next_artwork")), *_urls(item.get("next_covers"))):
                 _add(requests, url, "artwork", (42, 42))
             return
@@ -69,7 +69,9 @@ def _content_items(value: object) -> Iterable[Mapping[str, Any]]:
         if isinstance(nested, Mapping):
             content = nested
     if isinstance(content, Mapping):
-        content = content.get("sports", ())
+        for family in content.values():
+            yield from _content_items(family)
+        return
     for item in content if isinstance(content, Iterable) and not isinstance(content, (str, bytes, Mapping)) else ():
         data = getattr(item, "data", item)
         if isinstance(data, Mapping):

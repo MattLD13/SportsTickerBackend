@@ -42,10 +42,11 @@ class MusicRenderer:
         ImageDraw.Draw(self._mask).ellipse((0, 0, self._cover_size, self._cover_size), fill=255)
         self._scratch = Image.new("RGBA", (self._vinyl_size, self._vinyl_size), (0, 0, 0, 0))
         ImageDraw.Draw(self._scratch).ellipse((0, 0, self._vinyl_size - 1, self._vinyl_size - 1), fill=(20, 20, 20), outline=(50, 50, 50))
+        self._state = MusicAnimationState()
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
-        """Render one music item using a fresh state."""
-        image, _ = self.render_with_state(context, scene.item, MusicAnimationState())
+        """Render one music item while retaining its animation state."""
+        image, self._state = self.render_with_state(context, scene.item, self._state)
         return RenderedContent(image, static=True)
 
     def render_with_state(self, context: RenderContext, item: object, state: MusicAnimationState) -> tuple[Image.Image, MusicAnimationState]:
