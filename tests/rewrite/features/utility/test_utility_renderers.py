@@ -23,6 +23,19 @@ def test_utility_and_weather_render_deterministically() -> None:
     assert forecast.tobytes() == weather.detailed(context, {"type": "weather", "home_abbr": "72", "away_abbr": "Boston", "situation": {"icon": "rain", "stats": {"aqi": "41"}}}).tobytes()
 
 
+def test_no_games_panel_uses_clock_hierarchy_and_minute_progress() -> None:
+    """Keep the no-games concept full width, deterministic, and clock-led."""
+    utility = UtilityRenderer(load_default_font_set())
+    first = utility.empty(RenderContext(datetime(2026, 8, 14, 13, 42, 17)))
+    second = utility.empty(RenderContext(datetime(2026, 8, 14, 13, 42, 18)))
+
+    assert first.size == (384, 32)
+    assert first.tobytes() != second.tobytes()
+    assert first.getpixel((0, 31)) == (198, 198, 204, 255)
+    assert first.getpixel((383, 31)) == (42, 42, 48, 255)
+    assert first.getpixel((213, 10)) == (48, 48, 54, 255)
+
+
 def test_media_and_flight_keep_explicit_animation_state() -> None:
     """Render representative media, golf, and flight panels."""
     fonts = load_default_font_set()

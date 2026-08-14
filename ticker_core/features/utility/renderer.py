@@ -223,16 +223,37 @@ class UtilityRenderer:
         return image
 
     def empty(self, context: RenderContext) -> Image.Image:
-        """Render the no-games panel."""
-        image = Image.new("RGBA", (PANEL_W, PANEL_H), (8, 8, 16, 255))
+        """Render a clock-led no-games panel."""
+        image = Image.new("RGBA", (PANEL_W, PANEL_H), (8, 8, 10, 255))
         draw = ImageDraw.Draw(image)
-        draw.rectangle((0, 0, 1, 31), fill=(72, 76, 92))
-        draw.rectangle((PANEL_W - 2, 0, PANEL_W - 1, 31), fill=(72, 76, 92))
-        title, subtitle = "NO GAMES AVAILABLE", "CHECK BACK LATER"
+        accent = (198, 198, 204)
+        muted = (104, 104, 112)
+        draw.rectangle((0, 0, PANEL_W - 1, 0), fill=(38, 38, 44))
+
+        icon_left, icon_top, icon_right, icon_bottom = 8, 10, 23, 24
+        draw.rectangle((icon_left, icon_top, icon_right, icon_bottom), outline=muted)
+        draw.line((icon_left, icon_top + 4, icon_right, icon_top + 4), fill=accent)
+        draw.line((icon_left + 4, icon_top - 2, icon_left + 4, icon_top + 2), fill=accent)
+        draw.line((icon_right - 4, icon_top - 2, icon_right - 4, icon_top + 2), fill=accent)
+        draw.point((icon_left + 4, icon_top + 8), fill=(220, 220, 224))
+        draw.point((icon_left + 8, icon_top + 8), fill=(220, 220, 224))
+        draw.point((icon_left + 12, icon_top + 8), fill=(220, 220, 224))
+
+        left = 32
+        date = context.now.strftime("%a %b %d").upper()
+        draw.text((left, -2), date, font=self._fonts.tiny, fill=(150, 150, 158))
+        draw.text((left, 7), "NO GAMES", font=self._fonts.normal, fill=(245, 245, 248))
+        draw.text((left, 19), "CHECK BACK LATER", font=self._fonts.tiny, fill=(142, 142, 150))
+
+        divider_x = 213
+        draw.line((divider_x, 5, divider_x, 27), fill=(48, 48, 54))
         clock = context.now.strftime("%I:%M %p").lstrip("0")
-        draw.text(((PANEL_W - draw.textlength(title, font=self._fonts.normal)) / 2, 5), title, font=self._fonts.normal, fill=(205, 212, 224))
-        draw.text(((PANEL_W - draw.textlength(subtitle, font=self._fonts.tiny)) / 2, 14), subtitle, font=self._fonts.tiny, fill=(145, 152, 165))
-        draw.text(((PANEL_W - draw.textlength(clock, font=self._fonts.tiny)) / 2, 22), clock, font=self._fonts.tiny, fill=(200, 200, 200))
+        draw.text((PANEL_W - 8, -1), clock, font=self._fonts.clock, fill=(245, 245, 248), anchor="ra")
+
+        total_seconds = context.now.second + (context.now.microsecond / 1_000_000.0)
+        progress_width = int((total_seconds / 60.0) * PANEL_W)
+        draw.rectangle((0, 31, PANEL_W - 1, 31), fill=(42, 42, 48))
+        draw.rectangle((0, 31, progress_width, 31), fill=accent)
         return image
 
     @staticmethod
