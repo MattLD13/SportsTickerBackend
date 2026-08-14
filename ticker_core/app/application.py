@@ -383,10 +383,10 @@ def _pin_to_cpu(cpu: int | None) -> None:
 
     if cpu is None or not hasattr(os, "sched_setaffinity"):
         return
-    available = os.sched_getaffinity(0)
-    if cpu not in available:
+    try:
+        os.sched_setaffinity(0, {cpu})
+    except OSError:
         return
-    os.sched_setaffinity(0, {cpu})
 
 
 class _FrameTiming:

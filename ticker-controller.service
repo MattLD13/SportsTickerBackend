@@ -15,7 +15,7 @@ Environment=TICKER_RELEASE_LINK=/opt/sports-ticker/current
 Environment=TICKER_VERIFY_TLS=true
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=TICKER_POLL_PROCESS=1
-Environment=TICKER_RENDER_CPU=3
+Environment=TICKER_RENDER_CPU=1
 Environment=TICKER_POLL_CPU=2
 ExecStart=/usr/bin/env python3 -m ticker_core
 Restart=always
