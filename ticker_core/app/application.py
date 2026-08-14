@@ -23,7 +23,7 @@ from ticker_core.protocol import BackendClient, TickerResponse
 from ticker_core.runtime import FrameDecision, FramePacer, TickerRuntime
 
 from .frame_builder import FrameBuilder
-from .poller import BackendPoller, PollEvent, PollFailed, PollSucceeded
+from .poller import BackendPoller, PollConnected, PollEvent, PollFailed, PollSucceeded
 from .strips import StripRepository
 
 
@@ -191,7 +191,13 @@ class TickerApplication:
             except Empty:
                 return
             if isinstance(event, PollSucceeded):
-                self._accept_fresh(event.payload)
+                response = event.payload
+                if isinstance(response, Mapping):
+                    response = TickerResponse.from_payload(response)
+                self._accept_fresh(response)
+            elif isinstance(event, PollConnected):
+                self._runtime.confirm_connection()
+                self._disconnected = False
             else:
                 self._handle_failure(event)
 
@@ -371,11 +377,27 @@ def _run_poll_process(poller: PollWorker, stop, events, cpu: int | None) -> None
 
     _pin_to_cpu(cpu)
     try:
-        poller.run(stop, events)
+        poller.run(stop, _ProcessPollEvents(events))
     finally:
         close = getattr(poller, "close", None)
         if callable(close):
             close()
+
+
+class _ProcessPollEvents:
+    """Send only serializable polling state across the process boundary."""
+
+    def __init__(self, target) -> None:
+        self._target = target
+
+    def put(self, event: PollEvent) -> None:
+        if isinstance(event, PollSucceeded):
+            self._target.put(PollSucceeded(event.payload.to_payload()))
+            return
+        if isinstance(event, PollFailed):
+            self._target.put(PollFailed(RuntimeError(str(event.error)), event.retry_in))
+            return
+        self._target.put(event)
 
 
 def _pin_to_cpu(cpu: int | None) -> None:

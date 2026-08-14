@@ -287,6 +287,13 @@ class TickerResponse:
     def fingerprint(self) -> str:
         return self.payload_key
 
+    def to_payload(self) -> dict[str, Any]:
+        """Return one mutable JSON payload for a process boundary."""
+
+        value = _thaw(self.data)
+        assert isinstance(value, dict)
+        return value
+
     @classmethod
     def from_payload(cls, payload: Any) -> "TickerResponse":
         data = _mapping(payload, "response")

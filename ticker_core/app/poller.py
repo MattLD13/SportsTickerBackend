@@ -34,7 +34,12 @@ class PollFailed:
     retry_in: float
 
 
-PollEvent = PollSucceeded | PollFailed
+@dataclass(frozen=True, slots=True)
+class PollConnected:
+    """Confirm a successful poll whose display data is unchanged."""
+
+
+PollEvent = PollSucceeded | PollFailed | PollConnected
 
 
 class BackendPoller:
@@ -64,6 +69,7 @@ class BackendPoller:
     def run(self, stop: Event, events: Queue[PollEvent]) -> None:
         """Poll until the stop event interrupts a delay."""
         backoff = PollBackoff()
+        previous_key: str | None = None
         next_poll = monotonic()
         next_heartbeat = next_poll
         while not stop.is_set():
@@ -80,7 +86,12 @@ class BackendPoller:
                     return
                 continue
             backoff = backoff.after_success()
-            events.put(PollSucceeded(payload))
+            payload_key = getattr(payload, "payload_key", None)
+            if payload_key is not None and payload_key == previous_key:
+                events.put(PollConnected())
+            else:
+                events.put(PollSucceeded(payload))
+                previous_key = payload_key
             next_poll += self._success_interval
             now = monotonic()
             if next_poll <= now:
