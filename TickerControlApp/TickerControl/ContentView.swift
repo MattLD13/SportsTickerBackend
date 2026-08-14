@@ -1382,21 +1382,13 @@ struct SituationPill: View {
             .cornerRadius(4).overlay(RoundedRectangle(cornerRadius: 4).stroke(color.opacity(0.3), lineWidth: 1))
     }
 }
-struct FootballPossessionContext: View {
+struct FootballDownContext: View {
     let downDist: String?
     let isRedZone: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "football.fill")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.yellow)
-            if let downDist, !downDist.isEmpty {
-                SituationPill(text: downDist, color: .yellow)
-            }
-            if isRedZone {
-                SituationPill(text: "RED ZONE", color: .red)
-            }
+        if let downDist, !downDist.isEmpty {
+            SituationPill(text: downDist, color: isRedZone ? .red : .yellow)
         }
     }
 }
@@ -1787,7 +1779,7 @@ struct GameRow: View {
 
     @ViewBuilder func teamLiveContext(isHome: Bool) -> some View {
         if ownsFootballContext(isHome: isHome), let s = game.situation {
-            FootballPossessionContext(downDist: s.downDist, isRedZone: s.isRedZone == true)
+            FootballDownContext(downDist: s.downDist, isRedZone: s.isRedZone == true)
         } else if isBaseball, hasBaseballCount, ownsActiveTeam(isHome: isHome), let s = game.situation,
                   let balls = s.balls, let strikes = s.strikes, let outs = s.outs {
             BaseballBattingContext(balls: balls, strikes: strikes, outs: outs)
