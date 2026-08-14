@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from threading import Lock
 from time import monotonic
@@ -45,6 +46,15 @@ _SOCCER_ABBREVIATIONS = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class _DetailCacheEntry:
+    """Store one detail payload with its terminal-state certainty."""
+
+    fetched_at: float
+    is_final: bool
+    payload: Mapping[str, Any]
+
+
 class FotMobSoccerProvider:
     """Publish FotMob soccer scoreboards and live match facts."""
 
@@ -66,7 +76,7 @@ class FotMobSoccerProvider:
         self._client = client or UrllibJsonHttpClient(user_agent="Mozilla/5.0")
         self._timeout = float(timeout)
         self._cache_seconds = float(cache_seconds)
-        self._details: dict[str, tuple[float, Mapping[str, Any]]] = {}
+        self._details: dict[str, _DetailCacheEntry] = {}
         self._details_lock = Lock()
         self._stale_cache = SettingsResultCache()
 
@@ -140,27 +150,32 @@ class FotMobSoccerProvider:
             }
 
     def _details_for(self, match: Mapping[str, Any]) -> Mapping[str, Any] | None:
-        """Return cached or current details for one match."""
+        """Return live details or one final snapshot for one match."""
 
         match_id = str(match.get("id") or "").strip()
         if not match_id:
             return None
         now = monotonic()
         state = _match_state(match)
-        ttl = 10.0 if state in {"in", "half"} else self._cache_seconds
+        final = state == "post"
+        fallback: Mapping[str, Any] | None = None
         with self._details_lock:
             cached = self._details.get(match_id)
-            if cached is not None and now - cached[0] < ttl:
-                return cached[1]
+            if cached is not None:
+                fallback = cached.payload
+                if cached.is_final and now - cached.fetched_at < self._cache_seconds:
+                    return cached.payload
+                if not final and now - cached.fetched_at < 10.0:
+                    return cached.payload
         try:
             payload = self._client.get_json(_DETAIL_URL.format(match_id=match_id), timeout=self._timeout)
         except Exception:
-            return None
+            return fallback
         if not isinstance(payload, Mapping):
-            return None
+            return fallback
         detail = dict(payload)
         with self._details_lock:
-            self._details[match_id] = (now, detail)
+            self._details[match_id] = _DetailCacheEntry(now, final, detail)
         return detail
 
     def _stale_result(self, settings: DisplaySettings, error: str) -> ProviderResult:
