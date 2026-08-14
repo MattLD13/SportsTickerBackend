@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from math import isfinite
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Thread
 from time import monotonic, sleep, time
 from typing import Any
 from urllib.parse import urlencode
@@ -130,34 +130,46 @@ class FinnhubStockSource:
         self._last_refresh = float("-inf")
         self._request_lock = Lock()
         self._refresh_lock = Lock()
+        self._quote_lock = Lock()
+        self._refreshing = False
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
-        changed = self._refresh_all_quotes()
+        self._start_all_market_refresh()
         records: list[dict[str, object]] = []
         for group in selected_market_groups(settings.active_sports):
             records.extend(self._group_records(group.id, group.label, group.symbols))
-        if changed:
-            self._save_cache()
         return {"content": records}
 
-    def _refresh_all_quotes(self) -> bool:
-        """Refresh every configured market symbol before settings select a list."""
+    def _start_all_market_refresh(self) -> None:
+        """Start one shared all-market refresh without delaying a settings change."""
 
         now = self._monotonic()
         with self._refresh_lock:
-            if now - self._last_refresh < self._refresh_seconds:
-                return False
+            if self._refreshing or now - self._last_refresh < self._refresh_seconds:
+                return
             self._last_refresh = now
-            changed = False
+            self._refreshing = True
+        Thread(target=self._refresh_all_markets, name="ticker-stock-refresh", daemon=True).start()
+
+    def _refresh_all_markets(self) -> None:
+        """Refresh every quote in the source-owned market cache."""
+
+        changed = False
+        try:
             symbols = tuple(
                 dict.fromkeys(symbol for group in MARKET_GROUPS for symbol in group.symbols)
             )
             for symbol in symbols:
                 quote = self._fetch_quote(symbol) if self._keys else None
                 if quote is not None:
-                    self._quotes[symbol] = quote
+                    with self._quote_lock:
+                        self._quotes[symbol] = quote
                     changed = True
-            return changed
+            if changed:
+                self._save_cache()
+        finally:
+            with self._refresh_lock:
+                self._refreshing = False
 
     def _group_records(
         self,
@@ -168,8 +180,10 @@ class FinnhubStockSource:
         """Build one selected market list from the shared quote cache."""
 
         records: list[dict[str, object]] = []
+        with self._quote_lock:
+            quotes = dict(self._quotes)
         for symbol in symbols:
-            quote = self._quotes.get(symbol)
+            quote = quotes.get(symbol)
             if quote is None:
                 continue
             records.append(
@@ -289,8 +303,10 @@ class FinnhubStockSource:
         temporary = self._cache_path.with_name(f".{self._cache_path.name}.tmp")
         try:
             self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._quote_lock:
+                quotes = dict(self._quotes)
             temporary.write_text(
-                json.dumps({"quotes": self._quotes}, sort_keys=True, separators=(",", ":")),
+                json.dumps({"quotes": quotes}, sort_keys=True, separators=(",", ":")),
                 encoding="utf-8",
             )
             os.replace(temporary, self._cache_path)
