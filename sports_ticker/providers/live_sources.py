@@ -483,15 +483,15 @@ def _airport_rows(value: object, counterpart: str) -> list[dict[str, object]]:
         code = _mapping(airline.get("code"))
         airport = _mapping(_mapping(raw.get("airport")).get(counterpart))
         airport_code = _mapping(airport.get("code"))
+        airport_position = _mapping(airport.get("position"))
+        airport_region = _mapping(airport_position.get("region"))
         identification = _mapping(raw.get("identification"))
         number = _mapping(identification.get("number"))
-        aircraft = _mapping(raw.get("aircraft"))
         rows.append(
             {
-                "away_abbr": str(code.get("iata") or code.get("icao") or "---"),
-                "other_iata": str(airport_code.get("iata") or "---"),
-                "home_abbr": str(number.get("default") or "---"),
-                "altitude": _mapping(aircraft.get("model")).get("code", ""),
+                "flight_number": str(number.get("default") or code.get("iata") or code.get("icao") or "---"),
+                "airport_code": str(airport_code.get("iata") or "---"),
+                "airport_city": str(airport_region.get("city") or airport.get("name") or "---"),
             }
         )
     return rows

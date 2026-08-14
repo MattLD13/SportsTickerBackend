@@ -13,7 +13,7 @@ from ticker_core.rendering import ContentScene, FontSet, RenderedContent
 
 
 BOARD_ROWS = 4
-CITY_CHARS = 18
+CITY_CHARS = 22
 BOARD_RULE = (30, 60, 100)
 BOARD_ALT = (70, 90, 120)
 BOARD_WX = (90, 110, 140)
@@ -129,13 +129,15 @@ class FlightRenderer:
         for index, row in enumerate(rows[:BOARD_ROWS]):
             item = row if isinstance(row, dict) else {}
             y = 9 + index * 6
-            tiny_text(draw, x, y, str(item.get("away_abbr", "???"))[:6], color, self._fonts.tiny)
-            tiny_text(draw, x + 34, y, str(item.get("other_iata", ""))[:3], self._grey, self._fonts.tiny)
-            tiny_text(draw, x + 54, y, str(item.get("home_abbr", "???")).upper()[:CITY_CHARS], self._white, self._fonts.tiny)
-            altitude = self._integer(item.get("altitude"))
-            if altitude > 0:
-                label = f"{altitude:,}FT"
-                tiny_text(draw, edge - len(label) * 5, y, label, BOARD_ALT, self._fonts.tiny)
+            flight_number = str(item.get("flight_number", "---")).upper()[:8]
+            airport_code = str(item.get("airport_code", "---")).upper()[:3]
+            city = str(item.get("airport_city", "---")).upper()[:CITY_CHARS]
+            tiny_text(draw, x, y, flight_number, self._green, self._fonts.tiny)
+            code_x = x + len(flight_number) * 5 + 4
+            tiny_text(draw, code_x, y, airport_code, self._grey, self._fonts.tiny)
+            city_x = code_x + len(airport_code) * 5 + 4
+            max_city_chars = max(0, (edge - city_x) // 5)
+            tiny_text(draw, city_x, y, city[:max_city_chars], self._white, self._fonts.tiny)
 
     @staticmethod
     def _integer(value: object) -> int:
