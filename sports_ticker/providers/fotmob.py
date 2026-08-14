@@ -21,6 +21,7 @@ from .sports_display import normalize_soccer_clock, soccer_event
 
 _MATCHES_URL = "https://www.fotmob.com/api/data/matches"
 _DETAIL_URL = "https://www.fotmob.com/api/data/matchDetails?matchId={match_id}"
+_LIVE_DETAIL_SECONDS = 5.0
 _SOCCER_ABBREVIATIONS = {
     "Arsenal": "ARS", "Aston Villa": "AVL", "Bournemouth": "BOU", "Brentford": "BRE",
     "Brighton & Hove Albion": "BHA", "Burnley": "BUR", "Chelsea": "CHE", "Crystal Palace": "CRY",
@@ -165,7 +166,7 @@ class FotMobSoccerProvider:
                 fallback = cached.payload
                 if cached.is_final and now - cached.fetched_at < self._cache_seconds:
                     return cached.payload
-                if not final and now - cached.fetched_at < 10.0:
+                if not final and now - cached.fetched_at < _LIVE_DETAIL_SECONDS:
                     return cached.payload
         try:
             payload = self._client.get_json(_DETAIL_URL.format(match_id=match_id), timeout=self._timeout)

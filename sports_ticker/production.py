@@ -42,8 +42,8 @@ from sports_ticker.providers.live_sources import (
 
 _ESPN_BASE: Final = "https://site.api.espn.com/apis/site/v2/sports"
 _INTERVALS: Final = {
-    "espn": 12.0,
-    "fotmob": 12.0,
+    "espn": 5.0,
+    "fotmob": 5.0,
     "weather": 300.0,
     "golf": 30.0,
     "racing": 15.0,
