@@ -657,19 +657,6 @@ class SportsMixin:
             def _trim_line(raw, max_chars=15):
                 return str(raw or '').strip()[:max_chars]
 
-            def _compact_pitch_name(full_type, abbr_type):
-                txt = str(full_type or '').strip()
-                if txt:
-                    txt = txt.split('(', 1)[0].strip()
-                    txt = txt.split('/', 1)[0].strip()
-                if not txt:
-                    return str(abbr_type or '').strip().upper()[:10]
-                if len(txt) > 12:
-                    words = txt.replace('-', ' ').split()
-                    if words:
-                        txt = words[-1]
-                return txt.title()[:12]
-
             def _draw_info_block(cx, lines, y0=None):
                 non_empty = sum(1 for l in lines if str(l or '').strip())
                 if non_empty >= 4:
@@ -701,8 +688,7 @@ class SportsMixin:
             batter_ab    = sit.get('batter_ab', '')
             pit_pitches  = sit.get('pitcher_pitches', 0)
             last_spd     = sit.get('last_pitch_speed', 0)
-            last_abbr    = sit.get('last_pitch_type_abbr', '') or sit.get('last_pitch_type', '')
-            last_full    = sit.get('last_pitch_type_full', '')
+            last_pitch   = sit.get('last_pitch_type', '')
 
             batter_avg_txt = str(batter_avg or '').strip()
             if batter_avg_txt.startswith('0.'):
@@ -728,7 +714,7 @@ class SportsMixin:
             if str(pit_pitches).strip() and str(pit_pitches).strip() != '0':
                 pitch_count_line = f"P:{pit_pitches}"
 
-            pitch_type_line = _compact_pitch_name(last_full, last_abbr)
+            pitch_type_line = str(last_pitch or '').strip()
             if str(last_spd).strip() and str(last_spd).strip() != '0' and pitch_type_line:
                 pitch_info_line = f"{last_spd} {pitch_type_line}"
             elif str(last_spd).strip() and str(last_spd).strip() != '0':

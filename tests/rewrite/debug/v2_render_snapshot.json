@@ -56,7 +56,9 @@
             "onThird": false,
             "balls": 3,
             "strikes": 2,
-            "outs": 2
+            "outs": 2,
+            "last_pitch_speed": 96,
+            "last_pitch_type": "4S Fastball"
           }
         }
       }

@@ -43,7 +43,7 @@ def test_baseball_compact_and_pinned_frames_have_panel_geometry(renderer: Sports
     assert pinned.size == (384, 32)
 
 
-def test_football_active_team_changes_the_possession_marker(renderer: SportsRenderer) -> None:
+def test_football_active_team_changes_the_live_context_position(renderer: SportsRenderer) -> None:
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
     base = {
         "sport": "nfl", "state": "in", "status": "Q2 5:12", "away_abbr": "AWY",

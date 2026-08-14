@@ -21,6 +21,34 @@ from .stale_cache import SettingsResultCache
 
 
 _DETAIL_LEAGUES = frozenset(("mlb", "nhl"))
+_MLB_PITCH_LABELS = {
+    "four seam fastball": "4S Fastball",
+    "two seam fastball": "2S Fastball",
+    "cutter": "Cutter",
+    "changeup": "Changeup",
+    "curveball": "Curveball",
+    "knuckle curve": "Knuckle Curve",
+    "knuckleball": "Knuckleball",
+    "sinker": "Sinker",
+    "slider": "Slider",
+    "splitter": "Splitter",
+    "sweeper": "Sweeper",
+}
+_MLB_PITCH_ABBREVIATIONS = {
+    "2SFB": "2S Fastball",
+    "4SFB": "4S Fastball",
+    "CH": "Changeup",
+    "CU": "Curveball",
+    "FC": "Cutter",
+    "FF": "4S Fastball",
+    "FS": "Splitter",
+    "KC": "Knuckle Curve",
+    "KN": "Knuckleball",
+    "SI": "Sinker",
+    "SL": "Slider",
+    "ST": "Sweeper",
+    "SV": "Sweeper",
+}
 
 
 class EspnScoreboardProvider:
@@ -609,10 +637,20 @@ def _mlb_last_pitch(summary: Mapping[str, Any], situation: Mapping[str, Any]) ->
     full = str(pitch.get("text") or data.get("pitchTypeText") or "").strip()
     return {
         "last_pitch_speed": speed,
-        "last_pitch_type": abbreviation or full,
-        "last_pitch_type_abbr": abbreviation,
-        "last_pitch_type_full": full,
+        "last_pitch_type": _mlb_pitch_label(full, abbreviation),
     }
+
+
+def _mlb_pitch_label(full: str, abbreviation: str) -> str:
+    """Return the short fixed MLB pitch label for a 384-pixel panel."""
+
+    normalized = re.sub(r"[^a-z0-9]+", " ", full.lower()).strip()
+    if normalized in _MLB_PITCH_LABELS:
+        return _MLB_PITCH_LABELS[normalized]
+    normalized_abbreviation = abbreviation.upper().replace("-", "").replace(" ", "")
+    if normalized_abbreviation in _MLB_PITCH_ABBREVIATIONS:
+        return _MLB_PITCH_ABBREVIATIONS[normalized_abbreviation]
+    return full.title()[:12] if full else normalized_abbreviation[:12]
 
 
 def _mlb_person_id(value: Any) -> str:
