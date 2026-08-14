@@ -193,6 +193,14 @@ class BackendApplication:
         ticker = self.repository.get_ticker(identifier)
         if ticker is None:
             raise KeyError(f"ticker not found: {identifier}")
+        delayed = bool(ticker.display_settings.live_delay_mode)
+        if delayed:
+            delayed_snapshot = self.snapshot_store.get_delayed(
+                identifier,
+                ticker.display_settings.live_delay_seconds,
+            )
+            if delayed_snapshot is not None:
+                snapshot = delayed_snapshot
         self.event_service.remove_expired()
         data = project_data_v2(
             replace(snapshot, effective_settings=ticker.display_settings),
@@ -211,6 +219,10 @@ class BackendApplication:
         data["meta"]["pairing"] = {
             "paired": bool(pairing is not None and pairing.paired),
             "code": None if pairing is None or pairing.paired else pairing.pairing_code,
+        }
+        data["meta"]["live_delay"] = {
+            "enabled": delayed,
+            "seconds": ticker.display_settings.live_delay_seconds if delayed else 0,
         }
         pending_update = ticker.device.metadata.get("pending_update")
         if isinstance(pending_update, Mapping):

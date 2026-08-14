@@ -88,6 +88,7 @@ def _strip_fingerprint(content: tuple[Content, ...], mode: str) -> str:
                 "id": item.id,
                 "type": item.type,
                 "sport": item.sport,
+                "is_shown": item.is_shown,
                 "data": _plain_json(item.data),
             }
             for item in content
