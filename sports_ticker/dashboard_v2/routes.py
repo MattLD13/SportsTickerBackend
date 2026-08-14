@@ -149,7 +149,8 @@ def _league_rows(active_sports, visible) -> list[dict[str, str]]:
         "soccer_epl", "soccer_fa_cup", "soccer_champ", "soccer_champions_league", "soccer_mls",
     )
     records = _visible_sports(visible)
-    names = tuple(dict.fromkeys((*available, *(str(value).lower() for value in active_sports), *records)))
+    configured = (str(value).lower() for value in active_sports if not str(value).lower().startswith("stock_"))
+    names = tuple(dict.fromkeys((*available, *configured, *records)))
     rows = []
     for name in names:
         enabled = bool(active_sports.get(name, True))
