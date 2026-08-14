@@ -34,7 +34,7 @@ def test_no_games_panel_uses_clock_hierarchy_and_minute_progress() -> None:
     assert first.getpixel((60, 3)) == (0, 0, 0, 255)
     assert first.getpixel((0, 31)) == (198, 198, 204, 255)
     assert first.getpixel((383, 31)) == (42, 42, 48, 255)
-    assert first.getpixel((213, 10)) == (48, 48, 54, 255)
+    assert first.getpixel((196, 10)) == (48, 48, 54, 255)
 
 
 def test_media_and_flight_keep_explicit_animation_state() -> None:
