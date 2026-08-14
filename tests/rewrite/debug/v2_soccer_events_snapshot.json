@@ -1,0 +1,34 @@
+{
+  "api_version": "v2",
+  "content": {
+    "sports": [
+      {
+        "id": "soccer-demo",
+        "family": "sports",
+        "kind": "scoreboard",
+        "is_shown": true,
+        "data": {
+          "sport": "soccer_epl",
+          "state": "in",
+          "status": "71'",
+          "away_abbr": "ARS",
+          "away_score": 1,
+          "away_color": "#db0007",
+          "home_abbr": "CHE",
+          "home_score": 2,
+          "home_color": "#034694",
+          "situation": {
+            "goal_events": [
+              {"is_home": false, "player": "MARTINEL", "time": "13'", "own_goal": false},
+              {"is_home": true, "player": "JACKSON", "time": "38'", "own_goal": false},
+              {"is_home": true, "player": "SMITH", "time": "45+2'", "own_goal": true}
+            ],
+            "red_cards": [
+              {"is_home": false, "player": "RICE", "time": "71'", "own_goal": false}
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

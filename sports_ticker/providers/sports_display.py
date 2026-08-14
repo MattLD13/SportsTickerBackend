@@ -410,16 +410,39 @@ def _results(value: object) -> list[str]:
 
 
 def _events(value: object, home_abbr: str, away_abbr: str) -> list[dict[str, Any]]:
+    """Project provider event records into the soccer renderer contract."""
+
     result: list[dict[str, Any]] = []
     for entry in _sequence(value):
         source = _mapping(entry)
         team = str(source.get("team") or source.get("teamAbbreviation") or "")
-        result.append({
-            "is_home": team.upper() == home_abbr.upper(),
-            "label": str(source.get("displayName") or source.get("athlete") or source.get("name") or ""),
-            "minute": str(source.get("clock") or source.get("time") or ""),
-        })
+        result.append(soccer_event(
+            is_home=team.upper() == home_abbr.upper(),
+            player=source.get("displayName") or source.get("athlete") or source.get("name"),
+            minute=source.get("clock") or source.get("time"),
+            own_goal=bool(source.get("ownGoal") or source.get("isOwnGoal")),
+        ))
     return result
+
+
+def soccer_event(
+    *,
+    is_home: bool,
+    player: object,
+    minute: object,
+    own_goal: bool = False,
+) -> dict[str, Any]:
+    """Return the V1-equivalent goal or card event consumed by both panel layouts."""
+
+    name = str(player or "").strip()
+    surname = name.split()[-1].upper()[:8] if name else ""
+    clock = str(minute or "").strip()
+    return {
+        "is_home": bool(is_home),
+        "player": surname,
+        "time": clock,
+        "own_goal": bool(own_goal),
+    }
 
 
 def _boolean_any(source: Mapping[str, Any], *keys: str) -> bool:
@@ -463,4 +486,5 @@ __all__ = [
     "assign_active_team",
     "display_situation",
     "normalize_soccer_clock",
+    "soccer_event",
 ]

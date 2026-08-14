@@ -16,7 +16,7 @@ from sports_ticker.domain import ContentItem, DisplaySettings
 from .contracts import ProviderHealth, ProviderResult
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .logo_overrides import corrected_logo
-from .sports_display import SportsDisplayProjector, assign_active_team, display_situation
+from .sports_display import SportsDisplayProjector, assign_active_team, display_situation, soccer_event
 from .stale_cache import SettingsResultCache
 
 
@@ -465,11 +465,12 @@ def _soccer_summary_details(payload: Any, item: Mapping[str, Any]) -> dict[str, 
         if "goal" not in text and "red" not in text:
             continue
         team = _summary_team_abbr(play, competition, home_abbr, away_abbr)
-        event = {
-            "is_home": team == home_abbr,
-            "label": _summary_player(play),
-            "minute": _summary_clock(play),
-        }
+        event = soccer_event(
+            is_home=team == home_abbr,
+            player=_summary_player(play),
+            minute=_summary_clock(play),
+            own_goal="own goal" in text,
+        )
         if "goal" in text:
             goals.append(event)
         if "red" in text:

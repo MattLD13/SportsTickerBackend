@@ -15,7 +15,7 @@ from sports_ticker.domain import ContentItem, DisplaySettings
 from .contracts import ProviderHealth, ProviderResult
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .stale_cache import SettingsResultCache
-from .sports_display import normalize_soccer_clock
+from .sports_display import normalize_soccer_clock, soccer_event
 
 
 _MATCHES_URL = "https://www.fotmob.com/api/data/matches"
@@ -338,9 +338,14 @@ def _situation(detail: Mapping[str, Any] | None) -> dict[str, object]:
         if bool(source.get("isPenaltyShootoutEvent")):
             shootout["home" if is_home else "away"].append("goal" if event_type == "goal" else "miss")
         elif event_type == "goal":
-            goal_events.append({"is_home": is_home, "label": player, "minute": minute})
+            goal_events.append(soccer_event(
+                is_home=is_home,
+                player=player,
+                minute=minute,
+                own_goal=bool(source.get("ownGoal")) or "own" in str(source.get("subType") or "").lower(),
+            ))
         elif event_type == "card" and "red" in str(source.get("card") or "").lower():
-            red_cards.append({"is_home": is_home, "label": player, "minute": minute})
+            red_cards.append(soccer_event(is_home=is_home, player=player, minute=minute))
     result: dict[str, object] = {
         "possession": "",
         "goal_events": goal_events,
