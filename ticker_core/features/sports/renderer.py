@@ -202,7 +202,10 @@ class SportsRenderer:
 
     def _draw_football(self, draw: ImageDraw.ImageDraw, width: int, game: Mapping[str, Any]) -> None:
         sit = game["sit"]
-        possession = str(sit.get("possession", game.get("poss", ""))).upper()
+        active_team = str(sit.get("activeTeam", "")).upper()
+        if not active_team:
+            return
+        possession = active_team
         team = "home" if possession in {"HOME", str(game.get("home_abbr", "")).upper()} else "away"
         x = width - 12 if team == "home" else 8
         draw.ellipse((x - 4, 1, x + 4, 5), fill=(150, 75, 20), outline=(110, 54, 14))

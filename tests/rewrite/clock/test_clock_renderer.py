@@ -5,9 +5,9 @@ from datetime import datetime
 import pytest
 from PIL import Image, ImageDraw
 
-from ticker_controller.fonts import load_display_font, load_monospace_font
 from ticker_core import RenderContext
 from ticker_core.features.clock import ClockRenderer, ClockScene
+from ticker_core.rendering.fonts import load_display_font, load_monospace_font
 
 
 PANEL_WIDTH = 384

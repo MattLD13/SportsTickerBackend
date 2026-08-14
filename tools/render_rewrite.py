@@ -2,8 +2,8 @@
 """Render one 384x32 rewrite frame from backend JSON without starting hardware.
 
 Examples:
-  python tools/render_rewrite.py --snapshot ticker.json --mode sports_full
-  python tools/render_rewrite.py --url http://localhost:5000 --mode weather
+  python tools/render_rewrite.py --snapshot ticker.json --mode sports --pinned
+  python tools/render_rewrite.py --url http://localhost:5000 --ticker-id TICKER_ID --mode weather
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 import sys
 from typing import Any
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urljoin
 
 import requests
 from PIL import Image
@@ -32,6 +32,14 @@ from ticker_core.rendering import ContentScene
 
 PANEL_SIZE = (384, 32)
 DEFAULT_BACKEND_URL = "http://127.0.0.1:5000"
+MODE_FAMILIES = {
+    "sports": frozenset(("sports", "golf", "racing")),
+    "stock": frozenset(("stock",)),
+    "weather": frozenset(("weather",)),
+    "music": frozenset(("music",)),
+    "flights": frozenset(("flights",)),
+    "airports": frozenset(("airports",)),
+}
 
 
 def parse_datetime(value: str) -> datetime:
@@ -46,7 +54,6 @@ def load_snapshot(
     snapshot_path: Path | None,
     url: str,
     endpoint: str,
-    ticker_id: str,
     mode: str,
     timeout: float,
 ) -> dict[str, Any]:
@@ -57,10 +64,7 @@ def load_snapshot(
         except (OSError, json.JSONDecodeError) as error:
             raise ValueError(f"Cannot read snapshot {snapshot_path}: {error}") from error
     else:
-        query = {"mode": mode}
-        if ticker_id:
-            query["id"] = ticker_id
-        target = f"{urljoin(url.rstrip('/') + '/', endpoint.lstrip('/'))}?{urlencode(query)}"
+        target = urljoin(url.rstrip('/') + '/', endpoint.lstrip('/'))
         response = requests.get(target, timeout=timeout)
         response.raise_for_status()
         data = response.json()
@@ -68,31 +72,22 @@ def load_snapshot(
 
 
 def normalize_snapshot(value: object, requested_mode: str) -> dict[str, Any]:
-    """Normalize legacy debug snapshots into the rewrite payload shape."""
-    if isinstance(value, list):
-        return {"mode": requested_mode, "content": {"sports": _items(value)}}
+    """Normalize a V2 display response into a renderer snapshot."""
     if not isinstance(value, Mapping):
-        raise ValueError("The backend response must be an object or a list.")
+        raise ValueError("The backend response must be an object.")
     data = dict(value)
-    if data.get("api_version") == "v2":
-        records: list[dict[str, Any]] = []
-        for values in _items_mapping(data.get("content")):
-            for envelope in _items(values):
-                rendered = dict(envelope.get("data") or {})
-                rendered["id"] = envelope.get("id", rendered.get("id", ""))
-                rendered["family"] = envelope.get("family", rendered.get("family", ""))
-                rendered["kind"] = envelope.get("kind", rendered.get("kind", ""))
-                rendered["is_shown"] = envelope.get("is_shown", True)
-                records.append(rendered)
-        return {"mode": requested_mode, "content": {"sports": records}}
-    content = data.get("content")
-    if not isinstance(content, Mapping):
-        games = data.get("games", data.get("raw_games", ()))
-        data["content"] = {"sports": _items(games)}
-    elif not isinstance(content.get("sports"), list):
-        data["content"] = {**content, "sports": _items(data.get("games", ()))}
-    data.setdefault("mode", requested_mode)
-    return data
+    if data.get("api_version") != "v2":
+        raise ValueError("The backend response must use api_version v2.")
+    records: list[dict[str, Any]] = []
+    for values in _items_mapping(data.get("content")):
+        for envelope in _items(values):
+            rendered = dict(envelope.get("data") or {})
+            rendered["id"] = envelope.get("id", rendered.get("id", ""))
+            rendered["family"] = envelope.get("family", rendered.get("family", ""))
+            rendered["kind"] = envelope.get("kind", rendered.get("kind", ""))
+            rendered["is_shown"] = envelope.get("is_shown", True)
+            records.append(rendered)
+    return {"mode": requested_mode, "content": {"items": records}}
 
 
 def _items(value: object) -> list[dict[str, Any]]:
@@ -106,10 +101,16 @@ def _items_mapping(value: object) -> tuple[object, ...]:
     return tuple(value.values()) if isinstance(value, Mapping) else ()
 
 
-def content_items(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Return the normalized content records."""
+def content_items(snapshot: Mapping[str, Any], mode: str) -> list[dict[str, Any]]:
+    """Return records owned by one selected display mode."""
     content = snapshot.get("content")
-    return _items(content.get("sports")) if isinstance(content, Mapping) else []
+    if not isinstance(content, Mapping):
+        return []
+    families = MODE_FAMILIES.get(mode, frozenset())
+    return [
+        item for item in _items(content.get("items"))
+        if str(item.get("family") or "").strip().lower() in families
+    ]
 
 
 def choose_item(items: list[dict[str, Any]], item_id: str, index: int) -> dict[str, Any] | None:
@@ -157,7 +158,7 @@ def render_snapshot(
             from ticker_core.bootstrap import create_default_scene_registry
 
             return panel_image(create_default_scene_registry().render(context, ClockScene()))
-        item = choose_item(content_items(snapshot), item_id, index)
+        item = choose_item(content_items(snapshot, str(selected_mode)), item_id, index)
         if item is None:
             from ticker_core.rendering.fonts import load_default_font_set
             from ticker_core.features.utility import UtilityRenderer
@@ -178,8 +179,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshot", type=Path, help="Read a backend JSON snapshot from this file.")
     parser.add_argument("--url", default=DEFAULT_BACKEND_URL, help="Backend base URL when --snapshot is absent.")
-    parser.add_argument("--endpoint", default="/api/state", help="Backend endpoint when --snapshot is absent.")
-    parser.add_argument("--ticker-id", default="", help="Ticker id for a /data request.")
+    parser.add_argument("--endpoint", default="", help="Override the V2 data endpoint.")
+    parser.add_argument("--ticker-id", default="", help="Ticker id for the V2 data request.")
     parser.add_argument("--mode", choices=[str(value) for value in DisplayMode], default="sports")
     parser.add_argument("--item-id", default="", help="Render this content item id.")
     parser.add_argument("--index", type=int, default=0, help="Render this content item when --item-id is absent.")
@@ -190,7 +191,10 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path("previews/rewrite.png"), help="Save the 384x32 PNG here.")
     arguments = parser.parse_args()
     try:
-        snapshot = load_snapshot(arguments.snapshot, arguments.url, arguments.endpoint, arguments.ticker_id, arguments.mode, 10.0)
+        endpoint = arguments.endpoint or f"/api/v2/tickers/{arguments.ticker_id}/data"
+        if arguments.snapshot is None and not arguments.ticker_id and not arguments.endpoint:
+            raise ValueError("Provide --ticker-id when loading from a backend.")
+        snapshot = load_snapshot(arguments.snapshot, arguments.url, endpoint, arguments.mode, 10.0)
         image = render_snapshot(snapshot, arguments.mode, item_id=arguments.item_id, index=arguments.index, now=arguments.datetime, asset_directory=arguments.assets, prefetch=not arguments.no_prefetch, pinned=arguments.pinned)
         arguments.output.parent.mkdir(parents=True, exist_ok=True)
         image.save(arguments.output)

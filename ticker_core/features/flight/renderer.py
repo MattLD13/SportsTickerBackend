@@ -77,7 +77,7 @@ class FlightRenderer:
         logo = self._logos.get(logo_url, (logo_width, logo_width)) if logo_url else None
         if logo is not None:
             image.alpha_composite(logo, (logo_x, 1))
-        if guest.upper() != flight_id.upper() and flight_id.lower() != "flight_tracker_blank":
+        if guest.upper() != flight_id.upper() and flight_id.lower() != "flight_blank":
             tiny_text(draw, logo_x - len(flight_id) * 5 - 5, 2, flight_id, self._grey, self._fonts.tiny)
         tiny_text(draw, 14, 2, guest, self._amber, self._fonts.tiny)
         tiny_text(draw, 6, 10, f"{origin} > {destination}", self._blue, self._fonts.tiny)

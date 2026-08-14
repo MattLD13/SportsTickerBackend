@@ -30,7 +30,7 @@ class SportsDisplayProjector:
         league = str(data.get("sport") or "").lower()
         state = str(data.get("state") or "pre").lower()
         prior = _mapping(data.get("situation"))
-        situation = _situation(
+        situation = display_situation(
             league,
             competition,
             home_abbr=str(data.get("home_abbr") or ""),
@@ -39,8 +39,15 @@ class SportsDisplayProjector:
         if prior.get("clock"):
             situation["clock"] = prior["clock"]
         data["status"] = _status(league, state, event, competition, data)
-        data["situation"] = self._stable_situation(
+        situation = self._stable_situation(
             item.id, league, state, str(data["status"]), situation
+        )
+        data["situation"] = assign_active_team(
+            league,
+            str(data["status"]),
+            situation,
+            home_abbr=str(data.get("home_abbr") or ""),
+            away_abbr=str(data.get("away_abbr") or ""),
         )
         if league == "march_madness":
             data.update(_seeds(competition))
@@ -131,7 +138,7 @@ def _status(
     return detail or str(data.get("status") or state)
 
 
-def _situation(
+def display_situation(
     league: str,
     competition: Mapping[str, Any],
     *,
@@ -175,6 +182,38 @@ def _situation(
             "red_cards": _events(source.get("redCards") or source.get("cards"), home_abbr, away_abbr),
         }
     return {"possession": possession}
+
+
+def assign_active_team(
+    league: str,
+    status: str,
+    situation: Mapping[str, Any],
+    *,
+    home_abbr: str,
+    away_abbr: str,
+) -> dict[str, Any]:
+    """Set the canonical team that owns the active live-play facts."""
+
+    result = dict(situation)
+    active_team = str(result.get("possession") or "").strip()
+    if league == "mlb" and not active_team:
+        active_team = _baseball_batting_team(status, home_abbr, away_abbr)
+    if active_team:
+        result["activeTeam"] = active_team
+    else:
+        result.pop("activeTeam", None)
+    return result
+
+
+def _baseball_batting_team(status: str, home_abbr: str, away_abbr: str) -> str:
+    """Resolve batting ownership from the provider-normalized inning status."""
+
+    normalized = status.strip().casefold()
+    if normalized.startswith("top"):
+        return away_abbr
+    if normalized.startswith("bottom") or normalized.startswith("bot"):
+        return home_abbr
+    return ""
 
 
 def _football_situation(
@@ -360,4 +399,4 @@ def _first_mapping(value: object) -> Mapping[str, Any]:
     return _mapping(_sequence(value)[0]) if _sequence(value) else {}
 
 
-__all__ = ["SportsDisplayProjector"]
+__all__ = ["SportsDisplayProjector", "assign_active_team", "display_situation"]

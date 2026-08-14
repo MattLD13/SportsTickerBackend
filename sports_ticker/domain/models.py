@@ -21,15 +21,11 @@ CONTENT_FAMILIES: tuple[str, ...] = (
 
 DISPLAY_MODES: tuple[str, ...] = (
     "sports",
-    "live",
-    "my_teams",
     "weather",
     "music",
     "flights",
-    "flight_tracker",
     "airports",
     "stock",
-    "stocks",
     "clock",
 )
 

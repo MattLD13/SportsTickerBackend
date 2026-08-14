@@ -67,14 +67,14 @@ def _default_flight_item() -> ContentItem:
     """Return the tracker setup card when no visitor flight is selected."""
 
     return ContentItem(
-        id="flight_tracker_blank",
+        id="flight_blank",
         family="flights",
         kind="flight_visitor",
         is_shown=True,
         data={
             "type": "flight_visitor",
             "sport": "flight",
-            "id": "flight_tracker_blank",
+            "id": "flight_blank",
             "guest_name": "NO FLIGHT SELECTED",
             "route": "TRACKER > SETUP",
             "origin_city": "TRACKER",

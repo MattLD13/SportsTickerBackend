@@ -23,8 +23,8 @@ class Client:
         self.error = error
         self.calls = []
 
-    def fetch_data(self, device_id, headers):
-        self.calls.append((device_id, headers))
+    def fetch_data(self, device_id):
+        self.calls.append(device_id)
         if self.error:
             raise self.error
         return self.result
@@ -35,19 +35,19 @@ def test_poller_publishes_success_and_uses_regular_interval():
     client = Client(result=payload)
     stop = StopAfterWait()
     events = Queue()
-    BackendPoller(client, "ticker-1", telemetry_headers=lambda: {"X": "1"}).run(stop, events)
+    BackendPoller(client, "ticker-1", telemetry=lambda: object()).run(stop, events)
     event = events.get_nowait()
     assert isinstance(event, PollSucceeded)
     assert event.payload is payload
     assert stop.delays == [pytest.approx(0.5, abs=0.01)]
-    assert client.calls == [("ticker-1", {"X": "1"})]
+    assert client.calls == ["ticker-1"]
 
 
 def test_poller_publishes_failure_and_uses_backoff():
     error = RuntimeError("offline")
     stop = StopAfterWait()
     events = Queue()
-    BackendPoller(Client(error=error), "ticker-1", telemetry_headers=dict).run(stop, events)
+    BackendPoller(Client(error=error), "ticker-1", telemetry=dict).run(stop, events)
     event = events.get_nowait()
     assert isinstance(event, PollFailed)
     assert event.error is error

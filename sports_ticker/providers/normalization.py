@@ -63,7 +63,7 @@ def normalize_settings(value: DisplaySettings | Mapping[str, Any] | None) -> Dis
     if not isinstance(value, Mapping):
         raise TypeError("settings must be DisplaySettings, a mapping, or None")
 
-    active_sports = value.get("active_sports", value.get("sports", {}))
+    active_sports = value.get("active_sports", {})
     if not isinstance(active_sports, Mapping):
         active_sports = {}
     return DisplaySettings(

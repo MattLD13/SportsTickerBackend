@@ -1,324 +1,85 @@
-```
- ███████╗██████╗  ██████╗ ██████╗ ████████╗███████╗    ████████╗██╗ ██████╗██╗  ██╗███████╗██████╗
- ██╔════╝██╔══██╗██╔═══██╗██╔══██╗╚══██╔══╝██╔════╝    ╚══██╔══╝██║██╔════╝██║ ██╔╝██╔════╝██╔══██╗
- ███████╗██████╔╝██║   ██║██████╔╝   ██║   ███████╗       ██║   ██║██║     █████╔╝ █████╗  ██████╔╝
- ╚════██║██╔═══╝ ██║   ██║██╔══██╗   ██║   ╚════██║       ██║   ██║██║     ██╔═██╗ ██╔══╝  ██╔══██╗
- ███████║██║     ╚██████╔╝██║  ██║   ██║   ███████║       ██║   ██║╚██████╗██║  ██╗███████╗██║  ██║
- ╚══════╝╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝       ╚═╝   ╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
-```
+# Sports Ticker
 
-> **384×32 LED matrix sports ticker** — scores, stocks, weather, flights, music, and more.  
-> Flask backend · Raspberry Pi controller · OTA updates · multi-ticker fleet support
-
-[![Deploy](https://github.com/MattLD13/SportsTickerBackend/actions/workflows/deploy.yml/badge.svg)](https://github.com/MattLD13/SportsTickerBackend/actions/workflows/deploy.yml)
-&nbsp;·&nbsp; Live at [ticker.mattdicks.org](https://ticker.mattdicks.org)
-
----
-
-## What it is
-
-A custom sports ticker built on 6× chained 64×32 HUB75 RGB LED panels (384×32 total). A Flask server runs on an Ubuntu VPS, aggregates live data from a dozen sources, and serves display payloads to one or more Raspberry Pi controllers over the network. Each Pi drives the LED matrix directly.
-
-```
- GitHub Push
-      │
-      ▼
- GitHub Actions ──► Ubuntu VPS (Flask backend)
-                         │  /data polling every 5s
-                         ▼
-                   Raspberry Pi Zero 2 W
-                         │
-                         ▼
-              ⬛⬛⬛⬛⬛⬛  384×32 LED Matrix
-```
-
----
-
-## Hardware
-
-| Component | Spec |
-|-----------|------|
-| Controller | Raspberry Pi Zero 2 W |
-| Panels | 6× 64×32 HUB75 RGB LED |
-| Interface | Passive HUB75 adapter board (hzeller `regular` pinout, OE on GPIO18) |
-| Total resolution | 384×32 pixels |
-| Power | Separate 5V supply for panels |
-
----
-
-## What it shows
-
-| Category | Content |
-|----------|---------|
-| 🏈 Football | NFL · NCAA FBS · NCAA FCS |
-| ⚾ Baseball | MLB |
-| 🏒 Hockey | NHL |
-| 🏀 Basketball | NBA · March Madness |
-| ⚽ Soccer | Premier League · FA Cup · Championship · Champions League · Europa League · World Cup · MLS |
-| ⛳ Golf | PGA Tour · Masters · PGA Championship |
-| ✈️ Flights | Live flight tracker · Airport arrivals/departures |
-| 📈 Stocks | Tech/AI · Momentum · Energy · Finance · Consumer |
-| 🌤 Weather | Current conditions · AQI |
-| 🎵 Music | Spotify now playing with album art colors |
-| 🕐 Clock | Full-screen digital clock |
-
----
-
-## Display Modes
-
-```
-sports          All active sports rotating
-sports_full     Full-bleed scoreboard for a pinned game
-soccer_full     Full-bleed soccer scoreboard
-live            Only show games currently in progress
-my_teams        Only show your saved teams
-golf            PGA leaderboard scroll
-masters         Masters/major championship branding
-stocks          Stock ticker scroll
-weather         Detailed weather card
-music           Spotify now playing
-clock           Full-screen clock
-flights         Airport arrivals/departures board
-flight_tracker  Single tracked flight (guest/visitor mode)
-```
-
----
+Sports Ticker serves live content to 384x32 Raspberry Pi LED matrices. The backend and Pi controller use only API V2.
 
 ## Architecture
 
-```
-SportsTickerBackend/
-├── app.py                          WSGI entrypoint
-├── sports_ticker/                  Flask backend package
-│   ├── core.py                     Shared state, constants, helpers, version
-│   ├── workers.py                  Background refresh workers
-│   ├── fetchers/                   Data fetchers
-│   │   ├── sports.py               ESPN / NHL / MLB / golf
-│   │   ├── weather.py              Open-Meteo
-│   │   ├── stocks.py               Finnhub
-│   │   ├── spotify.py              Spotify Web API
-│   │   └── flights.py              FlightRadar24 SDK
-│   └── routes/                     Flask route modules
-│       ├── state.py                /data  /api/state
-│       ├── config.py               /api/config
-│       ├── ticker.py               /register  /pair  /tickers
-│       ├── metadata.py             /  /leagues  /api/spotify/now
-│       ├── flight.py               /api/airport/*  /api/flight/*
-│       └── debug.py                /api/debug  /api/hardware  /errors
-├── ticker_controller/              Raspberry Pi LED controller package
-│   ├── controller.py               TickerStreamer — main render loop
-│   ├── modes/                      Draw method mixins
-│   │   ├── sports.py               Scoreboard layouts
-│   │   ├── weather.py              Weather pixel art
-│   │   ├── golf.py                 Golf leaderboard
-│   │   ├── music.py                Vinyl/visualizer
-│   │   ├── flight.py               Flight map/airport board
-│   │   └── misc.py                 Clock, update screen
-│   ├── fonts.py                    Tiny bitmap fonts + draw helpers
-│   ├── stadium.py                  Stadium/logo renderer
-│   ├── matrix.py                   RGBMatrix wrapper + NullMatrix fallback
-│   └── config.py                   Panel dimensions, backend URL, constants
-├── updater.py                      OTA updater — git pull + service restart
-├── ticker-controller.service       systemd service file
-├── setup.sh                        One-shot Pi setup script
-└── .github/workflows/deploy.yml    Smart deploy: backend + controller separately
+```text
+Providers -> per-ticker scheduler -> V2 snapshot -> ticker_core runtime -> frame sink -> 384x32 panel
+                 |                       |
+                 |                       +-> dashboard and controller app
+                 +-> SQLite ticker settings, pairing, events, and integrations
 ```
 
----
+`sports_ticker/` owns provider reads, per-ticker settings, snapshots, pairing, Spotify connections, events, and the Flask API.
 
-## Version Numbering
+`ticker_core/` owns V2 transport, content caching, runtime scheduling, rendering, and matrix drivers.
 
-Version is derived automatically from git at server startup — **no manual bumping needed**.
+`TickerControlApp/` is the iOS controller app. It uses V2 controller credentials and never receives Spotify tokens.
 
-```
-2026.05.15 · build r312+abc1234d
-│           │      │   └── short commit hash
-│           │      └── total commit count (increments every push)
-│           └── "build"
-└── date of last commit
-```
+## Modes
 
-The current version is always visible at [ticker.mattdicks.org](https://ticker.mattdicks.org) and returned in every `/data` response as `"version"`.
+| Mode | Content |
+|---|---|
+| `sports` | Scores, golf, and racing. A pinned game uses the sports pinned presentation. |
+| `stock` | Selected market groups. |
+| `weather` | Current and forecast weather. |
+| `music` | Connected Spotify playback. |
+| `flights` | Visitor flight tracking. |
+| `airports` | Airport arrivals and departures. |
+| `clock` | Full-panel time and date. |
+| `pairing` | Effective output only while a ticker is unpaired. |
 
----
+Alerts, news, connection loss, and updates render as overlays. They do not replace the active mode.
 
-## OTA Updates
+## API V2
 
-Push to `main` → GitHub Actions detects what changed → updates only what's needed.
+The Pi reads one endpoint:
 
-```
-Backend changed  →  SCP to server  →  pip install  →  systemctl restart ticker
-Controller changed  →  POST /api/hardware  →  Pi sees update flag  →  git pull  →  restart
-```
-
-- Backend and controller update **independently** — a controller push never touches the server
-- The update screen on the LED matrix shows the incoming build number (`→ r315+abc1234`)
-- `updater.py` auto-adds the git safe.directory so root can pull from a user-owned directory
-
----
-
-## Pi Setup
-
-```bash
-# One-shot setup on a fresh Pi
-sudo bash -c "curl -fsSL https://raw.githubusercontent.com/MattLD13/SportsTickerBackend/main/setup.sh | bash"
+```text
+GET /api/v2/tickers/<ticker-id>/data
 ```
 
-The script handles: apt packages · git clone · pip install · rgbmatrix build · sudoers · systemd.
+The response contains a ticker-specific snapshot, effective display settings, overlays, health, and pairing state. The backend projects domain facts once. Clients render those facts and do not infer team ownership from status text.
 
-After setup: `journalctl -u ticker-controller -f`
+Useful endpoints:
 
----
+| Method | Endpoint | Use |
+|---|---|---|
+| `GET` | `/api/v2/health` | Scheduler health. |
+| `GET` | `/api/v2/tickers` | List provisioned tickers. |
+| `POST` | `/api/v2/tickers` | Provision a ticker. |
+| `PATCH` | `/api/v2/tickers/<ticker-id>` | Change ticker display settings. |
+| `POST` | `/api/v2/tickers/<ticker-id>/heartbeat` | Report Pi health. |
+| `POST` | `/api/v2/pairings/exchange` | Claim a pairing code and receive a controller token. |
+| `POST` | `/api/v2/tickers/<ticker-id>/integrations/spotify/authorizations` | Start Spotify authorization. |
 
-## Backend Setup
+Read [API V2 route definitions](sports_ticker/api/routes.py) for validation rules and complete route coverage.
 
-```bash
-pip install -r requirements.txt
-python app.py   # or: gunicorn app:app
+## Development
+
+Run the focused V2 suite:
+
+```powershell
+python -m pytest -q
 ```
 
-`.env` file for secrets:
+Render a deterministic V2 snapshot without hardware:
 
-```env
-FINNHUB_KEY_1=...          # Stock data (5 keys for rate limit rotation)
-SPOTIFY_CLIENT_ID=...
-SPOTIFY_CLIENT_SECRET=...
-SPOTIFY_REFRESH_TOKEN=...
-GEMINI_API_KEY=...          # AI fallback for airport/airline lookups
+```powershell
+python tools\render_rewrite.py --snapshot tests\rewrite\debug\v2_render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews\nfl.png
 ```
 
-Optional packages that unlock features when installed:
+Render from a running backend:
 
-```
-spotipy          Spotify OAuth
-airportsdata     Airport code validation
-FlightRadar24    Live flight tracking
-google-genai     Gemini AI fallback lookups
+```powershell
+python tools\render_rewrite.py --url http://127.0.0.1:5000 --ticker-id <ticker-id> --mode sports --no-prefetch --output previews\live.png
 ```
 
----
+If a display change alters pixels, render a 384x32 PNG before you commit it.
 
-## API Reference
+## Data ownership
 
-### Core
+Each fact has one owner. Providers normalize upstream data. `SportsDisplayProjector` assigns sports state such as `activeTeam`. The API projects canonical V2 data. The Pi and app consume that contract.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/data?id=<tid>` | Display payload for a ticker. Unknown IDs are auto-created. |
-| `GET` | `/api/state?id=<tid>` | Full settings + all games with `is_shown` flags |
-| `GET` | `/leagues` | All available sports, utilities, stock groups |
-| `GET` | `/api/health` | Fleet health — per-ticker link, uptime, temperature, build |
-| `GET` | `/` | Status page — version, uptime, paired tickers, active sports |
-
-### Pairing
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/register` | Create or fetch ticker for `X-Client-ID` |
-| `POST` | `/pair` | Pair client to ticker by 6-digit code |
-| `POST` | `/pair/id` | Pair by ticker ID |
-| `POST` | `/ticker/<tid>/unpair` | Remove client from ticker |
-| `GET` | `/tickers` | List tickers for client |
-
-### Config
-
-`POST /api/config` — update global or per-ticker settings:
-
-```json
-{
-  "ticker_id": "ABCD1",
-  "mode": "sports",
-  "active_sports": { "nhl": true, "nba": false },
-  "my_teams": ["nhl:NJ", "mlb:NYY"],
-  "weather_city": "New York",
-  "pinned_game": "nhl:123456"
-}
-```
-
-`mode` and `active_sports` are per-ticker when `ticker_id` is given, and global
-otherwise. Two boards in one house can follow different leagues.
-
-A ticker stores only the leagues it disagrees with the global map about. The
-server fetches the union across the fleet and each `/data` response is narrowed
-to what that board asked for, so one board switching a league on never costs
-another board a request.
-
-### Health
-
-`GET /api/health` — the server process, plus every board it knows about:
-
-```json
-{
-  "server":  { "rss_mb": 96.4, "threads": 14, "fds": 62, "tickers": 3 },
-  "tickers": [{
-    "name": "Kitchen", "link": "online", "mode": "sports",
-    "last_poll_ago": 0.4, "uptime": 92000, "temp_c": 51.2,
-    "build": "r412+abc1234", "dark_reason": null
-  }]
-}
-```
-
-Each controller reports `uptime`, `temp_c` (controller SoC, not the panels) and
-`build` as headers on the `/data` poll it already makes, so this costs no extra
-request. `link` is `online` under 15 s since the last poll, `stale` under 120 s,
-`offline` past that. `dark_reason` names the gate holding a panel that shows
-nothing — offline, unpaired, or asleep at brightness 0.
-
-### Flights
-
-```
-GET  /api/airport/lookup?code=EWR
-GET  /api/airports?q=newark
-GET  /api/airlines
-GET  /api/flight/status
-GET  /api/flight/debug
-```
-
-### Hardware & Debug
-
-```
-POST /api/hardware   {"action":"update"}                    — OTA update all tickers
-POST /api/hardware   {"action":"reboot","ticker_id":"..."}  — reboot a ticker
-GET  /api/debug
-GET  /api/timezone?id=<tid>&refresh=1
-GET  /errors
-```
-
----
-
-## Data Sources
-
-| Source | Used for |
-|--------|---------|
-| ESPN (site API) | NFL, NBA, MLB, NCAA, golf |
-| NHL native API | NHL live details |
-| FotMob | Soccer detail fallback |
-| MLB Stats API | Live pitch data, challenge flags |
-| Finnhub | Stocks (simulates if no key) |
-| Open-Meteo | Weather, AQI, timezone |
-| Spotify Web API | Now playing |
-| FlightRadar24 SDK | Live flight tracking |
-| ip-api | Ticker timezone detection |
-| Google Gemini | Airport/airline code AI fallback |
-
----
-
-## Storage
-
-| File | Contents |
-|------|---------|
-| `global_config.json` | Global active sports, mode, weather, flight settings |
-| `ticker_data/*.json` | Per-ticker settings, clients, pairing, teams, timezone |
-| `game_cache.json` | Sports cache — avoids blank display on restart |
-| `stock_cache.json` | Stock cache |
-| `ticker.log` | Rolling log (stdout/stderr mirror, `[DEBUG]` lines filtered from console) |
-
----
-
-## Notes
-
-- If the backend stops answering for 60 s, the panel drops the last payload and
-  draws the clock with an amber `NO LINK` badge. A held scoreboard must never
-  read as a live one.
-- `[DEBUG]` prefixed log lines go to `ticker.log` only — console stays clean
-- Backend runs on Ubuntu, controller on Pi — they're the same repo, deployed independently
+Do not add a legacy route, normalizer, fallback, or duplicate parser. Replace the incorrect boundary and delete its obsolete callers, tests, fixtures, and documentation.

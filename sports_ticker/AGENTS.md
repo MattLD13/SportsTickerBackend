@@ -1,45 +1,40 @@
 # sports_ticker Agent Guide
 
-Backend package for configuration, data fetching, routes, and mode buffers.
+This package owns the V2 backend. Read the repository `AGENTS.md` in full before you change this package.
 
-## Key Files
-- `core.py`: global state, constants, settings defaults, shared helpers.
-- `leagues.py`: league/mode registry. Add new sport IDs here.
-- `fetchers/sports.py`: composed sports fetcher class.
-- `fetchers/sports_modes.py`: builds mode buffers and pinned-game refreshes.
-- `routes/state.py`: `/data`, `/api/state`, pin filtering, per-ticker response shaping.
-- `routes/preview.py`: backend PNG preview rendering.
+## Ownership
 
-## Tests
-- Keep them few. One test for each behaviour, not one for each input.
-- Put table cases in a single test that loops. Ten inputs stay one test.
-- Cover the happy path, the main refusal, and any bug that real data found.
+- `providers/` reads upstream sources and normalizes source facts.
+- `providers/sports_display.py` owns sports display facts such as `activeTeam`.
+- `application/` refreshes each ticker with that ticker's settings and persists snapshots.
+- `fleet/` owns ticker records, pairing, controller sessions, and durable event storage.
+- `projections/data_api.py` owns the public V2 data response.
+- `api/routes.py` validates and exposes V2 routes.
+- `integrations/spotify.py` owns encrypted Spotify connections and OAuth state.
 
-## Fetcher Pattern
-- Specialized fetchers live in `fetchers/sports_<name>.py`.
-- Mix them into `SportsFetcher` in `fetchers/sports.py`.
-- Use short TTL caches for fast live data and longer TTLs for static metadata/weather.
-- Return normalized game objects with `type`, `sport`, `id`, `state`, `status`, `is_shown`, and mode-specific payload keys.
+## Rules
 
-## Score Alerts
-- `services/score_alerts.py` compares each new sports buffer with the previous one. It gives a name to each score increase, such as "GRAND SLAM" or "POWER PLAY GOAL".
-- `fetchers/sports_modes.py` publishes the sports buffer. It runs the detector at that point, the only point where both the old score and the new score exist.
-- Context comes from the `last_play` key on the game object. ESPN fetchers fill it with `normalize_last_play`. NHL fetchers use `nhl_last_goal`.
-- A sport without `last_play` still gets a headline. The detector builds that headline from the score delta alone.
-- Baseball adds a walk-off test on top of the play name: the home side takes the lead in the bottom of the ninth or later. It is the one score taken from a game already marked final, because it ends the game as it lands.
-- `/data` returns alerts under the `alerts` key. It sends an alert only for a followed team, and only to a ticker in a `SPORTS_MODE_FAMILY` mode.
-- The league filter does not apply to alerts. When its league is off, a followed team still shows an alert.
-- Alerts obey `live_delay_seconds`. `recent(delay=...)` holds each alert for the same time as the content. A new caller of `recent()` must pass the delay.
-- `GET /api/debug/score_alert?id=<ticker>` adds a synthetic alert to the same buffer. Use it to see the takeover on real panels without a live game.
-- The debug route reports `will_display` and `blocked_by`. A ticker that stays dark tells you which gate stopped the alert.
+- Use only V2 routes and V2 data shapes.
+- Keep one owner for each domain fact.
+- Change the owner when a boundary is wrong. Do not duplicate parsing in a route, app, or renderer.
+- Keep persistence, provider reads, projections, API validation, and renderer work separate.
+- Delete obsolete callers, tests, fixtures, documentation, and imports when you replace a design.
+- Add one focused test for a behavior. Use table cases in that test.
+- Do not add a fallback for an obsolete payload. Reject it or migrate the producer.
 
-## News Banner
-- Half-width banner for trades and stock news. It is not the score alert, and it does not take the whole panel.
-- `services/news_alerts.py` holds the items. `fetchers/transactions.py` reads MLB trades. `routes/news.py` accepts pushed ones.
-- `/data` returns them under `news`, in the matching mode only: trades in a sports mode, stock news in stocks mode.
-- Only MLB publishes a feed that names both clubs. Read `docs/news-banner.md` before adding another league.
+## Sports display
 
-## Racing Payloads
-- IndyCar payload key: `indycar`.
-- F1 payload key: `f1`.
-- Both use `type: racing`, `drivers`, `flag`, `session_type`, and optional `weather`.
+- Normalize team identity before you project display state.
+- Set `situation.activeTeam` in the provider projection.
+- Do not make a client infer active ownership from `Top`, `Bottom`, names, URLs, or display text.
+- Keep upstream stale data scoped to the exact ticker settings that produced it.
+
+## Events
+
+- Alerts and news are durable overlays.
+- An overlay never changes or replaces base mode content.
+- Targeted events remain isolated to their target ticker.
+
+## Verification
+
+Run `python -m pytest -q` after a V2 behavior change. If a change affects the Pi payload, render a 384x32 V2 frame with `tools/render_rewrite.py` before you commit.

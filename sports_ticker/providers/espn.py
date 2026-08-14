@@ -16,7 +16,7 @@ from sports_ticker.domain import ContentItem, DisplaySettings
 from .contracts import ProviderHealth, ProviderResult
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .logo_overrides import corrected_logo
-from .sports_display import SportsDisplayProjector
+from .sports_display import SportsDisplayProjector, assign_active_team, display_situation
 from .stale_cache import SettingsResultCache
 
 
@@ -148,7 +148,13 @@ class EspnScoreboardProvider:
         data = dict(item.data)
         situation = dict(_mapping(data.get("situation")))
         situation.update(details)
-        data["situation"] = situation
+        data["situation"] = assign_active_team(
+            league,
+            str(data.get("status") or ""),
+            situation,
+            home_abbr=str(data.get("home_abbr") or ""),
+            away_abbr=str(data.get("away_abbr") or ""),
+        )
         return ContentItem(
             id=item.id,
             family=item.family,
@@ -300,12 +306,6 @@ def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:
         time_match = _SCHEDULED_TIME.search(status)
         if time_match:
             status = f"{time_match.group('time')} {time_match.group('meridiem')}"
-    clock = _text(
-        status_obj.get("displayClock")
-        or status_obj.get("clock")
-        or _mapping(competition.get("situation")).get("clock")
-    ) or None
-
     home_team = _team(home)
     away_team = _team(away)
     home_team["logo"] = corrected_logo(league, home_team["abbreviation"], home_team["logo"])
@@ -328,14 +328,7 @@ def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:
         "away_logo": away_team["logo"],
         "away_color": away_team["color"],
         "away_alt_color": away_team["alt_color"],
-        "situation": _display_situation(
-            competition,
-            home_abbr=home_team["abbreviation"],
-            away_abbr=away_team["abbreviation"],
-        ),
     }
-    if clock:
-        display_data["situation"]["clock"] = clock
     return ContentItem(
         id=event_id,
         family="sports",
@@ -378,39 +371,6 @@ def _team(competitor: Mapping[str, Any]) -> Mapping[str, Any]:
     }
 
 
-def _display_situation(
-    competition: Mapping[str, Any],
-    *,
-    home_abbr: str,
-    away_abbr: str,
-) -> dict[str, Any]:
-    """Keep only live facts that a 384 by 32 renderer can draw."""
-
-    source = _mapping(competition.get("situation"))
-    allowed = (
-        "balls", "strikes", "outs", "onFirst", "onSecond", "onThird",
-        "down", "distance", "yardLine", "downDistanceText",
-        "shortDownDistanceText", "isRedZone", "powerPlay", "emptyNet",
-        "period", "periodName", "batterName", "pitcherName",
-        "batterAvg", "pitcherPitches", "lastPitchSpeed", "lastPitchType",
-    )
-    result = {key: source[key] for key in allowed if key in source}
-    possession = str(source.get("possession") or "").strip()
-    competitors = _competitors(competition.get("competitors"))
-    home = _find_side(competitors, "home")
-    away = _find_side(competitors, "away")
-    possession_key = possession.casefold()
-    if possession_key in {"home", "home_team"}:
-        result["possession"] = home_abbr
-    elif possession_key in {"away", "away_team"}:
-        result["possession"] = away_abbr
-    elif possession and possession == str(_mapping(home.get("team")).get("id") or ""):
-        result["possession"] = home_abbr
-    elif possession and possession == str(_mapping(away.get("team")).get("id") or ""):
-        result["possession"] = away_abbr
-    return result
-
-
 def _summary_url(scoreboard_url: str) -> str:
     """Derive the matching ESPN event-summary endpoint from one scoreboard URL."""
 
@@ -429,7 +389,7 @@ def _nhl_summary_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any
         return {}
     home_abbr = str(item.get("home_abbr") or "")
     away_abbr = str(item.get("away_abbr") or "")
-    details = _display_situation(competition, home_abbr=home_abbr, away_abbr=away_abbr)
+    details = display_situation("nhl", competition, home_abbr=home_abbr, away_abbr=away_abbr)
     details["powerPlay"] = bool(
         source.get("powerPlay") or source.get("isPowerPlay") or source.get("hasPowerPlay")
     )
@@ -463,7 +423,7 @@ def _soccer_summary_details(payload: Any, item: Mapping[str, Any]) -> dict[str, 
     source = _mapping(summary.get("situation")) or _mapping(competition.get("situation"))
     home_abbr = str(item.get("home_abbr") or "")
     away_abbr = str(item.get("away_abbr") or "")
-    details = _display_situation(competition, home_abbr=home_abbr, away_abbr=away_abbr)
+    details = display_situation("soccer", competition, home_abbr=home_abbr, away_abbr=away_abbr)
     goals: list[dict[str, Any]] = []
     cards: list[dict[str, Any]] = []
     for play in _summary_plays(summary):

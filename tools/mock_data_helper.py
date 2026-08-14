@@ -213,7 +213,7 @@ def get_mock_payloads(mode, state_opt, away_abbr, home_abbr):
     if mode in ("flights", "all"):
         games.append({
             "type": "flight_visitor",
-            "sport": "flight_tracker",
+            "sport": "flight",
             "id": "flight_visitor_main",
             "status": "EN ROUTE",
             "home_abbr": "UA123",

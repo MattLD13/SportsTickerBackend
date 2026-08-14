@@ -97,6 +97,7 @@ struct WeatherForecast: Decodable, Hashable, Sendable {
     }
 }
 struct Situation: Decodable, Hashable, Sendable {
+    let activeTeam: String?
     let possession: String?
     let downDist: String?
     let isRedZone: Bool?
@@ -113,11 +114,12 @@ struct Situation: Decodable, Hashable, Sendable {
     let shootout: ShootoutData?
     
     enum CodingKeys: String, CodingKey {
-        case possession, downDist, isRedZone, balls, strikes, outs, onFirst, onSecond, onThird, powerPlay, emptyNet, icon, change, shootout
+        case activeTeam, possession, downDist, isRedZone, balls, strikes, outs, onFirst, onSecond, onThird, powerPlay, emptyNet, icon, change, shootout
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        activeTeam = try? container.decode(String.self, forKey: .activeTeam)
         if let stringPoss = try? container.decode(String.self, forKey: .possession) { possession = stringPoss }
         else if let intPoss = try? container.decode(Int.self, forKey: .possession) { possession = String(intPoss) }
         else { possession = nil }
@@ -710,7 +712,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     private func pollInterval(for mode: String) -> TimeInterval {
         switch mode {
         case "music":                      return 1.0
-        case "sports", "sports_full", "live", "my_teams": return 1.0
+        case "sports":                     return 1.0
         case "flights", "airports":         return 60.0
         case "stock":                       return 30.0
         case "weather", "clock":           return 600.0
@@ -756,10 +758,8 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 DispatchQueue.main.async {
                     self.isServerReachable = true
                     
-                    // Sports filter modes: keep all games (dim non-matching ones).
-                    // Other modes: strict filter so only the relevant content shows.
-                    let effectiveMode = (self.state.mode == "sports_full") ? "sports" : self.state.mode
-                    let isSportsFilterMode = ["sports", "live", "my_teams"].contains(effectiveMode)
+                    // Sports keeps every selected game. Other modes use their own content family.
+                    let isSportsFilterMode = self.state.mode == "sports"
                     self.games = Array(decoded.games.enumerated()
                         .filter { $0.element.is_shown || isSportsFilterMode }
                         .sorted { left, right in
@@ -1762,19 +1762,11 @@ struct GameRow: View {
         return Color.yellow
     }
     
-    func hasPossession(isHome: Bool) -> Bool {
-        guard let s = game.situation, let p = s.possession else { return false }
-        let pClean = p.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        if pClean.isEmpty { return false }
-        if pClean == "HOME" { return isHome }
-        if pClean == "AWAY" { return !isHome }
-        let abbr = (isHome ? game.safeHomeAbbr : game.safeAwayAbbr).uppercased()
-        let id = (isHome ? game.home_id : game.away_id) ?? ""
-        let logo = isHome ? game.safeHomeLogo : game.safeAwayLogo
-        if pClean == abbr { return true }
-        if pClean == id { return true }
-        if logo.contains("/\(pClean).png") || logo.contains("/\(pClean).svg") { return true }
-        return false
+    func ownsActiveTeam(isHome: Bool) -> Bool {
+        guard let s = game.situation else { return false }
+        let activeTeam = (s.activeTeam ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let team = (isHome ? game.safeHomeAbbr : game.safeAwayAbbr).uppercased()
+        return !activeTeam.isEmpty && activeTeam == team
     }
 
     var isFootball: Bool {
@@ -1788,27 +1780,18 @@ struct GameRow: View {
         return s.balls != nil && s.strikes != nil && s.outs != nil
     }
 
-    func isBattingTeam(isHome: Bool) -> Bool {
-        guard isBaseball, hasBaseballCount else { return false }
-        if hasPossession(isHome: isHome) { return true }
-        let status = game.status.lowercased()
-        if status.hasPrefix("top") { return !isHome }
-        if status.hasPrefix("bot") || status.hasPrefix("bottom") { return isHome }
-        return false
-    }
-
     func ownsFootballContext(isHome: Bool) -> Bool {
         guard isFootball, game.situation != nil else { return false }
-        return hasPossession(isHome: isHome)
+        return ownsActiveTeam(isHome: isHome)
     }
 
     @ViewBuilder func teamLiveContext(isHome: Bool) -> some View {
         if ownsFootballContext(isHome: isHome), let s = game.situation {
             FootballPossessionContext(downDist: s.downDist, isRedZone: s.isRedZone == true)
-        } else if isBattingTeam(isHome: isHome), let s = game.situation,
+        } else if isBaseball, hasBaseballCount, ownsActiveTeam(isHome: isHome), let s = game.situation,
                   let balls = s.balls, let strikes = s.strikes, let outs = s.outs {
             BaseballBattingContext(balls: balls, strikes: strikes, outs: outs)
-        } else if !activeSituation.isEmpty, hasPossession(isHome: isHome) {
+        } else if !activeSituation.isEmpty, ownsActiveTeam(isHome: isHome) {
             SituationPill(text: activeSituation, color: situationColor)
         }
     }
@@ -1816,7 +1799,7 @@ struct GameRow: View {
     var isSituationGlobal: Bool {
         guard game.situation != nil else { return false }
         if isFootball || isBaseball { return false }
-        return !activeSituation.isEmpty && !hasPossession(isHome: true) && !hasPossession(isHome: false)
+        return !activeSituation.isEmpty && !ownsActiveTeam(isHome: true) && !ownsActiveTeam(isHome: false)
     }
     
     var formattedSport: String {
@@ -2389,7 +2372,7 @@ struct ContentView: View {
 struct HomeView: View {
     @ObservedObject var vm: TickerViewModel
 
-    private var filterMode: String { vm.state.mode == "sports_full" ? "sports" : vm.state.mode }
+    private var filterMode: String { vm.state.mode }
     private var leagueLabels: [String: String] { vm.leagueLabels }
     private var splitGames: (
         other: [Game], music: [Game], stocks: [Game], weather: [Game],

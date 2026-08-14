@@ -1,0 +1,68 @@
+{
+  "api_version": "v2",
+  "snapshot": {
+    "ticker_id": "render-demo",
+    "revision": 1,
+    "observed_at": "2026-08-13T00:00:00+00:00",
+    "stale": false
+  },
+  "settings": {
+    "mode": "sports",
+    "sports_presentation": "rotation",
+    "pinned_content_id": "",
+    "brightness": 100,
+    "scroll_speed": 0.03,
+    "inverted": false
+  },
+  "content": {
+    "sports": [
+      {
+        "id": "nfl-live",
+        "family": "sports",
+        "kind": "scoreboard",
+        "is_shown": true,
+        "data": {
+          "sport": "nfl",
+          "state": "in",
+          "status": "Q3 08:12",
+          "away_abbr": "DAL",
+          "home_abbr": "NYG",
+          "away_score": "17",
+          "home_score": "14",
+          "situation": {
+            "activeTeam": "DAL",
+            "downDist": "3RD & 4",
+            "isRedZone": true
+          }
+        }
+      },
+      {
+        "id": "mlb-live",
+        "family": "sports",
+        "kind": "scoreboard",
+        "is_shown": true,
+        "data": {
+          "sport": "mlb",
+          "state": "in",
+          "status": "TOP 7TH",
+          "away_abbr": "NYY",
+          "home_abbr": "BOS",
+          "away_score": "3",
+          "home_score": "2",
+          "situation": {
+            "activeTeam": "NYY",
+            "onFirst": true,
+            "onSecond": true,
+            "onThird": false,
+            "balls": 3,
+            "strikes": 2,
+            "outs": 2
+          }
+        }
+      }
+    ]
+  },
+  "events": {"alerts": [], "news": []},
+  "health": {"provider": "scheduler", "healthy": true, "error": null},
+  "meta": {"pairing": {"paired": true, "code": null}}
+}

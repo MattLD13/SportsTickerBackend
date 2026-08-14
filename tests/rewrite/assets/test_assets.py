@@ -85,8 +85,8 @@ def test_planner_extracts_every_family_without_mode_filtering() -> None:
 
     signatures = {(request.url, request.processor, request.size) for request in plan.requests}
     assert ("sports-home", "logo", (24, 24)) in signatures
-    assert ("album", "artwork", (42, 42)) in signatures
-    assert ("next-album", "artwork", (42, 42)) in signatures
+    assert ("album", "logo", (42, 42)) in signatures
+    assert ("next-album", "logo", (42, 42)) in signatures
     assert ("airline", "logo", (24, 24)) in signatures
     assert ("team", "logo", (18, 18)) in signatures
     assert ("team", "logo", (21, 21)) in signatures

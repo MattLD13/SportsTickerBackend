@@ -26,12 +26,6 @@ from .model import (
 
 T = TypeVar("T")
 CANONICAL_MODES = frozenset({"sports", "weather", "music", "flights", "airports", "stock", "clock", "pairing"})
-MODE_ALIASES = {
-    "live": "sports",
-    "my_teams": "sports",
-    "stocks": "stock",
-    "flight_tracker": "flights",
-}
 
 
 def _value(source: object, name: str, default: T) -> T | Any:
@@ -590,7 +584,6 @@ def _interval(raw: object, fallback: float) -> float:
 def _canonical_mode(value: object) -> str:
     """Validate one app mode at the runtime boundary."""
     mode = str(value).strip().lower()
-    mode = MODE_ALIASES.get(mode, mode)
     if mode not in CANONICAL_MODES:
         raise ValueError(f"Unsupported ticker mode {mode!r}.")
     return mode

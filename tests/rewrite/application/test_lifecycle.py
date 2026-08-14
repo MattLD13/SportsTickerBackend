@@ -12,6 +12,17 @@ from ticker_core.runtime import FrameKind, FramePacer, RuntimeConfig, TickerRunt
 from ticker_core.protocol import TickerResponse
 
 
+def payload() -> dict:
+    return {
+        "api_version": "v2",
+        "snapshot": {"ticker_id": "ticker-1", "revision": 1, "observed_at": "2026-08-11T00:00:00+00:00", "stale": False},
+        "settings": {"mode": "sports", "sports_presentation": "rotation", "pinned_content_id": "", "brightness": 100, "scroll_speed": 0.05, "inverted": False},
+        "content": {"sports": [{"id": "game", "family": "sports", "kind": "scoreboard", "is_shown": True, "data": {"sport": "nba"}}]},
+        "events": {"alerts": [], "news": []}, "health": {"provider": "refresh", "healthy": True, "error": None},
+        "meta": {"pairing": {"paired": True, "code": None}},
+    }
+
+
 class IdlePoller:
     """Wait for shutdown without making a backend request."""
 
@@ -114,16 +125,7 @@ def test_fresh_content_keeps_connection_icon_until_cache_expiry(tmp_path) -> Non
         repository=tmp_path,
         wall_clock=lambda: wall,
     )
-    response = TickerResponse.from_payload(
-        {
-            "status": "ok",
-            "local_config": {"mode": "sports"},
-            "global_config": {},
-            "content": {"sports": [{"id": "game", "type": "game", "sport": "nba"}]},
-            "alerts": [],
-            "news": [],
-        }
-    )
+    response = TickerResponse.from_payload(payload())
     try:
         application.start()
         application._events.put(PollSucceeded(response))
@@ -162,14 +164,7 @@ def test_same_poll_payload_does_not_rebuild_the_scroll_strip(tmp_path) -> None:
         repository=tmp_path,
         wall_clock=lambda: wall,
     )
-    response = TickerResponse.from_payload(
-        {
-            "status": "ok",
-            "local_config": {"mode": "sports"},
-            "global_config": {},
-            "content": {"sports": [{"id": "game", "type": "game", "sport": "nba"}]},
-        }
-    )
+    response = TickerResponse.from_payload(payload())
     try:
         application.start()
         application._events.put(PollSucceeded(response))

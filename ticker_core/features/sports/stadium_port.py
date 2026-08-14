@@ -494,7 +494,7 @@ class StadiumRenderer:
 
         # ══ NFL ══════════════════════════════════════════════════════════════
         if is_nfl and is_active:
-            poss    = sit.get('possession', '') or g.get('poss', '')
+            poss    = sit.get('activeTeam', '')
             dd      = sit.get('downDist',   '') or g.get('dd',   '')
             rz      = sit.get('isRedZone',  False) or g.get('rz', False)
             poss_side = _side_from_value(poss)
@@ -515,7 +515,7 @@ class StadiumRenderer:
 
         # ══ NHL ══════════════════════════════════════════════════════════════
         if is_nhl and is_active and not is_so:
-            poss        = sit.get('possession', '') or g.get('poss', '')
+            poss        = sit.get('activeTeam', '')
             is_pp       = sit.get('powerPlay',  False) or g.get('pp', False)
             is_en       = sit.get('emptyNet',   False) or g.get('en', False)
             en_team     = sit.get('emptyNetSide', '') or g.get('enTeam', '')
@@ -574,7 +574,7 @@ class StadiumRenderer:
 
             b_glyph, s_glyph = str(balls), str(strikes)
             bs_w = pf_w(b_glyph) + pf_w('-') + pf_w(s_glyph)
-            batting_side = _side_from_value(sit.get('possession', '') or g.get('poss', ''))
+            batting_side = _side_from_value(sit.get('activeTeam', ''))
             if batting_side is None:
                 # The visitors bat in the top. Between halves the home side is
                 # up next, so it takes the count.

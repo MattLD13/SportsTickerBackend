@@ -1,4 +1,4 @@
-from __future__ import annotations
+"""Exercise the direct version two Pi client contract."""
 
 from dataclasses import dataclass
 from typing import Any
@@ -7,6 +7,16 @@ import pytest
 import requests
 
 from ticker_core.protocol import BackendClient, BackendHttpError, BackendPayloadError, BackendTransportError
+
+
+def _payload() -> dict[str, Any]:
+    return {
+        "api_version": "v2",
+        "snapshot": {"ticker_id": "pi-1", "revision": 1, "observed_at": "2026-08-11T00:00:00+00:00", "stale": False},
+        "settings": {"mode": "sports", "sports_presentation": "rotation", "pinned_content_id": "", "brightness": 100, "scroll_speed": 0.05, "inverted": False},
+        "content": {"sports": []}, "events": {"alerts": [], "news": []},
+        "health": {"provider": "refresh", "healthy": True, "error": None}, "meta": {"pairing": {"paired": True, "code": None}},
+    }
 
 
 @dataclass
@@ -39,59 +49,23 @@ class FakeSession:
         self.closed = True
 
 
-def test_fetch_data_preserves_deployed_endpoint_and_telemetry_headers() -> None:
-    session = FakeSession(FakeResponse(payload={"status": "ok", "content": {"sports": []}}))
+def test_client_fetches_the_version_two_data_endpoint() -> None:
+    session = FakeSession(FakeResponse(payload=_payload(), content=b"payload"))
     client = BackendClient("https://ticker.test/", session=session, timeout_seconds=7)
 
-    response = client.fetch_data("pi-1", {"X-Ticker-Build": "r1+x"})
+    response = client.fetch_data("pi-1")
 
-    assert response.status == "ok"
+    assert response.ticker_id == "pi-1"
     method, url, options = session.calls[0]
-    assert (method, url) == ("GET", "https://ticker.test/data")
-    assert options["params"] == {"id": "pi-1"}
-    assert options["headers"] == {"X-Ticker-Build": "r1+x"}
+    assert (method, url) == ("GET", "https://ticker.test/api/v2/tickers/pi-1/data")
     assert options["timeout"] == 7
-    assert options["verify"] is False
-
-
-def test_fetch_data_reuses_an_identical_body_without_revalidating() -> None:
-    payload = {"status": "ok", "content": {"sports": []}}
-    session = FakeSession(FakeResponse(payload=payload, content=b'{"status":"ok"}'))
-    client = BackendClient("https://ticker.test", session=session)
-
-    first = client.fetch_data("pi-1")
-    session.response = FakeResponse(json_error=ValueError("must not parse again"), content=b'{"status":"ok"}')
-    second = client.fetch_data("pi-1")
-
-    assert second is first
-
-
-def test_pushes_local_setting_and_flight_config_with_device_header() -> None:
-    session = FakeSession(FakeResponse(payload={"success": True}))
-    client = BackendClient("https://ticker.test", session=session)
-
-    client.push_setting("pi-1", "mode", "clock")
-    client.push_flight_config("pi-1", {"track_flight_id": "UA1"})
-
-    _, setting_url, setting = session.calls[0]
-    assert setting_url == "https://ticker.test/ticker/pi-1"
-    assert setting["headers"] == {"X-Client-ID": "pi-1"}
-    assert setting["json"] == {"mode": "clock"}
-    _, flight_url, flight = session.calls[1]
-    assert flight_url == "https://ticker.test/api/config"
-    assert flight["json"]["ticker_id"] == "pi-1"
-    assert flight["json"]["mode"] == "flight_tracker"
+    assert options["verify"] is True
 
 
 def test_client_reports_http_json_and_transport_failures() -> None:
-    client = BackendClient("https://ticker.test", session=FakeSession(FakeResponse(status_code=503)))
     with pytest.raises(BackendHttpError):
-        client.fetch_data("pi-1")
-
-    client = BackendClient("https://ticker.test", session=FakeSession(FakeResponse(json_error=ValueError("bad"))))
+        BackendClient("https://ticker.test", session=FakeSession(FakeResponse(status_code=503))).fetch_data("pi-1")
     with pytest.raises(BackendPayloadError, match="invalid JSON"):
-        client.fetch_data("pi-1")
-
-    client = BackendClient("https://ticker.test", session=FakeSession(requests.ConnectionError("offline")))
+        BackendClient("https://ticker.test", session=FakeSession(FakeResponse(json_error=ValueError("bad")))).fetch_data("pi-1")
     with pytest.raises(BackendTransportError, match="offline"):
-        client.fetch_data("pi-1")
+        BackendClient("https://ticker.test", session=FakeSession(requests.ConnectionError("offline"))).fetch_data("pi-1")
