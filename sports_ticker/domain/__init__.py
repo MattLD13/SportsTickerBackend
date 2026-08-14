@@ -3,6 +3,7 @@
 from .models import (
     CONTENT_FAMILIES,
     DISPLAY_MODES,
+    SPORTS_FILTERS,
     SPORTS_PRESENTATIONS,
     ContentItem,
     DisplaySettings,
@@ -25,4 +26,5 @@ __all__ = [
     "SnapshotEvents",
     "TickerSnapshot",
     "SPORTS_PRESENTATIONS",
+    "SPORTS_FILTERS",
 ]

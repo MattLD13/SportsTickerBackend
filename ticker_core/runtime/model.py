@@ -32,6 +32,7 @@ class Content:
     type: str
     sport: str
     data: Mapping[str, Any]
+    is_shown: bool = True
 
 
 @dataclass(frozen=True, slots=True)

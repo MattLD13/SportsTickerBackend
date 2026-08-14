@@ -274,6 +274,7 @@ struct TeamData: Decodable, Identifiable, Hashable, Sendable {
 struct TickerState: Codable, Sendable {
     var active_sports: [String: Bool]
     var mode: String
+    var sports_filter: String
     var scroll_seamless: Bool
     var my_teams: [String]
     var debug_mode: Bool
@@ -297,7 +298,7 @@ struct TickerState: Codable, Sendable {
     var sports_presentation: String
     var pinned_content_id: String
     enum CodingKeys: String, CodingKey {
-        case active_sports, mode, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id, track_flight_id, track_guest_name, airport_code_iata, airport_code_icao, airport_name, flight_submode, pinned_game, pinned_games, sports_presentation, pinned_content_id
+        case active_sports, mode, sports_filter, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id, track_flight_id, track_guest_name, airport_code_iata, airport_code_icao, airport_name, flight_submode, pinned_game, pinned_games, sports_presentation, pinned_content_id
     }
     
     // === 1. ROBUST DECODER ===
@@ -315,6 +316,7 @@ struct TickerState: Codable, Sendable {
             mode = rawMode
             flight_submode = (try? container.decode(String.self, forKey: .flight_submode)) ?? "airport"
         }
+        sports_filter = (try? container.decode(String.self, forKey: .sports_filter)) ?? "all"
         scroll_seamless = (try? container.decode(Bool.self, forKey: .scroll_seamless)) ?? false
         my_teams = (try? container.decode([String].self, forKey: .my_teams)) ?? []
         debug_mode = (try? container.decode(Bool.self, forKey: .debug_mode)) ?? false
@@ -355,12 +357,13 @@ struct TickerState: Codable, Sendable {
     }
     
     // === 2. BETTER DEFAULTS (Fixes "NFL Only" bug) ===
-    init(active_sports: [String: Bool]? = nil, mode: String = "sports", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil, track_flight_id: String = "", track_guest_name: String = "", airport_code_iata: String = "EWR", airport_code_icao: String = "KEWR", airport_name: String = "Newark", flight_submode: String = "airport", pinned_game: String? = nil, pinned_games: [String] = [], sports_presentation: String = "rotation", pinned_content_id: String = "") {
+    init(active_sports: [String: Bool]? = nil, mode: String = "sports", sports_filter: String = "all", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil, track_flight_id: String = "", track_guest_name: String = "", airport_code_iata: String = "EWR", airport_code_icao: String = "KEWR", airport_name: String = "Newark", flight_submode: String = "airport", pinned_game: String? = nil, pinned_games: [String] = [], sports_presentation: String = "rotation", pinned_content_id: String = "") {
         
         // Default to ALL sports if none provided
         self.active_sports = active_sports ?? TickerState.defaultActiveSports
         
         self.mode = mode
+        self.sports_filter = sports_filter
         self.scroll_seamless = scroll_seamless
         self.my_teams = my_teams
         self.debug_mode = debug_mode
@@ -754,7 +757,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                     self.isServerReachable = true
                     
                     // Sports keeps every selected game. Other modes use their own content family.
-                    let isSportsFilterMode = self.state.mode == "sports"
+                    let isSportsFilterMode = decoded.settings.mode == "sports"
                     self.games = Array(decoded.games.enumerated()
                         .filter { $0.element.is_shown || isSportsFilterMode }
                         .sorted { left, right in
@@ -904,6 +907,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             "active_sports": state.active_sports,
             "my_teams": state.my_teams,
             "mode": state.mode,
+            "sports_filter": state.sports_filter,
             "sports_presentation": pinned.isEmpty ? "rotation" : "pinned",
             "pinned_content_id": pinned,
             "brightness": brightness ?? devices.first?.settings.brightness ?? 100,
@@ -2356,7 +2360,8 @@ struct ContentView: View {
 struct HomeView: View {
     @ObservedObject var vm: TickerViewModel
 
-    private var filterMode: String { vm.state.mode }
+    private var displayMode: String { vm.state.mode }
+    private var sportsFilter: String { vm.state.sports_filter }
     private var leagueLabels: [String: String] { vm.leagueLabels }
     private var splitGames: (
         other: [Game], music: [Game], stocks: [Game], weather: [Game],
@@ -2405,9 +2410,9 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("DISPLAY FILTER").font(.caption).bold().foregroundStyle(.secondary)
                     HStack(spacing: 12) {
-                        FilterBtn(title: "Show All", val: "sports", cur: filterMode) { vm.state.mode = "sports"; vm.startBurstPolling(); vm.saveSettings() }
-                        FilterBtn(title: "Live Only", val: "live", cur: filterMode) { vm.state.mode = "live"; vm.startBurstPolling(); vm.saveSettings() }
-                        FilterBtn(title: "My Teams", val: "my_teams", cur: filterMode) { vm.state.mode = "my_teams"; vm.startBurstPolling(); vm.saveSettings() }
+                        FilterBtn(title: "Show All", val: "all", cur: sportsFilter) { vm.state.sports_filter = "all"; vm.startBurstPolling(); vm.saveSettings() }
+                        FilterBtn(title: "Live Only", val: "live", cur: sportsFilter) { vm.state.sports_filter = "live"; vm.startBurstPolling(); vm.saveSettings() }
+                        FilterBtn(title: "My Teams", val: "my_teams", cur: sportsFilter) { vm.state.sports_filter = "my_teams"; vm.startBurstPolling(); vm.saveSettings() }
                     }
                     .disabled(!vm.isSportsMode)
                     .opacity(vm.isSportsMode ? 1.0 : 0.4)
@@ -2425,7 +2430,7 @@ struct HomeView: View {
                         ForEach(splitGames.music) { game in
                             MusicNowPlayingCard(game: game)
                         }
-                        if filterMode == "stock" {
+                        if displayMode == "stock" {
                             ForEach(splitGames.stocks) { game in
                                 StockFeedCard(game: game)
                             }

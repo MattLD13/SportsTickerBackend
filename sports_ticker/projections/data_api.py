@@ -67,6 +67,7 @@ def _settings_value(settings: DisplaySettings) -> dict[str, Any]:
         "active_sports": _json_value(settings.active_sports),
         "my_teams": list(settings.my_teams),
         "mode": settings.mode,
+        "sports_filter": settings.sports_filter,
         "sports_presentation": settings.sports_presentation,
         "pinned_content_id": settings.pinned_content_id,
         "brightness": settings.brightness,
@@ -92,7 +93,7 @@ def select_display_content(
     content: Mapping[str, list[dict[str, Any]]],
     settings: Mapping[str, Any],
 ) -> dict[str, list[dict[str, Any]]]:
-    """Return only records that the receiving panel can show now."""
+    """Return mode content and mark the records eligible for the panel."""
 
     mode = str(settings.get("mode") or "sports").strip().lower()
     if mode == "pairing":
@@ -103,15 +104,60 @@ def select_display_content(
         for family, items in content.items()
         if family in families and items
     }
-    pinned = str(settings.get("pinned_content_id") or "").strip()
-    selected = {family: items for family, items in selected.items() if items}
-    if mode == "sports" and pinned:
+    if mode == "sports":
         selected = {
-            family: [item for item in items if str(item.get("id") or "") == pinned]
+            family: [_sports_item(item, settings) for item in items]
             for family, items in selected.items()
         }
-        selected = {family: items for family, items in selected.items() if items}
     return selected
+
+
+def _sports_item(item: Mapping[str, Any], settings: Mapping[str, Any]) -> dict[str, Any]:
+    """Mark one sports item for rotation, a sports filter, or pinning."""
+
+    projected = dict(item)
+    visible = bool(projected.get("is_shown", True))
+    pinned = str(settings.get("pinned_content_id") or "").strip()
+    if pinned:
+        projected["is_shown"] = visible and str(projected.get("id") or "") == pinned
+        return projected
+    sports_filter = str(settings.get("sports_filter") or "all").strip().lower()
+    if sports_filter == "live":
+        state = str(_item_data(projected).get("state") or "").strip().lower()
+        visible = visible and state in {"in", "half", "crit"}
+    elif sports_filter == "my_teams":
+        visible = visible and _is_my_team_game(projected, settings)
+    projected["is_shown"] = visible
+    return projected
+
+
+def _is_my_team_game(item: Mapping[str, Any], settings: Mapping[str, Any]) -> bool:
+    """Return if either game team belongs to the selected team list."""
+
+    team_ids = {
+        str(value).strip().lower()
+        for value in settings.get("my_teams", ())
+        if str(value).strip()
+    }
+    if not team_ids:
+        return False
+    data = _item_data(item)
+    sport = str(data.get("sport") or "").strip().lower()
+    if not sport:
+        return False
+    candidates = {
+        f"{sport}:{str(data.get(side) or '').strip().lower()}"
+        for side in ("home_abbr", "away_abbr")
+    }
+    candidates.discard(f"{sport}:")
+    return bool(candidates & team_ids)
+
+
+def _item_data(item: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return an item data mapping without accepting an invalid payload."""
+
+    data = item.get("data")
+    return data if isinstance(data, Mapping) else {}
 
 
 def _content_item(item: ContentItem) -> dict[str, Any]:

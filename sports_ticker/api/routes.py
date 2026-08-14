@@ -469,6 +469,7 @@ def _display_settings_value(settings: DisplaySettings) -> dict[str, Any]:
         "active_sports": _json_value(settings.active_sports),
         "my_teams": list(settings.my_teams),
         "mode": settings.mode,
+        "sports_filter": settings.sports_filter,
         "sports_presentation": settings.sports_presentation,
         "pinned_content_id": settings.pinned_content_id,
         "brightness": settings.brightness,

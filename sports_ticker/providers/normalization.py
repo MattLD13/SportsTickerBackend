@@ -70,6 +70,7 @@ def normalize_settings(value: DisplaySettings | Mapping[str, Any] | None) -> Dis
         active_sports=dict(active_sports),
         my_teams=value.get("my_teams", ()),
         mode=str(value.get("mode", "sports")),
+        sports_filter=value.get("sports_filter", "all"),
         sports_presentation=value.get("sports_presentation", "rotation"),
         pinned_content_id=value.get("pinned_content_id", ""),
         brightness=value.get("brightness", 100.0),

@@ -30,6 +30,7 @@ DISPLAY_MODES: tuple[str, ...] = (
 )
 
 SPORTS_PRESENTATIONS: tuple[str, ...] = ("rotation", "pinned")
+SPORTS_FILTERS: tuple[str, ...] = ("all", "live", "my_teams")
 
 
 def _freeze(value: Any) -> object:
@@ -85,6 +86,7 @@ class DisplaySettings:
     active_sports: Mapping[str, bool] = field(default_factory=dict)
     my_teams: tuple[str, ...] = ()
     mode: str = "sports"
+    sports_filter: str = "all"
     sports_presentation: str = "rotation"
     pinned_content_id: str = ""
     brightness: float = 100.0
@@ -123,6 +125,10 @@ class DisplaySettings:
         if mode not in DISPLAY_MODES:
             choices = ", ".join(DISPLAY_MODES)
             raise ValueError(f"mode must be one of: {choices}")
+        sports_filter = str(self.sports_filter).strip().lower() or "all"
+        if sports_filter not in SPORTS_FILTERS:
+            choices = ", ".join(SPORTS_FILTERS)
+            raise ValueError(f"sports_filter must be one of: {choices}")
         sports_presentation = str(self.sports_presentation).strip().lower() or "rotation"
         if sports_presentation not in SPORTS_PRESENTATIONS:
             choices = ", ".join(SPORTS_PRESENTATIONS)
@@ -135,6 +141,7 @@ class DisplaySettings:
         if mode != "sports" and pinned_content_id:
             raise ValueError("pinned_content_id requires mode sports")
         object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "sports_filter", sports_filter)
         object.__setattr__(self, "sports_presentation", sports_presentation)
         object.__setattr__(self, "pinned_content_id", pinned_content_id)
         object.__setattr__(self, "brightness", float(self.brightness))
@@ -160,4 +167,5 @@ __all__ = [
     "ContentItem",
     "DisplaySettings",
     "SPORTS_PRESENTATIONS",
+    "SPORTS_FILTERS",
 ]

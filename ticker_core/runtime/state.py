@@ -56,6 +56,7 @@ def _content(source: object) -> Content:
         type=str(_value(source, "type", data.get("type", ""))),
         sport=str(_value(source, "sport", data.get("sport", ""))),
         data=frozen_mapping(data),
+        is_shown=bool(_value(source, "is_shown", True)),
     )
 
 
@@ -116,7 +117,11 @@ def classify_content(
 ) -> ContentClassification:
     """Classify content for one canonical app mode."""
     selected_mode = _canonical_mode(mode)
-    normalized = tuple(entry if isinstance(entry, Content) else _content(entry) for entry in items)
+    normalized = tuple(
+        entry if isinstance(entry, Content) else _content(entry)
+        for entry in items
+    )
+    normalized = tuple(item for item in normalized if item.is_shown)
     weather: Content | None = None
     arrivals: list[Content] = []
     departures: list[Content] = []
@@ -614,7 +619,7 @@ def _pinned_sports(item: Content) -> Content:
 
     data = dict(item.data)
     data["sports_presentation"] = "pinned"
-    return Content(item.id, item.type, item.sport, frozen_mapping(data))
+    return Content(item.id, item.type, item.sport, frozen_mapping(data), item.is_shown)
 
 
 def _is_clock(item: Content) -> bool:
