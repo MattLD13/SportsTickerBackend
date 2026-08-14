@@ -15,6 +15,7 @@ class League:
     label: str
     scoreboard_path: str
     scoreboard_query: tuple[tuple[str, str], ...] = ()
+    my_teams_enabled: bool = True
     team_abbreviations: frozenset[str] | None = None
 
     def allows_team(self, abbreviation: str) -> bool:
@@ -25,8 +26,9 @@ class League:
         return abbreviation.strip().upper() in self.team_abbreviations
 
 
-# Set team_abbreviations to frozenset(("PIT", "NYG")) to limit My Teams for a league.
-# Keep None to expose every current team returned by ESPN.
+# Set my_teams_enabled to False to remove a league from My Teams.
+# Set team_abbreviations to frozenset(("PIT", "NYG")) to limit its teams.
+# Keep team_abbreviations as None to expose every current ESPN team.
 LEAGUES: Final[tuple[League, ...]] = (
     League("nfl", "NFL", "football/nfl"),
     League("mlb", "MLB", "baseball/mlb"),
@@ -59,4 +61,21 @@ def league_for(identifier: str) -> League:
     return LEAGUE_BY_ID[str(identifier).strip().lower()]
 
 
-__all__ = ["LEAGUES", "LEAGUE_BY_ID", "SCOREBOARD_PATHS", "League", "league_for"]
+def allows_my_team_selection(identifier: str) -> bool:
+    """Return true when one scoped team ID remains selectable."""
+
+    league_id, separator, abbreviation = str(identifier).strip().lower().partition(":")
+    if not separator or not abbreviation:
+        return False
+    definition = LEAGUE_BY_ID.get(league_id)
+    return bool(definition and definition.my_teams_enabled and definition.allows_team(abbreviation))
+
+
+__all__ = [
+    "LEAGUES",
+    "LEAGUE_BY_ID",
+    "SCOREBOARD_PATHS",
+    "League",
+    "allows_my_team_selection",
+    "league_for",
+]

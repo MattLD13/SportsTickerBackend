@@ -48,6 +48,7 @@ struct LeagueOption: Decodable, Identifiable, Hashable, Sendable {
     let label: String
     let type: String
     let enabled: Bool?
+    let my_teams_enabled: Bool?
 }
 struct V2LeagueCatalog: Decodable, Sendable { let leagues: [LeagueOption] }
 struct V2TeamCatalog: Decodable, Sendable { let teams: [TeamData] }
@@ -938,7 +939,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             if let d = data, let decoded = try? JSONDecoder().decode(V2LeagueCatalog.self, from: d) {
                 DispatchQueue.main.async {
                     self.leagueOptions = decoded.leagues
-                    if let firstLeague = decoded.leagues.first(where: { $0.type == "sport" }) {
+                    if let firstLeague = decoded.leagues.first(where: { $0.type == "sport" && $0.my_teams_enabled != false }) {
                         self.fetchTeams(for: firstLeague.id)
                     }
                 }
@@ -2937,7 +2938,7 @@ struct TeamsView: View {
     var sportsOptions: [LeagueOption] {
         vm.leagueOptions.filter { opt in
             guard opt.type == "sport" else { return false }
-            return vm.state.active_sports[opt.id] != false
+            return opt.my_teams_enabled != false && vm.state.active_sports[opt.id] != false
         }
     }
     

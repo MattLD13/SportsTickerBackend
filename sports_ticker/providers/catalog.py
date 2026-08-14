@@ -56,6 +56,7 @@ class EspnTeamCatalog:
                 "label": league.label,
                 "type": "sport",
                 "enabled": True,
+                "my_teams_enabled": league.my_teams_enabled,
             }
             for league in LEAGUES
             if league.id in configured
@@ -83,6 +84,9 @@ class EspnTeamCatalog:
         path = self._paths.get(identifier)
         if not path:
             raise KeyError(identifier)
+        definition = league_for(identifier)
+        if not definition.my_teams_enabled:
+            return ()
         now = monotonic()
         with self._lock:
             cached = self._cache.get(identifier)
@@ -92,7 +96,7 @@ class EspnTeamCatalog:
         teams = tuple(
             team
             for team in _teams(payload, identifier)
-            if league_for(identifier).allows_team(team["abbr"])
+            if definition.allows_team(team["abbr"])
         )
         with self._lock:
             self._cache[identifier] = (now, teams)

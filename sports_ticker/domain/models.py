@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
+
+from sports_ticker.leagues import allows_my_team_selection
 CONTENT_FAMILIES: tuple[str, ...] = (
     "sports",
     "weather",
@@ -119,7 +121,14 @@ class DisplaySettings:
         object.__setattr__(
             self,
             "my_teams",
-            tuple(dict.fromkeys(str(team).strip() for team in teams if str(team).strip())),
+            tuple(
+                dict.fromkeys(
+                    identifier
+                    for team in teams
+                    for identifier in (str(team).strip(),)
+                    if allows_my_team_selection(identifier)
+                )
+            ),
         )
         mode = str(self.mode).strip().lower() or "sports"
         if mode not in DISPLAY_MODES:
