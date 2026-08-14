@@ -16,7 +16,7 @@ from urllib.parse import urlencode
 
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.leagues import RACING_SCOREBOARD_PATHS
-from sports_ticker.markets import selected_market_groups
+from sports_ticker.markets import MARKET_GROUPS, selected_market_groups
 
 from .espn import _is_current_event
 from .http import JsonHttpClient, UrllibJsonHttpClient
@@ -104,6 +104,7 @@ class FinnhubStockSource:
         clock: callable = time,
         monotonic_clock: callable = monotonic,
         sleeper: callable = sleep,
+        refresh_seconds: float = 30.0,
     ) -> None:
         self._client = client or UrllibJsonHttpClient()
         self._timeout = _timeout(timeout)
@@ -125,37 +126,50 @@ class FinnhubStockSource:
         self._next_key = 0
         self._request_interval = 1.1 / len(self._keys) if self._keys else 0.0
         self._last_request = float("-inf")
+        self._refresh_seconds = _timeout(refresh_seconds)
+        self._last_refresh = float("-inf")
         self._request_lock = Lock()
+        self._refresh_lock = Lock()
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
+        changed = self._refresh_all_quotes()
         records: list[dict[str, object]] = []
-        changed = False
         for group in selected_market_groups(settings.active_sports):
-            group_records, group_changed = self._group_records(
-                group.id, group.label, group.symbols
-            )
-            records.extend(group_records)
-            changed = changed or group_changed
+            records.extend(self._group_records(group.id, group.label, group.symbols))
         if changed:
             self._save_cache()
         return {"content": records}
+
+    def _refresh_all_quotes(self) -> bool:
+        """Refresh every configured market symbol before settings select a list."""
+
+        now = self._monotonic()
+        with self._refresh_lock:
+            if now - self._last_refresh < self._refresh_seconds:
+                return False
+            self._last_refresh = now
+            changed = False
+            symbols = tuple(
+                dict.fromkeys(symbol for group in MARKET_GROUPS for symbol in group.symbols)
+            )
+            for symbol in symbols:
+                quote = self._fetch_quote(symbol) if self._keys else None
+                if quote is not None:
+                    self._quotes[symbol] = quote
+                    changed = True
+            return changed
 
     def _group_records(
         self,
         group_id: str,
         group_label: str,
         symbols: Sequence[str],
-    ) -> tuple[list[dict[str, object]], bool]:
-        """Fetch selected symbols in display order and retain cached quote failures."""
+    ) -> list[dict[str, object]]:
+        """Build one selected market list from the shared quote cache."""
 
         records: list[dict[str, object]] = []
-        changed = False
         for symbol in symbols:
-            quote = self._fetch_quote(symbol) if self._keys else None
-            if quote is not None:
-                self._quotes[symbol] = quote
-                changed = True
-            quote = quote or self._quotes.get(symbol)
+            quote = self._quotes.get(symbol)
             if quote is None:
                 continue
             records.append(
@@ -175,7 +189,7 @@ class FinnhubStockSource:
                     "state": "in",
                 }
             )
-        return records, changed
+        return records
 
     def _fetch_quote(self, symbol: str) -> dict[str, str] | None:
         """Fetch one quote, with a close-price fallback after market data ages."""

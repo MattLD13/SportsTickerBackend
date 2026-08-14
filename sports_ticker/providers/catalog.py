@@ -12,6 +12,7 @@ from sports_ticker.leagues import LEAGUES, league_for
 from sports_ticker.markets import MARKET_GROUPS
 
 from .http import JsonHttpClient, UrllibJsonHttpClient
+from .logo_overrides import corrected_logo
 
 
 _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
@@ -183,7 +184,7 @@ def _teams(
             {
                 "id": f"{league}:{abbreviation}",
                 "abbr": abbreviation,
-                "logo": _logo(team),
+                "logo": corrected_logo(league, abbreviation, _logo(team)) or "",
             }
         )
     return tuple(sorted({item["id"]: item for item in values}.values(), key=lambda item: item["abbr"]))
