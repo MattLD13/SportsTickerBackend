@@ -511,10 +511,10 @@ def _status(event: Mapping[str, Any], competition: Mapping[str, Any]) -> dict[st
 
 
 def _golf_round(status: str) -> str:
-    """Return a compact golf round label when ESPN provides one."""
+    """Return a stable golf round label when ESPN provides one."""
 
     match = re.search(r"\bround\s*(\d+)\b", status, re.IGNORECASE)
-    return f"R{match.group(1)}" if match else status
+    return f"Round {match.group(1)}" if match else status
 
 
 def _mappings(value: object) -> tuple[Mapping[str, Any], ...]:
