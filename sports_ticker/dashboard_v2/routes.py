@@ -14,6 +14,7 @@ from time import monotonic
 from flask import abort, current_app, render_template, request, send_file
 from PIL import Image, ImageDraw
 
+from sports_ticker.leagues import LEAGUES
 from sports_ticker.markets import MARKET_GROUPS
 
 from . import dashboard_v2
@@ -144,10 +145,8 @@ def _fleet_rows(tickers) -> list[dict[str, object]]:
 def _league_rows(active_sports, visible) -> list[dict[str, str]]:
     """Build every supported league chip from selected ticker content."""
 
-    available = (
-        "nfl", "mlb", "nhl", "nba", "ncf_fbs", "ncf_fcs", "march_madness",
-        "soccer_epl", "soccer_fa_cup", "soccer_champ", "soccer_champions_league", "soccer_mls",
-    )
+    labels = {league.id: league.label for league in LEAGUES}
+    available = tuple(labels)
     records = _visible_sports(visible)
     configured = (str(value).lower() for value in active_sports if not str(value).lower().startswith("stock_"))
     names = tuple(dict.fromkeys((*available, *configured, *records)))
@@ -155,7 +154,7 @@ def _league_rows(active_sports, visible) -> list[dict[str, str]]:
     for name in names:
         enabled = bool(active_sports.get(name, True))
         state = "off" if not enabled else "live" if name in records else "on"
-        rows.append({"id": name, "label": name.replace("_", " ").upper(), "state": state})
+        rows.append({"id": name, "label": labels.get(name, name.replace("_", " ").upper()), "state": state})
     return rows
 
 

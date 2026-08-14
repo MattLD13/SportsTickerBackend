@@ -7,6 +7,7 @@ import secrets
 from collections.abc import Callable
 from pathlib import Path
 from typing import Final
+from urllib.parse import urlencode
 
 from flask import Flask
 
@@ -15,6 +16,7 @@ from sports_ticker.application import BackendApplication, BackendRuntime, Refres
 from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.fleet import PairingState, TickerRepository
 from sports_ticker.integrations import SpotifyConfig, SpotifyIntegrationService, SpotifyMusicSource
+from sports_ticker.leagues import SCOREBOARD_PATHS, league_for
 from sports_ticker.providers import (
     EspnScoreboardProvider,
     EspnTeamCatalog,
@@ -37,20 +39,6 @@ from sports_ticker.providers.live_sources import (
 
 
 _ESPN_BASE: Final = "https://site.api.espn.com/apis/site/v2/sports"
-_SCOREBOARD_PATHS: Final = {
-    "nfl": "football/nfl",
-    "mlb": "baseball/mlb",
-    "nhl": "hockey/nhl",
-    "nba": "basketball/nba",
-    "ncf_fbs": "football/college-football",
-    "ncf_fcs": "football/college-football",
-    "march_madness": "basketball/mens-college-basketball",
-    "soccer_epl": "soccer/eng.1",
-    "soccer_fa_cup": "soccer/eng.fa",
-    "soccer_champ": "soccer/eng.2",
-    "soccer_champions_league": "soccer/uefa.champions",
-    "soccer_mls": "soccer/usa.1",
-}
 _INTERVALS: Final = {
     "espn": 12.0,
     "weather": 300.0,
@@ -85,7 +73,7 @@ def create_production_application(
         snapshots,
         scheduler=scheduler,
         spotify_service=spotify,
-        catalog=EspnTeamCatalog(_SCOREBOARD_PATHS),
+        catalog=EspnTeamCatalog(SCOREBOARD_PATHS),
     )
     runtime = BackendRuntime(
         scheduler,
@@ -130,7 +118,7 @@ def start_runtime(app: Flask) -> Callable[[], None]:
 def _providers(spotify: SpotifyIntegrationService) -> dict[str, object]:
     scoreboard_urls = {
         league: _scoreboard_url(league, path)
-        for league, path in _SCOREBOARD_PATHS.items()
+        for league, path in SCOREBOARD_PATHS.items()
     }
     return {
         "espn": EspnScoreboardProvider(scoreboard_urls),
@@ -197,12 +185,8 @@ def _scoreboard_url(league: str, path: str) -> str:
     """Build each ESPN scoreboard URL with its own college grouping."""
 
     url = f"{_ESPN_BASE}/{path}/scoreboard"
-    suffix = {
-        "ncf_fbs": "?groups=80",
-        "ncf_fcs": "?groups=81",
-        "march_madness": "?groups=100&limit=100",
-    }.get(league, "")
-    return f"{url}{suffix}"
+    query = dict(league_for(league).scoreboard_query)
+    return f"{url}?{urlencode(query)}" if query else url
 
 
 __all__ = ["create_production_application", "start_runtime"]

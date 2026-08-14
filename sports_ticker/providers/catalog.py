@@ -7,26 +7,13 @@ from threading import Lock
 from time import monotonic
 from typing import Any
 
+from sports_ticker.leagues import LEAGUES, league_for
 from sports_ticker.markets import MARKET_GROUPS
 
 from .http import JsonHttpClient, UrllibJsonHttpClient
 
 
 _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
-_LEAGUE_LABELS = {
-    "nfl": "NFL",
-    "mlb": "MLB",
-    "nhl": "NHL",
-    "nba": "NBA",
-    "ncf_fbs": "College Football",
-    "ncf_fcs": "FCS Football",
-    "march_madness": "Men's College Basketball",
-    "soccer_epl": "Premier League",
-    "soccer_fa_cup": "FA Cup",
-    "soccer_champ": "EFL Championship",
-    "soccer_champions_league": "Champions League",
-    "soccer_mls": "MLS",
-}
 _MODE_SYMBOLS = {
     "sports": "sportscourt.fill",
     "stock": "chart.line.uptrend.xyaxis",
@@ -62,14 +49,16 @@ class EspnTeamCatalog:
     def leagues(self) -> tuple[dict[str, object], ...]:
         """Return the configured sports leagues in a stable controller format."""
 
+        configured = set(self._paths)
         sports = tuple(
             {
-                "id": league,
-                "label": _LEAGUE_LABELS.get(league, league.replace("_", " ").title()),
+                "id": league.id,
+                "label": league.label,
                 "type": "sport",
                 "enabled": True,
             }
-            for league in self._paths
+            for league in LEAGUES
+            if league.id in configured
         )
         markets = tuple(
             {
@@ -100,7 +89,11 @@ class EspnTeamCatalog:
             if cached is not None and now - cached[0] < self._cache_seconds:
                 return cached[1]
         payload = self._client.get_json(f"{_ESPN_BASE}/{path}/teams", timeout=self._timeout)
-        teams = _teams(payload, identifier)
+        teams = tuple(
+            team
+            for team in _teams(payload, identifier)
+            if league_for(identifier).allows_team(team["abbr"])
+        )
         with self._lock:
             self._cache[identifier] = (now, teams)
         return teams
