@@ -40,8 +40,8 @@ class News:
 
 
 class Strips:
-    def get(self, payload_key):
-        del payload_key
+    def get(self, payload_key, mode):
+        del payload_key, mode
         return None
 
 

@@ -18,6 +18,7 @@ class PreparedStrip:
     """Hold one completed strip until the display thread installs it."""
 
     key: str
+    mode: str
     layout: StripLayout | None
     image: Image.Image | None
 
@@ -28,6 +29,7 @@ class StripRepository:
     def __init__(self, catalog: ContentRendererCatalog) -> None:
         self._catalog = catalog
         self._payload_key: str | None = None
+        self._mode: str | None = None
         self._image: Image.Image | None = None
 
     def build(
@@ -55,7 +57,7 @@ class StripRepository:
             rendered = self._catalog.render(context, ContentScene(_plain_mapping(item.data), mode))
             cards.append((item, rendered.image.convert("RGBA")))
         if not cards:
-            return PreparedStrip(payload_key, None, None)
+            return PreparedStrip(payload_key, mode, None, None)
         segments = tuple(StripSegment(item.id, card.width + 1) for item, card in cards)
         width = sum(segment.width for segment in segments)
         strip = Image.new("RGBA", (width + 384, 32), (0, 0, 0, 255))
@@ -69,16 +71,20 @@ class StripRepository:
             strip.paste(card, (x, 0), card)
             x += card.width
             index += 1
-        return PreparedStrip(payload_key, StripLayout(width, segments), strip)
+        return PreparedStrip(payload_key, mode, StripLayout(width, segments), strip)
 
     def install(self, prepared: PreparedStrip) -> None:
         """Make one fully rendered strip visible on the next frame."""
         self._payload_key = prepared.key
+        self._mode = prepared.mode
         self._image = prepared.image
 
-    def get(self, payload_key: str | None) -> Image.Image | None:
-        """Return the strip for the current payload."""
-        if self._image is None or self._payload_key != payload_key:
+    def get(self, payload_key: str | None, mode: str) -> Image.Image | None:
+        """Return a matching strip or the current strip during a same-mode rebuild."""
+
+        if self._image is None:
+            return None
+        if self._payload_key != payload_key and self._mode != mode:
             return None
         return self._image
 

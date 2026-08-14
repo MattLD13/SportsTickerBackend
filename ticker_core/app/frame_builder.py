@@ -18,7 +18,7 @@ from ticker_core.runtime import Content, FrameDecision, FrameKind
 class StripSource(Protocol):
     """Provide the current seamless strip image."""
 
-    def get(self, payload_key: str | None) -> Image.Image | None:
+    def get(self, payload_key: str | None, mode: str) -> Image.Image | None:
         """Return the strip for one payload key."""
 
 
@@ -97,7 +97,7 @@ class FrameBuilder:
         return rendered.image
 
     def _scroll_frame(self, decision: FrameDecision) -> Image.Image:
-        strip = self._strips.get(decision.payload_key)
+        strip = self._strips.get(decision.payload_key, decision.mode)
         if strip is None:
             if self._last_base is not None:
                 return self._last_base.copy()
