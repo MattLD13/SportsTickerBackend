@@ -16,10 +16,11 @@ from sports_ticker.application import BackendApplication, BackendRuntime, Refres
 from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.fleet import PairingState, TickerRepository
 from sports_ticker.integrations import SpotifyConfig, SpotifyIntegrationService, SpotifyMusicSource
-from sports_ticker.leagues import SCOREBOARD_PATHS, league_for
+from sports_ticker.leagues import ESPN_SCOREBOARD_PATHS, FOTMOB_LEAGUES, TEAM_CATALOG_PATHS, league_for
 from sports_ticker.providers import (
     EspnScoreboardProvider,
     EspnTeamCatalog,
+    FotMobSoccerProvider,
     FlightsProvider,
     GolfProvider,
     MusicProvider,
@@ -41,6 +42,7 @@ from sports_ticker.providers.live_sources import (
 _ESPN_BASE: Final = "https://site.api.espn.com/apis/site/v2/sports"
 _INTERVALS: Final = {
     "espn": 12.0,
+    "fotmob": 12.0,
     "weather": 300.0,
     "golf": 30.0,
     "racing": 15.0,
@@ -73,7 +75,7 @@ def create_production_application(
         snapshots,
         scheduler=scheduler,
         spotify_service=spotify,
-        catalog=EspnTeamCatalog(SCOREBOARD_PATHS),
+        catalog=EspnTeamCatalog(TEAM_CATALOG_PATHS),
     )
     runtime = BackendRuntime(
         scheduler,
@@ -118,10 +120,11 @@ def start_runtime(app: Flask) -> Callable[[], None]:
 def _providers(spotify: SpotifyIntegrationService) -> dict[str, object]:
     scoreboard_urls = {
         league: _scoreboard_url(league, path)
-        for league, path in SCOREBOARD_PATHS.items()
+        for league, path in ESPN_SCOREBOARD_PATHS.items()
     }
     return {
         "espn": EspnScoreboardProvider(scoreboard_urls),
+        "fotmob": FotMobSoccerProvider(FOTMOB_LEAGUES),
         "weather": OpenMeteoWeatherProvider(),
         "golf": GolfProvider(EspnGolfSource()),
         "racing": RacingProvider(EspnRacingSource()),

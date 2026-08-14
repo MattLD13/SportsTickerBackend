@@ -3,6 +3,7 @@
 from .contracts import Provider, ProviderHealth, ProviderPort, ProviderResult
 from .catalog import EspnTeamCatalog
 from .espn import EspnScoreboardProvider
+from .fotmob import FotMobSoccerProvider
 from .features import (
     FeaturePayload,
     FeatureProviders,
@@ -30,6 +31,7 @@ __all__ = [
     "ProviderPort",
     "ProviderResult",
     "EspnScoreboardProvider",
+    "FotMobSoccerProvider",
     "EspnTeamCatalog",
     "FeaturePayload",
     "FeatureProviders",

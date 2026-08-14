@@ -17,6 +17,7 @@ class League:
     scoreboard_query: tuple[tuple[str, str], ...] = ()
     my_teams_enabled: bool = True
     team_abbreviations: frozenset[str] | None = None
+    fotmob_league_id: int | None = None
 
     def allows_team(self, abbreviation: str) -> bool:
         """Return true when this league exposes the team in My Teams."""
@@ -47,16 +48,26 @@ LEAGUES: Final[tuple[League, ...]] = (
     League("f1", "Formula 1", my_teams_enabled=False),
     League("indycar", "IndyCar", my_teams_enabled=False),
     League("nascar", "NASCAR", my_teams_enabled=False),
-    League("soccer_epl", "Premier League", "soccer/eng.1"),
-    League("soccer_fa_cup", "FA Cup", "soccer/eng.fa"),
-    League("soccer_champ", "Championship", "soccer/eng.2"),
-    League("soccer_champions_league", "Champions League", "soccer/uefa.champions"),
-    League("soccer_mls", "MLS", "soccer/usa.1"),
+    League("soccer_epl", "Premier League", "soccer/eng.1", fotmob_league_id=47),
+    League("soccer_fa_cup", "FA Cup", "soccer/eng.fa", fotmob_league_id=132),
+    League("soccer_champ", "Championship", "soccer/eng.2", fotmob_league_id=48),
+    League("soccer_champions_league", "Champions League", "soccer/uefa.champions", fotmob_league_id=42),
+    League("soccer_mls", "MLS", "soccer/usa.1", fotmob_league_id=130),
 )
 
 LEAGUE_BY_ID: Final = MappingProxyType({league.id: league for league in LEAGUES})
-SCOREBOARD_PATHS: Final = MappingProxyType(
+TEAM_CATALOG_PATHS: Final = MappingProxyType(
     {league.id: league.scoreboard_path for league in LEAGUES if league.scoreboard_path}
+)
+ESPN_SCOREBOARD_PATHS: Final = MappingProxyType(
+    {
+        league.id: league.scoreboard_path
+        for league in LEAGUES
+        if league.scoreboard_path and league.fotmob_league_id is None
+    }
+)
+FOTMOB_LEAGUES: Final = MappingProxyType(
+    {league.id: league.fotmob_league_id for league in LEAGUES if league.fotmob_league_id is not None}
 )
 
 
@@ -79,7 +90,9 @@ def allows_my_team_selection(identifier: str) -> bool:
 __all__ = [
     "LEAGUES",
     "LEAGUE_BY_ID",
-    "SCOREBOARD_PATHS",
+    "ESPN_SCOREBOARD_PATHS",
+    "FOTMOB_LEAGUES",
+    "TEAM_CATALOG_PATHS",
     "League",
     "allows_my_team_selection",
     "league_for",
