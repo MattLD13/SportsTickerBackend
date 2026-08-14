@@ -110,6 +110,7 @@ class TickerApplication:
         self._started = False
         self._disconnected = False
         self._reboot_latched = False
+        self._pending_reboot_id: str | None = None
         self._update_latched = False
         self._asset_revision = self._asset_revision_now()
         self._asset_dirty_at: float | None = None
@@ -181,6 +182,7 @@ class TickerApplication:
         self._timing.record(started_at, present_started_at, monotonic())
         self._last_decision = decision
         self._launch_requested_update()
+        self._launch_requested_reboot()
         return decision
 
     def process_events(self) -> None:
@@ -253,6 +255,7 @@ class TickerApplication:
         self._assets.prefetch_payload(response)
         current = self._runtime.accept_response(response)
         self._disconnected = False
+        self._pending_reboot_id = response.reboot_request_id
         if _strip_changed(previous, current):
             self._rebuild_strip()
 
@@ -361,6 +364,24 @@ class TickerApplication:
             self._update_service.request_update(request.version)
             return
         self._commands.run_update(self._update_command)
+
+    def _launch_requested_reboot(self) -> None:
+        """Acknowledge one server reboot command, then restart the host once."""
+
+        command_id = self._pending_reboot_id
+        if not command_id or self._reboot_latched:
+            return
+        acknowledge = getattr(self._client, "acknowledge_reboot", None)
+        if not callable(acknowledge):
+            return
+        try:
+            result = acknowledge(self._device_id, command_id)
+        except Exception:
+            return
+        if not bool(result.get("acknowledged")):
+            return
+        self._reboot_latched = True
+        self._commands.reboot()
 
 
 

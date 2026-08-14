@@ -16,6 +16,7 @@ DATA_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/data"
 TICKER_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}"
 HEARTBEAT_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/heartbeat"
 UPDATE_ACK_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/updates/ack"
+REBOOT_ACK_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/commands/reboot/ack"
 
 
 class BackendError(RuntimeError):
@@ -171,6 +172,18 @@ class BackendClient:
             json={"version": version},
         )
         return self._json_object(response, "POST /api/v2/tickers/<id>/updates/ack")
+
+    def acknowledge_reboot(self, device_id: str, command_id: str) -> Mapping[str, Any]:
+        """Acknowledge one reboot command before the controller restarts."""
+
+        if not device_id.strip() or not command_id.strip():
+            raise ValueError("device_id and command_id must not be empty")
+        response = self._request(
+            "POST",
+            REBOOT_ACK_ENDPOINT_TEMPLATE.format(device_id=device_id),
+            json={"id": command_id},
+        )
+        return self._json_object(response, "POST /api/v2/tickers/<id>/commands/reboot/ack")
 
     def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
         url = f"{self.backend_url}{path}"

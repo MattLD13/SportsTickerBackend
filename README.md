@@ -51,6 +51,7 @@ Useful endpoints:
 | `POST` | `/api/v2/tickers` | Provision a ticker. |
 | `PATCH` | `/api/v2/tickers/<ticker-id>` | Change ticker display settings. |
 | `POST` | `/api/v2/tickers/<ticker-id>/heartbeat` | Report Pi health. |
+| `POST` | `/api/v2/tickers/<ticker-id>/commands/reboot` | Request one paired ticker reboot. |
 | `POST` | `/api/v2/pairings/exchange` | Claim a pairing code and receive a controller token. |
 | `POST` | `/api/v2/tickers/<ticker-id>/integrations/spotify/authorizations` | Start Spotify authorization. |
 

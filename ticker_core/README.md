@@ -53,7 +53,8 @@ The controller resolves one display action for each frame.
 
 ## Completion contract
 
-- The backend uses only `GET /api/v2/tickers/<ticker_id>/data`, `PATCH /api/v2/tickers/<ticker_id>`, and `POST /api/v2/tickers/<ticker_id>/heartbeat`.
+- The backend uses `GET /api/v2/tickers/<ticker_id>/data`, `PATCH /api/v2/tickers/<ticker_id>`, and `POST /api/v2/tickers/<ticker_id>/heartbeat`.
+- The controller acknowledges reboot commands with `POST /api/v2/tickers/<ticker_id>/commands/reboot/ack` before it restarts.
 - The app keeps mode, brightness, speed, inversion, pairing, sleep, reboot, and update behavior.
 - Every renderer returns the same panel pixels for equivalent deterministic inputs.
 - Animation receives explicit time values and never reads hidden controller clocks.

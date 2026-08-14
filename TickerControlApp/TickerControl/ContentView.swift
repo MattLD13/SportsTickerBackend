@@ -1340,8 +1340,24 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     // MARK: - REBOOT
     // ==========================================
     func reboot() {
-        connectionStatus = "Reboot is not available from the V2 API"
-        statusColor = .orange
+        guard let tickerID = savedTickerID,
+              let url = tickerURL(tickerID, suffix: "/commands/reboot"),
+              let request = authorizedRequest(url: url, method: "POST") else {
+            connectionStatus = "Pair this ticker before requesting a reboot."
+            statusColor = .orange
+            return
+        }
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            DispatchQueue.main.async {
+                if error == nil, (response as? HTTPURLResponse)?.statusCode == 201 {
+                    self.connectionStatus = "Reboot requested. The ticker will restart on its next poll."
+                    self.statusColor = .green
+                } else {
+                    self.connectionStatus = "The reboot request failed."
+                    self.statusColor = .red
+                }
+            }
+        }.resume()
     }
     
     func sendDebug() {

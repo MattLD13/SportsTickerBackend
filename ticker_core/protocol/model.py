@@ -280,6 +280,7 @@ class TickerResponse:
     alerts: tuple[Alert, ...]
     news: tuple[NewsItem, ...]
     update_version: str | None
+    reboot_request_id: str | None
     payload_key: str
     data: Mapping[str, FrozenJson]
 
@@ -334,6 +335,10 @@ class TickerResponse:
         update_version = update.get("version")
         if update_version is not None and not isinstance(update_version, str):
             raise PayloadValidationError("response.meta.update.version must be a string")
+        reboot = _mapping(meta.get("reboot", {}), "response.meta.reboot")
+        reboot_request_id = reboot.get("id")
+        if reboot_request_id is not None and not isinstance(reboot_request_id, str):
+            raise PayloadValidationError("response.meta.reboot.id must be a string")
         return cls(
             status=DeviceState.PAIRING if settings.mode == "pairing" else DeviceState.ACTIVE,
             ticker_id=ticker_id.strip(),
@@ -343,6 +348,7 @@ class TickerResponse:
             alerts=alerts,
             news=news,
             update_version=update_version.strip() if isinstance(update_version, str) else None,
+            reboot_request_id=reboot_request_id.strip() if isinstance(reboot_request_id, str) else None,
             payload_key=_display_payload_hash(data),
             data=data,
         )

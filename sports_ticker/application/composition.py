@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 import hashlib
 import secrets
+from uuid import uuid4
 from collections.abc import Mapping
 from dataclasses import replace
 from math import isfinite
@@ -216,6 +217,11 @@ class BackendApplication:
             version = str(pending_update.get("version") or "").strip()
             if version:
                 data["meta"]["update"] = {"version": version}
+        pending_reboot = ticker.device.metadata.get("pending_reboot")
+        if isinstance(pending_reboot, Mapping):
+            command_id = str(pending_reboot.get("id") or "").strip()
+            if command_id:
+                data["meta"]["reboot"] = {"id": command_id}
         events = self.event_service.pending(identifier)
         event_payload = data["events"]
         event_payload["alerts"] = list(event_payload["alerts"])
@@ -303,6 +309,39 @@ class BackendApplication:
         if not isinstance(pending, Mapping) or str(pending.get("version") or "") != str(version).strip():
             return False
         del metadata["pending_update"]
+        self.repository.update_ticker(
+            identifier,
+            device=DeviceMetadata(last_seen_at=current.device.last_seen_at, metadata=metadata),
+        )
+        return True
+
+    def request_reboot(self, ticker_id: str) -> TickerRecord:
+        """Persist one reboot command for the target controller."""
+
+        identifier = str(ticker_id).strip()
+        current = self.repository.get_ticker(identifier)
+        if current is None:
+            raise KeyError(identifier)
+        metadata = dict(current.device.metadata)
+        metadata["pending_reboot"] = {"id": str(uuid4())}
+        return self.repository.update_ticker(
+            identifier,
+            device=DeviceMetadata(last_seen_at=current.device.last_seen_at, metadata=metadata),
+        )
+
+    def acknowledge_reboot(self, ticker_id: str, command_id: str) -> bool:
+        """Clear one matching reboot command before the controller restarts."""
+
+        identifier = str(ticker_id).strip()
+        current = self.repository.get_ticker(identifier)
+        if current is None:
+            raise KeyError(identifier)
+        received = str(command_id).strip()
+        metadata = dict(current.device.metadata)
+        pending = metadata.get("pending_reboot")
+        if not isinstance(pending, Mapping) or str(pending.get("id") or "") != received:
+            return False
+        del metadata["pending_reboot"]
         self.repository.update_ticker(
             identifier,
             device=DeviceMetadata(last_seen_at=current.device.last_seen_at, metadata=metadata),

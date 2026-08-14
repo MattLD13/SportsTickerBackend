@@ -196,6 +196,22 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
             raise ApiError("version must be a non-empty string", 400, "invalid_request")
         return jsonify({"acknowledged": application.acknowledge_update(_ticker_id(ticker_id), version)})
 
+    @app.post("/api/v2/tickers/<ticker_id>/commands/reboot")
+    def request_ticker_reboot(ticker_id: str):
+        identifier = _controller_ticker_owner(application, ticker_id)
+        ticker = application.request_reboot(identifier)
+        command = ticker.device.metadata.get("pending_reboot", {})
+        return jsonify({"accepted": True, "command_id": command.get("id")}), 201
+
+    @app.post("/api/v2/tickers/<ticker_id>/commands/reboot/ack")
+    def acknowledge_ticker_reboot(ticker_id: str):
+        payload = _json_object()
+        _check_keys(payload, {"id"})
+        command_id = payload.get("id")
+        if not isinstance(command_id, str) or not command_id.strip():
+            raise ApiError("id must be a non-empty string", 400, "invalid_request")
+        return jsonify({"acknowledged": application.acknowledge_reboot(_ticker_id(ticker_id), command_id)})
+
     @app.post("/api/v2/tickers/<ticker_id>/integrations/spotify/authorizations")
     def start_spotify_authorization(ticker_id: str):
         identifier = _controller_ticker_owner(application, ticker_id)
