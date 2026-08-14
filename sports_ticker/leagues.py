@@ -41,6 +41,7 @@ LEAGUES: Final[tuple[League, ...]] = (
         "March Madness",
         "basketball/mens-college-basketball",
         (("groups", "100"), ("limit", "100")),
+        my_teams_enabled=False,
     ),
     League("soccer_epl", "Premier League", "soccer/eng.1"),
     League("soccer_fa_cup", "FA Cup", "soccer/eng.fa"),
