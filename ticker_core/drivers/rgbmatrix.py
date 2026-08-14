@@ -33,7 +33,6 @@ class RgbMatrixSettings:
     luminance_correction: bool = True
     show_refresh_rate: bool = False
     refresh_rate_limit_hz: int = 100
-    vsync_fraction: int = 3
 
     def __post_init__(self) -> None:
         if self.width % self.panel_columns:
@@ -42,8 +41,6 @@ class RgbMatrixSettings:
             raise ValueError("Display dimensions must be positive.")
         if self.refresh_rate_limit_hz < 0:
             raise ValueError("Refresh rate limit cannot be negative.")
-        if self.vsync_fraction <= 0:
-            raise ValueError("VSync fraction must be positive.")
 
     @property
     def chain_length(self) -> int:
@@ -71,27 +68,17 @@ class RgbMatrixSettings:
             luminance_correction=values.get("TICKER_LUMINANCE", "").strip().lower() not in {"0", "false"},
             show_refresh_rate=values.get("TICKER_SHOW_REFRESH", "").strip().lower() in {"1", "true"},
             refresh_rate_limit_hz=int(values.get("TICKER_MATRIX_REFRESH_HZ") or 100),
-            vsync_fraction=int(values.get("TICKER_VSYNC_FRACTION") or 3),
         )
 
 
 class RgbMatrixFrameSink:
     """Present frames with an RGBMatrix vertical-sync swap."""
 
-    def __init__(
-        self,
-        matrix: Any,
-        *,
-        width: int = 384,
-        height: int = 32,
-        vsync_fraction: int = 1,
-    ) -> None:
+    def __init__(self, matrix: Any, *, width: int = 384, height: int = 32) -> None:
         self.width = width
         self.height = height
         self._matrix = matrix
         self._canvas = self._create_canvas(matrix)
-        self._vsync_fraction = vsync_fraction
-        self.hardware_paced = self._canvas is not None and vsync_fraction > 1
         self.brightness = 100
         self.inverted = False
 
@@ -121,12 +108,7 @@ class RgbMatrixFrameSink:
         matrix = module.RGBMatrix(options=options)
         if hasattr(matrix, "luminanceCorrect"):
             matrix.luminanceCorrect = active_settings.luminance_correction
-        return cls(
-            matrix,
-            width=active_settings.width,
-            height=active_settings.height,
-            vsync_fraction=active_settings.vsync_fraction,
-        )
+        return cls(matrix, width=active_settings.width, height=active_settings.height)
 
     def present(
         self,
@@ -142,7 +124,7 @@ class RgbMatrixFrameSink:
         if self._canvas is not None:
             self._canvas.brightness = target_brightness
             self._canvas.SetImage(frame)
-            self._canvas = self._matrix.SwapOnVSync(self._canvas, self._vsync_fraction)
+            self._canvas = self._matrix.SwapOnVSync(self._canvas)
             return
         self._matrix.brightness = target_brightness
         self._matrix.SetImage(frame)

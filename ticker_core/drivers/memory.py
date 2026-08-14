@@ -13,7 +13,6 @@ class MemoryFrameSink(FrameSink):
     def __init__(self, width: int = 384, height: int = 32) -> None:
         self.width = width
         self.height = height
-        self.hardware_paced = False
         self.brightness = 100
         self.inverted = False
         self.last_image: Image.Image | None = None
