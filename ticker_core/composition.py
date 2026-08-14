@@ -47,6 +47,9 @@ def create_application() -> TickerApplication:
         repository=repository,
         wall_clock=datetime.now,
         update_service=OtaUpdaterService(commands, updater_path=repository / "updater.py"),
+        poll_in_process=_enabled("TICKER_POLL_PROCESS"),
+        render_cpu=_cpu_setting("TICKER_RENDER_CPU"),
+        poll_cpu=_cpu_setting("TICKER_POLL_CPU"),
     )
 
 
@@ -68,6 +71,18 @@ def _enabled(name: str, *, default: bool = False) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes"}
+
+
+def _cpu_setting(name: str) -> int | None:
+    """Read one optional non-negative Linux CPU number."""
+
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    value = int(raw)
+    if value < 0:
+        raise ValueError(f"{name} cannot be negative.")
+    return value
 
 
 def load_device_id(data_directory: Path, *, windows: bool | None = None) -> str:

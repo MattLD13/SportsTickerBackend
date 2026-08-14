@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
 from concurrent.futures import Future, ThreadPoolExecutor
+from multiprocessing import get_context
 from threading import Event, Thread, current_thread
 from time import monotonic
 import os
@@ -73,6 +74,9 @@ class TickerApplication:
         wall_clock: Callable[[], datetime],
         update_command: Sequence[str] | None = None,
         update_service: OtaUpdaterService | None = None,
+        poll_in_process: bool = False,
+        render_cpu: int | None = None,
+        poll_cpu: int | None = None,
     ) -> None:
         if not device_id.strip():
             raise ValueError("A device id is required.")
@@ -91,9 +95,18 @@ class TickerApplication:
         self._wall_clock = wall_clock
         self._update_command = tuple(update_command or _default_update_command(self._repository))
         self._update_service = update_service
-        self._events: Queue[PollEvent] = Queue()
-        self._stop = Event()
-        self._poll_thread: Thread | None = None
+        self._poll_in_process = poll_in_process and os.name != "nt"
+        self._render_cpu = render_cpu
+        self._poll_cpu = poll_cpu
+        if self._poll_in_process:
+            self._process_context = get_context("fork")
+            self._events = self._process_context.Queue()
+            self._stop = self._process_context.Event()
+        else:
+            self._process_context = None
+            self._events: Queue[PollEvent] = Queue()
+            self._stop = Event()
+        self._poll_thread: Thread | object | None = None
         self._started = False
         self._disconnected = False
         self._reboot_latched = False
@@ -120,13 +133,24 @@ class TickerApplication:
         if self._started:
             return
         self._started = True
+        _pin_to_cpu(self._render_cpu)
+        if self._poll_in_process:
+            assert self._process_context is not None
+            self._poll_thread = self._process_context.Process(
+                target=_run_poll_process,
+                args=(self._poller, self._stop, self._events, self._poll_cpu),
+                name="ticker-backend-poll",
+                daemon=True,
+            )
+            self._poll_thread.start()
+        else:
+            self._poll_thread = Thread(target=self._poller.run, args=(self._stop, self._events), name="ticker-backend-poll", daemon=True)
+            self._poll_thread.start()
         start_sink = getattr(self._sink, "start", None)
         if callable(start_sink):
             start_sink()
         self._assets.start()
         self._restore_cached_content()
-        self._poll_thread = Thread(target=self._poller.run, args=(self._stop, self._events), name="ticker-backend-poll", daemon=True)
-        self._poll_thread.start()
 
     def run(self) -> None:
         """Run frames until shutdown or a runtime stop request."""
@@ -340,6 +364,29 @@ def _strip_changed(previous, current) -> bool:
     if previous is None:
         return True
     return previous.mode != current.mode or previous.strip_key != current.strip_key
+
+
+def _run_poll_process(poller: PollWorker, stop, events, cpu: int | None) -> None:
+    """Run network polling outside the renderer process."""
+
+    _pin_to_cpu(cpu)
+    try:
+        poller.run(stop, events)
+    finally:
+        close = getattr(poller, "close", None)
+        if callable(close):
+            close()
+
+
+def _pin_to_cpu(cpu: int | None) -> None:
+    """Limit this process to one configured Linux CPU when available."""
+
+    if cpu is None or not hasattr(os, "sched_setaffinity"):
+        return
+    available = os.sched_getaffinity(0)
+    if cpu not in available:
+        return
+    os.sched_setaffinity(0, {cpu})
 
 
 class _FrameTiming:

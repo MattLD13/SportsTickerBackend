@@ -91,6 +91,11 @@ class BackendPoller:
             if stop.wait(delay):
                 return
 
+    def close(self) -> None:
+        """Close the worker-owned HTTP session after a process poller exits."""
+
+        self._client.close()
+
     def _send_heartbeat(self) -> None:
         """Report device facts without turning heartbeat failure into link loss."""
 
