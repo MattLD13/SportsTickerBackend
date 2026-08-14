@@ -21,12 +21,14 @@ class EventService:
         repository: TickerRepository,
         *,
         clock: Callable[[], float] = time.time,
+        retention_seconds: Callable[[], float] | None = None,
         default_ttl: float = 60.0,
     ) -> None:
         """Capture the repository and event clock."""
 
         self.repository = repository
         self._clock = clock
+        self._retention_seconds = retention_seconds or (lambda: 0.0)
         self._default_ttl = float(default_ttl)
         if not isfinite(self._default_ttl) or self._default_ttl <= 0:
             raise ValueError("default_ttl must be finite and positive")
@@ -77,10 +79,18 @@ class EventService:
         )
         return self.repository.publish_event(event)
 
-    def pending(self, ticker_id: str) -> tuple[OverlayEvent, ...]:
-        """Return all pending events visible to one ticker."""
+    def pending(
+        self,
+        ticker_id: str,
+        *,
+        visible_at: float | None = None,
+    ) -> tuple[OverlayEvent, ...]:
+        """Return pending events that existed at one ticker-visible server time."""
 
-        return self.repository.read_pending_events(ticker_id, now=self._clock())
+        source_time = self._clock() if visible_at is None else float(visible_at)
+        if not isfinite(source_time):
+            raise ValueError("visible_at must be finite")
+        return self.repository.read_pending_events(ticker_id, now=source_time)
 
     def acknowledge(self, ticker_id: str, event_id: str) -> bool:
         """Acknowledge one event for one ticker."""
@@ -92,9 +102,12 @@ class EventService:
         )
 
     def remove_expired(self) -> int:
-        """Remove all events whose expiry time has passed."""
+        """Remove events only after every configured ticker delay has passed."""
 
-        return self.repository.remove_expired_events(now=self._clock())
+        retention = float(self._retention_seconds())
+        if not isfinite(retention) or retention < 0:
+            raise ValueError("retention_seconds must be finite and non-negative")
+        return self.repository.remove_expired_events(now=self._clock() - retention)
 
     def _created_at(self, value: float | datetime | str | None) -> float | datetime | str:
         return self._clock() if value is None else value

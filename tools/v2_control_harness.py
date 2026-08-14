@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import requests
@@ -18,8 +19,9 @@ if str(_REPOSITORY) not in sys.path:
     sys.path.insert(0, str(_REPOSITORY))
 
 from sports_ticker.projections import select_display_content
-from sports_ticker.application import SnapshotStore
+from sports_ticker.application import BackendApplication, SnapshotStore
 from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
+from sports_ticker.fleet import TickerRepository
 from ticker_core.protocol import TickerResponse
 from ticker_core.runtime import TickerRuntime, classify_content
 
@@ -254,7 +256,47 @@ def run_self_test() -> None:
     delayed_clock[0] = 60.0
     delayed = store.get_delayed("harness", 45)
     assert delayed is not None and delayed.content[0].data["home_score"] == "1"
-    print("PASS: filters, pin, unpin, strip identity, and live delay")
+    _assert_delayed_overlays()
+    print("PASS: filters, pin, unpin, strip identity, delayed content, and delayed overlays")
+
+
+def _assert_delayed_overlays() -> None:
+    """Verify overlays use the delayed source time and present mode is instant."""
+
+    clock = [0.0]
+    with TemporaryDirectory() as directory:
+        store = SnapshotStore(clock=lambda: clock[0])
+        application = BackendApplication(
+            TickerRepository(Path(directory) / "ticker.sqlite3"),
+            store,
+            clock=lambda: clock[0],
+        )
+        delayed = DisplaySettings(live_delay_mode=True, live_delay_seconds=45)
+        application.create_ticker("overlay-harness", display_settings=delayed, pairing={"paired": True})
+        store.replace(
+            TickerSnapshot(
+                "overlay-harness",
+                0,
+                datetime(2026, 8, 14, tzinfo=timezone.utc),
+                (ContentItem("game", "sports", "scoreboard", data={"sport": "nfl", "state": "in"}),),
+                (),
+                (),
+                delayed,
+            )
+        )
+        clock[0] = 10.0
+        application.publish_news_event(
+            {"text": "harness news"},
+            target_ticker_ids=["overlay-harness"],
+            ttl_seconds=60,
+        )
+        clock[0] = 20.0
+        assert application.project_data("overlay-harness")["events"]["news"] == []
+        clock[0] = 60.0
+        assert len(application.project_data("overlay-harness")["events"]["news"]) == 1
+        application.update_ticker("overlay-harness", display_settings=DisplaySettings())
+        assert len(application.project_data("overlay-harness")["events"]["news"]) == 1
+        application.close()
 
 
 def main() -> None:

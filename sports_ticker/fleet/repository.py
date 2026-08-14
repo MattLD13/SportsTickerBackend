@@ -592,9 +592,9 @@ class TickerRepository:
             query = (
                 "SELECT event_id, event_type, kind, payload_json, created_at, expires_at, "
                 "target_ticker_ids_json, delivery_state FROM overlay_events "
-                "WHERE expires_at > ? AND delivery_state = 'pending'"
+                "WHERE created_at <= ? AND expires_at > ? AND delivery_state = 'pending'"
             )
-            parameters: list[Any] = [current_time]
+            parameters: list[Any] = [current_time, current_time]
             if event_type is not None:
                 if event_type not in {"alerts", "news"}:
                     raise ValueError("event_type must be alerts or news")

@@ -47,7 +47,11 @@ class BackendApplication:
         self._clock = clock
         self._close_lock = Lock()
         self._closed = False
-        self.event_service = EventService(repository, clock=clock)
+        self.event_service = EventService(
+            repository,
+            clock=clock,
+            retention_seconds=self._maximum_live_delay,
+        )
         self.events = self.event_service
         if self.scheduler is not None:
             for ticker in self.repository.list_tickers():
@@ -234,7 +238,8 @@ class BackendApplication:
             command_id = str(pending_reboot.get("id") or "").strip()
             if command_id:
                 data["meta"]["reboot"] = {"id": command_id}
-        events = self.event_service.pending(identifier)
+        visible_at = self._clock() - ticker.display_settings.live_delay_seconds if delayed else None
+        events = self.event_service.pending(identifier, visible_at=visible_at)
         event_payload = data["events"]
         event_payload["alerts"] = list(event_payload["alerts"])
         event_payload["news"] = list(event_payload["news"])
@@ -359,6 +364,16 @@ class BackendApplication:
             device=DeviceMetadata(last_seen_at=current.device.last_seen_at, metadata=metadata),
         )
         return True
+
+    def _maximum_live_delay(self) -> float:
+        """Return the event retention needed by every delayed ticker."""
+
+        delays = (
+            float(ticker.display_settings.live_delay_seconds)
+            for ticker in self.repository.list_tickers()
+            if ticker.display_settings.live_delay_mode
+        )
+        return max((delay for delay in delays if isfinite(delay) and delay >= 0), default=0.0)
 
     def close(self) -> None:
         """Stop owned work and close the owned repository once."""
