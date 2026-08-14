@@ -1,6 +1,6 @@
 """Verify canonical FotMob soccer display facts."""
 
-from sports_ticker.providers.fotmob import _match_status, _situation
+from sports_ticker.providers.fotmob import _match_status, _needs_details, _situation
 
 
 def test_fotmob_live_clock_has_one_apostrophe_without_hidden_spacing() -> None:
@@ -38,3 +38,9 @@ def test_fotmob_soccer_events_match_the_v1_renderer_contract() -> None:
     assert situation["red_cards"] == [
         {"is_home": False, "player": "REED", "time": "71'", "own_goal": False}
     ]
+
+
+def test_fotmob_keeps_final_match_details_until_the_display_window_closes() -> None:
+    match = {"status": {"started": True, "finished": True, "reason": {"short": "FT"}}}
+
+    assert _needs_details(match)

@@ -56,7 +56,7 @@ class FotMobSoccerProvider:
         client: JsonHttpClient | None = None,
         *,
         timeout: float = 10.0,
-        cache_seconds: float = 21_600.0,
+        cache_seconds: float = 86_400.0,
     ) -> None:
         self._leagues = {
             str(identifier).strip().lower(): int(league_id)
@@ -123,7 +123,7 @@ class FotMobSoccerProvider:
     def _fetch_details(
         self, records: Sequence[tuple[str, Mapping[str, Any]]]
     ) -> dict[str, Mapping[str, Any]]:
-        """Fetch live and penalty match details concurrently."""
+        """Fetch live and final match details concurrently."""
 
         targets = [match for _, match in records if _needs_details(match)]
         if not targets:
@@ -146,7 +146,8 @@ class FotMobSoccerProvider:
         if not match_id:
             return None
         now = monotonic()
-        ttl = 10.0 if _match_state(match) in {"in", "half"} else 300.0
+        state = _match_state(match)
+        ttl = 10.0 if state in {"in", "half"} else self._cache_seconds
         with self._details_lock:
             cached = self._details.get(match_id)
             if cached is not None and now - cached[0] < ttl:
@@ -316,7 +317,7 @@ def _match_status(match: Mapping[str, Any], state: str, timezone_name: str) -> s
 def _needs_details(match: Mapping[str, Any]) -> bool:
     state = _match_state(match)
     reason = str(_mapping(_mapping(match.get("status")).get("reason")).get("short") or "").upper()
-    return state in {"in", "half"} or "PEN" in reason
+    return state in {"in", "half", "post"} or "PEN" in reason
 
 
 def _situation(detail: Mapping[str, Any] | None) -> dict[str, object]:
