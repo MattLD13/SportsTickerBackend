@@ -98,7 +98,6 @@ struct WeatherForecast: Decodable, Hashable, Sendable {
 }
 struct Situation: Decodable, Hashable, Sendable {
     let activeTeam: String?
-    let possession: String?
     let downDist: String?
     let isRedZone: Bool?
     let balls: Int?
@@ -114,16 +113,12 @@ struct Situation: Decodable, Hashable, Sendable {
     let shootout: ShootoutData?
     
     enum CodingKeys: String, CodingKey {
-        case activeTeam, possession, downDist, isRedZone, balls, strikes, outs, onFirst, onSecond, onThird, powerPlay, emptyNet, icon, change, shootout
+        case activeTeam, downDist, isRedZone, balls, strikes, outs, onFirst, onSecond, onThird, powerPlay, emptyNet, icon, change, shootout
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         activeTeam = try? container.decode(String.self, forKey: .activeTeam)
-        if let stringPoss = try? container.decode(String.self, forKey: .possession) { possession = stringPoss }
-        else if let intPoss = try? container.decode(Int.self, forKey: .possession) { possession = String(intPoss) }
-        else { possession = nil }
-        
         downDist = try? container.decode(String.self, forKey: .downDist)
         isRedZone = try? container.decode(Bool.self, forKey: .isRedZone)
         balls = try? container.decode(Int.self, forKey: .balls)
@@ -1392,16 +1387,13 @@ struct FootballDownContext: View {
         }
     }
 }
-struct BaseballBattingContext: View {
+struct BaseballCountContext: View {
     let balls: Int
     let strikes: Int
     let outs: Int
 
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: "baseball.fill")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.white)
             HStack(spacing: 3) {
                 count("B", value: balls, color: .green)
                 count("S", value: strikes, color: .yellow)
@@ -1782,7 +1774,7 @@ struct GameRow: View {
             FootballDownContext(downDist: s.downDist, isRedZone: s.isRedZone == true)
         } else if isBaseball, hasBaseballCount, ownsActiveTeam(isHome: isHome), let s = game.situation,
                   let balls = s.balls, let strikes = s.strikes, let outs = s.outs {
-            BaseballBattingContext(balls: balls, strikes: strikes, outs: outs)
+            BaseballCountContext(balls: balls, strikes: strikes, outs: outs)
         } else if !activeSituation.isEmpty, ownsActiveTeam(isHome: isHome) {
             SituationPill(text: activeSituation, color: situationColor)
         }
