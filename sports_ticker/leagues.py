@@ -47,9 +47,9 @@ LEAGUES: Final[tuple[League, ...]] = (
     League("golf", "Golf (PGA)", my_teams_enabled=False),
     League("f1", "Formula 1", my_teams_enabled=False),
     League("indycar", "IndyCar", my_teams_enabled=False),
-    League("nascar", "NASCAR", my_teams_enabled=False),
+    # League("nascar", "NASCAR", my_teams_enabled=False),
     League("soccer_epl", "Premier League", "soccer/eng.1", fotmob_league_id=47),
-    League("soccer_fa_cup", "FA Cup", "soccer/eng.fa", fotmob_league_id=132),
+    League("soccer_fa_cup", "FA Cup", "soccer/eng.fa", my_teams_enabled=False, fotmob_league_id=132),
     League("soccer_champ", "Championship", "soccer/eng.2", fotmob_league_id=48),
     League("soccer_champions_league", "Champions League", "soccer/uefa.champions", fotmob_league_id=42),
     League("soccer_mls", "MLS", "soccer/usa.1", fotmob_league_id=130),
@@ -68,6 +68,13 @@ ESPN_SCOREBOARD_PATHS: Final = MappingProxyType(
 )
 FOTMOB_LEAGUES: Final = MappingProxyType(
     {league.id: league.fotmob_league_id for league in LEAGUES if league.fotmob_league_id is not None}
+)
+RACING_SCOREBOARD_PATHS: Final = MappingProxyType(
+    {
+        "f1": "racing/f1",
+        "indycar": "racing/irl",
+        # "nascar": "racing/nascar-premier",
+    }
 )
 
 
@@ -92,6 +99,7 @@ __all__ = [
     "LEAGUE_BY_ID",
     "ESPN_SCOREBOARD_PATHS",
     "FOTMOB_LEAGUES",
+    "RACING_SCOREBOARD_PATHS",
     "TEAM_CATALOG_PATHS",
     "League",
     "allows_my_team_selection",

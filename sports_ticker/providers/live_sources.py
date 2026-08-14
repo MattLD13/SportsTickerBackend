@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 from sports_ticker.domain import DisplaySettings
+from sports_ticker.leagues import RACING_SCOREBOARD_PATHS
 from sports_ticker.markets import selected_market_groups
 
 from .espn import _is_current_event
@@ -23,9 +24,8 @@ from .http import JsonHttpClient, UrllibJsonHttpClient
 
 ESPN_GOLF_URL = "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"
 ESPN_RACING_URLS = {
-    "f1": "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard",
-    "indycar": "https://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard",
-    "nascar": "https://site.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard",
+    series: f"https://site.api.espn.com/apis/site/v2/sports/{path}/scoreboard"
+    for series, path in RACING_SCOREBOARD_PATHS.items()
 }
 FINNHUB_QUOTE_URL = "https://finnhub.io/api/v1/quote"
 FINNHUB_CANDLE_URL = "https://finnhub.io/api/v1/stock/candle"
