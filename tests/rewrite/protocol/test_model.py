@@ -42,3 +42,12 @@ def test_payload_boundary_rejects_a_non_v2_response() -> None:
 
 def test_canonical_hash_ignores_mapping_order() -> None:
     assert canonical_payload_hash({"a": True, "b": [1]}) == canonical_payload_hash({"b": [1], "a": True})
+
+
+def test_snapshot_observation_does_not_restart_the_display_pipeline() -> None:
+    before = _payload()
+    after = _payload()
+    after["snapshot"]["observed_at"] = "2026-08-11T00:00:01+00:00"
+    after["snapshot"]["revision"] = 2
+
+    assert TickerResponse.from_payload(before).payload_key == TickerResponse.from_payload(after).payload_key

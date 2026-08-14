@@ -116,6 +116,17 @@ def canonical_payload_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _display_payload_hash(payload: Mapping[str, Any]) -> str:
+    """Hash display data while excluding transport-only snapshot fields."""
+
+    normalized = _thaw(_mapping(payload, "payload"))
+    snapshot = normalized.get("snapshot")
+    if isinstance(snapshot, dict):
+        snapshot.pop("observed_at", None)
+        snapshot.pop("revision", None)
+    return canonical_payload_hash(normalized)
+
+
 def _render_data(family: str, kind: str, data: Mapping[str, FrozenJson]) -> Mapping[str, FrozenJson]:
     """Prepare canonical item data for the existing 384x32 renderer catalog."""
 
@@ -325,7 +336,7 @@ class TickerResponse:
             alerts=alerts,
             news=news,
             update_version=update_version.strip() if isinstance(update_version, str) else None,
-            payload_key=canonical_payload_hash(data),
+            payload_key=_display_payload_hash(data),
             data=data,
         )
 
