@@ -129,12 +129,8 @@ jobs:
             -H "Content-Type: application/json" \
             -H "X-Deployment-Token: ${{ secrets.POOP_ADMIN_PASSWORD }}" \
             -d "{\"version\":\"${VERSION}\"}")
-          if [ "$V2_STATUS" = "201" ]; then
-            echo "Queued v2 update."
-            exit 0
+          if [ "$V2_STATUS" != "201" ]; then
+            echo "V2 update request failed with HTTP ${V2_STATUS}."
+            exit 1
           fi
-          echo "v2 endpoint returned HTTP ${V2_STATUS}. Using the one-time legacy cutover signal."
-          curl --fail --silent --show-error \
-            -X POST https://ticker.mattdicks.org/api/hardware \
-            -H "Content-Type: application/json" \
-            -d "{\"action\":\"update\",\"ticker_id\":\"all\",\"version\":\"${VERSION}\"}"
+          echo "Queued V2 update."

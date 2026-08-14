@@ -8,8 +8,10 @@ StartLimitBurst=5
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/home/mld
+WorkingDirectory=/opt/sports-ticker/current
 Environment=TICKER_DATA_DIR=/home/mld/ticker
+Environment=TICKER_RELEASE_ROOT=/opt/sports-ticker
+Environment=TICKER_RELEASE_LINK=/opt/sports-ticker/current
 Environment=TICKER_VERIFY_TLS=true
 ExecStart=/usr/bin/env python3 -m ticker_core
 Restart=always

@@ -37,6 +37,7 @@ Before a commit, state these facts in the change notes:
 - A pinned game is `sports_presentation: pinned`, not a display mode.
 - Pairing is an effective output state. It is not a stored user mode.
 - Alerts, news, connection loss, and updates are overlays. They do not replace the active mode.
+- Pi deployments use immutable Git worktrees. Runtime data stays outside a release. Never run `git pull`, reset, or clean in a running release.
 
 ## Common Commands
 

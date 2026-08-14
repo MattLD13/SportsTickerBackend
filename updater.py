@@ -1,235 +1,143 @@
 #!/usr/bin/env python3
-"""
-OTA updater for the Sports Ticker.
+"""Install one immutable Pi release and atomically restart the controller."""
 
-Called by the Pi ticker when the backend signals an update is available.
-  1. Shows an update UI on the LED matrix (unless --no-display is passed)
-  2. git pull
-  3. pip install if requirements.txt changed
-  4. Restarts the ticker-controller systemd service
-
-Usage:
-  python3 updater.py               # standalone with LED display
-  python3 updater.py --no-display  # called from within running ticker process
-"""
+from __future__ import annotations
 
 import os
 import pwd
+import shutil
 import subprocess
 import sys
-import threading
-import time
+from pathlib import Path
 
-# ── Project root (directory this file lives in) ──────────────────────────────
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+PROJECT_DIR = Path(__file__).resolve().parent
+RELEASE_ROOT = Path(os.environ.get("TICKER_RELEASE_ROOT", "/opt/sports-ticker"))
+RELEASES_DIR = RELEASE_ROOT / "releases"
+CURRENT_LINK = Path(os.environ.get("TICKER_RELEASE_LINK", RELEASE_ROOT / "current"))
 SERVICE_NAME = "ticker-controller"
-
-# ── Service map: which services to restart for each changed path prefix ──────
-# Paths are relative to PROJECT_DIR.  Backend and controller can restart
-# independently so a pure backend-only push never interrupts the display.
-SERVICE_MAP = [
-    ("sports_ticker/",      "ticker"),              # Flask backend
-    ("app.py",              "ticker"),
-    ("ticker_core/",        SERVICE_NAME),          # Rewrite Pi application
-    ("updater.py",          SERVICE_NAME),
-]
+SERVICE_PATH = Path("/etc/systemd/system/ticker-controller.service")
 
 
-def _ensure_safe_directory():
-    """Allow root to operate on a directory owned by another user."""
+def _repository_owner() -> pwd.struct_passwd:
+    """Return the user that owns the source repository."""
+
+    return pwd.getpwuid(PROJECT_DIR.stat().st_uid)
+
+
+def _git(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
+    """Run Git as the repository owner without changing the source checkout."""
+
+    command = ["git", "-C", str(PROJECT_DIR), *args]
+    if os.geteuid() == 0:
+        owner = _repository_owner().pw_name
+        command = ["sudo", "-u", owner, *command]
+    return subprocess.run(command, check=True, capture_output=capture, text=True)
+
+
+def _prepare_release_directory() -> None:
+    """Create a release directory writable by the repository owner."""
+
+    RELEASES_DIR.mkdir(parents=True, exist_ok=True)
+    if os.geteuid() == 0:
+        owner = _repository_owner()
+        os.chown(RELEASE_ROOT, owner.pw_uid, owner.pw_gid)
+        os.chown(RELEASES_DIR, owner.pw_uid, owner.pw_gid)
+
+
+def _revision() -> str:
+    """Fetch the selected branch and return its immutable Git revision."""
+
+    _git("fetch", "--quiet", "origin", "main")
+    return _git("rev-parse", "origin/main").stdout.strip()
+
+
+def _changed_files(target: str) -> tuple[str, ...]:
+    """Return files changed between this running release and the target release."""
+
+    result = _git("diff", "--name-only", "HEAD", target)
+    return tuple(line.strip() for line in result.stdout.splitlines() if line.strip())
+
+
+def _checkout_release(revision: str) -> Path:
+    """Create one detached worktree for the selected immutable revision."""
+
+    _prepare_release_directory()
+    release = RELEASES_DIR / revision
+    if release.is_dir():
+        return release
+    _git("worktree", "add", "--detach", str(release), revision, capture=False)
+    return release
+
+
+def _install_requirements(release: Path, changed: tuple[str, ...]) -> None:
+    """Install dependencies only when the selected release changes them."""
+
+    if not any(path in {"requirements.txt", "pyproject.toml", "poetry.lock"} for path in changed):
+        return
+    requirements = release / "requirements.txt"
+    if not requirements.is_file():
+        return
+    command = [sys.executable, "-m", "pip", "install", "-r", str(requirements), "--quiet"]
     try:
-        subprocess.run(
-            ["git", "config", "--global", "--add", "safe.directory", PROJECT_DIR],
-            capture_output=True, check=False,
-        )
-    except Exception:
-        pass
+        subprocess.run([*command, "--break-system-packages"], check=True)
+    except subprocess.CalledProcessError:
+        subprocess.run(command, check=True)
 
 
-def _git(*args, check=True, capture=True):
-    command = ["git", "-C", PROJECT_DIR, *args]
-    # The matrix service needs root, but root must not own source files after
-    # an OTA pull. Run Git as the repository owner whenever the updater starts
-    # from that service.
-    if getattr(os, "geteuid", lambda: -1)() == 0:
-        owner = pwd.getpwuid(os.stat(PROJECT_DIR).st_uid).pw_name
-        if owner != "root":
-            command = ["sudo", "-u", owner, *command]
-    return subprocess.run(
-        command,
-        capture_output=capture,
-        text=True,
-        check=check,
+def _activate_release(release: Path) -> None:
+    """Atomically make one complete release the next controller working directory."""
+
+    CURRENT_LINK.parent.mkdir(parents=True, exist_ok=True)
+    temporary = CURRENT_LINK.with_name(f".{CURRENT_LINK.name}.{release.name}.next")
+    temporary.unlink(missing_ok=True)
+    temporary.symlink_to(release, target_is_directory=True)
+    os.replace(temporary, CURRENT_LINK)
+
+
+def _install_service(release: Path) -> None:
+    """Install the release-aware unit before restarting the controller."""
+
+    source = release / "ticker-controller.service"
+    if not source.is_file():
+        raise FileNotFoundError(f"Release service file is missing: {source}")
+    shutil.copy2(source, SERVICE_PATH)
+    subprocess.run(["systemctl", "daemon-reload"], check=True)
+
+
+def _cleanup_releases(active: Path) -> None:
+    """Keep the active release and two rollback releases."""
+
+    releases = sorted(
+        (path for path in RELEASES_DIR.iterdir() if path.is_dir() and path != active),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
     )
-
-
-def changed_files_since_last_pull():
-    """Return list of files that differ between the current HEAD and origin/main."""
-    try:
-        _git("fetch", "--quiet")
-        result = _git("diff", "--name-only", "HEAD", "origin/main")
-        lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
-        return lines
-    except Exception as e:
-        print(f"[updater] git diff failed: {e}")
-        return []
-
-
-def services_to_restart(changed):
-    """Given a list of changed file paths, return the set of services to restart."""
-    restart = set()
-    for path in changed:
-        for prefix, svc in SERVICE_MAP:
-            if path.startswith(prefix) or path == prefix.rstrip("/"):
-                restart.add(svc)
-    # Always restart the controller if we have no idea (empty changed list)
-    if not changed:
-        restart.add(SERVICE_NAME)
-    return restart
-
-
-def pip_install_needed(changed):
-    return any(p.startswith("requirements") for p in changed)
-
-
-def restart_service(name):
-    try:
-        subprocess.run(["sudo", "systemctl", "restart", name], check=True)
-        print(f"[updater] Restarted {name}")
-    except Exception as e:
-        print(f"[updater] Failed to restart {name}: {e}")
-
-
-# ── Optional LED matrix display ───────────────────────────────────────────────
-
-def _try_show_update_ui(step_ref):
-    """Keep standalone updates headless because the controller owns its overlay."""
-    return
-    try:
-        import math
-        from PIL import Image, ImageDraw, ImageFont
-
+    for release in releases[2:]:
         try:
-            from rgbmatrix import RGBMatrix
-            from ticker_core.drivers import RgbMatrixSettings
-            matrix = RGBMatrix(options=build_matrix_options())
-        except Exception:
-            return  # Not on hardware — skip silently
-
-        try:
-            font = ImageFont.truetype("DejaVuSansMono-Bold.ttf", 10)
-        except Exception:
-            font = ImageFont.load_default()
-
-        W, H = 384, 32
-        while not step_ref.get("done"):
-            t = time.time()
-            img = Image.new("RGB", (W, H), (0, 0, 0))
-            d = ImageDraw.Draw(img)
-
-            # Scrolling highlight
-            bar_x = int((t * 80) % (W + 60)) - 30
-            for bx in range(bar_x, bar_x + 60):
-                if 0 <= bx < W:
-                    alpha = 1.0 - abs(bx - (bar_x + 30)) / 30.0
-                    c = int(alpha * 80)
-                    d.point((bx, 0), fill=(0, c, c))
-
-            # Spinning dots
-            cx, cy = 10, 16
-            for i in range(8):
-                angle = i * math.pi / 4 + t * 3
-                dx = int(cx + math.cos(angle) * 7)
-                dy = int(cy + math.sin(angle) * 7)
-                br = int(100 + 155 * ((math.sin(angle - t * 3) + 1) / 2))
-                d.point((dx, dy), fill=(0, br, br))
-            d.ellipse((cx - 2, cy - 2, cx + 2, cy + 2), fill=(0, 180, 180))
-
-            # Label
-            label = str(step_ref.get("step", "UPDATING...")).upper()
-            lw = d.textlength(label, font=font)
-            d.text(((W - lw) / 2, 1), label, font=font, fill=(200, 220, 220))
-
-            # Bouncing dots
-            for i in range(5):
-                phase = t * 4 + i * 0.6
-                dot_y = 20 + int(math.sin(phase) * 3)
-                bx = W // 2 - 12 + i * 6
-                d.ellipse((bx, dot_y, bx + 2, dot_y + 2), fill=(0, 200, 255))
-
-            # Indeterminate progress bar
-            pulse_w = 80
-            px = int((t * 100) % (W + pulse_w)) - pulse_w
-            d.rectangle((0, 31, W - 1, 31), fill=(20, 20, 20))
-            for bx in range(px, px + pulse_w):
-                if 0 <= bx < W:
-                    d.point((bx, 31), fill=(0, 180, 80))
-
-            matrix.SetImage(img)
-            time.sleep(0.033)
-
-    except Exception as e:
-        print(f"[updater] LED display error: {e}")
-
-
-# ── Main ──────────────────────────────────────────────────────────────────────
-
-def main():
-    _ensure_safe_directory()
-    no_display = "--no-display" in sys.argv
-
-    step_ref = {"step": "Checking...", "done": False}
-
-    if not no_display:
-        t = threading.Thread(target=_try_show_update_ui, args=(step_ref,), daemon=True)
-        t.start()
-
-    print("[updater] Checking for changes...")
-    changed = changed_files_since_last_pull()
-    print(f"[updater] Changed files: {changed or '(none detected)'}")
-
-    services = services_to_restart(changed)
-    needs_pip = pip_install_needed(changed)
-
-    # ── git pull ──────────────────────────────────────────────────────────────
-    step_ref["step"] = "Pulling..."
-    print("[updater] Running git pull...")
-    try:
-        result = _git("pull", "--ff-only", capture=False)
-    except subprocess.CalledProcessError as e:
-        print(f"[updater] git pull failed: {e}")
-        step_ref["done"] = True
-        sys.exit(1)
-
-    # ── pip install ───────────────────────────────────────────────────────────
-    if needs_pip:
-        step_ref["step"] = "Installing..."
-        print("[updater] requirements.txt changed — running pip install...")
-        req_path = os.path.join(PROJECT_DIR, "requirements.txt")
-        try:
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-r", req_path,
-                 "--break-system-packages", "--quiet"],
-                check=True,
-            )
+            _git("worktree", "remove", "--force", str(release), capture=False)
         except subprocess.CalledProcessError:
-            # Try without --break-system-packages (older pip)
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-r", req_path, "--quiet"],
-                check=False,
-            )
+            continue
 
-    # ── restart services ──────────────────────────────────────────────────────
-    step_ref["step"] = "Restarting..."
-    time.sleep(0.5)  # let the LED show "Restarting..." briefly
 
-    step_ref["done"] = True
+def main() -> int:
+    """Install one clean Git worktree and restart the controller."""
 
-    for svc in sorted(services):
-        restart_service(svc)
-
-    print("[updater] Done.")
+    try:
+        target = _revision()
+        changed = _changed_files(target)
+        release = _checkout_release(target)
+        _install_requirements(release, changed)
+        _activate_release(release)
+        _install_service(release)
+        _cleanup_releases(release)
+        subprocess.run(["systemctl", "restart", SERVICE_NAME], check=True)
+        print(f"[updater] Activated {target[:12]}.")
+        return 0
+    except Exception as error:
+        print(f"[updater] Update failed: {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,105 +1,64 @@
 #!/usr/bin/env bash
-# ─────────────────────────────────────────────────────────────────────────────
-# Sports Ticker — Pi Setup Script
-# Run once on a fresh Raspberry Pi:  sudo bash setup.sh
-# ─────────────────────────────────────────────────────────────────────────────
-set -e
+# Install the Pi controller in immutable Git worktrees.
+set -euo pipefail
 
 REPO_URL="https://github.com/MattLD13/SportsTickerBackend.git"
-INSTALL_DIR="/home/mld"
-PROJECT_DIR="$INSTALL_DIR"   # repo cloned directly into home dir (matches deploy)
-SERVICE_SRC="$PROJECT_DIR/ticker-controller.service"
+BOARD_USER="mld"
+RELEASE_ROOT="/opt/sports-ticker"
+SOURCE_DIR="$RELEASE_ROOT/source"
+RELEASES_DIR="$RELEASE_ROOT/releases"
+CURRENT_LINK="$RELEASE_ROOT/current"
+DATA_DIR="/home/$BOARD_USER/ticker"
 SERVICE_DST="/etc/systemd/system/ticker-controller.service"
-PYTHON="python3"
-USER="mld"
 
-echo ""
-echo "═══════════════════════════════════════════════"
-echo "   Sports Ticker — Pi Setup"
-echo "═══════════════════════════════════════════════"
-echo ""
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Run this script with sudo."
+    exit 1
+fi
 
-# ── 1. System packages ────────────────────────────────────────────────────────
-echo "[1/7] Installing system packages..."
 apt-get update -qq
 apt-get install -y -qq git python3-pip python3-pil python3-flask fonts-dejavu
 
-# ── 2. Clone or update repo ───────────────────────────────────────────────────
-echo "[2/7] Cloning repo..."
-if [ -d "$PROJECT_DIR/.git" ]; then
-    echo "  Repo already cloned — pulling latest..."
-    git -C "$PROJECT_DIR" pull --ff-only
-else
-    git clone "$REPO_URL" "$PROJECT_DIR"
+install -d -o "$BOARD_USER" -g "$BOARD_USER" "$RELEASE_ROOT" "$RELEASES_DIR" "$DATA_DIR"
+if [ ! -d "$SOURCE_DIR/.git" ]; then
+    sudo -u "$BOARD_USER" git clone "$REPO_URL" "$SOURCE_DIR"
 fi
 
-# The matrix service runs as root, but developers and OTA Git operations use
-# the named board user. Keep source ownership with that user.
-chown -R "$USER:$USER" "$PROJECT_DIR"
-
-# Allow root to run git in this directory (service runs as root)
-git config --global --add safe.directory "$PROJECT_DIR"
-
-# ── 3. Python dependencies ───────────────────────────────────────────────────
-echo "[3/7] Installing Python requirements..."
-cd "$PROJECT_DIR"
-$PYTHON -m pip install -r requirements.txt --break-system-packages 2>/dev/null \
-    || $PYTHON -m pip install -r requirements.txt
-
-# ── 4. RGB Matrix library ─────────────────────────────────────────────────────
-echo "[4/7] Installing rpi-rgb-led-matrix Python bindings..."
-if ! $PYTHON -c "from rgbmatrix import RGBMatrix" 2>/dev/null; then
-    TMP_DIR=$(mktemp -d)
-    git clone https://github.com/hzeller/rpi-rgb-led-matrix "$TMP_DIR/rpi-rgb-led-matrix" --depth=1
-    cd "$TMP_DIR/rpi-rgb-led-matrix/bindings/python"
-    make build-python PYTHON="$PYTHON"
-    make install-python PYTHON="$PYTHON"
-    cd "$PROJECT_DIR"
-    rm -rf "$TMP_DIR"
-    echo "  rgbmatrix installed."
-else
-    echo "  rgbmatrix already available — skipping."
+sudo -u "$BOARD_USER" git -C "$SOURCE_DIR" fetch --quiet origin main
+REVISION=$(sudo -u "$BOARD_USER" git -C "$SOURCE_DIR" rev-parse origin/main)
+RELEASE_DIR="$RELEASES_DIR/$REVISION"
+if [ ! -d "$RELEASE_DIR" ]; then
+    sudo -u "$BOARD_USER" git -C "$SOURCE_DIR" worktree add --detach "$RELEASE_DIR" "$REVISION"
 fi
 
-# The matrix library drives OE with the PWM hardware, which the onboard sound
-# driver also claims. With snd_bcm2835 loaded the library falls back to software
-# pulsing — dimmer and visibly flickery on a 6-panel chain — so get it out of the
-# way. build_matrix_options() detects the module and picks accordingly, so this
-# takes effect on the next reboot rather than needing a flag.
-echo "  Blacklisting snd_bcm2835 so hardware pulsing is available..."
+NEXT_LINK="$RELEASE_ROOT/.current.next"
+ln -sfn "$RELEASE_DIR" "$NEXT_LINK"
+mv -Tf "$NEXT_LINK" "$CURRENT_LINK"
+chown -h "$BOARD_USER:$BOARD_USER" "$CURRENT_LINK"
+
+python3 -m pip install -r "$CURRENT_LINK/requirements.txt" --break-system-packages 2>/dev/null \
+    || python3 -m pip install -r "$CURRENT_LINK/requirements.txt"
+
+if ! python3 -c "from rgbmatrix import RGBMatrix" 2>/dev/null; then
+    BUILD_DIR=$(mktemp -d)
+    git clone --depth=1 https://github.com/hzeller/rpi-rgb-led-matrix "$BUILD_DIR/rpi-rgb-led-matrix"
+    make -C "$BUILD_DIR/rpi-rgb-led-matrix/bindings/python" build-python PYTHON=python3
+    make -C "$BUILD_DIR/rpi-rgb-led-matrix/bindings/python" install-python PYTHON=python3
+    rm -rf "$BUILD_DIR"
+fi
+
 echo 'blacklist snd_bcm2835' > /etc/modprobe.d/blacklist-rgb-matrix.conf
 sed -i 's/^dtparam=audio=on/dtparam=audio=off/' /boot/firmware/config.txt 2>/dev/null \
     || sed -i 's/^dtparam=audio=on/dtparam=audio=off/' /boot/config.txt 2>/dev/null \
     || true
-update-initramfs -u
 
-# ── 5. Sudoers entry so updater can restart services without a password ───────
-echo "[5/7] Configuring sudoers for service restart..."
-SUDOERS_LINE="$USER ALL=(root) NOPASSWD: /bin/systemctl restart ticker-controller, /bin/systemctl restart ticker, /sbin/reboot"
-SUDOERS_FILE="/etc/sudoers.d/ticker"
-echo "$SUDOERS_LINE" > "$SUDOERS_FILE"
-chmod 440 "$SUDOERS_FILE"
-echo "  Sudoers entry written to $SUDOERS_FILE"
+cat > /etc/sudoers.d/ticker <<EOF
+$BOARD_USER ALL=(root) NOPASSWD: /bin/systemctl restart ticker-controller, /bin/systemctl daemon-reload
+EOF
+chmod 440 /etc/sudoers.d/ticker
 
-# ── 6. Install & enable systemd service ──────────────────────────────────────
-echo "[6/7] Installing systemd service..."
-# Patch service file to use the actual home directory
-sed -i "s|/home/pi|/home/$USER|g" "$SERVICE_SRC"
-cp "$SERVICE_SRC" "$SERVICE_DST"
+install -m 0644 "$CURRENT_LINK/ticker-controller.service" "$SERVICE_DST"
 systemctl daemon-reload
 systemctl enable ticker-controller
 systemctl restart ticker-controller
-echo "  Service enabled and started."
-
-# ── 7. Verify ─────────────────────────────────────────────────────────────────
-echo "[7/7] Verifying..."
-sleep 2
-systemctl status ticker-controller --no-pager || true
-
-echo ""
-echo "═══════════════════════════════════════════════"
-echo "   Setup complete!"
-echo "   Logs:    journalctl -u ticker-controller -f"
-echo "   Or:      tail -f /home/$USER/ticker.log"
-echo "═══════════════════════════════════════════════"
-echo ""
+systemctl status ticker-controller --no-pager
