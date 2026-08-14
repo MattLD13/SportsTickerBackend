@@ -4,9 +4,9 @@ from sports_ticker.domain import ContentItem
 from sports_ticker.providers.sports_display import SportsDisplayProjector
 
 
-def _event(detail: str, situation: dict) -> dict:
+def _event(detail: str, situation: dict, state: str = "in") -> dict:
     return {
-        "status": {"type": {"state": "in", "shortDetail": detail}, "period": 2},
+        "status": {"type": {"state": state, "shortDetail": detail}, "period": 2},
         "competitions": [{"situation": situation, "competitors": [
             {"homeAway": "home", "team": {"id": "1", "abbreviation": "HOM"}},
             {"homeAway": "away", "team": {"id": "2", "abbreviation": "AWY"}},
@@ -14,9 +14,9 @@ def _event(detail: str, situation: dict) -> dict:
     }
 
 
-def _item(identifier: str, sport: str) -> ContentItem:
+def _item(identifier: str, sport: str, state: str = "in") -> ContentItem:
     return ContentItem(identifier, "sports", "scoreboard", True, {
-        "sport": sport, "state": "in", "status": "", "home_abbr": "HOM", "away_abbr": "AWY",
+        "sport": sport, "state": state, "status": "", "home_abbr": "HOM", "away_abbr": "AWY",
     })
 
 
@@ -29,3 +29,12 @@ def test_active_team_belongs_to_the_backend_sports_contract() -> None:
     assert football.data["situation"]["activeTeam"] == "AWY"
     assert baseball_top.data["situation"]["activeTeam"] == "AWY"
     assert baseball_bottom.data["situation"]["activeTeam"] == "HOM"
+
+
+def test_finished_game_has_no_live_play_context() -> None:
+    ended = SportsDisplayProjector().project(
+        _item("ended", "nfl", "post"),
+        _event("FINAL", {"possession": "2", "down": 3, "distance": 4, "isRedZone": True}, "post"),
+    )
+
+    assert ended.data["situation"] == {}

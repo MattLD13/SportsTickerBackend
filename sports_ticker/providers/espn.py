@@ -150,6 +150,7 @@ class EspnScoreboardProvider:
         situation.update(details)
         data["situation"] = assign_active_team(
             league,
+            str(data.get("state") or ""),
             str(data.get("status") or ""),
             situation,
             home_abbr=str(data.get("home_abbr") or ""),

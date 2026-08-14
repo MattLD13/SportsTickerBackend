@@ -44,6 +44,7 @@ class SportsDisplayProjector:
         )
         data["situation"] = assign_active_team(
             league,
+            state,
             str(data["status"]),
             situation,
             home_abbr=str(data.get("home_abbr") or ""),
@@ -70,6 +71,10 @@ class SportsDisplayProjector:
         """Keep possession and football down data through ESPN's empty polls."""
 
         live = state in {"in", "half", "crit"}
+        if not live:
+            self._possession.pop(identifier, None)
+            self._football.pop(identifier, None)
+            return situation
         halftime = "half" in status.lower()
         possession = str(situation.get("possession") or "")
         if possession:
@@ -186,15 +191,20 @@ def display_situation(
 
 def assign_active_team(
     league: str,
+    state: str,
     status: str,
     situation: Mapping[str, Any],
     *,
     home_abbr: str,
     away_abbr: str,
 ) -> dict[str, Any]:
-    """Set the canonical team that owns the active live-play facts."""
+    """Set live-play ownership only while the game remains active."""
 
     result = dict(situation)
+    if state not in {"in", "half", "crit"}:
+        for key in _LIVE_PLAY_KEYS:
+            result.pop(key, None)
+        return result
     active_team = str(result.get("possession") or "").strip()
     if league == "mlb" and not active_team:
         active_team = _baseball_batting_team(status, home_abbr, away_abbr)
@@ -203,6 +213,33 @@ def assign_active_team(
     else:
         result.pop("activeTeam", None)
     return result
+
+
+_LIVE_PLAY_KEYS = frozenset(
+    {
+        "activeTeam",
+        "possession",
+        "downDist",
+        "downDistFull",
+        "down",
+        "ballOn",
+        "yardLine",
+        "yardsToGo",
+        "yardsToGoal",
+        "isGoalToGo",
+        "goalToGo",
+        "isRedZone",
+        "balls",
+        "strikes",
+        "outs",
+        "onFirst",
+        "onSecond",
+        "onThird",
+        "powerPlay",
+        "emptyNet",
+        "emptyNetSide",
+    }
+)
 
 
 def _baseball_batting_team(status: str, home_abbr: str, away_abbr: str) -> str:
