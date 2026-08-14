@@ -16,6 +16,10 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+systemctl disable --now ticker.service 2>/dev/null || true
+rm -f /etc/systemd/system/ticker.service
+rm -f /etc/systemd/system/multi-user.target.wants/ticker.service
+
 apt-get update -qq
 apt-get install -y -qq git python3-pip python3-pil python3-flask fonts-dejavu
 
