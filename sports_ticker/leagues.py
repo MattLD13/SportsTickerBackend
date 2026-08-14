@@ -13,7 +13,7 @@ class League:
 
     id: str
     label: str
-    scoreboard_path: str
+    scoreboard_path: str = ""
     scoreboard_query: tuple[tuple[str, str], ...] = ()
     my_teams_enabled: bool = True
     team_abbreviations: frozenset[str] | None = None
@@ -43,6 +43,10 @@ LEAGUES: Final[tuple[League, ...]] = (
         (("groups", "100"), ("limit", "100")),
         my_teams_enabled=False,
     ),
+    League("golf", "Golf (PGA)", my_teams_enabled=False),
+    League("f1", "Formula 1", my_teams_enabled=False),
+    League("indycar", "IndyCar", my_teams_enabled=False),
+    League("nascar", "NASCAR", my_teams_enabled=False),
     League("soccer_epl", "Premier League", "soccer/eng.1"),
     League("soccer_fa_cup", "FA Cup", "soccer/eng.fa"),
     League("soccer_champ", "Championship", "soccer/eng.2"),
@@ -52,7 +56,7 @@ LEAGUES: Final[tuple[League, ...]] = (
 
 LEAGUE_BY_ID: Final = MappingProxyType({league.id: league for league in LEAGUES})
 SCOREBOARD_PATHS: Final = MappingProxyType(
-    {league.id: league.scoreboard_path for league in LEAGUES}
+    {league.id: league.scoreboard_path for league in LEAGUES if league.scoreboard_path}
 )
 
 

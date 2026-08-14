@@ -54,7 +54,6 @@ class EspnTeamCatalog:
     def leagues(self) -> tuple[dict[str, object], ...]:
         """Return the configured sports leagues in a stable controller format."""
 
-        configured = set(self._paths)
         sports = tuple(
             {
                 "id": league.id,
@@ -64,7 +63,6 @@ class EspnTeamCatalog:
                 "my_teams_enabled": league.my_teams_enabled,
             }
             for league in LEAGUES
-            if league.id in configured
         )
         markets = tuple(
             {
@@ -86,12 +84,12 @@ class EspnTeamCatalog:
         """Return all teams for one configured ESPN league."""
 
         identifier = str(league).strip().lower()
-        path = self._paths.get(identifier)
-        if not path:
-            raise KeyError(identifier)
         definition = league_for(identifier)
         if not definition.my_teams_enabled:
             return ()
+        path = self._paths.get(identifier)
+        if not path:
+            raise KeyError(identifier)
         now = monotonic()
         with self._lock:
             cached = self._cache.get(identifier)
