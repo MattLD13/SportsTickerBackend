@@ -48,11 +48,9 @@ jobs:
 
       - name: Generate VERSION file
         run: |
-          COUNT=$(git rev-list --count HEAD)
-          SHA=$(git rev-parse --short HEAD)
-          DATE=$(git log -1 --format=%cd --date=format:%Y.%m.%d)
-          echo "${DATE}|${COUNT}|${SHA}" > VERSION
-          echo "Version: ${DATE} · build r${COUNT}+${SHA}"
+          SHA=$(git rev-parse --short=12 HEAD)
+          echo "${SHA}" > VERSION
+          echo "Version: ${SHA}"
 
       - name: Copy files to server
         uses: appleboy/scp-action@master
