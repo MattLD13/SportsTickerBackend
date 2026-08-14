@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from threading import Lock
 from time import monotonic
 from typing import Any
+from urllib.parse import urlparse
 
 from sports_ticker.leagues import LEAGUES, league_for
 from sports_ticker.markets import MARKET_GROUPS
@@ -14,6 +15,8 @@ from .http import JsonHttpClient, UrllibJsonHttpClient
 
 
 _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
+_ESPN_CORE_COLLEGE_BASE = "https://sports.core.api.espn.com/v2/sports/football/leagues/college-football"
+_COLLEGE_GROUPS = {"ncf_fbs": "80", "ncf_fcs": "81"}
 _MODE_SYMBOLS = {
     "sports": "sportscourt.fill",
     "stock": "chart.line.uptrend.xyaxis",
@@ -44,6 +47,8 @@ class EspnTeamCatalog:
         self._timeout = float(timeout)
         self._cache_seconds = float(cache_seconds)
         self._cache: dict[str, tuple[float, tuple[dict[str, str], ...]]] = {}
+        self._college_payload: tuple[float, object] | None = None
+        self._college_group_ids: dict[tuple[int, str], tuple[float, frozenset[str]]] = {}
         self._lock = Lock()
 
     def leagues(self) -> tuple[dict[str, object], ...]:
@@ -92,18 +97,74 @@ class EspnTeamCatalog:
             cached = self._cache.get(identifier)
             if cached is not None and now - cached[0] < self._cache_seconds:
                 return cached[1]
-        payload = self._client.get_json(f"{_ESPN_BASE}/{path}/teams", timeout=self._timeout)
-        teams = tuple(
-            team
-            for team in _teams(payload, identifier)
-            if definition.allows_team(team["abbr"])
-        )
+        if identifier in _COLLEGE_GROUPS:
+            teams = self._college_teams(identifier, definition)
+        else:
+            payload = self._client.get_json(f"{_ESPN_BASE}/{path}/teams", timeout=self._timeout)
+            teams = tuple(
+                team
+                for team in _teams(payload, identifier)
+                if definition.allows_team(team["abbr"])
+            )
         with self._lock:
             self._cache[identifier] = (now, teams)
         return teams
 
+    def _college_teams(self, identifier: str, definition) -> tuple[dict[str, str], ...]:
+        """Build one NCAA division from ESPN's authoritative group membership."""
 
-def _teams(payload: object, league: str) -> tuple[dict[str, str], ...]:
+        payload = self._college_team_payload()
+        season = _college_season(payload)
+        group = _COLLEGE_GROUPS[identifier]
+        allowed_ids = self._college_team_ids(season, group)
+        return tuple(
+            team
+            for team in _teams(payload, identifier, source_ids=allowed_ids)
+            if definition.allows_team(team["abbr"])
+        )
+
+    def _college_team_payload(self) -> object:
+        """Fetch the full NCAA team catalog once for both divisions."""
+
+        now = monotonic()
+        with self._lock:
+            cached = self._college_payload
+            if cached is not None and now - cached[0] < self._cache_seconds:
+                return cached[1]
+        payload = self._client.get_json(
+            f"{_ESPN_BASE}/football/college-football/teams?limit=1000",
+            timeout=self._timeout,
+        )
+        with self._lock:
+            self._college_payload = (now, payload)
+        return payload
+
+    def _college_team_ids(self, season: int, group: str) -> frozenset[str]:
+        """Read one NCAA division from ESPN's group endpoint."""
+
+        key = (season, group)
+        now = monotonic()
+        with self._lock:
+            cached = self._college_group_ids.get(key)
+            if cached is not None and now - cached[0] < self._cache_seconds:
+                return cached[1]
+        url = (
+            f"{_ESPN_CORE_COLLEGE_BASE}/seasons/{season}/types/2/groups/{group}/teams"
+            "?lang=en&region=us&limit=1000"
+        )
+        payload = self._client.get_json(url, timeout=self._timeout)
+        team_ids = _source_team_ids(payload)
+        with self._lock:
+            self._college_group_ids[key] = (now, team_ids)
+        return team_ids
+
+
+def _teams(
+    payload: object,
+    league: str,
+    *,
+    source_ids: frozenset[str] | None = None,
+) -> tuple[dict[str, str], ...]:
     root = payload if isinstance(payload, Mapping) else {}
     sports = root.get("sports")
     sport = sports[0] if isinstance(sports, Sequence) and not isinstance(sports, (str, bytes)) and sports else {}
@@ -114,6 +175,9 @@ def _teams(payload: object, league: str) -> tuple[dict[str, str], ...]:
     for record in records if isinstance(records, Sequence) and not isinstance(records, (str, bytes)) else ():
         team = record.get("team") if isinstance(record, Mapping) else None
         team = team if isinstance(team, Mapping) else {}
+        source_id = str(team.get("id") or "").strip()
+        if source_ids is not None and source_id not in source_ids:
+            continue
         abbreviation = str(team.get("abbreviation") or "").strip().upper()
         if not abbreviation:
             continue
@@ -125,6 +189,41 @@ def _teams(payload: object, league: str) -> tuple[dict[str, str], ...]:
             }
         )
     return tuple(sorted({item["id"]: item for item in values}.values(), key=lambda item: item["abbr"]))
+
+
+def _college_season(payload: object) -> int:
+    """Read the active NCAA season from the complete ESPN team catalog."""
+
+    root = payload if isinstance(payload, Mapping) else {}
+    sports = root.get("sports")
+    sport = sports[0] if isinstance(sports, Sequence) and not isinstance(sports, (str, bytes)) and sports else {}
+    leagues = sport.get("leagues") if isinstance(sport, Mapping) else ()
+    league = leagues[0] if isinstance(leagues, Sequence) and not isinstance(leagues, (str, bytes)) and leagues else {}
+    season = league.get("season") if isinstance(league, Mapping) else {}
+    try:
+        year = int(season.get("year")) if isinstance(season, Mapping) else 0
+    except (TypeError, ValueError):
+        year = 0
+    if year < 2000:
+        raise ValueError("ESPN college team catalog did not include a valid season")
+    return year
+
+
+def _source_team_ids(payload: object) -> frozenset[str]:
+    """Extract team identifiers from ESPN core group membership links."""
+
+    root = payload if isinstance(payload, Mapping) else {}
+    items = root.get("items")
+    values = items if isinstance(items, Sequence) and not isinstance(items, (str, bytes)) else ()
+    identifiers = set()
+    for item in values:
+        reference = str(item.get("$ref") or "") if isinstance(item, Mapping) else ""
+        identifier = urlparse(reference).path.rstrip("/").rpartition("/")[2]
+        if identifier:
+            identifiers.add(identifier)
+    if not identifiers:
+        raise ValueError("ESPN college group did not include team identifiers")
+    return frozenset(identifiers)
 
 
 def _logo(team: Mapping[str, object]) -> str:
