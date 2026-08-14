@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import unicodedata
+
 from PIL import ImageDraw
 
 
@@ -37,8 +39,19 @@ HYBRID.update({
 
 
 def normalize_special_chars(text: object) -> str:
-    """Return text that ticker glyphs can draw."""
-    return str(text).replace("Â°", "o").replace("°", "o").replace("â†’", "->").replace("→", "->")
+    """Return ASCII text that ticker glyphs can draw."""
+    value = str(text)
+    value = value.replace("Â°", "o").replace("°", "o")
+    value = value.replace("â†’", "->").replace("→", "->")
+    value = value.translate(str.maketrans({
+        "’": "'", "‘": "'", "“": '"', "”": '"',
+        "–": "-", "—": "-", "…": "...", "·": ".",
+        "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE",
+        "ø": "o", "Ø": "O", "ł": "l", "Ł": "L",
+        "đ": "d", "Đ": "D", "ð": "d", "Ð": "D",
+        "þ": "th", "Þ": "Th", "ß": "ss",
+    }))
+    return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
 
 
 def draw_tiny_text(draw: ImageDraw.ImageDraw, x: int, y: int, text: object, color: object) -> int:

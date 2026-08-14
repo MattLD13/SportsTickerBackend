@@ -243,7 +243,7 @@ class GolfRenderer:
 
     def _text(self, draw: ImageDraw.ImageDraw, text: object, x: int, y: int, color: object) -> None:
         cursor = x
-        for character in str(text).upper():
+        for character in normal_text(text).upper():
             pattern = self._font.get(character)
             if pattern:
                 for row, value in enumerate(pattern):

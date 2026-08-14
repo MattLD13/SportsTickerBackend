@@ -15,6 +15,7 @@ from sports_ticker.domain import ContentItem, DisplaySettings
 from .contracts import ProviderHealth, ProviderResult
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .stale_cache import SettingsResultCache
+from .sports_display import normalize_soccer_clock
 
 
 _MATCHES_URL = "https://www.fotmob.com/api/data/matches"
@@ -306,9 +307,9 @@ def _match_status(match: Mapping[str, Any], state: str, timezone_name: str) -> s
     if state == "half":
         return "Half"
     live = _mapping(status.get("liveTime"))
-    clock = str(live.get("short") or live.get("long") or "").strip()
+    clock = normalize_soccer_clock(live.get("short") or live.get("long"))
     if clock:
-        return clock if "'" in clock else f"{clock}'"
+        return clock
     return reason_short or "Live"
 
 

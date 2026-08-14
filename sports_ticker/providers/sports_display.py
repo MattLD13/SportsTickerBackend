@@ -135,9 +135,10 @@ def _status(
     if league == "nhl":
         return _period_status("P", period, clock, overtime_base=3)
     if league.startswith("soccer"):
-        if period >= 3 or "ET" in upper:
-            return f"ET {clock}'".strip() if clock else "ET"
-        return f"{clock}'" if clock else detail
+        label = normalize_soccer_clock(clock) or normalize_soccer_clock(detail)
+        if label:
+            return f"ET {label}" if period >= 3 or "ET" in upper else label
+        return "ET" if period >= 3 or "ET" in upper else detail
     if league == "mlb":
         return _baseball_status(detail)
     return detail or str(data.get("status") or state)
@@ -324,6 +325,27 @@ def _baseball_status(value: str) -> str:
     return text or "In Progress"
 
 
+def _soccer_minute(value: object) -> str:
+    """Return one compact soccer minute without provider punctuation."""
+
+    text = (
+        str(value or "")
+        .replace("\u200e", "")
+        .replace("\u200f", "")
+        .replace("\ufffd", "")
+    )
+    text = re.sub(r"\s+", "", text).rstrip("'’")
+    match = re.fullmatch(r"\d+(?:\+\d+)?", text)
+    return match.group(0) if match else ""
+
+
+def normalize_soccer_clock(value: object) -> str:
+    """Return one canonical soccer clock label."""
+
+    minute = _soccer_minute(value)
+    return f"{minute}'" if minute else ""
+
+
 def _seeds(competition: Mapping[str, Any]) -> dict[str, str]:
     competitors = _competitors(competition.get("competitors"))
     home = _find_side(competitors, "home")
@@ -436,4 +458,9 @@ def _first_mapping(value: object) -> Mapping[str, Any]:
     return _mapping(_sequence(value)[0]) if _sequence(value) else {}
 
 
-__all__ = ["SportsDisplayProjector", "assign_active_team", "display_situation"]
+__all__ = [
+    "SportsDisplayProjector",
+    "assign_active_team",
+    "display_situation",
+    "normalize_soccer_clock",
+]

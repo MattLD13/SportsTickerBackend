@@ -8,6 +8,7 @@ from ticker_core.features.music import MusicAnimationState, MusicRenderer
 from ticker_core.features.utility import UtilityRenderer
 from ticker_core.features.weather import WeatherRenderer
 from ticker_core.rendering import ContentScene, load_default_font_set
+from ticker_core.rendering.pixels import normalize_special_chars
 
 
 def test_utility_and_weather_render_deterministically() -> None:
@@ -50,3 +51,19 @@ def test_media_and_flight_keep_explicit_animation_state() -> None:
     assert image.height == later.height == golf.height == flight.height == 32
     assert next_state.rotation != state.rotation
     assert golf_state.pair == 0
+
+
+def test_golf_names_use_led_safe_ascii() -> None:
+    assert normalize_special_chars("Ludvig Åberg and Nicolai Højgaard") == "Ludvig Aberg and Nicolai Hojgaard"
+
+
+def test_golf_renderer_transliterates_special_names() -> None:
+    renderer = GolfRenderer(load_default_font_set())
+    context = RenderContext(datetime(2026, 8, 14, 20, 50, 40))
+    special = {"golf": {"players": [{"pos": "1", "name": "Ludvig Åberg", "total": -2, "holes": [4] * 18, "thru": 18}]}}
+    ascii_name = {"golf": {"players": [{"pos": "1", "name": "Ludvig Aberg", "total": -2, "holes": [4] * 18, "thru": 18}]}}
+
+    special_frame, _ = renderer.full(context, special, GolfAnimationState())
+    ascii_frame, _ = renderer.full(context, ascii_name, GolfAnimationState())
+
+    assert special_frame.tobytes() == ascii_frame.tobytes()

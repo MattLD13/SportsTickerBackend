@@ -38,3 +38,12 @@ def test_finished_game_has_no_live_play_context() -> None:
     )
 
     assert ended.data["situation"] == {}
+
+
+def test_soccer_clock_has_one_apostrophe_without_provider_spacing() -> None:
+    event = _event("93'", {}, "in")
+    event["status"]["displayClock"] = "93\u200e�\u200e'"
+
+    soccer = SportsDisplayProjector().project(_item("soccer", "soccer_champ"), event)
+
+    assert soccer.data["status"] == "93'"
