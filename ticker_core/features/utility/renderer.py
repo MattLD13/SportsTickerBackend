@@ -224,7 +224,7 @@ class UtilityRenderer:
 
     def empty(self, context: RenderContext) -> Image.Image:
         """Render a clock-led no-games panel."""
-        image = Image.new("RGBA", (PANEL_W, PANEL_H), (8, 8, 10, 255))
+        image = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 255))
         draw = ImageDraw.Draw(image)
         accent = (198, 198, 204)
         muted = (104, 104, 112)
@@ -239,14 +239,16 @@ class UtilityRenderer:
         draw.point((icon_left + 8, icon_top + 8), fill=(220, 220, 224))
         draw.point((icon_left + 12, icon_top + 8), fill=(220, 220, 224))
 
+        divider_x = 213
+        draw.line((divider_x, 5, divider_x, 27), fill=(48, 48, 54))
         left = 32
-        date = context.now.strftime("%a %b %d").upper()
-        draw.text((left, -2), date, font=self._fonts.tiny, fill=(150, 150, 158))
         draw.text((left, 7), "NO GAMES", font=self._fonts.normal, fill=(245, 245, 248))
         draw.text((left, 19), "CHECK BACK LATER", font=self._fonts.tiny, fill=(142, 142, 150))
 
-        divider_x = 213
-        draw.line((divider_x, 5, divider_x, 27), fill=(48, 48, 54))
+        date_day = context.now.strftime("%a").upper()
+        date_month_day = context.now.strftime("%b %d").upper()
+        draw.text((224, 6), date_day, font=self._fonts.tiny, fill=(150, 150, 158))
+        draw.text((224, 16), date_month_day, font=self._fonts.tiny, fill=(150, 150, 158))
         clock = context.now.strftime("%I:%M %p").lstrip("0")
         draw.text((PANEL_W - 8, -1), clock, font=self._fonts.clock, fill=(245, 245, 248), anchor="ra")
 
