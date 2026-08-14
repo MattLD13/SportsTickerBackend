@@ -20,6 +20,7 @@ WallClock: TypeAlias = Callable[[], datetime]
 SettingsResolver: TypeAlias = Callable[
     [str], DisplaySettings | Mapping[str, object] | None
 ]
+ProviderSettingsKey: TypeAlias = Callable[[DisplaySettings], object]
 ProviderRefresh: TypeAlias = Callable[..., object]
 SnapshotRefreshCallable: TypeAlias = Callable[
     [str, DisplaySettings, Mapping[str, object]], object
@@ -53,6 +54,7 @@ class _ProviderJob:
     name: str
     interval: float
     refresh: ProviderRefresh
+    settings_key: ProviderSettingsKey
     next_due: float
     data_by_ticker: Mapping[str, "_CachedProviderData"] = field(
         default_factory=dict
@@ -70,12 +72,18 @@ class _Ticker:
 class _CachedProviderData:
     """Keep one provider result with the exact settings that produced it."""
 
-    settings: DisplaySettings
+    settings_key: object
     value: object
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _all_settings_key(settings: DisplaySettings) -> DisplaySettings:
+    """Keep the established full-settings cache behavior by default."""
+
+    return settings
 
 
 def _freeze(value: Any) -> object:
@@ -142,6 +150,8 @@ class RefreshScheduler:
         name: str,
         interval: float,
         refresh: ProviderRefresh,
+        *,
+        settings_key: ProviderSettingsKey | None = None,
     ) -> None:
         """Register one named settings-aware provider refresh job."""
 
@@ -154,6 +164,8 @@ class RefreshScheduler:
             raise ValueError("provider interval must be positive")
         if not callable(refresh):
             raise TypeError("provider refresh must be callable")
+        if settings_key is not None and not callable(settings_key):
+            raise TypeError("settings_key must be callable")
 
         now = self._monotonic()
         wall_now = self._wall_clock()
@@ -161,6 +173,7 @@ class RefreshScheduler:
             name=provider_name,
             interval=float(interval),
             refresh=refresh,
+            settings_key=settings_key or _all_settings_key,
             next_due=now,
             health=SchedulerHealth(next_due=wall_now),
         )
@@ -237,7 +250,7 @@ class RefreshScheduler:
                 cached = job.data_by_ticker.get(ticker_id)
                 if cached is None and job.health.last_success is not None:
                     due_by_name[job.name] = job
-                elif cached is not None and cached.settings != settings:
+                elif cached is not None and cached.settings_key != _freeze(job.settings_key(settings)):
                     due_by_name[job.name] = job
         due = tuple(due_by_name.values())
         if not due:
@@ -270,7 +283,7 @@ class RefreshScheduler:
                     errors.append(f"{ticker_id}: {message}")
                 else:
                     data_by_ticker[ticker_id] = _CachedProviderData(
-                        settings=settings,
+                        settings_key=_freeze(job.settings_key(settings)),
                         value=_freeze(result),
                     )
                     success_count += 1
@@ -304,7 +317,7 @@ class RefreshScheduler:
             provider_data: dict[str, object] = {}
             for name, job in self._providers.items():
                 cached = job.data_by_ticker.get(ticker_id)
-                if cached is None or cached.settings != settings:
+                if cached is None or cached.settings_key != _freeze(job.settings_key(settings)):
                     break
                 provider_data[name] = cached.value
             else:
@@ -396,6 +409,7 @@ def _run_provider_refresh(
 __all__ = [
     "MonotonicClock",
     "ProviderRefresh",
+    "ProviderSettingsKey",
     "RefreshScheduler",
     "SchedulerHealth",
     "SnapshotRefreshCallable",

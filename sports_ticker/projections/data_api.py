@@ -7,6 +7,7 @@ from datetime import date, datetime, time
 from typing import Any
 
 from ..domain import CONTENT_FAMILIES, ContentItem, DisplaySettings, TickerSnapshot
+from ..markets import selected_market_groups
 from ..providers.contracts import ProviderHealth
 
 
@@ -109,6 +110,8 @@ def select_display_content(
             family: [_sports_item(item, settings) for item in items]
             for family, items in selected.items()
         }
+    elif mode == "stock":
+        selected["stock"] = _market_items(selected.get("stock", ()), settings)
     return selected
 
 
@@ -129,6 +132,21 @@ def _sports_item(item: Mapping[str, Any], settings: Mapping[str, Any]) -> dict[s
         visible = visible and _is_my_team_game(projected, settings)
     projected["is_shown"] = visible
     return projected
+
+
+def _market_items(
+    items: list[dict[str, Any]], settings: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    """Return only the enabled market groups from the shared quote snapshot."""
+
+    active = settings.get("active_sports")
+    active_mapping = active if isinstance(active, Mapping) else {}
+    enabled = {group.id for group in selected_market_groups(active_mapping)}
+    return [
+        item
+        for item in items
+        if str(_item_data(item).get("market_group") or "").strip().lower() in enabled
+    ]
 
 
 def _is_my_team_game(item: Mapping[str, Any], settings: Mapping[str, Any]) -> bool:

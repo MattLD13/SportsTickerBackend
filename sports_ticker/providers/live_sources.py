@@ -16,7 +16,7 @@ from urllib.parse import urlencode
 
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.leagues import RACING_SCOREBOARD_PATHS
-from sports_ticker.markets import MARKET_GROUPS, selected_market_groups
+from sports_ticker.markets import MARKET_GROUPS
 
 from .espn import _is_current_event
 from .http import JsonHttpClient, UrllibJsonHttpClient
@@ -136,7 +136,7 @@ class FinnhubStockSource:
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
         self._start_all_market_refresh()
         records: list[dict[str, object]] = []
-        for group in selected_market_groups(settings.active_sports):
+        for group in MARKET_GROUPS:
             records.extend(self._group_records(group.id, group.label, group.symbols))
         return {"content": records}
 
