@@ -28,7 +28,7 @@ def test_frame_sink_rejects_wrong_display_size() -> None:
 
 def test_rgb_matrix_sink_uses_vsync_canvas_and_brightness() -> None:
     matrix = _Matrix()
-    sink = RgbMatrixFrameSink(matrix, width=2, height=1)
+    sink = RgbMatrixFrameSink(matrix, width=2, height=1, vsync_fraction=3)
     image = Image.new("RGB", (2, 1), (1, 2, 3))
 
     sink.present(image, brightness=-9)
@@ -36,6 +36,8 @@ def test_rgb_matrix_sink_uses_vsync_canvas_and_brightness() -> None:
     assert matrix.canvas.brightness == 0
     assert matrix.canvas.image is not None
     assert matrix.swaps == 1
+    assert matrix.fraction == 3
+    assert sink.hardware_paced
 
 
 def test_rgb_matrix_sink_uses_direct_output_without_vsync() -> None:
@@ -61,12 +63,14 @@ class _Matrix:
     def __init__(self) -> None:
         self.canvas = _Canvas()
         self.swaps = 0
+        self.fraction = 0
 
     def CreateFrameCanvas(self) -> _Canvas:
         return self.canvas
 
-    def SwapOnVSync(self, canvas: _Canvas) -> _Canvas:
+    def SwapOnVSync(self, canvas: _Canvas, fraction: int = 1) -> _Canvas:
         self.swaps += 1
+        self.fraction = fraction
         return canvas
 
 

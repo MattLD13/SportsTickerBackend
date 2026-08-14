@@ -135,7 +135,8 @@ class TickerApplication:
             while self._runtime.running and not self._stop.is_set():
                 self.step()
                 decision = self._last_decision
-                if self._stop.wait(self._pacer.next_delay(decision.interval)):
+                delay = 0.0 if getattr(self._sink, "hardware_paced", False) else self._pacer.next_delay(decision.interval)
+                if self._stop.wait(delay):
                     break
         finally:
             self.close()

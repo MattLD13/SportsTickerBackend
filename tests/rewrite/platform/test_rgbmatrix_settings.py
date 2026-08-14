@@ -25,3 +25,10 @@ def test_environment_uses_module_probe_when_pulsing_is_unset() -> None:
     settings = RgbMatrixSettings.from_environment(module_probe=lambda: True, environment={})
 
     assert not settings.hardware_pulsing
+
+
+def test_environment_uses_stable_vsync_timing_defaults() -> None:
+    settings = RgbMatrixSettings.from_environment(module_probe=lambda: False, environment={})
+
+    assert settings.refresh_rate_limit_hz == 100
+    assert settings.vsync_fraction == 3

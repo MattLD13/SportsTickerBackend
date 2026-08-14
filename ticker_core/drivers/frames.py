@@ -13,6 +13,7 @@ class FrameSink(Protocol):
 
     width: int
     height: int
+    hardware_paced: bool
 
     def present(
         self,
