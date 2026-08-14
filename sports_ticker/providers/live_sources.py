@@ -63,6 +63,7 @@ class EspnGolfSource:
                     "status": status["text"],
                     "away_abbr": str(event.get("shortName") or event.get("name") or "PGA TOUR"),
                     "golf": {
+                        "brand": _golf_brand(str(event.get("name") or "")),
                         "event_name": str(event.get("name") or "PGA TOUR"),
                         "year": _mapping(event.get("season")).get("year", datetime.now(timezone.utc).year),
                         "round": _golf_round(status["text"]),
@@ -545,6 +546,12 @@ def _golf_round(status: str) -> str:
 
     match = re.search(r"\bround\s*(\d+)\b", status, re.IGNORECASE)
     return f"Round {match.group(1)}" if match else status
+
+
+def _golf_brand(event_name: str) -> str:
+    """Return the explicit golf palette brand for one source event."""
+
+    return "masters" if "masters" in event_name.casefold() else "pga"
 
 
 def _mappings(value: object) -> tuple[Mapping[str, Any], ...]:

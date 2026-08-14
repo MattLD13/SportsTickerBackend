@@ -15,9 +15,10 @@ from ticker_core.rendering import ContentScene, FontSet, RenderedContent
 
 @dataclass(frozen=True, slots=True)
 class GolfAnimationState:
-    """Track the visible full-screen player pair."""
+    """Track the visible golf page."""
 
     pair: int = 0
+    page: int = 1
     changed_at: float | None = None
 
 
@@ -30,11 +31,12 @@ class GolfRenderer:
 
     def __init__(self, fonts: FontSet) -> None:
         self._fonts = fonts
+        self._state = GolfAnimationState()
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render the mode-selected golf view."""
         if scene.item.get("sports_presentation") == "pinned":
-            image, _ = self.full(context, scene.item, GolfAnimationState())
+            image, self._state = self.full(context, scene.item, self._state)
             return RenderedContent(image, static=True)
         return RenderedContent(self.scroll(scene.item), static=False)
 
@@ -81,101 +83,118 @@ class GolfRenderer:
         return image
 
     def full(self, context: RenderContext, item: object, state: GolfAnimationState) -> tuple[Image.Image, GolfAnimationState]:
-        """Render the complete paired-player golf screen."""
+        """Render the full 18-hole golf screen."""
         game = item if isinstance(item, dict) else {}
         payload = self._payload(game)
         colors = self._colors(game)
         image = Image.new("RGBA", (PANEL_W, PANEL_H), colors["bg"])
         draw = ImageDraw.Draw(image)
-        event = str(payload.get("event_name") or "PGA TOUR").upper()
-        year = str(payload.get("year") or game.get("away_score") or context.now.year)
         pars = payload.get("pars", []) if isinstance(payload.get("pars"), list) else []
         pars = (pars + [4, 5, 4, 3, 4, 3, 4, 5, 4, 4, 3, 4, 5, 4, 5, 3, 4, 4])[:18]
-        players = self._players(payload, compact=False)[:20]
-        pairs = [(players[i], players[i + 1] if i + 1 < len(players) else None) for i in range(0, len(players), 2)]
-        pair = state.pair % len(pairs) if pairs else 0
+        all_players = self._players(payload, compact=False)
+        page_count = max(1, min(5, (len(all_players) + 2) // 3))
         changed = context.now.timestamp() if state.changed_at is None else state.changed_at
-        if pairs:
-            selected = pairs[pair]
-            interval = 2.0 if selected[0]["pos"] == "CUT" or (selected[1] and selected[1]["pos"] == "CUT") else 4.0
-            if context.now.timestamp() - changed > interval:
-                pair = (pair + 1) % len(pairs)
-                changed = context.now.timestamp()
-        next_state = GolfAnimationState(pair, changed)
-        brand = payload.get("brand") if isinstance(payload.get("brand"), list) else []
-        brand = brand if len(brand) >= 2 else [event[:7], ""]
-        draw.line((30, 0, 30, 31), fill=colors["gold"])
-        self._center(draw, brand[0], 15, 3, colors["gold"])
-        self._center(draw, brand[1], 15, 11, colors["gold"])
-        self._center(draw, year, 15, 20, colors["gold"])
-        if not pairs:
-            self._center(draw, event[:16], 207, 10, colors["white"])
-            self._center(draw, "LOADING...", 207, 20, colors["gold"])
+        page = min(max(1, state.page), page_count)
+        if context.now.timestamp() - changed > 4.0:
+            page = page % page_count + 1
+            changed = context.now.timestamp()
+        next_state = GolfAnimationState(state.pair, page, changed)
+        header = "MASTERS R3" if str(payload.get("brand", "pga")).lower() == "masters" else "R3"
+        self._text(draw, header, 2, 0, colors["accent"])
+        self._page_indicator(draw, page, colors)
+        hole_x = 58
+        hole_step = 14
+        hole_width = 9
+        for index in range(18):
+            self._center(draw, index + 1, hole_x + hole_width // 2 + index * hole_step, 1, colors["label"])
+        self._center(draw, "TODAY", 322, 1, colors["label"])
+        self._center(draw, "TOTAL", 344, 1, colors["label"])
+        self._center(draw, "THRU", 366, 1, colors["label"])
+        players = all_players[(page - 1) * 3 : page * 3]
+        if not players:
+            self._center(draw, "LOADING...", 192, 15, colors["accent"])
             return image, next_state
-        for value in range(1, 10):
-            self._center(draw, value, 95 + (value - 1) * 10 + 3, 2, colors["label"])
-        self._center(draw, "FRONT", 194, 2, colors["label"])
-        for value in range(10, 19):
-            self._center(draw, value, 208 + (value - 10) * 11 + 3, 2, colors["label"])
-        self._center(draw, "BACK", 314, 2, colors["label"])
-        self._center(draw, "TODAY", 342, 2, colors["label"])
-        self._center(draw, "TOTAL", 368, 2, colors["label"])
-        first, second = pairs[pair]
-        self._player(draw, first, 9, pars, colors)
-        if second:
-            draw.line((34, 19, PANEL_W - 4, 19), fill=colors["par"])
-            self._player(draw, second, 22, pars, colors)
-        dots = len(pairs)
-        step = 0 if dots <= 1 else max(2, min(4, (PANEL_W - 6) // (dots - 1)))
-        start = PANEL_W - (2 if dots == 1 else (dots - 1) * step + 2) - 2
-        for index in range(dots):
-            draw.rectangle((start + index * step, 30, start + index * step + 1, 31), fill=colors["active"] if index == pair else colors["idle"])
+        for index, player in enumerate(players):
+            self._player(draw, player, 8 + index * 8, pars, colors, hole_x, hole_step, hole_width)
         return image, next_state
 
-    def _player(self, draw: ImageDraw.ImageDraw, player: dict[str, Any], y: int, pars: list[Any], colors: dict[str, tuple[int, int, int, int]]) -> None:
-        pos = str(player["pos"])
-        if pos.replace("T", "") == "1":
-            draw.rectangle((30, y + 1, 31, y + 5), fill=colors["gold"])
-        self._text(draw, pos, 34, y + 1, colors["bogey"] if pos == "CUT" else colors["gold"] if pos.replace("T", "") == "1" else colors["white"])
-        self._text(draw, player["name"], 47, y + 1, colors["white"])
-        started = self._started(player)
-        front = 0
-        for index in range(9):
-            score = player["holes"][index] if started else None
-            self._box(draw, 95 + index * 10, y, score, pars[index], colors)
-            if score is not None:
-                front += int(score) - int(pars[index])
-        self._center(draw, self._score(front), 194, y + 1, colors["white"])
-        back = 0
-        for index in range(9):
-            score = player["holes"][9 + index] if started else None
-            self._box(draw, 208 + index * 11, y, score, pars[9 + index], colors)
-            if score is not None:
-                back += int(score) - int(pars[9 + index])
-        self._center(draw, self._score(back), 314, y + 1, colors["white"])
-        self._center(draw, self._score(player["today"]) if started and player["today"] is not None else "-", 342, y + 1, colors["white"] if started and player["today"] is not None else colors["label"])
-        total = player["total"]
-        self._center(draw, self._score(total), 368, y + 1, colors["birdie"] if total < 0 else colors["bogey"] if total > 0 else colors["white"])
+    def _page_indicator(self, draw: ImageDraw.ImageDraw, page: int, colors: dict[str, tuple[int, int, int, int]]) -> None:
+        """Show the active page in the vertical five-page indicator."""
 
-    def _box(self, draw: ImageDraw.ImageDraw, x: int, y: int, score: object, par: object, colors: dict[str, tuple[int, int, int, int]]) -> None:
+        for index in range(5):
+            color = colors["active"] if index + 1 == page else colors["idle"]
+            y = 1 + index * 6
+            draw.rectangle((381, y, 382, y + 1), fill=color)
+
+    def _player(
+        self,
+        draw: ImageDraw.ImageDraw,
+        player: dict[str, Any],
+        y: int,
+        pars: list[Any],
+        colors: dict[str, tuple[int, int, int, int]],
+        hole_x: int,
+        hole_step: int,
+        hole_width: int,
+    ) -> None:
+        pos = str(player["pos"])
+        name = str(player["name"]).split()[-1][:10]
+        self._text(draw, pos, 2, y + 1, colors["gold"] if pos.replace("T", "") == "1" else colors["white"])
+        self._text(draw, name, 14, y + 1, colors["white"])
+        started = self._started(player)
+        for index in range(18):
+            score = player["holes"][index] if started else None
+            self._box(draw, hole_x + index * hole_step, y, score, pars[index], colors, hole_width)
+        today = self._today(player, pars) if started else None
+        total = player["total"]
+        self._center(draw, self._score(today), 322, y + 1, self._full_score_color(today, colors))
+        self._center(draw, self._score(total), 344, y + 1, self._full_score_color(total, colors))
+        self._center(draw, str(player["thru"]).upper()[:3], 366, y + 1, colors["accent"])
+
+    @staticmethod
+    def _today(player: dict[str, Any], pars: list[Any]) -> int | None:
+        """Return the supplied round score or derive it from completed holes."""
+
+        if player["today"] is not None:
+            return int(player["today"])
+        scores = [(score, pars[index]) for index, score in enumerate(player["holes"]) if score is not None and index < len(pars)]
+        return sum(int(score) - int(par) for score, par in scores) if scores else None
+
+    def _box(
+        self,
+        draw: ImageDraw.ImageDraw,
+        x: int,
+        y: int,
+        score: object,
+        par: object,
+        colors: dict[str, tuple[int, int, int, int]],
+        width: int,
+    ) -> None:
         if score is None:
-            draw.rectangle((x, y, x + 6, y + 6), outline=colors["par"])
-            self._center(draw, "-", x + 3, y + 1, colors["label"])
+            draw.rectangle((x, y, x + width - 1, y + 6), outline=colors["par"])
+            self._center(draw, "-", x + width // 2, y + 1, colors["label"])
             return
         value = int(score)
         diff = value - int(par)
-        if diff <= -2:
-            draw.ellipse((x, y, x + 6, y + 6), fill=colors["eagle"])
-            self._center(draw, value, x + 3, y + 1, colors["black"])
+        if value == 1:
+            color = colors["gold"]
+        elif diff <= -2:
+            right = x + width - 1
+            draw.polygon(((x + 2, y), (right - 2, y), (right, y + 2), (right, y + 4), (right - 2, y + 6), (x + 2, y + 6), (x, y + 4), (x, y + 2)), fill=colors["eagle"])
+            color = colors["black"]
         elif diff == -1:
-            draw.ellipse((x, y, x + 6, y + 6), fill=colors["birdie"])
-            self._center(draw, value, x + 3, y + 1, colors["black"])
+            draw.ellipse((x, y, x + width - 1, y + 6), fill=colors["birdie"])
+            color = colors["black"]
         elif diff == 0:
-            draw.rectangle((x, y, x + 6, y + 6), outline=colors["par"])
-            self._center(draw, value, x + 3, y + 1, colors["white"])
+            draw.rectangle((x, y, x + width - 1, y + 6), outline=colors["par"])
+            color = colors["white"]
+        elif diff == 1:
+            draw.rectangle((x, y, x + width - 1, y + 6), fill=colors["bogey"])
+            color = colors["white"]
         else:
-            draw.rectangle((x, y, x + 6, y + 6), fill=colors["bogey"] if diff == 1 else colors["double"])
-            self._center(draw, value, x + 3, y + 1, colors["white"])
+            draw.ellipse((x, y, x + width - 1, y + 6), fill=colors["double"])
+            color = colors["white"]
+        self._center(draw, value, x + width // 2, y + 1, color)
 
     def _players(self, payload: dict[str, Any], compact: bool) -> list[dict[str, Any]]:
         raw = payload.get("players", []) if isinstance(payload.get("players"), list) else []
@@ -231,15 +250,49 @@ class GolfRenderer:
             return (255, 255, 255)
 
     @staticmethod
+    def _full_score_color(value: object, colors: dict[str, tuple[int, int, int, int]]) -> tuple[int, int, int, int]:
+        """Choose a full-panel score color from the active golf palette."""
+
+        try:
+            integer = int(value)
+        except (TypeError, ValueError):
+            return colors["label"]
+        return colors["birdie"] if integer < 0 else colors["bogey"] if integer > 0 else colors["white"]
+
+    @staticmethod
     def _colors(game: dict[str, Any]) -> dict[str, tuple[int, int, int, int]]:
-        def parse(value: object, fallback: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
-            try:
-                text = str(value).lstrip("#")
-                return int(text[:2], 16), int(text[2:4], 16), int(text[4:6], 16), 255
-            except (TypeError, ValueError):
-                return fallback
-        gold = parse(game.get("away_color"), (200, 168, 75, 255))
-        return {"bg": parse(game.get("away_alt_color"), (0, 76, 53, 255)), "gold": gold, "eagle": (250, 204, 21, 255), "birdie": (34, 197, 94, 255), "bogey": (239, 68, 68, 255), "double": (153, 27, 27, 255), "par": (245, 220, 130, 255), "white": (255, 255, 255, 255), "black": (0, 0, 0, 255), "label": (235, 245, 225, 255), "active": gold, "idle": (132, 132, 132, 255)}
+        masters = str(GolfRenderer._payload(game).get("brand", "pga")).lower() == "masters"
+        if masters:
+            return {
+                "bg": (0, 14, 8, 255),
+                "gold": (231, 199, 92, 255),
+                "eagle": (231, 199, 92, 255),
+                "birdie": (164, 225, 155, 255),
+                "bogey": (241, 139, 119, 255),
+                "double": (170, 67, 65, 255),
+                "par": (145, 169, 145, 255),
+                "white": (244, 248, 231, 255),
+                "black": (0, 39, 27, 255),
+                "label": (145, 169, 145, 255),
+                "accent": (231, 199, 92, 255),
+                "active": (231, 199, 92, 255),
+                "idle": (24, 50, 33, 255),
+            }
+        return {
+            "bg": (0, 0, 0, 255),
+            "gold": (235, 196, 83, 255),
+            "eagle": (235, 196, 83, 255),
+            "birdie": (68, 211, 128, 255),
+            "bogey": (240, 103, 103, 255),
+            "double": (157, 43, 67, 255),
+            "par": (112, 124, 136, 255),
+            "white": (241, 246, 250, 255),
+            "black": (0, 0, 0, 255),
+            "label": (112, 124, 136, 255),
+            "accent": (91, 171, 221, 255),
+            "active": (91, 171, 221, 255),
+            "idle": (25, 30, 35, 255),
+        }
 
     def _text(self, draw: ImageDraw.ImageDraw, text: object, x: int, y: int, color: object) -> None:
         cursor = x
