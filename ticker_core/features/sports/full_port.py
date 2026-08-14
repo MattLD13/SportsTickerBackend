@@ -298,10 +298,10 @@ class SportsMixin:
             hl = self.get_logo(game.get('home_logo'), (24, 24))
             al = self.get_logo(game.get('away_logo'), (24, 24))
             if hl:
-                ls = _black_ring_logo(hl)
+                ls = hl.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
                 img.paste(ls, (h_logo_cx - LOGO_SZ // 2, h_logo_top), ls)
             if al:
-                ls = _black_ring_logo(al)
+                ls = al.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
                 img.paste(ls, (a_logo_cx - LOGO_SZ // 2, a_logo_top), ls)
 
             for scx, sc in [(h_sc_cx, h_score), (a_sc_cx, a_score)]:
