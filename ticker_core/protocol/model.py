@@ -297,7 +297,29 @@ class TickerResponse:
 
     def __reduce__(self):
         """Keep process transfers serializable without reparsing twice."""
-        return type(self).from_payload, (self.to_payload(),)
+        settings = self.settings
+        serialized = (
+            self.status.value,
+            self.ticker_id,
+            self.pairing_code,
+            (
+                settings.mode,
+                settings.sports_presentation,
+                settings.pinned_content_id,
+                settings.brightness,
+                settings.scroll_speed,
+                settings.inverted,
+                _thaw(settings.data),
+            ),
+            tuple((item.id, item.family, item.kind, item.is_shown, _thaw(item.data)) for item in self.content),
+            tuple((item.id, item.kind, _thaw(item.data)) for item in self.alerts),
+            tuple((item.id, item.kind, _thaw(item.data)) for item in self.news),
+            self.update_version,
+            self.reboot_request_id,
+            self.payload_key,
+            _thaw(self.data),
+        )
+        return _restore_pickled_response, (serialized,)
 
     @classmethod
     def from_payload(cls, payload: Any) -> "TickerResponse":
@@ -359,3 +381,56 @@ class TickerResponse:
 
 
 DisplayPayload = TickerResponse
+
+
+def _restore_pickled_response(serialized: tuple[Any, ...]) -> TickerResponse:
+    """Restore a validated response without repeating payload validation."""
+    (
+        status,
+        ticker_id,
+        pairing_code,
+        settings_data,
+        content_data,
+        alerts_data,
+        news_data,
+        update_version,
+        reboot_request_id,
+        payload_key,
+        data,
+    ) = serialized
+    mode, presentation, pinned, brightness, scroll_speed, inverted, raw_settings = settings_data
+    settings = TickerSettings(
+        mode,
+        presentation,
+        pinned,
+        brightness,
+        scroll_speed,
+        inverted,
+        _frozen_mapping(raw_settings),
+    )
+    content = tuple(
+        ContentItem(identifier, family, kind, is_shown, _frozen_mapping(raw_data))
+        for identifier, family, kind, is_shown, raw_data in content_data
+    )
+    alerts = tuple(OverlayItem(identifier, kind, _frozen_mapping(raw_data)) for identifier, kind, raw_data in alerts_data)
+    news = tuple(OverlayItem(identifier, kind, _frozen_mapping(raw_data)) for identifier, kind, raw_data in news_data)
+    return TickerResponse(
+        DeviceState(status),
+        ticker_id,
+        pairing_code,
+        settings,
+        content,
+        alerts,
+        news,
+        update_version,
+        reboot_request_id,
+        payload_key,
+        _frozen_mapping(data),
+    )
+
+
+def _frozen_mapping(value: Mapping[str, Any]) -> Mapping[str, FrozenJson]:
+    """Freeze trusted process data without validating it again."""
+    frozen = _freeze(value)
+    assert isinstance(frozen, Mapping)
+    return frozen
