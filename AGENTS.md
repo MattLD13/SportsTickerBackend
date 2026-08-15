@@ -48,6 +48,11 @@ Before a commit, state these facts in the change notes:
 - Check fleet health: open `http://<backend>/api/v2/health`
 - Push a V2 news overlay: `curl -X POST http://<backend>/api/v2/events/news -H 'Content-Type: application/json' -d '{"payload":{"kind":"TRADE","sport":"nhl","from":"VAN","to":"NYR","text":"Miller for Kakko"},"target_ticker_ids":["<ticker_id>"]}'`
 
+## Git Publishing
+
+- When the user asks to publish changes, commit the requested work and push directly to `main`.
+- Never create or use a feature branch or draft pull request for a publish request.
+
 ## Writing
 
 - Write documentation, comments, docstrings, and commit messages in Simplified Technical English.
