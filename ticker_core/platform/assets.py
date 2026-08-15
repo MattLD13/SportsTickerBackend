@@ -123,6 +123,11 @@ class AssetCoordinator(AssetView):
         self._lock = threading.Lock()
 
     @property
+    def directory(self) -> Path:
+        """Return the durable root used by isolated prepared-asset readers."""
+        return self.long_term.originals.directory
+
+    @property
     def revision(self) -> int:
         """Return the prepared-image revision for renderer caches."""
         return self.long_term.revision

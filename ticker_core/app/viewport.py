@@ -8,6 +8,7 @@ from concurrent.futures import Executor, Future, ProcessPoolExecutor, ThreadPool
 from dataclasses import dataclass
 from multiprocessing import get_context
 import os
+from pathlib import Path
 from threading import Lock
 from typing import Any, Callable
 
@@ -66,20 +67,19 @@ class CardViewport:
         catalog: ContentRendererCatalog,
         *,
         use_process: bool = False,
+        asset_directory: Path | str | None = None,
         worker_cpu: int | None = None,
     ) -> None:
         self._catalog = catalog
         self._lock = Lock()
         self._worker: Executor
         self._render_job: Callable[[_CardJob], _CardPixels]
-        if use_process and os.name != "nt":
-            global _PROCESS_CATALOG
-            _PROCESS_CATALOG = catalog
+        if use_process and asset_directory is not None:
             self._worker = ProcessPoolExecutor(
                 max_workers=1,
-                mp_context=get_context("fork"),
-                initializer=_pin_worker_cpu,
-                initargs=(worker_cpu,),
+                mp_context=get_context("spawn"),
+                initializer=_initialize_process_catalog,
+                initargs=(str(asset_directory), worker_cpu),
             )
             self._render_job = _render_process_job
         else:
@@ -248,6 +248,16 @@ def _matches(request: _CardRequest, surface: _CardSurface) -> bool:
 
 
 _PROCESS_CATALOG: ContentRendererCatalog | None = None
+
+
+def _initialize_process_catalog(asset_directory: str, worker_cpu: int | None) -> None:
+    """Start a clean worker with read-only prepared assets and no inherited locks."""
+    from ticker_core.bootstrap import create_default_content_catalog
+    from ticker_core.platform.assets import LongTermAssetCache
+
+    global _PROCESS_CATALOG
+    _pin_worker_cpu(worker_cpu)
+    _PROCESS_CATALOG = create_default_content_catalog(LongTermAssetCache(asset_directory))
 
 
 def _pin_worker_cpu(cpu: int | None) -> None:

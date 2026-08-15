@@ -72,7 +72,13 @@ def create_default_frame_builder(assets: object, *, card_cpu: int | None = None)
     fonts = load_default_font_set()
     logos = CachedLogoView(assets)
     catalog = create_default_content_catalog(assets)
-    viewport = CardViewport(catalog, use_process=True, worker_cpu=card_cpu)
+    asset_directory = getattr(assets, "directory", None)
+    viewport = CardViewport(
+        catalog,
+        use_process=asset_directory is not None,
+        asset_directory=asset_directory,
+        worker_cpu=card_cpu,
+    )
     return FrameBuilder(
         catalog,
         UtilityRenderer(fonts, logos),
