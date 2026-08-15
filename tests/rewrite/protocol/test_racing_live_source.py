@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.racing import RacingProvider
-from sports_ticker.providers.racing_live import LiveRacingSource
+from sports_ticker.providers.racing_live import LiveRacingSource, _indycar_driver
 
 
 class JsonFixture:
@@ -126,3 +126,20 @@ def test_indycar_polls_the_official_timing_blob_and_driver_feed() -> None:
     assert normalized.content[0].family == "racing"
     assert normalized.content[0].kind == "indycar"
     assert normalized.content[0].data["sport"] == "indycar"
+
+
+def test_indycar_qualifying_uses_speed_on_ovals_and_time_on_street_courses() -> None:
+    item = {
+        "rank": 1,
+        "no": "1",
+        "firstName": "One",
+        "lastName": "Driver",
+        "qualSpeed": "220.123",
+        "qualTime": "1:14.2024",
+    }
+
+    oval = _indycar_driver(item, {}, "Q", "O")
+    street = _indycar_driver(item, {}, "Q", "SC")
+
+    assert oval is not None and oval["qualifying_value"] == "220.123"
+    assert street is not None and street["qualifying_value"] == "1:14.2024"

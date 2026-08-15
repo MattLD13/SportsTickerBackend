@@ -25,14 +25,12 @@ from sports_ticker.providers import (
     FlightsProvider,
     GolfProvider,
     MusicProvider,
-    NewsProvider,
     OpenMeteoWeatherProvider,
     RacingProvider,
     StockProvider,
 )
 from sports_ticker.providers.live_sources import (
     ClockProvider,
-    EspnNewsSource,
     EspnGolfSource,
     FinnhubStockSource,
     FlightRadarSource,
@@ -50,7 +48,6 @@ _INTERVALS: Final = {
     "stock": 30.0,
     "flights": 30.0,
     "music": 0.6,
-    "news": 30.0,
     "clock": 3600.0,
 }
 
@@ -137,14 +134,6 @@ def _providers(spotify: SpotifyIntegrationService) -> dict[str, object]:
         "stock": StockProvider(FinnhubStockSource()),
         "flights": FlightsProvider(FlightRadarSource()),
         "music": MusicProvider(SpotifyMusicSource(spotify)),
-        "news": NewsProvider(
-            EspnNewsSource(
-                {
-                    league: f"{_ESPN_BASE}/{path}/news?limit=20"
-                    for league, path in ESPN_SCOREBOARD_PATHS.items()
-                }
-            )
-        ),
         "clock": ClockProvider(),
     }
 
@@ -188,8 +177,6 @@ def _provider_settings_key(name: str):
             settings.track_flight_id,
             settings.track_guest_name,
         )
-    if name == "news":
-        return lambda settings: (settings.mode, settings.my_teams)
     if name == "clock":
         return lambda settings: (settings.timezone,)
     return lambda settings: ()

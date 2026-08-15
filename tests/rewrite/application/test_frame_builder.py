@@ -8,8 +8,12 @@ from ticker_core.runtime import Content, FrameDecision, FrameKind
 
 
 class Catalog:
+    def __init__(self):
+        self.elapsed = []
+
     def render(self, context, scene):
-        del context, scene
+        del context
+        self.elapsed.append(scene.elapsed)
         return RenderedContent(Image.new("RGB", (384, 32), (1, 2, 3)), static=True)
 
 
@@ -60,3 +64,13 @@ def test_score_alert_uses_clean_base_and_outranks_news() -> None:
 
     assert alerts.under.getpixel((0, 0)) == (1, 2, 3)
     assert news.calls == 1
+
+
+def test_static_content_receives_elapsed_animation_time() -> None:
+    catalog = Catalog()
+    builder = FrameBuilder(catalog, Utility(), Alerts(), News(), Viewport())
+    content = Content("race", "racing", "indycar", {})
+
+    builder.build(decision(FrameKind.STATIC, content=content, content_elapsed=2.5))
+
+    assert catalog.elapsed == [2.5]

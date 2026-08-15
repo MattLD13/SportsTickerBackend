@@ -202,6 +202,7 @@ class TickerRuntime:
         self._strip_offset = 0
         self._static_index = 0
         self._static_until = 0.0
+        self._static_started_at = 0.0
         self._active_static: Content | None = None
         self._alerts: deque[_QueuedEvent] = deque()
         self._news: deque[_QueuedEvent] = deque()
@@ -426,7 +427,13 @@ class TickerRuntime:
                 alert_elapsed=now - self._active_alert.started_at,
             )
         if self._active_static is not None and now < self._static_until:
-            return self._decision(FrameKind.STATIC, self.config.frame_interval, wall_time, content=self._active_static)
+            return self._decision(
+                FrameKind.STATIC,
+                self.config.frame_interval,
+                wall_time,
+                content=self._active_static,
+                content_elapsed=max(0.0, now - self._static_started_at),
+            )
         self._active_static = None
         if self._strip is not None:
             decision = self._scroll_decision(now, wall_time)
@@ -434,7 +441,13 @@ class TickerRuntime:
                 return decision
         static = self._next_static(now)
         if static is not None:
-            return self._decision(FrameKind.STATIC, self.config.frame_interval, wall_time, content=static)
+            return self._decision(
+                FrameKind.STATIC,
+                self.config.frame_interval,
+                wall_time,
+                content=static,
+                content_elapsed=0.0,
+            )
         return self._decision(FrameKind.EMPTY, self.config.frame_interval, wall_time)
 
     def _scroll_decision(self, now: float, wall_time: datetime) -> FrameDecision | None:
@@ -445,7 +458,13 @@ class TickerRuntime:
             self._strip_offset = 0
             static = self._next_static(now)
             if static is not None:
-                return self._decision(FrameKind.STATIC, self.config.frame_interval, wall_time, content=static)
+                return self._decision(
+                    FrameKind.STATIC,
+                    self.config.frame_interval,
+                    wall_time,
+                    content=static,
+                    content_elapsed=0.0,
+                )
         return self._decision(
             FrameKind.SCROLL,
             self._snapshot.scroll_interval if self._snapshot else self.config.frame_interval,
@@ -460,6 +479,7 @@ class TickerRuntime:
         item = items[self._static_index % len(items)]
         self._static_index = (self._static_index + 1) % len(items)
         self._active_static = item
+        self._static_started_at = now
         hold = 2.0 if item.type.lower() == "music" else self.config.static_hold
         self._static_until = now + hold
         return item
@@ -510,6 +530,7 @@ class TickerRuntime:
         self._static_index = 0
         self._active_static = None
         self._static_until = 0.0
+        self._static_started_at = 0.0
 
     def _queue_events(
         self,

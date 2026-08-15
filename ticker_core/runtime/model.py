@@ -104,6 +104,7 @@ class FrameDecision:
     mode: str
     payload_key: str | None = None
     content: Content | None = None
+    content_elapsed: float | None = None
     scroll_offset: int | None = None
     alert: Mapping[str, Any] | None = None
     alert_elapsed: float | None = None

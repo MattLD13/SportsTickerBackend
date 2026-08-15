@@ -51,6 +51,10 @@ def test_sports_pinned_is_a_presentation_not_a_second_mode() -> None:
     assert runtime.mode == "sports"
     assert frame.kind is FrameKind.STATIC
     assert frame.content is not None and frame.content.id == "game"
+    assert frame.content_elapsed == 0.0
+
+    clock[0] = 2.5
+    assert runtime.next_frame().content_elapsed == 2.5
 
 
 def test_flights_and_airports_have_separate_content_classes() -> None:

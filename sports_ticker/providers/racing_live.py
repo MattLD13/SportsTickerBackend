@@ -473,6 +473,8 @@ class LiveRacingSource:
         session_raw = str(heartbeat.get("SessionType") or "R").strip().upper()
         session_name = str(heartbeat.get("SessionName") or heartbeat.get("EventSessionLabel") or "").strip()
         session = _indycar_session_name(session_raw, session_name)
+        track_type = str(heartbeat.get("trackType") or heartbeat.get("TrackType") or "").strip().upper()
+        qualifying_metric = "mph" if track_type == "O" else "time"
         flag = _normalize_flag(heartbeat.get("currentFlag") or heartbeat.get("SessionStatus"))
         session_status = str(heartbeat.get("SessionStatus") or "").upper()
         state = "post" if session_status in {"FINAL", "ENDED", "UNOFFICIAL", "OFFICIAL", "CHKD", "COLD"} or flag in {"FINAL", "ENDED", "UNOFFICIAL", "OFFICIAL", "CHKD", "COLD"} else "in" if session_status in {"LIVE", "RUNNING", "OPEN", "GREEN", "YELLOW", "RED", "CHECKERED"} or flag in {"GREEN", "YELLOW", "RED", "CHECKERED", "SAFETY CAR", "VSC"} else "pre"
@@ -490,7 +492,7 @@ class LiveRacingSource:
         total_laps = _integer(heartbeat.get("totalLaps") or heartbeat.get("TotalLaps") or heartbeat.get("lapsInEvent"))
         current_lap = max((_integer(item.get("laps")) for item in items), default=0)
         time_to_go = str(heartbeat.get("overallTimeToGo") or "").strip()
-        drivers = [_indycar_driver(item, drivers_index, session_raw) for item in items]
+        drivers = [_indycar_driver(item, drivers_index, session_raw, track_type) for item in items]
         drivers = sorted((driver for driver in drivers if driver is not None), key=lambda value: value["pos"] or 999)
         short_event = _indycar_short_event(event_name, track_name)
         status = "FINAL" if state == "post" else _indycar_live_status(session_raw, flag, current_lap, total_laps, time_to_go) if state == "in" else f"Starts {_format_local_time(_parse_datetime(start), settings.timezone)}"
@@ -514,6 +516,8 @@ class LiveRacingSource:
                 "raw_session_name": session_name,
                 "events_session_id": str(heartbeat.get("EventSessionID") or heartbeat.get("EventsSessionID") or ""),
                 "track_name": track_name,
+                "track_type": track_type,
+                "qualifying_metric": qualifying_metric,
                 "session_type": session,
                 "session_name": session,
                 "lap": current_lap,
@@ -632,6 +636,8 @@ class LiveRacingSource:
                 "event_name": short_event,
                 "short_name": short_event,
                 "track_name": "",
+                "track_type": "",
+                "qualifying_metric": "time",
                 "session_type": session,
                 "session_name": session,
                 "lap": 0,
@@ -800,7 +806,12 @@ def _indycar_session_name(raw_type: str, value: str) -> str:
     return value or raw_type or "Race"
 
 
-def _indycar_driver(item: Mapping[str, Any], index: Mapping[str, Mapping[str, Any]], session_type: str) -> dict[str, Any] | None:
+def _indycar_driver(
+    item: Mapping[str, Any],
+    index: Mapping[str, Mapping[str, Any]],
+    session_type: str,
+    track_type: str,
+) -> dict[str, Any] | None:
     pos = _integer(item.get("rank") or item.get("overallRank"))
     if not pos:
         return None
@@ -811,8 +822,11 @@ def _indycar_driver(item: Mapping[str, Any], index: Mapping[str, Mapping[str, An
     feed = index.get(car, {})
     flag = _normalize_flag(item.get("flag") or item.get("status"))
     speed = str(item.get("qualSpeed") or item.get("BestSpeed") or item.get("LastSpeed") or "").strip()
+    best_time = str(item.get("qualTime") or item.get("bestLapTime") or "").strip()
     raw_gap = str(item.get("diff") or item.get("gap") or "").strip()
-    gap = f"{float(speed):.3f}" if session_type == "Q" and _number(speed) is not None else "Leader" if pos == 1 and not raw_gap else raw_gap
+    qualifying_metric = "mph" if track_type == "O" else "time"
+    qualifying_value = f"{float(speed):.3f}" if qualifying_metric == "mph" and _number(speed) is not None else best_time
+    gap = qualifying_value if session_type == "Q" else "Leader" if pos == 1 and not raw_gap else raw_gap
     return {
         "pos": pos,
         "name": f"{first} {last}".strip() or "Unknown",
@@ -824,9 +838,10 @@ def _indycar_driver(item: Mapping[str, Any], index: Mapping[str, Mapping[str, An
         "livery_primary": _team_livery(team)[0],
         "livery_secondary": _team_livery(team)[1],
         "gap": gap,
+        "qualifying_value": qualifying_value,
         "laps": str(item.get("laps") or "").strip(),
         "speed": speed,
-        "best_time": str(item.get("bestLapTime") or "").strip(),
+        "best_time": best_time,
         "status": str(item.get("status") or "Active"),
         "on_track": str(item.get("onTrack") or "").lower() == "true",
         "flag": flag,

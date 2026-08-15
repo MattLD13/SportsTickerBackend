@@ -67,7 +67,12 @@ class FrameBuilder:
                 self._last_base,
             )
         elif decision.kind == FrameKind.STATIC and decision.content is not None:
-            frame = self._render_content(context, decision.content, decision.mode)
+            frame = self._render_content(
+                context,
+                decision.content,
+                decision.mode,
+                decision.content_elapsed or 0.0,
+            )
         elif decision.kind == FrameKind.SCROLL:
             frame = self._scroll_frame(decision)
         else:
@@ -92,8 +97,8 @@ class FrameBuilder:
         canvas.paste(image.crop((0, 0, 384, 32)), (0, 0))
         return canvas
 
-    def _render_content(self, context: RenderContext, content: Content, mode: str) -> Image.Image:
-        rendered = self._catalog.render(context, ContentScene(_plain_mapping(content.data), mode))
+    def _render_content(self, context: RenderContext, content: Content, mode: str, elapsed: float) -> Image.Image:
+        rendered = self._catalog.render(context, ContentScene(_plain_mapping(content.data), mode, elapsed))
         return rendered.image
 
     def _scroll_frame(self, decision: FrameDecision) -> Image.Image:

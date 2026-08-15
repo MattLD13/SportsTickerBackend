@@ -90,7 +90,8 @@ class RacingRenderer:
             return image
         draw_tiny_text(draw, 1, 8, "P", (70, 90, 140))
         draw_tiny_text(draw, 34, 8, "DRIVER", (70, 90, 140))
-        label = "TIME" if qualifying and sport == "f1" else "MPH" if qualifying else "INTERVAL" if sport == "nascar" else "GAP"
+        metric = str(payload.get("qualifying_metric") or "time").lower()
+        label = "TIME" if qualifying and (sport == "f1" or metric == "time") else "MPH" if qualifying else "INTERVAL" if sport == "nascar" else "GAP"
         draw_tiny_text(draw, 90, 8, label, (70, 90, 140))
         for index, driver in enumerate(drivers[:3]):
             y = (13, 20, 27)[index]
@@ -98,7 +99,12 @@ class RacingRenderer:
             abbreviation = str(driver.get("abbr") or "???").upper()[:3]
             car = str(driver.get("car") or "").strip()
             if qualifying:
-                right = str(driver.get("interval") or driver.get("gap") or "")[:12] if sport == "f1" else str(driver.get("speed") or driver.get("interval") or driver.get("gap") or "")[:7]
+                if sport == "f1":
+                    right = str(driver.get("interval") or driver.get("gap") or "")[:12]
+                elif metric == "time":
+                    right = str(driver.get("best_time") or driver.get("gap") or "")[:7]
+                else:
+                    right = str(driver.get("speed") or driver.get("gap") or "")[:7]
             else:
                 right = str(driver.get("interval") or driver.get("gap") or "")[:12]
             draw_tiny_text(draw, 0, y, position, (255, 215, 0) if position == "1" else (200, 200, 200))
@@ -165,8 +171,9 @@ class RacingRenderer:
             return
         qualifying = "qual" in str(payload.get("session_type") or "").lower() or "prac" in str(payload.get("session_type") or "").lower()
         f1 = str(item.get("sport") or "").lower() == "f1"
-        key = (tuple(_driver_key(driver) for driver in drivers), qualifying, f1, self.assets.revision)
-        cards, strip, strip_width = self._driver_strip(drivers, qualifying, f1, key)
+        metric = str(payload.get("qualifying_metric") or "time").lower()
+        key = (tuple(_driver_key(driver) for driver in drivers), qualifying, f1, metric, self.assets.revision)
+        cards, strip, strip_width = self._driver_strip(drivers, qualifying, f1, metric, key)
         if len(cards) == 1:
             panel.paste(cards[0], (max(0, (panel_width - cards[0].width) // 2), 1), cards[0])
         else:
@@ -174,11 +181,18 @@ class RacingRenderer:
             panel.alpha_composite(view)
         image.paste(panel, (x_offset, 0), panel)
 
-    def _driver_strip(self, drivers: list[Mapping[str, Any]], qualifying: bool, f1: bool, key: tuple[object, ...]) -> tuple[tuple[Image.Image, ...], Image.Image, int]:
+    def _driver_strip(
+        self,
+        drivers: list[Mapping[str, Any]],
+        qualifying: bool,
+        f1: bool,
+        metric: str,
+        key: tuple[object, ...],
+    ) -> tuple[tuple[Image.Image, ...], Image.Image, int]:
         cached = self._strip_cache.get(key)
         if cached is not None:
             return cached
-        cards = tuple(self._driver_card(driver, qualifying, f1) for driver in drivers)
+        cards = tuple(self._driver_card(driver, qualifying, f1, metric) for driver in drivers)
         gap = 6
         width = sum(card.width for card in cards) + gap * len(cards)
         strip = Image.new("RGBA", (width + PANEL_WIDTH - 84, PANEL_HEIGHT), (0, 0, 0, 0))
@@ -193,7 +207,7 @@ class RacingRenderer:
         self._strip_cache = {key: result}
         return result
 
-    def _driver_card(self, driver: Mapping[str, Any], qualifying: bool, f1: bool) -> Image.Image:
+    def _driver_card(self, driver: Mapping[str, Any], qualifying: bool, f1: bool, metric: str) -> Image.Image:
         position = str(driver.get("pos") or "")
         name = str(driver.get("name") or driver.get("abbr") or "???").strip()
         car_number = str(driver.get("car") or "").strip()
@@ -249,7 +263,10 @@ class RacingRenderer:
                     draw.text((number_x + offset_x, offset_y), car_number, font=self.fonts.normal, fill=(255, 255, 255, 200))
             draw.text((number_x, 0), car_number, font=self.fonts.normal, fill=primary)
         draw.text((max(4, width - int(name_width) - 5), 10), name, font=name_font, fill=(255, 255, 255))
-        right = str(driver.get("speed") or driver.get("gap") or "")[:8] if qualifying else str(driver.get("gap") or "")[:10]
+        if qualifying and not f1 and metric == "time":
+            right = str(driver.get("best_time") or driver.get("gap") or "")[:8]
+        else:
+            right = str(driver.get("speed") or driver.get("gap") or "")[:8] if qualifying else str(driver.get("gap") or "")[:10]
         if right:
             draw_tiny_text(draw, max(4, width - _tiny_width(right) - 4), 23, right, (255, 255, 255) if position == "1" else (140, 190, 255))
         return card
