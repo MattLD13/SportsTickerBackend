@@ -16,6 +16,7 @@ from sports_ticker.domain import ContentItem, DisplaySettings
 from .contracts import ProviderHealth, ProviderResult
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .logo_overrides import corrected_logo
+from .score_alerts import ScoreAlertTracker
 from .sports_display import SportsDisplayProjector, assign_active_team, display_situation, soccer_event
 from .stale_cache import SettingsResultCache
 
@@ -80,6 +81,7 @@ class EspnScoreboardProvider:
             raise ValueError("timeout must be a finite positive number")
         self._stale_cache = SettingsResultCache()
         self._display = SportsDisplayProjector()
+        self._score_alerts = ScoreAlertTracker()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch current scoreboard events from each configured active league."""
@@ -110,6 +112,14 @@ class EspnScoreboardProvider:
                 errors.append(f"{league}: {exc}")
 
         items = self._enrich_live_items(items)
+        score_games = [
+            {"kind": item.kind, "id": item.id, **dict(item.data)}
+            for item in items
+        ]
+        self._score_alerts.ingest(score_games)
+        alerts = self._score_alerts.recent(
+            delay=settings.live_delay_seconds if settings.live_delay_mode else 0.0,
+        )
         health = ProviderHealth(
             healthy=not errors,
             provider="espn",
@@ -117,6 +127,7 @@ class EspnScoreboardProvider:
         )
         result = ProviderResult(
             content=tuple(sorted(items, key=_content_sort_key)),
+            alerts=alerts,
             observed_at=datetime.now(timezone.utc),
             health=health,
         )

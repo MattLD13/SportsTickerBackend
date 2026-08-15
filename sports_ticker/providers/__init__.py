@@ -22,6 +22,7 @@ from .music import MusicProvider
 from .normalization import normalize_content, normalize_provider_result, normalize_settings
 from .news import NewsProvider
 from .racing import RacingProvider
+from .score_alerts import ScoreAlertTracker
 from .stocks import StockProvider
 from .weather import OpenMeteoWeatherProvider
 
@@ -49,6 +50,7 @@ __all__ = [
     "OpenMeteoWeatherProvider",
     "RacingProvider",
     "RacingSource",
+    "ScoreAlertTracker",
     "StockProvider",
     "StockSource",
     "UrllibJsonHttpClient",

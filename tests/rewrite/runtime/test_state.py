@@ -75,3 +75,21 @@ def test_disconnect_keeps_content_until_the_cache_expiry() -> None:
     assert runtime.next_frame().connection_lost is True
     clock[0] = 5.1
     assert runtime.next_frame().kind is FrameKind.OFFLINE
+
+
+def test_runtime_holds_the_v1_score_takeover_for_the_real_renderer_duration() -> None:
+    clock = [0.0]
+    runtime = _runtime(clock)
+    payload = _response().to_payload()
+    payload["events"]["alerts"] = [
+        {
+            "event_id": "score-1",
+            "kind": "score_alert",
+            "payload": {"headline": "TOUCHDOWN", "big": False, "team_abbr": "NYG"},
+        }
+    ]
+    runtime.accept_response(TickerResponse.from_payload(payload))
+
+    assert runtime.next_frame().kind is FrameKind.SCORE_ALERT
+    clock[0] = 4.1
+    assert runtime.next_frame().kind is FrameKind.SCORE_ALERT

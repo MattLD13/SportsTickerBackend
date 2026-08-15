@@ -11,6 +11,8 @@ import json
 from types import MappingProxyType
 from typing import Any, TypeVar
 
+from ticker_core.features.alerts import news_banner_duration, score_alert_duration
+
 from .model import (
     Content,
     ContentClassification,
@@ -410,7 +412,7 @@ class TickerRuntime:
         cached_expired = snapshot is not None and snapshot.stale and (snapshot.cache_expires_at is None or now >= snapshot.cache_expires_at)
         if content_expired or cached_expired or (snapshot is None and offline_for >= self.config.offline_after):
             return self._decision(FrameKind.OFFLINE, self.config.frame_interval, wall_time, offline_for=offline_for)
-        if self._active_alert is not None and now - self._active_alert.started_at >= self.config.alert_duration:
+        if self._active_alert is not None and now - self._active_alert.started_at >= score_alert_duration(self._active_alert.data):
             self._active_alert = None
         self._activate_news(now)
         if self._active_alert is None:
@@ -466,7 +468,7 @@ class TickerRuntime:
 
     def _activate_news(self, now: float) -> None:
         """Start the next fresh news overlay over any base scene."""
-        if self._active_news is not None and now - self._active_news.started_at >= self.config.news_duration:
+        if self._active_news is not None and now - self._active_news.started_at >= news_banner_duration(self._active_news.data):
             self._active_news = None
         if self._active_news is None:
             item = self._pop_fresh(self._news, self.config.news_max_age, now)

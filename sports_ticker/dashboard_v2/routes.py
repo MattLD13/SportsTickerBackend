@@ -11,7 +11,8 @@ from pathlib import Path
 from threading import active_count
 from time import monotonic
 
-from flask import abort, current_app, render_template, request, send_file
+from flask import abort, current_app, redirect, render_template, request, send_file, session, url_for
+from hmac import compare_digest
 from PIL import Image, ImageDraw
 
 from sports_ticker.leagues import LEAGUES
@@ -40,7 +41,7 @@ def index():
     markets = _market_rows(visible)
     shown = sum(len(items) for items in visible.values())
     return render_template(
-        "dashboard/index.html",
+        "dashboard_v2/index.html",
         version_hash=_version_hash(),
         server_version=_version_hash(),
         uptime_str=_uptime(),
@@ -62,20 +63,59 @@ def index():
     )
 
 
+@dashboard_v2.route("/debug/test", methods=["GET", "POST"])
+def debug_test():
+    """Render the password-gated V2 feature test console."""
+
+    if request.method == "POST":
+        expected = os.environ.get("TICKER_DEBUG_PASSWORD", "")
+        supplied = str(request.form.get("password") or "")
+        if expected and compare_digest(supplied, expected):
+            session["debug_test_authenticated"] = True
+            return redirect(url_for("dashboard_v2.debug_test"))
+        return render_template(
+            "dashboard_v2/debug_test.html",
+            authenticated=False,
+            configured=bool(expected),
+            error="Password rejected." if expected else "Set TICKER_DEBUG_PASSWORD before using this console.",
+        ), 401 if expected else 503
+
+    if not session.get("debug_test_authenticated"):
+        return render_template(
+            "dashboard_v2/debug_test.html",
+            authenticated=False,
+            configured=bool(os.environ.get("TICKER_DEBUG_PASSWORD", "")),
+            error=None,
+        )
+    return render_template(
+        "dashboard_v2/debug_test.html",
+        authenticated=True,
+        configured=True,
+        error=None,
+    )
+
+
+@dashboard_v2.post("/debug/test/logout")
+def debug_test_logout():
+    """End one test-console session."""
+
+    session.pop("debug_test_authenticated", None)
+    return redirect(url_for("dashboard_v2.debug_test"))
+
+
+@dashboard_v2.get("/debug/alerts")
+@dashboard_v2.get("/debug/news")
+def legacy_debug_overlay_page():
+    """Keep the former overlay test URLs pointed at the unified console."""
+
+    return redirect(url_for("dashboard_v2.debug_test"))
+
+
 @dashboard_v2.get("/demo")
 def demo():
     """Render the original full-screen panel demo from V2 snapshot data."""
 
-    application = current_app.extensions["sports_ticker.backend_application"]
-    tickers = application.list_tickers()
-    settings = tickers[0].display_settings if tickers else None
-    return render_template(
-        "demo_ticker.html",
-        demo_modes=_demo_modes(),
-        panel_w=384,
-        panel_h=32,
-        scroll_px_s=round(1 / settings.scroll_speed) if settings and settings.scroll_speed else 33,
-    )
+    return redirect(url_for("dashboard_v2.debug_test"))
 
 
 @dashboard_v2.get("/api/preview/strip.png")

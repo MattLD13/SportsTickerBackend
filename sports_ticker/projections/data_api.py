@@ -51,7 +51,7 @@ def project_data_v2(
         "settings": _settings_value(snapshot.effective_settings),
         "content": content,
         "events": {
-            "alerts": _json_value(snapshot.alerts),
+            "alerts": _json_value(_score_alerts_for_settings(snapshot.alerts, snapshot.effective_settings)),
             "news": _json_value(snapshot.news),
         },
         "health": _health_value(health),
@@ -169,6 +169,24 @@ def _is_my_team_game(item: Mapping[str, Any], settings: Mapping[str, Any]) -> bo
     }
     candidates.discard(f"{sport}:")
     return bool(candidates & team_ids)
+
+
+def _score_alerts_for_settings(
+    alerts: object, settings: DisplaySettings
+) -> tuple[Mapping[str, Any], ...]:
+    """Project provider alerts only when this ticker follows the scoring team."""
+
+    if settings.mode != "sports" or not settings.score_alerts or not settings.my_teams:
+        return ()
+    followed = {str(value).strip().lower() for value in settings.my_teams}
+    if not isinstance(alerts, (list, tuple)):
+        return ()
+    return tuple(
+        alert
+        for alert in alerts
+        if isinstance(alert, Mapping)
+        and f"{str(alert.get('sport') or '').lower()}:{str(alert.get('team_abbr') or '').lower()}" in followed
+    )
 
 
 def _item_data(item: Mapping[str, Any]) -> Mapping[str, Any]:

@@ -32,7 +32,7 @@ from sports_ticker.providers import (
 )
 from sports_ticker.providers.live_sources import (
     ClockProvider,
-    EmptyNewsSource,
+    EspnNewsSource,
     EspnGolfSource,
     EspnRacingSource,
     FinnhubStockSource,
@@ -137,7 +137,14 @@ def _providers(spotify: SpotifyIntegrationService) -> dict[str, object]:
         "stock": StockProvider(FinnhubStockSource()),
         "flights": FlightsProvider(FlightRadarSource()),
         "music": MusicProvider(SpotifyMusicSource(spotify)),
-        "news": NewsProvider(EmptyNewsSource()),
+        "news": NewsProvider(
+            EspnNewsSource(
+                {
+                    league: f"{_ESPN_BASE}/{path}/news?limit=20"
+                    for league, path in ESPN_SCOREBOARD_PATHS.items()
+                }
+            )
+        ),
         "clock": ClockProvider(),
     }
 
@@ -158,7 +165,12 @@ def _provider_settings_key(name: str):
     """Return only the settings that can change one provider result."""
 
     if name == "espn":
-        return lambda settings: _sports_key(settings, ESPN_SCOREBOARD_PATHS)
+        return lambda settings: _sports_key(settings, ESPN_SCOREBOARD_PATHS) + (
+            settings.my_teams,
+            settings.score_alerts,
+            settings.live_delay_mode,
+            settings.live_delay_seconds,
+        )
     if name == "fotmob":
         return lambda settings: _sports_key(settings, FOTMOB_LEAGUES)
     if name == "golf":
@@ -176,6 +188,8 @@ def _provider_settings_key(name: str):
             settings.track_flight_id,
             settings.track_guest_name,
         )
+    if name == "news":
+        return lambda settings: (settings.mode, settings.my_teams)
     if name == "clock":
         return lambda settings: (settings.timezone,)
     return lambda settings: ()
