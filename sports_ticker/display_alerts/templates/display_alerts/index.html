@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SportsTicker display alerts</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1018; --panel:#111a26; --line:#28384b; --text:#e9f0f7; --muted:#8da0b4; --cyan:#61d7e8; --amber:#ffb014; --red:#ff647c; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui,sans-serif; }
+    main { max-width:900px; margin:0 auto; padding:32px 20px 60px; } h1 { margin:0 0 6px; } h2 { font-size:16px; margin:0 0 5px; } p { color:var(--muted); margin:0; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:22px; } section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:18px; }
+    .wide { grid-column:1/-1; } label { display:grid; gap:5px; color:var(--muted); font-size:12px; margin-top:12px; } input,select,button { border:1px solid var(--line); border-radius:5px; background:#0b131e; color:var(--text); padding:9px 10px; font:inherit; } button { cursor:pointer; background:#173044; margin:10px 8px 0 0; } button.alert { background:#49202b; } button.news { background:#4d3b16; } button:hover { border-color:var(--cyan); }
+    pre { min-height:120px; max-height:360px; overflow:auto; white-space:pre-wrap; word-break:break-word; background:#09101a; border:1px solid var(--line); padding:12px; margin:12px 0 0; }
+    @media (max-width:700px) { .grid { grid-template-columns:1fr; } .wide { grid-column:auto; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p>SPORTSTICKER / V2</p>
+    <h1>Display alerts</h1>
+    <p>This isolated endpoint tests score takeovers and news banners through the existing V2 event API.</p>
+    <div class="grid">
+      <section>
+        <h2>Target ticker</h2>
+        <p>Choose one ticker before sending an overlay.</p>
+        <label>Ticker<select id="ticker"></select></label>
+        <button id="refresh">Refresh display</button>
+      </section>
+      <section>
+        <h2>Score takeover</h2>
+        <p>Send the V1 full-panel score alert payload.</p>
+        <label>Headline<input id="headline" value="TOUCHDOWN"></label>
+        <label>Detail<input id="detail" value="TEST PLAY"></label>
+        <label>Status<input id="status" value="Q3 08:12"></label>
+        <button class="alert" id="send-alert">Send score alert</button>
+      </section>
+      <section>
+        <h2>News banner</h2>
+        <p>Send the V1 half-panel news payload.</p>
+        <label>Sport<input id="sport" value="nhl"></label>
+        <label>Text<input id="news-text" value="Test news overlay headline"></label>
+        <button class="news" id="send-news">Send news overlay</button>
+      </section>
+      <section class="wide">
+        <h2>Response</h2>
+        <pre id="output">Loading tickers...</pre>
+      </section>
+    </div>
+  </main>
+  <script>
+    (() => {
+      const ticker = document.querySelector("#ticker");
+      const output = document.querySelector("#output");
+      const show = value => { output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2); };
+      const selected = () => ticker.value;
+      async function api(path, options = {}) {
+        const response = await fetch(path, { headers: { Accept: "application/json", ...(options.body ? { "Content-Type": "application/json" } : {}) }, ...options });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error?.message || `HTTP ${response.status}`);
+        return body;
+      }
+      async function load() {
+        const body = await api("/api/v2/tickers");
+        ticker.innerHTML = (body.tickers || []).map(item => `<option value="${item.ticker_id}">${item.name} (${item.ticker_id})</option>`).join("");
+        await refresh();
+      }
+      async function refresh() { show(await api(`/api/v2/tickers/${encodeURIComponent(selected())}/data`)); }
+      async function send(path, payload) { show(await api(path, { method: "POST", body: JSON.stringify(payload) })); }
+      document.querySelector("#refresh").onclick = () => refresh().catch(error => show(error.message));
+      document.querySelector("#send-alert").onclick = () => send("/api/v2/events/alerts", { kind: "score_alert", target_ticker_ids: [selected()], ttl_seconds: 60, payload: { headline: document.querySelector("#headline").value, detail: document.querySelector("#detail").value, status: document.querySelector("#status").value, sport: "nfl", big: true, team_abbr: "NYG", team_color: "#0B2265", team_alt_color: "#A71930", home_abbr: "NYG", away_abbr: "DAL", home_score: 14, away_score: 7 } }).catch(error => show(error.message));
+      document.querySelector("#send-news").onclick = () => send("/api/v2/events/news", { kind: "news", target_ticker_ids: [selected()], ttl_seconds: 60, payload: { kind: "NEWS", domain: "sports", sport: document.querySelector("#sport").value, from_abbr: "NYG", to_abbr: "", text: document.querySelector("#news-text").value, from_color: "#8B93A3", to_color: "#8B93A3" } }).catch(error => show(error.message));
+      ticker.onchange = () => refresh().catch(error => show(error.message));
+      load().catch(error => show(error.message));
+    })();
+  </script>
+</body>
+</html>

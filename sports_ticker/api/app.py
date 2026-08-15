@@ -7,6 +7,7 @@ from flask import Flask
 from sports_ticker.application.composition import BackendApplication
 from sports_ticker.bootstrap_v2 import create_backend_application
 from sports_ticker.dashboard_v2 import dashboard_v2
+from sports_ticker.display_alerts import display_alerts
 
 from .routes import register_routes
 
@@ -18,6 +19,7 @@ def create_app(application: BackendApplication) -> Flask:
     app.json.sort_keys = False
     register_routes(app, application)
     app.register_blueprint(dashboard_v2)
+    app.register_blueprint(display_alerts)
     return app
 
 

@@ -16,6 +16,7 @@ from sports_ticker.domain import ContentItem, DisplaySettings
 from .contracts import ProviderHealth, ProviderResult
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .logo_overrides import corrected_logo
+from .score_alerts import ScoreAlertTracker, alerts_for_settings
 from .sports_display import SportsDisplayProjector, assign_active_team, display_situation, soccer_event
 from .stale_cache import SettingsResultCache
 
@@ -80,9 +81,23 @@ class EspnScoreboardProvider:
             raise ValueError("timeout must be a finite positive number")
         self._stale_cache = SettingsResultCache()
         self._display = SportsDisplayProjector()
+        self._score_alerts = ScoreAlertTracker()
+        self._score_alerts_by_ticker: dict[str, ScoreAlertTracker] = {}
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch current scoreboard events from each configured active league."""
+
+        return self._fetch(settings, self._score_alerts)
+
+    def fetch_for_ticker(self, ticker_id: str, settings: DisplaySettings) -> ProviderResult:
+        """Fetch one ticker scoreboard with score memory isolated to that ticker."""
+
+        identifier = str(ticker_id).strip()
+        tracker = self._score_alerts_by_ticker.setdefault(identifier, ScoreAlertTracker())
+        return self._fetch(settings, tracker)
+
+    def _fetch(self, settings: DisplaySettings, score_alerts: ScoreAlertTracker) -> ProviderResult:
+        """Fetch scoreboard content and emit only alerts allowed by ticker settings."""
 
         if not isinstance(settings, DisplaySettings):
             raise TypeError("settings must be DisplaySettings")
@@ -110,6 +125,14 @@ class EspnScoreboardProvider:
                 errors.append(f"{league}: {exc}")
 
         items = self._enrich_live_items(items)
+        score_games = [{"kind": item.kind, "id": item.id, **dict(item.data)} for item in items]
+        score_alerts.ingest(score_games)
+        alerts = alerts_for_settings(
+            score_alerts.recent(
+                delay=settings.live_delay_seconds if settings.live_delay_mode else 0.0,
+            ),
+            settings,
+        )
         health = ProviderHealth(
             healthy=not errors,
             provider="espn",
@@ -117,6 +140,7 @@ class EspnScoreboardProvider:
         )
         result = ProviderResult(
             content=tuple(sorted(items, key=_content_sort_key)),
+            alerts=alerts,
             observed_at=datetime.now(timezone.utc),
             health=health,
         )

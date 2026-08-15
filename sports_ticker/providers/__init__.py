@@ -29,6 +29,7 @@ from .normalization import normalize_content, normalize_provider_result, normali
 from .news import NewsProvider
 from .racing import RacingProvider
 from .racing_live import LiveRacingSource
+from .score_alerts import ScoreAlertTracker
 from .stocks import StockProvider
 from .weather import OpenMeteoWeatherProvider
 
@@ -57,6 +58,7 @@ __all__ = [
     "OpenMeteoWeatherProvider",
     "RacingProvider",
     "RacingSource",
+    "ScoreAlertTracker",
     "StockProvider",
     "StockSource",
     "TextHttpClient",
