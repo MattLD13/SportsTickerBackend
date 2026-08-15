@@ -34,10 +34,10 @@ from sports_ticker.providers.live_sources import (
     ClockProvider,
     EmptyNewsSource,
     EspnGolfSource,
-    EspnRacingSource,
     FinnhubStockSource,
     FlightRadarSource,
 )
+from sports_ticker.providers.racing_live import LiveRacingSource
 
 
 _ESPN_BASE: Final = "https://site.api.espn.com/apis/site/v2/sports"
@@ -133,7 +133,7 @@ def _providers(spotify: SpotifyIntegrationService) -> dict[str, object]:
         "fotmob": FotMobSoccerProvider(FOTMOB_LEAGUES),
         "weather": OpenMeteoWeatherProvider(),
         "golf": GolfProvider(EspnGolfSource()),
-        "racing": RacingProvider(EspnRacingSource()),
+        "racing": RacingProvider(LiveRacingSource()),
         "stock": StockProvider(FinnhubStockSource()),
         "flights": FlightsProvider(FlightRadarSource()),
         "music": MusicProvider(SpotifyMusicSource(spotify)),

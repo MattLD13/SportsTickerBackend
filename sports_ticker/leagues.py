@@ -69,15 +69,6 @@ ESPN_SCOREBOARD_PATHS: Final = MappingProxyType(
 FOTMOB_LEAGUES: Final = MappingProxyType(
     {league.id: league.fotmob_league_id for league in LEAGUES if league.fotmob_league_id is not None}
 )
-RACING_SCOREBOARD_PATHS: Final = MappingProxyType(
-    {
-        "f1": "racing/f1",
-        "indycar": "racing/irl",
-        # "nascar": "racing/nascar-premier",
-    }
-)
-
-
 def league_for(identifier: str) -> League:
     """Return one configured league by its stable identifier."""
 
@@ -99,7 +90,6 @@ __all__ = [
     "LEAGUE_BY_ID",
     "ESPN_SCOREBOARD_PATHS",
     "FOTMOB_LEAGUES",
-    "RACING_SCOREBOARD_PATHS",
     "TEAM_CATALOG_PATHS",
     "League",
     "allows_my_team_selection",

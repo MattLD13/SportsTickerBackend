@@ -15,7 +15,6 @@ from typing import Any
 from urllib.parse import urlencode
 
 from sports_ticker.domain import DisplaySettings
-from sports_ticker.leagues import RACING_SCOREBOARD_PATHS
 from sports_ticker.markets import MARKET_GROUPS
 
 from .espn import _is_current_event
@@ -23,10 +22,6 @@ from .http import JsonHttpClient, UrllibJsonHttpClient
 
 
 ESPN_GOLF_URL = "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"
-ESPN_RACING_URLS = {
-    series: f"https://site.api.espn.com/apis/site/v2/sports/{path}/scoreboard"
-    for series, path in RACING_SCOREBOARD_PATHS.items()
-}
 FINNHUB_QUOTE_URL = "https://finnhub.io/api/v1/quote"
 FINNHUB_CANDLE_URL = "https://finnhub.io/api/v1/stock/candle"
 _ETF_LOGO_DOMAINS = {
@@ -72,25 +67,6 @@ class EspnGolfSource:
                 }
             ]
         }
-
-
-class EspnRacingSource:
-    """Read the current F1, IndyCar, and NASCAR sessions from ESPN."""
-
-    def __init__(self, client: JsonHttpClient | None = None, *, timeout: float = 10.0) -> None:
-        self._client = client or UrllibJsonHttpClient()
-        self._timeout = _timeout(timeout)
-
-    def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
-        records: list[dict[str, object]] = []
-        for series, url in ESPN_RACING_URLS.items():
-            payload = self._client.get_json(url, timeout=self._timeout)
-            event = _first_event(payload)
-            if event is None or not _is_current_event(event, timezone_name=settings.timezone):
-                continue
-            for competition in _mappings(event.get("competitions")) or ({},):
-                records.append(_racing_record(series, event, competition))
-        return {"content": records}
 
 
 class FinnhubStockSource:
@@ -426,48 +402,6 @@ class ClockProvider:
         }
 
 
-def _racing_record(series: str, event: Mapping[str, Any], competition: Mapping[str, Any]) -> dict[str, object]:
-    status = _status(event, competition)
-    session = _mapping(competition.get("type")).get("abbreviation") or "RACE"
-    payload = {
-        "event_name": str(event.get("name") or series.upper()),
-        "short_name": str(event.get("shortName") or event.get("name") or series.upper()),
-        "track_name": str(_mapping(competition.get("venue")).get("fullName") or ""),
-        "session_name": str(session),
-        "session_type": str(session),
-        "flag": "CHECKERED" if status["state"] == "post" else "GREEN" if status["state"] == "in" else "WHITE",
-        "drivers": _racing_drivers(competition),
-    }
-    return {
-        "id": f"{series}:{event.get('id', 'event')}:{competition.get('id', 'session')}",
-        "type": "racing",
-        "sport": series,
-        "series": series,
-        "state": status["state"],
-        "status": status["text"],
-        "away_abbr": payload["short_name"],
-        "home_abbr": payload["session_name"],
-        series: payload,
-    }
-
-
-def _racing_drivers(competition: Mapping[str, Any]) -> list[dict[str, object]]:
-    drivers: list[dict[str, object]] = []
-    for index, competitor in enumerate(_mappings(competition.get("competitors"))[:20], start=1):
-        athlete = _mapping(competitor.get("athlete"))
-        position = competitor.get("order", competitor.get("curatedRank", index))
-        drivers.append(
-            {
-                "pos": position,
-                "name": str(athlete.get("displayName") or athlete.get("shortName") or "Driver"),
-                "abbr": str(athlete.get("shortName") or "DRV")[:3].upper(),
-                "car": str(competitor.get("id") or ""),
-                "gap": str(competitor.get("score") or ""),
-            }
-        )
-    return drivers
-
-
 def _golf_player(value: Mapping[str, Any]) -> dict[str, object] | None:
     athlete = _mapping(value.get("athlete"))
     name = str(athlete.get("displayName") or athlete.get("shortName") or "").strip()
@@ -595,7 +529,6 @@ __all__ = [
     "EmptyNewsSource",
     "ClockProvider",
     "EspnGolfSource",
-    "EspnRacingSource",
     "FinnhubStockSource",
     "FlightRadarSource",
 ]

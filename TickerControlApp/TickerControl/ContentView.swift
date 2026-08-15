@@ -504,14 +504,28 @@ struct V2Ticker: Decodable, Sendable {
                 live_delay_mode: display_settings.live_delay_mode,
                 live_delay_seconds: Int(display_settings.live_delay_seconds)
             ),
-            last_seen: device.last_seen_at
+            last_seen: device.last_seen_at,
+            capabilities: device.capabilities
         )
     }
 }
 
 struct V2TickerList: Decodable, Sendable { let tickers: [V2Ticker] }
 
-struct V2Device: Decodable, Sendable { let last_seen_at: Double? }
+struct V2Device: Decodable, Sendable {
+    let last_seen_at: Double?
+    let metadata: [String: JSONValue]?
+
+    var capabilities: Set<String> {
+        guard let value = metadata?["capabilities"], case .array(let values) = value.value else {
+            return []
+        }
+        return Set(values.compactMap { item in
+            guard case .string(let capability) = item.value else { return nil }
+            return capability.lowercased()
+        })
+    }
+}
 
 struct V2DisplaySettings: Decodable, Sendable {
     let brightness: Double
@@ -527,6 +541,7 @@ struct TickerDevice: Identifiable, Sendable {
     let name: String
     var settings: DeviceSettings
     let last_seen: Double?
+    let capabilities: Set<String>
 }
 struct PairingExchangeResponse: Decodable, Sendable {
     let ticker_id: String?
@@ -562,6 +577,10 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     var leagueLabels: [String: String] { Dictionary(uniqueKeysWithValues: leagueOptions.map { ($0.id, $0.label) }) }
     var isSportsMode: Bool {
         !["stock", "weather", "clock", "music", "flights", "airports"].contains(state.mode)
+    }
+    var isSportsOnly: Bool {
+        guard let capabilities = devices.first?.capabilities else { return false }
+        return capabilities == Set(["sports"])
     }
     
     // THE SOURCE OF TRUTH
@@ -1004,6 +1023,10 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                     self.devices = decoded.tickers
                         .filter { $0.ticker_id == localTickerID }
                         .map(\.tickerDevice)
+                    if self.isSportsOnly && self.state.mode != "sports" {
+                        self.state.mode = "sports"
+                        self.saveSettings()
+                    }
                     // === FIX: AUTO-LOGOUT LOGIC ===
                     // If the server says we have NO paired devices, we must forget the saved ID.
                     if self.devices.isEmpty {
@@ -2544,6 +2567,7 @@ struct ModesView: View {
     }
     
     func setCategory(_ target: String) {
+        if vm.isSportsOnly && target != "sports" { return }
         if target != "sports" {
             vm.pinnedGameIDs.removeAll()
             vm.state.pinned_games = []
@@ -2617,11 +2641,13 @@ struct ModesView: View {
                     let activeCategory = utilities.contains(displayMode) ? displayMode : "sports"
                     
                     ModeTile(title: "Sports", icon: vm.modeSymbol(for: "sports"), val: "sports", cur: activeCategory) { setCategory("sports") }
-                    ModeTile(title: "Stocks", icon: vm.modeSymbol(for: "stock"), val: "stock", cur: activeCategory) { setCategory("stock") }
-                    ModeTile(title: "Music", icon: vm.modeSymbol(for: "music"), val: "music", cur: activeCategory) { setCategory("music") }
-                    ModeTile(title: "Flights", icon: vm.modeSymbol(for: "flights"), val: "flights", cur: activeCategory) { setCategory("flights") }
-                    ModeTile(title: "Weather", icon: vm.modeSymbol(for: "weather"), val: "weather", cur: activeCategory) { setCategory("weather") }
-                    ModeTile(title: "Clock", icon: vm.modeSymbol(for: "clock"), val: "clock", cur: activeCategory) { setCategory("clock") }
+                    if !vm.isSportsOnly {
+                        ModeTile(title: "Stocks", icon: vm.modeSymbol(for: "stock"), val: "stock", cur: activeCategory) { setCategory("stock") }
+                        ModeTile(title: "Music", icon: vm.modeSymbol(for: "music"), val: "music", cur: activeCategory) { setCategory("music") }
+                        ModeTile(title: "Flights", icon: vm.modeSymbol(for: "flights"), val: "flights", cur: activeCategory) { setCategory("flights") }
+                        ModeTile(title: "Weather", icon: vm.modeSymbol(for: "weather"), val: "weather", cur: activeCategory) { setCategory("weather") }
+                        ModeTile(title: "Clock", icon: vm.modeSymbol(for: "clock"), val: "clock", cur: activeCategory) { setCategory("clock") }
+                    }
                 }
                 .padding(.horizontal)
                 

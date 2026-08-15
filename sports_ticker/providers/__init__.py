@@ -17,11 +17,18 @@ from .features import (
 )
 from .flights import FlightsProvider
 from .golf import GolfProvider
-from .http import JsonHttpClient, JsonHttpError, UrllibJsonHttpClient
+from .http import (
+    JsonHttpClient,
+    JsonHttpError,
+    TextHttpClient,
+    UrllibJsonHttpClient,
+    UrllibTextHttpClient,
+)
 from .music import MusicProvider
 from .normalization import normalize_content, normalize_provider_result, normalize_settings
 from .news import NewsProvider
 from .racing import RacingProvider
+from .racing_live import LiveRacingSource
 from .stocks import StockProvider
 from .weather import OpenMeteoWeatherProvider
 
@@ -42,6 +49,7 @@ __all__ = [
     "GolfSource",
     "JsonHttpClient",
     "JsonHttpError",
+    "LiveRacingSource",
     "MusicProvider",
     "MusicSource",
     "NewsProvider",
@@ -51,7 +59,9 @@ __all__ = [
     "RacingSource",
     "StockProvider",
     "StockSource",
+    "TextHttpClient",
     "UrllibJsonHttpClient",
+    "UrllibTextHttpClient",
     "normalize_content",
     "normalize_provider_result",
     "normalize_settings",

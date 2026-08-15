@@ -21,6 +21,14 @@ class JsonHttpClient(Protocol):
         """Return the decoded JSON response for ``url``."""
 
 
+@runtime_checkable
+class TextHttpClient(Protocol):
+    """Fetch one URL and return its decoded text response."""
+
+    def get_text(self, url: str, *, timeout: float) -> str:
+        """Return the response body for ``url``."""
+
+
 class UrllibJsonHttpClient:
     """Implement the JSON HTTP port with Python's standard library."""
 
@@ -70,4 +78,51 @@ class UrllibJsonHttpClient:
             ) from exc
 
 
-__all__ = ["JsonHttpClient", "JsonHttpError", "UrllibJsonHttpClient"]
+class UrllibTextHttpClient:
+    """Implement the text HTTP port with Python's standard library."""
+
+    def __init__(self, *, user_agent: str = "SportsTickerBackend/8") -> None:
+        self._user_agent = str(user_agent).strip() or "SportsTickerBackend/8"
+
+    def get_text(self, url: str, *, timeout: float) -> str:
+        """Fetch one text response with a required finite positive timeout."""
+
+        target = str(url).strip()
+        if not target:
+            raise ValueError("url must not be empty")
+        request_timeout = float(timeout)
+        if not math.isfinite(request_timeout) or request_timeout <= 0:
+            raise ValueError("timeout must be a finite positive number")
+        request = Request(
+            target,
+            headers={"Accept": "text/html", "User-Agent": self._user_agent},
+        )
+        try:
+            with urlopen(request, timeout=request_timeout) as response:
+                body = response.read()
+                status = getattr(response, "status", None)
+                if status is not None and not 200 <= int(status) < 300:
+                    raise JsonHttpError(f"HTTP {status} for {target}")
+        except HTTPError as exc:
+            raise JsonHttpError(
+                f"HTTP {exc.code} for {target}: {exc.reason}"
+            ) from exc
+        except URLError as exc:
+            raise JsonHttpError(f"request failed for {target}: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise JsonHttpError(f"request timed out for {target}") from exc
+        except OSError as exc:
+            raise JsonHttpError(f"request failed for {target}: {exc}") from exc
+        try:
+            return body.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise JsonHttpError(f"response was not UTF-8 for {target}") from exc
+
+
+__all__ = [
+    "JsonHttpClient",
+    "JsonHttpError",
+    "TextHttpClient",
+    "UrllibJsonHttpClient",
+    "UrllibTextHttpClient",
+]

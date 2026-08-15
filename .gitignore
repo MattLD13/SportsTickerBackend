@@ -40,6 +40,9 @@ venv/
 dist/
 build/
 
+# PlatformIO
+.pio/
+
 # Environment / secrets
 .env
 .env.*
