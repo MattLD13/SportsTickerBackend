@@ -67,12 +67,12 @@ def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
     return catalog
 
 
-def create_default_frame_builder(assets: object) -> tuple[FrameBuilder, CardViewport]:
+def create_default_frame_builder(assets: object, *, card_cpu: int | None = None) -> tuple[FrameBuilder, CardViewport]:
     """Create the complete frame builder and its card viewport."""
     fonts = load_default_font_set()
     logos = CachedLogoView(assets)
     catalog = create_default_content_catalog(assets)
-    viewport = CardViewport(catalog)
+    viewport = CardViewport(catalog, use_process=True, worker_cpu=card_cpu)
     return FrameBuilder(
         catalog,
         UtilityRenderer(fonts, logos),

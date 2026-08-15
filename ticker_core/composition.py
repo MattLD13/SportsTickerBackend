@@ -30,7 +30,7 @@ def create_application() -> TickerApplication:
         verify_tls=_enabled("TICKER_VERIFY_TLS", default=True),
     )
     assets = AssetCoordinator(data_directory / "assets")
-    frames, viewport = create_default_frame_builder(assets)
+    frames, viewport = create_default_frame_builder(assets, card_cpu=_cpu_setting("TICKER_CARD_CPU"))
     runtime = TickerRuntime(monotonic=monotonic, wall_clock=datetime.now)
     commands = SubprocessPlatformCommands()
     return TickerApplication(

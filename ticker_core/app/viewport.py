@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Iterable, Mapping
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Executor, Future, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
+from multiprocessing import get_context
+import os
 from threading import Lock
-from typing import Any
+from typing import Any, Callable
 
 from PIL import Image, ImageDraw
 
@@ -37,14 +39,53 @@ class _CardSurface:
     asset_generation: int
 
 
+@dataclass(frozen=True, slots=True)
+class _CardJob:
+    """Carry one serializable renderer scene to a card worker."""
+
+    item_id: str
+    scene: dict[str, Any]
+    mode: str
+    context: RenderContext
+
+
+@dataclass(frozen=True, slots=True)
+class _CardPixels:
+    """Carry one rendered RGBA card across a worker boundary."""
+
+    width: int
+    height: int
+    rgba: bytes
+
+
 class CardViewport:
     """Own scrolling card surfaces without building one long strip image."""
 
-    def __init__(self, catalog: ContentRendererCatalog) -> None:
+    def __init__(
+        self,
+        catalog: ContentRendererCatalog,
+        *,
+        use_process: bool = False,
+        worker_cpu: int | None = None,
+    ) -> None:
         self._catalog = catalog
         self._lock = Lock()
-        self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ticker-card")
-        self._future: Future[_CardSurface] | None = None
+        self._worker: Executor
+        self._render_job: Callable[[_CardJob], _CardPixels]
+        if use_process and os.name != "nt":
+            global _PROCESS_CATALOG
+            _PROCESS_CATALOG = catalog
+            self._worker = ProcessPoolExecutor(
+                max_workers=1,
+                mp_context=get_context("fork"),
+                initializer=_pin_worker_cpu,
+                initargs=(worker_cpu,),
+            )
+            self._render_job = _render_process_job
+        else:
+            self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ticker-card")
+            self._render_job = self._render_local_job
+        self._future: Future[_CardPixels] | None = None
         self._active_request: _CardRequest | None = None
         self._pending: OrderedDict[str, _CardRequest] = OrderedDict()
         self._desired: dict[str, _CardRequest] = {}
@@ -97,8 +138,16 @@ class CardViewport:
             surface = None
         with self._lock:
             desired = self._desired.get(request.item.id)
-            if surface is not None and desired is not None and _matches(desired, surface):
-                self._surfaces[surface.item_id] = surface
+            if surface is not None and desired is not None:
+                card = _CardSurface(
+                    request.item.id,
+                    Image.frombytes("RGBA", (surface.width, surface.height), surface.rgba),
+                    request.item.data,
+                    request.mode,
+                    request.asset_generation,
+                )
+                if _matches(desired, card):
+                    self._surfaces[card.item_id] = card
             before = self._layout
             self._layout = self._layout_now()
             self._start_next()
@@ -160,7 +209,8 @@ class CardViewport:
             if desired is None or not _same_request(desired, request):
                 continue
             self._active_request = request
-            self._future = self._worker.submit(self._render, request)
+            job = _CardJob(request.item.id, _plain_mapping(request.item.data), request.mode, request.context)
+            self._future = self._worker.submit(self._render_job, job)
             return
 
     def _layout_now(self) -> StripLayout | None:
@@ -172,15 +222,9 @@ class CardViewport:
         )
         return StripLayout(sum(segment.width for segment in segments), segments)
 
-    def _render(self, request: _CardRequest) -> _CardSurface:
-        rendered = self._catalog.render(request.context, ContentScene(_plain_mapping(request.item.data), request.mode))
-        return _CardSurface(
-            request.item.id,
-            rendered.image.convert("RGBA"),
-            request.item.data,
-            request.mode,
-            request.asset_generation,
-        )
+    def _render_local_job(self, job: _CardJob) -> _CardPixels:
+        """Render through the injected catalog in test and desktop processes."""
+        return _render_catalog_job(self._catalog, job)
 
 
 def _same_request(left: _CardRequest, right: _CardRequest) -> bool:
@@ -201,6 +245,33 @@ def _matches(request: _CardRequest, surface: _CardSurface) -> bool:
         and request.mode == surface.mode
         and request.asset_generation == surface.asset_generation
     )
+
+
+_PROCESS_CATALOG: ContentRendererCatalog | None = None
+
+
+def _pin_worker_cpu(cpu: int | None) -> None:
+    """Move the separate card worker away from the display CPU when configured."""
+    if cpu is None or not hasattr(os, "sched_setaffinity"):
+        return
+    try:
+        os.sched_setaffinity(0, {cpu})
+    except OSError:
+        return
+
+
+def _render_process_job(job: _CardJob) -> _CardPixels:
+    """Render one card in the isolated process catalog."""
+    if _PROCESS_CATALOG is None:
+        raise RuntimeError("The card renderer process has no catalog.")
+    return _render_catalog_job(_PROCESS_CATALOG, job)
+
+
+def _render_catalog_job(catalog: ContentRendererCatalog, job: _CardJob) -> _CardPixels:
+    """Render one serializable scene and return only pixel data."""
+    rendered = catalog.render(job.context, ContentScene(job.scene, job.mode))
+    image = rendered.image.convert("RGBA")
+    return _CardPixels(image.width, image.height, image.tobytes())
 
 
 def _plain_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
