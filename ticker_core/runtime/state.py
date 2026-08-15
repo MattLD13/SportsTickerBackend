@@ -350,10 +350,18 @@ class TickerRuntime:
             pinned_content_id=str(_value(settings, "pinned_content_id", "")),
         )
         self._classification = classification
-        if previous_mode != self._mode or previous_classification.static != classification.static:
+        preserve_pinned_animation = (
+            previous_mode == self._mode
+            and _same_pinned_content(previous_classification.static, classification.static)
+        )
+        if previous_mode != self._mode or (
+            previous_classification.static != classification.static and not preserve_pinned_animation
+        ):
             self._active_static = None
             self._static_until = 0.0
             self._static_index = 0
+        elif preserve_pinned_animation and self._active_static is not None:
+            self._active_static = classification.static[0]
         if previous_mode != self._mode or (not classification.scrolling and self._strip is not None):
             self._clear_strip()
         if not stale:
@@ -371,6 +379,9 @@ class TickerRuntime:
         if self._snapshot is None or strip_key not in {self._snapshot.strip_key, self._snapshot.key}:
             return False
         previous = self._strip
+        if previous is None and strip is None:
+            self._strip_key = None
+            return True
         previous_offset = self._strip_offset
         self._strip = strip
         self._strip_key = self._snapshot.strip_key if strip else None
@@ -621,6 +632,20 @@ def _pinned_sports(item: Content) -> Content:
 def _is_pinned_content(item: Content) -> bool:
     """Return if one static scene owns its display until its payload changes."""
     return str(item.data.get("sports_presentation", "")).strip().lower() == "pinned"
+
+
+def _same_pinned_content(previous: tuple[Content, ...], current: tuple[Content, ...]) -> bool:
+    """Return if one pinned scene remains selected across a payload refresh."""
+    if len(previous) != 1 or len(current) != 1:
+        return False
+    old_item, new_item = previous[0], current[0]
+    return (
+        _is_pinned_content(old_item)
+        and _is_pinned_content(new_item)
+        and old_item.id == new_item.id
+        and old_item.type == new_item.type
+        and old_item.sport == new_item.sport
+    )
 
 
 def _is_clock(item: Content) -> bool:

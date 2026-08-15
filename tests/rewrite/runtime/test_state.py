@@ -6,13 +6,13 @@ from ticker_core.protocol import TickerResponse
 from ticker_core.runtime import FrameKind, RuntimeConfig, StripLayout, StripSegment, TickerRuntime, classify_content
 
 
-def _response(*, mode: str = "sports", presentation: str = "rotation") -> TickerResponse:
+def _response(*, mode: str = "sports", presentation: str = "rotation", state: str = "in") -> TickerResponse:
     return TickerResponse.from_payload(
         {
             "api_version": "v2",
             "snapshot": {"ticker_id": "ticker-1", "revision": 1, "observed_at": "2026-08-11T00:00:00+00:00", "stale": False},
             "settings": {"mode": mode, "sports_presentation": presentation, "pinned_content_id": "game", "brightness": 75, "scroll_speed": 0.04, "inverted": True},
-            "content": {"sports": [{"id": "game", "family": "sports", "kind": "scoreboard", "is_shown": True, "data": {"sport": "nfl", "state": "in"}}]},
+            "content": {"sports": [{"id": "game", "family": "sports", "kind": "scoreboard", "is_shown": True, "data": {"sport": "nfl", "state": state}}]},
             "events": {"alerts": [], "news": []}, "health": {"provider": "refresh", "healthy": True, "error": None},
             "meta": {"pairing": {"paired": True, "code": None}},
         }
@@ -60,6 +60,22 @@ def test_sports_pinned_is_a_presentation_not_a_second_mode() -> None:
     frame = runtime.next_frame()
     assert frame.kind is FrameKind.STATIC
     assert frame.content_elapsed == 100.0
+
+
+def test_pinned_animation_survives_payload_refresh_and_empty_strip_install() -> None:
+    clock = [0.0]
+    runtime = _runtime(clock)
+    runtime.accept_response(_response(presentation="pinned"))
+    assert runtime.next_frame().content_elapsed == 0.0
+
+    clock[0] = 12.0
+    second = runtime.accept_response(_response(presentation="pinned", state="post"))
+    assert runtime.install_strip(second.strip_key, None) is True
+    frame = runtime.next_frame()
+
+    assert frame.kind is FrameKind.STATIC
+    assert frame.content_elapsed == 12.0
+    assert frame.content is not None and frame.content.data["state"] == "post"
 
 
 def test_flights_and_airports_have_separate_content_classes() -> None:
