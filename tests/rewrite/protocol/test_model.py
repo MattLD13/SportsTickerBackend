@@ -1,6 +1,7 @@
 """Validate the version two display payload boundary."""
 
 from datetime import datetime, timezone
+import pickle
 
 import pytest
 
@@ -51,3 +52,11 @@ def test_snapshot_observation_does_not_restart_the_display_pipeline() -> None:
     after["snapshot"]["revision"] = 2
 
     assert TickerResponse.from_payload(before).payload_key == TickerResponse.from_payload(after).payload_key
+
+
+def test_response_can_cross_the_poll_process_without_mapping_proxy_errors() -> None:
+    response = TickerResponse.from_payload(_payload())
+    restored = pickle.loads(pickle.dumps(response))
+
+    assert restored.payload_key == response.payload_key
+    assert restored.content[0].data == response.content[0].data

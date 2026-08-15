@@ -449,14 +449,14 @@ def _run_poll_process(poller: PollWorker, stop, events, cpu: int | None) -> None
 
 
 class _ProcessPollEvents:
-    """Send only serializable polling state across the process boundary."""
+    """Send polling state across the process boundary."""
 
     def __init__(self, target) -> None:
         self._target = target
 
     def put(self, event: PollEvent) -> None:
         if isinstance(event, PollSucceeded):
-            self._target.put(PollSucceeded(event.payload.to_payload(), event.elapsed_ms, event.response_bytes))
+            self._target.put(PollSucceeded(event.payload, event.elapsed_ms, event.response_bytes))
             return
         if isinstance(event, PollFailed):
             self._target.put(PollFailed(RuntimeError(str(event.error)), event.retry_in, event.elapsed_ms))

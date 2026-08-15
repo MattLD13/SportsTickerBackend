@@ -295,6 +295,10 @@ class TickerResponse:
         assert isinstance(value, dict)
         return value
 
+    def __reduce__(self):
+        """Keep process transfers serializable without reparsing twice."""
+        return type(self).from_payload, (self.to_payload(),)
+
     @classmethod
     def from_payload(cls, payload: Any) -> "TickerResponse":
         data = _mapping(payload, "response")
