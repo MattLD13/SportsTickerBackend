@@ -365,6 +365,9 @@ class TickerApplication:
         if revision != self._asset_revision:
             self._asset_revision = revision
             self._asset_dirty_at = monotonic()
+            invalidate = getattr(self._strips, "invalidate", None)
+            if callable(invalidate):
+                invalidate()
         if self._asset_dirty_at is not None and monotonic() - self._asset_dirty_at >= 0.15:
             self._rebuild_strip()
             self._asset_dirty_at = None

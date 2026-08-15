@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from collections import OrderedDict
 from dataclasses import dataclass
+import hashlib
+import json
+from threading import Lock
 from typing import Any
 
 from PIL import Image, ImageDraw
@@ -31,6 +35,9 @@ class StripRepository:
         self._payload_key: str | None = None
         self._mode: str | None = None
         self._image: Image.Image | None = None
+        self._card_cache: OrderedDict[str, Image.Image] = OrderedDict()
+        self._cache_lock = Lock()
+        self._cache_generation = 0
 
     def build(
         self,
@@ -54,8 +61,23 @@ class StripRepository:
         """Build a strip without changing the active display image."""
         cards: list[tuple[Content, Image.Image]] = []
         for item in tuple(items)[:60]:
-            rendered = self._catalog.render(context, ContentScene(_plain_mapping(item.data), mode))
-            cards.append((item, rendered.image.convert("RGBA")))
+            key = _card_key(item, mode)
+            with self._cache_lock:
+                card = self._card_cache.pop(key, None)
+                generation = self._cache_generation
+            if card is None:
+                rendered = self._catalog.render(context, ContentScene(_plain_mapping(item.data), mode))
+                card = rendered.image.convert("RGBA")
+                with self._cache_lock:
+                    if generation == self._cache_generation:
+                        self._card_cache[key] = card
+            else:
+                with self._cache_lock:
+                    self._card_cache[key] = card
+            cards.append((item, card))
+        with self._cache_lock:
+            while len(self._card_cache) > 256:
+                self._card_cache.popitem(last=False)
         if not cards:
             return PreparedStrip(payload_key, mode, None, None)
         segments = tuple(StripSegment(item.id, card.width + 1) for item, card in cards)
@@ -72,6 +94,12 @@ class StripRepository:
             x += card.width
             index += 1
         return PreparedStrip(payload_key, mode, StripLayout(width, segments), strip)
+
+    def invalidate(self) -> None:
+        """Discard cached cards after prepared assets change."""
+        with self._cache_lock:
+            self._cache_generation += 1
+            self._card_cache.clear()
 
     def install(self, prepared: PreparedStrip) -> None:
         """Make one fully rendered strip visible on the next frame."""
@@ -92,6 +120,19 @@ class StripRepository:
 def _plain_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
     """Copy frozen protocol data into renderer-friendly JSON values."""
     return {str(key): _plain(item) for key, item in value.items()}
+
+
+def _card_key(item: Content, mode: str) -> str:
+    """Build a stable key for one rendered card."""
+    value = {
+        "id": item.id,
+        "type": item.type,
+        "sport": item.sport,
+        "mode": mode,
+        "data": _plain_mapping(item.data),
+    }
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _plain(value: Any) -> Any:
