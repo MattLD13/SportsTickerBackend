@@ -51,8 +51,8 @@ def project_data_v2(
         "settings": _settings_value(snapshot.effective_settings),
         "content": content,
         "events": {
-            "alerts": _json_value(snapshot.alerts),
-            "news": _json_value(snapshot.news),
+            "alerts": _overlay_items(snapshot.alerts, "score_alert"),
+            "news": _overlay_items(snapshot.news, "news"),
         },
         "health": _health_value(health),
         "meta": copied_meta,
@@ -190,6 +190,27 @@ def _content_item(item: ContentItem) -> dict[str, Any]:
         "is_shown": item.is_shown,
         "data": _json_value(item.data),
     }
+
+
+def _overlay_items(items: tuple[object, ...], default_kind: str) -> list[dict[str, Any]]:
+    """Project provider overlays with the event envelope required by every V2 client."""
+
+    projected: list[dict[str, Any]] = []
+    for item in items:
+        value = _json_value(item)
+        if not isinstance(value, Mapping):
+            raise TypeError("snapshot overlays must contain mappings")
+        record = dict(value)
+        event_id = str(record.get("id") or "").strip()
+        if not event_id:
+            raise ValueError("snapshot overlays must contain an id")
+        kind = str(record.get("kind") or default_kind).strip().lower() or default_kind
+        projected.append({
+            "event_id": event_id,
+            "kind": kind,
+            "payload": record,
+        })
+    return projected
 
 
 def _health_value(health: ProviderHealth | Mapping[str, Any]) -> dict[str, Any]:
