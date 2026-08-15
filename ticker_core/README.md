@@ -16,6 +16,16 @@ Legacy modules remain output oracles during parity work. The new entry point wil
 | `platform` | Store device identity and run operating system commands. |
 | `drivers` | Present complete frames to hardware, memory, or the emulator. |
 
+## Performance history
+
+`platform.performance.TickerPiLogger` writes bounded JSONL history to `<TICKER_DATA_DIR>/logs/ticker-performance.jsonl`.
+
+The logger aggregates frame timing, frame intervals, render work, hardware presentation, percentiles, FPS, brightness, modes, overlays, stale state, inversion, panel size, backend poll timing, response size, and issues.
+
+The logger samples process CPU, RSS, load, and Pi temperature in its writer thread. The frame loop performs memory aggregation only, then writes one window record every ten seconds.
+
+The logger rotates five files at ten megabytes each. Read `window`, `poll`, `payload`, and `issue` records with any JSONL tool.
+
 ## User modes
 
 The application exposes seven modes: `sports`, `weather`, `music`, `flights`, `airports`, `stock`, and `clock`.

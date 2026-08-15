@@ -64,6 +64,7 @@ class BackendClient:
         self.verify_tls = verify_tls
         self.session = session or requests.Session()
         self._last_data_body: bytes | None = None
+        self.last_response_bytes: int | None = None
         self._last_data_response: TickerResponse | None = None
         self._settings_by_ticker: dict[str, dict[str, Any]] = {}
         if session is None:
@@ -86,6 +87,7 @@ class BackendClient:
             DATA_ENDPOINT_TEMPLATE.format(device_id=device_id),
         )
         body = response.content
+        self.last_response_bytes = len(body)
         if body and body == self._last_data_body and self._last_data_response is not None:
             return self._last_data_response
         payload = self._json_object(response, "GET /api/v2/tickers/<id>/data")

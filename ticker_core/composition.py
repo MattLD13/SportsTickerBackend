@@ -12,7 +12,7 @@ from ticker_core.app.poller import BackendPoller
 from ticker_core.assets import ShortTermContentCache
 from ticker_core.bootstrap import create_default_frame_builder
 from ticker_core.drivers import MemoryFrameSink, RgbMatrixFrameSink, TkFrameSink
-from ticker_core.platform import AssetCoordinator, DeviceIdentityStore, HealthCollector, OtaUpdaterService, SubprocessPlatformCommands
+from ticker_core.platform import AssetCoordinator, DeviceIdentityStore, HealthCollector, OtaUpdaterService, SubprocessPlatformCommands, TickerPiLogger
 from ticker_core.protocol import BackendClient
 from ticker_core.runtime import FramePacer, TickerRuntime
 
@@ -23,6 +23,7 @@ def create_application() -> TickerApplication:
     data_directory = Path(os.environ.get("TICKER_DATA_DIR", "~/ticker")).expanduser()
     device_id = load_device_id(data_directory)
     health = HealthCollector(repository)
+    logger = TickerPiLogger(data_directory / "logs", system_snapshot=health.snapshot)
     client = BackendClient(
         os.environ.get("TICKER_BACKEND_URL", "https://ticker.mattdicks.org"),
         timeout_seconds=float(os.environ.get("TICKER_BACKEND_TIMEOUT", "5")),
@@ -50,6 +51,7 @@ def create_application() -> TickerApplication:
         poll_in_process=_enabled("TICKER_POLL_PROCESS"),
         render_cpu=_cpu_setting("TICKER_RENDER_CPU"),
         poll_cpu=_cpu_setting("TICKER_POLL_CPU"),
+        logger=logger,
     )
 
 

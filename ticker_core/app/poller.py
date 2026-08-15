@@ -24,6 +24,8 @@ class PollSucceeded:
     """Deliver one parsed backend response to the main loop."""
 
     payload: DisplayPayload
+    elapsed_ms: float = 0.0
+    response_bytes: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,11 +34,15 @@ class PollFailed:
 
     error: Exception
     retry_in: float
+    elapsed_ms: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
 class PollConnected:
     """Confirm a successful poll whose display data is unchanged."""
+
+    elapsed_ms: float = 0.0
+    response_bytes: int | None = None
 
 
 PollEvent = PollSucceeded | PollFailed | PollConnected
@@ -73,6 +79,7 @@ class BackendPoller:
         next_poll = monotonic()
         next_heartbeat = next_poll
         while not stop.is_set():
+            request_started = monotonic()
             try:
                 payload = self._client.fetch_data(self._device_id)
                 now = monotonic()
@@ -80,17 +87,20 @@ class BackendPoller:
                     self._send_heartbeat()
                     next_heartbeat = now + self._heartbeat_interval
             except Exception as error:
+                elapsed_ms = (monotonic() - request_started) * 1000.0
                 backoff = backoff.after_failure()
-                events.put(PollFailed(error, backoff.delay_seconds))
+                events.put(PollFailed(error, backoff.delay_seconds, elapsed_ms))
                 if stop.wait(backoff.delay_seconds):
                     return
                 continue
             backoff = backoff.after_success()
             payload_key = getattr(payload, "payload_key", None)
+            elapsed_ms = (now - request_started) * 1000.0
+            response_bytes = getattr(self._client, "last_response_bytes", None)
             if payload_key is not None and payload_key == previous_key:
-                events.put(PollConnected())
+                events.put(PollConnected(elapsed_ms, response_bytes))
             else:
-                events.put(PollSucceeded(payload))
+                events.put(PollSucceeded(payload, elapsed_ms, response_bytes))
                 previous_key = payload_key
             next_poll += self._success_interval
             now = monotonic()

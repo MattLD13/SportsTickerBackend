@@ -77,6 +77,7 @@ class TickerApplication:
         poll_in_process: bool = False,
         render_cpu: int | None = None,
         poll_cpu: int | None = None,
+        logger: object | None = None,
     ) -> None:
         if not device_id.strip():
             raise ValueError("A device id is required.")
@@ -117,7 +118,7 @@ class TickerApplication:
         self._strip_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ticker-strip")
         self._strip_future: Future[object] | None = None
         self._pending_strip: tuple[str, tuple[object, ...], RenderContext, str] | None = None
-        self._timing = _FrameTiming(enabled=_enabled("TICKER_FRAME_TIMING_LOG"))
+        self._logger = logger or _NullPiLogger()
 
     @property
     def runtime(self) -> TickerRuntime:
@@ -134,6 +135,7 @@ class TickerApplication:
         if self._started:
             return
         self._started = True
+        self._logger.start()
         _pin_to_cpu(self._render_cpu)
         if self._poll_in_process:
             assert self._process_context is not None
@@ -176,10 +178,29 @@ class TickerApplication:
         self._install_completed_strip()
         self._push_requested_modes()
         decision = self._runtime.next_frame()
-        frame = self._frames.build(decision)
-        present_started_at = monotonic()
-        self._sink.present(frame, brightness=decision.brightness, inverted=decision.inverted)
-        self._timing.record(started_at, present_started_at, monotonic())
+        try:
+            frame = self._frames.build(decision)
+            present_started_at = monotonic()
+            self._sink.present(frame, brightness=decision.brightness, inverted=decision.inverted)
+            finished_at = monotonic()
+        except Exception as error:
+            self._logger.record_issue("frame", error, kind=str(decision.kind), mode=decision.mode)
+            raise
+        self._logger.record_frame(
+            started_at=started_at,
+            present_started_at=present_started_at,
+            finished_at=finished_at,
+            interval=decision.interval,
+            kind=decision.kind,
+            mode=decision.mode,
+            brightness=decision.brightness,
+            inverted=decision.inverted,
+            stale=decision.stale,
+            connection_lost=decision.connection_lost,
+            wall_time=decision.wall_time,
+            width=getattr(self._sink, "width", 0),
+            height=getattr(self._sink, "height", 0),
+        )
         self._last_decision = decision
         self._launch_requested_update()
         self._launch_requested_reboot()
@@ -193,14 +214,23 @@ class TickerApplication:
             except Empty:
                 return
             if isinstance(event, PollSucceeded):
+                self._logger.record_poll(success=True, elapsed_ms=event.elapsed_ms, response_bytes=event.response_bytes)
                 response = event.payload
                 if isinstance(response, Mapping):
                     response = TickerResponse.from_payload(response)
                 self._accept_fresh(response)
             elif isinstance(event, PollConnected):
+                self._logger.record_poll(success=True, elapsed_ms=event.elapsed_ms, response_bytes=event.response_bytes)
                 self._runtime.confirm_connection()
                 self._disconnected = False
             else:
+                self._logger.record_poll(
+                    success=False,
+                    elapsed_ms=event.elapsed_ms,
+                    error=event.error,
+                    retry_in=event.retry_in,
+                )
+                self._logger.record_issue("backend_poll", event.error, retry_in=event.retry_in)
                 self._handle_failure(event)
 
     def request_mode(self, mode: str) -> None:
@@ -222,6 +252,7 @@ class TickerApplication:
         close_sink = getattr(self._sink, "close", None)
         if callable(close_sink):
             close_sink()
+        self._logger.close()
         self._started = False
 
     def _restore_cached_content(self) -> None:
@@ -230,7 +261,8 @@ class TickerApplication:
             return
         try:
             response = TickerResponse.from_payload(entry.payload)
-        except Exception:
+        except Exception as error:
+            self._logger.record_issue("cache_restore", error)
             return
         self._assets.prefetch_payload(response)
         self._runtime.accept_cached_response(
@@ -252,6 +284,7 @@ class TickerApplication:
             self._disconnected = False
             return
         self._cache.store(response.data)
+        self._logger.record_payload(response)
         self._assets.prefetch_payload(response)
         current = self._runtime.accept_response(response)
         self._disconnected = False
@@ -312,7 +345,8 @@ class TickerApplication:
         self._strip_future = None
         try:
             prepared = future.result()
-        except Exception:
+        except Exception as error:
+            self._logger.record_issue("strip_prepare", error)
             self._start_pending_strip()
             return
         snapshot = self._runtime.snapshot
@@ -341,7 +375,8 @@ class TickerApplication:
         while request := self._runtime.take_mode_request():
             try:
                 self._client.push_setting(self._device_id, "mode", request.mode)
-            except Exception:
+            except Exception as error:
+                self._logger.record_issue("mode_push", error, mode=request.mode)
                 pass
 
     def _launch_requested_update(self) -> None:
@@ -355,7 +390,8 @@ class TickerApplication:
             return
         try:
             result = acknowledge(self._device_id, request.version)
-        except Exception:
+        except Exception as error:
+            self._logger.record_issue("update_ack", error, version=request.version)
             return
         if not bool(result.get("acknowledged")):
             return
@@ -376,7 +412,8 @@ class TickerApplication:
             return
         try:
             result = acknowledge(self._device_id, command_id)
-        except Exception:
+        except Exception as error:
+            self._logger.record_issue("reboot_ack", error, command_id=command_id)
             return
         if not bool(result.get("acknowledged")):
             return
@@ -413,10 +450,10 @@ class _ProcessPollEvents:
 
     def put(self, event: PollEvent) -> None:
         if isinstance(event, PollSucceeded):
-            self._target.put(PollSucceeded(event.payload.to_payload()))
+            self._target.put(PollSucceeded(event.payload.to_payload(), event.elapsed_ms, event.response_bytes))
             return
         if isinstance(event, PollFailed):
-            self._target.put(PollFailed(RuntimeError(str(event.error)), event.retry_in))
+            self._target.put(PollFailed(RuntimeError(str(event.error)), event.retry_in, event.elapsed_ms))
             return
         self._target.put(event)
 
@@ -432,51 +469,26 @@ def _pin_to_cpu(cpu: int | None) -> None:
         return
 
 
-class _FrameTiming:
-    """Report one low-cost live frame timing summary each second."""
+class _NullPiLogger:
+    """Keep custom and test compositions free from logging dependencies."""
 
-    def __init__(self, *, enabled: bool) -> None:
-        self._enabled = enabled
-        self._report_started_at: float | None = None
-        self._previous_started_at: float | None = None
-        self._frames = 0
-        self._max_interval_ms = 0.0
-        self._max_work_ms = 0.0
-        self._max_present_ms = 0.0
+    def start(self) -> None:
+        pass
 
-    def record(self, started_at: float, present_started_at: float, finished_at: float) -> None:
-        """Keep only maxima, then write one summary without frame log spam."""
-        if not self._enabled:
-            return
-        if self._report_started_at is None:
-            self._report_started_at = started_at
-        if self._previous_started_at is not None:
-            self._max_interval_ms = max(self._max_interval_ms, (started_at - self._previous_started_at) * 1000)
-        self._previous_started_at = started_at
-        self._frames += 1
-        self._max_work_ms = max(self._max_work_ms, (present_started_at - started_at) * 1000)
-        self._max_present_ms = max(self._max_present_ms, (finished_at - present_started_at) * 1000)
-        elapsed = finished_at - self._report_started_at
-        if elapsed < 1.0:
-            return
-        print(
-            "ticker-frame-timing "
-            f"fps={self._frames / elapsed:.1f} "
-            f"interval_max_ms={self._max_interval_ms:.1f} "
-            f"work_max_ms={self._max_work_ms:.1f} "
-            f"present_max_ms={self._max_present_ms:.1f}",
-            flush=True,
-        )
-        self._report_started_at = finished_at
-        self._frames = 0
-        self._max_interval_ms = 0.0
-        self._max_work_ms = 0.0
-        self._max_present_ms = 0.0
+    def close(self) -> None:
+        pass
 
+    def record_frame(self, **kwargs) -> None:
+        del kwargs
 
-def _enabled(name: str) -> bool:
-    """Read one common true environment setting."""
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+    def record_poll(self, **kwargs) -> None:
+        del kwargs
+
+    def record_payload(self, response) -> None:
+        del response
+
+    def record_issue(self, source, error, **details) -> None:
+        del source, error, details
 
 
 def _default_update_command(repository: Path) -> tuple[str, ...]:
