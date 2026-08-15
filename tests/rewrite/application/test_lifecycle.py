@@ -47,15 +47,24 @@ class Assets:
         pass
 
 
-class Strips:
+class Viewport:
     """Avoid pixel work while testing lifecycle state."""
 
     def __init__(self) -> None:
-        self.builds = 0
+        self.updates = 0
 
-    def build(self, *args):
-        self.builds += 1
+    def update(self, *args):
+        self.updates += 1
         return None
+
+    def install_completed(self):
+        return None
+
+    def invalidate(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
 
 
 class Frames:
@@ -116,7 +125,7 @@ def test_fresh_content_keeps_connection_icon_until_cache_expiry(tmp_path) -> Non
         cache=ShortTermContentCache(tmp_path / "content.json", ttl=300, clock=lambda: clock[0]),
         assets=Assets(),
         runtime=runtime,
-        strips=Strips(),
+        viewport=Viewport(),
         frames=Frames(),
         pacer=FramePacer(lambda: clock[0]),
         sink=Sink(),
@@ -143,11 +152,11 @@ def test_fresh_content_keeps_connection_icon_until_cache_expiry(tmp_path) -> Non
         application.close()
 
 
-def test_same_poll_payload_does_not_rebuild_the_scroll_strip(tmp_path) -> None:
+def test_same_poll_payload_does_not_update_scroll_cards(tmp_path) -> None:
     """Keep frame work outside unchanged backend polls."""
     wall = datetime(2026, 8, 11, tzinfo=timezone.utc)
     runtime = TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: wall)
-    strips = Strips()
+    viewport = Viewport()
     assets = Assets()
     application = TickerApplication(
         client=Client(),
@@ -155,7 +164,7 @@ def test_same_poll_payload_does_not_rebuild_the_scroll_strip(tmp_path) -> None:
         cache=ShortTermContentCache(tmp_path / "content.json"),
         assets=assets,
         runtime=runtime,
-        strips=strips,
+        viewport=viewport,
         frames=Frames(),
         pacer=FramePacer(lambda: 0.0),
         sink=Sink(),
@@ -172,7 +181,7 @@ def test_same_poll_payload_does_not_rebuild_the_scroll_strip(tmp_path) -> None:
         application._events.put(PollSucceeded(response))
         application.step()
 
-        assert strips.builds == 1
+        assert viewport.updates == 1
         assert assets.payloads == [response]
     finally:
         application.close()

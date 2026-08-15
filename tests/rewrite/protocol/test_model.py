@@ -5,7 +5,7 @@ import pickle
 
 import pytest
 
-from ticker_core.protocol import DeviceState, PayloadValidationError, TickerResponse, canonical_payload_hash
+from ticker_core.protocol import DeviceState, PayloadValidationError, TickerResponse, apply_display_delta, canonical_payload_hash, display_delta
 
 
 def _payload(mode: str = "sports") -> dict:
@@ -60,3 +60,17 @@ def test_response_can_cross_the_poll_process_without_mapping_proxy_errors() -> N
 
     assert restored.payload_key == response.payload_key
     assert restored.content[0].data == response.content[0].data
+
+
+def test_display_delta_replaces_only_changed_renderer_scene() -> None:
+    before = TickerResponse.from_payload(_payload())
+    after_payload = _payload()
+    after_payload["content"]["sports"][0]["data"]["state"] = "post"
+    after = TickerResponse.from_payload(after_payload)
+
+    delta = display_delta(before, after)
+    restored = apply_display_delta(before, delta)
+
+    assert len(delta.changed) == 1
+    assert restored.content[0].data["state"] == "post"
+    assert restored.payload_key == after.payload_key

@@ -13,13 +13,17 @@ from .client import (
 from .model import (
     Alert,
     ContentItem,
+    DisplayDelta,
+    DisplayItemDelta,
     DisplayPayload,
     DeviceState,
     NewsItem,
     PayloadValidationError,
     TickerSettings,
     TickerResponse,
+    apply_display_delta,
     canonical_payload_hash,
+    display_delta,
 )
 from .polling import PollBackoff
 from .telemetry import TelemetrySnapshot
@@ -32,6 +36,8 @@ __all__ = [
     "BackendPayloadError",
     "BackendTransportError",
     "ContentItem",
+    "DisplayDelta",
+    "DisplayItemDelta",
     "DisplayPayload",
     "DATA_ENDPOINT_TEMPLATE",
     "DeviceState",
@@ -42,5 +48,7 @@ __all__ = [
     "TelemetrySnapshot",
     "TICKER_ENDPOINT_TEMPLATE",
     "TickerResponse",
+    "apply_display_delta",
     "canonical_payload_hash",
+    "display_delta",
 ]

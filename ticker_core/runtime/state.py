@@ -79,36 +79,6 @@ def _fingerprint(response: object, content: tuple[Content, ...]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _strip_fingerprint(content: tuple[Content, ...], mode: str) -> str:
-    """Build one key for scrolling pixels, excluding alerts and settings."""
-    values = {
-        "mode": mode,
-        "content": [
-            {
-                "id": item.id,
-                "type": item.type,
-                "sport": item.sport,
-                "is_shown": item.is_shown,
-                "data": _plain_json(item.data),
-            }
-            for item in content
-        ],
-    }
-    encoded = json.dumps(values, sort_keys=True, separators=(",", ":"), default=str).encode()
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def _plain_json(value: object) -> object:
-    """Convert immutable protocol values into stable JSON values."""
-    if isinstance(value, Mapping):
-        return {str(key): _plain_json(child) for key, child in value.items()}
-    if isinstance(value, tuple):
-        return [_plain_json(child) for child in value]
-    if isinstance(value, list):
-        return [_plain_json(child) for child in value]
-    return value
-
-
 def classify_content(
     items: tuple[Content, ...] | tuple[object, ...],
     mode: str,
@@ -357,7 +327,7 @@ class TickerRuntime:
         scroll_interval = _interval(_value(settings, "scroll_speed", 0.05), 0.05)
         snapshot = PayloadSnapshot(
             key=_fingerprint(response, content),
-            strip_key=_strip_fingerprint(content, self._mode),
+            strip_key=_fingerprint(response, content),
             received_at=now,
             status=status,
             pairing_code=str(_value(response, "pairing_code", "------") or "------"),

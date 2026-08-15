@@ -39,10 +39,10 @@ class News:
         return Image.new("RGB", frame.size, (7, 8, 9))
 
 
-class Strips:
-    def get(self, payload_key, mode):
-        del payload_key, mode
-        return None
+class Viewport:
+    def frame(self, offset):
+        del offset
+        return Image.new("RGB", (384, 32))
 
 
 def decision(kind, **values):
@@ -52,7 +52,7 @@ def decision(kind, **values):
 def test_score_alert_uses_clean_base_and_outranks_news() -> None:
     alerts = Alerts()
     news = News()
-    builder = FrameBuilder(Catalog(), Utility(), alerts, news, Strips())
+    builder = FrameBuilder(Catalog(), Utility(), alerts, news, Viewport())
     content = Content("game", "game", "nba", {})
 
     builder.build(decision(FrameKind.STATIC, content=content, news={"id": "news"}))

@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from PIL import Image
 
 from .app.frame_builder import FrameBuilder
-from .app.strips import StripRepository
+from .app.viewport import CardViewport
 from .features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from .features.clock import ClockRenderer
 from .features.flight import FlightRenderer
@@ -67,19 +67,19 @@ def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
     return catalog
 
 
-def create_default_frame_builder(assets: object) -> tuple[FrameBuilder, StripRepository]:
-    """Create the complete frame builder and its strip repository."""
+def create_default_frame_builder(assets: object) -> tuple[FrameBuilder, CardViewport]:
+    """Create the complete frame builder and its card viewport."""
     fonts = load_default_font_set()
     logos = CachedLogoView(assets)
     catalog = create_default_content_catalog(assets)
-    strips = StripRepository(catalog)
+    viewport = CardViewport(catalog)
     return FrameBuilder(
         catalog,
         UtilityRenderer(fonts, logos),
         ScoreAlertRenderer(fonts, logos),
         NewsBannerRenderer(fonts),
-        strips,
-    ), strips
+        viewport,
+    ), viewport
 
 
 def create_default_scene_registry() -> SceneRegistry[Image.Image]:

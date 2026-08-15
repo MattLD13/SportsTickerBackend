@@ -380,7 +380,92 @@ class TickerResponse:
         )
 
 
-DisplayPayload = TickerResponse
+@dataclass(frozen=True, slots=True)
+class DisplayItemDelta:
+    """Carry one changed renderer scene across the poll process boundary."""
+
+    id: str
+    family: str
+    kind: str
+    is_shown: bool
+    data: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class DisplayDelta:
+    """Carry one compact update after the first complete display snapshot."""
+
+    status: str
+    ticker_id: str
+    pairing_code: str | None
+    settings: dict[str, Any]
+    order: tuple[str, ...]
+    changed: tuple[DisplayItemDelta, ...]
+    alerts: tuple[tuple[str, str, dict[str, Any]], ...]
+    news: tuple[tuple[str, str, dict[str, Any]], ...]
+    update_version: str | None
+    reboot_request_id: str | None
+    payload_key: str
+
+
+def display_delta(previous: TickerResponse, current: TickerResponse) -> DisplayDelta:
+    """Return only renderer scenes that changed since one valid response."""
+    before = {item.id: item for item in previous.content}
+    changed = tuple(
+        DisplayItemDelta(item.id, item.family, item.kind, item.is_shown, _thaw(item.data))
+        for item in current.content
+        if (prior := before.get(item.id)) is None
+        or prior.family != item.family
+        or prior.kind != item.kind
+        or prior.is_shown != item.is_shown
+        or prior.data != item.data
+    )
+    return DisplayDelta(
+        current.status.value,
+        current.ticker_id,
+        current.pairing_code,
+        _thaw(current.settings.data),
+        tuple(item.id for item in current.content),
+        changed,
+        tuple((item.id, item.kind, _thaw(item.data)) for item in current.alerts),
+        tuple((item.id, item.kind, _thaw(item.data)) for item in current.news),
+        current.update_version,
+        current.reboot_request_id,
+        current.payload_key,
+    )
+
+
+def apply_display_delta(previous: TickerResponse, delta: DisplayDelta) -> TickerResponse:
+    """Apply a poll-process delta without parsing the complete payload again."""
+    content_by_id = {item.id: item for item in previous.content}
+    for item in delta.changed:
+        content_by_id[item.id] = ContentItem(
+            item.id,
+            item.family,
+            item.kind,
+            item.is_shown,
+            _frozen_mapping(item.data),
+        )
+    content = tuple(content_by_id[item_id] for item_id in delta.order if item_id in content_by_id)
+    settings = TickerSettings.from_payload(delta.settings)
+    alerts = tuple(OverlayItem(identifier, kind, _frozen_mapping(data)) for identifier, kind, data in delta.alerts)
+    news = tuple(OverlayItem(identifier, kind, _frozen_mapping(data)) for identifier, kind, data in delta.news)
+    return TickerResponse(
+        DeviceState(delta.status),
+        delta.ticker_id,
+        delta.pairing_code,
+        settings,
+        content,
+        alerts,
+        news,
+        delta.update_version,
+        delta.reboot_request_id,
+        delta.payload_key,
+        previous.data,
+    )
+
+
+DisplayPayload = TickerResponse | DisplayDelta
 
 
 def _restore_pickled_response(serialized: tuple[Any, ...]) -> TickerResponse:

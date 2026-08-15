@@ -15,11 +15,11 @@ from ticker_core.rendering import ContentRendererCatalog, ContentScene
 from ticker_core.runtime import Content, FrameDecision, FrameKind
 
 
-class StripSource(Protocol):
-    """Provide the current seamless strip image."""
+class ViewportSource(Protocol):
+    """Provide a frame from the current card surfaces."""
 
-    def get(self, payload_key: str | None, mode: str) -> Image.Image | None:
-        """Return the strip for one payload key."""
+    def frame(self, offset: int, width: int = 384, height: int = 32) -> Image.Image:
+        """Return one scrolling viewport frame."""
 
 
 class FrameBuilder:
@@ -31,14 +31,14 @@ class FrameBuilder:
         utility: UtilityRenderer,
         score_alerts: ScoreAlertRenderer,
         news_banners: NewsBannerRenderer,
-        strips: StripSource,
+        viewport: ViewportSource,
         connection_status: ConnectionLostOverlay | None = None,
     ) -> None:
         self._catalog = catalog
         self._utility = utility
         self._score_alerts = score_alerts
         self._news_banners = news_banners
-        self._strips = strips
+        self._viewport = viewport
         self._connection_status = connection_status or ConnectionLostOverlay()
         self._last_base: Image.Image | None = None
 
@@ -97,13 +97,8 @@ class FrameBuilder:
         return rendered.image
 
     def _scroll_frame(self, decision: FrameDecision) -> Image.Image:
-        strip = self._strips.get(decision.payload_key, decision.mode)
-        if strip is None:
-            if self._last_base is not None:
-                return self._last_base.copy()
-            return self._utility.empty(RenderContext(decision.wall_time))
         offset = max(0, decision.scroll_offset or 0)
-        return strip.crop((offset, 0, offset + 384, 32))
+        return self._viewport.frame(offset)
 
 
 def _plain_mapping(value: Mapping[str, Any]) -> dict[str, Any]:

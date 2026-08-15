@@ -30,7 +30,7 @@ def create_application() -> TickerApplication:
         verify_tls=_enabled("TICKER_VERIFY_TLS", default=True),
     )
     assets = AssetCoordinator(data_directory / "assets")
-    frames, strips = create_default_frame_builder(assets)
+    frames, viewport = create_default_frame_builder(assets)
     runtime = TickerRuntime(monotonic=monotonic, wall_clock=datetime.now)
     commands = SubprocessPlatformCommands()
     return TickerApplication(
@@ -39,7 +39,7 @@ def create_application() -> TickerApplication:
         cache=ShortTermContentCache(data_directory / "content" / "last-good.json"),
         assets=assets,
         runtime=runtime,
-        strips=strips,
+        viewport=viewport,
         frames=frames,
         pacer=FramePacer(monotonic),
         sink=_create_sink(),

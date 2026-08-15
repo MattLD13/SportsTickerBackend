@@ -6,7 +6,6 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
-from concurrent.futures import Future, ThreadPoolExecutor
 from multiprocessing import get_context
 from threading import Event, Thread, current_thread
 from time import monotonic
@@ -19,12 +18,12 @@ from ticker_core.assets import ShortTermContentCache
 from ticker_core.context import RenderContext
 from ticker_core.drivers import FrameSink
 from ticker_core.platform import AssetCoordinator, OtaUpdaterService, PlatformCommands
-from ticker_core.protocol import BackendClient, TickerResponse
+from ticker_core.protocol import BackendClient, DisplayDelta, TickerResponse, apply_display_delta
 from ticker_core.runtime import FrameDecision, FramePacer, TickerRuntime
 
 from .frame_builder import FrameBuilder
 from .poller import BackendPoller, PollConnected, PollEvent, PollFailed, PollSucceeded
-from .strips import StripRepository
+from .viewport import CardViewport
 
 
 class PollWorker(Protocol):
@@ -64,7 +63,7 @@ class TickerApplication:
         cache: ContentCache,
         assets: AssetCoordinator,
         runtime: TickerRuntime,
-        strips: StripRepository,
+        viewport: CardViewport,
         frames: FrameBuilder,
         pacer: FramePacer,
         sink: FrameSink,
@@ -86,7 +85,7 @@ class TickerApplication:
         self._cache = cache
         self._assets = assets
         self._runtime = runtime
-        self._strips = strips
+        self._viewport = viewport
         self._frames = frames
         self._pacer = pacer
         self._sink = sink
@@ -114,10 +113,7 @@ class TickerApplication:
         self._pending_reboot_id: str | None = None
         self._update_latched = False
         self._asset_revision = self._asset_revision_now()
-        self._asset_dirty_at: float | None = None
-        self._strip_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ticker-strip")
-        self._strip_future: Future[object] | None = None
-        self._pending_strip: tuple[str, tuple[object, ...], RenderContext, str] | None = None
+        self._last_response: TickerResponse | None = None
         self._logger = logger or _NullPiLogger()
 
     @property
@@ -173,9 +169,9 @@ class TickerApplication:
         if not self._started:
             self.start()
         self.process_events()
-        self._install_completed_strip()
-        self._rebuild_strip_after_asset_change()
-        self._install_completed_strip()
+        self._install_completed_cards()
+        self._refresh_cards_after_asset_change()
+        self._install_completed_cards()
         self._push_requested_modes()
         decision = self._runtime.next_frame()
         try:
@@ -218,7 +214,13 @@ class TickerApplication:
                 response = event.payload
                 if isinstance(response, Mapping):
                     response = TickerResponse.from_payload(response)
-                self._accept_fresh(response)
+                if isinstance(response, DisplayDelta):
+                    if self._last_response is None:
+                        self._logger.record_issue("poll_delta", RuntimeError("Received a delta before a display snapshot."))
+                        continue
+                    self._accept_fresh(apply_display_delta(self._last_response, response), persist=False)
+                else:
+                    self._accept_fresh(response)
             elif isinstance(event, PollConnected):
                 self._logger.record_poll(success=True, elapsed_ms=event.elapsed_ms, response_bytes=event.response_bytes)
                 self._runtime.confirm_connection()
@@ -249,7 +251,7 @@ class TickerApplication:
         if callable(close_cache):
             close_cache()
         self._assets.close()
-        self._strip_worker.shutdown(wait=True, cancel_futures=True)
+        self._viewport.close()
         self._client.close()
         self._sink.clear()
         close_sink = getattr(self._sink, "close", None)
@@ -274,9 +276,10 @@ class TickerApplication:
             expires_in=self._cache.remaining(entry),
         )
         self._disconnected = True
-        self._rebuild_strip()
+        self._last_response = response
+        self._refresh_viewport()
 
-    def _accept_fresh(self, response: TickerResponse) -> None:
+    def _accept_fresh(self, response: TickerResponse, *, persist: bool = True) -> None:
         """Persist, prefetch, accept, and render one validated backend response."""
         previous = self._runtime.snapshot
         if previous is not None and previous.key == response.payload_key:
@@ -286,14 +289,16 @@ class TickerApplication:
             self._runtime.confirm_connection()
             self._disconnected = False
             return
-        self._cache.store(response.data)
+        if persist:
+            self._cache.store(response.data)
         self._logger.record_payload(response)
         self._assets.prefetch_payload(response)
         current = self._runtime.accept_response(response)
         self._disconnected = False
         self._pending_reboot_id = response.reboot_request_id
-        if _strip_changed(previous, current):
-            self._rebuild_strip()
+        self._last_response = response
+        del previous
+        self._refresh_viewport(current)
 
     def _handle_failure(self, event: PollFailed) -> None:
         """Keep content during one outage and go offline after cache expiry."""
@@ -308,69 +313,31 @@ class TickerApplication:
         expires_in = self._cache.remaining(entry) if entry is not None else 0.0
         self._runtime.mark_disconnected(expires_in=expires_in)
 
-    def _rebuild_strip(self) -> None:
-        """Queue one replacement strip without delaying the next frame."""
-        snapshot = self._runtime.snapshot
-        if snapshot is None:
+    def _refresh_viewport(self, snapshot=None) -> None:
+        """Queue changed card scenes without composing a long strip image."""
+        current = snapshot or self._runtime.snapshot
+        if current is None:
             return
-        request = (
-            snapshot.strip_key,
-            tuple(self._runtime.classification.scrolling),
+        layout = self._viewport.update(
+            self._runtime.classification.scrolling,
             RenderContext(self._wall_clock()),
             self._runtime.mode,
         )
-        prepare = getattr(self._strips, "prepare", None)
-        install = getattr(self._strips, "install", None)
-        if not callable(prepare) or not callable(install):
-            layout = self._strips.build(*request)
-            self._runtime.install_strip(snapshot.strip_key, layout)
-            self._asset_revision = self._asset_revision_now()
-            return
-        self._pending_strip = request
-        self._start_pending_strip()
+        self._runtime.install_strip(current.strip_key, layout)
 
-    def _start_pending_strip(self) -> None:
-        """Start the newest queued strip after the active build finishes."""
-        if self._strip_future is not None and not self._strip_future.done():
-            return
-        if self._pending_strip is None:
-            return
-        request = self._pending_strip
-        self._pending_strip = None
-        prepare = getattr(self._strips, "prepare")
-        self._strip_future = self._strip_worker.submit(prepare, *request)
-
-    def _install_completed_strip(self) -> None:
-        """Swap a completed strip only when it still matches current content."""
-        future = self._strip_future
-        if future is None or not future.done():
-            return
-        self._strip_future = None
-        try:
-            prepared = future.result()
-        except Exception as error:
-            self._logger.record_issue("strip_prepare", error)
-            self._start_pending_strip()
-            return
+    def _install_completed_cards(self) -> None:
+        """Commit one rendered card at a frame boundary."""
+        layout = self._viewport.install_completed()
         snapshot = self._runtime.snapshot
-        if snapshot is not None and getattr(prepared, "key", None) == snapshot.strip_key:
-            install = getattr(self._strips, "install")
-            install(prepared)
-            self._runtime.install_strip(snapshot.strip_key, getattr(prepared, "layout", None))
-        self._start_pending_strip()
+        if layout is not None and snapshot is not None:
+            self._runtime.install_strip(snapshot.strip_key, layout)
 
-    def _rebuild_strip_after_asset_change(self) -> None:
-        """Refresh scrolling cards after background asset work changes images."""
+    def _refresh_cards_after_asset_change(self) -> None:
+        """Queue replacement cards when prepared assets become available."""
         revision = self._asset_revision_now()
         if revision != self._asset_revision:
             self._asset_revision = revision
-            self._asset_dirty_at = monotonic()
-            invalidate = getattr(self._strips, "invalidate", None)
-            if callable(invalidate):
-                invalidate()
-        if self._asset_dirty_at is not None and monotonic() - self._asset_dirty_at >= 0.15:
-            self._rebuild_strip()
-            self._asset_dirty_at = None
+            self._viewport.invalidate()
 
     def _asset_revision_now(self) -> int | None:
         """Read the optional prepared-image revision without I/O."""
@@ -426,14 +393,6 @@ class TickerApplication:
         self._reboot_latched = True
         self._commands.reboot()
 
-
-
-def _strip_changed(previous, current) -> bool:
-    """Return if scrolling pixels or the selected renderer can change."""
-
-    if previous is None:
-        return True
-    return previous.mode != current.mode or previous.strip_key != current.strip_key
 
 
 def _run_poll_process(poller: PollWorker, stop, events, cpu: int | None) -> None:

@@ -9,7 +9,7 @@ from threading import Event
 from time import monotonic
 from typing import Any, Protocol
 
-from ticker_core.protocol import BackendClient, DisplayPayload, PollBackoff
+from ticker_core.protocol import BackendClient, DisplayPayload, PollBackoff, display_delta
 
 
 class Waiter(Protocol):
@@ -76,6 +76,7 @@ class BackendPoller:
         """Poll until the stop event interrupts a delay."""
         backoff = PollBackoff()
         previous_key: str | None = None
+        previous_payload: DisplayPayload | None = None
         next_poll = monotonic()
         next_heartbeat = next_poll
         while not stop.is_set():
@@ -100,8 +101,10 @@ class BackendPoller:
             if payload_key is not None and payload_key == previous_key:
                 events.put(PollConnected(elapsed_ms, response_bytes))
             else:
-                events.put(PollSucceeded(payload, elapsed_ms, response_bytes))
+                event_payload = payload if previous_payload is None else display_delta(previous_payload, payload)
+                events.put(PollSucceeded(event_payload, elapsed_ms, response_bytes))
                 previous_key = payload_key
+                previous_payload = payload
             next_poll += self._success_interval
             now = monotonic()
             if next_poll <= now:
