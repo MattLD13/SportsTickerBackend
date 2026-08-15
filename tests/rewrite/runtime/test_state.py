@@ -56,6 +56,11 @@ def test_sports_pinned_is_a_presentation_not_a_second_mode() -> None:
     clock[0] = 2.5
     assert runtime.next_frame().content_elapsed == 2.5
 
+    clock[0] = 100.0
+    frame = runtime.next_frame()
+    assert frame.kind is FrameKind.STATIC
+    assert frame.content_elapsed == 100.0
+
 
 def test_flights_and_airports_have_separate_content_classes() -> None:
     visitor = {"id": "visitor", "type": "flight_visitor", "sport": "flight"}

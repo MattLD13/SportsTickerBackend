@@ -480,7 +480,10 @@ class TickerRuntime:
         self._static_index = (self._static_index + 1) % len(items)
         self._active_static = item
         self._static_started_at = now
-        hold = 2.0 if item.type.lower() == "music" else self.config.static_hold
+        if _is_pinned_content(item):
+            hold = float("inf")
+        else:
+            hold = 2.0 if item.type.lower() == "music" else self.config.static_hold
         self._static_until = now + hold
         return item
 
@@ -613,6 +616,11 @@ def _pinned_sports(item: Content) -> Content:
     data = dict(item.data)
     data["sports_presentation"] = "pinned"
     return Content(item.id, item.type, item.sport, frozen_mapping(data), item.is_shown)
+
+
+def _is_pinned_content(item: Content) -> bool:
+    """Return if one static scene owns its display until its payload changes."""
+    return str(item.data.get("sports_presentation", "")).strip().lower() == "pinned"
 
 
 def _is_clock(item: Content) -> bool:
