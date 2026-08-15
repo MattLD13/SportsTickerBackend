@@ -50,7 +50,11 @@ def test_rebuild_reuses_unchanged_cards() -> None:
         old[1],
     )
 
-    strips.prepare("old", old, context, "sports")
-    strips.prepare("new", new, context, "sports")
+    original = strips.prepare("old", old, context, "sports")
+    strips.install(original)
+    rebuilt = strips.prepare("new", new, context, "sports")
 
     assert catalog.calls == 3
+    assert rebuilt.layout is not None
+    assert original.layout is not None
+    assert rebuilt.layout.width == original.layout.width
