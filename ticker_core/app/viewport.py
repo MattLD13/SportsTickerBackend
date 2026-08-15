@@ -6,8 +6,6 @@ from collections import OrderedDict
 from collections.abc import Iterable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-import hashlib
-import json
 from threading import Lock
 from typing import Any
 
@@ -24,8 +22,8 @@ class _CardRequest:
 
     item: Content
     mode: str
-    key: str
     context: RenderContext
+    asset_generation: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,8 +31,10 @@ class _CardSurface:
     """Hold one completed card image and its render revision."""
 
     item_id: str
-    key: str
     image: Image.Image
+    scene: Mapping[str, Any]
+    mode: str
+    asset_generation: int
 
 
 class CardViewport:
@@ -63,7 +63,7 @@ class CardViewport:
         """Queue only cards whose full renderer scene changed."""
         content = tuple(items)[:60]
         requests = tuple(
-            _CardRequest(item, mode, _card_key(item, mode, self._asset_generation), context)
+            _CardRequest(item, mode, context, self._asset_generation)
             for item in content
         )
         with self._lock:
@@ -73,9 +73,9 @@ class CardViewport:
             for request in requests:
                 current = self._surfaces.get(request.item.id)
                 active = self._active_request
-                if current is not None and current.key == request.key:
+                if current is not None and _matches(request, current):
                     continue
-                if active is not None and active.item.id == request.item.id and active.key == request.key:
+                if active is not None and _same_request(active, request):
                     continue
                 self._pending[request.item.id] = request
             self._layout = self._layout_now()
@@ -97,7 +97,7 @@ class CardViewport:
             surface = None
         with self._lock:
             desired = self._desired.get(request.item.id)
-            if surface is not None and desired is not None and desired.key == surface.key:
+            if surface is not None and desired is not None and _matches(desired, surface):
                 self._surfaces[surface.item_id] = surface
             before = self._layout
             self._layout = self._layout_now()
@@ -112,8 +112,8 @@ class CardViewport:
                 refreshed = _CardRequest(
                     request.item,
                     request.mode,
-                    _card_key(request.item, request.mode, self._asset_generation),
                     request.context,
+                    self._asset_generation,
                 )
                 self._desired[refreshed.item.id] = refreshed
                 self._pending[refreshed.item.id] = refreshed
@@ -157,7 +157,7 @@ class CardViewport:
         while self._pending:
             _, request = self._pending.popitem(last=False)
             desired = self._desired.get(request.item.id)
-            if desired is None or desired.key != request.key:
+            if desired is None or not _same_request(desired, request):
                 continue
             self._active_request = request
             self._future = self._worker.submit(self._render, request)
@@ -174,21 +174,33 @@ class CardViewport:
 
     def _render(self, request: _CardRequest) -> _CardSurface:
         rendered = self._catalog.render(request.context, ContentScene(_plain_mapping(request.item.data), request.mode))
-        return _CardSurface(request.item.id, request.key, rendered.image.convert("RGBA"))
+        return _CardSurface(
+            request.item.id,
+            rendered.image.convert("RGBA"),
+            request.item.data,
+            request.mode,
+            request.asset_generation,
+        )
 
 
-def _card_key(item: Content, mode: str, asset_generation: int) -> str:
-    """Hash every field that can alter one renderer result."""
-    value = {
-        "id": item.id,
-        "type": item.type,
-        "sport": item.sport,
-        "mode": mode,
-        "assets": asset_generation,
-        "data": _plain_mapping(item.data),
-    }
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+def _same_request(left: _CardRequest, right: _CardRequest) -> bool:
+    """Return if two worker requests use the same immutable scene."""
+    return (
+        left.item.id == right.item.id
+        and left.item.data is right.item.data
+        and left.mode == right.mode
+        and left.asset_generation == right.asset_generation
+    )
+
+
+def _matches(request: _CardRequest, surface: _CardSurface) -> bool:
+    """Return if one card surface matches a renderer scene exactly."""
+    return (
+        request.item.id == surface.item_id
+        and request.item.data is surface.scene
+        and request.mode == surface.mode
+        and request.asset_generation == surface.asset_generation
+    )
 
 
 def _plain_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
