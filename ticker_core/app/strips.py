@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from threading import Lock
+from time import sleep
 from typing import Any
 
 from PIL import Image, ImageDraw
@@ -93,6 +94,7 @@ class StripRepository:
             strip.paste(card, (x, 0), card)
             x += card.width
             index += 1
+            sleep(0)
         return PreparedStrip(payload_key, mode, StripLayout(width, segments), strip)
 
     def invalidate(self) -> None:
