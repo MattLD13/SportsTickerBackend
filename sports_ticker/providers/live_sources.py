@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import re
 import json
-import hashlib
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from math import isfinite
@@ -402,88 +401,12 @@ class FlightRadarSource:
         }
 
 
-class EspnNewsSource:
-    """Read recent ESPN team headlines for the V1 half-panel overlay."""
-
-    def __init__(
-        self,
-        news_urls: Mapping[str, str],
-        client: JsonHttpClient | None = None,
-        *,
-        timeout: float = 10.0,
-    ) -> None:
-        self._news_urls = dict(news_urls)
-        self._client = client or UrllibJsonHttpClient()
-        self._timeout = _timeout(timeout)
+class EmptyNewsSource:
+    """Keep durable v2 overlay events separate from provider content."""
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
-        """Return only headlines tied to teams selected on this ticker."""
-
-        if settings.mode != "sports" or not settings.my_teams:
-            return {"news": []}
-        followed = {str(value).strip().lower() for value in settings.my_teams}
-        records: list[dict[str, object]] = []
-        for league, url in self._news_urls.items():
-            if not any(value.startswith(f"{league}:") for value in followed):
-                continue
-            try:
-                payload = self._client.get_json(url, timeout=self._timeout)
-            except Exception:
-                continue
-            articles = payload.get("articles", ()) if isinstance(payload, Mapping) else ()
-            if not isinstance(articles, Sequence) or isinstance(articles, (str, bytes)):
-                continue
-            for article in articles:
-                if not isinstance(article, Mapping):
-                    continue
-                headline = str(article.get("headline") or article.get("title") or "").strip()
-                if not headline:
-                    continue
-                teams = tuple(
-                    team
-                    for team in _article_abbreviations(article)
-                    if f"{league}:{team.lower()}" in followed
-                )
-                if not teams:
-                    continue
-                article_id = str(article.get("id") or article.get("link") or headline)
-                identifier = hashlib.sha1(f"{league}:{article_id}".encode()).hexdigest()[:20]
-                records.append(
-                    {
-                        "id": identifier,
-                        "kind": "NEWS",
-                        "domain": "sports",
-                        "sport": league,
-                        "from_abbr": teams[0],
-                        "to_abbr": "",
-                        "from_color": "#8B93A3",
-                        "to_color": "#8B93A3",
-                        "text": headline,
-                        "teams": list(teams),
-                    }
-                )
-        return {"news": records[:24]}
-
-
-def _article_abbreviations(article: Mapping[str, object]) -> tuple[str, ...]:
-    """Collect explicit ESPN team abbreviations without guessing from prose."""
-
-    values: set[str] = set()
-
-    def visit(value: object) -> None:
-        if isinstance(value, Mapping):
-            for key, child in value.items():
-                if str(key).lower() in {"abbreviation", "abbrev", "shortname", "short_name"}:
-                    text = str(child or "").strip().upper()
-                    if 2 <= len(text) <= 4 and text.isalnum():
-                        values.add(text)
-                visit(child)
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            for child in value:
-                visit(child)
-
-    visit(article)
-    return tuple(sorted(values))
+        del settings
+        return {"news": []}
 
 
 class ClockProvider:
@@ -669,7 +592,7 @@ def _number(value: object) -> float:
 
 
 __all__ = [
-    "EspnNewsSource",
+    "EmptyNewsSource",
     "ClockProvider",
     "EspnGolfSource",
     "EspnRacingSource",
