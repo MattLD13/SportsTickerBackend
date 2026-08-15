@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+from threading import Condition, Thread
 from time import time
 from typing import Any
 from uuid import uuid4
@@ -42,16 +43,20 @@ class ShortTermContentCache:
         self.ttl = ttl
         self._clock = clock
         self._memory: CachedContent | None = None
+        self._write_condition = Condition()
+        self._pending_write: CachedContent | None = None
+        self._write_active = False
+        self._write_stop = False
+        self._write_thread: Thread | None = None
 
     def store(self, payload: Mapping[str, Any]) -> CachedContent:
         """Replace cached content after a fresh parsed backend response."""
         saved_at = self._clock()
         frozen_payload = _thaw_mapping(payload)
         entry = CachedContent(frozen_payload, saved_at, saved_at + self.ttl)
-        # The Pi polls twice per second. Avoid a synchronous disk replace when
-        # the backend repeats the same payload, because it steals frame time.
+        # Keep disk work outside the frame loop because removable storage can stall.
         if self._memory is None or self._memory.payload != frozen_payload:
-            self._write(entry)
+            self._queue_write(entry)
         self._memory = entry
         return entry
 
@@ -81,6 +86,53 @@ class ShortTermContentCache:
     def age(self, entry: CachedContent) -> float:
         """Return staleness age for one cached entry."""
         return max(0.0, self._clock() - entry.saved_at)
+
+    def flush(self) -> None:
+        """Wait until queued cache persistence finishes."""
+        with self._write_condition:
+            while self._pending_write is not None or self._write_active:
+                self._write_condition.wait()
+
+    def close(self) -> None:
+        """Persist queued cache data and stop the cache writer."""
+        with self._write_condition:
+            thread = self._write_thread
+            if thread is None:
+                return
+            self._write_stop = True
+            self._write_condition.notify_all()
+        thread.join()
+        with self._write_condition:
+            self._write_thread = None
+            self._write_stop = False
+
+    def _queue_write(self, entry: CachedContent) -> None:
+        with self._write_condition:
+            self._pending_write = entry
+            if self._write_thread is None or not self._write_thread.is_alive():
+                self._write_stop = False
+                self._write_thread = Thread(target=self._write_loop, name="ticker-content-cache", daemon=True)
+                self._write_thread.start()
+            self._write_condition.notify_all()
+
+    def _write_loop(self) -> None:
+        while True:
+            with self._write_condition:
+                while self._pending_write is None and not self._write_stop:
+                    self._write_condition.wait()
+                if self._pending_write is None and self._write_stop:
+                    return
+                entry = self._pending_write
+                self._pending_write = None
+                self._write_active = True
+            try:
+                self._write(entry)
+            except Exception:
+                pass
+            finally:
+                with self._write_condition:
+                    self._write_active = False
+                    self._write_condition.notify_all()
 
     def _read(self) -> CachedContent | None:
         try:

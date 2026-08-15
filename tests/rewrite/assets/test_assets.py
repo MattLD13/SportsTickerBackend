@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from threading import Event, Thread
 
 from PIL import Image
 
@@ -49,6 +50,7 @@ def test_content_cache_recovers_then_expires_last_good_payload(tmp_path) -> None
     clock = [0.0]
     cache = ShortTermContentCache(tmp_path / "last-good.json", ttl=300, clock=lambda: clock[0])
     cache.store({"content": {"sports": [{"id": "game"}]}})
+    cache.flush()
     recovered = ShortTermContentCache(tmp_path / "last-good.json", ttl=300, clock=lambda: clock[0]).load()
 
     assert recovered is not None
@@ -65,12 +67,43 @@ def test_content_cache_keeps_repeated_payloads_in_memory(tmp_path) -> None:
     payload = {"content": {"sports": [{"id": "game"}]}}
 
     cache.store(payload)
+    cache.flush()
     first_write = path.stat().st_mtime_ns
     clock[0] = 0.5
     cache.refresh()
 
     assert path.stat().st_mtime_ns == first_write
     assert cache.remaining(cache.load()) == 300
+
+
+def test_content_cache_store_does_not_wait_for_disk(tmp_path) -> None:
+    """Keep a blocked removable-storage write outside the display thread."""
+    started = Event()
+    release = Event()
+    cache = ShortTermContentCache(tmp_path / "last-good.json", ttl=300)
+    write = cache._write
+
+    def delayed_write(entry) -> None:
+        started.set()
+        assert release.wait(timeout=1)
+        write(entry)
+
+    cache._write = delayed_write
+    stored = Event()
+
+    def store() -> None:
+        cache.store({"content": {"sports": [{"id": "game"}]}})
+        stored.set()
+
+    worker = Thread(target=store)
+    worker.start()
+    assert stored.wait(timeout=1)
+    assert started.wait(timeout=1)
+    assert cache.load() is not None
+    release.set()
+    worker.join(timeout=1)
+    cache.flush()
+    cache.close()
 
 
 def test_planner_extracts_every_family_without_mode_filtering() -> None:

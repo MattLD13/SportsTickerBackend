@@ -245,6 +245,9 @@ class TickerApplication:
         if self._poll_thread is not None and self._poll_thread is not current_thread():
             self._poll_thread.join(timeout=6)
             self._poll_thread = None
+        close_cache = getattr(self._cache, "close", None)
+        if callable(close_cache):
+            close_cache()
         self._assets.close()
         self._strip_worker.shutdown(wait=True, cancel_futures=True)
         self._client.close()
