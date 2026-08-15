@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import hashlib
 import json
+from types import MappingProxyType
 from typing import Any, TypeVar
 
 from .model import (
@@ -55,7 +56,7 @@ def _content(source: object) -> Content:
         id=str(_value(source, "id", data.get("id", ""))),
         type=str(_value(source, "type", data.get("type", ""))),
         sport=str(_value(source, "sport", data.get("sport", ""))),
-        data=frozen_mapping(data),
+        data=data if isinstance(data, MappingProxyType) else frozen_mapping(data),
         is_shown=bool(_value(source, "is_shown", True)),
     )
 
