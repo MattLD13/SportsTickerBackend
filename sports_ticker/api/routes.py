@@ -104,6 +104,31 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
         ticker = application.create_ticker(**values)
         return jsonify(_ticker_value(ticker)), 201
 
+    @app.post("/api/v2/devices/register")
+    def register_device():
+        payload = _json_object()
+        _check_keys(payload, {"device_id", "name", "metadata"})
+        device_id = _ticker_id(payload.get("device_id", ""))
+        name = payload.get("name", "Ticker")
+        if not isinstance(name, str):
+            raise ApiError("name must be a string", 400, "invalid_request")
+        metadata = payload.get("metadata", {})
+        if not isinstance(metadata, Mapping):
+            raise ApiError("metadata must be an object", 400, "invalid_request")
+        ticker, pairing_code, created = application.register_device(
+            device_id,
+            name=name,
+            metadata=metadata,
+        )
+        return jsonify(
+            {
+                "ticker_id": ticker.ticker_id,
+                "paired": bool(ticker.pairing is not None and ticker.pairing.paired),
+                "pairing_code": pairing_code,
+                "ticker": _ticker_value(ticker),
+            }
+        ), 201 if created else 200
+
     @app.post("/api/v2/pairings/exchange")
     def exchange_pairing_code():
         payload = _json_object()

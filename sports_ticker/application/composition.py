@@ -79,6 +79,50 @@ class BackendApplication:
 
         return self.repository.get_ticker(ticker_id)
 
+    def register_device(
+        self,
+        device_id: str,
+        *,
+        name: str = "Ticker",
+        metadata: Mapping[str, Any] | None = None,
+    ) -> tuple[TickerRecord, str | None, bool]:
+        """Create or refresh one device-owned sports ticker and its pairing code."""
+
+        identifier = str(device_id).strip()
+        if not identifier:
+            raise ValueError("device_id must not be empty")
+        device_metadata = dict(metadata or {})
+        current = self.repository.get_ticker(identifier)
+        created = False
+        if current is None:
+            try:
+                current = self.create_ticker(
+                    identifier,
+                    name=str(name).strip() or "Ticker",
+                    display_settings={"mode": "sports"},
+                    pairing={"paired": False},
+                    device={"metadata": device_metadata},
+                )
+                created = True
+            except ValueError as error:
+                if str(error) != f"ticker already exists: {identifier}":
+                    raise
+                current = self.repository.get_ticker(identifier)
+        if current is None:
+            raise KeyError(identifier)
+
+        current = self.heartbeat(identifier, {"metadata": device_metadata})
+        pairing = current.pairing
+        pairing_code = None
+        if pairing is None or not pairing.paired:
+            pairing_code = pairing.pairing_code if pairing is not None else None
+            if not pairing_code:
+                pairing_code = self.issue_pairing_code(identifier)
+                current = self.repository.get_ticker(identifier)
+                if current is None:
+                    raise KeyError(identifier)
+        return current, pairing_code, created
+
     def exchange_pairing_code(self, pairing_code: str) -> tuple[TickerRecord, str]:
         """Consume one pairing code and return one opaque controller token once."""
 
