@@ -579,7 +579,8 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         !["stock", "weather", "clock", "music", "flights", "airports"].contains(state.mode)
     }
     var isSportsOnly: Bool {
-        guard let capabilities = devices.first?.capabilities else { return false }
+        guard let activeID = savedTickerID,
+              let capabilities = devices.first(where: { $0.id == activeID })?.capabilities else { return false }
         return capabilities == Set(["sports"])
     }
     
@@ -686,8 +687,9 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         return URL(string: "\(getBaseURL())/api/v2/tickers/\(identifier)\(suffix)")
     }
 
-    private func authorizedRequest(url: URL, method: String) -> URLRequest? {
-        guard let tickerID = savedTickerID, let token = controllerToken(for: tickerID) else { return nil }
+    private func authorizedRequest(url: URL, method: String, tickerID: String? = nil) -> URLRequest? {
+        let identifier = tickerID ?? savedTickerID
+        guard let identifier, let token = controllerToken(for: identifier) else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -1013,28 +1015,21 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                     // fetchData() would call updateOverallStatus() while
                     // isServerReachable is still false, showing "Server Offline".
                     self.isServerReachable = true
-                    guard let localTickerID = self.savedTickerID,
-                          self.controllerToken(for: localTickerID) != nil else {
-                        self.devices = []
-                        self.games = []
-                        self.updateOverallStatus()
-                        return
-                    }
+                    let authorizedTickers = decoded.tickers.filter { self.controllerToken(for: $0.ticker_id) != nil }
                     self.devices = decoded.tickers
-                        .filter { $0.ticker_id == localTickerID }
+                        .filter { self.controllerToken(for: $0.ticker_id) != nil }
                         .map(\.tickerDevice)
+                    if let activeID = self.savedTickerID,
+                       !authorizedTickers.contains(where: { $0.ticker_id == activeID }) {
+                        self.savedTickerID = authorizedTickers.first?.ticker_id
+                    }
+                    if authorizedTickers.isEmpty {
+                        self.games = []
+                    }
                     if self.isSportsOnly && self.state.mode != "sports" {
                         self.state.mode = "sports"
                         self.saveSettings()
                     }
-                    // === FIX: AUTO-LOGOUT LOGIC ===
-                    // If the server says we have NO paired devices, we must forget the saved ID.
-                    if self.devices.isEmpty {
-                        self.removeControllerToken(for: localTickerID)
-                        self.games = []
-                        self.savedTickerID = nil
-                    }
-                    // ==============================
                     self.updateOverallStatus()
                 }
             }
@@ -1137,11 +1132,22 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     
     func unpairTicker(id: String) {
         guard let url = tickerURL(id, suffix: "/pairing"),
-              let request = authorizedRequest(url: url, method: "DELETE") else { return }
-        URLSession.shared.dataTask(with: request) { data, response, _ in
-            guard (response as? HTTPURLResponse)?.statusCode == 200,
+              let request = authorizedRequest(url: url, method: "DELETE", tickerID: id) else {
+            self.connectionStatus = "Unpair failed: ticker authorization is missing"
+            self.statusColor = .red
+            return
+        }
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            guard error == nil,
+                  let status = (response as? HTTPURLResponse)?.statusCode,
+                  status == 200,
                   let data,
                   let pairing = try? JSONDecoder().decode(PairingCodeResponse.self, from: data) else {
+                let status = (response as? HTTPURLResponse)?.statusCode
+                DispatchQueue.main.async {
+                    self.connectionStatus = "Unpair failed\(status.map { \" (HTTP \($0))\" } ?? \"\")"
+                    self.statusColor = .red
+                }
                 return
             }
             DispatchQueue.main.async {
@@ -1149,10 +1155,12 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 self.games.removeAll()
                 self.removeControllerToken(for: id)
                 if self.savedTickerID == id {
-                    self.savedTickerID = nil
+                    self.savedTickerID = self.devices.first?.id
                 }
                 self.connectionStatus = "Ticker unpaired. Code: \(pairing.pairing_code)"
                 self.statusColor = .orange
+                self.fetchDevices()
+                self.fetchData()
             }
         }.resume()
     }
@@ -1344,7 +1352,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
 
     func showPairCode(for tickerID: String) {
         guard let url = tickerURL(tickerID, suffix: "/pairing-code"),
-              let request = authorizedRequest(url: url, method: "POST") else { return }
+              let request = authorizedRequest(url: url, method: "POST", tickerID: tickerID) else { return }
         URLSession.shared.dataTask(with: request) { data, response, _ in
             DispatchQueue.main.async {
                 if (response as? HTTPURLResponse)?.statusCode == 201,
