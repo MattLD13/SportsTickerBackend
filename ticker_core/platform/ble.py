@@ -267,7 +267,7 @@ class _BleCharacteristic(_ServiceInterface):
         return self._state.result
 
     @_method()
-    def WriteValue(self, value: "ay", _options: "a{sv}") -> None:
+    def WriteValue(self, value: "ay", _options: "a{sv}") -> "":
         if self._kind == "credentials":
             self._state.write(bytes(value))
 
@@ -289,5 +289,5 @@ class _BleAdvertisement(_ServiceInterface):
         return BLE_LOCAL_NAME
 
     @_method()
-    def Release(self) -> None:
+    def Release(self) -> "":
         return None
