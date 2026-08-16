@@ -46,7 +46,7 @@ class SubprocessPlatformCommands:
         *,
         run: Callable[..., Any] = subprocess.run,
         spawn: Callable[..., Any] = subprocess.Popen,
-        reboot_command: Sequence[str] = ("reboot",),
+        reboot_command: Sequence[str] = ("systemctl", "reboot"),
     ) -> None:
         self._run = run
         self._spawn = spawn
@@ -78,6 +78,7 @@ class SubprocessPlatformCommands:
         self._run(
             ["nmcli", "dev", "wifi", "connect", ssid, "password", password, "ifname", interface],
             check=True,
+            timeout=30,
         )
 
     def start_hotspot(self, ssid: str, password: str, *, interface: str = "wlan0") -> None:
