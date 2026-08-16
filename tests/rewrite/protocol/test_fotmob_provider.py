@@ -3,6 +3,7 @@
 from sports_ticker.providers.fotmob import (
     FotMobSoccerProvider,
     _content_item,
+    _match_state,
     _match_status,
     _needs_details,
     _situation,
@@ -18,6 +19,27 @@ def test_fotmob_live_clock_has_one_apostrophe_without_hidden_spacing() -> None:
     }
 
     assert _match_status(match, "in", "UTC") == "93'"
+
+
+def test_fotmob_reads_halftime_from_live_time_when_reason_is_empty() -> None:
+    match = {
+        "id": "5071271",
+        "status": {
+            "started": True,
+            "finished": False,
+            "cancelled": False,
+            "reason": {},
+            "liveTime": {"short": "HT", "long": "Half-Time"},
+        },
+        "home": {"id": "1", "longName": "Atlanta United", "score": 1},
+        "away": {"id": "2", "longName": "Charlotte FC", "score": 0},
+    }
+
+    item = _content_item("soccer_mls", match, None, timezone_name="UTC")
+
+    assert _match_state(match) == "half"
+    assert item.data["state"] == "half"
+    assert item.data["status"] == "Half"
 
 
 def test_fotmob_soccer_events_match_the_v1_renderer_contract() -> None:

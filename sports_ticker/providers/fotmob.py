@@ -298,14 +298,34 @@ def _content_item(
 
 def _match_state(match: Mapping[str, Any]) -> str:
     status = _mapping(match.get("status"))
-    reason = _mapping(status.get("reason"))
     if bool(status.get("finished")) or bool(status.get("cancelled")):
         return "post"
     if not bool(status.get("started")):
         return "pre"
-    if str(reason.get("short") or "").upper() in {"HT", "HALF"}:
+    if _is_halftime(status):
         return "half"
     return "in"
+
+
+def _is_halftime(status: Mapping[str, Any]) -> bool:
+    """Recognize halftime from either FotMob status location."""
+
+    reason = _mapping(status.get("reason"))
+    live = _mapping(status.get("liveTime"))
+    labels = (
+        reason.get("short"),
+        reason.get("long"),
+        live.get("short"),
+        live.get("long"),
+    )
+    return any(_status_label(value) in {"HT", "HALF", "HALF TIME"} for value in labels)
+
+
+def _status_label(value: object) -> str:
+    """Return one comparable FotMob phase label."""
+
+    text = str(value or "").replace("\u200e", "").replace("\u200f", "").replace("\ufffd", "")
+    return " ".join(text.replace("-", " ").upper().split())
 
 
 def _match_status(match: Mapping[str, Any], state: str, timezone_name: str) -> str:
