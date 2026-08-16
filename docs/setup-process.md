@@ -16,9 +16,9 @@ flowchart TD
     J --> K{Use current Wi-Fi?}
     K -->|Yes| L[iOS reads current SSID]
     K -->|No| M[Customer enters another SSID]
-    L --> N[App joins SportsTicker_Setup]
+    L --> N[App scans for SportsTicker Setup over BLE]
     M --> N
-    N --> O[App sends SSID, password, and code over local HTTPS]
+    N --> O[App encrypts SSID and password with code plus ticker challenge]
     O --> P[Ticker saves network and reboots]
     P --> Q[Ticker registers and shows pair code]
     Q --> R[App exchanges pair code for controller token]
@@ -32,11 +32,13 @@ flowchart TD
 
 ## Security boundaries
 
-- The six-digit code gates the temporary setup session. The app derives the hotspot password internally, so the ticker does not display it.
+- The six-digit code gates the temporary setup session. The app derives a per-session BLE encryption key from the code and ticker challenge.
 - The setup session expires after 15 minutes and limits failed submissions.
 - Pair codes expire after 10 minutes and become single-use controller tokens.
 - The permanent label contains identity fields only. It does not contain the temporary Wi-Fi password.
-- The local setup portal runs over HTTPS on the temporary ticker hotspot. The ticker creates a short-lived certificate for the setup session.
+- Production setup uses authenticated BLE GATT. The hotspot portal remains an explicit bench fallback with `TICKER_SETUP_TRANSPORT=hotspot`.
 - Production backend traffic uses TLS and deployment-authorized fleet health access.
 
-Run `python test.py --sink hardware --report C:\ticker\diagnostic.json` before shipment. Run the hotspot option only during controlled bench testing.
+The Pi runtime uses BLE by default. Set `TICKER_SETUP_TRANSPORT=hotspot` only for controlled bench testing when a phone cannot use Bluetooth. Run `python test.py --sink hardware --report C:\ticker\diagnostic.json` before shipment.
+
+The forced test command writes a one-shot marker. The running service consumes it on its first Wi-Fi check, so a reboot returns to normal Wi-Fi detection instead of restarting the test state.

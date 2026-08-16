@@ -103,7 +103,7 @@ def run_forced_wifi_setup(args: argparse.Namespace) -> int:
     )
     print("Forced Wi-Fi setup requested for the running ticker service.")
     print("The ticker will start SportsTicker_Setup on its next Wi-Fi check.")
-    print("Press Ctrl+C after completing Wi-Fi setup to remove the test marker.")
+    print("The running service consumes this marker once. Press Ctrl+C after setup to stop this command.")
     try:
         while True:
             time.sleep(1)

@@ -14,6 +14,7 @@ from ticker_core.bootstrap import create_default_frame_builder
 from ticker_core.drivers import MemoryFrameSink, RgbMatrixFrameSink, TkFrameSink
 from ticker_core.platform import (
     AssetCoordinator,
+    BleProvisioningService,
     DeviceIdentityStore,
     HealthCollector,
     LocalProvisioningService,
@@ -47,6 +48,12 @@ def create_application() -> TickerApplication:
     )
     runtime = TickerRuntime(monotonic=monotonic, wall_clock=datetime.now)
     commands = SubprocessPlatformCommands()
+    setup_transport = os.environ.get("TICKER_SETUP_TRANSPORT", "ble").strip().lower() or "ble"
+    if setup_transport not in {"ble", "hotspot"}:
+        raise ValueError("TICKER_SETUP_TRANSPORT must be ble or hotspot")
+    ble_service = BleProvisioningService(
+        adapter=os.environ.get("TICKER_BLE_ADAPTER", "hci0").strip() or "hci0"
+    ) if setup_transport == "ble" else None
     wifi_recovery = LocalProvisioningService(
         commands,
         hotspot_starter=lambda details: commands.start_hotspot(
@@ -58,6 +65,8 @@ def create_application() -> TickerApplication:
         force_setup_path=data_directory / "force_wifi_setup.json",
         portal_cert_path=data_directory / "wifi_setup.crt",
         portal_key_path=data_directory / "wifi_setup.key",
+        ble_starter=ble_service.start if ble_service is not None else None,
+        ble_stopper=ble_service.stop if ble_service is not None else None,
     )
     health.set_wifi_status_provider(wifi_recovery.telemetry)
     device_profile = _device_profile()

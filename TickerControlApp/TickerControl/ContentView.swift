@@ -6,6 +6,8 @@ import CoreLocation
 import Security
 import AuthenticationServices
 import NetworkExtension
+import CoreBluetooth
+import CryptoKit
 // ==========================================
 // MARK: - 0. EXTENSIONS
 // ==========================================
@@ -56,19 +58,152 @@ struct V2TeamCatalog: Decodable, Sendable { let teams: [TeamData] }
 struct ModeOption: Decodable, Sendable { let id: String; let symbol: String }
 struct V2ModeCatalog: Decodable, Sendable { let modes: [ModeOption] }
 
-final class LocalSetupSessionDelegate: NSObject, URLSessionDelegate {
-    func urlSession(
-        _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              challenge.protectionSpace.host == "10.42.0.1",
-              let trust = challenge.protectionSpace.serverTrust else {
-            completionHandler(.cancelAuthenticationChallenge, nil)
+/// Performs the local BLE handoff without joining a temporary phone hotspot.
+final class BLEProvisioningCoordinator: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+    static let serviceUUID = CBUUID(string: "8F8B0001-6E2A-4D8A-9F31-8D4B77F0B001")
+    static let challengeUUID = CBUUID(string: "8F8B0002-6E2A-4D8A-9F31-8D4B77F0B001")
+    static let credentialsUUID = CBUUID(string: "8F8B0003-6E2A-4D8A-9F31-8D4B77F0B001")
+    static let resultUUID = CBUUID(string: "8F8B0004-6E2A-4D8A-9F31-8D4B77F0B001")
+    private let protocolInfo = Data("SportsTicker BLE Wi-Fi v1".utf8)
+    private var central: CBCentralManager!
+    private var peripheral: CBPeripheral?
+    private var challengeCharacteristic: CBCharacteristic?
+    private var credentialsCharacteristic: CBCharacteristic?
+    private var resultCharacteristic: CBCharacteristic?
+    private var setupCode = ""
+    private var homeSSID = ""
+    private var homePassword = ""
+    private var chunks: [Data] = []
+    private var nextChunk = 0
+    private var onSuccess: (() -> Void)?
+    private var onFailure: ((String) -> Void)?
+
+    func start(code: String, ssid: String, password: String, onSuccess: @escaping () -> Void, onFailure: @escaping (String) -> Void) {
+        setupCode = code
+        homeSSID = ssid
+        homePassword = password
+        self.onSuccess = onSuccess
+        self.onFailure = onFailure
+        central = CBCentralManager(delegate: self, queue: .main)
+    }
+
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        guard central.state == .poweredOn else {
+            if central.state == .poweredOff { fail("Turn on Bluetooth to set up the ticker.") }
             return
         }
-        completionHandler(.useCredential, URLCredential(trust: trust))
+        central.scanForPeripherals(withServices: [Self.serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+    }
+
+    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        self.peripheral = peripheral
+        peripheral.delegate = self
+        central.stopScan()
+        central.connect(peripheral)
+    }
+
+    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        peripheral.discoverServices([Self.serviceUUID])
+    }
+
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        fail(error?.localizedDescription ?? "The ticker could not be reached over Bluetooth.")
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard error == nil, let service = peripheral.services?.first(where: { $0.uuid == Self.serviceUUID }) else {
+            fail(error?.localizedDescription ?? "The ticker Bluetooth service is unavailable.")
+            return
+        }
+        peripheral.discoverCharacteristics([Self.challengeUUID, Self.credentialsUUID, Self.resultUUID], for: service)
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        guard error == nil else { fail(error!.localizedDescription); return }
+        challengeCharacteristic = service.characteristics?.first(where: { $0.uuid == Self.challengeUUID })
+        credentialsCharacteristic = service.characteristics?.first(where: { $0.uuid == Self.credentialsUUID })
+        resultCharacteristic = service.characteristics?.first(where: { $0.uuid == Self.resultUUID })
+        guard let challengeCharacteristic, credentialsCharacteristic != nil, resultCharacteristic != nil else {
+            fail("The ticker Bluetooth setup service is incomplete.")
+            return
+        }
+        peripheral.readValue(for: challengeCharacteristic)
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard error == nil, let data = characteristic.value else {
+            fail(error?.localizedDescription ?? "The ticker returned no Bluetooth setup response.")
+            return
+        }
+        if characteristic.uuid == Self.challengeUUID {
+            do { chunks = try makeChunks(challenge: data); nextChunk = 0; writeNextChunk() }
+            catch { fail("The ticker setup message could not be secured.") }
+        } else if characteristic.uuid == Self.resultUUID {
+            if String(data: data, encoding: .utf8) == "OK" { finish() }
+            else { fail(String(data: data, encoding: .utf8) ?? "The ticker rejected the Wi-Fi settings.") }
+        }
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard error == nil else { fail(error!.localizedDescription); return }
+        nextChunk += 1
+        writeNextChunk()
+    }
+
+    private func writeNextChunk() {
+        guard let peripheral, let characteristic = credentialsCharacteristic else { return }
+        if nextChunk < chunks.count {
+            peripheral.writeValue(chunks[nextChunk], for: characteristic, type: .withResponse)
+        } else if let resultCharacteristic {
+            peripheral.readValue(for: resultCharacteristic)
+        }
+    }
+
+    private func makeChunks(challenge: Data) throws -> [Data] {
+        let key = HKDF<SHA256>.deriveKey(input: SymmetricKey(data: Data(setupCode.utf8)), salt: challenge, info: protocolInfo, outputByteCount: 32)
+        let nonce = AES.GCM.Nonce()
+        let plaintext = try JSONSerialization.data(withJSONObject: ["ssid": homeSSID, "password": homePassword])
+        let sealed = try AES.GCM.seal(plaintext, using: key, nonce: nonce, authenticating: challenge)
+        var encrypted = Data(sealed.ciphertext)
+        encrypted.append(contentsOf: sealed.tag)
+        let envelope: [String: Any] = [
+            "v": 1,
+            "challenge": challenge.map { String(format: "%02x", $0) }.joined(),
+            "nonce": Data(nonce).base64EncodedString(),
+            "ciphertext": encrypted.base64EncodedString()
+        ]
+        let payload = try JSONSerialization.data(withJSONObject: envelope).base64EncodedString()
+        let width = 120
+        let parts = stride(from: 0, to: payload.count, by: width).map { index in
+            let start = payload.index(payload.startIndex, offsetBy: index)
+            let end = payload.index(start, offsetBy: min(width, payload.count - index))
+            return String(payload[start..<end])
+        }
+        return parts.enumerated().map { index, part in Data("\(index)/\(parts.count):\(part)".utf8) }
+    }
+
+    private func finish() {
+        central?.cancelPeripheralConnection(peripheral!)
+        onSuccess?()
+        reset()
+    }
+
+    private func fail(_ message: String) {
+        central?.stopScan()
+        if let peripheral { central?.cancelPeripheralConnection(peripheral) }
+        onFailure?(message)
+        reset()
+    }
+
+    private func reset() {
+        peripheral = nil
+        challengeCharacteristic = nil
+        credentialsCharacteristic = nil
+        resultCharacteristic = nil
+        chunks = []
+        nextChunk = 0
+        onSuccess = nil
+        onFailure = nil
     }
 }
 
@@ -678,6 +813,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     private var selection: DeviceSelectionReducer
     private var spotifyAuthorizationSession: ASWebAuthenticationSession?
     private var wifiLocationManager: CLLocationManager?
+    private let bleProvisioning = BLEProvisioningCoordinator()
     private var lastFetchTime: Date = .distantPast
     // After a mode switch, poll every 1s for 30s so the UI and hardware
     // board confirm the new state almost immediately.
@@ -924,89 +1060,22 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         }
 
         wifiSetupError = nil
-        wifiSetupStatus = "Waiting for Wi-Fi permission..."
+        wifiSetupStatus = "Searching for the ticker over Bluetooth..."
         isWifiSetupInProgress = true
-        let hotspotPassword = "T\(normalizedCode)!"
-        let configuration = NEHotspotConfiguration(ssid: "SportsTicker_Setup", passphrase: hotspotPassword, isWEP: false)
-        configuration.joinOnce = true
-        NEHotspotConfigurationManager.shared.apply(configuration) { error in
-            DispatchQueue.main.async {
-                if let error, !Self.isAlreadyAssociatedHotspot(error) {
-                    self.isWifiSetupInProgress = false
-                    self.wifiSetupStatus = ""
-                    self.wifiSetupError = "Could not join the ticker Wi-Fi: \(error.localizedDescription)"
-                    return
-                }
-                self.wifiSetupError = nil
-                self.wifiSetupStatus = "Connected to the ticker network. Waiting for the local portal..."
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    self.submitWiFiSetup(code: normalizedCode, homeSSID: normalizedSSID, homePassword: homePassword, attempt: 0)
-                }
-            }
-        }
-    }
-
-    private static func isAlreadyAssociatedHotspot(_ error: Error) -> Bool {
-        let value = error as NSError
-        return value.domain == NEHotspotConfigurationErrorDomain
-            && value.code == NEHotspotConfigurationError.alreadyAssociated.rawValue
-    }
-
-    private func submitWiFiSetup(code: String, homeSSID: String, homePassword: String, attempt: Int) {
-        guard let url = URL(string: "https://10.42.0.1/connect") else {
-            isWifiSetupInProgress = false
-            wifiSetupError = "The ticker setup address is invalid."
-            return
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        var components = URLComponents()
-        components.queryItems = [
-            URLQueryItem(name: "ssid_select", value: "__manual__"),
-            URLQueryItem(name: "ssid_manual", value: homeSSID),
-            URLQueryItem(name: "password", value: homePassword),
-            URLQueryItem(name: "setup_code", value: code),
-        ]
-        request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
-
-        let session = URLSession(
-            configuration: .ephemeral,
-            delegate: LocalSetupSessionDelegate(),
-            delegateQueue: nil
-        )
-        session.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
-                if let error {
-                    if attempt < 4 {
-                        self.wifiSetupStatus = "Waiting for the ticker hotspot..."
-                        DispatchQueue.main.asyncAfter(deadline: .now() + Double(attempt + 1)) {
-                            self.submitWiFiSetup(
-                                code: code,
-                                homeSSID: homeSSID,
-                                homePassword: homePassword,
-                                attempt: attempt + 1
-                            )
-                        }
-                        return
-                    }
-                    self.isWifiSetupInProgress = false
-                    self.wifiSetupStatus = ""
-                    self.wifiSetupError = "The ticker could not be configured: \(error.localizedDescription)"
-                    return
-                }
+        bleProvisioning.start(code: normalizedCode, ssid: normalizedSSID, password: homePassword) {
+            Task { @MainActor in
                 self.isWifiSetupInProgress = false
-                guard let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else {
-                    let status = (response as? HTTPURLResponse).map { String($0.statusCode) } ?? "unknown"
-                    self.wifiSetupStatus = ""
-                    self.wifiSetupError = "The ticker rejected the Wi-Fi settings (HTTP \(status))."
-                    return
-                }
                 self.wifiSetupStatus = "Wi-Fi saved. The ticker is rebooting now."
             }
-        }.resume()
+        } onFailure: { message in
+            Task { @MainActor in
+                self.isWifiSetupInProgress = false
+                self.wifiSetupStatus = ""
+                self.wifiSetupError = message
+            }
+        }
     }
-    
+
     // === 1. FETCH DATA (Read) ===
     func fetchData() {
         let base = getBaseURL()
@@ -3633,8 +3702,8 @@ struct WiFiSetupView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Ticker hotspot")) {
-                    Text("The app derives the hotspot password as T<code>! and asks iOS to join SportsTicker_Setup.")
+                Section(header: Text("Ticker Bluetooth")) {
+                    Text("Turn on Bluetooth, enter the six-digit code shown on the ticker, and keep the phone nearby. The app sends Wi-Fi details through an encrypted local Bluetooth session.")
                     TextField("Six-digit setup code", text: $vm.wifiSetupCode)
                         .keyboardType(.numberPad)
                         .textContentType(.oneTimeCode)
@@ -3660,7 +3729,7 @@ struct WiFiSetupView: View {
                     }
                     SecureField("Wi-Fi password", text: $vm.wifiHomePassword)
                         .disabled(vm.isWifiSetupInProgress)
-                    Button(vm.isWifiSetupInProgress ? "Connecting..." : "Connect ticker") {
+                    Button(vm.isWifiSetupInProgress ? "Connecting..." : "Connect ticker over Bluetooth") {
                         vm.startWiFiSetup(
                             code: vm.wifiSetupCode,
                             homeSSID: vm.wifiHomeSSID,

@@ -112,6 +112,15 @@ class WiFiSetupState:
     hotspot: HotspotDetails
     setup_url: str = "https://10.42.0.1"
     setup_code: str = "123456"
+    ble_active: bool = False
+    ble_name: str = "SportsTicker Setup"
+    ble_service_uuid: str = "8f8b0001-6e2a-4d8a-9f31-8d4b77f0b001"
+
+    @property
+    def local_setup_active(self) -> bool:
+        """Return true when either local setup transport accepts credentials."""
+
+        return self.hotspot_active or self.ble_active
 
     @property
     def availability(self) -> WiFiAvailability:
@@ -184,6 +193,8 @@ class WiFiRecoveryService:
         setup_attempt_window_seconds: float = 60.0,
         state_path: Path | str | None = None,
         force_setup_path: Path | str | None = None,
+        ble_starter: Callable[[str, Callable[[str, str], None]], None] | None = None,
+        ble_stopper: Callable[[], None] | None = None,
     ) -> None:
         self._commands = commands
         self._internet_probe = internet_probe
@@ -192,6 +203,8 @@ class WiFiRecoveryService:
         self._background = background or _start_background
         self._state_path = Path(state_path) if state_path is not None else None
         self._force_setup_path = Path(force_setup_path) if force_setup_path is not None else None
+        self._ble_starter = ble_starter
+        self._ble_stopper = ble_stopper
         self._portal_host = portal_host
         self._portal_port = portal_port
         self._portal_address = portal_address
@@ -220,6 +233,8 @@ class WiFiRecoveryService:
         self._setup_attempts: deque[float] = deque()
         self._last_internet_available: bool | None = None
         self._hotspot_active = False
+        self._ble_active = False
+        self._force_setup_active = False
         self._portal: Flask | None = None
 
     def is_internet_available(self) -> bool:
@@ -230,7 +245,7 @@ class WiFiRecoveryService:
         """Return bounded Wi-Fi facts for heartbeat telemetry without probing the network."""
         return {
             "wifi_available": self._last_internet_available,
-            "wifi_setup_active": self._hotspot_active,
+            "wifi_setup_active": self._hotspot_active or self._ble_active,
         }
 
     def setup_state(self) -> WiFiSetupState:
@@ -241,6 +256,7 @@ class WiFiRecoveryService:
             hotspot=self._hotspot,
             setup_url=self._setup_url,
             setup_code=self._setup_code,
+            ble_active=self._ble_active,
         )
 
     def scan_networks(self) -> list[WiFiNetwork]:
@@ -256,11 +272,15 @@ class WiFiRecoveryService:
             self._consecutive_failures = 0
         else:
             self._consecutive_failures += 1
-        if not internet_available and not self._hotspot_active and (
+        if not internet_available and not self._hotspot_active and not self._ble_active and (
             forced or self._consecutive_failures >= self._setup_failure_threshold
         ):
-            self._hotspot_starter(self._hotspot)
-            self._hotspot_active = True
+            if self._ble_starter is not None:
+                self._ble_starter(self._setup_code, self._receive_ble_credentials)
+                self._ble_active = True
+            else:
+                self._hotspot_starter(self._hotspot)
+                self._hotspot_active = True
             self._setup_started_at = time.monotonic()
             self._persist_setup_state()
         return WiFiSetupState(
@@ -269,16 +289,31 @@ class WiFiRecoveryService:
             self._hotspot,
             self._setup_url,
             self._setup_code,
+            self._ble_active,
         )
 
+    def _receive_ble_credentials(self, ssid: str, password: str) -> None:
+        """Accept authenticated BLE credentials through the normal Wi-Fi owner."""
+
+        self.connect_and_reboot(ssid, password, self._setup_code)
+
     def _force_setup_requested(self) -> bool:
-        """Return true while a short-lived test marker requests Wi-Fi setup."""
+        """Latch and consume a test marker so one reboot cannot restart forced setup."""
+
+        if self._force_setup_active:
+            return True
 
         if self._force_setup_path is None:
             return False
         try:
             value = json.loads(self._force_setup_path.read_text(encoding="utf-8"))
-            return time.time() < float(value.get("expires_at") or 0.0)
+            if time.time() >= float(value.get("expires_at") or 0.0):
+                return False
+            self._force_setup_active = True
+            # The running process keeps the latched state. A new process after
+            # reboot will not find this marker and will use normal Wi-Fi checks.
+            self._force_setup_path.unlink(missing_ok=True)
+            return True
         except (OSError, ValueError, TypeError, AttributeError):
             return False
 
@@ -343,8 +378,13 @@ class WiFiRecoveryService:
             raise ValueError("The setup code is invalid.")
         if not ssid.strip():
             raise ValueError("Wi-Fi SSID must not be empty.")
-        self._commands.stop_hotspot(interface=self._hotspot.interface)
+        if self._hotspot_active:
+            self._commands.stop_hotspot(interface=self._hotspot.interface)
+        if self._ble_active and self._ble_stopper is not None:
+            self._ble_stopper()
         self._commands.connect_wifi(ssid, password, interface=self._hotspot.interface)
+        self._hotspot_active = False
+        self._ble_active = False
         self._clear_setup_state()
         self._commands.reboot()
 
@@ -425,7 +465,7 @@ class WiFiRecoveryService:
         return app
 
     def _ensure_setup_available(self) -> None:
-        if not self._hotspot_active or self._setup_started_at is None:
+        if not self._hotspot_active and not self._ble_active or self._setup_started_at is None:
             raise SetupUnavailableError("The Wi-Fi setup session is not active.")
         if time.monotonic() - self._setup_started_at > self._setup_ttl_seconds:
             raise SetupUnavailableError("The Wi-Fi setup session expired. Restart the ticker to try again.")

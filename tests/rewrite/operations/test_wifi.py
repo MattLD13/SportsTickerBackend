@@ -187,8 +187,42 @@ def test_force_setup_marker_starts_wifi_mode_without_network_change(tmp_path) ->
     assert state.internet_available is False
     assert state.hotspot_active is True
     assert len(hotspots) == 1
+    assert not marker.exists()
     service.connect_and_reboot("Home", "secret", state.setup_code)
     assert not marker.exists()
+
+    rebooted = WiFiRecoveryService(
+        Commands(),
+        internet_probe=lambda: True,
+        hotspot_starter=lambda details: None,
+        force_setup_path=marker,
+    )
+    assert rebooted.start_setup().internet_available is True
+
+
+def test_ble_setup_owns_credentials_without_starting_hotspot() -> None:
+    commands = Commands()
+    captured: list[tuple[str, object]] = []
+    service = WiFiRecoveryService(
+        commands,
+        internet_probe=lambda: False,
+        hotspot_starter=lambda details: captured.append(("hotspot", details)),
+        setup_failure_threshold=1,
+        ble_starter=lambda code, callback: captured.append((code, callback)),
+        ble_stopper=lambda: captured.append(("stop", None)),
+    )
+
+    state = service.start_setup()
+
+    assert state.hotspot_active is False
+    assert state.ble_active is True
+    assert captured[0][0] == state.setup_code
+    callback = captured[0][1]
+    assert callable(callback)
+    callback("Home", "secret")
+    assert commands.connected == [("Home", "secret", "wlan0")]
+    assert commands.stopped == []
+    assert commands.reboots == 1
 
 
 def test_local_setup_portal_requires_tls_context(tmp_path) -> None:
