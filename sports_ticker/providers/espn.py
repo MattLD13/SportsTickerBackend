@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from math import isfinite
 import re
 from types import MappingProxyType
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sports_ticker.domain import ContentItem, DisplaySettings
@@ -67,6 +68,7 @@ class EspnScoreboardProvider:
         client: JsonHttpClient | None = None,
         *,
         timeout: float = 10.0,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         if not isinstance(scoreboard_urls, Mapping):
             raise TypeError("scoreboard_urls must be a mapping")
@@ -89,6 +91,7 @@ class EspnScoreboardProvider:
         self._display = SportsDisplayProjector()
         self._score_alerts = ScoreAlertTracker()
         self._score_alerts_by_ticker: dict[str, ScoreAlertTracker] = {}
+        self._now = now or (lambda: datetime.now(timezone.utc))
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch current scoreboard events from each configured active league."""
@@ -112,14 +115,27 @@ class EspnScoreboardProvider:
         errors: list[str] = []
         active_sources = 0
         failed_sources = 0
+        current = self._now()
+        dates = _scoreboard_dates(settings.timezone, now=current)
+        seen_events: set[tuple[str, str]] = set()
         for league, url in self.scoreboard_urls.items():
             if not settings.active_sports.get(league, True):
                 continue
             active_sources += 1
+            request_url = _scoreboard_url_for_dates(url, dates)
             try:
-                payload = self.client.get_json(url, timeout=self.timeout)
+                payload = self.client.get_json(request_url, timeout=self.timeout)
                 for event in _events(payload):
-                    if not _is_current_event(event, timezone_name=settings.timezone):
+                    event_id = str(event.get("id") or "").strip()
+                    if event_id and (league, event_id) in seen_events:
+                        continue
+                    if event_id:
+                        seen_events.add((league, event_id))
+                    if not _is_current_event(
+                        event,
+                        timezone_name=settings.timezone,
+                        now=current,
+                    ):
                         continue
                     try:
                         item = self._display.project(_content_item(league, event), event)
@@ -300,6 +316,36 @@ def _is_current_event(
             hour=3, minute=0, second=0, microsecond=0
         )
     return visible_start.astimezone(timezone.utc) <= starts_at < visible_end.astimezone(timezone.utc)
+
+
+def _scoreboard_dates(
+    timezone_name: str,
+    *,
+    now: datetime | None = None,
+) -> tuple[date, ...]:
+    """Return ESPN dates needed for the current local display window."""
+
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    local_now = current.astimezone(_display_timezone(timezone_name))
+    today = local_now.date()
+    if local_now.hour < 3:
+        return (today - timedelta(days=1), today)
+    return (today, today + timedelta(days=1))
+
+
+def _scoreboard_url_for_dates(scoreboard_url: str, dates: Sequence[date]) -> str:
+    """Add one explicit ESPN calendar date or inclusive range without dropping query values."""
+
+    parsed = urlsplit(scoreboard_url)
+    query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key != "dates"]
+    values = tuple(dates)
+    if not values:
+        raise ValueError("dates must not be empty")
+    date_value = "-".join(day.strftime("%Y%m%d") for day in values)
+    query.append(("dates", date_value))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
 
 
 def _display_timezone(value: str) -> ZoneInfo:
