@@ -643,7 +643,6 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     @Published var devices: [TickerDevice] = []
     @Published var pairCode: String = ""
     @Published var pairName: String = ""
-    @Published var pairID: String = ""
     @Published var pairError: String?
     @Published var showPairSuccess: Bool = false
     @Published var serverURL: String { didSet { UserDefaults.standard.set(serverURL, forKey: "serverURL") } }
@@ -1418,10 +1417,6 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                     DispatchQueue.main.async { self.pairError = "Failed to process server response" }
                 }
             }.resume()
-        }
-    
-    func pairTickerByID(id: String, name: String) {
-            self.pairError = "Pair with the six-digit code shown on the Ticker."
         }
     
     func unpairTicker(id: String) {
@@ -3821,43 +3816,36 @@ struct DeviceRow: View {
 struct PairingView: View {
     @ObservedObject var vm: TickerViewModel
     @Binding var isPresented: Bool
-    @State private var pairingMode = 0
     @State private var shareWithApp = false
     @State private var showWiFiSetup = false
     var body: some View {
         NavigationView {
             Form {
-                Picker("Method", selection: $pairingMode) { Text("Code").tag(0); Text("Device ID").tag(1) }.pickerStyle(.segmented).padding(.vertical, 8)
-                if pairingMode == 0 {
-                    Section(header: Text("Instructions")) { Text("1. Ensure your Ticker is powered on."); Text("2. If unpaired, it will display a 6-digit code."); Text("3. Enter that code below.") }
-                    Section(header: Text("Device Info")) {
-                        TextField("Friendly Name", text: $vm.pairName)
-                        TextField("6-Digit Code", text: $vm.pairCode).keyboardType(.numberPad)
-                        Toggle("Share teams and Spotify with my other tickers", isOn: $shareWithApp)
-                    }
-                    Section(header: Text("Ticker Wi-Fi")) {
-                        Text("Optional. Set up the ticker network before pairing this ticker.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Button {
-                            vm.wifiSetupCode = vm.pairCode
-                            showWiFiSetup = true
-                        } label: {
-                            Label("Set Up Ticker Wi-Fi", systemImage: "wifi")
-                        }
-                    }
-                    Button("Pair with Code") {
-                        vm.pairError = nil
-                        vm.pairTicker(
-                            code: vm.pairCode,
-                            name: vm.pairName.isEmpty ? "My Ticker" : vm.pairName,
-                            shareGroup: shareWithApp
-                        )
-                    }.disabled(vm.pairCode.count < 6)
-                } else {
-                    Section(header: Text("Manual Entry")) { Text("Use this if you know the UUID."); TextField("Friendly Name", text: $vm.pairName); TextField("Device ID (UUID)", text: $vm.pairID) }
-                    Button("Pair with ID") { vm.pairError = nil; vm.pairTickerByID(id: vm.pairID, name: vm.pairName.isEmpty ? "My Ticker" : vm.pairName) }.disabled(vm.pairID.count < 4)
+                Section(header: Text("Instructions")) { Text("1. Ensure your Ticker is powered on."); Text("2. If unpaired, it will display a 6-digit code."); Text("3. Enter that code below.") }
+                Section(header: Text("Device Info")) {
+                    TextField("Friendly Name", text: $vm.pairName)
+                    TextField("6-Digit Code", text: $vm.pairCode).keyboardType(.numberPad)
+                    Toggle("Share teams and Spotify with my other tickers", isOn: $shareWithApp)
                 }
+                Section(header: Text("Ticker Wi-Fi")) {
+                    Text("Optional. Set up the ticker network before pairing this ticker.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Button {
+                        vm.wifiSetupCode = vm.pairCode
+                        showWiFiSetup = true
+                    } label: {
+                        Label("Set Up Ticker Wi-Fi", systemImage: "wifi")
+                    }
+                }
+                Button("Pair with Code") {
+                    vm.pairError = nil
+                    vm.pairTicker(
+                        code: vm.pairCode,
+                        name: vm.pairName.isEmpty ? "My Ticker" : vm.pairName,
+                        shareGroup: shareWithApp
+                    )
+                }.disabled(vm.pairCode.count < 6)
                 if let err = vm.pairError { Section { Text(err).foregroundColor(.red) } }
             }
             .navigationTitle("Pair Ticker")
