@@ -296,9 +296,6 @@
     ctx.fillRect(0, 31, W, 1);
     ctx.fillStyle = domRgb;
     ctx.fillRect(0, 31, W * pct | 0, 1);
-    const headX = Math.min(W - 2, Math.max(0, W * pct - 1));
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(headX, 30, 2, 2);
 
     // ── Time remaining real: right-aligned, y=10, tiny ──────────────────
     const remS   = Math.max(0, ms.duration - localProg) | 0;

@@ -11,7 +11,7 @@ EXPECTED_HASHES = {
     "sports_ticker/dashboard_v2/templates/demo_ticker.html": "1e21d0cdab72fd7d7a7e18d7b053667d3d163533c7646671233315f2dfee8de1",
     "sports_ticker/dashboard_v2/static/led.js": "f2bdef1b209887868e6333c886bbf9cecc14b0362c1d4490d038f4f475dc92b7",
     "sports_ticker/dashboard_v2/static/style.css": "09823dc316afb81a7b73320d21985536ae2e2386d80c288fabfecac5e36b13b0",
-    "sports_ticker/dashboard_v2/static/ticker-demo.js": "c1df39637af76434d78791a58b591f4005904e1d7cee0389e5b4655594db4fc1",
+    "sports_ticker/dashboard_v2/static/ticker-demo.js": "b23710a3d355afc0b762d8ab4b6251d4b8dad60611994ddf5b4148e42b45efce",
 }
 
 

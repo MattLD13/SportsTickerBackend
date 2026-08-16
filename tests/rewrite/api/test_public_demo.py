@@ -35,7 +35,7 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
         assert "makeMrBlueSkyCover" in demo_script
         assert "MR. BLUE SKY" in demo_script
         assert "mr-blue-sky-cover.png" in demo_script
-        assert "headX" in demo_script
+        assert "headX" not in demo_script
 
         for mode in ("sports", "weather", "flights", "airports"):
             response = client.get(f"/api/preview/strip.png?mode={mode}")
