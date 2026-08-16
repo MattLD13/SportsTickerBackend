@@ -92,7 +92,7 @@ def preview_strip():
     mode = str(request.args.get("mode") or "sports").strip().lower()
     if mode not in {item["id"] for item in _demo_modes()}:
         abort(404)
-    content = _live_content(mode)
+    content = _live_sports_content() if mode == "sports" else {}
     image = _render_preview(content or _demo_content(mode), mode)
     output = BytesIO()
     image.save(output, format="PNG")
@@ -189,13 +189,12 @@ def _demo_modes() -> list[dict[str, str]]:
     ]
 
 
-def _live_content(mode: str) -> dict[str, list[dict[str, object]]]:
-    """Return the first current projection for a given mode that contains display items."""
+def _live_sports_content() -> dict[str, list[dict[str, object]]]:
+    """Return the first current sports projection that contains display items."""
 
     application = current_app.extensions["sports_ticker.backend_application"]
-    target_mode = str(mode).strip().lower()
     canonical_settings = DisplaySettings(
-        mode=target_mode,
+        mode="sports",
         sports_presentation="rotation",
         sports_filter="all",
         pinned_content_id="",
@@ -213,7 +212,7 @@ def _live_content(mode: str) -> dict[str, list[dict[str, object]]]:
         content = select_display_content(
             projected["content"],
             {
-                "mode": target_mode,
+                "mode": "sports",
                 "sports_filter": "all",
                 "sports_presentation": "rotation",
                 "pinned_content_id": "",
@@ -224,8 +223,7 @@ def _live_content(mode: str) -> dict[str, list[dict[str, object]]]:
             if isinstance(item, dict) and item.get("is_shown", True)
         ]
         if items:
-            if target_mode == "sports":
-                _preview_assets().prefetch(content)
+            _preview_assets().prefetch(content)
             return content
     return {}
 
@@ -282,19 +280,20 @@ def _demo_content(mode: str) -> dict[str, list[dict[str, object]]]:
                 "data": {
                     "type": "flight_visitor",
                     "sport": "flight",
-                    "id": "flight_blank",
-                    "guest_name": "NO FLIGHT SELECTED",
-                    "route": "TRACKER > SETUP",
-                    "origin_city": "TRACKER",
-                    "dest_city": "SETUP",
-                    "alt": 0,
-                    "dist": 0,
-                    "eta_str": "--",
-                    "speed": 0,
-                    "progress": 0,
-                    "status": "ADD FLIGHT",
+                    "id": "UA 188",
+                    "guest_name": "JOHN DOE",
+                    "route": "LAX > EWR",
+                    "origin_city": "LOS ANGELES",
+                    "dest_city": "NEWARK",
+                    "alt": 34000,
+                    "dist": 1420,
+                    "eta_str": "1H 45M",
+                    "speed": 540,
+                    "progress": 65,
+                    "status": "EN ROUTE",
                     "is_delayed": False,
-                    "is_live": False,
+                    "is_live": True,
+                    "aircraft_type": "B777-200",
                 },
             }],
         },

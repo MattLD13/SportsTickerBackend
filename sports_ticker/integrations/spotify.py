@@ -606,6 +606,8 @@ def _build_playback_record(
         "id": f"spotify:{current.id}",
         "family": "music",
         "kind": "spotify",
+        "type": "music",
+        "sport": "music",
         "status": "playing" if is_playing else "paused",
         "is_playing": is_playing,
         "name": current.name,
@@ -619,6 +621,9 @@ def _build_playback_record(
         "home_logo": current.cover,
         "last_logo": last_cover,
         "next_logos": next_covers,
+        "artwork": current.cover,
+        "cover_url": current.cover,
+        "album_art": current.cover,
         "away_abbr": current.name,
         "home_abbr": current.artist,
         "duration": current.duration,
@@ -634,6 +639,8 @@ def _idle_record() -> dict[str, Any]:
         "id": "spotify:idle",
         "family": "music",
         "kind": "spotify",
+        "type": "music",
+        "sport": "music",
         "status": "idle",
         "is_playing": False,
         "name": "No active Spotify playback",
@@ -647,6 +654,9 @@ def _idle_record() -> dict[str, Any]:
         "home_logo": "",
         "last_logo": "",
         "next_logos": [],
+        "artwork": "",
+        "cover_url": "",
+        "album_art": "",
         "duration": 0.0,
         "progress": 0.0,
         "source": "spotify",
@@ -673,6 +683,8 @@ def _connection_record(
         "id": "spotify:connection",
         "family": "music",
         "kind": "spotify",
+        "type": "music",
+        "sport": "music",
         "status": status,
         "is_playing": False,
         "name": "Connect Spotify" if status == "reauthorization_required" else "Spotify unavailable",
@@ -686,6 +698,9 @@ def _connection_record(
         "home_logo": "",
         "last_logo": "",
         "next_logos": [],
+        "artwork": "",
+        "cover_url": "",
+        "album_art": "",
         "duration": 0.0,
         "progress": 0.0,
         "source": "spotify",
@@ -768,12 +783,19 @@ def _app_return_uri(value: str) -> str:
 
 
 def _image_url(images: object) -> str:
-    if not isinstance(images, list):
+    if not isinstance(images, list) or not images:
         return ""
-    for image in images:
-        if isinstance(image, Mapping) and str(image.get("url") or "").strip():
-            return str(image["url"])
-    return ""
+    valid = [img for img in images if isinstance(img, Mapping) and str(img.get("url") or "").strip()]
+    if not valid:
+        return ""
+    candidates: list[tuple[int, str]] = []
+    for img in valid:
+        width = int(img.get("width") or 0)
+        candidates.append((width, str(img["url"])))
+    adequate = sorted([c for c in candidates if c[0] >= 42], key=lambda c: c[0])
+    if adequate:
+        return adequate[0][1]
+    return valid[0]["url"]
 
 
 __all__ = [

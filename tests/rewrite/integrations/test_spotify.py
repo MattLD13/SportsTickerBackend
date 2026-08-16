@@ -281,3 +281,36 @@ def test_music_renderer_blends_dominant_color_from_previous_song() -> None:
     assert state.artwork is not None
     assert state.previous_artwork is not None
     assert state.previous_dominant != (29, 185, 84)  # Computed from red image
+
+
+def test_spotify_image_url_selects_optimal_resolution_for_led_panel() -> None:
+    """Choose the compact 64x64 or 300x300 image instead of the heavyweight 640x640 image."""
+    from sports_ticker.integrations.spotify import _image_url
+
+    images = [
+        {"url": "https://img.spotify.com/640.jpg", "height": 640, "width": 640},
+        {"url": "https://img.spotify.com/300.jpg", "height": 300, "width": 300},
+        {"url": "https://img.spotify.com/64.jpg", "height": 64, "width": 64},
+    ]
+    assert _image_url(images) == "https://img.spotify.com/64.jpg"
+
+
+def test_asset_planner_recognizes_family_and_kind_without_explicit_type() -> None:
+    """Ensure AssetPlanner extracts (42, 42) covers when item only has family='music' and kind='spotify'."""
+    planner = AssetPlanner()
+    item = {
+        "family": "music",
+        "kind": "spotify",
+        "cover": "https://img.spotify.com/current.jpg",
+        "last_cover": "https://img.spotify.com/last.jpg",
+        "next_covers": ["https://img.spotify.com/next.jpg"],
+    }
+    requests = planner.plan({"content": {"music": [item]}}).requests
+    urls = {req.url for req in requests}
+    assert "https://img.spotify.com/current.jpg" in urls
+    assert "https://img.spotify.com/last.jpg" in urls
+    assert "https://img.spotify.com/next.jpg" in urls
+    for req in requests:
+        assert req.size == (42, 42)
+        assert req.processor == "logo"
+

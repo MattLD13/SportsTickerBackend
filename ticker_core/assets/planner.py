@@ -27,14 +27,16 @@ class AssetPlanner:
         return AssetPlan(tuple(sorted(requests, key=lambda request: (request.url, request.processor, request.size))))
 
     def _add_item(self, requests: set[AssetRequest], item: Mapping[str, Any]) -> None:
-        item_type = str(item.get("type") or "").lower()
-        sport = str(item.get("sport") or "").lower()
+        family = str(item.get("family") or "").lower()
+        kind = str(item.get("kind") or "").lower()
+        item_type = str(item.get("type") or kind).lower()
+        sport = str(item.get("sport") or family).lower()
         if item.get("team_logo"):
             for size in ((16, 16), (24, 24)):
                 _add(requests, item.get("team_logo"), "logo", size)
         for key in ("from_logo", "to_logo"):
             _add(requests, item.get(key), "logo", (24, 24))
-        if item_type == "music" or sport == "music":
+        if item_type == "music" or sport == "music" or family == "music" or kind in {"music", "spotify"}:
             for key in ("cover", "last_cover", "home_logo", "last_logo", "artwork", "cover_url", "album_art"):
                 _add(requests, item.get(key), "logo", (42, 42))
             for url in (*_urls(item.get("next_logos")), *_urls(item.get("next_artwork")), *_urls(item.get("next_covers"))):
@@ -45,14 +47,14 @@ class AssetPlanner:
             for next_song in _records(item.get("next_songs")):
                 _add(requests, next_song.get("cover"), "logo", (42, 42))
             return
-        if item_type in {"flight_visitor", "flight_airport_hud", "flight_arrival", "flight_departure"} or sport == "flight":
+        if item_type in {"flight_visitor", "flight_airport_hud", "flight_arrival", "flight_departure"} or sport in {"flight", "flights"} or family in {"flight", "flights"}:
             for record in (item, *_records(item.get("arrivals")), *_records(item.get("departures"))):
                 for key in ("airline_logo", "airline_image", "airline_logo_url", "carrier_logo", "home_logo", "away_logo"):
                     _add(requests, record.get(key), "logo", (24, 24))
                 _add(requests, _flight_logo_url(record), "logo", (22, 22))
             return
-        if item_type == "racing" or sport in {"indycar", "f1", "nascar"}:
-            series = _mapping(item.get(sport)) or _mapping(item.get("indycar")) or _mapping(item.get("f1")) or _mapping(item.get("nascar"))
+        if item_type == "racing" or sport in {"indycar", "f1", "nascar"} or family == "racing" or kind in {"racing", "indycar", "f1", "nascar"}:
+            series = _mapping(item.get(sport)) or _mapping(item.get(kind)) or _mapping(item.get("indycar")) or _mapping(item.get("f1")) or _mapping(item.get("nascar"))
             for driver in series.get("drivers", ()):
                 if not isinstance(driver, Mapping):
                     continue
@@ -80,7 +82,17 @@ def _content_items(value: object) -> Iterable[Mapping[str, Any]]:
     for item in content if isinstance(content, Iterable) and not isinstance(content, (str, bytes, Mapping)) else ():
         data = getattr(item, "data", item)
         if isinstance(data, Mapping):
-            yield data
+            family = getattr(item, "family", None)
+            kind = getattr(item, "kind", None)
+            if family or kind:
+                merged = dict(data)
+                if family and "family" not in merged:
+                    merged["family"] = family
+                if kind and "kind" not in merged:
+                    merged["kind"] = kind
+                yield merged
+            else:
+                yield data
 
 
 def _payload_items(value: object) -> Iterable[Mapping[str, Any]]:
