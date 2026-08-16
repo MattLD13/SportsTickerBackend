@@ -51,7 +51,7 @@ class MusicRenderer:
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render one music item while retaining its animation state."""
         image, self._state = self.render_with_state(context, scene.item, self._state)
-        return RenderedContent(image, static=True)
+        return RenderedContent(image)
 
     def render_with_state(self, context: RenderContext, item: object, state: MusicAnimationState) -> tuple[Image.Image, MusicAnimationState]:
         """Render one frame and return the next explicit state."""

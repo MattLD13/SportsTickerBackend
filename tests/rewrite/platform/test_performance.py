@@ -75,3 +75,29 @@ def test_pi_logger_rotates_bounded_files(tmp_path) -> None:
 
     files = list(tmp_path.glob("ticker-performance.jsonl*"))
     assert len(files) <= 3
+
+
+def test_pi_logger_records_idle_ticks_and_viewport_age(tmp_path) -> None:
+    clock = [10.0]
+    logger = TickerPiLogger(tmp_path, window_seconds=60, monotonic=lambda: clock[0])
+    wall = datetime(2026, 8, 15, tzinfo=timezone.utc)
+    logger.start()
+    logger.record_tick(
+        interval=1 / 30,
+        kind="static",
+        mode="sports",
+        wall_time=wall,
+        presented=False,
+        last_present_age=4.25,
+        viewport={"desired": 2, "pending": 0, "ready": 2, "committed_generation": 3},
+    )
+    logger.close()
+
+    path = tmp_path / "ticker-performance.jsonl"
+    window = next(record for record in (json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()) if record["kind"] == "window")
+    assert window["frames"] == 0
+    assert window["loop_ticks"] == 1
+    assert window["skipped_ticks"] == 1
+    assert window["fps"] == 0.0
+    assert window["last_present_age_s"] == 4.25
+    assert window["viewport"]["committed_generation"] == 3

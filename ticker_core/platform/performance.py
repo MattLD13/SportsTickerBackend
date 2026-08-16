@@ -100,6 +100,8 @@ class TickerPiLogger:
         wall_time: datetime,
         width: int,
         height: int,
+        viewport: Mapping[str, object] | None = None,
+        last_present_age: float | None = None,
     ) -> None:
         """Record one frame without performing disk, JSON, or system work."""
         if not self._started:
@@ -129,8 +131,40 @@ class TickerPiLogger:
             height=height,
             finished_at=finished_at,
             wall_time=wall_time,
+            viewport=viewport,
+            last_present_age=last_present_age,
         )
         if finished_at - self._window.started_at >= self._window_seconds:
+            self._flush_window()
+
+    def record_tick(
+        self,
+        *,
+        interval: float,
+        kind: object,
+        mode: str,
+        wall_time: datetime,
+        presented: bool,
+        last_present_age: float | None,
+        viewport: Mapping[str, object] | None,
+    ) -> None:
+        """Record one loop tick without counting it as a presented frame."""
+        if not self._started:
+            return
+        now = self._monotonic()
+        if self._window is None:
+            self._window = _Window(now, wall_time)
+        self._window.add_tick(
+            scheduled_ms=max(0.0, interval * 1000.0),
+            kind=str(kind),
+            mode=mode,
+            presented=presented,
+            last_present_age=last_present_age,
+            viewport=viewport,
+            finished_at=now,
+            wall_time=wall_time,
+        )
+        if now - self._window.started_at >= self._window_seconds:
             self._flush_window()
 
     def record_poll(
@@ -204,7 +238,7 @@ class TickerPiLogger:
 
     def _flush_window(self, *, force: bool = False) -> None:
         window = self._window
-        if window is None or not window.frames:
+        if window is None or (not window.frames and not window.ticks):
             return
         if not force and self._monotonic() - window.started_at < self._window_seconds:
             return
@@ -281,16 +315,18 @@ class _Window:
     """Hold fixed-size aggregate state for one history window."""
 
     __slots__ = (
-        "started_at", "wall_started", "frames", "total_ms", "work_ms", "present_ms",
+        "started_at", "wall_started", "frames", "ticks", "skipped_ticks", "total_ms", "work_ms", "present_ms",
         "interval_ms", "scheduled_ms", "brightness_total", "brightness_min", "brightness_max",
         "kinds", "modes", "inverted", "stale", "connection_lost", "overruns", "samples",
-        "width", "height", "ended_at", "wall_ended",
+        "width", "height", "viewport", "last_present_age", "ended_at", "wall_ended",
     )
 
     def __init__(self, started_at: float, wall_started: datetime) -> None:
         self.started_at = started_at
         self.wall_started = wall_started
         self.frames = 0
+        self.ticks = 0
+        self.skipped_ticks = 0
         self.total_ms = _Metric()
         self.work_ms = _Metric()
         self.present_ms = _Metric()
@@ -308,8 +344,32 @@ class _Window:
         self.samples: list[float] = []
         self.width = 0
         self.height = 0
+        self.viewport: dict[str, object] = {}
+        self.last_present_age: float | None = None
         self.ended_at = started_at
         self.wall_ended = wall_started
+
+    def add_tick(
+        self,
+        *,
+        scheduled_ms: float,
+        kind: str,
+        mode: str,
+        presented: bool,
+        last_present_age: float | None,
+        viewport: Mapping[str, object] | None,
+        finished_at: float,
+        wall_time: datetime,
+    ) -> None:
+        """Aggregate one controller loop tick separately from presentation frames."""
+        del scheduled_ms, kind, mode
+        self.ticks += 1
+        self.skipped_ticks += int(not presented)
+        if viewport is not None:
+            self.viewport = dict(viewport)
+        self.last_present_age = last_present_age
+        self.ended_at = finished_at
+        self.wall_ended = wall_time
 
     def add_frame(
         self,
@@ -329,6 +389,8 @@ class _Window:
         height: int,
         finished_at: float,
         wall_time: datetime,
+        viewport: Mapping[str, object] | None,
+        last_present_age: float | None,
     ) -> None:
         self.frames += 1
         self.total_ms.add(total_ms)
@@ -350,6 +412,8 @@ class _Window:
         self.overruns += int(total_ms > scheduled_ms > 0)
         self.width = width
         self.height = height
+        self.viewport = dict(viewport or {})
+        self.last_present_age = last_present_age
         self.ended_at = finished_at
         self.wall_ended = wall_time
 
@@ -368,6 +432,8 @@ class _Window:
             "duration_s": round(duration_s, 3),
             "panel": {"width": self.width, "height": self.height},
             "frames": self.frames,
+            "loop_ticks": self.ticks,
+            "skipped_ticks": self.skipped_ticks,
             "fps": round(self.frames / duration_s, 3),
             "frame_ms": self.total_ms.summary(self.samples),
             "work_ms": self.work_ms.summary(),
@@ -388,6 +454,8 @@ class _Window:
                 "overruns": self.overruns,
                 "dropped_records": dropped_records,
             },
+            "viewport": self.viewport,
+            "last_present_age_s": self.last_present_age,
         }
         if system_snapshot is not None:
             try:

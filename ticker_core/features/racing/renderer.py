@@ -59,8 +59,8 @@ class RacingRenderer:
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render a racing scroll card or a full leaderboard."""
         if scene.item.get("sports_presentation") == "pinned":
-            return RenderedContent(self._render_full(scene.item, scene.elapsed), static=True)
-        return RenderedContent(self._render_scroll(scene.item), static=False)
+            return RenderedContent(self._render_full(scene.item, scene.elapsed))
+        return RenderedContent(self._render_scroll(scene.item))
 
     def _payload(self, item: Mapping[str, Any]) -> Mapping[str, Any]:
         sport = str(item.get("sport", "")).lower()

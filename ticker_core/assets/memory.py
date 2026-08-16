@@ -9,6 +9,7 @@ from hashlib import sha256
 import io
 import os
 from pathlib import Path
+from threading import RLock
 from time import monotonic
 from uuid import uuid4
 
@@ -24,23 +25,23 @@ class _Entry:
 
 
 class PreparedAssetStore(AssetView):
-    """Keep prepared images and short negative results in memory."""
+    """Keep prepared images until LRU eviction and negative results briefly."""
 
     def __init__(
         self,
         *,
         capacity: int = 512,
-        ttl: float = 900.0,
+        ttl: float | None = None,
         negative_ttl: float = 15.0,
         clock: Callable[[], float] = monotonic,
         directory: Path | str | None = None,
     ) -> None:
         if capacity <= 0:
             raise ValueError("Asset memory capacity must be positive.")
-        if ttl < 0 or negative_ttl < 0:
+        if (ttl is not None and ttl < 0) or negative_ttl < 0:
             raise ValueError("Asset time limits cannot be negative.")
         self._capacity = capacity
-        self._ttl = ttl
+        self._ttl = float("inf") if ttl is None else ttl
         self._negative_ttl = negative_ttl
         self._clock = clock
         self._directory = Path(directory) if directory is not None else None
@@ -48,11 +49,13 @@ class PreparedAssetStore(AssetView):
             self._directory.mkdir(parents=True, exist_ok=True)
         self._items: OrderedDict[AssetRequest, _Entry] = OrderedDict()
         self._revision = 0
+        self._lock = RLock()
 
     @property
     def revision(self) -> int:
         """Return the current prepared-image revision."""
-        return self._revision
+        with self._lock:
+            return self._revision
 
     def image(self, url: str, processor: str, size: tuple[int, int]) -> Image.Image | None:
         """Return one prepared image without starting I/O."""
@@ -60,67 +63,99 @@ class PreparedAssetStore(AssetView):
 
     def get(self, request: AssetRequest) -> Image.Image | None:
         """Return a prepared image or a fresh negative result."""
-        entry = self._items.get(request)
-        if entry is None:
-            image = self._load_disk(request)
-            if image is None:
+        with self._lock:
+            entry = self._items.get(request)
+            if entry is None:
+                image = self._load_disk(request)
+                if image is None:
+                    return None
+                self._remember(request, image)
+                return image
+            if self._expired(request, entry):
                 return None
-            self._remember(request, image)
-            return image
-        if entry.expires_at < self._clock():
-            del self._items[request]
-            self._revision += 1
-            return None
-        self._items.move_to_end(request)
-        return entry.image
+            self._items.move_to_end(request)
+            return entry.image
+
+    def get_memory(self, request: AssetRequest) -> Image.Image | None:
+        """Return a prepared image without reading durable storage."""
+        with self._lock:
+            entry = self._items.get(request)
+            if entry is None:
+                return None
+            if self._expired(request, entry):
+                return None
+            self._items.move_to_end(request)
+            return entry.image
 
     def contains(self, request: AssetRequest) -> bool:
         """Return if a fresh positive or negative entry exists."""
-        entry = self._items.get(request)
-        if entry is None:
-            image = self._load_disk(request)
-            if image is None:
+        with self._lock:
+            entry = self._items.get(request)
+            if entry is None:
+                image = self._load_disk(request)
+                if image is None:
+                    return False
+                self._remember(request, image)
+                return True
+            if self._expired(request, entry):
                 return False
-            self._remember(request, image)
+            self._items.move_to_end(request)
             return True
-        if entry.expires_at < self._clock():
-            del self._items[request]
-            self._revision += 1
-            return False
-        self._items.move_to_end(request)
-        return True
 
     def contains_memory(self, request: AssetRequest) -> bool:
         """Return if a fresh result is already available without disk access."""
-        entry = self._items.get(request)
-        if entry is None:
-            return False
-        if entry.expires_at < self._clock():
-            del self._items[request]
-            self._revision += 1
-            return False
-        self._items.move_to_end(request)
-        return True
+        with self._lock:
+            entry = self._items.get(request)
+            if entry is None:
+                return False
+            if self._expired(request, entry):
+                return False
+            self._items.move_to_end(request)
+            return True
 
     def put(self, request: AssetRequest, image: Image.Image | None) -> None:
         """Store a prepared image or a short-lived negative result."""
-        lifetime = self._ttl if image is not None else self._negative_ttl
-        prepared = image.convert("RGBA") if image is not None else None
-        self._items[request] = _Entry(prepared, self._clock() + lifetime)
-        if prepared is not None:
-            self._write_disk(request, prepared)
-        self._items.move_to_end(request)
-        while len(self._items) > self._capacity:
-            self._items.popitem(last=False)
-        self._revision += 1
+        with self._lock:
+            previous = self._items.get(request)
+            previous_ready = previous is not None and not self._is_expired(previous) and previous.image is not None
+            lifetime = self._ttl if image is not None else self._negative_ttl
+            prepared = image.convert("RGBA") if image is not None else None
+            self._items[request] = _Entry(prepared, self._clock() + lifetime)
+            if prepared is not None:
+                self._write_disk(request, prepared)
+            self._items.move_to_end(request)
+            self._trim()
+            if previous_ready != (prepared is not None):
+                self._revision += 1
 
     def _remember(self, request: AssetRequest, image: Image.Image) -> None:
         """Add one persistent image to the in-memory working set."""
-        self._items[request] = _Entry(image, self._clock() + self._ttl)
-        self._items.move_to_end(request)
+        with self._lock:
+            previous = self._items.get(request)
+            previous_ready = previous is not None and not self._is_expired(previous) and previous.image is not None
+            self._items[request] = _Entry(image, self._clock() + self._ttl)
+            self._items.move_to_end(request)
+            self._trim()
+            if not previous_ready:
+                self._revision += 1
+
+    def _expired(self, request: AssetRequest, entry: _Entry) -> bool:
+        """Remove one expired entry and signal only a lost prepared image."""
+        if entry.expires_at >= self._clock():
+            return False
+        del self._items[request]
+        if entry.image is not None:
+            self._revision += 1
+        return True
+
+    def _is_expired(self, entry: _Entry) -> bool:
+        """Return whether one entry lifetime ended without changing state."""
+        return entry.expires_at < self._clock()
+
+    def _trim(self) -> None:
+        """Keep the bounded working set bounded."""
         while len(self._items) > self._capacity:
             self._items.popitem(last=False)
-        self._revision += 1
 
     def _path(self, request: AssetRequest) -> Path | None:
         if self._directory is None:

@@ -21,7 +21,7 @@ class WeatherRenderer:
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render a weather content item."""
-        return RenderedContent(self.detailed(context, scene.item), static=True)
+        return RenderedContent(self.detailed(context, scene.item))
 
     def detailed(self, context: RenderContext, item: object) -> Image.Image:
         """Render the current weather and forecast view."""

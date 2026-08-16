@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import json
 from typing import Any, Protocol
 
 from ticker_core.context import RenderContext
@@ -73,3 +74,33 @@ class ContentRendererCatalog:
         except KeyError as error:
             raise UnknownContentRendererError(f"No renderer owns content family {family!r}.") from error
         return renderer.render(context, scene)
+
+    def visual_key(self, context: RenderContext, scene: ContentScene, asset_revision: int | None = None) -> object:
+        """Return one renderer-owned key without rasterizing the scene."""
+        family = content_family(scene.item, scene.mode)
+        try:
+            renderer = self._renderers[family]
+        except KeyError as error:
+            raise UnknownContentRendererError(f"No renderer owns content family {family!r}.") from error
+        method = getattr(renderer, "visual_key", None)
+        if callable(method):
+            return method(context, scene, asset_revision)
+        phase = _family_phase(family, scene.item, context, scene.elapsed)
+        return (family, _stable_item(scene.item), scene.mode, asset_revision, phase)
+
+
+def _stable_item(item: Mapping[str, Any]) -> str:
+    """Serialize one small content mapping for invalidation."""
+    return json.dumps(item, sort_keys=True, default=str, separators=(",", ":"))
+
+
+def _family_phase(family: str, item: Mapping[str, Any], context: RenderContext, elapsed: float = 0.0) -> int | None:
+    """Own cadence facts for renderers without local animation state."""
+    timestamp = context.now.timestamp()
+    if family in {"music", "weather", "racing"}:
+        return int(timestamp * 30)
+    if family == "golf" and str(item.get("sports_presentation", "")).lower() == "pinned":
+        return int(max(0.0, elapsed) // 4.0)
+    if family == "clock":
+        return int(timestamp)
+    return None

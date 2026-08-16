@@ -134,7 +134,7 @@ class AssetCoordinator(AssetView):
 
     def image(self, url: str, processor: str, size: tuple[int, int]) -> Image.Image | None:
         """Return a prepared memory image without doing any I/O."""
-        return self.long_term.image(url, processor, size)
+        return self.long_term.prepared.get_memory(AssetRequest(url, processor, size))
 
     def prefetch_payload(self, payload_or_content: object) -> tuple[Future[Image.Image | None], ...]:
         """Plan and prefetch all assets before a mode chooses content."""

@@ -21,10 +21,9 @@ class ContentScene:
 
 @dataclass(frozen=True, slots=True)
 class RenderedContent:
-    """Return one rendered image and its scheduling role."""
+    """Return one rendered image."""
 
     image: Image.Image
-    static: bool
 
     def __post_init__(self) -> None:
         if self.image.height != 32:

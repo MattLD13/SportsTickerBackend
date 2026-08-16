@@ -43,7 +43,7 @@ class _ClockContentRenderer:
         del scene
         from .features.clock import ClockScene
 
-        return RenderedContent(self._renderer.render(context, ClockScene()), static=True)
+        return RenderedContent(self._renderer.render(context, ClockScene()))
 
 
 def create_default_content_catalog(assets: object) -> ContentRendererCatalog:

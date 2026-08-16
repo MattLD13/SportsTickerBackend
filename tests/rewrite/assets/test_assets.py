@@ -5,8 +5,8 @@ from threading import Event, Thread
 
 from PIL import Image
 
-from ticker_core.assets import AssetPlanner, AssetRequest, ShortTermContentCache
-from ticker_core.platform import AssetCoordinator
+from ticker_core.assets import AssetPlanner, AssetRequest, LogoAssetView, PreparedAssetStore, ShortTermContentCache
+from ticker_core.platform import AssetCoordinator, LongTermAssetCache
 
 
 def test_coordinator_reuses_persistent_original_bytes(tmp_path) -> None:
@@ -44,6 +44,114 @@ def test_coordinator_reuses_prepared_logo_after_restart(tmp_path) -> None:
         assert reader.image(request.url, request.processor, request.size) is not None
     finally:
         reader.close()
+
+
+def test_logo_view_changes_from_fallback_to_prepared_image(tmp_path) -> None:
+    """Expose a prepared logo through the renderer read boundary after fetch."""
+    request = AssetRequest("https://assets.example/logo.png", "logo", (22, 22))
+    coordinator = AssetCoordinator(tmp_path, fetch=lambda _url: _png())
+    view = LogoAssetView(coordinator)
+    try:
+        assert view.get(request.url, request.size) is None
+        assert coordinator.prefetch((request,))[0].result() is not None
+        image = view.get(request.url, request.size)
+        assert image is not None
+        assert image.size == request.size
+    finally:
+        coordinator.close()
+
+
+def test_failed_logo_fetch_retries_after_negative_lifetime(tmp_path) -> None:
+    """Retry a failed logo after its negative preparation entry expires."""
+    now = [0.0]
+    calls: list[str] = []
+    request = AssetRequest("https://assets.example/retry.png", "logo", (8, 8))
+    prepared = PreparedAssetStore(clock=lambda: now[0], negative_ttl=5.0)
+    coordinator = AssetCoordinator(
+        tmp_path,
+        fetch=lambda url: calls.append(url) or (None if len(calls) == 1 else _png()),
+        prepared=prepared,
+    )
+    try:
+        assert coordinator.prefetch((request,))[0].result() is None
+        now[0] = 6.0
+        assert coordinator.prefetch((request,))[0].result() is not None
+        assert calls == [request.url, request.url]
+    finally:
+        coordinator.close()
+
+
+def test_asset_revision_tracks_material_readiness_only(tmp_path) -> None:
+    """Advance revision for readiness transitions, not repeated failures or successful refreshes."""
+    request = AssetRequest("https://assets.example/revision.png", "logo", (8, 8))
+    store = PreparedAssetStore(negative_ttl=30.0)
+    assert store.revision == 0
+    store.put(request, None)
+    assert store.revision == 0
+    store.put(request, None)
+    assert store.revision == 0
+    store.put(request, Image.new("RGBA", request.size, (20, 30, 40, 255)))
+    assert store.revision == 1
+    store.put(request, Image.new("RGBA", request.size, (20, 30, 40, 255)))
+    assert store.revision == 1
+
+    now = [0.0]
+    expiring = PreparedAssetStore(clock=lambda: now[0], negative_ttl=1.0, ttl=1.0)
+    expiring.put(request, None)
+    now[0] = 2.0
+    assert not expiring.contains_memory(request)
+    assert expiring.revision == 0
+    expiring.put(request, Image.new("RGBA", request.size, (20, 30, 40, 255)))
+    now[0] = 4.0
+    assert expiring.image(request.url, request.processor, request.size) is None
+    assert expiring.revision == 2
+
+
+def test_running_durable_asset_view_observes_new_prepared_file(tmp_path) -> None:
+    """Read a logo prepared after a separate view started without restarting that view."""
+    request = AssetRequest("https://assets.example/process.png", "logo", (8, 8))
+    writer = AssetCoordinator(tmp_path, fetch=lambda _url: _png())
+    reader = LongTermAssetCache(tmp_path)
+    try:
+        assert reader.image(request.url, request.processor, request.size) is None
+        assert writer.prefetch((request,))[0].result() is not None
+        image = reader.image(request.url, request.processor, request.size)
+        assert image is not None
+        assert image.size == request.size
+    finally:
+        writer.close()
+
+
+def test_default_positive_logo_remains_memory_readable_past_fifteen_minutes() -> None:
+    """Keep a prepared logo available beyond the negative retry window by default."""
+    now = [0.0]
+    request = AssetRequest("https://assets.example/long-lived.png", "logo", (8, 8))
+    store = PreparedAssetStore(clock=lambda: now[0])
+    store.put(request, Image.new("RGBA", request.size, (20, 30, 40, 255)))
+    now[0] = 901.0
+    assert store.get_memory(request) is not None
+
+
+def test_capacity_eviction_rehydrates_from_durable_cache_before_render_read(tmp_path) -> None:
+    """Rehydrate an evicted logo from its durable prepared file during later prefetch."""
+    first = AssetRequest("https://assets.example/first.png", "logo", (8, 8))
+    second = AssetRequest("https://assets.example/second.png", "logo", (8, 8))
+    calls: list[str] = []
+    prepared = PreparedAssetStore(capacity=1, directory=tmp_path / "prepared")
+    coordinator = AssetCoordinator(
+        tmp_path,
+        prepared=prepared,
+        fetch=lambda url: calls.append(url) or _png(),
+    )
+    try:
+        assert coordinator.prefetch((first,))[0].result() is not None
+        assert coordinator.prefetch((second,))[0].result() is not None
+        assert coordinator.image(first.url, first.processor, first.size) is None
+        assert coordinator.prefetch((first,))[0].result() is not None
+        assert coordinator.image(first.url, first.processor, first.size) is not None
+        assert calls == [first.url, second.url]
+    finally:
+        coordinator.close()
 
 
 def test_content_cache_recovers_then_expires_last_good_payload(tmp_path) -> None:

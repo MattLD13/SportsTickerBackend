@@ -40,7 +40,7 @@ class FlightRenderer:
         del context
         item_type = str(scene.item.get("type", "")).lower()
         if item_type == "flight_visitor":
-            return RenderedContent(self.visitor(scene.item), static=True)
+            return RenderedContent(self.visitor(scene.item))
         if item_type == "flight_airport_hud":
             return RenderedContent(
                 self.airport(
@@ -48,7 +48,6 @@ class FlightRenderer:
                     scene.item.get("arrivals", []),
                     scene.item.get("departures", []),
                 ),
-                static=True,
             )
         raise ValueError(f"FlightRenderer cannot render {item_type!r}.")
 

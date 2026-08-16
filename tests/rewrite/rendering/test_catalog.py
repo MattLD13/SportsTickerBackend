@@ -15,7 +15,7 @@ from ticker_core.rendering import (
 
 class SolidRenderer:
     def render(self, context, scene):
-        return RenderedContent(Image.new("RGB", (64, 32), "red"), static=False)
+        return RenderedContent(Image.new("RGB", (64, 32), "red"))
 
 
 def test_catalog_routes_by_content_family():

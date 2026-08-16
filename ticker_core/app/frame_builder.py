@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import json
 from typing import Any, Protocol
 
 from PIL import Image
@@ -41,6 +42,39 @@ class FrameBuilder:
         self._viewport = viewport
         self._connection_status = connection_status or ConnectionLostOverlay()
         self._last_base: Image.Image | None = None
+
+    def visual_key(self, decision: FrameDecision, *, asset_revision: int | None = None) -> tuple[object, ...]:
+        """Return the rendering-owned invalidation key for one decision."""
+        timestamp = decision.wall_time.timestamp()
+        key: list[object] = [decision.kind, decision.mode, decision.payload_key]
+        context = RenderContext(decision.wall_time)
+        if decision.kind is FrameKind.STATIC and decision.content is not None:
+            scene = ContentScene(_content_mapping(decision.content), decision.mode, decision.content_elapsed or 0.0)
+            key.append(self._catalog.visual_key(context, scene, asset_revision))
+        elif decision.kind is FrameKind.SCROLL:
+            key.append(decision.scroll_offset)
+        elif decision.kind is FrameKind.EMPTY:
+            key.append(int(timestamp * 384 / 60.0))
+        elif decision.kind is FrameKind.PAIRING:
+            key.append(decision.pairing_code)
+            key.append(int(timestamp * 2))
+        elif decision.kind is FrameKind.OFFLINE:
+            key.append(int(decision.offline_for or 0.0))
+            key.append(int(timestamp * 2))
+        elif decision.kind is FrameKind.SCORE_ALERT:
+            key.append(_stable_value(decision.alert))
+            key.append(int(max(0.0, decision.alert_elapsed or 0.0) * 30))
+        elif decision.kind is FrameKind.UPDATE:
+            key.append(decision.update_version)
+            key.append(round(decision.update_progress or 0.0, 3))
+            key.append(int(timestamp * 30))
+        elif decision.kind is FrameKind.WIFI_SETUP:
+            key.append(repr(decision.wifi_state))
+        if decision.news is not None:
+            key.append(_stable_value(decision.news))
+            key.append(int(max(0.0, decision.news_elapsed or 0.0) * 30))
+        key.append(decision.connection_lost)
+        return tuple(key)
 
     def build(self, decision: FrameDecision) -> Image.Image:
         """Build a complete `384x32` frame."""
@@ -105,7 +139,7 @@ class FrameBuilder:
         return canvas
 
     def _render_content(self, context: RenderContext, content: Content, mode: str, elapsed: float) -> Image.Image:
-        rendered = self._catalog.render(context, ContentScene(_plain_mapping(content.data), mode, elapsed))
+        rendered = self._catalog.render(context, ContentScene(_content_mapping(content), mode, elapsed))
         return rendered.image
 
     def _scroll_frame(self, decision: FrameDecision) -> Image.Image:
@@ -118,6 +152,15 @@ def _plain_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
     return {str(key): _plain(item) for key, item in value.items()}
 
 
+def _content_mapping(content: Content) -> dict[str, Any]:
+    """Expose explicit content identity and family facts to the renderer boundary."""
+    data = _plain_mapping(content.data)
+    data.setdefault("id", content.id)
+    data.setdefault("type", content.type)
+    data.setdefault("sport", content.sport)
+    return data
+
+
 def _plain(value: Any) -> Any:
     """Convert immutable protocol containers without changing scalar values."""
     if isinstance(value, Mapping):
@@ -127,3 +170,11 @@ def _plain(value: Any) -> Any:
     if isinstance(value, list):
         return [_plain(item) for item in value]
     return value
+
+
+def _stable_value(value: object) -> str:
+    """Serialize one overlay mapping without comparing frame bytes."""
+    try:
+        return json.dumps(value, sort_keys=True, default=str, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return repr(value)

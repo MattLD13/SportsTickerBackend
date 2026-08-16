@@ -54,11 +54,11 @@ class UtilityRenderer:
         item_type = str(scene.item.get("type", "")).lower()
         sport = str(scene.item.get("sport", "")).lower()
         if scene.item.get("no_games"):
-            return RenderedContent(self.empty(context), static=True)
+            return RenderedContent(self.empty(context))
         if item_type == "stock_ticker" or sport.startswith("stock"):
-            return RenderedContent(self.stock(scene.item), static=False)
+            return RenderedContent(self.stock(scene.item))
         if item_type == "leaderboard":
-            return RenderedContent(self.leaderboard(scene.item), static=False)
+            return RenderedContent(self.leaderboard(scene.item))
         raise ValueError(f"UtilityRenderer cannot render {item_type!r}.")
 
     def stock(self, item: object) -> Image.Image:

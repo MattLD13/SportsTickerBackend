@@ -626,6 +626,9 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     private var devicesTimer: Timer?
     private var saveDebounceTimer: Timer?
     private var currentSaveTask: URLSessionDataTask?
+    private var deviceListTask: URLSessionDataTask?
+    private var deviceListGate = DeviceListRequestGate()
+    private var selection: DeviceSelectionReducer
     private var spotifyAuthorizationSession: ASWebAuthenticationSession?
     private var lastFetchTime: Date = .distantPast
     // After a mode switch, poll every 1s for 30s so the UI and hardware
@@ -648,6 +651,11 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         set { UserDefaults.standard.set(newValue, forKey: "latchedTickerID") }
     }
 
+    private func selectActiveTicker(_ tickerID: String?) {
+        selection.select(tickerID)
+        savedTickerID = tickerID
+    }
+
     private func controllerToken(for tickerID: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -662,15 +670,21 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         return String(data: data, encoding: .utf8)
     }
 
-    private func saveControllerToken(_ token: String, for tickerID: String) {
-        removeControllerToken(for: tickerID)
+    @discardableResult
+    private func saveControllerToken(_ token: String, for tickerID: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "matt.TickerControl.controller-token",
             kSecAttrAccount as String: tickerID,
-            kSecValueData as String: Data(token.utf8),
         ]
-        SecItemAdd(query as CFDictionary, nil)
+        let attributes: [String: Any] = [kSecValueData as String: Data(token.utf8)]
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+        guard updateStatus == errSecItemNotFound else { return false }
+
+        var addQuery = query
+        addQuery[kSecValueData as String] = Data(token.utf8)
+        return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
     }
 
     private func removeControllerToken(for tickerID: String) {
@@ -700,6 +714,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     override init() {
         let savedURL = UserDefaults.standard.string(forKey: "serverURL") ?? "https://ticker.mattdicks.org"
         self.serverURL = savedURL
+        self.selection = DeviceSelectionReducer(activeTickerID: UserDefaults.standard.string(forKey: "latchedTickerID"))
         super.init()
         
         // Initial Data Load
@@ -895,7 +910,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                             print("⛔ Access Denied. Unpairing local app.")
                             self.isEditing = false
                             self.removeControllerToken(for: validID)
-                            self.savedTickerID = nil
+                            self.selectActiveTicker(nil)
                             self.games = []
                             self.devices.removeAll()
                             self.updateOverallStatus()
@@ -1004,43 +1019,50 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     }
     
     func fetchDevices() {
-        let base = getBaseURL()
-        guard let tickerID = savedTickerID,
-              let url = URL(string: "\(base)/api/v2/tickers"),
+        deviceListTask?.cancel()
+        let tickerID = savedTickerID
+        let token = tickerID.flatMap(controllerToken)
+        guard let tickerID,
+              let token,
+              let url = URL(string: "\(getBaseURL())/api/v2/tickers"),
               let request = authorizedRequest(url: url, method: "GET", tickerID: tickerID) else {
+            deviceListGate.invalidate()
+            deviceListTask = nil
             self.devices.removeAll()
             self.updateOverallStatus()
             return
         }
-        
-        URLSession.shared.dataTask(with: request) { data, _, _ in
-            if let d = data, let decoded = try? JSONDecoder().decode(V2TickerList.self, from: d) {
-                DispatchQueue.main.async {
-                    // A valid /tickers response proves the server is reachable.
-                    // Without this, a race where fetchDevices() finishes before
-                    // fetchData() would call updateOverallStatus() while
-                    // isServerReachable is still false, showing "Server Offline".
-                    self.isServerReachable = true
-                    let authorizedTickers = decoded.tickers.filter { self.controllerToken(for: $0.ticker_id) != nil }
-                    self.devices = decoded.tickers
-                        .filter { self.controllerToken(for: $0.ticker_id) != nil }
-                        .map(\.tickerDevice)
-                    if let activeID = self.savedTickerID,
-                       !authorizedTickers.contains(where: { $0.ticker_id == activeID }) {
-                        self.savedTickerID = authorizedTickers.first?.ticker_id
-                    }
-                    if authorizedTickers.isEmpty {
-                        self.games = []
-                    }
-                    if self.isSportsOnly && self.state.mode != "sports" {
-                        self.state.mode = "sports"
-                        self.saveSettings()
-                    }
-                    self.updateOverallStatus()
+
+        let requestIdentity = deviceListGate.begin(tickerID: tickerID, authorizationToken: token)
+        let task = URLSession.shared.dataTask(with: request) { data, _, _ in
+            guard let data, let decoded = try? JSONDecoder().decode(V2TickerList.self, from: data) else { return }
+            DispatchQueue.main.async {
+                guard self.deviceListGate.accepts(
+                    requestIdentity,
+                    activeTickerID: self.savedTickerID,
+                    activeAuthorizationToken: self.savedTickerID.flatMap(self.controllerToken)
+                ) else { return }
+
+                // The backend list is authoritative for membership. Every returned row is
+                // authorized by the request token and remains visible after a token replacement.
+                self.isServerReachable = true
+                self.devices = decoded.tickers.map(\.tickerDevice)
+                if decoded.tickers.isEmpty {
+                    self.games = []
                 }
+                if self.isSportsOnly && self.state.mode != "sports" {
+                    self.state.mode = "sports"
+                    self.saveSettings()
+                }
+                self.updateOverallStatus()
             }
-        }.resume()
+        }
+        deviceListTask = task
+        task.resume()
     }
+
+    // Device refresh owns the list only. Selection changes happen in pairing, unpairing,
+    // or an explicit user action, so an empty or delayed response cannot relatch another ID.
     func updateOverallStatus() {
         if !isServerReachable { self.connectionStatus = "Server Offline"; self.statusColor = .red; return }
         // If we have devices OR a latched ID, we are effectively connected
@@ -1118,10 +1140,18 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 // Decode Response
                 if let res = try? JSONDecoder().decode(PairingExchangeResponse.self, from: d), let newID = res.ticker_id {
                     DispatchQueue.main.async {
+                        guard self.selection.selectPairedTicker(
+                            newID,
+                            tokenWasSaved: self.saveControllerToken(res.controller_token, for: newID)
+                        ) else {
+                            self.showPairSuccess = false
+                            self.pairError = "Pairing failed: the controller token could not be saved securely."
+                            return
+                        }
+                        self.savedTickerID = self.selection.activeTickerID
                         self.showPairSuccess = true
-                        self.savedTickerID = newID
-                        self.saveControllerToken(res.controller_token, for: newID)
                         self.updateTickerName(name, tickerID: newID)
+                        // Start one latest-generation list request after selection and token storage.
                         self.fetchDevices()
                         self.fetchData()
                         self.fetchSpotifyStatus()
@@ -1161,7 +1191,14 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 self.games.removeAll()
                 self.removeControllerToken(for: id)
                 if self.savedTickerID == id {
-                    self.savedTickerID = self.devices.first?.id
+                    self.deviceListTask?.cancel()
+                    self.deviceListGate.invalidate()
+                    var nextSelection = DeviceSelectionReducer(activeTickerID: self.savedTickerID)
+                    let remainingAuthorizedIDs = self.devices
+                        .filter { self.controllerToken(for: $0.id) != nil }
+                        .map(\.id)
+                    nextSelection.selectAfterRemoving(id, remainingTickerIDs: remainingAuthorizedIDs)
+                    self.selectActiveTicker(nextSelection.activeTickerID)
                 }
                 self.connectionStatus = "Ticker unpaired. Code: \(pairing.pairing_code)"
                 self.statusColor = .orange

@@ -131,6 +131,14 @@ class TickerApplication:
         self._asset_revision = self._asset_revision_now()
         self._last_response: TickerResponse | None = None
         self._logger = logger or _NullPiLogger()
+        set_issue_handler = getattr(self._viewport, "set_issue_handler", None)
+        if callable(set_issue_handler):
+            set_issue_handler(self._record_viewport_issue)
+        self._last_visual_key: object | None = None
+        self._last_base_visual_key: object | None = None
+        self._last_frame = None
+        self._last_present_at: float | None = None
+        self._present_retry = False
 
     @property
     def runtime(self) -> TickerRuntime:
@@ -206,13 +214,44 @@ class TickerApplication:
                 connection_lost=False,
             )
         try:
-            frame = self._frames.build(decision)
+            base_visual_key = self._frame_visual_key(decision)
+            visual_key = (base_visual_key, decision.brightness, decision.inverted)
+        except Exception as error:
+            self._logger.record_issue("frame_key", error, kind=str(decision.kind), mode=decision.mode)
+            self._record_tick(decision, presented=False)
+            self._complete_step(decision)
+            return decision
+        if (
+            self._last_frame is not None
+            and visual_key == self._last_visual_key
+            and not self._present_retry
+        ):
+            self._record_tick(decision, presented=False)
+            self._complete_step(decision)
+            return decision
+        try:
+            frame = self._last_frame if self._last_frame is not None and base_visual_key == self._last_base_visual_key else self._frames.build(decision)
+            if _unintended_black(frame, decision):
+                self._logger.record_issue("black_frame", "A non-sleep frame is fully black", kind=str(decision.kind), mode=decision.mode)
+                self._present_retry = True
+                self._record_tick(decision, presented=False)
+                self._complete_step(decision)
+                return decision
             present_started_at = monotonic()
             self._sink.present(frame, brightness=decision.brightness, inverted=decision.inverted)
             finished_at = monotonic()
         except Exception as error:
             self._logger.record_issue("frame", error, kind=str(decision.kind), mode=decision.mode)
-            raise
+            self._present_retry = True
+            self._record_tick(decision, presented=False)
+            self._complete_step(decision)
+            return decision
+        self._last_frame = frame
+        self._last_visual_key = visual_key
+        self._last_base_visual_key = base_visual_key
+        self._last_present_at = finished_at
+        self._present_retry = False
+        self._record_tick(decision, presented=True)
         self._logger.record_frame(
             started_at=started_at,
             present_started_at=present_started_at,
@@ -227,11 +266,36 @@ class TickerApplication:
             wall_time=decision.wall_time,
             width=getattr(self._sink, "width", 0),
             height=getattr(self._sink, "height", 0),
+            viewport=getattr(self._viewport, "status", None),
+            last_present_age=0.0,
         )
+        self._complete_step(decision)
+        return decision
+
+    def _frame_visual_key(self, decision: FrameDecision) -> object:
+        """Ask the rendering boundary for one invalidation key."""
+        return self._frames.visual_key(decision, asset_revision=self._asset_revision)
+
+    def _record_tick(self, decision: FrameDecision, *, presented: bool) -> None:
+        """Record loop activity while keeping presentation FPS separate."""
+        record_tick = getattr(self._logger, "record_tick", None)
+        if callable(record_tick):
+            age = None if self._last_present_at is None else max(0.0, monotonic() - self._last_present_at)
+            record_tick(
+                interval=decision.interval,
+                kind=decision.kind,
+                mode=decision.mode,
+                wall_time=decision.wall_time,
+                presented=presented,
+                last_present_age=age,
+                viewport=getattr(self._viewport, "status", None),
+            )
+
+    def _complete_step(self, decision: FrameDecision) -> None:
+        """Run lifecycle work after every frame, retry, or idle tick."""
         self._last_decision = decision
         self._launch_requested_update()
         self._launch_requested_reboot()
-        return decision
 
     def process_events(self) -> None:
         """Apply all completed poll events on the application thread."""
@@ -293,6 +357,13 @@ class TickerApplication:
             close_sink()
         self._logger.close()
         self._started = False
+
+    def _record_viewport_issue(self, details: Mapping[str, object]) -> None:
+        """Forward card renderer failures to the application health stream."""
+        values = dict(details)
+        source = str(values.pop("source", "card_renderer"))
+        error = str(values.pop("error", "card renderer failed"))
+        self._logger.record_issue(source, error, **values)
 
     def _start_wifi_lifecycle(self) -> None:
         """Start platform Wi-Fi checks outside the render and poll paths."""
@@ -516,6 +587,9 @@ class _NullPiLogger:
     def record_frame(self, **kwargs) -> None:
         del kwargs
 
+    def record_tick(self, **kwargs) -> None:
+        del kwargs
+
     def record_poll(self, **kwargs) -> None:
         del kwargs
 
@@ -524,6 +598,16 @@ class _NullPiLogger:
 
     def record_issue(self, source, error, **details) -> None:
         del source, error, details
+
+
+def _unintended_black(frame: object, decision: FrameDecision) -> bool:
+    """Detect an accidental all-black frame before matrix presentation."""
+    if decision.kind in {FrameKind.STOPPED, FrameKind.SLEEP} or decision.brightness <= 0:
+        return False
+    getbbox = getattr(frame, "getbbox", None)
+    if not callable(getbbox):
+        return False
+    return getbbox() is None
 
 
 def _default_update_command(repository: Path) -> tuple[str, ...]:

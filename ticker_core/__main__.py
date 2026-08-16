@@ -11,7 +11,7 @@ def main() -> None:
     try:
         application.run()
     except KeyboardInterrupt:
-        application.close()
+        pass
 
 
 if __name__ == "__main__":

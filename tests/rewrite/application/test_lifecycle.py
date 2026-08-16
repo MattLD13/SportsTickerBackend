@@ -69,10 +69,13 @@ class Viewport:
 
 
 class Frames:
-    """Return one valid blank panel for every runtime decision."""
+    """Return one visible panel for every runtime decision."""
+
+    def visual_key(self, decision, *, asset_revision=None):
+        return decision, asset_revision
 
     def build(self, decision):
-        return Image.new("RGB", (384, 32))
+        return Image.new("RGB", (384, 32), (1, 2, 3))
 
 
 class Sink:
@@ -83,12 +86,13 @@ class Sink:
 
     def __init__(self) -> None:
         self.presented = []
+        self.clear_calls = 0
 
     def present(self, image, *, brightness=100, inverted=False) -> None:
         self.presented.append((image, brightness, inverted))
 
     def clear(self) -> None:
-        pass
+        self.clear_calls += 1
 
 
 class Client:
@@ -247,5 +251,143 @@ def test_same_poll_payload_does_not_update_scroll_cards(tmp_path) -> None:
 
         assert viewport.updates == 1
         assert assets.payloads == [response]
+    finally:
+        application.close()
+
+
+def test_static_frame_skips_unchanged_build_and_present(tmp_path) -> None:
+    wall = datetime(2026, 8, 11, tzinfo=timezone.utc)
+    runtime = TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: wall)
+    frames = Frames()
+    frames.calls = 0
+    original_build = frames.build
+    frames.build = lambda decision: (setattr(frames, "calls", frames.calls + 1) or original_build(decision))
+    sink = Sink()
+    application = TickerApplication(
+        client=Client(), poller=IdlePoller(), cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=Assets(), runtime=runtime, viewport=Viewport(), frames=frames,
+        pacer=FramePacer(lambda: 0.0), sink=sink, commands=Commands(), device_id="ticker-1",
+        repository=tmp_path, wall_clock=lambda: wall,
+    )
+    pinned = payload()
+    pinned["settings"]["sports_presentation"] = "pinned"
+    try:
+        application.start()
+        application._events.put(PollSucceeded(TickerResponse.from_payload(pinned)))
+        application.step()
+        application.step()
+        assert frames.calls == 1
+        assert len(sink.presented) == 1
+    finally:
+        application.close()
+
+
+def test_frame_failure_does_not_stop_step_or_clear_matrix(tmp_path) -> None:
+    class FailingFrames(Frames):
+        def build(self, decision):
+            raise RuntimeError("render failed")
+
+    sink = Sink()
+    application = TickerApplication(
+        client=Client(), poller=IdlePoller(), cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=Assets(), runtime=TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: datetime.now(timezone.utc)),
+        viewport=Viewport(), frames=FailingFrames(), pacer=FramePacer(lambda: 0.0), sink=sink,
+        commands=Commands(), device_id="ticker-1", repository=tmp_path, wall_clock=lambda: datetime.now(timezone.utc),
+    )
+    try:
+        application.start()
+        application.step()
+        application.step()
+        assert sink.clear_calls == 0
+    finally:
+        application.close()
+
+
+def test_present_failure_keeps_last_good_matrix_frame_and_retries(tmp_path) -> None:
+    class FlakySink(Sink):
+        def __init__(self) -> None:
+            super().__init__()
+            self.failed = False
+
+        def present(self, image, *, brightness=100, inverted=False) -> None:
+            if not self.failed:
+                self.failed = True
+                raise RuntimeError("matrix unavailable")
+            super().present(image, brightness=brightness, inverted=inverted)
+
+    sink = FlakySink()
+    application = TickerApplication(
+        client=Client(), poller=IdlePoller(), cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=Assets(), runtime=TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: datetime.now(timezone.utc)),
+        viewport=Viewport(), frames=Frames(), pacer=FramePacer(lambda: 0.0), sink=sink,
+        commands=Commands(), device_id="ticker-1", repository=tmp_path, wall_clock=lambda: datetime.now(timezone.utc),
+    )
+    try:
+        application.start()
+        application.step()
+        assert sink.presented == []
+        assert sink.clear_calls == 0
+        application.step()
+        assert len(sink.presented) == 1
+        assert sink.clear_calls == 0
+    finally:
+        application.close()
+
+
+def test_present_failure_retries_even_when_visual_key_is_unchanged(tmp_path) -> None:
+    class RetrySink(Sink):
+        def __init__(self) -> None:
+            super().__init__()
+            self.fail_next = False
+
+        def present(self, image, *, brightness=100, inverted=False) -> None:
+            if self.fail_next:
+                self.fail_next = False
+                raise RuntimeError("temporary matrix failure")
+            super().present(image, brightness=brightness, inverted=inverted)
+
+    sink = RetrySink()
+    application = TickerApplication(
+        client=Client(), poller=IdlePoller(), cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=Assets(), runtime=TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: datetime.now(timezone.utc)),
+        viewport=Viewport(), frames=Frames(), pacer=FramePacer(lambda: 0.0), sink=sink,
+        commands=Commands(), device_id="ticker-1", repository=tmp_path, wall_clock=lambda: datetime.now(timezone.utc),
+    )
+    try:
+        application.start()
+        application.step()
+        sink.fail_next = True
+        application.step()
+        assert len(sink.presented) == 1
+        application.step()
+        assert len(sink.presented) == 2
+    finally:
+        application.close()
+
+
+def test_unintended_black_frame_is_rejected_and_retried(tmp_path) -> None:
+    class BlackThenVisibleFrames(Frames):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def build(self, decision):
+            self.calls += 1
+            return Image.new("RGB", (384, 32), "black" if self.calls == 1 else (1, 2, 3))
+
+    sink = Sink()
+    frames = BlackThenVisibleFrames()
+    application = TickerApplication(
+        client=Client(), poller=IdlePoller(), cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=Assets(), runtime=TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: datetime.now(timezone.utc)),
+        viewport=Viewport(), frames=frames, pacer=FramePacer(lambda: 0.0), sink=sink,
+        commands=Commands(), device_id="ticker-1", repository=tmp_path, wall_clock=lambda: datetime.now(timezone.utc),
+    )
+    try:
+        application.start()
+        application.step()
+        assert sink.presented == []
+        application.step()
+        assert len(sink.presented) == 1
+        assert sink.presented[0][0].getbbox() is not None
     finally:
         application.close()

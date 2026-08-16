@@ -95,3 +95,22 @@ def test_golf_full_advances_the_five_page_leaderboard() -> None:
 
     assert state.page == 1
     assert next_state.page == 2
+
+
+def test_golf_pinned_scene_uses_exact_four_second_elapsed_pages() -> None:
+    renderer = GolfRenderer(load_default_font_set())
+    context = RenderContext(datetime(2026, 8, 14, 20, 50, 40))
+    players = [
+        {"pos": str(index), "name": f"Player {index}", "total": -index, "today": -1, "thru": 18, "holes": [4] * 18}
+        for index in range(1, 10)
+    ]
+    item = {"type": "golf", "sport": "golf", "sports_presentation": "pinned", "golf": {"brand": "pga", "players": players}}
+
+    first = renderer.render(context, ContentScene(item, "sports", 3.99)).image
+    second = renderer.render(context, ContentScene(item, "sports", 4.0)).image
+    same_page = renderer.render(context, ContentScene(item, "sports", 4.1)).image
+    third = renderer.render(context, ContentScene(item, "sports", 8.0)).image
+
+    assert first.tobytes() != second.tobytes()
+    assert second.tobytes() == same_page.tobytes()
+    assert second.tobytes() != third.tobytes()

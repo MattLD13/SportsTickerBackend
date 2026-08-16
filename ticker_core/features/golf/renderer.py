@@ -31,14 +31,13 @@ class GolfRenderer:
 
     def __init__(self, fonts: FontSet) -> None:
         self._fonts = fonts
-        self._state = GolfAnimationState()
 
     def render(self, context: RenderContext, scene: ContentScene) -> RenderedContent:
         """Render the mode-selected golf view."""
         if scene.item.get("sports_presentation") == "pinned":
-            image, self._state = self.full(context, scene.item, self._state)
-            return RenderedContent(image, static=True)
-        return RenderedContent(self.scroll(scene.item), static=False)
+            image, _ = self.full(context, scene.item, GolfAnimationState(), elapsed=scene.elapsed)
+            return RenderedContent(image)
+        return RenderedContent(self.scroll(scene.item))
 
     def scroll(self, item: object) -> Image.Image:
         """Render the compact top-three score card."""
@@ -82,7 +81,14 @@ class GolfRenderer:
             tiny_text(draw, 112 - len(total_text) * 5 // 2, y, total_text, self._score_color(player["total"]), self._fonts.tiny)
         return image
 
-    def full(self, context: RenderContext, item: object, state: GolfAnimationState) -> tuple[Image.Image, GolfAnimationState]:
+    def full(
+        self,
+        context: RenderContext,
+        item: object,
+        state: GolfAnimationState,
+        *,
+        elapsed: float | None = None,
+    ) -> tuple[Image.Image, GolfAnimationState]:
         """Render the full 18-hole golf screen."""
         game = item if isinstance(item, dict) else {}
         payload = self._payload(game)
@@ -93,11 +99,15 @@ class GolfRenderer:
         pars = (pars + [4, 5, 4, 3, 4, 3, 4, 5, 4, 4, 3, 4, 5, 4, 5, 3, 4, 4])[:18]
         all_players = self._players(payload, compact=False)
         page_count = max(1, min(5, (len(all_players) + 2) // 3))
-        changed = context.now.timestamp() if state.changed_at is None else state.changed_at
         page = min(max(1, state.page), page_count)
-        if context.now.timestamp() - changed > 4.0:
-            page = page % page_count + 1
-            changed = context.now.timestamp()
+        if elapsed is None:
+            changed = context.now.timestamp() if state.changed_at is None else state.changed_at
+            if context.now.timestamp() - changed > 4.0:
+                page = page % page_count + 1
+                changed = context.now.timestamp()
+        else:
+            page = int(max(0.0, elapsed) // 4.0) % page_count + 1
+            changed = None
         next_state = GolfAnimationState(state.pair, page, changed)
         header = "MASTERS R3" if str(payload.get("brand", "pga")).lower() == "masters" else "R3"
         self._text(draw, header, 2, 0, colors["accent"])
