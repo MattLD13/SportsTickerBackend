@@ -399,8 +399,8 @@
   </div>
 </footer>
 
-<script src="{{ url_for('dashboard_v2.static', filename='led.js') }}"></script>
-<script src="{{ url_for('dashboard_v2.static', filename='ticker-demo.js') }}"></script>
+<script src="{{ url_for('dashboard_v2.static', filename='led.js', v=version_hash) }}"></script>
+<script src="{{ url_for('dashboard_v2.static', filename='ticker-demo.js', v=version_hash) }}"></script>
 <script>
 (function () {
   if (!('IntersectionObserver' in window)) {

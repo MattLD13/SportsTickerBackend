@@ -75,6 +75,7 @@ def demo():
     settings = tickers[0].display_settings if tickers else None
     return render_template(
         "demo_ticker.html",
+        version_hash=_version_hash(),
         demo_modes=_demo_modes(),
         panel_w=384,
         panel_h=32,
@@ -424,11 +425,21 @@ def _render_ewr_airport_demo() -> Image.Image:
     draw_tiny_text(draw, 281, 0, "76F PARTLY CLOUDY", grey)
     draw.line((0, 6, 383, 6), fill=(30, 60, 100))
     draw.line((190, 8, 190, 31), fill=(30, 60, 100))
-    for y, flight, airport, city in ((9, "UA188", "LAX", "LOS ANGELES"), (17, "DL402", "ATL", "ATLANTA")):
+    for y, flight, airport, city in (
+        (9, "UA188", "LAX", "LOS ANGELES"),
+        (14, "DL402", "ATL", "ATLANTA"),
+        (19, "B6201", "MCO", "ORLANDO"),
+        (24, "AA109", "DFW", "DALLAS"),
+    ):
         draw_tiny_text(draw, 3, y, flight, green)
         draw_tiny_text(draw, 33, y, airport, grey)
         draw_tiny_text(draw, 53, y, city, white)
-    for y, flight, airport, city in ((9, "UA205", "SFO", "SAN FRANCISCO"), (17, "B6117", "MCO", "ORLANDO")):
+    for y, flight, airport, city in (
+        (9, "UA205", "SFO", "SAN FRANCISCO"),
+        (14, "B6117", "MCO", "ORLANDO"),
+        (19, "DL311", "DTW", "DETROIT"),
+        (24, "AA672", "MIA", "MIAMI"),
+    ):
         draw_tiny_text(draw, 196, y, flight, red)
         draw_tiny_text(draw, 226, y, airport, grey)
         draw_tiny_text(draw, 246, y, city, white)
