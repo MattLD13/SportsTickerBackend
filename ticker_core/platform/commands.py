@@ -34,6 +34,9 @@ class PlatformCommands(Protocol):
     def start_hotspot(self, ssid: str, password: str, *, interface: str = "wlan0") -> None:
         """Start the setup hotspot on one wireless interface."""
 
+    def stop_hotspot(self, *, interface: str = "wlan0") -> None:
+        """Disconnect one wireless interface from its setup hotspot."""
+
 
 class SubprocessPlatformCommands:
     """Use system commands for Pi platform actions."""
@@ -95,3 +98,8 @@ class SubprocessPlatformCommands:
             ],
             check=True,
         )
+
+    def stop_hotspot(self, *, interface: str = "wlan0") -> None:
+        """Disconnect the hotspot before NetworkManager joins home Wi-Fi."""
+
+        self._run(["nmcli", "device", "disconnect", interface], check=False)

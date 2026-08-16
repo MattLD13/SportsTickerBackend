@@ -20,6 +20,7 @@ def test_platform_commands_delegate_to_injected_subprocesses() -> None:
     assert commands.list_wifi_networks() == [WiFiNetwork("Alpha"), WiFiNetwork("Zulu")]
     commands.connect_wifi("Ticker", "secret")
     commands.start_hotspot("Setup", "setup1234", interface="wlan1")
+    commands.stop_hotspot(interface="wlan1")
     commands.run_update(["python", "updater.py"])
     commands.reboot()
 

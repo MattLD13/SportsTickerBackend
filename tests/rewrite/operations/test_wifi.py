@@ -13,6 +13,7 @@ from ticker_core.rendering import load_default_font_set
 class Commands:
     def __init__(self) -> None:
         self.connected: list[tuple[str, str, str]] = []
+        self.stopped: list[str] = []
         self.reboots = 0
 
     def list_wifi_networks(self) -> list[WiFiNetwork]:
@@ -20,6 +21,9 @@ class Commands:
 
     def connect_wifi(self, ssid: str, password: str, *, interface: str = "wlan0") -> None:
         self.connected.append((ssid, password, interface))
+
+    def stop_hotspot(self, *, interface: str = "wlan0") -> None:
+        self.stopped.append(interface)
 
     def reboot(self) -> None:
         self.reboots += 1
@@ -55,6 +59,7 @@ def test_wifi_setup_starts_hotspot_and_connects_from_portal() -> None:
     assert response.status_code == 200
     assert len(background) == 1
     background[0]()
+    assert commands.stopped == ["wlan0"]
     assert commands.connected == [("Home", "secret", "wlan0")]
     assert commands.reboots == 1
 

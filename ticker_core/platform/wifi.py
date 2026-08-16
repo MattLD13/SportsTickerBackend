@@ -343,6 +343,7 @@ class WiFiRecoveryService:
             raise ValueError("The setup code is invalid.")
         if not ssid.strip():
             raise ValueError("Wi-Fi SSID must not be empty.")
+        self._commands.stop_hotspot(interface=self._hotspot.interface)
         self._commands.connect_wifi(ssid, password, interface=self._hotspot.interface)
         self._clear_setup_state()
         self._commands.reboot()
