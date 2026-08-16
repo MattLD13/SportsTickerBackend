@@ -156,19 +156,40 @@ class BackendApplication:
             )
         )
 
-    def exchange_pairing_code(self, pairing_code: str) -> tuple[TickerRecord, str]:
-        """Consume one pairing code and return one opaque controller token once."""
+    def exchange_pairing_code(
+        self,
+        pairing_code: str,
+        *,
+        controller_group_id: str | None = None,
+        controller_group_secret: str | None = None,
+    ) -> tuple[TickerRecord, str, str | None, str | None]:
+        """Consume one pairing code and return a token plus optional shared group credentials."""
 
         normalized_code = str(pairing_code).strip()
+        supplied_group_id = str(controller_group_id or "").strip() or None
+        supplied_group_secret = str(controller_group_secret or "").strip() or None
+        if (supplied_group_id is None) != (supplied_group_secret is None):
+            raise ValueError("controller group credentials must be provided together")
+        existing_group_id = self.repository.controller_group_id_for_pairing_code(normalized_code)
+        new_group = supplied_group_id is None and existing_group_id is None
+        group_id = supplied_group_id or (None if existing_group_id else f"cg_{secrets.token_urlsafe(18)}")
+        group_secret = supplied_group_secret or (f"cgs_{secrets.token_urlsafe(32)}" if new_group else None)
         token = f"ctk_{secrets.token_urlsafe(32)}"
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         ticker = self.repository.exchange_pairing_code(
             normalized_code,
             token_hash,
             now=self._clock(),
+            controller_group_id=group_id,
+            controller_group_secret_hash=hashlib.sha256(group_secret.encode("utf-8")).hexdigest() if group_secret else None,
         )
         self._register_scheduler_ticker(ticker.ticker_id)
-        return ticker, token
+        returned_group_id = (
+            ticker.pairing.controller_group_id
+            if ticker.pairing is not None and (new_group or supplied_group_id is not None)
+            else None
+        )
+        return ticker, token, returned_group_id, group_secret if new_group else None
 
     def issue_pairing_code(self, ticker_id: str) -> str:
         """Issue one unique six-digit code for another controller."""

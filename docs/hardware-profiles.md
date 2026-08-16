@@ -12,6 +12,8 @@ Every device registration can include a `profile` object. Legacy registrations i
 
 The backend persists the normalized profile in device metadata, returns it in ticker responses, and filters projected modes using its declared capabilities.
 
+Pairing creates a controller group for one app. Tickers paired with that group appear together in the app, while a separately paired household user receives access only to the ticker they joined. Shared teams and Spotify connections belong to the controller group.
+
 Set these Pi variables for a custom display:
 
 ```powershell

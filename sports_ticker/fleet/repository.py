@@ -109,6 +109,7 @@ def _pairing(value: PairingState | Mapping[str, Any] | None) -> PairingState | N
     return PairingState(
         pairing_code=value.get("pairing_code"),
         pairing_code_expires_at=value.get("pairing_code_expires_at", value.get("expires_at")),
+        controller_group_id=value.get("controller_group_id"),
         paired=value.get("paired", False),
         client_ids=clients,
     )
@@ -180,6 +181,7 @@ class TickerRepository:
                     ticker_id TEXT PRIMARY KEY,
                     pairing_code TEXT,
                     pairing_code_expires_at REAL,
+                    controller_group_id TEXT,
                     paired INTEGER NOT NULL,
                     client_ids_json TEXT NOT NULL,
                     FOREIGN KEY (ticker_id) REFERENCES tickers(ticker_id) ON DELETE CASCADE
@@ -237,6 +239,27 @@ class TickerRepository:
                 );
                 """,
                 """
+                CREATE TABLE IF NOT EXISTS controller_groups (
+                    group_id TEXT PRIMARY KEY,
+                    secret_hash TEXT NOT NULL UNIQUE,
+                    created_at REAL NOT NULL
+                );
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS spotify_group_connections (
+                    controller_group_id TEXT NOT NULL,
+                    spotify_account_id TEXT NOT NULL,
+                    display_name TEXT NOT NULL,
+                    scopes_json TEXT NOT NULL,
+                    refresh_token_ciphertext TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('connected', 'reauthorization_required')),
+                    priority INTEGER NOT NULL DEFAULT 0 CHECK (priority IN (0, 1)),
+                    connected_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY (controller_group_id, spotify_account_id)
+                );
+                """,
+                """
                 CREATE TABLE IF NOT EXISTS spotify_oauth_attempts (
                     attempt_id TEXT PRIMARY KEY,
                     ticker_id TEXT NOT NULL,
@@ -252,6 +275,7 @@ class TickerRepository:
                 CREATE TABLE IF NOT EXISTS controller_sessions (
                     token_hash TEXT PRIMARY KEY,
                     ticker_id TEXT NOT NULL,
+                    controller_group_id TEXT,
                     created_at REAL NOT NULL,
                     last_used_at REAL NOT NULL,
                     FOREIGN KEY (ticker_id) REFERENCES tickers(ticker_id) ON DELETE CASCADE
@@ -265,10 +289,20 @@ class TickerRepository:
             for statement in schema:
                 self._connection.execute(statement)
             self._migrate_pairing_expiry_locked()
+            self._migrate_controller_group_locked()
+            self._migrate_controller_session_group_locked()
             self._migrate_spotify_connections_locked()
+            self._connection.execute(
+                "CREATE INDEX IF NOT EXISTS controller_sessions_group_id "
+                "ON controller_sessions(controller_group_id)"
+            )
             self._connection.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS spotify_connections_one_priority "
                 "ON spotify_connections(ticker_id) WHERE priority = 1"
+            )
+            self._connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS spotify_group_connections_one_priority "
+                "ON spotify_group_connections(controller_group_id) WHERE priority = 1"
             )
 
     def _migrate_spotify_connections_locked(self) -> None:
@@ -312,6 +346,30 @@ class TickerRepository:
         if "pairing_code_expires_at" not in columns:
             self._connection.execute(
                 "ALTER TABLE ticker_pairing ADD COLUMN pairing_code_expires_at REAL"
+            )
+
+    def _migrate_controller_group_locked(self) -> None:
+        """Add the controller group owner used by shared app integrations."""
+
+        columns = {
+            str(row["name"])
+            for row in self._connection.execute("PRAGMA table_info(ticker_pairing)")
+        }
+        if "controller_group_id" not in columns:
+            self._connection.execute(
+                "ALTER TABLE ticker_pairing ADD COLUMN controller_group_id TEXT"
+            )
+
+    def _migrate_controller_session_group_locked(self) -> None:
+        """Add nullable group ownership to existing controller sessions."""
+
+        columns = {
+            str(row["name"])
+            for row in self._connection.execute("PRAGMA table_info(controller_sessions)")
+        }
+        if "controller_group_id" not in columns:
+            self._connection.execute(
+                "ALTER TABLE controller_sessions ADD COLUMN controller_group_id TEXT"
             )
 
     @contextmanager
@@ -388,11 +446,12 @@ class TickerRepository:
         if record.pairing is not None:
             self._connection.execute(
                 "INSERT INTO ticker_pairing "
-                "(ticker_id, pairing_code, pairing_code_expires_at, paired, client_ids_json) VALUES (?, ?, ?, ?, ?)",
+                "(ticker_id, pairing_code, pairing_code_expires_at, controller_group_id, paired, client_ids_json) VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     record.ticker_id,
                     record.pairing.pairing_code,
                     record.pairing.pairing_code_expires_at,
+                    record.pairing.controller_group_id,
                     int(record.pairing.paired),
                     _dump(record.pairing.client_ids),
                 ),
@@ -420,7 +479,7 @@ class TickerRepository:
             (ticker_id,),
         ).fetchone()
         pairing_row = self._connection.execute(
-            "SELECT pairing_code, pairing_code_expires_at, paired, client_ids_json FROM ticker_pairing WHERE ticker_id = ?",
+            "SELECT pairing_code, pairing_code_expires_at, controller_group_id, paired, client_ids_json FROM ticker_pairing WHERE ticker_id = ?",
             (ticker_id,),
         ).fetchone()
         device_row = self._connection.execute(
@@ -432,6 +491,7 @@ class TickerRepository:
             pairing = PairingState(
                 pairing_code=pairing_row["pairing_code"],
                 pairing_code_expires_at=pairing_row["pairing_code_expires_at"],
+                controller_group_id=pairing_row["controller_group_id"],
                 paired=bool(pairing_row["paired"]),
                 client_ids=tuple(json.loads(pairing_row["client_ids_json"])),
             )
@@ -469,13 +529,40 @@ class TickerRepository:
             return ()
         with self._lock:
             rows = self._connection.execute(
-                "SELECT t.ticker_id, t.name, t.created_at, t.updated_at "
+                "SELECT DISTINCT t.ticker_id, t.name, t.created_at, t.updated_at "
                 "FROM tickers AS t "
                 "INNER JOIN controller_sessions AS s ON s.ticker_id = t.ticker_id "
-                "WHERE s.token_hash = ? ORDER BY t.ticker_id",
-                (digest,),
+                "WHERE s.token_hash = ? OR EXISTS ("
+                "SELECT 1 FROM controller_sessions AS anchor "
+                "WHERE anchor.token_hash = ? AND anchor.controller_group_id IS NOT NULL "
+                "AND anchor.controller_group_id = s.controller_group_id) "
+                "ORDER BY t.ticker_id",
+                (digest, digest),
             ).fetchall()
             return tuple(self._read_record(row) for row in rows)
+
+    def controller_group_id_for_ticker(self, ticker_id: str) -> str | None:
+        """Return the shared controller group assigned to one ticker."""
+
+        identifier = str(ticker_id).strip()
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT controller_group_id FROM ticker_pairing WHERE ticker_id = ?",
+                (identifier,),
+            ).fetchone()
+            value = None if row is None else row["controller_group_id"]
+            return str(value).strip() if value else None
+
+    def controller_group_id_for_pairing_code(self, pairing_code: str) -> str | None:
+        """Return the current group owner for one unexpired pairing code."""
+
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT controller_group_id FROM ticker_pairing WHERE pairing_code = ?",
+                (str(pairing_code).strip(),),
+            ).fetchone()
+            value = None if row is None else row["controller_group_id"]
+            return str(value).strip() if value else None
 
     def update_ticker(
         self,
@@ -806,6 +893,119 @@ class TickerRepository:
             ).fetchall()
         return tuple(self._spotify_connection_from_row(row) for row in rows)
 
+    def save_group_spotify_connection(self, group_id: str, connection: SpotifyConnection) -> SpotifyConnection:
+        """Create or update one encrypted Spotify connection shared by a controller group."""
+
+        identifier = str(group_id).strip()
+        if not identifier:
+            raise ValueError("controller group ID must not be empty")
+        if not isinstance(connection, SpotifyConnection):
+            raise TypeError("connection must be SpotifyConnection")
+        with self._transaction():
+            self._connection.execute(
+                "INSERT INTO spotify_group_connections "
+                "(controller_group_id, spotify_account_id, display_name, scopes_json, "
+                "refresh_token_ciphertext, status, priority, connected_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(controller_group_id, spotify_account_id) DO UPDATE SET "
+                "display_name = excluded.display_name, scopes_json = excluded.scopes_json, "
+                "refresh_token_ciphertext = excluded.refresh_token_ciphertext, "
+                "status = excluded.status, priority = excluded.priority, updated_at = excluded.updated_at",
+                (
+                    identifier,
+                    connection.spotify_account_id,
+                    connection.display_name,
+                    _dump(connection.scopes),
+                    connection.refresh_token_ciphertext,
+                    connection.status,
+                    int(connection.priority),
+                    connection.connected_at,
+                    connection.updated_at,
+                ),
+            )
+        return self.get_group_spotify_connection(identifier, connection.spotify_account_id)  # type: ignore[return-value]
+
+    def get_group_spotify_connection(
+        self, group_id: str, spotify_account_id: str | None = None
+    ) -> SpotifyConnection | None:
+        """Read one shared encrypted Spotify connection."""
+
+        values: list[str] = [str(group_id).strip()]
+        clause = "WHERE controller_group_id = ?"
+        if spotify_account_id:
+            clause += " AND spotify_account_id = ?"
+            values.append(str(spotify_account_id).strip())
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT controller_group_id AS ticker_id, spotify_account_id, display_name, scopes_json, "
+                "refresh_token_ciphertext, status, priority, connected_at, updated_at "
+                f"FROM spotify_group_connections {clause} "
+                "ORDER BY priority DESC, connected_at ASC LIMIT 1",
+                tuple(values),
+            ).fetchone()
+        return None if row is None else self._spotify_connection_from_row(row)
+
+    def list_group_spotify_connections(
+        self, group_id: str, *, fallback_ticker_id: str | None = None
+    ) -> tuple[SpotifyConnection, ...]:
+        """Read shared connections and support legacy ticker-owned records during migration."""
+
+        identifier = str(group_id).strip()
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT controller_group_id AS ticker_id, spotify_account_id, display_name, scopes_json, "
+                "refresh_token_ciphertext, status, priority, connected_at, updated_at "
+                "FROM spotify_group_connections WHERE controller_group_id = ? "
+                "ORDER BY priority DESC, connected_at ASC",
+                (identifier,),
+            ).fetchall()
+            if not rows and fallback_ticker_id:
+                rows = self._connection.execute(
+                    "SELECT ticker_id, spotify_account_id, display_name, scopes_json, "
+                    "refresh_token_ciphertext, status, priority, connected_at, updated_at "
+                    "FROM spotify_connections WHERE ticker_id = ? "
+                    "ORDER BY priority DESC, connected_at ASC",
+                    (str(fallback_ticker_id).strip(),),
+                ).fetchall()
+        return tuple(self._spotify_connection_from_row(row) for row in rows)
+
+    def delete_group_spotify_connection(self, group_id: str, spotify_account_id: str | None = None) -> bool:
+        """Remove one shared Spotify account or every account in a controller group."""
+
+        identifier = str(group_id).strip()
+        with self._transaction():
+            if spotify_account_id:
+                cursor = self._connection.execute(
+                    "DELETE FROM spotify_group_connections WHERE controller_group_id = ? AND spotify_account_id = ?",
+                    (identifier, str(spotify_account_id).strip()),
+                )
+            else:
+                cursor = self._connection.execute(
+                    "DELETE FROM spotify_group_connections WHERE controller_group_id = ?",
+                    (identifier,),
+                )
+            return cursor.rowcount > 0
+
+    def set_group_spotify_priority(
+        self, group_id: str, spotify_account_id: str | None
+    ) -> tuple[SpotifyConnection, ...]:
+        """Set one preferred shared Spotify account for a controller group."""
+
+        identifier = str(group_id).strip()
+        account_id = str(spotify_account_id or "").strip()
+        with self._transaction():
+            self._connection.execute(
+                "UPDATE spotify_group_connections SET priority = 0 WHERE controller_group_id = ?",
+                (identifier,),
+            )
+            if account_id:
+                self._connection.execute(
+                    "UPDATE spotify_group_connections SET priority = 1 "
+                    "WHERE controller_group_id = ? AND spotify_account_id = ?",
+                    (identifier, account_id),
+                )
+        return self.list_group_spotify_connections(identifier)
+
     @staticmethod
     def _spotify_connection_from_row(row: sqlite3.Row) -> SpotifyConnection:
         """Build one Spotify connection from a database row."""
@@ -881,6 +1081,8 @@ class TickerRepository:
         token_hash: str,
         *,
         now: float | None = None,
+        controller_group_id: str | None = None,
+        controller_group_secret_hash: str | None = None,
     ) -> TickerRecord:
         """Consume one pairing code and create one controller token record."""
 
@@ -889,9 +1091,13 @@ class TickerRepository:
         if not code or not digest:
             raise ValueError("pairing code and controller token are required")
         current_time = time.time() if now is None else float(now)
+        group_id = str(controller_group_id or "").strip() or None
+        secret_hash = str(controller_group_secret_hash or "").strip() or None
+        if (group_id is None) != (secret_hash is None):
+            raise ValueError("controller group credentials must be provided together")
         with self._transaction():
             row = self._connection.execute(
-                "SELECT ticker_id, pairing_code_expires_at FROM ticker_pairing WHERE pairing_code = ?",
+                "SELECT ticker_id, pairing_code_expires_at, controller_group_id FROM ticker_pairing WHERE pairing_code = ?",
                 (code,),
             ).fetchone()
             if row is None:
@@ -900,14 +1106,31 @@ class TickerRepository:
             if expires_at is not None and current_time > float(expires_at):
                 raise ValueError("pairing code has expired")
             ticker_id = str(row["ticker_id"])
+            stored_group_id = str(row["controller_group_id"] or "").strip() or None
+            if stored_group_id is not None and group_id is not None and stored_group_id != group_id:
+                raise ValueError("pairing code belongs to another controller group")
+            session_group_id = group_id
+            if group_id is not None:
+                group_row = self._connection.execute(
+                    "SELECT group_id FROM controller_groups WHERE group_id = ? AND secret_hash = ?",
+                    (group_id, secret_hash),
+                ).fetchone()
+                if group_row is None:
+                    if stored_group_id is not None:
+                        raise ValueError("controller group credentials are invalid")
+                    self._connection.execute(
+                        "INSERT INTO controller_groups (group_id, secret_hash, created_at) VALUES (?, ?, ?)",
+                        (group_id, secret_hash, current_time),
+                    )
+                    session_group_id = group_id
             self._connection.execute(
-                "INSERT INTO controller_sessions (token_hash, ticker_id, created_at, last_used_at) "
-                "VALUES (?, ?, ?, ?)",
-                (digest, ticker_id, current_time, current_time),
+                "INSERT INTO controller_sessions (token_hash, ticker_id, controller_group_id, created_at, last_used_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (digest, ticker_id, session_group_id, current_time, current_time),
             )
             self._connection.execute(
-                "UPDATE ticker_pairing SET paired = 1, pairing_code = NULL WHERE ticker_id = ?",
-                (ticker_id,),
+                "UPDATE ticker_pairing SET paired = 1, pairing_code = NULL, pairing_code_expires_at = NULL, controller_group_id = ? WHERE ticker_id = ?",
+                (stored_group_id or group_id, ticker_id),
             )
             ticker_row = self._connection.execute(
                 "SELECT ticker_id, name, created_at, updated_at FROM tickers WHERE ticker_id = ?",
@@ -993,11 +1216,12 @@ class TickerRepository:
             )
             self._connection.execute(
                 "INSERT INTO ticker_pairing "
-                "(ticker_id, pairing_code, pairing_code_expires_at, paired, client_ids_json) VALUES (?, ?, ?, ?, ?) "
+                "(ticker_id, pairing_code, pairing_code_expires_at, controller_group_id, paired, client_ids_json) VALUES (?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(ticker_id) DO UPDATE SET pairing_code = excluded.pairing_code, "
                 "pairing_code_expires_at = excluded.pairing_code_expires_at, "
+                "controller_group_id = excluded.controller_group_id, "
                 "paired = excluded.paired, client_ids_json = excluded.client_ids_json",
-                (identifier, code, expires_at, 0, _dump(())),
+                (identifier, code, expires_at, None, 0, _dump(())),
             )
             self._connection.execute(
                 "UPDATE tickers SET updated_at = ? WHERE ticker_id = ?",
@@ -1028,8 +1252,9 @@ class TickerRepository:
         with self._transaction():
             cursor = self._connection.execute(
                 "UPDATE controller_sessions SET last_used_at = ? "
-                "WHERE ticker_id = ? AND token_hash = ?",
-                (current_time, identifier, digest),
+                "WHERE token_hash = ? AND (ticker_id = ? OR (controller_group_id IS NOT NULL AND EXISTS ("
+                "SELECT 1 FROM ticker_pairing WHERE ticker_id = ? AND controller_group_id = controller_sessions.controller_group_id)))",
+                (current_time, digest, identifier, identifier),
             )
             return cursor.rowcount == 1
 

@@ -265,3 +265,61 @@ def test_pairing_code_expiry_survives_backend_restart(tmp_path) -> None:
         assert response.get_json()["error"]["message"] == "pairing code has expired"
     finally:
         second_app.extensions["sports_ticker.backend_application"].close()
+
+
+def test_controller_group_pairs_multiple_tickers_and_lists_the_fleet(tmp_path) -> None:
+    """Let one app group authorize multiple tickers without sharing ticker tokens."""
+
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    try:
+        client = app.test_client()
+        first = _register(client, "group-pi")
+        first_exchange = client.post(
+            "/api/v2/pairings/exchange",
+            json={"pairing_code": first["pairing_code"]},
+        )
+        first_payload = first_exchange.get_json()
+        assert first_exchange.status_code == 201
+        assert first_payload["controller_group_id"]
+        assert first_payload["controller_group_secret"]
+
+        second = _register(client, "group-mini")
+        second_exchange = client.post(
+            "/api/v2/pairings/exchange",
+            json={
+                "pairing_code": second["pairing_code"],
+                "controller_group_id": first_payload["controller_group_id"],
+                "controller_group_secret": first_payload["controller_group_secret"],
+            },
+        )
+        second_payload = second_exchange.get_json()
+        assert second_exchange.status_code == 201
+        assert second_payload["controller_group_id"] == first_payload["controller_group_id"]
+        assert "controller_group_secret" not in second_payload
+
+        listing = client.get(
+            "/api/v2/tickers",
+            headers={"Authorization": f"Bearer {second_payload['controller_token']}"},
+        )
+        assert [item["ticker_id"] for item in listing.get_json()["tickers"]] == ["group-mini", "group-pi"]
+        shared_update = client.patch(
+            "/api/v2/tickers/group-pi",
+            headers={"Authorization": f"Bearer {second_payload['controller_token']}"},
+            json={"name": "Shared Pi"},
+        )
+        assert shared_update.status_code == 200
+
+        fresh_code = client.post(
+            "/api/v2/tickers/group-mini/pairing-code",
+            headers={"Authorization": f"Bearer {first_payload['controller_token']}"},
+        ).get_json()["pairing_code"]
+        other_exchange = client.post(
+            "/api/v2/pairings/exchange", json={"pairing_code": fresh_code}
+        )
+        other_listing = client.get(
+            "/api/v2/tickers",
+            headers={"Authorization": f"Bearer {other_exchange.get_json()['controller_token']}"},
+        )
+        assert [item["ticker_id"] for item in other_listing.get_json()["tickers"]] == ["group-mini"]
+    finally:
+        app.extensions["sports_ticker.backend_application"].close()

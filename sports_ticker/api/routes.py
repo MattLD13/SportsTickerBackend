@@ -170,15 +170,27 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
     @app.post("/api/v2/pairings/exchange")
     def exchange_pairing_code():
         payload = _json_object()
-        _check_keys(payload, {"pairing_code"})
+        _check_keys(payload, {"pairing_code", "controller_group_id", "controller_group_secret"})
         pairing_code = payload.get("pairing_code")
         if not isinstance(pairing_code, str) or not pairing_code.strip():
             raise ApiError("pairing_code must be a non-empty string", 400, "invalid_request")
-        ticker, token = application.exchange_pairing_code(pairing_code)
+        group_id = payload.get("controller_group_id")
+        group_secret = payload.get("controller_group_secret")
+        if group_id is not None and not isinstance(group_id, str):
+            raise ApiError("controller_group_id must be a string", 400, "invalid_request")
+        if group_secret is not None and not isinstance(group_secret, str):
+            raise ApiError("controller_group_secret must be a string", 400, "invalid_request")
+        ticker, token, returned_group_id, returned_group_secret = application.exchange_pairing_code(
+            pairing_code,
+            controller_group_id=group_id,
+            controller_group_secret=group_secret,
+        )
         return jsonify(
             {
                 "ticker_id": ticker.ticker_id,
                 "controller_token": token,
+                "controller_group_id": returned_group_id,
+                **({"controller_group_secret": returned_group_secret} if returned_group_secret else {}),
                 "paired": True,
             }
         ), 201

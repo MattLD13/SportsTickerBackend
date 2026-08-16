@@ -569,6 +569,8 @@ struct TickerDevice: Identifiable, Sendable {
 struct PairingExchangeResponse: Decodable, Sendable {
     let ticker_id: String?
     let controller_token: String
+    let controller_group_id: String?
+    let controller_group_secret: String?
 }
 struct PairingCodeResponse: Decodable, Sendable { let pairing_code: String }
 
@@ -609,6 +611,18 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     var needsInitialSetup: Bool {
         savedTickerID == nil
     }
+    var activeTicker: TickerDevice? {
+        guard let activeID = savedTickerID else { return nil }
+        return devices.first(where: { $0.id == activeID })
+    }
+    var activeTickerIndicator: String {
+        guard let ticker = activeTicker else { return "Choose a ticker" }
+        let family = ticker.profile?.product_family.uppercased() ?? "TICKER"
+        let index = devices.firstIndex(where: { $0.id == ticker.id }).map { "\($0 + 1)/\(max(1, devices.count))" } ?? ""
+        return [ticker.name, family, index].filter { !$0.isEmpty }.joined(separator: " • ")
+    }
+    var pairedTickerCount: Int { devices.count }
+    var canShareTickerGroup: Bool { controllerGroupID != nil && controllerGroupSecret() != nil }
     
     // THE SOURCE OF TRUTH
     @Published var state: TickerState = TickerState(
@@ -686,9 +700,32 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         set { UserDefaults.standard.set(newValue, forKey: "latchedTickerID") }
     }
 
+    private var controllerGroupID: String? {
+        get { UserDefaults.standard.string(forKey: "controllerGroupID") }
+        set { UserDefaults.standard.set(newValue, forKey: "controllerGroupID") }
+    }
+
+    private var sharedMyTeams: [String]? {
+        get { UserDefaults.standard.array(forKey: "sharedMyTeams") as? [String] }
+        set { UserDefaults.standard.set(newValue, forKey: "sharedMyTeams") }
+    }
+
     private func selectActiveTicker(_ tickerID: String?) {
         selection.select(tickerID)
         savedTickerID = tickerID
+    }
+
+    func switchToTicker(_ tickerID: String) {
+        guard devices.contains(where: { $0.id == tickerID }), tickerID != savedTickerID else { return }
+        selectActiveTicker(tickerID)
+        games.removeAll()
+        leagueOptions.removeAll()
+        modeSymbols.removeAll()
+        isServerReachable = false
+        fetchData()
+        fetchLeagueOptions()
+        fetchModeOptions()
+        fetchSpotifyStatus()
     }
 
     private func controllerToken(for tickerID: String) -> String? {
@@ -703,6 +740,37 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    private func controllerGroupSecret() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "matt.TickerControl.controller-group-secret",
+            kSecAttrAccount as String: getBaseURL(),
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    @discardableResult
+    private func saveControllerGroup(id: String, secret: String) -> Bool {
+        controllerGroupID = id
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "matt.TickerControl.controller-group-secret",
+            kSecAttrAccount as String: getBaseURL(),
+        ]
+        let attributes: [String: Any] = [kSecValueData as String: Data(secret.utf8)]
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if updateStatus == errSecSuccess { return true }
+        guard updateStatus == errSecItemNotFound else { return false }
+        var addQuery = query
+        addQuery[kSecValueData as String] = Data(secret.utf8)
+        return SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess
     }
 
     @discardableResult
@@ -738,7 +806,11 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
 
     private func authorizedRequest(url: URL, method: String, tickerID: String? = nil) -> URLRequest? {
         let identifier = tickerID ?? savedTickerID
-        guard let identifier, let token = controllerToken(for: identifier) else { return nil }
+        guard let identifier else { return nil }
+        // A group session can authorize every ticker in the same app group.
+        let token = controllerToken(for: identifier)
+            ?? (controllerGroupID != nil ? savedTickerID.flatMap { controllerToken(for: $0) } : nil)
+        guard let token else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -965,6 +1037,11 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                         self.pinnedGameIDs = Array(Set(decodedPins)).sorted()
                         self.state = decoded.settings
                         self.state.ticker_id = tickerID
+                        if let sharedTeams = self.sharedMyTeams {
+                            self.state.my_teams = sharedTeams
+                        } else {
+                            self.sharedMyTeams = decoded.settings.my_teams
+                        }
                         self.state.pinned_games = decodedPins
                         self.state.pinned_game = decodedPins.first
                         if !self.state.my_teams.isEmpty {
@@ -1001,6 +1078,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         } else {
             state.my_teams.append(teamID)
         }
+        sharedMyTeams = state.my_teams
         
         // C. DEBOUNCE SAVE (Wait 1.5s after last tap) + start hyper polling
         startBurstPolling()
@@ -1074,10 +1152,23 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 DispatchQueue.main.async {
                     self.isEditing = false
                     self.fetchData()
+                    self.syncSharedMyTeams(excluding: validID)
                 }
             }
             currentSaveTask?.resume()
         } catch { print("Save Error") }
+    }
+
+    private func syncSharedMyTeams(excluding activeID: String) {
+        guard let teams = sharedMyTeams else { return }
+        for device in devices where device.id != activeID {
+            guard let url = tickerURL(device.id),
+                  var request = authorizedRequest(url: url, method: "PATCH", tickerID: device.id) else { continue }
+            request.httpBody = try? JSONSerialization.data(
+                withJSONObject: ["display_settings": ["my_teams": teams]]
+            )
+            URLSession.shared.dataTask(with: request).resume()
+        }
     }
 
     private func v2DisplaySettingsPayload(
@@ -1089,15 +1180,16 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         liveDelaySeconds: Int? = nil
     ) -> [String: Any] {
         let pinned = pinnedGameIDs.first ?? ""
+        let activeSettings = activeTicker?.settings
         return [
             "active_sports": state.active_sports,
-            "my_teams": state.my_teams,
+            "my_teams": sharedMyTeams ?? state.my_teams,
             "mode": state.mode,
             "sports_filter": state.sports_filter,
             "sports_presentation": pinned.isEmpty ? "rotation" : "pinned",
             "pinned_content_id": pinned,
-            "brightness": brightness ?? devices.first?.settings.brightness ?? 100,
-            "inverted": inverted ?? devices.first?.settings.inverted ?? false,
+            "brightness": brightness ?? activeSettings?.brightness ?? 100,
+            "inverted": inverted ?? activeSettings?.inverted ?? false,
             "timezone": TimeZone.current.identifier,
             "weather_city": state.weather_city,
             "weather_lat": state.weather_lat,
@@ -1107,8 +1199,8 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             "airport_name": state.airport_name,
             "track_flight_id": state.track_flight_id,
             "track_guest_name": state.track_guest_name,
-            "live_delay_mode": liveDelayMode ?? devices.first?.settings.live_delay_mode ?? false,
-            "live_delay_seconds": liveDelaySeconds ?? devices.first?.settings.live_delay_seconds ?? 45,
+            "live_delay_mode": liveDelayMode ?? activeSettings?.live_delay_mode ?? false,
+            "live_delay_seconds": liveDelaySeconds ?? activeSettings?.live_delay_seconds ?? 45,
             "scroll_seamless": seamless ?? state.scroll_seamless,
             "scroll_speed": scrollSpeed ?? state.scroll_speed,
             "score_alerts": true,
@@ -1249,14 +1341,20 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         }
     }
     
-    func pairTicker(code: String, name: String) {
+    func pairTicker(code: String, name: String, shareGroup: Bool = true) {
             let base = getBaseURL()
             guard let url = URL(string: "\(base)/api/v2/pairings/exchange") else {
                 self.pairError = "Invalid Server URL"
                 return
             }
             
-            let body: [String: Any] = ["pairing_code": code]
+            var body: [String: Any] = ["pairing_code": code]
+            if shareGroup,
+               let groupID = controllerGroupID,
+               let groupSecret = controllerGroupSecret() {
+                body["controller_group_id"] = groupID
+                body["controller_group_secret"] = groupSecret
+            }
             
             var req = URLRequest(url: url)
             req.httpMethod = "POST"
@@ -1289,6 +1387,17 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 // Decode Response
                 if let res = try? JSONDecoder().decode(PairingExchangeResponse.self, from: d), let newID = res.ticker_id {
                     DispatchQueue.main.async {
+                        if let groupID = res.controller_group_id {
+                            if let groupSecret = res.controller_group_secret {
+                                guard self.saveControllerGroup(id: groupID, secret: groupSecret) else {
+                                    self.showPairSuccess = false
+                                    self.pairError = "Pairing failed: the shared app group could not be saved securely."
+                                    return
+                                }
+                            } else {
+                                self.controllerGroupID = groupID
+                            }
+                        }
                         guard self.selection.selectPairedTicker(
                             newID,
                             tokenWasSaved: self.saveControllerToken(res.controller_token, for: newID)
@@ -2666,6 +2775,7 @@ struct FirstRunSetupView: View {
 }
 struct HomeView: View {
     @ObservedObject var vm: TickerViewModel
+    @State private var showTickerSwitcher = false
 
     private var displayMode: String { vm.state.mode }
     private var sportsFilter: String { vm.state.sports_filter }
@@ -2708,10 +2818,19 @@ struct HomeView: View {
             VStack(spacing: 24) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Ticker Dashboard").font(.system(size: 34, weight: .bold, design: .rounded)).foregroundColor(.white)
-                    HStack {
-                        Circle().fill(vm.statusColor).frame(width: 8, height: 8)
-                        Text(vm.connectionStatus).font(.caption).foregroundColor(.gray)
+                    Button { showTickerSwitcher = true } label: {
+                        HStack(spacing: 8) {
+                            Circle().fill(vm.statusColor).frame(width: 8, height: 8)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(vm.connectionStatus).font(.caption).foregroundColor(.gray)
+                                if vm.pairedTickerCount > 0 {
+                                    Text(vm.activeTickerIndicator).font(.caption2).foregroundColor(.blue.opacity(0.9))
+                                }
+                            }
+                            Image(systemName: "arrow.left.arrow.right.circle").foregroundColor(.blue.opacity(0.8))
+                        }
                     }
+                    .buttonStyle(.plain)
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).padding(.top, 60)
                 
                 VStack(alignment: .leading, spacing: 8) {
@@ -2769,6 +2888,9 @@ struct HomeView: View {
                 }.padding(.horizontal)
                 Spacer(minLength: 120)
             }
+        }
+        .sheet(isPresented: $showTickerSwitcher) {
+            TickerSwitcherView(vm: vm, isPresented: $showTickerSwitcher)
         }
     }
 }
@@ -3353,6 +3475,7 @@ struct TeamsView: View {
 struct SettingsView: View {
     @ObservedObject var vm: TickerViewModel
     @State private var showPairing = false
+    @State private var showTickerSwitcher = false
     @State private var showWiFiSetup = false
     @State private var rebootConfirm = false
     @State private var showRawJSON = false
@@ -3369,6 +3492,31 @@ struct SettingsView: View {
                         TextField("https://...", text: $vm.serverURL).textFieldStyle(.plain).padding(10).background(Color.black.opacity(0.2)).cornerRadius(8).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1))).foregroundColor(.white)
                             .onSubmit { vm.fetchData(); vm.fetchLeagueOptions(); vm.fetchDevices() }
                     }.padding().liquidGlass()
+                }.padding(.horizontal)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("ACTIVE TICKER").font(.caption).bold().foregroundStyle(.secondary)
+                    Button { showTickerSwitcher = true } label: {
+                        HStack {
+                            Image(systemName: "rectangle.connected.to.line.below")
+                                .foregroundColor(.blue)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(vm.activeTicker?.name ?? "Choose a ticker")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                Text(vm.activeTickerIndicator)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(.blue)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                    }
+                    .buttonStyle(.plain)
+                    .liquidGlass()
                 }.padding(.horizontal)
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -3450,11 +3598,57 @@ struct SettingsView: View {
         .sheet(isPresented: $showPairing) {
             PairingView(vm: vm, isPresented: $showPairing)
         }
+        .sheet(isPresented: $showTickerSwitcher) {
+            TickerSwitcherView(vm: vm, isPresented: $showTickerSwitcher)
+        }
         .sheet(isPresented: $showWiFiSetup) {
             WiFiSetupView(vm: vm, isPresented: $showWiFiSetup)
         }
         .sheet(isPresented: $showRawJSON) {
             ScrollView { Text(String(describing: vm.games)).font(.caption.monospaced()).padding() }.presentationDetents([.medium])
+        }
+    }
+}
+struct TickerSwitcherView: View {
+    @ObservedObject var vm: TickerViewModel
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationView {
+            List {
+                if vm.devices.isEmpty {
+                    Text("No paired tickers found.")
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(vm.devices) { device in
+                        Button {
+                            vm.switchToTicker(device.id)
+                            isPresented = false
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: device.id == vm.activeTicker?.id ? "checkmark.circle.fill" : "circle")
+                                    .foregroundColor(device.id == vm.activeTicker?.id ? .blue : .secondary)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(device.name).foregroundColor(.primary)
+                                    let family = device.profile?.product_family.uppercased() ?? "TICKER"
+                                    let dimensions = device.profile.map { "\($0.display.width)×\($0.display.height)" } ?? ""
+                                    Text([family, dimensions].filter { !$0.isEmpty }.joined(separator: " • "))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                if let lastSeen = device.last_seen {
+                                    Text(Date(timeIntervalSince1970: lastSeen), style: .relative)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Switch Ticker")
+            .navigationBarItems(trailing: Button("Close") { isPresented = false })
         }
     }
 }
@@ -3663,20 +3857,38 @@ struct PairingView: View {
     @ObservedObject var vm: TickerViewModel
     @Binding var isPresented: Bool
     @State private var pairingMode = 0
+    @State private var shareWithApp = false
     var body: some View {
         NavigationView {
             Form {
                 Picker("Method", selection: $pairingMode) { Text("Code").tag(0); Text("Device ID").tag(1) }.pickerStyle(.segmented).padding(.vertical, 8)
                 if pairingMode == 0 {
                     Section(header: Text("Instructions")) { Text("1. Ensure your Ticker is powered on."); Text("2. If unpaired, it will display a 6-digit code."); Text("3. Enter that code below.") }
-                    Section(header: Text("Device Info")) { TextField("Friendly Name", text: $vm.pairName); TextField("6-Digit Code", text: $vm.pairCode).keyboardType(.numberPad) }
-                    Button("Pair with Code") { vm.pairError = nil; vm.pairTicker(code: vm.pairCode, name: vm.pairName.isEmpty ? "My Ticker" : vm.pairName) }.disabled(vm.pairCode.count < 6)
+                    Section(header: Text("Device Info")) {
+                        TextField("Friendly Name", text: $vm.pairName)
+                        TextField("6-Digit Code", text: $vm.pairCode).keyboardType(.numberPad)
+                        Toggle("Share teams and Spotify with my other tickers", isOn: $shareWithApp)
+                    }
+                    Button("Pair with Code") {
+                        vm.pairError = nil
+                        vm.pairTicker(
+                            code: vm.pairCode,
+                            name: vm.pairName.isEmpty ? "My Ticker" : vm.pairName,
+                            shareGroup: shareWithApp
+                        )
+                    }.disabled(vm.pairCode.count < 6)
                 } else {
                     Section(header: Text("Manual Entry")) { Text("Use this if you know the UUID."); TextField("Friendly Name", text: $vm.pairName); TextField("Device ID (UUID)", text: $vm.pairID) }
                     Button("Pair with ID") { vm.pairError = nil; vm.pairTickerByID(id: vm.pairID, name: vm.pairName.isEmpty ? "My Ticker" : vm.pairName) }.disabled(vm.pairID.count < 4)
                 }
                 if let err = vm.pairError { Section { Text(err).foregroundColor(.red) } }
-            }.navigationTitle("Pair Ticker").navigationBarItems(trailing: Button("Close") { isPresented = false }).alert(isPresented: $vm.showPairSuccess) { Alert(title: Text("Success"), message: Text("Ticker paired successfully!"), dismissButton: .default(Text("OK")) { isPresented = false }) }
+            }
+            .navigationTitle("Pair Ticker")
+            .navigationBarItems(trailing: Button("Close") { isPresented = false })
+            .onAppear { shareWithApp = vm.canShareTickerGroup }
+            .alert(isPresented: $vm.showPairSuccess) {
+                Alert(title: Text("Success"), message: Text("Ticker paired successfully!"), dismissButton: .default(Text("OK")) { isPresented = false })
+            }
         }
     }
 }

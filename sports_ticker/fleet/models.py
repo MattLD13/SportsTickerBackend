@@ -71,6 +71,7 @@ class PairingState:
 
     pairing_code: str | None = None
     pairing_code_expires_at: float | None = None
+    controller_group_id: str | None = None
     paired: bool = False
     client_ids: tuple[str, ...] = ()
 
@@ -82,6 +83,8 @@ class PairingState:
         object.__setattr__(self, "pairing_code", code or None)
         expires_at = self.pairing_code_expires_at
         object.__setattr__(self, "pairing_code_expires_at", None if expires_at is None else float(expires_at))
+        group_id = None if self.controller_group_id is None else str(self.controller_group_id).strip()
+        object.__setattr__(self, "controller_group_id", group_id or None)
         object.__setattr__(self, "paired", bool(self.paired))
         object.__setattr__(self, "client_ids", clients)
 

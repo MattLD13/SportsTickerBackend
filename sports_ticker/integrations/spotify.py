@@ -185,7 +185,7 @@ class UrllibSpotifyHttpClient:
 
 
 class SpotifyIntegrationService:
-    """Own encrypted Spotify links and use them for ticker-specific playback."""
+    """Own encrypted Spotify links shared by every ticker in one controller group."""
 
     def __init__(
         self,
@@ -275,9 +275,11 @@ class SpotifyIntegrationService:
         except Exception as error:
             raise SpotifyIntegrationError("Spotify authorization failed") from error
         now = float(self._clock())
-        self._repository.save_spotify_connection(
+        group_id = self._group_id(attempt.ticker_id)
+        self._repository.save_group_spotify_connection(
+            group_id,
             SpotifyConnection(
-                ticker_id=attempt.ticker_id,
+                ticker_id=group_id,
                 spotify_account_id=account_id,
                 display_name=display_name,
                 scopes=scopes,
@@ -289,9 +291,12 @@ class SpotifyIntegrationService:
         return {"attempt_id": attempt.attempt_id, "ticker_id": attempt.ticker_id, "status": "connected"}
 
     def status(self, ticker_id: str) -> dict[str, object]:
-        """Return safe state for every Spotify account linked to one ticker."""
+        """Return safe state for every Spotify account linked to the ticker's controller group."""
 
-        connections = self._repository.list_spotify_connections(_ticker_id(ticker_id))
+        identifier = _ticker_id(ticker_id)
+        connections = self._repository.list_group_spotify_connections(
+            self._group_id(identifier), fallback_ticker_id=identifier
+        )
         accounts = [_connection_status_value(item) for item in connections]
         selected = next((item for item in connections if item.priority), None)
         primary = selected or (connections[0] if connections else None)
@@ -305,31 +310,33 @@ class SpotifyIntegrationService:
         }
 
     def disconnect(self, ticker_id: str, spotify_account_id: str | None = None) -> bool:
-        """Remove one Spotify account, or all accounts when no account is named."""
+        """Remove one shared Spotify account, or all accounts in the controller group."""
 
         identifier = _ticker_id(ticker_id)
-        deleted = self._repository.delete_spotify_connection(identifier, spotify_account_id)
+        group_id = self._group_id(identifier)
+        deleted = self._repository.delete_group_spotify_connection(group_id, spotify_account_id)
         if spotify_account_id:
             with self._playback_lock:
-                self._playback_windows.pop(f"{identifier}:{spotify_account_id}", None)
+                self._playback_windows.pop(f"{group_id}:{spotify_account_id}", None)
         else:
             with self._playback_lock:
                 for key in tuple(self._playback_windows):
-                    if key.startswith(f"{identifier}:"):
+                    if key.startswith(f"{group_id}:"):
                         self._playback_windows.pop(key, None)
         return deleted
 
     def set_priority(self, ticker_id: str, spotify_account_id: str | None) -> dict[str, object]:
-        """Set the account that controls ticker music selection."""
+        """Set the account that controls music selection for the controller group."""
 
-        self._repository.set_spotify_priority(_ticker_id(ticker_id), spotify_account_id)
+        self._repository.set_group_spotify_priority(self._group_id(_ticker_id(ticker_id)), spotify_account_id)
         return self.status(ticker_id)
 
     def playback(self, ticker_id: str) -> Mapping[str, Any]:
         """Return the preferred account, or the first account now playing."""
 
         identifier = _ticker_id(ticker_id)
-        connections = self._repository.list_spotify_connections(identifier)
+        group_id = self._group_id(identifier)
+        connections = self._repository.list_group_spotify_connections(group_id, fallback_ticker_id=identifier)
         if not connections:
             return _connection_record("reauthorization_required")
         preferred = next((item for item in connections if item.priority), None)
@@ -352,15 +359,17 @@ class SpotifyIntegrationService:
         if connection.status != "connected":
             return _connection_record("reauthorization_required", connection)
         try:
+            group_id = connection.ticker_id if connection.ticker_id.startswith("cg_") else self._group_id(connection.ticker_id)
             refresh_token = self._decrypt(connection.refresh_token_ciphertext)
             tokens = self._http.refresh_access_token(refresh_token, self._config)
             access_token = _required_text(tokens, "access_token")
             next_refresh = str(tokens.get("refresh_token") or refresh_token).strip()
             if next_refresh != refresh_token:
                 now = float(self._clock())
-                self._repository.save_spotify_connection(
+                self._repository.save_group_spotify_connection(
+                    group_id,
                     SpotifyConnection(
-                        ticker_id=connection.ticker_id,
+                        ticker_id=group_id,
                         spotify_account_id=connection.spotify_account_id,
                         display_name=connection.display_name,
                         scopes=connection.scopes,
@@ -389,9 +398,11 @@ class SpotifyIntegrationService:
 
     def _mark_reauthorization(self, connection: SpotifyConnection) -> None:
         now = float(self._clock())
-        self._repository.save_spotify_connection(
+        group_id = self._group_id(connection.ticker_id)
+        self._repository.save_group_spotify_connection(
+            group_id,
             SpotifyConnection(
-                ticker_id=connection.ticker_id,
+                ticker_id=group_id,
                 spotify_account_id=connection.spotify_account_id,
                 display_name=connection.display_name,
                 scopes=connection.scopes,
@@ -446,6 +457,14 @@ class SpotifyIntegrationService:
 
     def _decrypt(self, value: str) -> str:
         return self._cipher.decrypt(str(value).encode("ascii")).decode("utf-8")
+
+    def _group_id(self, ticker_id: str) -> str:
+        """Resolve one ticker to its shared controller group or a legacy private scope."""
+
+        identifier = _ticker_id(ticker_id)
+        if identifier.startswith("cg_") or identifier.startswith("ticker:"):
+            return identifier
+        return self._repository.controller_group_id_for_ticker(identifier) or f"ticker:{identifier}"
 
 
 class SpotifyMusicSource:
