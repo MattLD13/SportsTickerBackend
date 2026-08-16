@@ -182,6 +182,8 @@ def test_force_setup_marker_starts_wifi_mode_without_network_change(tmp_path) ->
     assert state.internet_available is False
     assert state.hotspot_active is True
     assert len(hotspots) == 1
+    service.connect_and_reboot("Home", "secret", state.setup_code)
+    assert not marker.exists()
 
 
 def test_local_setup_portal_requires_tls_context(tmp_path) -> None:

@@ -377,14 +377,15 @@ class WiFiRecoveryService:
             return
 
     def _clear_setup_state(self) -> None:
-        """Remove the local PIN after the Pi accepts new Wi-Fi credentials."""
+        """Remove setup state and any temporary force marker after Wi-Fi succeeds."""
 
-        if self._state_path is None:
-            return
-        try:
-            self._state_path.unlink(missing_ok=True)
-        except OSError:
-            return
+        for path in (self._state_path, self._force_setup_path):
+            if path is None:
+                continue
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                continue
 
     def _build_portal(self) -> Flask:
         app = Flask(__name__)
