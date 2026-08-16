@@ -37,10 +37,24 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   # Deploy backend to server (only when backend files changed)
   # ─────────────────────────────────────────────────────────────────────────
+  verify-public-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependencies
+        run: pip install -r requirements.txt
+      - name: Verify approved public demo assets
+        run: python tools/verify_public_demo.py
+      - name: Verify public demo route
+        run: python -m pytest -q tests/rewrite/api/test_public_demo.py
+
   deploy-backend:
     runs-on: ubuntu-latest
-    needs: [signal-fleet]
-    if: always() && (needs.signal-fleet.result == 'success' || needs.signal-fleet.result == 'skipped')
+    needs: [signal-fleet, verify-public-demo]
+    if: always() && (needs.signal-fleet.result == 'success' || needs.signal-fleet.result == 'skipped') && needs.verify-public-demo.result == 'success'
     steps:
       - uses: actions/checkout@v4
 
