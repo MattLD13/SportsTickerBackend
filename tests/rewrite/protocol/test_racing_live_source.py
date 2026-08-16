@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.racing import RacingProvider
-from sports_ticker.providers.racing_live import LiveRacingSource, _indycar_driver
+from sports_ticker.providers.racing_live import LiveRacingSource, _indycar_driver, _indycar_short_event
 
 
 class JsonFixture:
@@ -118,7 +118,7 @@ def test_indycar_polls_the_official_timing_blob_and_driver_feed() -> None:
     game = result["content"][0]
     assert game["sport"] == "indycar"
     assert game["state"] == "in"
-    assert game["indycar"]["event_name"] == "Road America"
+    assert game["indycar"]["event_name"] == "Road America GP"
     assert game["indycar"]["drivers"][0]["team_logo"] == "plate-1"
     assert game["indycar"]["drivers"][1]["gap"] == "+1.2"
 
@@ -143,3 +143,18 @@ def test_indycar_qualifying_uses_speed_on_ovals_and_time_on_street_courses() -> 
 
     assert oval is not None and oval["qualifying_value"] == "220.123"
     assert street is not None and street["qualifying_value"] == "1:14.2024"
+
+
+def test_indycar_short_event_names_keep_city_or_race_distance() -> None:
+    examples = {
+        "Indianapolis 500": "Indy 500",
+        "Bitnile.com Grand Prix of Portland": "Portland GP",
+        "Portland GP": "Portland GP",
+        "Freedom 250 presented by Sponsor": "Freedom 250",
+        "Ontario Honda Dealers Indy at Markham": "Markham GP",
+        "Big Machine Music City Grand Prix": "Music City GP",
+        "Snap-on 250": "Snap On 250",
+    }
+
+    for event_name, expected in examples.items():
+        assert _indycar_short_event(event_name, "") == expected

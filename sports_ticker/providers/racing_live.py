@@ -774,17 +774,39 @@ def _indycar_event_sessions(value: str, year: int, event_name: str) -> list[tupl
 
 
 def _indycar_short_event(event_name: str, track_name: str) -> str:
-    value = event_name or track_name or "IndyCar"
-    lowered = value.lower()
+    value = _clean_race_name(event_name or track_name or "IndyCar")
+    lowered = value.casefold()
     if "indy 500" in lowered or "indianapolis 500" in lowered:
         return "Indy 500"
+    distance = re.search(r"\b([A-Za-z][A-Za-z .&'-]*?)\s+(\d{3})$", value)
+    if distance:
+        return f"{_title_race_words(distance.group(1))} {distance.group(2)}"
     match = re.search(r"grand\s+prix\s+(?:of|at)\s+(.+)", value, re.IGNORECASE)
     if match:
-        return re.split(r"\s+presented\s+by\b", match.group(1), flags=re.IGNORECASE)[0].strip(" .,")
-    value = re.sub(r"\b(?:110th|\d+th) Running of the ", "", value, flags=re.IGNORECASE)
-    value = re.sub(r"\bGrand Prix\b", "GP", value, flags=re.IGNORECASE)
-    value = re.sub(r"\bpresented by\b.*$", "", value, flags=re.IGNORECASE)
-    return " ".join(value.split()) or "IndyCar"
+        location = re.split(r"\s+presented\s+by\b", match.group(1), flags=re.IGNORECASE)[0]
+        return f"{_title_race_words(location)} GP"
+    match = re.search(r"\bat\s+(.+)$", value, re.IGNORECASE)
+    if match:
+        return f"{_title_race_words(match.group(1))} GP"
+    if "music city" in lowered:
+        return "Music City GP"
+    if re.search(r"\bgrand\s+prix\b", value, re.IGNORECASE):
+        location = re.split(r"\bgrand\s+prix\b", value, maxsplit=1, flags=re.IGNORECASE)[0]
+        return f"{_title_race_words(location)} GP"
+    return _title_race_words(value) or "IndyCar"
+
+
+def _clean_race_name(value: str) -> str:
+    """Remove race sponsors and ordinal wording before display shortening."""
+    value = re.sub(r"\b(?:110th|\d+th)\s+Running of the\s+", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s+presented by\b.*$", "", value, flags=re.IGNORECASE)
+    return " ".join(value.replace("–", "-").split()).strip(" .,")
+
+
+def _title_race_words(value: str) -> str:
+    """Return compact race words with title casing and clean punctuation."""
+    words = " ".join(value.replace("-", " ").split()).strip(" .,")
+    return re.sub(r"\bGp\b", "GP", words.title().replace(" Of ", " of "))
 
 
 def _indycar_session_name(raw_type: str, value: str) -> str:
