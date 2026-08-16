@@ -938,9 +938,9 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                     return
                 }
                 self.wifiSetupError = nil
-                self.wifiSetupStatus = "Connected to the ticker. Sending home Wi-Fi..."
+                self.wifiSetupStatus = "Connected to the ticker network. Waiting for the local portal..."
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    self.submitWiFiSetup(code: normalizedCode, homeSSID: normalizedSSID, homePassword: homePassword)
+                    self.submitWiFiSetup(code: normalizedCode, homeSSID: normalizedSSID, homePassword: homePassword, attempt: 0)
                 }
             }
         }
@@ -952,7 +952,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             && value.code == NEHotspotConfigurationError.alreadyAssociated.rawValue
     }
 
-    private func submitWiFiSetup(code: String, homeSSID: String, homePassword: String) {
+    private func submitWiFiSetup(code: String, homeSSID: String, homePassword: String, attempt: Int) {
         guard let url = URL(string: "https://10.42.0.1/connect") else {
             isWifiSetupInProgress = false
             wifiSetupError = "The ticker setup address is invalid."
@@ -977,13 +977,28 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         )
         session.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
-                self.isWifiSetupInProgress = false
                 if let error {
+                    if attempt < 4 {
+                        self.wifiSetupStatus = "Waiting for the ticker hotspot..."
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Double(attempt + 1)) {
+                            self.submitWiFiSetup(
+                                code: code,
+                                homeSSID: homeSSID,
+                                homePassword: homePassword,
+                                attempt: attempt + 1
+                            )
+                        }
+                        return
+                    }
+                    self.isWifiSetupInProgress = false
+                    self.wifiSetupStatus = ""
                     self.wifiSetupError = "The ticker could not be configured: \(error.localizedDescription)"
                     return
                 }
+                self.isWifiSetupInProgress = false
                 guard let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else {
                     let status = (response as? HTTPURLResponse).map { String($0.statusCode) } ?? "unknown"
+                    self.wifiSetupStatus = ""
                     self.wifiSetupError = "The ticker rejected the Wi-Fi settings (HTTP \(status))."
                     return
                 }
