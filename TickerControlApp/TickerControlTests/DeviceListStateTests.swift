@@ -39,4 +39,21 @@ final class DeviceListStateTests: XCTestCase {
         selection.selectAfterRemoving("ticker-b", remainingTickerIDs: [])
         XCTAssertNil(selection.activeTickerID)
     }
+
+    func testScrollLevelEightKeepsItsCurrentPhysicalSpeed() {
+        XCTAssertEqual(ScrollSpeedScale.pixelInterval(for: 8), 0.03, accuracy: 0.000_001)
+        XCTAssertEqual(ScrollSpeedScale.level(forPixelInterval: 0.03), 8)
+    }
+
+    func testScrollLevelsRoundTripAcrossTheBoundedSpeedRange() {
+        let intervals = (1...10).map { ScrollSpeedScale.pixelInterval(for: Double($0)) }
+
+        XCTAssertEqual(intervals[0], 0.10, accuracy: 0.000_001)
+        XCTAssertEqual(intervals[9], 0.025, accuracy: 0.000_001)
+        XCTAssertTrue(zip(intervals, intervals.dropFirst()).allSatisfy { pair in pair.0 > pair.1 })
+        for level in 1...10 {
+            let interval = ScrollSpeedScale.pixelInterval(for: Double(level))
+            XCTAssertEqual(ScrollSpeedScale.level(forPixelInterval: interval), Double(level))
+        }
+    }
 }

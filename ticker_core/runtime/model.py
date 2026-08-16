@@ -107,7 +107,7 @@ class FrameDecision:
     payload_key: str | None = None
     content: Content | None = None
     content_elapsed: float | None = None
-    scroll_offset: int | None = None
+    scroll_offset: float | None = None
     alert: Mapping[str, Any] | None = None
     alert_elapsed: float | None = None
     news: Mapping[str, Any] | None = None
@@ -143,6 +143,7 @@ class RuntimeConfig:
 
     panel_width: int = 384
     frame_interval: float = 1 / 30
+    scroll_frame_interval: float = 0.03
     pairing_interval: float = 0.1
     sleep_interval: float = 0.5
     offline_after: float = 60.0
@@ -159,6 +160,7 @@ class RuntimeConfig:
             raise ValueError("The panel width must be positive.")
         for value in (
             self.frame_interval,
+            self.scroll_frame_interval,
             self.pairing_interval,
             self.sleep_interval,
             self.offline_after,

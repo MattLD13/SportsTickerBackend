@@ -11,7 +11,7 @@ let package = Package(
             name: "TickerControlState",
             path: "TickerControl",
             exclude: ["ContentView.swift", "TickerControlApp.swift", "Assets.xcassets"],
-            sources: ["DeviceListState.swift"]
+            sources: ["DeviceListState.swift", "ScrollSpeedScale.swift"]
         ),
         .testTarget(
             name: "TickerControlStateTests",
