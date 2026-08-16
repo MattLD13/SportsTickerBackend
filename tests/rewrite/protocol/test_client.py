@@ -62,6 +62,34 @@ def test_client_fetches_the_version_two_data_endpoint() -> None:
     assert options["verify"] is True
 
 
+def test_client_registers_before_the_first_display_poll() -> None:
+    session = FakeSession(
+        FakeResponse(
+            payload={
+                "ticker_id": "pi-1",
+                "paired": False,
+                "pairing_code": "123456",
+                "ticker": {"ticker_id": "pi-1"},
+            }
+        )
+    )
+    client = BackendClient("https://ticker.test", session=session)
+
+    registration = client.register_device(
+        "pi-1", name="Kitchen", metadata={"build": "test"}
+    )
+
+    assert registration.ticker_id == "pi-1"
+    assert registration.pairing_code == "123456"
+    method, url, options = session.calls[0]
+    assert (method, url) == ("POST", "https://ticker.test/api/v2/devices/register")
+    assert options["json"] == {
+        "device_id": "pi-1",
+        "name": "Kitchen",
+        "metadata": {"build": "test"},
+    }
+
+
 def test_client_reports_http_json_and_transport_failures() -> None:
     with pytest.raises(BackendHttpError):
         BackendClient("https://ticker.test", session=FakeSession(FakeResponse(status_code=503))).fetch_data("pi-1")

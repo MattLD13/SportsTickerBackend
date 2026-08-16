@@ -10,6 +10,8 @@ from typing import Any, Protocol
 
 from flask import Flask, render_template_string, request
 
+from ticker_core._enum import StrEnum
+
 from .commands import PlatformCommands, WiFiNetwork
 
 
@@ -38,6 +40,13 @@ class HotspotDetails:
     interface: str = "wlan0"
 
 
+class WiFiAvailability(StrEnum):
+    """Name the display-relevant Wi-Fi lifecycle state."""
+
+    ONLINE = "online"
+    SETUP_REQUIRED = "setup_required"
+
+
 @dataclass(frozen=True, slots=True)
 class WiFiSetupState:
     """Report the current Wi-Fi recovery state."""
@@ -45,6 +54,16 @@ class WiFiSetupState:
     internet_available: bool
     hotspot_active: bool
     hotspot: HotspotDetails
+
+    @property
+    def availability(self) -> WiFiAvailability:
+        """Return the typed availability state owned by the platform service."""
+
+        return (
+            WiFiAvailability.ONLINE
+            if self.internet_available
+            else WiFiAvailability.SETUP_REQUIRED
+        )
 
 
 class PortalRunner(Protocol):

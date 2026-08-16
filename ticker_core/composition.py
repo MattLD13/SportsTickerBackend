@@ -12,7 +12,15 @@ from ticker_core.app.poller import BackendPoller
 from ticker_core.assets import ShortTermContentCache
 from ticker_core.bootstrap import create_default_frame_builder
 from ticker_core.drivers import MemoryFrameSink, RgbMatrixFrameSink, TkFrameSink
-from ticker_core.platform import AssetCoordinator, DeviceIdentityStore, HealthCollector, OtaUpdaterService, SubprocessPlatformCommands, TickerPiLogger
+from ticker_core.platform import (
+    AssetCoordinator,
+    DeviceIdentityStore,
+    HealthCollector,
+    OtaUpdaterService,
+    SubprocessPlatformCommands,
+    TickerPiLogger,
+    WiFiRecoveryService,
+)
 from ticker_core.protocol import BackendClient
 from ticker_core.runtime import FramePacer, TickerRuntime
 
@@ -33,6 +41,14 @@ def create_application() -> TickerApplication:
     frames, viewport = create_default_frame_builder(assets, card_cpu=_cpu_setting("TICKER_CARD_CPU"))
     runtime = TickerRuntime(monotonic=monotonic, wall_clock=datetime.now)
     commands = SubprocessPlatformCommands()
+    wifi_recovery = WiFiRecoveryService(
+        commands,
+        hotspot_starter=lambda details: commands.start_hotspot(
+            details.ssid,
+            details.password,
+            interface=details.interface,
+        ),
+    )
     return TickerApplication(
         client=client,
         poller=BackendPoller(client, device_id, telemetry=health.snapshot),
@@ -48,6 +64,7 @@ def create_application() -> TickerApplication:
         repository=repository,
         wall_clock=datetime.now,
         update_service=OtaUpdaterService(commands, updater_path=repository / "updater.py"),
+        wifi_recovery=wifi_recovery,
         poll_in_process=_enabled("TICKER_POLL_PROCESS"),
         render_cpu=_cpu_setting("TICKER_RENDER_CPU"),
         poll_cpu=_cpu_setting("TICKER_POLL_CPU"),

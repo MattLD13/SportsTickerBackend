@@ -23,6 +23,10 @@ class Client:
         self.error = error
         self.calls = []
 
+    def register_device(self, device_id, *, name="Ticker", metadata=None):
+        self.registration = (device_id, name, metadata)
+        return object()
+
     def fetch_data(self, device_id):
         self.calls.append(device_id)
         if self.error:
@@ -41,6 +45,7 @@ def test_poller_publishes_success_and_uses_regular_interval():
     assert event.payload is payload
     assert stop.delays == [pytest.approx(0.5, abs=0.01)]
     assert client.calls == ["ticker-1"]
+    assert client.registration[0] == "ticker-1"
 
 
 def test_poller_publishes_failure_and_uses_backoff():

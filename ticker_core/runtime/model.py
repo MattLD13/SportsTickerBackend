@@ -9,6 +9,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ticker_core._enum import StrEnum
+from ticker_core.platform.wifi import WiFiSetupState
 
 class FrameKind(StrEnum):
     """Name one controller action for one frame."""
@@ -22,6 +23,7 @@ class FrameKind(StrEnum):
     STATIC = "static"
     SCROLL = "scroll"
     EMPTY = "empty"
+    WIFI_SETUP = "wifi_setup"
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +120,7 @@ class FrameDecision:
     stale_for: float = 0.0
     connection_lost: bool = False
     disconnected_for: float = 0.0
+    wifi_state: WiFiSetupState | None = None
 
 
 @dataclass(frozen=True, slots=True)

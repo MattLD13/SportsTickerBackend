@@ -1,0 +1,59 @@
+{
+  "api_version": "v2",
+  "snapshot": {"ticker_id": "flight-fixture", "revision": 1, "observed_at": "2027-01-15T08:00:00+00:00", "stale": false},
+  "settings": {"mode": "flights"},
+  "content": {
+    "flights": [
+      {
+        "id": "UA123",
+        "family": "flights",
+        "kind": "flight_visitor",
+        "is_shown": true,
+        "data": {
+          "type": "flight_visitor",
+          "sport": "flight",
+          "id": "UA123",
+          "guest_name": "VISITOR",
+          "route": "EWR > LAX",
+          "origin_city": "Newark",
+          "dest_city": "Los Angeles",
+          "alt": 36000,
+          "altitude_ft": 36000,
+          "dist": 1100,
+          "distance_miles": 1100,
+          "eta_str": "2H 20M",
+          "speed": 495,
+          "speed_mph": 495,
+          "progress": 55,
+          "progress_pct": 55,
+          "status": "delayed",
+          "delay_min": 20,
+          "is_delayed": true,
+          "is_live": true,
+          "airline": "UA",
+          "airline_iata": "UA",
+          "airline_icao": "UAL",
+          "airline_logo": "",
+          "aircraft_type": "Boeing 737-8 MAX",
+          "aircraft_code": "B38M"
+        }
+      }
+    ],
+    "airports": [
+      {
+        "id": "airport:EWR",
+        "family": "airports",
+        "kind": "flight_airport_hud",
+        "is_shown": true,
+        "data": {
+          "type": "flight_airport_hud",
+          "sport": "airport",
+          "id": "airport:EWR",
+          "weather": {"iata": "EWR", "city": "Newark", "away_abbr": "72F", "status": "CLEAR"},
+          "arrivals": [{"flight_number": "DL456", "airport_code": "ATL", "airport_city": "Atlanta", "status": "ARRIVING", "state": "arriving"}],
+          "departures": [{"flight_number": "UA789", "airport_code": "ORD", "airport_city": "Chicago", "status": "BOARDING", "state": "boarding"}]
+        }
+      }
+    ]
+  }
+}

@@ -57,6 +57,8 @@ class FrameBuilder:
             )
         elif decision.kind == FrameKind.PAIRING:
             frame = self._utility.pairing(context, decision.pairing_code)
+        elif decision.kind == FrameKind.WIFI_SETUP:
+            frame = self._utility.wifi_setup(context, decision.wifi_state)
         elif decision.kind == FrameKind.OFFLINE:
             frame = self._utility.offline(context, decision.offline_for or 0.0)
         elif decision.kind == FrameKind.SCORE_ALERT:
@@ -80,7 +82,12 @@ class FrameBuilder:
         frame = self._panel_frame(frame)
         if base and decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP}:
             self._last_base = frame.copy()
-        if decision.news is not None and decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP, FrameKind.SCORE_ALERT}:
+        if decision.news is not None and decision.kind not in {
+            FrameKind.STOPPED,
+            FrameKind.SLEEP,
+            FrameKind.SCORE_ALERT,
+            FrameKind.WIFI_SETUP,
+        }:
             frame = self._news_banners.apply(frame, decision.news, decision.news_elapsed or 0.0)
         frame = self._panel_frame(frame)
         if decision.connection_lost and decision.kind not in {FrameKind.STOPPED, FrameKind.SLEEP, FrameKind.OFFLINE}:

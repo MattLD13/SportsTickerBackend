@@ -444,6 +444,22 @@ class TickerRepository:
             ).fetchall()
             return tuple(self._read_record(row) for row in rows)
 
+    def list_tickers_for_controller(self, token_hash: str) -> tuple[TickerRecord, ...]:
+        """Return only tickers owned by one hashed controller token."""
+
+        digest = str(token_hash).strip()
+        if not digest:
+            return ()
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT t.ticker_id, t.name, t.created_at, t.updated_at "
+                "FROM tickers AS t "
+                "INNER JOIN controller_sessions AS s ON s.ticker_id = t.ticker_id "
+                "WHERE s.token_hash = ? ORDER BY t.ticker_id",
+                (digest,),
+            ).fetchall()
+            return tuple(self._read_record(row) for row in rows)
+
     def update_ticker(
         self,
         ticker_id: str,

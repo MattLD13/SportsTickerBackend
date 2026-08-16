@@ -23,6 +23,8 @@
       <section>
         <h2>Target ticker</h2>
         <p>Choose one ticker before sending an overlay.</p>
+        <label>Controller token<input id="controller-token" type="password" autocomplete="off"></label>
+        <button id="save-token">Use token</button>
         <label>Ticker<select id="ticker"></select></label>
         <button id="refresh">Refresh display</button>
       </section>
@@ -51,10 +53,13 @@
     (() => {
       const ticker = document.querySelector("#ticker");
       const output = document.querySelector("#output");
+      let controllerToken = sessionStorage.getItem("sportsTicker.controllerToken") || "";
       const show = value => { output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2); };
       const selected = () => ticker.value;
+      const controllerHeaders = () => controllerToken.trim() ? { Authorization: `Bearer ${controllerToken.trim()}` } : {};
       async function api(path, options = {}) {
-        const response = await fetch(path, { headers: { Accept: "application/json", ...(options.body ? { "Content-Type": "application/json" } : {}) }, ...options });
+        const headers = { Accept: "application/json", ...controllerHeaders(), ...(options.body ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) };
+        const response = await fetch(path, { ...options, headers });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body.error?.message || `HTTP ${response.status}`);
         return body;
@@ -67,9 +72,16 @@
       async function refresh() { show(await api(`/api/v2/tickers/${encodeURIComponent(selected())}/data`)); }
       async function send(path, payload) { show(await api(path, { method: "POST", body: JSON.stringify(payload) })); }
       document.querySelector("#refresh").onclick = () => refresh().catch(error => show(error.message));
+      document.querySelector("#save-token").onclick = () => {
+        controllerToken = document.querySelector("#controller-token").value.trim();
+        if (controllerToken) sessionStorage.setItem("sportsTicker.controllerToken", controllerToken);
+        else sessionStorage.removeItem("sportsTicker.controllerToken");
+        load().catch(error => show(error.message));
+      };
       document.querySelector("#send-alert").onclick = () => send("/api/v2/events/alerts", { kind: "score_alert", target_ticker_ids: [selected()], ttl_seconds: 60, payload: { headline: document.querySelector("#headline").value, detail: document.querySelector("#detail").value, status: document.querySelector("#status").value, sport: "nfl", big: true, team_abbr: "NYG", team_color: "#0B2265", team_alt_color: "#A71930", home_abbr: "NYG", away_abbr: "DAL", home_score: 14, away_score: 7 } }).catch(error => show(error.message));
       document.querySelector("#send-news").onclick = () => send("/api/v2/events/news", { kind: "news", target_ticker_ids: [selected()], ttl_seconds: 60, payload: { kind: "NEWS", domain: "sports", sport: document.querySelector("#sport").value, from_abbr: "NYG", to_abbr: "", text: document.querySelector("#news-text").value, from_color: "#8B93A3", to_color: "#8B93A3" } }).catch(error => show(error.message));
       ticker.onchange = () => refresh().catch(error => show(error.message));
+      document.querySelector("#controller-token").value = controllerToken;
       load().catch(error => show(error.message));
     })();
   </script>

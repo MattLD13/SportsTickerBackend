@@ -9,7 +9,7 @@ from threading import Event
 from time import monotonic
 from typing import Any, Protocol
 
-from ticker_core.protocol import BackendClient, DisplayPayload, PollBackoff, display_delta
+from ticker_core.protocol import BackendClient, BackendHttpError, DisplayPayload, PollBackoff, display_delta
 
 
 class Waiter(Protocol):
@@ -57,11 +57,14 @@ class BackendPoller:
         device_id: str,
         *,
         telemetry: Callable[[], object],
+        device_name: str = "Ticker",
         success_interval: float = 0.5,
         heartbeat_interval: float = 30.0,
     ) -> None:
         if not device_id:
             raise ValueError("A device id is required.")
+        if not device_name.strip():
+            raise ValueError("A device name is required.")
         if success_interval < 0:
             raise ValueError("The poll interval cannot be negative.")
         if heartbeat_interval <= 0:
@@ -69,6 +72,7 @@ class BackendPoller:
         self._client = client
         self._device_id = device_id
         self._telemetry = telemetry
+        self._device_name = device_name.strip()
         self._success_interval = success_interval
         self._heartbeat_interval = heartbeat_interval
 
@@ -77,17 +81,29 @@ class BackendPoller:
         backoff = PollBackoff()
         previous_key: str | None = None
         previous_payload: DisplayPayload | None = None
+        registered = False
         next_poll = monotonic()
-        next_heartbeat = next_poll
+        next_heartbeat = next_poll + self._heartbeat_interval
         while not stop.is_set():
             request_started = monotonic()
             try:
+                if not registered:
+                    self._client.register_device(
+                        self._device_id,
+                        name=self._device_name,
+                        metadata=self._telemetry_metadata(),
+                    )
+                    registered = True
                 payload = self._client.fetch_data(self._device_id)
                 now = monotonic()
                 if now >= next_heartbeat:
                     self._send_heartbeat()
                     next_heartbeat = now + self._heartbeat_interval
             except Exception as error:
+                if isinstance(error, BackendHttpError) and error.status_code == 404:
+                    registered = False
+                    previous_key = None
+                    previous_payload = None
                 elapsed_ms = (monotonic() - request_started) * 1000.0
                 backoff = backoff.after_failure()
                 events.put(PollFailed(error, backoff.delay_seconds, elapsed_ms))
@@ -126,13 +142,19 @@ class BackendPoller:
         heartbeat = getattr(self._client, "heartbeat", None)
         if not callable(heartbeat):
             return
+        metadata = self._telemetry_metadata()
+        try:
+            heartbeat(self._device_id, metadata)
+        except Exception:
+            return
+
+    def _telemetry_metadata(self) -> dict[str, Any]:
+        """Copy bounded device facts for registration and heartbeat requests."""
+
         snapshot = self._telemetry()
         metadata: dict[str, Any] = {}
         for name in ("uptime_seconds", "build", "python", "temperature_c"):
             value = getattr(snapshot, name, None)
             if value is not None:
                 metadata[name] = value
-        try:
-            heartbeat(self._device_id, metadata)
-        except Exception:
-            return
+        return metadata

@@ -174,6 +174,7 @@ def _provider_settings_key(name: str):
         return lambda settings: (
             settings.airport_code_iata,
             settings.airport_code_icao,
+            settings.airport_name,
             settings.track_flight_id,
             settings.track_guest_name,
         )

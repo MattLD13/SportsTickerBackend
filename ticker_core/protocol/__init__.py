@@ -9,6 +9,8 @@ from .client import (
     BackendHttpError,
     BackendPayloadError,
     BackendTransportError,
+    DeviceRegistration,
+    REGISTRATION_ENDPOINT,
 )
 from .model import (
     Alert,
@@ -35,6 +37,7 @@ __all__ = [
     "BackendHttpError",
     "BackendPayloadError",
     "BackendTransportError",
+    "DeviceRegistration",
     "ContentItem",
     "DisplayDelta",
     "DisplayItemDelta",
@@ -45,6 +48,7 @@ __all__ = [
     "NewsItem",
     "PayloadValidationError",
     "PollBackoff",
+    "REGISTRATION_ENDPOINT",
     "TelemetrySnapshot",
     "TICKER_ENDPOINT_TEMPLATE",
     "TickerResponse",

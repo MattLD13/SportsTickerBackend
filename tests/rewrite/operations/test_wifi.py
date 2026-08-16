@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from ticker_core.platform import HotspotDetails, WiFiNetwork, WiFiRecoveryService
+from datetime import datetime, timezone
+
+from ticker_core.context import RenderContext
+from ticker_core.features.utility import UtilityRenderer
+from ticker_core.platform import HotspotDetails, WiFiNetwork, WiFiRecoveryService, WiFiSetupState
+from ticker_core.rendering import load_default_font_set
 
 
 class Commands:
@@ -44,3 +49,18 @@ def test_wifi_setup_starts_hotspot_and_connects_from_portal() -> None:
     background[0]()
     assert commands.connected == [("Home", "secret", "wlan0")]
     assert commands.reboots == 1
+
+
+def test_wifi_setup_renderer_returns_the_real_panel_size() -> None:
+    """Render one setup state without network work in the renderer."""
+
+    state = WiFiSetupState(
+        internet_available=False,
+        hotspot_active=True,
+        hotspot=HotspotDetails("SportsTicker_Setup", "setup1234"),
+    )
+    frame = UtilityRenderer(load_default_font_set()).wifi_setup(
+        RenderContext(datetime(2026, 8, 15, tzinfo=timezone.utc)),
+        state,
+    )
+    assert frame.size == (384, 32)

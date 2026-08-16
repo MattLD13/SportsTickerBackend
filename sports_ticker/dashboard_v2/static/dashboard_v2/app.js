@@ -1,7 +1,13 @@
 (() => {
   "use strict";
 
-  const state = { tickers: [], selectedId: null, selected: null, snapshot: null };
+  const state = {
+    tickers: [],
+    selectedId: null,
+    selected: null,
+    snapshot: null,
+    controllerToken: sessionStorage.getItem("sportsTicker.controllerToken") || "",
+  };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
@@ -20,8 +26,19 @@
     window.setTimeout(() => { if (target.textContent === message) target.textContent = ""; }, 5000);
   }
 
+  function controllerHeaders() {
+    const token = state.controllerToken.trim();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   async function api(path, options = {}) {
-    const response = await fetch(path, { headers: { Accept: "application/json", ...(options.body ? { "Content-Type": "application/json" } : {}) }, ...options });
+    const headers = {
+      Accept: "application/json",
+      ...controllerHeaders(),
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    };
+    const response = await fetch(path, { ...options, headers });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       const error = new Error(body.error?.message || `Request failed (${response.status})`);
@@ -209,28 +226,17 @@
     } catch (error) { stateLabel.textContent = "Save failed"; setFeedback(error.message, true); }
   }
 
-  async function createTicker(event) {
+  async function saveControllerToken(event) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const values = Object.fromEntries(new FormData(form).entries());
-    const tickerId = String(values.ticker_id || "").trim();
-    const name = String(values.name || "").trim();
-    if (!tickerId) {
-      setFeedback("Ticker ID is required.", true);
-      return;
-    }
-    try {
-      const created = await api("/api/v2/tickers", {
-        method: "POST",
-        body: JSON.stringify({ ticker_id: tickerId, ...(name ? { name } : {}) }),
-      });
-      form.reset();
-      state.selectedId = created.ticker_id;
-      setFeedback(`${created.name} created.`);
-      await refresh();
-    } catch (error) {
-      setFeedback(error.message, true);
-    }
+    const input = $("[data-controller-token]");
+    state.controllerToken = String(input?.value || "").trim();
+    if (state.controllerToken) sessionStorage.setItem("sportsTicker.controllerToken", state.controllerToken);
+    else sessionStorage.removeItem("sportsTicker.controllerToken");
+    state.selectedId = null;
+    state.selected = null;
+    state.snapshot = null;
+    renderTickers(); renderSettings(); renderSnapshot();
+    await refresh();
   }
 
   function overlayPayload(form, type) {
@@ -255,7 +261,9 @@
 
   function bind() {
     $("[data-refresh]").addEventListener("click", refresh);
-    $("[data-create-ticker-form]").addEventListener("submit", createTicker);
+    $("[data-controller-token-form]").addEventListener("submit", event => {
+      saveControllerToken(event).catch(error => setFeedback(error.message, true));
+    });
     $("[data-settings-form]").addEventListener("submit", saveSettings);
     $$('[data-setting="mode"], [data-setting="sports_presentation"]').forEach(field => field.addEventListener("change", syncSportsControls));
     $$('[data-overlay-form]').forEach(form => form.addEventListener("submit", sendOverlay));
@@ -270,6 +278,8 @@
     });
   }
 
+  const tokenInput = $("[data-controller-token]");
+  if (tokenInput) tokenInput.value = state.controllerToken;
   bind(); refresh();
   window.setInterval(refresh, 30000);
   window.setInterval(() => { if (state.snapshot) renderSnapshot(); }, 1000);

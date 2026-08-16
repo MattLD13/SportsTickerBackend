@@ -8,6 +8,7 @@ from PIL import Image
 
 from ticker_core.app import PollFailed, PollSucceeded, TickerApplication
 from ticker_core.assets import ShortTermContentCache
+from ticker_core.platform import HotspotDetails, WiFiSetupState
 from ticker_core.runtime import FrameKind, FramePacer, RuntimeConfig, TickerRuntime
 from ticker_core.protocol import TickerResponse
 
@@ -108,6 +109,69 @@ class Commands:
 
     def run_update(self, command) -> None:
         pass
+
+
+class OfflineWiFiRecovery:
+    """Return one deterministic offline state without probing the network."""
+
+    def __init__(self) -> None:
+        self.setup_started = Event()
+        self.release_setup = Event()
+        self.portal_started = Event()
+        self.state = WiFiSetupState(
+            internet_available=False,
+            hotspot_active=True,
+            hotspot=HotspotDetails("SportsTicker_Setup", "setup1234"),
+        )
+
+    def start_setup(self) -> WiFiSetupState:
+        self.setup_started.set()
+        self.release_setup.wait(1)
+        return self.state
+
+    def start_portal(self) -> bool:
+        self.portal_started.set()
+        return True
+
+
+def test_wifi_recovery_starts_with_the_application_and_selects_setup_frame(tmp_path) -> None:
+    """Select the Wi-Fi frame from platform state without network work in the render loop."""
+
+    wall = datetime(2026, 8, 15, tzinfo=timezone.utc)
+    recovery = OfflineWiFiRecovery()
+    application = TickerApplication(
+        client=Client(),
+        poller=IdlePoller(),
+        cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=Assets(),
+        runtime=TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: wall),
+        viewport=Viewport(),
+        frames=Frames(),
+        pacer=FramePacer(lambda: 0.0),
+        sink=Sink(),
+        commands=Commands(),
+        device_id="ticker-1",
+        repository=tmp_path,
+        wall_clock=lambda: wall,
+        wifi_recovery=recovery,
+        wifi_check_interval=0.05,
+    )
+    try:
+        application.start()
+        assert recovery.setup_started.wait(1)
+        recovery.release_setup.set()
+        for _ in range(100):
+            if application.wifi_state is not None:
+                break
+            Event().wait(0.01)
+
+        decision = application.step()
+        assert decision.kind is FrameKind.WIFI_SETUP
+        assert decision.wifi_state == recovery.state
+        assert recovery.portal_started.wait(1)
+        assert application.sink.presented[-1][0].size == (384, 32)
+    finally:
+        application.close()
 
 
 def test_fresh_content_keeps_connection_icon_until_cache_expiry(tmp_path) -> None:

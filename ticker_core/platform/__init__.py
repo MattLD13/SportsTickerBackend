@@ -7,7 +7,7 @@ from .identity import DeviceIdentityStore
 from .health import HealthCollector
 from .performance import TickerPiLogger
 from .update import OtaUpdaterService, UpdateState
-from .wifi import HotspotDetails, WiFiRecoveryService, WiFiSetupState
+from .wifi import HotspotDetails, WiFiAvailability, WiFiRecoveryService, WiFiSetupState
 
 __all__ = [
     "AssetCoordinator",
@@ -25,6 +25,7 @@ __all__ = [
     "PersistentAssetStore",
     "SubprocessPlatformCommands",
     "WiFiNetwork",
+    "WiFiAvailability",
     "WiFiRecoveryService",
     "WiFiSetupState",
     "UpdateState",

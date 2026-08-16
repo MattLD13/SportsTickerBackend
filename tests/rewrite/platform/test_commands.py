@@ -19,10 +19,23 @@ def test_platform_commands_delegate_to_injected_subprocesses() -> None:
 
     assert commands.list_wifi_networks() == [WiFiNetwork("Alpha"), WiFiNetwork("Zulu")]
     commands.connect_wifi("Ticker", "secret")
+    commands.start_hotspot("Setup", "setup1234", interface="wlan1")
     commands.run_update(["python", "updater.py"])
     commands.reboot()
 
     assert runs[1][0] == ["nmcli", "dev", "wifi", "connect", "Ticker", "password", "secret", "ifname", "wlan0"]
+    assert runs[2][0] == [
+        "nmcli",
+        "device",
+        "wifi",
+        "hotspot",
+        "ifname",
+        "wlan1",
+        "ssid",
+        "Setup",
+        "password",
+        "setup1234",
+    ]
     assert spawned == [["python", "updater.py"], ["reboot"]]
 
 

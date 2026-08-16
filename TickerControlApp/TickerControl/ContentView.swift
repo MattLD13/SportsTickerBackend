@@ -755,13 +755,14 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         if base.isEmpty { self.connectionStatus = "Invalid URL"; self.statusColor = .red; return }
         guard let tickerID = savedTickerID,
               controllerToken(for: tickerID) != nil,
-              let url = tickerURL(tickerID, suffix: "/data") else {
+              let url = tickerURL(tickerID, suffix: "/data"),
+              let request = authorizedRequest(url: url, method: "GET", tickerID: tickerID) else {
             self.isServerReachable = true
             self.updateOverallStatus()
             return
         }
         
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        URLSession.shared.dataTask(with: request) { data, _, error in
             if let error = error {
                 DispatchQueue.main.async {
                     self.isServerReachable = false
@@ -869,13 +870,12 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     // === 4. SAVE SETTINGS (Write) ===
     func saveSettings() {
         self.isEditing = true   // LOCK: block polling while save is in-flight
-        guard let validID = self.savedTickerID, let url = tickerURL(validID) else {
+        guard let validID = self.savedTickerID,
+              let url = tickerURL(validID),
+              var request = authorizedRequest(url: url, method: "PATCH", tickerID: validID) else {
             self.isEditing = false
             return
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: ["display_settings": v2DisplaySettingsPayload()])
@@ -1005,9 +1005,15 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     
     func fetchDevices() {
         let base = getBaseURL()
-        guard let url = URL(string: "\(base)/api/v2/tickers") else { return }
+        guard let tickerID = savedTickerID,
+              let url = URL(string: "\(base)/api/v2/tickers"),
+              let request = authorizedRequest(url: url, method: "GET", tickerID: tickerID) else {
+            self.devices.removeAll()
+            self.updateOverallStatus()
+            return
+        }
         
-        URLSession.shared.dataTask(with: url) { data, _, _ in
+        URLSession.shared.dataTask(with: request) { data, _, _ in
             if let d = data, let decoded = try? JSONDecoder().decode(V2TickerList.self, from: d) {
                 DispatchQueue.main.async {
                     // A valid /tickers response proves the server is reachable.
@@ -1169,7 +1175,8 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     // MARK: - FIX: UPDATE SETTINGS (With Auth & Debugging)
     // ==========================================
     func updateDeviceSettings(id: String, brightness: Double? = nil, speed: Double? = nil, seamless: Bool? = nil, inverted: Bool? = nil, liveDelayMode: Bool? = nil, delaySeconds: Int? = nil) {
-        guard let url = tickerURL(id) else {
+        guard let url = tickerURL(id),
+              var req = authorizedRequest(url: url, method: "PATCH", tickerID: id) else {
             print("❌ Invalid URL for device update")
             return
         }
@@ -1183,10 +1190,6 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         )]
 
         print("📤 Sending Update to \(id): \(body)")
-        
-        var req = URLRequest(url: url)
-        req.httpMethod = "PATCH"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         do {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -1214,10 +1217,8 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     }
 
     private func updateTickerName(_ name: String, tickerID: String) {
-        guard let url = tickerURL(tickerID) else { return }
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        guard let url = tickerURL(tickerID),
+              var request = authorizedRequest(url: url, method: "PATCH", tickerID: tickerID) else { return }
         request.httpBody = try? JSONSerialization.data(withJSONObject: ["name": name])
         URLSession.shared.dataTask(with: request).resume()
     }

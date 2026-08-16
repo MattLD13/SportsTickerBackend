@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
@@ -17,9 +18,15 @@ from typing import Protocol
 from ticker_core.assets import ShortTermContentCache
 from ticker_core.context import RenderContext
 from ticker_core.drivers import FrameSink
-from ticker_core.platform import AssetCoordinator, OtaUpdaterService, PlatformCommands
+from ticker_core.platform import (
+    AssetCoordinator,
+    OtaUpdaterService,
+    PlatformCommands,
+    WiFiRecoveryService,
+    WiFiSetupState,
+)
 from ticker_core.protocol import BackendClient, DisplayDelta, TickerResponse, apply_display_delta
-from ticker_core.runtime import FrameDecision, FramePacer, TickerRuntime
+from ticker_core.runtime import FrameDecision, FrameKind, FramePacer, TickerRuntime
 
 from .frame_builder import FrameBuilder
 from .poller import BackendPoller, PollConnected, PollEvent, PollFailed, PollSucceeded
@@ -73,6 +80,8 @@ class TickerApplication:
         wall_clock: Callable[[], datetime],
         update_command: Sequence[str] | None = None,
         update_service: OtaUpdaterService | None = None,
+        wifi_recovery: WiFiRecoveryService | None = None,
+        wifi_check_interval: float = 10.0,
         poll_in_process: bool = False,
         render_cpu: int | None = None,
         poll_cpu: int | None = None,
@@ -80,6 +89,8 @@ class TickerApplication:
     ) -> None:
         if not device_id.strip():
             raise ValueError("A device id is required.")
+        if wifi_check_interval <= 0:
+            raise ValueError("The Wi-Fi check interval must be positive.")
         self._client = client
         self._poller = poller
         self._cache = cache
@@ -95,6 +106,8 @@ class TickerApplication:
         self._wall_clock = wall_clock
         self._update_command = tuple(update_command or _default_update_command(self._repository))
         self._update_service = update_service
+        self._wifi_recovery = wifi_recovery
+        self._wifi_check_interval = wifi_check_interval
         self._poll_in_process = poll_in_process and os.name != "nt"
         self._render_cpu = render_cpu
         self._poll_cpu = poll_cpu
@@ -107,6 +120,9 @@ class TickerApplication:
             self._events: Queue[PollEvent] = Queue()
             self._stop = Event()
         self._poll_thread: Thread | object | None = None
+        self._wifi_thread: Thread | None = None
+        self._wifi_portal_thread: Thread | None = None
+        self._wifi_state: WiFiSetupState | None = None
         self._started = False
         self._disconnected = False
         self._reboot_latched = False
@@ -126,6 +142,12 @@ class TickerApplication:
         """Expose the selected frame sink for debug callers."""
         return self._sink
 
+    @property
+    def wifi_state(self) -> WiFiSetupState | None:
+        """Expose the last platform-owned Wi-Fi state for diagnostics and tests."""
+
+        return self._wifi_state
+
     def start(self) -> None:
         """Start worker services after every dependency is composed."""
         if self._started:
@@ -133,6 +155,7 @@ class TickerApplication:
         self._started = True
         self._logger.start()
         _pin_to_cpu(self._render_cpu)
+        self._start_wifi_lifecycle()
         if self._poll_in_process:
             assert self._process_context is not None
             self._poll_thread = self._process_context.Process(
@@ -174,6 +197,14 @@ class TickerApplication:
         self._install_completed_cards()
         self._push_requested_modes()
         decision = self._runtime.next_frame()
+        wifi_state = self._wifi_state
+        if wifi_state is not None and not wifi_state.internet_available:
+            decision = replace(
+                decision,
+                kind=FrameKind.WIFI_SETUP,
+                wifi_state=wifi_state,
+                connection_lost=False,
+            )
         try:
             frame = self._frames.build(decision)
             present_started_at = monotonic()
@@ -244,6 +275,9 @@ class TickerApplication:
         if self._stop.is_set() and not self._started:
             return
         self._stop.set()
+        if self._wifi_thread is not None and self._wifi_thread is not current_thread():
+            self._wifi_thread.join(timeout=6)
+            self._wifi_thread = None
         if self._poll_thread is not None and self._poll_thread is not current_thread():
             self._poll_thread.join(timeout=6)
             self._poll_thread = None
@@ -259,6 +293,42 @@ class TickerApplication:
             close_sink()
         self._logger.close()
         self._started = False
+
+    def _start_wifi_lifecycle(self) -> None:
+        """Start platform Wi-Fi checks outside the render and poll paths."""
+
+        if self._wifi_recovery is None or self._wifi_thread is not None:
+            return
+        self._wifi_thread = Thread(
+            target=self._run_wifi_lifecycle,
+            name="ticker-wifi-recovery",
+            daemon=True,
+        )
+        self._wifi_thread.start()
+
+    def _run_wifi_lifecycle(self) -> None:
+        """Refresh Wi-Fi state and run the setup portal from a worker."""
+
+        assert self._wifi_recovery is not None
+        portal_started = False
+        while not self._stop.is_set():
+            try:
+                state = self._wifi_recovery.start_setup()
+                self._wifi_state = state
+                if not state.internet_available and not portal_started:
+                    portal_started = True
+                    self._wifi_portal_thread = Thread(
+                        target=self._wifi_recovery.start_portal,
+                        name="ticker-wifi-portal",
+                        daemon=True,
+                    )
+                    self._wifi_portal_thread.start()
+                elif state.internet_available:
+                    portal_started = False
+            except Exception as error:
+                self._logger.record_issue("wifi", error)
+            if self._stop.wait(self._wifi_check_interval):
+                return
 
     def _restore_cached_content(self) -> None:
         entry = self._cache.load()

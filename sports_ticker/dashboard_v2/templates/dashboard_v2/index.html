@@ -19,6 +19,11 @@
       <span class="muted">/</span>
       <span class="mono" data-updated>—</span>
     </div>
+    <form class="controller-auth" data-controller-token-form>
+      <label class="sr-only" for="controller-token">Controller token</label>
+      <input id="controller-token" data-controller-token type="password" placeholder="Controller token" autocomplete="off">
+      <button class="button button-quiet button-small" type="submit">Use token</button>
+    </form>
   </header>
 
   <main class="shell">
@@ -47,12 +52,6 @@
         <div class="ticker-list" data-ticker-list>
           <div class="empty-state">Loading tickers…</div>
         </div>
-        <form class="fleet-create" data-create-ticker-form>
-          <p class="eyebrow">ADD TICKER</p>
-          <label>Ticker ID<input name="ticker_id" type="text" placeholder="ticker-lobby" required autocomplete="off"></label>
-          <label>Name<input name="name" type="text" placeholder="Lobby ticker" autocomplete="off"></label>
-          <button class="button button-primary" type="submit">Create ticker</button>
-        </form>
       </aside>
 
       <section class="detail-column">

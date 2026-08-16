@@ -9,6 +9,7 @@ from typing import Protocol
 from PIL import Image, ImageDraw
 
 from ticker_core.context import RenderContext
+from ticker_core.platform.wifi import WiFiSetupState
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
 
 from .primitives import PANEL_H, PANEL_W, tiny_text
@@ -200,6 +201,31 @@ class UtilityRenderer:
         draw.text(((PANEL_W - draw.textlength(spaced, font=self._fonts.huge)) / 2, 10), spaced, font=self._fonts.huge, fill="white")
         if int(context.now.timestamp() * 2) % 2 == 0:
             draw.ellipse((PANEL_W - 8, 2, PANEL_W - 3, 7), fill=(0, 200, 255))
+        return image
+
+    def wifi_setup(self, context: RenderContext, state: WiFiSetupState | None) -> Image.Image:
+        """Render the platform-owned Wi-Fi setup status without performing I/O."""
+
+        image = Image.new("RGB", (PANEL_W, PANEL_H), "black")
+        draw = ImageDraw.Draw(image)
+        if state is None:
+            title = "WIFI CHECK"
+            detail = "CHECKING CONNECTION"
+            accent = (120, 180, 220)
+        elif state.internet_available:
+            title = "WIFI ONLINE"
+            detail = "CONNECTING TO TICKER"
+            accent = (0, 220, 120)
+        else:
+            title = "WIFI SETUP"
+            detail = f"JOIN {state.hotspot.ssid.upper()}"
+            accent = (255, 190, 0)
+        draw.text((8, 2), title, font=self._fonts.normal, fill=accent)
+        draw.text((8, 16), detail[:46], font=self._fonts.tiny, fill=(220, 220, 225))
+        if state is not None and not state.internet_available:
+            password = f"PASS {state.hotspot.password}"
+            draw.text((220, 16), password[:24], font=self._fonts.tiny, fill=(150, 150, 160))
+        draw.rectangle((0, 31, PANEL_W - 1, 31), fill=accent)
         return image
 
     def offline(self, context: RenderContext, offline_for: float) -> Image.Image:

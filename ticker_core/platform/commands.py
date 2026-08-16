@@ -31,6 +31,9 @@ class PlatformCommands(Protocol):
     def connect_wifi(self, ssid: str, password: str, *, interface: str = "wlan0") -> None:
         """Connect an interface to Wi-Fi."""
 
+    def start_hotspot(self, ssid: str, password: str, *, interface: str = "wlan0") -> None:
+        """Start the setup hotspot on one wireless interface."""
+
 
 class SubprocessPlatformCommands:
     """Use system commands for Pi platform actions."""
@@ -69,5 +72,26 @@ class SubprocessPlatformCommands:
             raise ValueError("Wi-Fi SSID must not be empty.")
         self._run(
             ["nmcli", "dev", "wifi", "connect", ssid, "password", password, "ifname", interface],
+            check=True,
+        )
+
+    def start_hotspot(self, ssid: str, password: str, *, interface: str = "wlan0") -> None:
+        """Start a NetworkManager hotspot for local recovery."""
+
+        if not ssid or not password:
+            raise ValueError("Wi-Fi hotspot credentials must not be empty.")
+        self._run(
+            [
+                "nmcli",
+                "device",
+                "wifi",
+                "hotspot",
+                "ifname",
+                interface,
+                "ssid",
+                ssid,
+                "password",
+                password,
+            ],
             check=True,
         )

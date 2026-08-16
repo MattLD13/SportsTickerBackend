@@ -8,11 +8,12 @@ import secrets
 from uuid import uuid4
 from collections.abc import Mapping
 from dataclasses import replace
+from datetime import datetime, timezone
 from math import isfinite
 from threading import Lock
 from typing import Any, Callable
 
-from sports_ticker.domain import DisplaySettings
+from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import DeviceMetadata, TickerRecord, TickerRepository
 from sports_ticker.providers import ProviderHealth
 from sports_ticker.projections import project_data_v2, select_display_content
@@ -74,6 +75,12 @@ class BackendApplication:
 
         return self.repository.list_tickers()
 
+    def list_tickers_for_controller(self, token: str) -> tuple[TickerRecord, ...]:
+        """Return the fleet visible to one opaque controller token."""
+
+        digest = hashlib.sha256(str(token).encode("utf-8")).hexdigest()
+        return self.repository.list_tickers_for_controller(digest)
+
     def get_ticker(self, ticker_id: str) -> TickerRecord | None:
         """Return one configured ticker."""
 
@@ -112,6 +119,7 @@ class BackendApplication:
             raise KeyError(identifier)
 
         current = self.heartbeat(identifier, {"metadata": device_metadata})
+        self._ensure_display_snapshot(current)
         pairing = current.pairing
         pairing_code = None
         if pairing is None or not pairing.paired:
@@ -122,6 +130,23 @@ class BackendApplication:
                 if current is None:
                     raise KeyError(identifier)
         return current, pairing_code, created
+
+    def _ensure_display_snapshot(self, ticker: TickerRecord) -> None:
+        """Create the first empty snapshot before a device starts polling."""
+
+        if self.snapshot_store.get(ticker.ticker_id) is not None:
+            return
+        self.snapshot_store.replace(
+            TickerSnapshot(
+                ticker_id=ticker.ticker_id,
+                revision=0,
+                observed_at=datetime.fromtimestamp(self._clock(), tz=timezone.utc),
+                content=(),
+                alerts=(),
+                news=(),
+                effective_settings=ticker.display_settings,
+            )
+        )
 
     def exchange_pairing_code(self, pairing_code: str) -> tuple[TickerRecord, str]:
         """Consume one pairing code and return one opaque controller token once."""

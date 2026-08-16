@@ -95,14 +95,18 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
 
     @app.get("/api/v2/tickers")
     def list_tickers():
-        return jsonify({"tickers": [_ticker_value(item) for item in application.list_tickers()]})
-
-    @app.post("/api/v2/tickers")
-    def create_ticker():
-        payload = _json_object()
-        values = _create_values(payload)
-        ticker = application.create_ticker(**values)
-        return jsonify(_ticker_value(ticker)), 201
+        token = _controller_token()
+        tickers = application.list_tickers_for_controller(token)
+        if not tickers:
+            raise ApiError("controller authorization is invalid", 403, "forbidden")
+        return jsonify(
+            {
+                "tickers": [
+                    _ticker_value(item)
+                    for item in tickers
+                ]
+            }
+        )
 
     @app.post("/api/v2/devices/register")
     def register_device():
@@ -169,19 +173,21 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
 
     @app.get("/api/v2/tickers/<ticker_id>")
     def get_ticker(ticker_id: str):
-        ticker = _require_ticker(application, ticker_id)
+        identifier = _controller_ticker_owner(application, ticker_id)
+        ticker = _require_ticker(application, identifier)
         return jsonify(_ticker_value(ticker))
 
     @app.patch("/api/v2/tickers/<ticker_id>")
     def update_ticker(ticker_id: str):
+        identifier = _controller_ticker_owner(application, ticker_id)
         payload = _json_object()
         changes = _patch_values(payload)
-        ticker = application.update_ticker(_ticker_id(ticker_id), **changes)
+        ticker = application.update_ticker(identifier, **changes)
         return jsonify(_ticker_value(ticker))
 
     @app.delete("/api/v2/tickers/<ticker_id>")
     def delete_ticker(ticker_id: str):
-        identifier = _ticker_id(ticker_id)
+        identifier = _controller_ticker_owner(application, ticker_id)
         if not application.delete_ticker(identifier):
             raise ApiError(f"ticker not found: {identifier}", 404, "not_found")
         return jsonify({"deleted": True, "ticker_id": identifier})
@@ -311,7 +317,7 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
     @app.post("/api/v2/tickers/<ticker_id>/events/<event_id>/ack")
     def acknowledge_ticker_event(ticker_id: str, event_id: str):
         _json_object()
-        identifier = _ticker_id(ticker_id)
+        identifier = _controller_ticker_owner(application, ticker_id)
         if not application.acknowledge_event(identifier, event_id):
             raise ApiError("event is not active for this ticker", 404, "not_found")
         return jsonify(
@@ -329,26 +335,6 @@ def _json_object() -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ApiError("request body must be a JSON object", 400, "invalid_request")
     return payload
-
-
-def _create_values(payload: Mapping[str, Any]) -> dict[str, Any]:
-    _check_keys(payload, {"ticker_id", "name", "display_settings", "settings", "pairing", "device"})
-    if "display_settings" in payload and "settings" in payload:
-        raise ApiError("provide display_settings or settings, not both", 400, "invalid_request")
-    identifier = _ticker_id(payload.get("ticker_id", ""))
-    name = payload.get("name", "Ticker")
-    if not isinstance(name, str):
-        raise ApiError("name must be a string", 400, "invalid_request")
-    settings = _settings_value(payload)
-    pairing = _optional_mapping(payload, "pairing")
-    device = _optional_mapping(payload, "device")
-    return {
-        "ticker_id": identifier,
-        "name": name,
-        "display_settings": settings,
-        "pairing": pairing,
-        "device": device,
-    }
 
 
 def _patch_values(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -464,14 +450,21 @@ def _controller_ticker_owner(application: BackendApplication, ticker_id: str) ->
     """Require one opaque controller token for one ticker-owned integration."""
 
     identifier = _ticker_id(ticker_id)
+    token = _controller_token()
     _require_ticker(application, identifier)
+    if not application.authorize_controller(identifier, token):
+        raise ApiError("controller authorization is invalid", 403, "forbidden")
+    return identifier
+
+
+def _controller_token() -> str:
+    """Read one bearer token without exposing its stored hash."""
+
     authorization = str(request.headers.get("Authorization") or "")
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token.strip():
         raise ApiError("controller authorization is required", 401, "unauthorized")
-    if not application.authorize_controller(identifier, token.strip()):
-        raise ApiError("controller authorization is invalid", 403, "forbidden")
-    return identifier
+    return token.strip()
 
 
 def _require_deployment_token() -> None:

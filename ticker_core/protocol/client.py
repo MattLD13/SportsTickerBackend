@@ -13,6 +13,7 @@ from .model import PayloadValidationError, TickerResponse
 
 
 DATA_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/data"
+REGISTRATION_ENDPOINT = "/api/v2/devices/register"
 TICKER_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}"
 HEARTBEAT_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/heartbeat"
 UPDATE_ACK_ENDPOINT_TEMPLATE = "/api/v2/tickers/{device_id}/updates/ack"
@@ -42,6 +43,34 @@ class BackendHttpError(BackendError):
 
 class BackendPayloadError(BackendError):
     """Report a backend response that is not a valid display payload."""
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceRegistration:
+    """Represent the validated V2 bootstrap response for one device."""
+
+    ticker_id: str
+    paired: bool
+    pairing_code: str | None
+    ticker: Mapping[str, Any]
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "DeviceRegistration":
+        """Validate the registration contract before polling display data."""
+
+        ticker_id = payload.get("ticker_id")
+        if not isinstance(ticker_id, str) or not ticker_id.strip():
+            raise BackendPayloadError("device registration returned an invalid ticker_id")
+        paired = payload.get("paired")
+        if not isinstance(paired, bool):
+            raise BackendPayloadError("device registration returned an invalid paired state")
+        pairing_code = payload.get("pairing_code")
+        if pairing_code is not None and not isinstance(pairing_code, str):
+            raise BackendPayloadError("device registration returned an invalid pairing_code")
+        ticker = payload.get("ticker")
+        if not isinstance(ticker, Mapping):
+            raise BackendPayloadError("device registration returned an invalid ticker")
+        return cls(ticker_id.strip(), paired, pairing_code, dict(ticker))
 
 
 class BackendClient:
@@ -99,6 +128,39 @@ class BackendClient:
         self._last_data_response = parsed
         self._settings_by_ticker[device_id] = _thaw_settings(parsed.settings.data)
         return parsed
+
+    def register_device(
+        self,
+        device_id: str,
+        *,
+        name: str = "Ticker",
+        metadata: Mapping[str, Any] | None = None,
+    ) -> DeviceRegistration:
+        """Register one Pi before its first V2 display poll."""
+
+        if not device_id.strip():
+            raise ValueError("device_id must not be empty")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("name must be a non-empty string")
+        if metadata is not None and not isinstance(metadata, Mapping):
+            raise ValueError("metadata must be an object")
+        response = self._request(
+            "POST",
+            REGISTRATION_ENDPOINT,
+            json={
+                "device_id": device_id,
+                "name": name.strip(),
+                "metadata": dict(metadata or {}),
+            },
+        )
+        registration = DeviceRegistration.from_payload(
+            self._json_object(response, "POST /api/v2/devices/register")
+        )
+        if registration.ticker_id != device_id.strip():
+            raise BackendPayloadError(
+                "device registration returned a ticker_id different from device_id"
+            )
+        return registration
 
     def get_data(self, device_id: str) -> TickerResponse:
         """Fetch display data for one version two ticker."""
