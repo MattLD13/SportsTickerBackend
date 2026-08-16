@@ -1181,7 +1181,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                   let pairing = try? JSONDecoder().decode(PairingCodeResponse.self, from: data) else {
                 let status = (response as? HTTPURLResponse)?.statusCode
                 DispatchQueue.main.async {
-                    self.connectionStatus = "Unpair failed\(status.map { \" (HTTP \($0))\" } ?? \"\")"
+                    self.connectionStatus = "Unpair failed\(status.map { " (HTTP \($0))" } ?? "")"
                     self.statusColor = .red
                 }
                 return
