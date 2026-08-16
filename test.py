@@ -101,8 +101,12 @@ def run_forced_wifi_setup(args: argparse.Namespace) -> int:
         json.dumps({"expires_at": time.time() + 900.0}, separators=(",", ":")),
         encoding="utf-8",
     )
+    transport = os.environ.get("TICKER_SETUP_TRANSPORT", "ble").strip().lower() or "ble"
     print("Forced Wi-Fi setup requested for the running ticker service.")
-    print("The ticker will start SportsTicker_Setup on its next Wi-Fi check.")
+    if transport == "ble":
+        print("The ticker will advertise SportsTicker Setup over Bluetooth on its next Wi-Fi check.")
+    else:
+        print("The ticker will start SportsTicker_Setup on its next Wi-Fi check.")
     print("The running service consumes this marker once. Press Ctrl+C after setup to stop this command.")
     try:
         while True:
