@@ -62,7 +62,7 @@
     };
   }
 
-  // This generated cover renders immediately in the browser and keeps the offline demo populated when the external art service is unavailable or slow during startup.
+  // This colored fallback renders immediately and keeps the offline demo populated while the supplied album artwork loads from the local static asset during network startup.
   function makeMrBlueSkyCover() {
     const cover = document.createElement('canvas');
     cover.width = cover.height = 84;
@@ -290,31 +290,15 @@
       ctx.fillRect(VX + i * (BW + BG), CY - h / 2, BW, h);
     }
 
-    // ── Progress bar: a visible colored track with a moving white head ───
+    // ── Existing progress bar with a moving white head ───────────────────
     const pct = Math.max(0, Math.min(1, localProg / ms.duration));
-    const trackX = 60, trackW = 180, trackY = 29;
-    ctx.fillStyle = 'rgba(120,180,220,0.35)';
-    ctx.fillRect(trackX, trackY, trackW, 2);
-    ctx.fillStyle = domRgb;
-    ctx.fillRect(trackX, trackY, trackW * pct, 2);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(trackX + Math.max(0, trackW * pct - 1), trackY - 1, 2, 4);
-
-    // ── Panel progress line: y=31, 1px, colored ─────────────────────────
     ctx.fillStyle = '#222';
     ctx.fillRect(0, 31, W, 1);
     ctx.fillStyle = domRgb;
     ctx.fillRect(0, 31, W * pct | 0, 1);
-
-    // ── Elapsed / total clock: fixed at the right edge ──────────────────
-    const elapsedS = Math.max(0, localProg) | 0;
-    const elapsedStr = `${elapsedS / 60 | 0}:${String(elapsedS % 60).padStart(2, '0')}`;
-    const totalStr = `${ms.duration / 60 | 0}:${String(ms.duration % 60).padStart(2, '0')}`;
-    const clockStr = `${elapsedStr}/${totalStr}`;
-    ctx.font = '8px "Courier New", monospace';
-    ctx.fillStyle = '#b9e7ff';
-    ctx.textBaseline = 'top';
-    ctx.fillText(clockStr, W - ctx.measureText(clockStr).width - 3, 0);
+    const headX = Math.min(W - 2, Math.max(0, W * pct - 1));
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(headX, 30, 2, 2);
 
     // ── Time remaining real: right-aligned, y=10, tiny ──────────────────
     const remS   = Math.max(0, ms.duration - localProg) | 0;
@@ -495,6 +479,7 @@
       ms.albumImg = makeMrBlueSkyCover();
       ms.domColor = [28, 137, 218];
       ms.spindleColor = '#fff';
+      loadArt(ms, `${base}/dashboard/static/mr-blue-sky-cover.png`);
       if (!sampleMusic) pollFn = () => fetchSpotify(base, ms);
       frameFn = () => drawMusicFrame(canvas, ms);
       drawMusicFrame(canvas, ms);

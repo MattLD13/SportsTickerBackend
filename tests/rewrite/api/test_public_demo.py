@@ -27,15 +27,15 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
         assert b'data-demo-music="sample"' in client.get("/").data
         assert b'"id": "music", "kind": "canvas"' in client.get("/").data
 
-        for asset in ("style.css", "led.js", "ticker-demo.js"):
+        for asset in ("style.css", "led.js", "ticker-demo.js", "mr-blue-sky-cover.png"):
             response = client.get(f"/dashboard/static/{asset}")
             assert response.status_code == 200
 
         demo_script = client.get("/dashboard/static/ticker-demo.js").get_data(as_text=True)
         assert "makeMrBlueSkyCover" in demo_script
         assert "MR. BLUE SKY" in demo_script
-        assert "clockStr" in demo_script
-        assert "trackW = 180" in demo_script
+        assert "mr-blue-sky-cover.png" in demo_script
+        assert "headX" in demo_script
 
         for mode in ("sports", "weather", "flights", "airports"):
             response = client.get(f"/api/preview/strip.png?mode={mode}")
