@@ -1074,15 +1074,24 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         isWifiSetupInProgress = true
         bleProvisioning.start(code: normalizedCode, ssid: normalizedSSID, password: homePassword) { pairingCode in
             Task { @MainActor in
-                self.isWifiSetupInProgress = false
                 if let pairingCode {
                     self.wifiSetupStatus = "Wi-Fi saved. Pairing this app with the ticker..."
                     self.pairTicker(
                         code: pairingCode,
                         name: self.pairName.isEmpty ? "My Ticker" : self.pairName,
-                        shareGroup: self.canShareTickerGroup
+                        shareGroup: self.canShareTickerGroup,
+                        onSuccess: {
+                            self.isWifiSetupInProgress = false
+                            self.wifiSetupStatus = "Wi-Fi saved. Ticker paired successfully."
+                        },
+                        onFailure: { message in
+                            self.isWifiSetupInProgress = false
+                            self.wifiSetupStatus = ""
+                            self.wifiSetupError = "Wi-Fi saved, but app pairing failed: \(message)"
+                        }
                     )
                 } else {
+                    self.isWifiSetupInProgress = false
                     self.wifiSetupStatus = "Wi-Fi saved. The ticker is rebooting now."
                 }
             }
@@ -1459,10 +1468,17 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         return message
     }
 
-    func pairTicker(code: String, name: String, shareGroup: Bool = true) {
+    func pairTicker(
+        code: String,
+        name: String,
+        shareGroup: Bool = true,
+        onSuccess: (() -> Void)? = nil,
+        onFailure: ((String) -> Void)? = nil
+    ) {
             let base = getBaseURL()
             guard let url = URL(string: "\(base)/api/v2/pairings/exchange") else {
                 self.pairError = "Invalid Server URL"
+                onFailure?("Invalid server URL")
                 return
             }
             
@@ -1482,24 +1498,37 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 req.httpBody = try JSONSerialization.data(withJSONObject: body)
             } catch {
                 self.pairError = "Failed to encode pairing data"
+                onFailure?("Failed to encode pairing data")
                 return
             }
+            req.timeoutInterval = 15
             
             URLSession.shared.dataTask(with: req) { data, response, error in
                 if let error = error {
-                    DispatchQueue.main.async { self.pairError = "Network Error: \(error.localizedDescription)" }
+                    let message = "Network error: \(error.localizedDescription)"
+                    DispatchQueue.main.async {
+                        self.pairError = message
+                        onFailure?(message)
+                    }
                     return
                 }
                 
                 // Check HTTP Status Code
                 if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 201 {
                      let detail = self.pairingServerMessage(data).map { ": \($0)" } ?? ""
-                     DispatchQueue.main.async { self.pairError = "Server Error (Status: \(httpResponse.statusCode))\(detail)" }
+                     let message = "Server error (HTTP \(httpResponse.statusCode))\(detail)"
+                     DispatchQueue.main.async {
+                         self.pairError = message
+                         onFailure?(message)
+                     }
                      return
                 }
                 
                 guard let d = data else {
-                    DispatchQueue.main.async { self.pairError = "No data received from server" }
+                    DispatchQueue.main.async {
+                        self.pairError = "No data received from server"
+                        onFailure?("No data received from server")
+                    }
                     return
                 }
                 
@@ -1511,6 +1540,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                                 guard self.saveControllerGroup(id: groupID, secret: groupSecret) else {
                                     self.showPairSuccess = false
                                     self.pairError = "Pairing failed: the shared app group could not be saved securely."
+                                    onFailure?("The shared app group could not be saved securely")
                                     return
                                 }
                             } else {
@@ -1523,6 +1553,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                         ) else {
                             self.showPairSuccess = false
                             self.pairError = "Pairing failed: the controller token could not be saved securely."
+                            onFailure?("The controller token could not be saved securely")
                             return
                         }
                         self.savedTickerID = self.selection.activeTickerID
@@ -1532,9 +1563,13 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                         self.fetchDevices()
                         self.fetchData()
                         self.fetchSpotifyStatus()
+                        onSuccess?()
                     }
                 } else {
-                    DispatchQueue.main.async { self.pairError = "Failed to process server response" }
+                    DispatchQueue.main.async {
+                        self.pairError = "Failed to process server response"
+                        onFailure?("Failed to process server response")
+                    }
                 }
             }.resume()
         }

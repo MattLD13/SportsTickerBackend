@@ -37,7 +37,8 @@ def test_platform_commands_delegate_to_injected_subprocesses() -> None:
         "password",
         "setup1234",
     ]
-    assert spawned == [["python", "updater.py"], ["reboot"]]
+    assert spawned == [["python", "updater.py"]]
+    assert runs[-1][0] == ["reboot"]
 
 
 def test_update_command_requires_an_executable() -> None:

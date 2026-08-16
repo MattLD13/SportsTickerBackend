@@ -53,7 +53,9 @@ class SubprocessPlatformCommands:
         self._reboot_command = tuple(reboot_command)
 
     def reboot(self) -> None:
-        self._spawn(list(self._reboot_command))
+        # Run synchronously so permission or command failures reach the caller
+        # instead of leaving the setup screen active with no diagnostic.
+        self._run(list(self._reboot_command), check=True)
 
     def run_update(self, command: Sequence[str]) -> None:
         if not command:
