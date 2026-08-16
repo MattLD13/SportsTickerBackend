@@ -6,6 +6,7 @@ import json
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.exceptions import InvalidTag
 
+from ticker_core.composition import _load_pairing_code, _persist_pairing_code
 from ticker_core.platform.ble import _BleSessionState, derive_ble_key, decrypt_credentials
 
 
@@ -41,7 +42,7 @@ def test_ble_envelope_authenticates_and_decrypts_wifi_credentials() -> None:
 def test_ble_session_reassembles_chunks_and_calls_callback() -> None:
     challenge = bytes.fromhex("00112233445566778899aabbccddeeff")
     received: list[tuple[str, str]] = []
-    state = _BleSessionState("123456", challenge, lambda ssid, password: received.append((ssid, password)), __import__("threading").Event())
+    state = _BleSessionState("123456", challenge, "654321", lambda ssid, password: received.append((ssid, password)), __import__("threading").Event())
     encoded = base64.b64encode(make_envelope("123456", challenge, "Home", "secret")).decode()
     midpoint = len(encoded) // 2
 
@@ -57,3 +58,13 @@ def test_ble_session_reassembles_chunks_and_calls_callback() -> None:
             break
         time.sleep(0.01)
     assert received == [("Home", "secret")]
+
+
+def test_pairing_code_persists_for_ble_then_clears_when_paired(tmp_path) -> None:
+    path = tmp_path / "pairing_code.json"
+
+    _persist_pairing_code(path, type("Registration", (), {"pairing_code": "123456"})())
+    assert _load_pairing_code(path) == "123456"
+
+    _persist_pairing_code(path, type("Registration", (), {"pairing_code": None})())
+    assert _load_pairing_code(path) is None

@@ -1,8 +1,8 @@
 """Bluetooth Low Energy Wi-Fi provisioning for Raspberry Pi tickers.
 
-The Pi advertises a short-lived GATT service. The app reads a random challenge
-and writes an AES-GCM envelope derived from the six-digit setup code. The code
-never travels over the radio as a password or as a plaintext Wi-Fi payload.
+The Pi advertises a short-lived GATT service. The app reads a random challenge,
+reads the backend pairing code, and writes an AES-GCM envelope derived from the
+six-digit setup code. Wi-Fi credentials never travel as plaintext.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ BLE_SERVICE_UUID = "8f8b0001-6e2a-4d8a-9f31-8d4b77f0b001"
 BLE_CHALLENGE_UUID = "8f8b0002-6e2a-4d8a-9f31-8d4b77f0b001"
 BLE_CREDENTIALS_UUID = "8f8b0003-6e2a-4d8a-9f31-8d4b77f0b001"
 BLE_RESULT_UUID = "8f8b0004-6e2a-4d8a-9f31-8d4b77f0b001"
+BLE_PAIRING_UUID = "8f8b0005-6e2a-4d8a-9f31-8d4b77f0b001"
 BLE_LOCAL_NAME = "SportsTicker Setup"
 BLE_PROTOCOL_INFO = b"SportsTicker BLE Wi-Fi v1"
 
@@ -59,8 +60,9 @@ def decrypt_credentials(payload: bytes, setup_code: str, challenge: bytes) -> tu
 class BleProvisioningService:
     """Own one short-lived BlueZ GATT provisioning session."""
 
-    def __init__(self, *, adapter: str = "hci0") -> None:
+    def __init__(self, *, adapter: str = "hci0", pairing_code_provider: Callable[[], str | None] | None = None) -> None:
         self._adapter = adapter
+        self._pairing_code_provider = pairing_code_provider
         self._thread: Thread | None = None
         self._stop = Event()
         self._setup_code = ""
@@ -99,19 +101,22 @@ class BleProvisioningService:
             raise ImportError("install dbus-next and enable bluetooth.service") from error
 
         challenge = secrets.token_bytes(16)
-        state = _BleSessionState(self._setup_code, challenge, self._on_credentials, self._stop)
+        pairing_code = self._pairing_code_provider() if self._pairing_code_provider is not None else None
+        state = _BleSessionState(self._setup_code, challenge, pairing_code, self._on_credentials, self._stop)
         bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
         root = _BleObjectManager(ServiceInterface, state)
         service = _BleService(ServiceInterface, state)
         challenge_characteristic = _BleCharacteristic(ServiceInterface, state, "challenge", BLE_CHALLENGE_UUID, ["read"])
         credentials_characteristic = _BleCharacteristic(ServiceInterface, state, "credentials", BLE_CREDENTIALS_UUID, ["write"])
         result_characteristic = _BleCharacteristic(ServiceInterface, state, "result", BLE_RESULT_UUID, ["read"])
+        pairing_characteristic = _BleCharacteristic(ServiceInterface, state, "pairing", BLE_PAIRING_UUID, ["read"])
         paths = {
             "/com/sportsticker": root,
             "/com/sportsticker/service": service,
             "/com/sportsticker/service/challenge": challenge_characteristic,
             "/com/sportsticker/service/credentials": credentials_characteristic,
             "/com/sportsticker/service/result": result_characteristic,
+            "/com/sportsticker/service/pairing": pairing_characteristic,
         }
         for path, interface in paths.items():
             bus.export(path, interface)
@@ -140,9 +145,10 @@ class BleProvisioningService:
 
 
 class _BleSessionState:
-    def __init__(self, setup_code: str, challenge: bytes, callback: Callable[[str, str], None] | None, stop: Event) -> None:
+    def __init__(self, setup_code: str, challenge: bytes, pairing_code: str | None, callback: Callable[[str, str], None] | None, stop: Event) -> None:
         self.setup_code = setup_code
         self.challenge = challenge
+        self.pairing_code = pairing_code
         self.callback = callback
         self.stop = stop
         self.chunks: dict[int, str] = {}
@@ -227,6 +233,7 @@ class _BleObjectManager(_ServiceInterface):
             "/com/sportsticker/service/challenge": {"org.bluez.GattCharacteristic1": {"UUID": _Variant("s", BLE_CHALLENGE_UUID), "Service": _Variant("o", "/com/sportsticker/service"), "Flags": _Variant("as", ["read"])}},
             "/com/sportsticker/service/credentials": {"org.bluez.GattCharacteristic1": {"UUID": _Variant("s", BLE_CREDENTIALS_UUID), "Service": _Variant("o", "/com/sportsticker/service"), "Flags": _Variant("as", ["write"])}},
             "/com/sportsticker/service/result": {"org.bluez.GattCharacteristic1": {"UUID": _Variant("s", BLE_RESULT_UUID), "Service": _Variant("o", "/com/sportsticker/service"), "Flags": _Variant("as", ["read"])}},
+            "/com/sportsticker/service/pairing": {"org.bluez.GattCharacteristic1": {"UUID": _Variant("s", BLE_PAIRING_UUID), "Service": _Variant("o", "/com/sportsticker/service"), "Flags": _Variant("as", ["read"])}},
         }
 
 
@@ -264,6 +271,8 @@ class _BleCharacteristic(_ServiceInterface):
     def ReadValue(self, _options: "a{sv}") -> "ay":
         if self._kind == "challenge":
             return self._state.challenge
+        if self._kind == "pairing":
+            return (self._state.pairing_code or "NONE").encode("ascii")
         return self._state.result
 
     @_method()

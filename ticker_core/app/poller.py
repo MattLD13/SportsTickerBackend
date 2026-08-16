@@ -61,6 +61,7 @@ class BackendPoller:
         profile: Mapping[str, Any] | None = None,
         success_interval: float = 0.5,
         heartbeat_interval: float = 30.0,
+        registration_callback: Callable[[object], None] | None = None,
     ) -> None:
         if not device_id:
             raise ValueError("A device id is required.")
@@ -77,6 +78,7 @@ class BackendPoller:
         self._profile = dict(profile or {})
         self._success_interval = success_interval
         self._heartbeat_interval = heartbeat_interval
+        self._registration_callback = registration_callback
 
     def run(self, stop: Event, events: Queue[PollEvent]) -> None:
         """Poll until the stop event interrupts a delay."""
@@ -96,7 +98,9 @@ class BackendPoller:
                     }
                     if self._profile:
                         registration["profile"] = self._profile
-                    self._client.register_device(self._device_id, **registration)
+                    registration_result = self._client.register_device(self._device_id, **registration)
+                    if self._registration_callback is not None:
+                        self._registration_callback(registration_result)
                     registered = True
                 payload = self._client.fetch_data(self._device_id)
                 now = monotonic()

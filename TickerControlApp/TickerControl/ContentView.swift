@@ -64,21 +64,24 @@ final class BLEProvisioningCoordinator: NSObject, CBCentralManagerDelegate, CBPe
     static let challengeUUID = CBUUID(string: "8F8B0002-6E2A-4D8A-9F31-8D4B77F0B001")
     static let credentialsUUID = CBUUID(string: "8F8B0003-6E2A-4D8A-9F31-8D4B77F0B001")
     static let resultUUID = CBUUID(string: "8F8B0004-6E2A-4D8A-9F31-8D4B77F0B001")
+    static let pairingUUID = CBUUID(string: "8F8B0005-6E2A-4D8A-9F31-8D4B77F0B001")
     private let protocolInfo = Data("SportsTicker BLE Wi-Fi v1".utf8)
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var challengeCharacteristic: CBCharacteristic?
     private var credentialsCharacteristic: CBCharacteristic?
     private var resultCharacteristic: CBCharacteristic?
+    private var pairingCharacteristic: CBCharacteristic?
     private var setupCode = ""
     private var homeSSID = ""
     private var homePassword = ""
     private var chunks: [Data] = []
     private var nextChunk = 0
-    private var onSuccess: (() -> Void)?
+    private var pendingPairingCode: String?
+    private var onSuccess: ((String?) -> Void)?
     private var onFailure: ((String) -> Void)?
 
-    func start(code: String, ssid: String, password: String, onSuccess: @escaping () -> Void, onFailure: @escaping (String) -> Void) {
+    func start(code: String, ssid: String, password: String, onSuccess: @escaping (String?) -> Void, onFailure: @escaping (String) -> Void) {
         setupCode = code
         homeSSID = ssid
         homePassword = password
@@ -115,7 +118,7 @@ final class BLEProvisioningCoordinator: NSObject, CBCentralManagerDelegate, CBPe
             fail(error?.localizedDescription ?? "The ticker Bluetooth service is unavailable.")
             return
         }
-        peripheral.discoverCharacteristics([Self.challengeUUID, Self.credentialsUUID, Self.resultUUID], for: service)
+        peripheral.discoverCharacteristics([Self.challengeUUID, Self.credentialsUUID, Self.resultUUID, Self.pairingUUID], for: service)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
@@ -123,11 +126,13 @@ final class BLEProvisioningCoordinator: NSObject, CBCentralManagerDelegate, CBPe
         challengeCharacteristic = service.characteristics?.first(where: { $0.uuid == Self.challengeUUID })
         credentialsCharacteristic = service.characteristics?.first(where: { $0.uuid == Self.credentialsUUID })
         resultCharacteristic = service.characteristics?.first(where: { $0.uuid == Self.resultUUID })
-        guard let challengeCharacteristic, credentialsCharacteristic != nil, resultCharacteristic != nil else {
+        pairingCharacteristic = service.characteristics?.first(where: { $0.uuid == Self.pairingUUID })
+        guard let challengeCharacteristic, credentialsCharacteristic != nil, resultCharacteristic != nil, pairingCharacteristic != nil else {
             fail("The ticker Bluetooth setup service is incomplete.")
             return
         }
         peripheral.readValue(for: challengeCharacteristic)
+        if let pairingCharacteristic { peripheral.readValue(for: pairingCharacteristic) }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -135,7 +140,10 @@ final class BLEProvisioningCoordinator: NSObject, CBCentralManagerDelegate, CBPe
             fail(error?.localizedDescription ?? "The ticker returned no Bluetooth setup response.")
             return
         }
-        if characteristic.uuid == Self.challengeUUID {
+        if characteristic.uuid == Self.pairingUUID {
+            let value = String(data: data, encoding: .utf8) ?? ""
+            pendingPairingCode = value == "NONE" ? nil : value
+        } else if characteristic.uuid == Self.challengeUUID {
             do { chunks = try makeChunks(challenge: data); nextChunk = 0; writeNextChunk() }
             catch { fail("The ticker setup message could not be secured.") }
         } else if characteristic.uuid == Self.resultUUID {
@@ -184,7 +192,7 @@ final class BLEProvisioningCoordinator: NSObject, CBCentralManagerDelegate, CBPe
 
     private func finish() {
         central?.cancelPeripheralConnection(peripheral!)
-        onSuccess?()
+        onSuccess?(pendingPairingCode)
         reset()
     }
 
@@ -200,6 +208,8 @@ final class BLEProvisioningCoordinator: NSObject, CBCentralManagerDelegate, CBPe
         challengeCharacteristic = nil
         credentialsCharacteristic = nil
         resultCharacteristic = nil
+        pairingCharacteristic = nil
+        pendingPairingCode = nil
         chunks = []
         nextChunk = 0
         onSuccess = nil
@@ -1062,10 +1072,19 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         wifiSetupError = nil
         wifiSetupStatus = "Searching for the ticker over Bluetooth..."
         isWifiSetupInProgress = true
-        bleProvisioning.start(code: normalizedCode, ssid: normalizedSSID, password: homePassword) {
+        bleProvisioning.start(code: normalizedCode, ssid: normalizedSSID, password: homePassword) { pairingCode in
             Task { @MainActor in
                 self.isWifiSetupInProgress = false
-                self.wifiSetupStatus = "Wi-Fi saved. The ticker is rebooting now."
+                if let pairingCode {
+                    self.wifiSetupStatus = "Wi-Fi saved. Pairing this app with the ticker..."
+                    self.pairTicker(
+                        code: pairingCode,
+                        name: self.pairName.isEmpty ? "My Ticker" : self.pairName,
+                        shareGroup: self.canShareTickerGroup
+                    )
+                } else {
+                    self.wifiSetupStatus = "Wi-Fi saved. The ticker is rebooting now."
+                }
             }
         } onFailure: { message in
             Task { @MainActor in
@@ -3712,8 +3731,8 @@ struct WiFiSetupView: View {
         NavigationView {
             Form {
                 Section(header: Text("Ticker Bluetooth")) {
-                    Text("Turn on Bluetooth, enter the six-digit code shown on the ticker, and keep the phone nearby. The app sends Wi-Fi details through an encrypted local Bluetooth session.")
-                    TextField("Six-digit setup code", text: $vm.wifiSetupCode)
+                    Text("Turn on Bluetooth and enter the temporary setup PIN shown after the ticker opens setup mode. The app sends Wi-Fi details through an encrypted local Bluetooth session, then pairs automatically when the ticker has a backend code.")
+                    TextField("Six-digit setup PIN", text: $vm.wifiSetupCode)
                         .keyboardType(.numberPad)
                         .textContentType(.oneTimeCode)
                         .disabled(vm.isWifiSetupInProgress)
@@ -3933,7 +3952,7 @@ struct PairingView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Button {
-                        vm.wifiSetupCode = vm.pairCode
+                        vm.wifiSetupCode = ""
                         showWiFiSetup = true
                     } label: {
                         Label("Set Up Ticker Wi-Fi", systemImage: "wifi")

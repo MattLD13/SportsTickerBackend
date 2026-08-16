@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from time import monotonic
+import json
 import os
 
 from ticker_core.app.application import TickerApplication
@@ -52,7 +54,8 @@ def create_application() -> TickerApplication:
     if setup_transport not in {"ble", "hotspot"}:
         raise ValueError("TICKER_SETUP_TRANSPORT must be ble or hotspot")
     ble_service = BleProvisioningService(
-        adapter=os.environ.get("TICKER_BLE_ADAPTER", "hci0").strip() or "hci0"
+        adapter=os.environ.get("TICKER_BLE_ADAPTER", "hci0").strip() or "hci0",
+        pairing_code_provider=lambda: _load_pairing_code(data_directory / "pairing_code.json"),
     ) if setup_transport == "ble" else None
     wifi_recovery = LocalProvisioningService(
         commands,
@@ -72,7 +75,13 @@ def create_application() -> TickerApplication:
     device_profile = _device_profile()
     return TickerApplication(
         client=client,
-        poller=BackendPoller(client, device_id, telemetry=health.snapshot, profile=device_profile),
+        poller=BackendPoller(
+            client,
+            device_id,
+            telemetry=health.snapshot,
+            profile=device_profile,
+            registration_callback=partial(_persist_pairing_code, data_directory / "pairing_code.json"),
+        ),
         cache=ShortTermContentCache(data_directory / "content" / "last-good.json"),
         assets=assets,
         runtime=runtime,
@@ -165,3 +174,28 @@ def load_device_id(data_directory: Path, *, windows: bool | None = None) -> str:
     if is_windows:
         return DeviceIdentityStore(fallback, fallback).load()
     return DeviceIdentityStore.default().load()
+
+
+def _persist_pairing_code(path: Path, registration: object) -> None:
+    """Persist the current unpaired backend code for the local BLE handoff."""
+
+    code = str(getattr(registration, "pairing_code", "") or "").strip()
+    try:
+        if not code:
+            path.unlink(missing_ok=True)
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"pairing_code": code}, separators=(",", ":")), encoding="utf-8")
+    except OSError:
+        return
+
+
+def _load_pairing_code(path: Path) -> str | None:
+    """Read the latest backend code without exposing it in display telemetry."""
+
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        code = str(value.get("pairing_code") or "").strip()
+        return code if code.isdigit() and len(code) == 6 else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None

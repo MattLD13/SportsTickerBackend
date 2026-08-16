@@ -19,9 +19,9 @@ flowchart TD
     L --> N[App scans for SportsTicker Setup over BLE]
     M --> N
     N --> O[App encrypts SSID and password with code plus ticker challenge]
-    O --> P[Ticker saves network and reboots]
-    P --> Q[Ticker registers and shows pair code]
-    Q --> R[App exchanges pair code for controller token]
+    O --> P[App receives backend pair code over BLE]
+    P --> Q[App exchanges pair code for controller token]
+    Q --> R[Ticker saves network and reboots]
     R --> H
     H --> S{Another person needs access?}
     S -->|Yes| T[Owner issues fresh pair code]
@@ -37,6 +37,7 @@ flowchart TD
 - Pair codes expire after 10 minutes and become single-use controller tokens.
 - The permanent label contains identity fields only. It does not contain the temporary Wi-Fi password.
 - Production setup uses authenticated BLE GATT. The hotspot portal remains an explicit bench fallback with `TICKER_SETUP_TRANSPORT=hotspot`.
+- BLE setup returns the backend pairing code in the same local session. The app exchanges it automatically, so Wi-Fi setup and controller pairing complete together.
 - Production backend traffic uses TLS and deployment-authorized fleet health access.
 
 The Pi runtime uses BLE by default. Set `TICKER_SETUP_TRANSPORT=hotspot` only for controlled bench testing when a phone cannot use Bluetooth. Run `python test.py --sink hardware --report C:\ticker\diagnostic.json` before shipment.
