@@ -14,6 +14,8 @@ class TelemetrySnapshot:
     build: str
     python: str
     temperature_c: float | None = None
+    wifi_available: bool | None = None
+    wifi_setup_active: bool | None = None
 
 
 def current_python_version() -> str:

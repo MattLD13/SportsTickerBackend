@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from hmac import compare_digest
 import os
+import time
 from typing import Any
 
 from flask import Flask, jsonify, redirect, request
@@ -108,10 +109,36 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
             }
         )
 
+    @app.get("/api/v2/fleet/health")
+    def fleet_health():
+        """Return deployment-authorized heartbeat age and bounded telemetry for every ticker."""
+        _require_deployment_token()
+        now = time.time()
+        entries = []
+        for ticker in application.list_tickers():
+            last_seen = ticker.device.last_seen_at
+            age = None if last_seen is None else max(0.0, now - float(last_seen))
+            metadata = dict(ticker.device.metadata)
+            entries.append(
+                {
+                    "ticker_id": ticker.ticker_id,
+                    "name": ticker.name,
+                    "online": age is not None and age <= 90,
+                    "heartbeat_age_seconds": None if age is None else round(age, 1),
+                    "build": metadata.get("build"),
+                    "temperature_c": metadata.get("temperature_c"),
+                    "wifi_available": metadata.get("wifi_available"),
+                    "wifi_setup_active": metadata.get("wifi_setup_active"),
+                    "pairing": None if ticker.pairing is None else {"paired": ticker.pairing.paired},
+                    "profile": ticker.profile.to_mapping(),
+                }
+            )
+        return jsonify({"api_version": "v2", "observed_at": now, "tickers": entries})
+
     @app.post("/api/v2/devices/register")
     def register_device():
         payload = _json_object()
-        _check_keys(payload, {"device_id", "name", "metadata"})
+        _check_keys(payload, {"device_id", "name", "metadata", "profile"})
         device_id = _ticker_id(payload.get("device_id", ""))
         name = payload.get("name", "Ticker")
         if not isinstance(name, str):
@@ -119,11 +146,18 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
         metadata = payload.get("metadata", {})
         if not isinstance(metadata, Mapping):
             raise ApiError("metadata must be an object", 400, "invalid_request")
-        ticker, pairing_code, created = application.register_device(
-            device_id,
-            name=name,
-            metadata=metadata,
-        )
+        profile = payload.get("profile")
+        if profile is not None and not isinstance(profile, Mapping):
+            raise ApiError("profile must be an object", 400, "invalid_request")
+        try:
+            ticker, pairing_code, created = application.register_device(
+                device_id,
+                name=name,
+                metadata=metadata,
+                profile=profile,
+            )
+        except ValueError as error:
+            raise ApiError(str(error), 400, "invalid_request") from error
         return jsonify(
             {
                 "ticker_id": ticker.ticker_id,
@@ -483,6 +517,7 @@ def _ticker_value(ticker: Any) -> dict[str, Any]:
     return {
         "ticker_id": ticker.ticker_id,
         "name": ticker.name,
+        "profile": ticker.profile.to_mapping(),
         "display_settings": _display_settings_value(settings),
         "pairing": None
         if pairing is None

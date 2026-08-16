@@ -9,6 +9,8 @@ from typing import Any
 
 from sports_ticker.domain import DisplaySettings
 
+from .profiles import TickerProfile, profile_from_metadata
+
 
 def _freeze(value: Any) -> Any:
     """Copy nested configuration values into immutable containers."""
@@ -68,6 +70,7 @@ class PairingState:
     """Describe optional pairing state for one ticker."""
 
     pairing_code: str | None = None
+    pairing_code_expires_at: float | None = None
     paired: bool = False
     client_ids: tuple[str, ...] = ()
 
@@ -77,6 +80,8 @@ class PairingState:
         code = None if self.pairing_code is None else str(self.pairing_code).strip()
         clients = tuple(dict.fromkeys(str(client).strip() for client in self.client_ids if str(client).strip()))
         object.__setattr__(self, "pairing_code", code or None)
+        expires_at = self.pairing_code_expires_at
+        object.__setattr__(self, "pairing_code_expires_at", None if expires_at is None else float(expires_at))
         object.__setattr__(self, "paired", bool(self.paired))
         object.__setattr__(self, "client_ids", clients)
 
@@ -123,6 +128,12 @@ class TickerRecord:
             raise TypeError("device must be DeviceMetadata")
         object.__setattr__(self, "created_at", float(self.created_at))
         object.__setattr__(self, "updated_at", float(self.updated_at))
+
+    @property
+    def profile(self) -> TickerProfile:
+        """Return the validated hardware profile owned by device metadata."""
+
+        return profile_from_metadata(self.device.metadata)
 
 Ticker = TickerRecord
 

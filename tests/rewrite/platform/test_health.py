@@ -21,3 +21,16 @@ def test_health_collector_reports_snapshot_and_caches_build(tmp_path: Path):
     assert first.temperature_c == 42.1
     assert second.build == "r100+abc123"
     assert len(calls) == 2
+
+
+def test_health_collector_reports_wifi_lifecycle(tmp_path: Path):
+    collector = HealthCollector(
+        tmp_path,
+        run=lambda command, **kwargs: b"0",
+        wifi_status=lambda: {"wifi_available": False, "wifi_setup_active": True},
+    )
+
+    snapshot = collector.snapshot()
+
+    assert snapshot.wifi_available is False
+    assert snapshot.wifi_setup_active is True

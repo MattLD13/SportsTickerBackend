@@ -167,6 +167,16 @@ bool registerDevice() {
   JsonDocument request;
   request["device_id"] = localDeviceId();
   request["name"] = DEVICE_NAME;
+  request["profile"]["product_family"] = "mini";
+  request["profile"]["hardware"] = "esp32-s3";
+  request["profile"]["firmware"] = "mini-1.0.0";
+  request["profile"]["display"]["width"] = 64;
+  request["profile"]["display"]["height"] = 32;
+  request["profile"]["display"]["panel_count"] = 1;
+  request["profile"]["capabilities"]["modes"][0] = "sports";
+  request["profile"]["capabilities"]["asset_cache"] = false;
+  request["profile"]["capabilities"]["ota"] = true;
+  request["profile"]["capabilities"]["color_depth"] = 16;
   request["metadata"]["build"] = "esp32s3-hub75";
   request["metadata"]["mode"] = "sports";
   request["metadata"]["capabilities"][0] = "sports";

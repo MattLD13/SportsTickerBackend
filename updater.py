@@ -4,11 +4,12 @@
 from __future__ import annotations
 
 import os
-import pwd
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+import time
+from typing import Any
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -19,8 +20,10 @@ SERVICE_NAME = "ticker-controller"
 SERVICE_PATH = Path("/etc/systemd/system/ticker-controller.service")
 
 
-def _repository_owner() -> pwd.struct_passwd:
+def _repository_owner() -> Any:
     """Return the user that owns the source repository."""
+
+    import pwd
 
     return pwd.getpwuid(PROJECT_DIR.stat().st_uid)
 
@@ -68,6 +71,33 @@ def _checkout_release(revision: str) -> Path:
         return release
     _git("worktree", "add", "--detach", str(release), revision, capture=False)
     return release
+
+
+def _validate_release(release: Path) -> None:
+    """Compile the release packages before activation so syntax errors never become active code."""
+    packages = [path for path in (release / "ticker_core", release / "sports_ticker") if path.is_dir()]
+    if not packages:
+        raise FileNotFoundError(f"Release contains no runtime packages: {release}")
+    subprocess.run([sys.executable, "-m", "compileall", "-q", *(str(path) for path in packages)], check=True)
+
+
+def _current_release() -> Path | None:
+    """Return the release currently selected by the atomic symlink."""
+    try:
+        return CURRENT_LINK.resolve(strict=True)
+    except OSError:
+        return None
+
+
+def _service_is_healthy(timeout_seconds: float = 30.0) -> bool:
+    """Wait for systemd to report the controller active after one release restart."""
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        result = subprocess.run(["systemctl", "is-active", "--quiet", SERVICE_NAME], check=False)
+        if result.returncode == 0:
+            return True
+        time.sleep(1)
+    return False
 
 
 def _install_requirements(release: Path, changed: tuple[str, ...]) -> None:
@@ -126,12 +156,20 @@ def main() -> int:
     try:
         target = _revision()
         changed = _changed_files(target)
+        previous = _current_release()
         release = _checkout_release(target)
+        _validate_release(release)
         _install_requirements(release, changed)
         _activate_release(release)
         _install_service(release)
         _cleanup_releases(release)
         subprocess.run(["systemctl", "restart", SERVICE_NAME], check=True)
+        if not _service_is_healthy():
+            if previous is not None and previous != release:
+                _activate_release(previous)
+                _install_service(previous)
+                subprocess.run(["systemctl", "restart", SERVICE_NAME], check=True)
+            raise RuntimeError(f"Release {target[:12]} failed its startup health check")
         print(f"[updater] Activated {target[:12]}.")
         return 0
     except Exception as error:

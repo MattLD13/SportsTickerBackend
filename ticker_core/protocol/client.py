@@ -135,6 +135,7 @@ class BackendClient:
         *,
         name: str = "Ticker",
         metadata: Mapping[str, Any] | None = None,
+        profile: Mapping[str, Any] | None = None,
     ) -> DeviceRegistration:
         """Register one Pi before its first V2 display poll."""
 
@@ -144,14 +145,19 @@ class BackendClient:
             raise ValueError("name must be a non-empty string")
         if metadata is not None and not isinstance(metadata, Mapping):
             raise ValueError("metadata must be an object")
+        if profile is not None and not isinstance(profile, Mapping):
+            raise ValueError("profile must be an object")
+        request_payload: dict[str, Any] = {
+            "device_id": device_id,
+            "name": name.strip(),
+            "metadata": dict(metadata or {}),
+        }
+        if profile:
+            request_payload["profile"] = dict(profile)
         response = self._request(
             "POST",
             REGISTRATION_ENDPOINT,
-            json={
-                "device_id": device_id,
-                "name": name.strip(),
-                "metadata": dict(metadata or {}),
-            },
+            json=request_payload,
         )
         registration = DeviceRegistration.from_payload(
             self._json_object(response, "POST /api/v2/devices/register")

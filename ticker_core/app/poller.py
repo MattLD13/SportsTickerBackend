@@ -58,6 +58,7 @@ class BackendPoller:
         *,
         telemetry: Callable[[], object],
         device_name: str = "Ticker",
+        profile: Mapping[str, Any] | None = None,
         success_interval: float = 0.5,
         heartbeat_interval: float = 30.0,
     ) -> None:
@@ -73,6 +74,7 @@ class BackendPoller:
         self._device_id = device_id
         self._telemetry = telemetry
         self._device_name = device_name.strip()
+        self._profile = dict(profile or {})
         self._success_interval = success_interval
         self._heartbeat_interval = heartbeat_interval
 
@@ -88,11 +90,13 @@ class BackendPoller:
             request_started = monotonic()
             try:
                 if not registered:
-                    self._client.register_device(
-                        self._device_id,
-                        name=self._device_name,
-                        metadata=self._telemetry_metadata(),
-                    )
+                    registration = {
+                        "name": self._device_name,
+                        "metadata": self._telemetry_metadata(),
+                    }
+                    if self._profile:
+                        registration["profile"] = self._profile
+                    self._client.register_device(self._device_id, **registration)
                     registered = True
                 payload = self._client.fetch_data(self._device_id)
                 now = monotonic()
@@ -153,7 +157,7 @@ class BackendPoller:
 
         snapshot = self._telemetry()
         metadata: dict[str, Any] = {}
-        for name in ("uptime_seconds", "build", "python", "temperature_c"):
+        for name in ("uptime_seconds", "build", "python", "temperature_c", "wifi_available", "wifi_setup_active"):
             value = getattr(snapshot, name, None)
             if value is not None:
                 metadata[name] = value

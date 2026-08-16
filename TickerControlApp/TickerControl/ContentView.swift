@@ -5,6 +5,7 @@ import UIKit
 import CoreLocation
 import Security
 import AuthenticationServices
+import NetworkExtension
 // ==========================================
 // MARK: - 0. EXTENSIONS
 // ==========================================
@@ -54,6 +55,23 @@ struct V2LeagueCatalog: Decodable, Sendable { let leagues: [LeagueOption] }
 struct V2TeamCatalog: Decodable, Sendable { let teams: [TeamData] }
 struct ModeOption: Decodable, Sendable { let id: String; let symbol: String }
 struct V2ModeCatalog: Decodable, Sendable { let modes: [ModeOption] }
+
+final class LocalSetupSessionDelegate: NSObject, URLSessionDelegate {
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              challenge.protectionSpace.host == "10.42.0.1",
+              let trust = challenge.protectionSpace.serverTrust else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        completionHandler(.useCredential, URLCredential(trust: trust))
+    }
+}
+
 struct ShootoutData: Decodable, Hashable, Sendable {
     let away: [String]?
     let home: [String]?
@@ -480,8 +498,9 @@ struct V2Ticker: Decodable, Sendable {
     let name: String
     let display_settings: V2DisplaySettings
     let device: V2Device
+    let profile: TickerProfile?
 
-    enum CodingKeys: String, CodingKey { case ticker_id, name, display_settings, device }
+    enum CodingKeys: String, CodingKey { case ticker_id, name, display_settings, device, profile }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -490,6 +509,7 @@ struct V2Ticker: Decodable, Sendable {
         name = try container.decode(String.self, forKey: .name)
         display_settings = try container.decode(V2DisplaySettings.self, forKey: .display_settings)
         device = try container.decode(V2Device.self, forKey: .device)
+        profile = try container.decodeIfPresent(TickerProfile.self, forKey: .profile)
     }
 
     var tickerDevice: TickerDevice {
@@ -505,7 +525,8 @@ struct V2Ticker: Decodable, Sendable {
                 live_delay_seconds: Int(display_settings.live_delay_seconds)
             ),
             last_seen: device.last_seen_at,
-            capabilities: device.capabilities
+            capabilities: device.capabilities.isEmpty ? Set(profile?.capabilities.modes.map { $0.lowercased() } ?? []) : device.capabilities,
+            profile: profile
         )
     }
 }
@@ -542,7 +563,9 @@ struct TickerDevice: Identifiable, Sendable {
     var settings: DeviceSettings
     let last_seen: Double?
     let capabilities: Set<String>
+    let profile: TickerProfile?
 }
+
 struct PairingExchangeResponse: Decodable, Sendable {
     let ticker_id: String?
     let controller_token: String
@@ -569,7 +592,7 @@ struct SpotifyStatus: Decodable, Sendable {
 // MARK: - 2. VIEW MODEL
 // ==========================================
 @MainActor
-class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
+class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding, CLLocationManagerDelegate {
     @Published var games: [Game] = []
     @Published var allTeams: [String: [TeamData]] = [:]
     @Published var leagueOptions: [LeagueOption] = []
@@ -582,6 +605,9 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         guard let activeID = savedTickerID,
               let capabilities = devices.first(where: { $0.id == activeID })?.capabilities else { return false }
         return capabilities == Set(["sports"])
+    }
+    var needsInitialSetup: Bool {
+        savedTickerID == nil
     }
     
     // THE SOURCE OF TRUTH
@@ -617,6 +643,14 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     @Published var isConnectingSpotify = false
     @Published var pairCodeAlertMessage = ""
     @Published var showingPairCodeAlert = false
+    @Published var wifiSetupCode: String = ""
+    @Published var wifiHomeSSID: String = ""
+    @Published var wifiHomePassword: String = ""
+    @Published var wifiSetupStatus: String = ""
+    @Published var wifiSetupError: String?
+    @Published var isWifiSetupInProgress = false
+    @Published var wifiNetworkChoice = 0
+    @Published var wifiDetectedSSID = ""
     
     // LOCKING MECHANISM (Stops updates while you tap)
     @Published var isEditing: Bool = false
@@ -630,6 +664,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     private var deviceListGate = DeviceListRequestGate()
     private var selection: DeviceSelectionReducer
     private var spotifyAuthorizationSession: ASWebAuthenticationSession?
+    private var wifiLocationManager: CLLocationManager?
     private var lastFetchTime: Date = .distantPast
     // After a mode switch, poll every 1s for 30s so the UI and hardware
     // board confirm the new state almost immediately.
@@ -762,6 +797,120 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     
     func getBaseURL() -> String {
         return serverURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: .init(charactersIn: "/"))
+    }
+
+    func fetchCurrentWiFiSSID() {
+        guard CLLocationManager.locationServicesEnabled() else {
+            wifiSetupError = "Location Services must be enabled to detect the current Wi-Fi name."
+            return
+        }
+        if wifiLocationManager == nil {
+            let manager = CLLocationManager()
+            manager.delegate = self
+            wifiLocationManager = manager
+        }
+        guard let manager = wifiLocationManager else { return }
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            readCurrentWiFiSSID()
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        default:
+            wifiSetupError = "Allow location access to detect the current Wi-Fi name, or choose Different Wi-Fi."
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse {
+            readCurrentWiFiSSID()
+        }
+    }
+
+    private func readCurrentWiFiSSID() {
+        NEHotspotNetwork.fetchCurrent { network in
+            DispatchQueue.main.async {
+                guard let ssid = network?.ssid, !ssid.isEmpty else {
+                    self.wifiSetupError = "iOS could not identify the current Wi-Fi. Choose Different Wi-Fi."
+                    return
+                }
+                self.wifiDetectedSSID = ssid
+                self.wifiHomeSSID = ssid
+                self.wifiSetupError = nil
+            }
+        }
+    }
+
+    func startWiFiSetup(code: String, homeSSID: String, homePassword: String) {
+        let normalizedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedSSID = homeSSID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedCode.range(of: "^[0-9]{6}$", options: .regularExpression) != nil else {
+            wifiSetupError = "Enter the six-digit setup code shown on the ticker."
+            return
+        }
+        guard !normalizedSSID.isEmpty, !homePassword.isEmpty else {
+            wifiSetupError = "Enter your home Wi-Fi network and password."
+            return
+        }
+
+        wifiSetupError = nil
+        wifiSetupStatus = "Waiting for Wi-Fi permission..."
+        isWifiSetupInProgress = true
+        let hotspotPassword = "T\(normalizedCode)!"
+        let configuration = NEHotspotConfiguration(ssid: "SportsTicker_Setup", passphrase: hotspotPassword)
+        configuration.joinOnce = true
+        NEHotspotConfigurationManager.shared.apply(configuration) { error in
+            DispatchQueue.main.async {
+                if let error {
+                    self.isWifiSetupInProgress = false
+                    self.wifiSetupError = "Could not join the ticker Wi-Fi: \(error.localizedDescription)"
+                    return
+                }
+                self.wifiSetupStatus = "Connected to the ticker. Sending home Wi-Fi..."
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.submitWiFiSetup(code: normalizedCode, homeSSID: normalizedSSID, homePassword: homePassword)
+                }
+            }
+        }
+    }
+
+    private func submitWiFiSetup(code: String, homeSSID: String, homePassword: String) {
+        guard let url = URL(string: "https://10.42.0.1/connect") else {
+            isWifiSetupInProgress = false
+            wifiSetupError = "The ticker setup address is invalid."
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "ssid_select", value: "__manual__"),
+            URLQueryItem(name: "ssid_manual", value: homeSSID),
+            URLQueryItem(name: "password", value: homePassword),
+            URLQueryItem(name: "setup_code", value: code),
+        ]
+        request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
+
+        let session = URLSession(
+            configuration: .ephemeral,
+            delegate: LocalSetupSessionDelegate(),
+            delegateQueue: nil
+        )
+        session.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async {
+                self.isWifiSetupInProgress = false
+                if let error {
+                    self.wifiSetupError = "The ticker could not be configured: \(error.localizedDescription)"
+                    return
+                }
+                guard let status = (response as? HTTPURLResponse)?.statusCode, (200..<300).contains(status) else {
+                    let status = (response as? HTTPURLResponse).map { String($0.statusCode) } ?? "unknown"
+                    self.wifiSetupError = "The ticker rejected the Wi-Fi settings (HTTP \(status))."
+                    return
+                }
+                self.wifiSetupStatus = "Wi-Fi saved. The ticker is rebooting now."
+            }
+        }.resume()
     }
     
     // === 1. FETCH DATA (Read) ===
@@ -1396,7 +1545,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 if (response as? HTTPURLResponse)?.statusCode == 201,
                    let data,
                    let pairing = try? JSONDecoder().decode(PairingCodeResponse.self, from: data) {
-                    self.pairCodeAlertMessage = pairing.pairing_code
+                    self.pairCodeAlertMessage = "\(pairing.pairing_code)\nExpires in 10 minutes."
                 } else {
                     self.pairCodeAlertMessage = "A pairing code could not be created."
                 }
@@ -2427,6 +2576,12 @@ struct ContentView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .ignoresSafeArea(.container, edges: .bottom)
+
+            if vm.needsInitialSetup {
+                FirstRunSetupView(vm: vm)
+                    .ignoresSafeArea()
+                    .zIndex(10)
+            }
             
             HStack {
                 TabButton(icon: "house.fill", label: "Home", idx: 0, sel: $selectedTab)
@@ -2441,6 +2596,72 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .onOpenURL { vm.handleSpotifyCallback($0) }
+    }
+}
+struct FirstRunSetupView: View {
+    @ObservedObject var vm: TickerViewModel
+    @State private var showWiFiSetup = false
+    @State private var showPairing = false
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.08, green: 0.12, blue: 0.18), Color(red: 0.02, green: 0.03, blue: 0.05)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 24) {
+                    Spacer(minLength: 70)
+                    Image(systemName: "rectangle.inset.filled.and.person.filled")
+                        .font(.system(size: 42, weight: .medium))
+                        .foregroundColor(.blue)
+                    VStack(spacing: 8) {
+                        Text("Set up your ticker")
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundColor(.white)
+                        Text("Connect the ticker to Wi-Fi, then pair this app to control it.")
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.white.opacity(0.65))
+                            .padding(.horizontal, 28)
+                    }
+
+                    VStack(spacing: 12) {
+                        Button { showWiFiSetup = true } label: {
+                            Label("Set Up Wi-Fi", systemImage: "wifi")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+
+                        Button { showPairing = true } label: {
+                            Text("Connect an existing ticker with a pair code")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundColor(.white.opacity(0.72))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 28)
+
+                    Text("Already connected to the same ticker? Ask its owner for a fresh pair code.")
+                        .font(.caption)
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.white.opacity(0.45))
+                        .padding(.horizontal, 38)
+                    Spacer(minLength: 80)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .sheet(isPresented: $showWiFiSetup) {
+            WiFiSetupView(vm: vm, isPresented: $showWiFiSetup)
+        }
+        .sheet(isPresented: $showPairing) {
+            PairingView(vm: vm, isPresented: $showPairing)
+        }
     }
 }
 struct HomeView: View {
@@ -3132,6 +3353,7 @@ struct TeamsView: View {
 struct SettingsView: View {
     @ObservedObject var vm: TickerViewModel
     @State private var showPairing = false
+    @State private var showWiFiSetup = false
     @State private var rebootConfirm = false
     @State private var showRawJSON = false
     
@@ -3147,6 +3369,17 @@ struct SettingsView: View {
                         TextField("https://...", text: $vm.serverURL).textFieldStyle(.plain).padding(10).background(Color.black.opacity(0.2)).cornerRadius(8).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.1))).foregroundColor(.white)
                             .onSubmit { vm.fetchData(); vm.fetchLeagueOptions(); vm.fetchDevices() }
                     }.padding().liquidGlass()
+                }.padding(.horizontal)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("TICKER WI-FI").font(.caption).bold().foregroundStyle(.secondary)
+                    Button { showWiFiSetup = true } label: {
+                        Label("Set Up Ticker Wi-Fi", systemImage: "wifi")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                            .foregroundColor(.blue)
+                    }
+                    .liquidGlass()
                 }.padding(.horizontal)
                 
                 VStack(alignment: .leading, spacing: 10) {
@@ -3217,8 +3450,67 @@ struct SettingsView: View {
         .sheet(isPresented: $showPairing) {
             PairingView(vm: vm, isPresented: $showPairing)
         }
+        .sheet(isPresented: $showWiFiSetup) {
+            WiFiSetupView(vm: vm, isPresented: $showWiFiSetup)
+        }
         .sheet(isPresented: $showRawJSON) {
             ScrollView { Text(String(describing: vm.games)).font(.caption.monospaced()).padding() }.presentationDetents([.medium])
+        }
+    }
+}
+struct WiFiSetupView: View {
+    @ObservedObject var vm: TickerViewModel
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Ticker hotspot")) {
+                    Text("The app derives the hotspot password as T<code>! and asks iOS to join SportsTicker_Setup.")
+                    TextField("Six-digit setup code", text: $vm.wifiSetupCode)
+                        .keyboardType(.numberPad)
+                        .textContentType(.oneTimeCode)
+                        .disabled(vm.isWifiSetupInProgress)
+                }
+                Section(header: Text("Home Wi-Fi")) {
+                    Picker("Network", selection: $vm.wifiNetworkChoice) {
+                        Text("This iPhone's current Wi-Fi").tag(0)
+                        Text("Different Wi-Fi network").tag(1)
+                    }
+                    if vm.wifiNetworkChoice == 0 {
+                        HStack {
+                            Text(vm.wifiDetectedSSID.isEmpty ? "Detecting network..." : vm.wifiDetectedSSID)
+                                .foregroundColor(vm.wifiDetectedSSID.isEmpty ? .secondary : .primary)
+                            Spacer()
+                            Button("Refresh") { vm.fetchCurrentWiFiSSID() }
+                                .disabled(vm.isWifiSetupInProgress)
+                        }
+                    } else {
+                        TextField("Network name", text: $vm.wifiHomeSSID)
+                            .textContentType(.username)
+                            .disabled(vm.isWifiSetupInProgress)
+                    }
+                    SecureField("Wi-Fi password", text: $vm.wifiHomePassword)
+                        .disabled(vm.isWifiSetupInProgress)
+                    Button(vm.isWifiSetupInProgress ? "Connecting..." : "Connect ticker") {
+                        vm.startWiFiSetup(
+                            code: vm.wifiSetupCode,
+                            homeSSID: vm.wifiHomeSSID,
+                            homePassword: vm.wifiHomePassword
+                        )
+                    }
+                    .disabled(vm.isWifiSetupInProgress)
+                }
+                if !vm.wifiSetupStatus.isEmpty {
+                    Section { Text(vm.wifiSetupStatus).foregroundColor(.secondary) }
+                }
+                if let error = vm.wifiSetupError {
+                    Section { Text(error).foregroundColor(.red) }
+                }
+            }
+            .navigationTitle("Ticker Wi-Fi")
+            .navigationBarItems(trailing: Button("Close") { isPresented = false })
+            .onAppear { vm.fetchCurrentWiFiSSID() }
         }
     }
 }
@@ -3263,6 +3555,11 @@ struct DeviceRow: View {
                 VStack(alignment: .leading) {
                     Text(device.name).font(.headline).foregroundColor(.white)
                     Text("ID: \(device.id.prefix(8))...").font(.caption).foregroundColor(.gray)
+                    if let profile = device.profile {
+                        Text("\(profile.product_family.uppercased()) • \(profile.display.width)×\(profile.display.height)")
+                            .font(.caption2)
+                            .foregroundColor(.blue.opacity(0.8))
+                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing) {

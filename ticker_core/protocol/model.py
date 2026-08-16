@@ -288,6 +288,17 @@ class TickerResponse:
     def fingerprint(self) -> str:
         return self.payload_key
 
+    @property
+    def profile(self) -> Mapping[str, FrozenJson]:
+        """Return the backend-declared hardware profile when present."""
+
+        meta = self.data.get("meta")
+        if isinstance(meta, Mapping):
+            profile = meta.get("profile")
+            if isinstance(profile, Mapping):
+                return profile
+        return MappingProxyType({})
+
     def to_payload(self) -> dict[str, Any]:
         """Return one mutable JSON payload for a process boundary."""
 

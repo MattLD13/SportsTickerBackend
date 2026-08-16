@@ -16,12 +16,14 @@ from ticker_core.platform import (
     AssetCoordinator,
     DeviceIdentityStore,
     HealthCollector,
+    LocalProvisioningService,
     OtaUpdaterService,
     SubprocessPlatformCommands,
     TickerPiLogger,
     WiFiRecoveryService,
 )
 from ticker_core.protocol import BackendClient
+from ticker_core.rendering import FrameGeometry
 from ticker_core.runtime import FramePacer, TickerRuntime
 
 
@@ -38,20 +40,29 @@ def create_application() -> TickerApplication:
         verify_tls=_enabled("TICKER_VERIFY_TLS", default=True),
     )
     assets = AssetCoordinator(data_directory / "assets")
-    frames, viewport = create_default_frame_builder(assets, card_cpu=_cpu_setting("TICKER_CARD_CPU"))
+    frames, viewport = create_default_frame_builder(
+        assets,
+        card_cpu=_cpu_setting("TICKER_CARD_CPU"),
+        geometry=_frame_geometry(),
+    )
     runtime = TickerRuntime(monotonic=monotonic, wall_clock=datetime.now)
     commands = SubprocessPlatformCommands()
-    wifi_recovery = WiFiRecoveryService(
+    wifi_recovery = LocalProvisioningService(
         commands,
         hotspot_starter=lambda details: commands.start_hotspot(
             details.ssid,
             details.password,
             interface=details.interface,
         ),
+        state_path=data_directory / "wifi_setup.json",
+        portal_cert_path=data_directory / "wifi_setup.crt",
+        portal_key_path=data_directory / "wifi_setup.key",
     )
+    health.set_wifi_status_provider(wifi_recovery.telemetry)
+    device_profile = _device_profile()
     return TickerApplication(
         client=client,
-        poller=BackendPoller(client, device_id, telemetry=health.snapshot),
+        poller=BackendPoller(client, device_id, telemetry=health.snapshot, profile=device_profile),
         cache=ShortTermContentCache(data_directory / "content" / "last-good.json"),
         assets=assets,
         runtime=runtime,
@@ -69,6 +80,33 @@ def create_application() -> TickerApplication:
         render_cpu=_cpu_setting("TICKER_RENDER_CPU"),
         poll_cpu=_cpu_setting("TICKER_POLL_CPU"),
         logger=logger,
+    )
+
+
+def _device_profile() -> dict[str, object]:
+    """Return the explicit Pi hardware profile sent during registration."""
+
+    family = os.environ.get("TICKER_PRODUCT_FAMILY", "normal").strip().lower() or "normal"
+    profile: dict[str, object] = {"product_family": family, "hardware": os.environ.get("TICKER_HARDWARE", "pi-zero-2w")}
+    if family == "custom":
+        profile["display"] = {
+            "width": int(os.environ.get("TICKER_DISPLAY_WIDTH", "384")),
+            "height": int(os.environ.get("TICKER_DISPLAY_HEIGHT", "32")),
+            "panel_count": int(os.environ.get("TICKER_PANEL_COUNT", "6")),
+        }
+    return profile
+
+
+def _frame_geometry() -> FrameGeometry:
+    """Return the configured logical frame geometry for a Pi deployment."""
+
+    family = os.environ.get("TICKER_PRODUCT_FAMILY", "normal").strip().lower() or "normal"
+    configured = os.environ.get("TICKER_DISPLAY_FIT_MODE", "").strip().lower()
+    fit_mode = configured or ("crop" if family == "mini" else "letterbox" if family == "custom" else "scale")
+    return FrameGeometry(
+        width=int(os.environ.get("TICKER_DISPLAY_WIDTH", "384")),
+        height=int(os.environ.get("TICKER_DISPLAY_HEIGHT", "32")),
+        fit_mode=fit_mode,
     )
 
 

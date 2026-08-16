@@ -20,6 +20,20 @@ Run the controller contract harness:
 python tools\v2_control_harness.py --self-test
 ```
 
+Run the Pi manufacturing diagnostic with a persistent report:
+
+```powershell
+python test.py --sink hardware --report C:\ticker\diagnostic.json
+```
+
+Run the destructive hotspot and portal check only on a controlled bench:
+
+```powershell
+python test.py --sink hardware --wifi-setup --portal --report C:\ticker\wifi-diagnostic.json
+```
+
+The diagnostic flashes every panel color, checks the backend payload, probes internet access, scans NetworkManager, validates the setup portal, and records bounded JSON results. It requests no reboot unless `--reboot` is supplied.
+
 The harness checks sports filters, pin, unpin, strip replacement, and live delay without an iOS build.
 
 For every code change, keep one focused boundary test. If pixels change, save and inspect a real 384x32 frame. Do not keep tests for deleted V1 routes or controller code.

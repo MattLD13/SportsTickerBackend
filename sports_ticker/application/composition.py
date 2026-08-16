@@ -14,7 +14,7 @@ from threading import Lock
 from typing import Any, Callable
 
 from sports_ticker.domain import DisplaySettings, TickerSnapshot
-from sports_ticker.fleet import DeviceMetadata, TickerRecord, TickerRepository
+from sports_ticker.fleet import DeviceMetadata, TickerProfile, TickerRecord, TickerRepository
 from sports_ticker.providers import ProviderHealth
 from sports_ticker.projections import project_data_v2, select_display_content
 
@@ -36,6 +36,7 @@ class BackendApplication:
         spotify_service: object | None = None,
         catalog: object | None = None,
         clock: Callable[[], float] = time.time,
+        pairing_code_ttl_seconds: float = 600.0,
     ) -> None:
         """Capture infrastructure through dependency injection."""
 
@@ -46,6 +47,9 @@ class BackendApplication:
         self.spotify_service = spotify_service
         self.catalog = catalog
         self._clock = clock
+        if pairing_code_ttl_seconds <= 0:
+            raise ValueError("pairing_code_ttl_seconds must be positive")
+        self._pairing_code_ttl_seconds = pairing_code_ttl_seconds
         self._close_lock = Lock()
         self._closed = False
         self.event_service = EventService(
@@ -92,6 +96,7 @@ class BackendApplication:
         *,
         name: str = "Ticker",
         metadata: Mapping[str, Any] | None = None,
+        profile: Mapping[str, Any] | TickerProfile | None = None,
     ) -> tuple[TickerRecord, str | None, bool]:
         """Create or refresh one device-owned sports ticker and its pairing code."""
 
@@ -99,6 +104,9 @@ class BackendApplication:
         if not identifier:
             raise ValueError("device_id must not be empty")
         device_metadata = dict(metadata or {})
+        profile_mapping = profile.to_mapping() if isinstance(profile, TickerProfile) else profile
+        device_profile = TickerProfile.from_mapping(profile_mapping, metadata=device_metadata)
+        device_metadata["profile"] = device_profile.to_mapping()
         current = self.repository.get_ticker(identifier)
         created = False
         if current is None:
@@ -151,10 +159,11 @@ class BackendApplication:
     def exchange_pairing_code(self, pairing_code: str) -> tuple[TickerRecord, str]:
         """Consume one pairing code and return one opaque controller token once."""
 
+        normalized_code = str(pairing_code).strip()
         token = f"ctk_{secrets.token_urlsafe(32)}"
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         ticker = self.repository.exchange_pairing_code(
-            pairing_code,
+            normalized_code,
             token_hash,
             now=self._clock(),
         )
@@ -168,7 +177,11 @@ class BackendApplication:
         for _ in range(10):
             code = f"{secrets.randbelow(1_000_000):06d}"
             try:
-                self.repository.issue_pairing_code(identifier, code)
+                self.repository.issue_pairing_code(
+                    identifier,
+                    code,
+                    expires_at=self._clock() + self._pairing_code_ttl_seconds,
+                )
                 return code
             except ValueError as error:
                 if str(error) != "pairing code is already in use":
@@ -182,7 +195,12 @@ class BackendApplication:
         for _ in range(10):
             code = f"{secrets.randbelow(1_000_000):06d}"
             try:
-                return self.repository.unpair_ticker(identifier, code), code
+                result = self.repository.unpair_ticker(
+                    identifier,
+                    code,
+                    expires_at=self._clock() + self._pairing_code_ttl_seconds,
+                )
+                return result, code
             except ValueError as error:
                 if str(error) != "pairing code is already in use":
                     raise
@@ -287,26 +305,34 @@ class BackendApplication:
             settings["mode"] = str(mode).strip().lower()
             settings["sports_presentation"] = "rotation"
             settings["pinned_content_id"] = ""
-        data["content"] = select_display_content(data["content"], settings)
+        data["content"] = select_display_content(
+            data["content"],
+            settings,
+            allowed_modes=ticker.profile.capabilities.modes,
+        )
         pairing = ticker.pairing
         data["meta"]["pairing"] = {
             "paired": bool(pairing is not None and pairing.paired),
             "code": None if pairing is None or pairing.paired else pairing.pairing_code,
         }
+        data["meta"]["profile"] = ticker.profile.to_mapping()
         data["meta"]["live_delay"] = {
             "enabled": delayed,
             "seconds": ticker.display_settings.live_delay_seconds if delayed else 0,
         }
-        pending_update = ticker.device.metadata.get("pending_update")
-        if isinstance(pending_update, Mapping):
-            version = str(pending_update.get("version") or "").strip()
-            if version:
-                data["meta"]["update"] = {"version": version}
-        pending_reboot = ticker.device.metadata.get("pending_reboot")
-        if isinstance(pending_reboot, Mapping):
-            command_id = str(pending_reboot.get("id") or "").strip()
-            if command_id:
-                data["meta"]["reboot"] = {"id": command_id}
+        commands = self._active_commands(ticker)
+        for command in commands:
+            command_type = str(command.get("type") or "").strip().lower()
+            command_id = str(command.get("id") or "").strip()
+            payload = command.get("payload")
+            if not command_id or not isinstance(payload, Mapping):
+                continue
+            if command_type == "update":
+                version = str(payload.get("version") or "").strip()
+                if version:
+                    data["meta"]["update"] = {"id": command_id, "version": version, "expires_at": command.get("expires_at")}
+            elif command_type == "reboot":
+                data["meta"]["reboot"] = {"id": command_id, "expires_at": command.get("expires_at")}
         visible_at = self._clock() - ticker.display_settings.live_delay_seconds if delayed else None
         events = self.event_service.pending(identifier, visible_at=visible_at)
         event_payload = data["events"]
@@ -376,8 +402,7 @@ class BackendApplication:
         release = str(version).strip()
         if not release:
             raise ValueError("update version must not be empty")
-        metadata = dict(current.device.metadata)
-        metadata["pending_update"] = {"version": release}
+        metadata = self._queue_command_metadata(current, "update", {"version": release})
         return self.repository.update_ticker(
             identifier,
             device=DeviceMetadata(last_seen_at=current.device.last_seen_at, metadata=metadata),
@@ -391,10 +416,10 @@ class BackendApplication:
         if current is None:
             raise KeyError(identifier)
         metadata = dict(current.device.metadata)
-        pending = metadata.get("pending_update")
-        if not isinstance(pending, Mapping) or str(pending.get("version") or "") != str(version).strip():
+        command = self._find_command(metadata, "update", lambda payload: str(payload.get("version") or "") == str(version).strip())
+        if command is None:
             return False
-        del metadata["pending_update"]
+        self._remove_command(metadata, command["id"])
         self.repository.update_ticker(
             identifier,
             device=DeviceMetadata(last_seen_at=current.device.last_seen_at, metadata=metadata),
@@ -408,8 +433,7 @@ class BackendApplication:
         current = self.repository.get_ticker(identifier)
         if current is None:
             raise KeyError(identifier)
-        metadata = dict(current.device.metadata)
-        metadata["pending_reboot"] = {"id": str(uuid4())}
+        metadata = self._queue_command_metadata(current, "reboot", {})
         return self.repository.update_ticker(
             identifier,
             device=DeviceMetadata(last_seen_at=current.device.last_seen_at, metadata=metadata),
@@ -424,15 +448,99 @@ class BackendApplication:
             raise KeyError(identifier)
         received = str(command_id).strip()
         metadata = dict(current.device.metadata)
-        pending = metadata.get("pending_reboot")
-        if not isinstance(pending, Mapping) or str(pending.get("id") or "") != received:
+        command = self._find_command(metadata, "reboot", lambda payload: True, command_id=received)
+        if command is None:
             return False
-        del metadata["pending_reboot"]
+        self._remove_command(metadata, received)
         self.repository.update_ticker(
             identifier,
             device=DeviceMetadata(last_seen_at=current.device.last_seen_at, metadata=metadata),
         )
         return True
+
+    def _queue_command_metadata(self, ticker: TickerRecord, command_type: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Append one durable command to device metadata and return the next metadata mapping."""
+
+        metadata = dict(ticker.device.metadata)
+        commands = [dict(item) for item in metadata.get("pending_commands", ()) if isinstance(item, Mapping)]
+        command = {
+            "id": str(uuid4()),
+            "type": command_type,
+            "payload": dict(payload),
+            "created_at": self._clock(),
+            "expires_at": self._clock() + 900.0,
+        }
+        commands = [item for item in commands if str(item.get("type") or "") != command_type]
+        commands.append(command)
+        metadata["pending_commands"] = commands
+        if command_type == "update":
+            metadata["pending_update"] = dict(payload)
+        elif command_type == "reboot":
+            metadata["pending_reboot"] = {"id": command["id"]}
+        return metadata
+
+    def _active_commands(self, ticker: TickerRecord) -> tuple[Mapping[str, Any], ...]:
+        """Return unexpired durable commands, migrating legacy metadata on read."""
+
+        raw = ticker.device.metadata.get("pending_commands", ())
+        now = self._clock()
+        commands = []
+        if isinstance(raw, (list, tuple)):
+            for item in raw:
+                if not isinstance(item, Mapping):
+                    continue
+                expires_at = item.get("expires_at")
+                if expires_at is not None:
+                    try:
+                        if float(expires_at) <= now:
+                            continue
+                    except (TypeError, ValueError):
+                        continue
+                commands.append(dict(item))
+        if not commands:
+            legacy_update = ticker.device.metadata.get("pending_update")
+            legacy_reboot = ticker.device.metadata.get("pending_reboot")
+            if isinstance(legacy_update, Mapping):
+                commands.append({"id": "legacy-update", "type": "update", "payload": dict(legacy_update), "expires_at": None})
+            if isinstance(legacy_reboot, Mapping):
+                commands.append({"id": str(legacy_reboot.get("id") or "legacy-reboot"), "type": "reboot", "payload": {}, "expires_at": None})
+        return tuple(commands)
+
+    @staticmethod
+    def _find_command(
+        metadata: Mapping[str, Any],
+        command_type: str,
+        predicate: Callable[[Mapping[str, Any]], bool],
+        *,
+        command_id: str | None = None,
+    ) -> Mapping[str, Any] | None:
+        raw = metadata.get("pending_commands", ())
+        items = list(raw) if isinstance(raw, (list, tuple)) else []
+        if not items:
+            if command_type == "update" and isinstance(metadata.get("pending_update"), Mapping):
+                items = [{"id": "legacy-update", "type": "update", "payload": metadata["pending_update"]}]
+            elif command_type == "reboot" and isinstance(metadata.get("pending_reboot"), Mapping):
+                items = [{"id": metadata["pending_reboot"].get("id"), "type": "reboot", "payload": {}}]
+        for item in items:
+            if not isinstance(item, Mapping) or str(item.get("type") or "") != command_type:
+                continue
+            if command_id is not None and str(item.get("id") or "") != command_id:
+                continue
+            payload = item.get("payload")
+            if isinstance(payload, Mapping) and predicate(payload):
+                return item
+        return None
+
+    @staticmethod
+    def _remove_command(metadata: dict[str, Any], command_id: object) -> None:
+        """Remove one acknowledged command and its legacy compatibility field."""
+
+        identifier = str(command_id)
+        raw = metadata.get("pending_commands", ())
+        if isinstance(raw, (list, tuple)):
+            metadata["pending_commands"] = [item for item in raw if not isinstance(item, Mapping) or str(item.get("id") or "") != identifier]
+        metadata.pop("pending_update", None)
+        metadata.pop("pending_reboot", None)
 
     def _maximum_live_delay(self) -> float:
         """Return the event retention needed by every delayed ticker."""

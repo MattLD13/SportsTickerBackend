@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticker.mattdicks.org/contracts/device-registration.v2.json",
+  "title": "Sports Ticker device registration",
+  "type": "object",
+  "required": ["device_id", "name", "metadata"],
+  "properties": {
+    "device_id": {"type": "string", "minLength": 1},
+    "name": {"type": "string", "minLength": 1},
+    "metadata": {"type": "object"},
+    "profile": {"$ref": "#/$defs/profile"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "required": ["product_family"],
+      "properties": {
+        "product_family": {"enum": ["normal", "mini", "custom"]},
+        "hardware": {"type": "string"},
+        "firmware": {"type": "string"},
+        "display": {
+          "type": "object",
+          "required": ["width", "height", "panel_count"],
+          "properties": {
+            "width": {"type": "integer", "minimum": 1},
+            "height": {"type": "integer", "minimum": 1},
+            "panel_count": {"type": "integer", "minimum": 1},
+            "orientation": {"enum": ["landscape", "portrait"]}
+          },
+          "additionalProperties": false
+        },
+        "capabilities": {
+          "type": "object",
+          "required": ["modes"],
+          "properties": {
+            "modes": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "asset_cache": {"type": "boolean"},
+            "ota": {"type": "boolean"},
+            "color_depth": {"type": "integer", "minimum": 1}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

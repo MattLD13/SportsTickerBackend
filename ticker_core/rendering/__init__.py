@@ -2,6 +2,7 @@
 
 from .catalog import ContentRenderer, ContentRendererCatalog, DuplicateContentRendererError, UnknownContentRendererError
 from .fonts import FontSet, load_default_font_set
+from .geometry import FrameGeometry
 from .model import ContentScene, RenderedContent
 
 __all__ = [
@@ -10,6 +11,7 @@ __all__ = [
     "ContentScene",
     "DuplicateContentRendererError",
     "FontSet",
+    "FrameGeometry",
     "RenderedContent",
     "UnknownContentRendererError",
     "load_default_font_set",

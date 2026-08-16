@@ -13,6 +13,7 @@ from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.status import ConnectionLostOverlay
 from ticker_core.features.utility import UtilityRenderer
 from ticker_core.rendering import ContentRendererCatalog, ContentScene
+from ticker_core.rendering import FrameGeometry
 from ticker_core.runtime import Content, FrameDecision, FrameKind
 
 
@@ -34,6 +35,7 @@ class FrameBuilder:
         news_banners: NewsBannerRenderer,
         viewport: ViewportSource,
         connection_status: ConnectionLostOverlay | None = None,
+        geometry: FrameGeometry | None = None,
     ) -> None:
         self._catalog = catalog
         self._utility = utility
@@ -41,6 +43,7 @@ class FrameBuilder:
         self._news_banners = news_banners
         self._viewport = viewport
         self._connection_status = connection_status or ConnectionLostOverlay()
+        self._geometry = geometry or FrameGeometry()
         self._last_base: Image.Image | None = None
 
     def visual_key(self, decision: FrameDecision, *, asset_revision: int | None = None) -> tuple[object, ...]:
@@ -54,7 +57,7 @@ class FrameBuilder:
         elif decision.kind is FrameKind.SCROLL:
             key.append(decision.scroll_offset)
         elif decision.kind is FrameKind.EMPTY:
-            key.append(int(timestamp * 384 / 60.0))
+            key.append(int(timestamp * self._geometry.width / 60.0))
         elif decision.kind is FrameKind.PAIRING:
             key.append(decision.pairing_code)
             key.append(int(timestamp * 2))
@@ -77,11 +80,11 @@ class FrameBuilder:
         return tuple(key)
 
     def build(self, decision: FrameDecision) -> Image.Image:
-        """Build a complete `384x32` frame."""
+        """Build a complete frame for the configured display geometry."""
         context = RenderContext(decision.wall_time)
         base = True
         if decision.kind in {FrameKind.STOPPED, FrameKind.SLEEP}:
-            frame = Image.new("RGB", (384, 32), "black")
+            frame = Image.new("RGB", (self._geometry.width, self._geometry.height), "black")
         elif decision.kind == FrameKind.UPDATE:
             base = False
             frame = self._utility.update_overlay(
@@ -128,15 +131,25 @@ class FrameBuilder:
             frame = self._connection_status.apply(frame)
         return frame
 
-    @staticmethod
-    def _panel_frame(frame: Image.Image) -> Image.Image:
-        """Return one RGB panel before an overlay composes over it."""
+    def _panel_frame(self, frame: Image.Image) -> Image.Image:
+        """Return one RGB frame before an overlay composes over it."""
         image = frame.convert("RGB")
-        if image.size == (384, 32):
+        target = (self._geometry.width, self._geometry.height)
+        if image.size == target:
             return image
-        canvas = Image.new("RGB", (384, 32), "black")
-        canvas.paste(image.crop((0, 0, 384, 32)), (0, 0))
-        return canvas
+        if self._geometry.fit_mode == "scale":
+            return image.resize(target, Image.Resampling.NEAREST)
+        if self._geometry.fit_mode == "crop":
+            left = max(0, (image.width - target[0]) // 2)
+            top = max(0, (image.height - target[1]) // 2)
+            cropped = image.crop((left, top, min(image.width, left + target[0]), min(image.height, top + target[1])))
+            frame = Image.new("RGB", target, "black")
+            frame.paste(cropped, ((target[0] - cropped.width) // 2, (target[1] - cropped.height) // 2))
+            return frame
+        frame = Image.new("RGB", target, "black")
+        visible = image.crop((0, 0, min(image.width, target[0]), min(image.height, target[1])))
+        frame.paste(visible, ((target[0] - visible.width) // 2, (target[1] - visible.height) // 2))
+        return frame
 
     def _render_content(self, context: RenderContext, content: Content, mode: str, elapsed: float) -> Image.Image:
         rendered = self._catalog.render(context, ContentScene(_content_mapping(content), mode, elapsed))
@@ -144,7 +157,7 @@ class FrameBuilder:
 
     def _scroll_frame(self, decision: FrameDecision) -> Image.Image:
         offset = max(0, decision.scroll_offset or 0)
-        return self._viewport.frame(offset)
+        return self._viewport.frame(offset, width=self._geometry.width, height=self._geometry.height)
 
 
 def _plain_mapping(value: Mapping[str, Any]) -> dict[str, Any]:

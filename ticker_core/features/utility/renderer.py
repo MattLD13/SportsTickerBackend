@@ -217,14 +217,11 @@ class UtilityRenderer:
             detail = "CONNECTING TO TICKER"
             accent = (0, 220, 120)
         else:
-            title = "WIFI SETUP"
-            detail = f"JOIN {state.hotspot.ssid.upper()}"
+            title = "OPEN TICKER CONTROL APP"
+            detail = f"PIN: {state.setup_code}"
             accent = (255, 190, 0)
         draw.text((8, 2), title, font=self._fonts.normal, fill=accent)
         draw.text((8, 16), detail[:46], font=self._fonts.tiny, fill=(220, 220, 225))
-        if state is not None and not state.internet_available:
-            password = f"PASS {state.hotspot.password}"
-            draw.text((220, 16), password[:24], font=self._fonts.tiny, fill=(150, 150, 160))
         draw.rectangle((0, 31, PANEL_W - 1, 31), fill=accent)
         return image
 

@@ -8,6 +8,7 @@ from .models import (
     Ticker,
     TickerRecord,
 )
+from .profiles import DisplayGeometry, TickerCapabilities, TickerProfile, profile_from_metadata
 from .repository import TickerRepository
 
 __all__ = [
@@ -18,4 +19,8 @@ __all__ = [
     "Ticker",
     "TickerRecord",
     "TickerRepository",
+    "DisplayGeometry",
+    "TickerCapabilities",
+    "TickerProfile",
+    "profile_from_metadata",
 ]

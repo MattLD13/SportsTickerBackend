@@ -33,7 +33,7 @@ The pin map targets the pictured ESP32-S3 board. A different ESP32-S3 board or a
 
 Set only `BACKEND_URL` in `src/main.cpp`. The ESP32 derives a stable ticker ID from its eFuse hardware identity. Each board therefore registers as a different ticker on the same server.
 
-At startup, the ESP32 registers at `/api/v2/devices/register`. The server creates the ticker and pairing code when needed. When the ticker is unpaired, the panel shows its six-digit pairing code. Enter that code in the TickerControl app. The panel switches to sports after pairing and sends a heartbeat every 30 seconds.
+At startup, the ESP32 registers a `mini` profile at `/api/v2/devices/register`. The profile declares one `64x32` panel and sports-only capability. The server creates the ticker and pairing code when needed. When the ticker is unpaired, the panel shows its six-digit pairing code. Enter that code in the TickerControl app. The panel switches to sports after pairing and sends a heartbeat every 30 seconds.
 
 The app can change shared sports settings such as brightness and scroll speed. The panel displays `SPORTS ONLY` when the app selects another mode.
 

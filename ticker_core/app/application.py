@@ -206,7 +206,7 @@ class TickerApplication:
         self._push_requested_modes()
         decision = self._runtime.next_frame()
         wifi_state = self._wifi_state
-        if wifi_state is not None and not wifi_state.internet_available:
+        if wifi_state is not None and not wifi_state.internet_available and wifi_state.hotspot_active:
             decision = replace(
                 decision,
                 kind=FrameKind.WIFI_SETUP,
@@ -396,7 +396,7 @@ class TickerApplication:
             try:
                 state = self._wifi_recovery.start_setup()
                 self._wifi_state = state
-                if not state.internet_available and not portal_started:
+                if not state.internet_available and state.hotspot_active and not portal_started:
                     portal_started = True
                     self._wifi_portal_thread = Thread(
                         target=self._wifi_recovery.start_portal,

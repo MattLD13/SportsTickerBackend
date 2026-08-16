@@ -108,6 +108,7 @@ def _pairing(value: PairingState | Mapping[str, Any] | None) -> PairingState | N
     clients = value.get("client_ids", value.get("clients", ()))
     return PairingState(
         pairing_code=value.get("pairing_code"),
+        pairing_code_expires_at=value.get("pairing_code_expires_at", value.get("expires_at")),
         paired=value.get("paired", False),
         client_ids=clients,
     )
@@ -178,6 +179,7 @@ class TickerRepository:
                 CREATE TABLE IF NOT EXISTS ticker_pairing (
                     ticker_id TEXT PRIMARY KEY,
                     pairing_code TEXT,
+                    pairing_code_expires_at REAL,
                     paired INTEGER NOT NULL,
                     client_ids_json TEXT NOT NULL,
                     FOREIGN KEY (ticker_id) REFERENCES tickers(ticker_id) ON DELETE CASCADE
@@ -262,6 +264,7 @@ class TickerRepository:
             )
             for statement in schema:
                 self._connection.execute(statement)
+            self._migrate_pairing_expiry_locked()
             self._migrate_spotify_connections_locked()
             self._connection.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS spotify_connections_one_priority "
@@ -298,6 +301,18 @@ class TickerRepository:
         )
         self._connection.execute("DROP TABLE spotify_connections")
         self._connection.execute("ALTER TABLE spotify_connections_next RENAME TO spotify_connections")
+
+    def _migrate_pairing_expiry_locked(self) -> None:
+        """Add durable pairing expiry to databases created before the field existed."""
+
+        columns = {
+            str(row["name"])
+            for row in self._connection.execute("PRAGMA table_info(ticker_pairing)")
+        }
+        if "pairing_code_expires_at" not in columns:
+            self._connection.execute(
+                "ALTER TABLE ticker_pairing ADD COLUMN pairing_code_expires_at REAL"
+            )
 
     @contextmanager
     def _transaction(self) -> Iterator[None]:
@@ -373,10 +388,11 @@ class TickerRepository:
         if record.pairing is not None:
             self._connection.execute(
                 "INSERT INTO ticker_pairing "
-                "(ticker_id, pairing_code, paired, client_ids_json) VALUES (?, ?, ?, ?)",
+                "(ticker_id, pairing_code, pairing_code_expires_at, paired, client_ids_json) VALUES (?, ?, ?, ?, ?)",
                 (
                     record.ticker_id,
                     record.pairing.pairing_code,
+                    record.pairing.pairing_code_expires_at,
                     int(record.pairing.paired),
                     _dump(record.pairing.client_ids),
                 ),
@@ -404,7 +420,7 @@ class TickerRepository:
             (ticker_id,),
         ).fetchone()
         pairing_row = self._connection.execute(
-            "SELECT pairing_code, paired, client_ids_json FROM ticker_pairing WHERE ticker_id = ?",
+            "SELECT pairing_code, pairing_code_expires_at, paired, client_ids_json FROM ticker_pairing WHERE ticker_id = ?",
             (ticker_id,),
         ).fetchone()
         device_row = self._connection.execute(
@@ -415,6 +431,7 @@ class TickerRepository:
         if pairing_row is not None:
             pairing = PairingState(
                 pairing_code=pairing_row["pairing_code"],
+                pairing_code_expires_at=pairing_row["pairing_code_expires_at"],
                 paired=bool(pairing_row["paired"]),
                 client_ids=tuple(json.loads(pairing_row["client_ids_json"])),
             )
@@ -874,11 +891,14 @@ class TickerRepository:
         current_time = time.time() if now is None else float(now)
         with self._transaction():
             row = self._connection.execute(
-                "SELECT ticker_id FROM ticker_pairing WHERE pairing_code = ?",
+                "SELECT ticker_id, pairing_code_expires_at FROM ticker_pairing WHERE pairing_code = ?",
                 (code,),
             ).fetchone()
             if row is None:
                 raise ValueError("pairing code is invalid or already used")
+            expires_at = row["pairing_code_expires_at"]
+            if expires_at is not None and current_time > float(expires_at):
+                raise ValueError("pairing code has expired")
             ticker_id = str(row["ticker_id"])
             self._connection.execute(
                 "INSERT INTO controller_sessions (token_hash, ticker_id, created_at, last_used_at) "
@@ -897,7 +917,13 @@ class TickerRepository:
                 raise KeyError(ticker_id)
             return self._read_record(ticker_row)
 
-    def issue_pairing_code(self, ticker_id: str, pairing_code: str) -> TickerRecord:
+    def issue_pairing_code(
+        self,
+        ticker_id: str,
+        pairing_code: str,
+        *,
+        expires_at: float | None = None,
+    ) -> TickerRecord:
         """Issue one unused controller pairing code for an existing ticker."""
 
         identifier = str(ticker_id).strip()
@@ -919,13 +945,13 @@ class TickerRepository:
             if pairing_row is None:
                 self._connection.execute(
                     "INSERT INTO ticker_pairing "
-                    "(ticker_id, pairing_code, paired, client_ids_json) VALUES (?, ?, ?, ?)",
-                    (identifier, code, 0, _dump(())),
+                    "(ticker_id, pairing_code, pairing_code_expires_at, paired, client_ids_json) VALUES (?, ?, ?, ?, ?)",
+                    (identifier, code, expires_at, 0, _dump(())),
                 )
             else:
                 self._connection.execute(
-                    "UPDATE ticker_pairing SET pairing_code = ? WHERE ticker_id = ?",
-                    (code, identifier),
+                    "UPDATE ticker_pairing SET pairing_code = ?, pairing_code_expires_at = ? WHERE ticker_id = ?",
+                    (code, expires_at, identifier),
                 )
             ticker_row = self._connection.execute(
                 "SELECT ticker_id, name, created_at, updated_at FROM tickers WHERE ticker_id = ?",
@@ -935,7 +961,13 @@ class TickerRepository:
                 raise KeyError(identifier)
             return self._read_record(ticker_row)
 
-    def unpair_ticker(self, ticker_id: str, pairing_code: str) -> TickerRecord:
+    def unpair_ticker(
+        self,
+        ticker_id: str,
+        pairing_code: str,
+        *,
+        expires_at: float | None = None,
+    ) -> TickerRecord:
         """Revoke one controller and reset the ticker to pairing mode."""
 
         identifier = str(ticker_id).strip()
@@ -961,10 +993,11 @@ class TickerRepository:
             )
             self._connection.execute(
                 "INSERT INTO ticker_pairing "
-                "(ticker_id, pairing_code, paired, client_ids_json) VALUES (?, ?, ?, ?) "
+                "(ticker_id, pairing_code, pairing_code_expires_at, paired, client_ids_json) VALUES (?, ?, ?, ?, ?) "
                 "ON CONFLICT(ticker_id) DO UPDATE SET pairing_code = excluded.pairing_code, "
+                "pairing_code_expires_at = excluded.pairing_code_expires_at, "
                 "paired = excluded.paired, client_ids_json = excluded.client_ids_json",
-                (identifier, code, 0, _dump(())),
+                (identifier, code, expires_at, 0, _dump(())),
             )
             self._connection.execute(
                 "UPDATE tickers SET updated_at = ? WHERE ticker_id = ?",

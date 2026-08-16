@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime, time
 from typing import Any
 
@@ -93,10 +93,16 @@ def _settings_value(settings: DisplaySettings) -> dict[str, Any]:
 def select_display_content(
     content: Mapping[str, list[dict[str, Any]]],
     settings: Mapping[str, Any],
+    allowed_modes: Iterable[str] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Return mode content and mark the records eligible for the panel."""
+    """Return capability-compatible mode content and mark eligible records."""
 
     mode = str(settings.get("mode") or "sports").strip().lower()
+    supported = tuple(dict.fromkeys(str(item).strip().lower() for item in (allowed_modes or ()) if str(item).strip()))
+    if mode != "pairing" and supported and mode not in supported:
+        mode = supported[0]
+        if isinstance(settings, dict):
+            settings["mode"] = mode
     if mode == "pairing":
         return {}
     families = _MODE_FAMILIES.get(mode, frozenset((mode,)))

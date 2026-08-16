@@ -14,7 +14,7 @@ from .features.racing import RacingRenderer
 from .features.sports import SportsRenderer
 from .features.utility import UtilityRenderer
 from .features.weather import WeatherRenderer
-from .rendering import ContentRendererCatalog, ContentScene, RenderedContent, load_default_font_set
+from .rendering import ContentRendererCatalog, ContentScene, FrameGeometry, RenderedContent, load_default_font_set
 from .rendering.fonts import load_display_font, load_monospace_font
 from .registry import SceneRegistry
 
@@ -67,7 +67,12 @@ def create_default_content_catalog(assets: object) -> ContentRendererCatalog:
     return catalog
 
 
-def create_default_frame_builder(assets: object, *, card_cpu: int | None = None) -> tuple[FrameBuilder, CardViewport]:
+def create_default_frame_builder(
+    assets: object,
+    *,
+    card_cpu: int | None = None,
+    geometry: FrameGeometry | None = None,
+) -> tuple[FrameBuilder, CardViewport]:
     """Create the complete frame builder and its card viewport."""
     fonts = load_default_font_set()
     logos = CachedLogoView(assets)
@@ -85,6 +90,7 @@ def create_default_frame_builder(assets: object, *, card_cpu: int | None = None)
         ScoreAlertRenderer(fonts, logos),
         NewsBannerRenderer(fonts),
         viewport,
+        geometry=geometry,
     ), viewport
 
 

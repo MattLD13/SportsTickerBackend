@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from PIL import Image
 
 from ticker_core.app.frame_builder import FrameBuilder
-from ticker_core.rendering import RenderedContent
+from ticker_core.rendering import FrameGeometry, RenderedContent
 from ticker_core.rendering import ContentRendererCatalog
 from ticker_core.runtime import Content, FrameDecision, FrameKind
 
@@ -45,9 +45,9 @@ class News:
 
 
 class Viewport:
-    def frame(self, offset):
+    def frame(self, offset, width=384, height=32):
         del offset
-        return Image.new("RGB", (384, 32))
+        return Image.new("RGB", (width, height))
 
 
 def keyed_catalog() -> ContentRendererCatalog:
@@ -167,3 +167,43 @@ def test_static_no_games_content_advances_the_minute_progress_bar() -> None:
     )
 
     assert builder.visual_key(first) != builder.visual_key(second)
+
+
+def test_frame_builder_supports_mini_geometry() -> None:
+    builder = FrameBuilder(
+        Catalog(),
+        Utility(),
+        Alerts(),
+        News(),
+        Viewport(),
+        geometry=FrameGeometry(64, 32),
+    )
+
+    frame = builder.build(decision(FrameKind.EMPTY))
+
+    assert frame.size == (64, 32)
+
+
+def test_frame_builder_crop_mode_preserves_native_pixels() -> None:
+    """Use an explicit crop layout instead of distorting a custom surface."""
+
+    class WideUtility(Utility):
+        def empty(self, context):
+            del context
+            image = Image.new("RGB", (384, 32), "black")
+            image.putpixel((160, 0), (255, 0, 0))
+            return image
+
+    builder = FrameBuilder(
+        Catalog(),
+        WideUtility(),
+        Alerts(),
+        News(),
+        Viewport(),
+        geometry=FrameGeometry(64, 32, "crop"),
+    )
+
+    frame = builder.build(decision(FrameKind.EMPTY))
+
+    assert frame.size == (64, 32)
+    assert frame.getpixel((0, 0)) == (255, 0, 0)

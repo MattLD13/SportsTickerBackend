@@ -33,6 +33,15 @@
             </array>
         </dict>
     </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>The app connects to your ticker during Wi-Fi setup.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>The app uses your location permission to identify the current Wi-Fi name during ticker setup.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>UILaunchScreen</key>
     <dict/>
     <key>UIApplicationSceneManifest</key>

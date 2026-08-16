@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 
 from ticker_core.protocol import TelemetrySnapshot
@@ -21,22 +22,31 @@ class HealthCollector:
         temperature_path: Path | str = "/sys/class/thermal/thermal_zone0/temp",
         wall_clock: Callable[[], float] = time.time,
         run: Callable[..., bytes] = subprocess.check_output,
+        wifi_status: Callable[[], Mapping[str, object]] | None = None,
     ) -> None:
         self._repository = Path(repository)
         self._temperature_path = Path(temperature_path)
         self._wall_clock = wall_clock
         self._run = run
+        self._wifi_status = wifi_status
         self._started_at = wall_clock()
         self._build: str | None = None
 
     def snapshot(self) -> TelemetrySnapshot:
         """Return current health values."""
+        wifi = self._wifi_status() if self._wifi_status is not None else {}
         return TelemetrySnapshot(
             uptime_seconds=max(0, int(self._wall_clock() - self._started_at)),
             build=self._build_id(),
             python=sys.version.split()[0],
             temperature_c=self._temperature(),
+            wifi_available=wifi.get("wifi_available") if isinstance(wifi.get("wifi_available"), bool) else None,
+            wifi_setup_active=wifi.get("wifi_setup_active") if isinstance(wifi.get("wifi_setup_active"), bool) else None,
         )
+
+    def set_wifi_status_provider(self, provider: Callable[[], Mapping[str, object]] | None) -> None:
+        """Attach one bounded Wi-Fi status provider after platform composition completes."""
+        self._wifi_status = provider
 
     def _temperature(self) -> float | None:
         try:
