@@ -1,7 +1,9 @@
 """Verify shared ownership facts in the backend sports contract."""
 
+import pytest
+
 from sports_ticker.domain import ContentItem
-from sports_ticker.providers.sports_display import SportsDisplayProjector
+from sports_ticker.providers.sports_display import SportsDisplayProjector, normalize_soccer_clock
 
 
 def _event(detail: str, situation: dict, state: str = "in") -> dict:
@@ -47,3 +49,16 @@ def test_soccer_clock_has_one_apostrophe_without_provider_spacing() -> None:
     soccer = SportsDisplayProjector().project(_item("soccer", "soccer_champ"), event)
 
     assert soccer.data["status"] == "93'"
+
+
+@pytest.mark.parametrize(
+    ("provider_clock", "status"),
+    (
+        ("45:00 + 1:12", "45'+1:12'"),
+        ("90:00 + 1:18", "90'+1:18'"),
+    ),
+)
+def test_soccer_clock_keeps_stoppage_minutes_and_seconds(provider_clock: str, status: str) -> None:
+    """Keep the regulation minute and precise stoppage clock in one shared label."""
+
+    assert normalize_soccer_clock(provider_clock) == status

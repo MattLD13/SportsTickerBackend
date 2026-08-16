@@ -9,8 +9,8 @@
         "is_shown": true,
         "data": {
           "sport": "soccer_epl",
-          "state": "half",
-          "status": "Half",
+          "state": "in",
+          "status": "45'+1:12'",
           "away_abbr": "ARS",
           "away_score": 1,
           "away_color": "#db0007",

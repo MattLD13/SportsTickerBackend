@@ -341,25 +341,37 @@ def _baseball_status(value: str) -> str:
     return text or "In Progress"
 
 
-def _soccer_minute(value: object) -> str:
-    """Return one compact soccer minute without provider punctuation."""
+def normalize_soccer_clock(value: object) -> str:
+    """Return one canonical soccer clock label."""
 
     text = (
         str(value or "")
         .replace("\u200e", "")
         .replace("\u200f", "")
         .replace("\ufffd", "")
+        .replace("’", "'")
     )
-    text = re.sub(r"\s+", "", text).rstrip("'’")
-    match = re.fullmatch(r"\d+(?:\+\d+)?", text)
-    return match.group(0) if match else ""
-
-
-def normalize_soccer_clock(value: object) -> str:
-    """Return one canonical soccer clock label."""
-
-    minute = _soccer_minute(value)
-    return f"{minute}'" if minute else ""
+    text = re.sub(r"\s+", "", text).replace("'", "")
+    match = re.fullmatch(
+        r"(?P<minute>\d+)(?::(?P<seconds>\d{1,2}))?"
+        r"(?:\+(?P<added_minute>\d+)(?::(?P<added_seconds>\d{1,2}))?)?",
+        text,
+    )
+    if match is None:
+        return ""
+    if any(
+        int(value) >= 60
+        for value in (match.group("seconds"), match.group("added_seconds"))
+        if value is not None
+    ):
+        return ""
+    minute = match.group("minute")
+    added_minute = match.group("added_minute")
+    if added_minute is None:
+        return f"{minute}'"
+    added_seconds = match.group("added_seconds")
+    added = added_minute if added_seconds is None else f"{added_minute}:{added_seconds.zfill(2)}"
+    return f"{minute}'+{added}'"
 
 
 def _seeds(competition: Mapping[str, Any]) -> dict[str, str]:

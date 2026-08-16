@@ -344,9 +344,10 @@ def _match_status(match: Mapping[str, Any], state: str, timezone_name: str) -> s
     if state == "half":
         return "Half"
     live = _mapping(status.get("liveTime"))
-    clock = normalize_soccer_clock(live.get("short") or live.get("long"))
-    if clock:
-        return clock
+    for value in (live.get("long"), live.get("short")):
+        clock = normalize_soccer_clock(value)
+        if clock:
+            return clock
     return reason_short or "Live"
 
 

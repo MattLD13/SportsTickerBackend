@@ -21,6 +21,19 @@ def test_fotmob_live_clock_has_one_apostrophe_without_hidden_spacing() -> None:
     assert _match_status(match, "in", "UTC") == "93'"
 
 
+def test_fotmob_prefers_the_precise_stoppage_clock() -> None:
+    """Use the long clock when it contains stoppage minutes and seconds."""
+
+    match = {
+        "status": {
+            "started": True,
+            "liveTime": {"short": "45+1'", "long": "45:00 + 1:12"},
+        }
+    }
+
+    assert _match_status(match, "in", "UTC") == "45'+1:12'"
+
+
 def test_fotmob_reads_halftime_from_live_time_when_reason_is_empty() -> None:
     match = {
         "id": "5071271",
