@@ -89,7 +89,8 @@ def preview_strip():
     mode = str(request.args.get("mode") or "sports").strip().lower()
     if mode not in {item["id"] for item in _demo_modes()}:
         abort(404)
-    image = _render_preview(_demo_content(mode), mode)
+    content = _live_sports_content() if mode == "sports" else {}
+    image = _render_preview(content or _demo_content(mode), mode)
     output = BytesIO()
     image.save(output, format="PNG")
     output.seek(0)
@@ -178,11 +179,23 @@ def _demo_modes() -> list[dict[str, str]]:
     return [
         {"id": "sports", "label": "Sports", "kind": "scroll"},
         {"id": "weather", "label": "Weather", "kind": "static"},
-        {"id": "music", "label": "Music", "kind": "static"},
+        {"id": "music", "label": "Music", "kind": "canvas"},
         {"id": "flights", "label": "Flights", "kind": "static"},
         {"id": "airports", "label": "Airports", "kind": "static"},
         {"id": "clock", "label": "Clock", "kind": "canvas"},
     ]
+
+
+def _live_sports_content() -> dict[str, list[dict[str, object]]]:
+    """Return the first current sports projection that contains display items."""
+
+    application = current_app.extensions["sports_ticker.backend_application"]
+    for ticker in application.list_tickers():
+        content = _display_content(application, ticker.ticker_id, mode="sports")
+        if content:
+            _preview_assets().prefetch(content)
+            return content
+    return {}
 
 
 def _demo_content(mode: str) -> dict[str, list[dict[str, object]]]:
@@ -283,12 +296,57 @@ def _display_content(application, ticker_id: str, *, mode: str | None = None) ->
     return select_display_content(data["content"], settings)
 
 
-class _DemoAssets:
-    """Supply the public sample team marks from memory only."""
+class _PreviewAssets:
+    """Read prepared team marks after a route-level prefetch completes."""
+
+    def __init__(self, directory: Path) -> None:
+        from ticker_core.platform.assets import AssetCoordinator
+
+        self._coordinator = AssetCoordinator(directory)
 
     def image(self, url: str, processor: str, size: tuple[int, int]):
-        del processor
-        return _demo_logo(url, size)
+        if url.startswith("demo:"):
+            return _demo_logo(url, size)
+        return self._coordinator.image(url, processor, size)
+
+    def prefetch(self, content: dict[str, list[dict[str, object]]]) -> None:
+        """Prepare current sports logos before the renderer reads them."""
+
+        from ticker_core.assets import AssetRequest
+
+        requests = []
+        for items in content.values():
+            for item in items:
+                data = item.get("data") if isinstance(item, dict) else None
+                if not isinstance(data, dict):
+                    continue
+                for field in ("home_logo", "away_logo"):
+                    url = str(data.get(field) or "").strip()
+                    if url and not url.startswith("demo:"):
+                        requests.append(AssetRequest(url, "logo", (22, 22)))
+        for future in self._coordinator.prefetch(requests):
+            try:
+                future.result(timeout=5)
+            except Exception:
+                continue
+
+    def close(self) -> None:
+        """Stop the asset workers during backend shutdown."""
+
+        self._coordinator.close()
+
+
+def _preview_assets() -> _PreviewAssets:
+    """Return one application-owned prepared asset view for public previews."""
+
+    key = "sports_ticker.dashboard_preview_assets"
+    assets = current_app.extensions.get(key)
+    if isinstance(assets, _PreviewAssets):
+        return assets
+    directory = Path(current_app.config.get("DASHBOARD_ASSET_CACHE", "ticker_data/rewrite_assets"))
+    assets = _PreviewAssets(directory)
+    current_app.extensions[key] = assets
+    return assets
 
 
 @lru_cache(maxsize=4)
@@ -316,7 +374,7 @@ def _demo_logo(url: str, size: tuple[int, int]) -> Image.Image | None:
 @lru_cache(maxsize=1)
 def _preview_catalog():
     from ticker_core.bootstrap import create_default_content_catalog
-    return create_default_content_catalog(_DemoAssets())
+    return create_default_content_catalog(_preview_assets())
 
 
 def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> Image.Image:

@@ -93,7 +93,7 @@ def create_production_application(
     app.extensions["sports_ticker.scheduler"] = scheduler
     app.extensions["sports_ticker.runtime"] = runtime
     app.config["DASHBOARD_ASSET_CACHE"] = Path(
-        os.environ.get("TICKER_DASHBOARD_ASSET_CACHE", path.parent / "dashboard-assets")
+        os.environ.get("TICKER_DASHBOARD_ASSET_CACHE", path.parent / "rewrite_assets")
     )
     app.config["VERSION"] = _build_version()
     return app
@@ -115,6 +115,10 @@ def start_runtime(app: Flask) -> Callable[[], None]:
         close_assets = getattr(assets, "close", None)
         if callable(close_assets):
             close_assets()
+        preview_assets = app.extensions.get("sports_ticker.dashboard_preview_assets")
+        close_preview_assets = getattr(preview_assets, "close", None)
+        if callable(close_preview_assets):
+            close_preview_assets()
         app.extensions["sports_ticker.backend_application"].close()
 
     return stop
