@@ -77,9 +77,13 @@ class MusicRenderer:
         if cover_url != state.cover_url or (artwork is not None and state.artwork is None):
             previous_artwork = state.artwork
             if previous_artwork is None:
-                last_cover = str(game.get("last_cover") or "")
+                last_song = game.get("last_song") if isinstance(game.get("last_song"), dict) else {}
+                last_cover = str(game.get("last_cover") or game.get("last_logo") or last_song.get("cover") or "")
                 previous_artwork = self._logos.get(last_cover, (self._cover_size, self._cover_size)) if last_cover else None
-            previous_dominant = state.dominant
+            if previous_artwork is not None:
+                previous_dominant, _ = self._colors(previous_artwork, state.dominant, state.spindle)
+            else:
+                previous_dominant = state.dominant
             fade_alpha = 0.5 if previous_artwork is not None and artwork is not None else 1.0
         fade_alpha = min(1.0, fade_alpha + 0.1 * elapsed)
         smooth_alpha = fade_alpha * fade_alpha * (3.0 - 2.0 * fade_alpha)

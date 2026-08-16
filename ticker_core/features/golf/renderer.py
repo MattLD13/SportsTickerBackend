@@ -54,19 +54,24 @@ class GolfRenderer:
         hybrid_text(draw, x + 1, 2, header, (8, 8, 8, 180), self._fonts.tiny)
         hybrid_text(draw, x, 1, header, (255, 240, 150, 255), self._fonts.tiny)
         draw.line((0, 7, width - 1, 7), fill=(55, 76, 130))
-        tiny_text(draw, 72, 8, "TODAY", (80, 95, 130), self._fonts.tiny)
-        tiny_text(draw, 100, 8, "TOTAL", (80, 95, 130), self._fonts.tiny)
+        total_x = width - 27
+        total_center = width - 15
+        today_x = width - 55
+        today_center = width - 43
+        tiny_text(draw, today_x, 8, "TODAY", (80, 95, 130), self._fonts.tiny)
+        tiny_text(draw, total_x, 8, "TOTAL", (80, 95, 130), self._fonts.tiny)
         players = self._players(payload, compact=True)[:3]
         pars = payload.get("pars", []) if isinstance(payload.get("pars"), list) else []
         if not players:
             tiny_text(draw, 18, 18, "LOADING", (150, 150, 150), self._fonts.tiny)
             return image
+        max_name_len = max(8, (today_x - 20) // 5)
         for index, player in enumerate(players):
             y = (14, 20, 26)[index]
             pos = str(player["pos"])[:3]
             raw_name = str(player["name"])
             parts = raw_name.split()
-            name = (f"{parts[0][0]}. {parts[-1]}" if len(parts) >= 2 else raw_name).upper()[:10]
+            name = (f"{parts[0][0]}. {parts[-1]}" if len(parts) >= 2 else raw_name).upper()[:max_name_len]
             today = player["today"] if self._started(player) else None
             if today is None and self._started(player) and pars:
                 scores = [(score, pars[i]) for i, score in enumerate(player["holes"][:18]) if score is not None and i < len(pars)]
@@ -77,8 +82,8 @@ class GolfRenderer:
             total_text = self._score(player["total"])
             tiny_text(draw, 1, y, pos, pos_color, self._fonts.tiny)
             tiny_text(draw, 18, y, name, "white", self._fonts.tiny)
-            tiny_text(draw, 84 - len(today_text) * 5 // 2, y, today_text, self._score_color(today), self._fonts.tiny)
-            tiny_text(draw, 112 - len(total_text) * 5 // 2, y, total_text, self._score_color(player["total"]), self._fonts.tiny)
+            tiny_text(draw, today_center - len(today_text) * 5 // 2, y, today_text, self._score_color(today), self._fonts.tiny)
+            tiny_text(draw, total_center - len(total_text) * 5 // 2, y, total_text, self._score_color(player["total"]), self._fonts.tiny)
         return image
 
     def full(

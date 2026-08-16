@@ -848,7 +848,7 @@ def _indycar_driver(
     raw_gap = str(item.get("diff") or item.get("gap") or "").strip()
     qualifying_metric = "mph" if track_type == "O" else "time"
     qualifying_value = f"{float(speed):.3f}" if qualifying_metric == "mph" and _number(speed) is not None else best_time
-    gap = qualifying_value if session_type == "Q" else "Leader" if pos == 1 and not raw_gap else raw_gap
+    gap = qualifying_value if session_type == "Q" else "Leader" if pos == 1 else raw_gap
     return {
         "pos": pos,
         "name": f"{first} {last}".strip() or "Unknown",

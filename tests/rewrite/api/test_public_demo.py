@@ -44,3 +44,67 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
             assert Image.open(BytesIO(response.data)).size == (384, 32)
     finally:
         app.extensions["sports_ticker.backend_application"].close()
+
+
+def test_public_demo_sports_uses_live_snapshot_independent_of_ticker_mode(tmp_path) -> None:
+    from datetime import datetime, timezone
+    from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
+
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    try:
+        client = app.test_client()
+        registration = client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "test-device", "name": "Living Room", "metadata": {}},
+        ).get_json()
+        ticker_id = registration["ticker_id"]
+
+        # User has their ticker set to weather mode and paired
+        from sports_ticker.fleet import PairingState
+        backend = app.extensions["sports_ticker.backend_application"]
+        backend.repository.update_ticker(
+            ticker_id,
+            display_settings=DisplaySettings(mode="weather", sports_filter="my_teams"),
+            pairing=PairingState(paired=True),
+        )
+
+        # Snapshot in snapshot store has real sports content
+        real_game = ContentItem(
+            id="mlb-real-1",
+            family="sports",
+            kind="scoreboard",
+            data={
+                "type": "scoreboard",
+                "sport": "mlb",
+                "away_abbr": "BOS",
+                "away_score": 5,
+                "away_color": "#bd3039",
+                "home_abbr": "NYY",
+                "home_score": 4,
+                "home_color": "#003087",
+                "state": "in",
+                "status": "TOP 8TH",
+            },
+        )
+        backend.snapshot_store.replace(
+            TickerSnapshot(
+                ticker_id=ticker_id,
+                revision=1,
+                observed_at=datetime.now(timezone.utc),
+                content=(real_game,),
+                alerts=(),
+                news=(),
+                effective_settings=DisplaySettings(mode="weather"),
+            )
+        )
+
+        # Demo preview for sports must retrieve real sports from the snapshot
+        response = client.get("/api/preview/strip.png?mode=sports")
+        assert response.status_code == 200
+        assert response.mimetype == "image/png"
+        img = Image.open(BytesIO(response.data))
+        assert img.size[1] == 32
+        assert img.size[0] >= 384
+    finally:
+        app.extensions["sports_ticker.backend_application"].close()
+

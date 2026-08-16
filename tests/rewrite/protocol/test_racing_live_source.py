@@ -100,7 +100,7 @@ def test_indycar_polls_the_official_timing_blob_and_driver_feed() -> None:
                         "totalLaps": 55,
                     },
                     "Item": [
-                        {"no": "1", "firstName": "One", "lastName": "Driver", "team": "Penske", "rank": 1, "laps": 12},
+                        {"no": "1", "firstName": "One", "lastName": "Driver", "team": "Penske", "rank": 1, "laps": 12, "diff": "0.000.00"},
                         {"no": "2", "firstName": "Two", "lastName": "Driver", "team": "Ganassi", "rank": 2, "laps": 12, "diff": "+1.2"},
                     ],
                 }
@@ -120,12 +120,26 @@ def test_indycar_polls_the_official_timing_blob_and_driver_feed() -> None:
     assert game["state"] == "in"
     assert game["indycar"]["event_name"] == "Road America GP"
     assert game["indycar"]["drivers"][0]["team_logo"] == "plate-1"
+    assert game["indycar"]["drivers"][0]["gap"] == "Leader"
     assert game["indycar"]["drivers"][1]["gap"] == "+1.2"
 
     normalized = RacingProvider(source).fetch(_settings(f1=False, indycar=True))
     assert normalized.content[0].family == "racing"
     assert normalized.content[0].kind == "indycar"
     assert normalized.content[0].data["sport"] == "indycar"
+
+
+def test_indycar_race_leader_sets_leader_gap_when_diff_is_present() -> None:
+    item = {
+        "rank": 1,
+        "no": "1",
+        "firstName": "Alex",
+        "lastName": "Palou",
+        "diff": "0.000.00",
+    }
+    driver = _indycar_driver(item, {}, "R", "RC")
+    assert driver is not None
+    assert driver["gap"] == "Leader"
 
 
 def test_indycar_qualifying_uses_speed_on_ovals_and_time_on_street_courses() -> None:

@@ -114,3 +114,17 @@ def test_golf_pinned_scene_uses_exact_four_second_elapsed_pages() -> None:
     assert first.tobytes() != second.tobytes()
     assert second.tobytes() == same_page.tobytes()
     assert second.tobytes() != third.tobytes()
+
+
+def test_golf_scroll_right_justifies_today_and_total() -> None:
+    renderer = GolfRenderer(load_default_font_set())
+    players = [
+        {"pos": "1", "name": "Scottie Scheffler", "total": -14, "today": -4, "thru": "F", "holes": [4] * 18},
+        {"pos": "2", "name": "Xander Schauffele", "total": -12, "today": -3, "thru": "16", "holes": [4] * 18},
+        {"pos": "3", "name": "Rory McIlroy", "total": -10, "today": -2, "thru": "F", "holes": [4] * 18},
+    ]
+    item = {"type": "golf", "sport": "golf", "golf": {"event_name": "PGA Championship", "round": "R4", "players": players}}
+    card = renderer.scroll(item)
+    assert card.height == 32
+    assert card.width >= 128
+

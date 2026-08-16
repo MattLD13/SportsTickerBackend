@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 import secrets
 import time
@@ -11,10 +12,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Callable, Protocol
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
-import json
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -33,13 +33,36 @@ class SpotifyIntegrationError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class _PlaybackWindow:
-    """Keep the prior cover and three queued covers for one ticker."""
+class _SpotifyTrack:
+    """Store normalized track metadata for active and cached tracks."""
 
-    current_id: str
-    current_cover: str
-    previous_cover: str
-    next_covers: tuple[str, ...]
+    id: str
+    name: str
+    artist: str
+    album: str
+    cover: str
+    duration: float = 0.0
+
+    def to_mapping(self) -> dict[str, Any]:
+        """Convert track metadata to a JSON-ready mapping."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "artist": self.artist,
+            "album": self.album,
+            "cover": self.cover,
+            "duration": self.duration,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class _PlaybackWindow:
+    """Keep the current track, previous track, queued tracks, and last known record."""
+
+    current_track: _SpotifyTrack | None
+    previous_track: _SpotifyTrack | None
+    next_tracks: tuple[_SpotifyTrack, ...]
+    last_record: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -420,36 +443,66 @@ class SpotifyIntegrationService:
         playback: Mapping[str, Any] | None,
         access_token: str,
     ) -> dict[str, Any]:
-        """Keep one previous cover and the next three covers across polls."""
+        """Keep the last played song and next three songs across polls."""
 
         item = playback.get("item") if isinstance(playback, Mapping) else None
-        if not isinstance(item, Mapping):
-            return _playback_record(playback, None)
-        identifier = str(item.get("id") or "").strip()
-        if not identifier:
-            return _playback_record(playback, None)
+        current_track = _extract_track(item) if isinstance(item, Mapping) else None
+        key = _playback_window_key(connection)
+
         with self._playback_lock:
-            previous = self._playback_windows.get(_playback_window_key(connection))
-        queue = self._http.get_queue(access_token) if previous is None or previous.current_id != identifier else None
-        record = _playback_record(playback, queue)
-        cover = str(record.get("cover") or "")
-        queued = tuple(str(value) for value in record.get("next_covers", ()) if str(value))
-        with self._playback_lock:
-            key = _playback_window_key(connection)
-            current = self._playback_windows.get(key)
-            if current is not None and current.current_id == identifier:
-                record["last_cover"] = current.previous_cover
-                record["next_covers"] = list(current.next_covers)
+            cached = self._playback_windows.get(key)
+
+        if current_track is None:
+            if cached is not None and cached.last_record is not None:
+                record = dict(cached.last_record)
+                record["is_playing"] = False
+                record["status"] = "paused"
                 return record
+            return _idle_record()
+
+        need_queue = (
+            cached is None
+            or cached.current_track is None
+            or cached.current_track.id != current_track.id
+            or not cached.next_tracks
+        )
+        queue_tracks: tuple[_SpotifyTrack, ...] = ()
+        if need_queue:
+            try:
+                queue_data = self._http.get_queue(access_token)
+                queue_tracks = _extract_queue_tracks(queue_data)
+            except Exception:
+                queue_tracks = ()
+        elif cached is not None:
+            queue_tracks = cached.next_tracks
+
+        with self._playback_lock:
+            current_window = self._playback_windows.get(key)
+            if (
+                current_window is not None
+                and current_window.current_track is not None
+                and current_window.current_track.id == current_track.id
+            ):
+                prev_track = current_window.previous_track
+                final_queue = queue_tracks if queue_tracks else current_window.next_tracks
+            else:
+                prev_track = current_window.current_track if current_window is not None else None
+                final_queue = queue_tracks
+
+            record = _build_playback_record(
+                playback=playback,
+                current=current_track,
+                previous=prev_track,
+                queued=final_queue,
+            )
             window = _PlaybackWindow(
-                current_id=identifier,
-                current_cover=cover,
-                previous_cover=current.current_cover if current is not None else "",
-                next_covers=queued[:3],
+                current_track=current_track,
+                previous_track=prev_track,
+                next_tracks=final_queue,
+                last_record=record,
             )
             self._playback_windows[key] = window
-        record["last_cover"] = window.previous_cover
-        record["next_covers"] = list(window.next_covers)
+
         return record
 
     def _encrypt(self, value: str) -> str:
@@ -486,43 +539,129 @@ class SpotifyMusicSource:
         raise SpotifyIntegrationError("Spotify music requires a ticker ID")
 
 
-def _playback_record(playback: Mapping[str, Any] | None, queue: Mapping[str, Any] | None) -> dict[str, Any]:
-    item = playback.get("item") if isinstance(playback, Mapping) else None
+def _extract_track(item: Mapping[str, Any] | None) -> _SpotifyTrack | None:
+    """Extract normalized track metadata from one Spotify track mapping."""
+
     if not isinstance(item, Mapping):
-        return {
-            "id": "spotify:idle",
-            "family": "music",
-            "kind": "spotify",
-            "status": "idle",
-            "is_playing": False,
-            "name": "No active Spotify playback",
-            "artist": "",
-            "cover": "",
-            "last_cover": "",
-            "next_covers": [],
-        }
-    album = item.get("album") if isinstance(item.get("album"), Mapping) else {}
-    images = album.get("images") if isinstance(album, Mapping) else []
+        return None
+    track_id = str(item.get("id") or "").strip()
+    if not track_id:
+        return None
+    name = str(item.get("name") or "Unknown track").strip()
+    album_data = item.get("album") if isinstance(item.get("album"), Mapping) else {}
+    album_name = str(album_data.get("name") or "").strip()
+    images = album_data.get("images") if isinstance(album_data, Mapping) else []
     cover = _image_url(images)
-    queue_items = queue.get("queue", []) if isinstance(queue, Mapping) else []
-    next_covers = [_image_url(track.get("album", {}).get("images", [])) for track in queue_items[:3] if isinstance(track, Mapping)]
-    artists = item.get("artists", [])
-    artist = ", ".join(str(value.get("name", "")) for value in artists if isinstance(value, Mapping)).strip()
+    artists_list = item.get("artists", [])
+    artist = ", ".join(
+        str(val.get("name", "")) for val in artists_list if isinstance(val, Mapping)
+    ).strip()
+    duration = float(item.get("duration_ms") or 0) / 1000.0
+    return _SpotifyTrack(
+        id=track_id,
+        name=name,
+        artist=artist,
+        album=album_name,
+        cover=cover,
+        duration=duration,
+    )
+
+
+def _extract_queue_tracks(queue: Mapping[str, Any] | None) -> tuple[_SpotifyTrack, ...]:
+    """Extract the next three track records from a Spotify queue response."""
+
+    if not isinstance(queue, Mapping):
+        return ()
+    queue_items = queue.get("queue", [])
+    if not isinstance(queue_items, list):
+        return ()
+    tracks: list[_SpotifyTrack] = []
+    for item in queue_items:
+        if isinstance(item, Mapping):
+            track = _extract_track(item)
+            if track is not None:
+                tracks.append(track)
+                if len(tracks) >= 3:
+                    break
+    return tuple(tracks)
+
+
+def _build_playback_record(
+    playback: Mapping[str, Any] | None,
+    current: _SpotifyTrack,
+    previous: _SpotifyTrack | None,
+    queued: tuple[_SpotifyTrack, ...],
+) -> dict[str, Any]:
+    """Construct one music item projection from active, previous, and queued tracks."""
+
+    is_playing = bool(playback.get("is_playing")) if isinstance(playback, Mapping) else False
+    progress = float(playback.get("progress_ms") or 0) / 1000.0 if isinstance(playback, Mapping) else 0.0
+
+    last_cover = previous.cover if previous is not None else ""
+    last_song = previous.to_mapping() if previous is not None else None
+    next_covers = [track.cover for track in queued if track.cover]
+    next_songs = [track.to_mapping() for track in queued]
+
     return {
-        "id": f"spotify:{str(item.get('id') or 'current')}",
+        "id": f"spotify:{current.id}",
         "family": "music",
         "kind": "spotify",
-        "status": "playing" if bool(playback.get("is_playing")) else "paused",
-        "is_playing": bool(playback.get("is_playing")),
-        "name": str(item.get("name") or "Unknown track"),
-        "artist": artist,
-        "cover": cover,
-        "last_cover": "",
+        "status": "playing" if is_playing else "paused",
+        "is_playing": is_playing,
+        "name": current.name,
+        "artist": current.artist,
+        "album": current.album,
+        "cover": current.cover,
+        "last_cover": last_cover,
         "next_covers": next_covers,
-        "duration": float(item.get("duration_ms") or 0) / 1000.0,
-        "progress": float(playback.get("progress_ms") or 0) / 1000.0,
+        "last_song": last_song,
+        "next_songs": next_songs,
+        "home_logo": current.cover,
+        "last_logo": last_cover,
+        "next_logos": next_covers,
+        "away_abbr": current.name,
+        "home_abbr": current.artist,
+        "duration": current.duration,
+        "progress": progress,
         "source": "spotify",
     }
+
+
+def _idle_record() -> dict[str, Any]:
+    """Return an empty placeholder card when no music has been played."""
+
+    return {
+        "id": "spotify:idle",
+        "family": "music",
+        "kind": "spotify",
+        "status": "idle",
+        "is_playing": False,
+        "name": "No active Spotify playback",
+        "artist": "",
+        "album": "",
+        "cover": "",
+        "last_cover": "",
+        "next_covers": [],
+        "last_song": None,
+        "next_songs": [],
+        "home_logo": "",
+        "last_logo": "",
+        "next_logos": [],
+        "duration": 0.0,
+        "progress": 0.0,
+        "source": "spotify",
+    }
+
+
+def _playback_record(playback: Mapping[str, Any] | None, queue: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Legacy playback builder maintained for direct callers."""
+
+    item = playback.get("item") if isinstance(playback, Mapping) else None
+    current = _extract_track(item) if isinstance(item, Mapping) else None
+    if current is None:
+        return _idle_record()
+    queued = _extract_queue_tracks(queue)
+    return _build_playback_record(playback, current, None, queued)
 
 
 def _connection_record(
@@ -538,9 +677,17 @@ def _connection_record(
         "is_playing": False,
         "name": "Connect Spotify" if status == "reauthorization_required" else "Spotify unavailable",
         "artist": "Open the ticker app to connect Spotify",
+        "album": "",
         "cover": "",
         "last_cover": "",
         "next_covers": [],
+        "last_song": None,
+        "next_songs": [],
+        "home_logo": "",
+        "last_logo": "",
+        "next_logos": [],
+        "duration": 0.0,
+        "progress": 0.0,
         "source": "spotify",
     }
     if connection is not None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from functools import lru_cache
 from io import BytesIO
@@ -12,7 +13,8 @@ from time import monotonic
 from flask import abort, current_app, render_template, request, send_file
 from PIL import Image, ImageDraw
 
-from sports_ticker.projections import select_display_content
+from sports_ticker.domain import DisplaySettings
+from sports_ticker.projections import project_data_v2, select_display_content
 
 from . import dashboard_v2
 
@@ -90,7 +92,7 @@ def preview_strip():
     mode = str(request.args.get("mode") or "sports").strip().lower()
     if mode not in {item["id"] for item in _demo_modes()}:
         abort(404)
-    content = _live_sports_content() if mode == "sports" else {}
+    content = _live_content(mode)
     image = _render_preview(content or _demo_content(mode), mode)
     output = BytesIO()
     image.save(output, format="PNG")
@@ -187,14 +189,43 @@ def _demo_modes() -> list[dict[str, str]]:
     ]
 
 
-def _live_sports_content() -> dict[str, list[dict[str, object]]]:
-    """Return the first current sports projection that contains display items."""
+def _live_content(mode: str) -> dict[str, list[dict[str, object]]]:
+    """Return the first current projection for a given mode that contains display items."""
 
     application = current_app.extensions["sports_ticker.backend_application"]
-    for ticker in application.list_tickers():
-        content = _display_content(application, ticker.ticker_id, mode="sports")
-        if content:
-            _preview_assets().prefetch(content)
+    target_mode = str(mode).strip().lower()
+    canonical_settings = DisplaySettings(
+        mode=target_mode,
+        sports_presentation="rotation",
+        sports_filter="all",
+        pinned_content_id="",
+    )
+    with application.snapshot_store._lock:
+        snapshots = list(application.snapshot_store._snapshots.values())
+    for snapshot in snapshots:
+        if not snapshot.content:
+            continue
+        projected = project_data_v2(
+            replace(snapshot, effective_settings=canonical_settings),
+            application.provider_health(),
+            {"stale": False},
+        )
+        content = select_display_content(
+            projected["content"],
+            {
+                "mode": target_mode,
+                "sports_filter": "all",
+                "sports_presentation": "rotation",
+                "pinned_content_id": "",
+            },
+        )
+        items = [
+            item for records in content.values() for item in records
+            if isinstance(item, dict) and item.get("is_shown", True)
+        ]
+        if items:
+            if target_mode == "sports":
+                _preview_assets().prefetch(content)
             return content
     return {}
 
@@ -276,10 +307,14 @@ def _demo_content(mode: str) -> dict[str, list[dict[str, object]]]:
                     "arrivals": [
                         {"flight_number": "UA 188", "airport_code": "LAX", "airport_city": "LOS ANGELES"},
                         {"flight_number": "DL 402", "airport_code": "ATL", "airport_city": "ATLANTA"},
+                        {"flight_number": "B6 201", "airport_code": "MCO", "airport_city": "ORLANDO"},
+                        {"flight_number": "AA 109", "airport_code": "DFW", "airport_city": "DALLAS"},
                     ],
                     "departures": [
                         {"flight_number": "UA 205", "airport_code": "SFO", "airport_city": "SAN FRANCISCO"},
                         {"flight_number": "B6 117", "airport_code": "MCO", "airport_city": "ORLANDO"},
+                        {"flight_number": "DL 311", "airport_code": "DTW", "airport_city": "DETROIT"},
+                        {"flight_number": "AA 672", "airport_code": "MIA", "airport_city": "MIAMI"},
                     ],
                 },
             }],
@@ -289,12 +324,35 @@ def _demo_content(mode: str) -> dict[str, list[dict[str, object]]]:
 
 
 def _display_content(application, ticker_id: str, *, mode: str | None = None) -> dict[str, list[dict[str, object]]]:
-    data = application.project_data(ticker_id)
-    settings = dict(data["settings"])
-    if mode is not None:
-        settings["mode"] = mode
-        settings["pinned_content_id"] = ""
-    return select_display_content(data["content"], settings)
+    ticker = application.get_ticker(ticker_id)
+    snapshot = application.get_snapshot(ticker_id)
+    if ticker is None or snapshot is None:
+        return {}
+    if mode is None:
+        data = application.project_data(ticker_id)
+        return data["content"]
+    display_settings = replace(
+        ticker.display_settings,
+        mode=str(mode).strip().lower(),
+        sports_presentation="rotation",
+        sports_filter="all",
+        pinned_content_id="",
+    )
+    projected = project_data_v2(
+        replace(snapshot, effective_settings=display_settings),
+        application.provider_health(),
+        {"stale": False},
+    )
+    return select_display_content(
+        projected["content"],
+        {
+            "mode": str(mode).strip().lower(),
+            "sports_filter": "all",
+            "sports_presentation": "rotation",
+            "pinned_content_id": "",
+        },
+        allowed_modes=ticker.profile.capabilities.modes,
+    )
 
 
 class _PreviewAssets:
@@ -379,13 +437,13 @@ def _preview_catalog():
 
 
 def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> Image.Image:
-    if mode == "airports":
-        return _render_ewr_airport_demo()
-
     from ticker_core.context import RenderContext
     from ticker_core.rendering import ContentScene
 
-    items = [item for records in content.values() for item in records if isinstance(item, dict)]
+    items = [
+        item for records in content.values() for item in records
+        if isinstance(item, dict) and item.get("is_shown", True)
+    ]
     if not items:
         image = Image.new("RGB", (384, 32), "black")
         ImageDraw.Draw(image).text((8, 10), f"NO {mode.upper()} DATA", fill="white")
@@ -405,45 +463,6 @@ def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> I
         strip.alpha_composite(card, (x, 0))
         x += card.width
     return strip.convert("RGB")
-
-
-def _render_ewr_airport_demo() -> Image.Image:
-    """Render the complete fixed EWR board without renderer version coupling."""
-
-    from ticker_core.rendering.pixels import draw_tiny_text
-
-    image = Image.new("RGB", (384, 32), "black")
-    draw = ImageDraw.Draw(image)
-    blue = (80, 180, 255)
-    green = (80, 255, 80)
-    red = (255, 60, 60)
-    white = (220, 220, 230)
-    grey = (120, 120, 130)
-    draw_tiny_text(draw, 3, 0, "EWR NEWARK", blue)
-    draw_tiny_text(draw, 68, 0, "INBOUND", green)
-    draw_tiny_text(draw, 196, 0, "OUTBOUND", red)
-    draw_tiny_text(draw, 281, 0, "76F PARTLY CLOUDY", grey)
-    draw.line((0, 6, 383, 6), fill=(30, 60, 100))
-    draw.line((190, 8, 190, 31), fill=(30, 60, 100))
-    for y, flight, airport, city in (
-        (9, "UA188", "LAX", "LOS ANGELES"),
-        (14, "DL402", "ATL", "ATLANTA"),
-        (19, "B6201", "MCO", "ORLANDO"),
-        (24, "AA109", "DFW", "DALLAS"),
-    ):
-        draw_tiny_text(draw, 3, y, flight, green)
-        draw_tiny_text(draw, 33, y, airport, grey)
-        draw_tiny_text(draw, 53, y, city, white)
-    for y, flight, airport, city in (
-        (9, "UA205", "SFO", "SAN FRANCISCO"),
-        (14, "B6117", "MCO", "ORLANDO"),
-        (19, "DL311", "DTW", "DETROIT"),
-        (24, "AA672", "MIA", "MIAMI"),
-    ):
-        draw_tiny_text(draw, 196, y, flight, red)
-        draw_tiny_text(draw, 226, y, airport, grey)
-        draw_tiny_text(draw, 246, y, city, white)
-    return image
 
 
 def _duration(value: object) -> str:

@@ -119,7 +119,7 @@ class RacingRenderer:
             draw_tiny_text(draw, start, y, number, primary)
             draw_tiny_text(draw, start + number_width + 2, y, abbreviation, (255, 255, 255))
             if right:
-                draw_tiny_text(draw, min(82, width - len(right) * 4 - 2), y, right, (255, 255, 255) if position == "1" else (180, 210, 255))
+                draw_tiny_text(draw, min(82, width - len(right) * 4 - 2), y, right, (255, 215, 0) if position == "1" or right.upper() == "LEADER" else (180, 210, 255))
         return image
 
     def _render_full(self, item: Mapping[str, Any], elapsed: float) -> Image.Image:
@@ -268,7 +268,7 @@ class RacingRenderer:
         else:
             right = str(driver.get("speed") or driver.get("gap") or "")[:8] if qualifying else str(driver.get("gap") or "")[:10]
         if right:
-            draw_tiny_text(draw, max(4, width - _tiny_width(right) - 4), 23, right, (255, 255, 255) if position == "1" else (140, 190, 255))
+            draw_tiny_text(draw, max(4, width - _tiny_width(right) - 4), 23, right, (255, 215, 0) if position == "1" or right.upper() == "LEADER" else (140, 190, 255))
         return card
 
     def _driver_colors(self, driver: Mapping[str, Any]) -> tuple[tuple[int, int, int], tuple[int, int, int]]:

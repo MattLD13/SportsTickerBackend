@@ -35,10 +35,15 @@ class AssetPlanner:
         for key in ("from_logo", "to_logo"):
             _add(requests, item.get(key), "logo", (24, 24))
         if item_type == "music" or sport == "music":
-            for key in ("cover", "last_cover", "home_logo", "artwork", "cover_url", "album_art"):
+            for key in ("cover", "last_cover", "home_logo", "last_logo", "artwork", "cover_url", "album_art"):
                 _add(requests, item.get(key), "logo", (42, 42))
             for url in (*_urls(item.get("next_logos")), *_urls(item.get("next_artwork")), *_urls(item.get("next_covers"))):
                 _add(requests, url, "logo", (42, 42))
+            last_song = item.get("last_song")
+            if isinstance(last_song, Mapping):
+                _add(requests, last_song.get("cover"), "logo", (42, 42))
+            for next_song in _records(item.get("next_songs")):
+                _add(requests, next_song.get("cover"), "logo", (42, 42))
             return
         if item_type in {"flight_visitor", "flight_airport_hud", "flight_arrival", "flight_departure"} or sport == "flight":
             for record in (item, *_records(item.get("arrivals")), *_records(item.get("departures"))):

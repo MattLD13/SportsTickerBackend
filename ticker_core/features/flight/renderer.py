@@ -131,7 +131,7 @@ class FlightRenderer:
             flight_number = str(item.get("flight_number", "---")).upper()[:8]
             airport_code = str(item.get("airport_code", "---")).upper()[:3]
             city = str(item.get("airport_city", "---")).upper()[:CITY_CHARS]
-            tiny_text(draw, x, y, flight_number, self._green, self._fonts.tiny)
+            tiny_text(draw, x, y, flight_number, color, self._fonts.tiny)
             code_x = x + len(flight_number) * 5 + 4
             tiny_text(draw, code_x, y, airport_code, self._grey, self._fonts.tiny)
             city_x = code_x + len(airport_code) * 5 + 4
