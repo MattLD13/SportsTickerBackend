@@ -6,11 +6,11 @@ from threading import Event
 
 from PIL import Image
 
-from ticker_core.app import PollFailed, PollSucceeded, TickerApplication
+from ticker_core.app import PollConnected, PollFailed, PollSucceeded, TickerApplication
 from ticker_core.assets import ShortTermContentCache
 from ticker_core.platform import HotspotDetails, WiFiSetupState
 from ticker_core.runtime import FrameKind, FramePacer, RuntimeConfig, TickerRuntime
-from ticker_core.protocol import TickerResponse
+from ticker_core.protocol import TickerResponse, display_delta
 
 
 def payload() -> dict:
@@ -46,6 +46,34 @@ class Assets:
 
     def close(self) -> None:
         pass
+
+
+class Logger:
+    """Record poll history without starting a writer thread."""
+
+    def __init__(self) -> None:
+        self.polls = []
+
+    def start(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def record_frame(self, **values) -> None:
+        del values
+
+    def record_tick(self, **values) -> None:
+        del values
+
+    def record_poll(self, **values) -> None:
+        self.polls.append(values)
+
+    def record_payload(self, response) -> None:
+        del response
+
+    def record_issue(self, source, error, **details) -> None:
+        del source, error, details
 
 
 class Viewport:
@@ -278,6 +306,75 @@ def test_static_frame_skips_unchanged_build_and_present(tmp_path) -> None:
         application.step()
         assert frames.calls == 1
         assert len(sink.presented) == 1
+    finally:
+        application.close()
+
+
+def test_delta_prefetches_only_changed_asset_scenes(tmp_path) -> None:
+    """Keep full payload asset scans outside ordinary live score updates."""
+
+    wall = datetime(2026, 8, 11, tzinfo=timezone.utc)
+    assets = Assets()
+    application = TickerApplication(
+        client=Client(),
+        poller=IdlePoller(),
+        cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=assets,
+        runtime=TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: wall),
+        viewport=Viewport(),
+        frames=Frames(),
+        pacer=FramePacer(lambda: 0.0),
+        sink=Sink(),
+        commands=Commands(),
+        device_id="ticker-1",
+        repository=tmp_path,
+        wall_clock=lambda: wall,
+    )
+    before = TickerResponse.from_payload(payload())
+    updated_payload = payload()
+    updated_payload["content"]["sports"][0]["data"]["status"] = "Q2 08:14"
+    updated = TickerResponse.from_payload(updated_payload)
+    delta = display_delta(before, updated)
+    try:
+        application.start()
+        application._events.put(PollSucceeded(before))
+        application.step()
+        application._events.put(PollSucceeded(delta))
+        application.step()
+
+        assert len(delta.changed) == 1
+        assert assets.payloads == [before, (delta.changed[0].data,)]
+
+        mode_payload = payload()
+        mode_payload["content"]["sports"][0]["data"]["status"] = "Q2 08:14"
+        mode_payload["settings"]["mode"] = "clock"
+        mode_response = TickerResponse.from_payload(mode_payload)
+        application._events.put(PollSucceeded(display_delta(updated, mode_response)))
+        application.step()
+
+        assert assets.payloads[-1].payload_key == mode_response.payload_key
+    finally:
+        application.close()
+
+
+def test_unchanged_success_does_not_write_poll_history(tmp_path) -> None:
+    """Keep half-second unchanged polls away from disk-backed history."""
+
+    wall = datetime(2026, 8, 11, tzinfo=timezone.utc)
+    logger = Logger()
+    application = TickerApplication(
+        client=Client(), poller=IdlePoller(), cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=Assets(), runtime=TickerRuntime(monotonic=lambda: 0.0, wall_clock=lambda: wall),
+        viewport=Viewport(), frames=Frames(), pacer=FramePacer(lambda: 0.0), sink=Sink(),
+        commands=Commands(), device_id="ticker-1", repository=tmp_path, wall_clock=lambda: wall,
+        logger=logger,
+    )
+    try:
+        application.start()
+        application._events.put(PollConnected(elapsed_ms=42.0, response_bytes=55_000))
+        application.step()
+
+        assert logger.polls == []
     finally:
         application.close()
 

@@ -13,7 +13,7 @@ from time import monotonic
 import os
 import shlex
 import sys
-from typing import Protocol
+from typing import Any, Protocol
 
 from ticker_core.assets import ShortTermContentCache
 from ticker_core.context import RenderContext
@@ -313,11 +313,21 @@ class TickerApplication:
                     if self._last_response is None:
                         self._logger.record_issue("poll_delta", RuntimeError("Received a delta before a display snapshot."))
                         continue
-                    self._accept_fresh(apply_display_delta(self._last_response, response), persist=False)
+                    previous_response = self._last_response
+                    current_response = apply_display_delta(previous_response, response)
+                    asset_source = (
+                        current_response
+                        if response.settings != previous_response.settings.data
+                        else _delta_asset_source(response)
+                    )
+                    self._accept_fresh(
+                        current_response,
+                        persist=False,
+                        asset_source=asset_source,
+                    )
                 else:
                     self._accept_fresh(response)
             elif isinstance(event, PollConnected):
-                self._logger.record_poll(success=True, elapsed_ms=event.elapsed_ms, response_bytes=event.response_bytes)
                 self._runtime.confirm_connection()
                 self._disconnected = False
             else:
@@ -420,7 +430,13 @@ class TickerApplication:
         self._last_response = response
         self._refresh_viewport()
 
-    def _accept_fresh(self, response: TickerResponse, *, persist: bool = True) -> None:
+    def _accept_fresh(
+        self,
+        response: TickerResponse,
+        *,
+        persist: bool = True,
+        asset_source: object | None = None,
+    ) -> None:
         """Persist, prefetch, accept, and render one validated backend response."""
         previous = self._runtime.snapshot
         if previous is not None and previous.key == response.payload_key:
@@ -433,7 +449,7 @@ class TickerApplication:
         if persist:
             self._cache.store(response.data)
         self._logger.record_payload(response)
-        self._assets.prefetch_payload(response)
+        self._assets.prefetch_payload(response if asset_source is None else asset_source)
         current = self._runtime.accept_response(response)
         self._disconnected = False
         self._pending_reboot_id = response.reboot_request_id
@@ -598,6 +614,15 @@ class _NullPiLogger:
 
     def record_issue(self, source, error, **details) -> None:
         del source, error, details
+
+
+def _delta_asset_source(delta: DisplayDelta) -> tuple[Mapping[str, Any], ...]:
+    """Return only renderer scenes that can introduce assets in one delta."""
+
+    records: list[Mapping[str, Any]] = [item.data for item in delta.changed]
+    records.extend(data for _, _, data in delta.alerts)
+    records.extend(data for _, _, data in delta.news)
+    return tuple(records)
 
 
 def _unintended_black(frame: object, decision: FrameDecision) -> bool:
