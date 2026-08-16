@@ -1,0 +1,16 @@
+[Unit]
+Description=Ticker motion trial
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/ticker/experiments
+ExecStart=/usr/local/libexec/ticker-motion-trial-start
+ExecStopPost=/usr/bin/rm -f /run/ticker-motion-trial.active
+ExecStopPost=/usr/bin/systemctl stop ticker-motion-recovery.timer
+ExecStopPost=/usr/bin/systemctl start ticker-motion-restore.service
+KillMode=control-group
+TimeoutStartSec=180s
+TimeoutStopSec=45s
+RemainAfterExit=no

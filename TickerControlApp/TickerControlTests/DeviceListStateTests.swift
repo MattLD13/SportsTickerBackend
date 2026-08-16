@@ -56,4 +56,28 @@ final class DeviceListStateTests: XCTestCase {
             XCTAssertEqual(ScrollSpeedScale.level(forPixelInterval: interval), Double(level))
         }
     }
+
+    func testScrollLevelsUseTheStableTenStepContract() {
+        let expected: [Double] = [
+            0.10,
+            0.075,
+            0.06,
+            0.05,
+            3.0 / 70.0,
+            0.0375,
+            1.0 / 30.0,
+            0.03,
+            3.0 / 110.0,
+            0.025,
+        ]
+
+        for (level, expectedInterval) in zip(1...10, expected) {
+            XCTAssertEqual(
+                ScrollSpeedScale.pixelInterval(for: Double(level)),
+                expectedInterval,
+                accuracy: 0.000_001,
+                "Level \(level) changed the persisted scroll interval contract"
+            )
+        }
+    }
 }

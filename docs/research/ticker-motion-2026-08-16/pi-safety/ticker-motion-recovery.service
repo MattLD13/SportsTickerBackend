@@ -1,0 +1,9 @@
+[Unit]
+Description=Stop hung motion trial and restore ticker
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl stop ticker-motion-trial.service
+ExecStart=/usr/bin/systemctl start ticker-motion-restore.service
+TimeoutStartSec=45s

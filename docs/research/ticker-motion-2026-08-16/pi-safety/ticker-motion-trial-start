@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+
+experiment_root="${EXPERIMENT_ROOT:-/path/to/ticker/experiments}"
+payload_path="${PAYLOAD_PATH:-/path/to/ticker/content/last-good.json}"
+assets_path="${ASSETS_PATH:-/path/to/ticker/assets}"
+manifest_path="${MANIFEST_PATH:-$experiment_root/ticker_motion_trial_manifest.json}"
+marker=/run/ticker-motion-trial.active
+
+printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker"
+
+restore() {
+    rm -f "$marker"
+    /usr/bin/systemctl start ticker-motion-restore.service || true
+}
+trap restore EXIT HUP INT TERM
+
+/usr/bin/systemctl stop ticker-controller.service
+/usr/bin/systemctl start ticker-motion-recovery.timer
+
+set +e
+/usr/bin/python3 "$experiment_root/ticker_motion_trial.py" \
+    --payload "$payload_path" \
+    --assets "$assets_path" \
+    --manifest "$manifest_path" \
+    --card-cpu 1
+status=$?
+set -e
+exit "$status"

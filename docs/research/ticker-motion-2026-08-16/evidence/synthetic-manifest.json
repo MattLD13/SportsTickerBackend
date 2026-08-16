@@ -1,0 +1,34 @@
+{
+  "video": "synthetic-badge.avi",
+  "capture_to_trial_offset_s": 0.0,
+  "badge_rect": [
+    0,
+    0,
+    38,
+    10
+  ],
+  "static_prelude": {
+    "start_s": 0.0,
+    "duration_s": 0.2
+  },
+  "segments": [
+    {
+      "id": "candidate-a-level-8",
+      "candidate": "a",
+      "option": 5,
+      "level": 8,
+      "start_s": 0.2,
+      "warmup_seconds": 0.1,
+      "measurement_seconds": 0.8
+    },
+    {
+      "id": "candidate-b-level-8",
+      "candidate": "b",
+      "option": 6,
+      "level": 8,
+      "start_s": 1.1,
+      "warmup_seconds": 0.1,
+      "measurement_seconds": 0.8
+    }
+  ]
+}

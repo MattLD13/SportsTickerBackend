@@ -1,0 +1,10 @@
+[Unit]
+Description=Delayed recovery guard for motion trial
+
+[Timer]
+Unit=ticker-motion-recovery.service
+OnActiveSec=150s
+AccuracySec=1s
+
+[Install]
+WantedBy=multi-user.target

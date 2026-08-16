@@ -1,0 +1,12 @@
+{
+  "profile_max_abs_delta": 0.0,
+  "edge_energy_delta": 0.0,
+  "spray_delta": 0.0,
+  "ghost_delta": 0.0,
+  "mask": [
+    0,
+    0,
+    38,
+    10
+  ]
+}

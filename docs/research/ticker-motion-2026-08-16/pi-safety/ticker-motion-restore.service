@@ -1,0 +1,10 @@
+[Unit]
+Description=Restore ticker after motion trial
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/ticker-motion-restore
+Restart=on-failure
+RestartSec=2s
+TimeoutStartSec=30s

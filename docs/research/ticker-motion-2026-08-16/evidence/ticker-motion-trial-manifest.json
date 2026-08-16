@@ -1,0 +1,716 @@
+{
+  "badge_mask_rect": [
+    0,
+    0,
+    39,
+    10
+  ],
+  "baseline_seconds": 5.0,
+  "candidates": {
+    "5": "uniform-native-pixel",
+    "6": "aligned-dwell"
+  },
+  "card_spans_px": [
+    83,
+    81,
+    81
+  ],
+  "levels": [
+    1,
+    5,
+    8,
+    10
+  ],
+  "measurement_seconds": 8.0,
+  "panel_size": [
+    384,
+    32
+  ],
+  "scheduled_seconds": 85.0,
+  "schema": 1,
+  "segments": [
+    {
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "end_s": 0.016091,
+      "kind": "sync_marker",
+      "marker": "SYNC_MOTION_TRIAL",
+      "start_s": 1.7e-05,
+      "visual": "one_dim_corner_pixel"
+    },
+    {
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": "BASE",
+      "card_span_px": null,
+      "dither": false,
+      "dwell_s": null,
+      "end_s": 5.016475,
+      "kind": "static_baseline",
+      "requested_seconds": 5.0,
+      "scrolling": false,
+      "speed_level": null,
+      "start_s": 0.016349
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 5,
+      "candidate_name": "uniform-native-pixel",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 7.017156,
+      "expected_px_per_second": 10.0,
+      "frame_interval_s": 0.1,
+      "frames": 20,
+      "kind": "motion",
+      "phase": "warmup",
+      "requested_interval_s": 0.1,
+      "scrolling": true,
+      "speed_level": 1,
+      "start_s": 5.017054
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 5,
+      "candidate_name": "uniform-native-pixel",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 15.017548,
+      "expected_px_per_second": 10.0,
+      "frame_interval_s": 0.1,
+      "frames": 80,
+      "kind": "motion",
+      "phase": "measurement",
+      "requested_interval_s": 0.1,
+      "scrolling": true,
+      "speed_level": 1,
+      "start_s": 7.017429
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 5,
+      "candidate_name": "uniform-native-pixel",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 17.032959,
+      "expected_px_per_second": 23.333333333333336,
+      "frame_interval_s": 0.04285714285714285,
+      "frames": 47,
+      "kind": "motion",
+      "phase": "warmup",
+      "requested_interval_s": 0.04285714285714285,
+      "scrolling": true,
+      "speed_level": 5,
+      "start_s": 15.018575
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 5,
+      "candidate_name": "uniform-native-pixel",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 25.047613,
+      "expected_px_per_second": 23.333333333333336,
+      "frame_interval_s": 0.04285714285714285,
+      "frames": 187,
+      "kind": "motion",
+      "phase": "measurement",
+      "requested_interval_s": 0.04285714285714285,
+      "scrolling": true,
+      "speed_level": 5,
+      "start_s": 17.033221
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 5,
+      "candidate_name": "uniform-native-pixel",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 27.058665,
+      "expected_px_per_second": 33.333333333333336,
+      "frame_interval_s": 0.03,
+      "frames": 67,
+      "kind": "motion",
+      "phase": "warmup",
+      "requested_interval_s": 0.03,
+      "scrolling": true,
+      "speed_level": 8,
+      "start_s": 25.048557
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 5,
+      "candidate_name": "uniform-native-pixel",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 35.069087,
+      "expected_px_per_second": 33.333333333333336,
+      "frame_interval_s": 0.03,
+      "frames": 267,
+      "kind": "motion",
+      "phase": "measurement",
+      "requested_interval_s": 0.03,
+      "scrolling": true,
+      "speed_level": 8,
+      "start_s": 27.058981
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 5,
+      "candidate_name": "uniform-native-pixel",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 37.070158,
+      "expected_px_per_second": 40.0,
+      "frame_interval_s": 0.025,
+      "frames": 80,
+      "kind": "motion",
+      "phase": "warmup",
+      "requested_interval_s": 0.025,
+      "scrolling": true,
+      "speed_level": 10,
+      "start_s": 35.070067
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 5,
+      "candidate_name": "uniform-native-pixel",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 45.070599,
+      "expected_px_per_second": 40.0,
+      "frame_interval_s": 0.025,
+      "frames": 320,
+      "kind": "motion",
+      "phase": "measurement",
+      "requested_interval_s": 0.025,
+      "scrolling": true,
+      "speed_level": 10,
+      "start_s": 37.070508
+    },
+    {
+      "aligned_boundary_proof": [
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 83,
+          "card_index": 0,
+          "cycle_error_s": 0.0
+        },
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 164,
+          "card_index": 1,
+          "cycle_error_s": 1.7763568394002505e-15
+        },
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 245,
+          "card_index": 2,
+          "cycle_error_s": 1.7763568394002505e-15
+        }
+      ],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 6,
+      "candidate_name": "aligned-dwell",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        5.8100000000000005,
+        5.670000000000001,
+        5.670000000000001
+      ],
+      "end_s": 47.081393,
+      "expected_px_per_second": 10.0,
+      "frame_interval_s": 0.03,
+      "frames": 67,
+      "kind": "motion",
+      "phase": "warmup",
+      "requested_interval_s": 0.1,
+      "scrolling": true,
+      "speed_level": 1,
+      "start_s": 45.071296
+    },
+    {
+      "aligned_boundary_proof": [
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 83,
+          "card_index": 0,
+          "cycle_error_s": 0.0
+        },
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 164,
+          "card_index": 1,
+          "cycle_error_s": 1.7763568394002505e-15
+        },
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 245,
+          "card_index": 2,
+          "cycle_error_s": 1.7763568394002505e-15
+        }
+      ],
+      "aligned_dwell_boundaries": [
+        {
+          "boundary_error_px": 0,
+          "offset_px": 83,
+          "traveled_span_px": 83
+        }
+      ],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 6,
+      "candidate_name": "aligned-dwell",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        5.8100000000000005,
+        5.670000000000001,
+        5.670000000000001
+      ],
+      "end_s": 55.110848,
+      "expected_px_per_second": 10.0,
+      "frame_interval_s": 0.03,
+      "frames": 190,
+      "kind": "motion",
+      "phase": "measurement",
+      "requested_interval_s": 0.1,
+      "scrolling": true,
+      "speed_level": 1,
+      "start_s": 47.081668
+    },
+    {
+      "aligned_boundary_proof": [
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 83,
+          "card_index": 0,
+          "cycle_error_s": 0.0
+        },
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 164,
+          "card_index": 1,
+          "cycle_error_s": -4.440892098500626e-16
+        },
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 245,
+          "card_index": 2,
+          "cycle_error_s": -4.440892098500626e-16
+        }
+      ],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 6,
+      "candidate_name": "aligned-dwell",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        1.0671428571428567,
+        1.041428571428571,
+        1.041428571428571
+      ],
+      "end_s": 57.121593,
+      "expected_px_per_second": 23.333333333333336,
+      "frame_interval_s": 0.03,
+      "frames": 67,
+      "kind": "motion",
+      "phase": "warmup",
+      "requested_interval_s": 0.04285714285714285,
+      "scrolling": true,
+      "speed_level": 5,
+      "start_s": 55.1115
+    },
+    {
+      "aligned_boundary_proof": [
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 83,
+          "card_index": 0,
+          "cycle_error_s": 0.0
+        },
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 164,
+          "card_index": 1,
+          "cycle_error_s": -4.440892098500626e-16
+        },
+        {
+          "boundary_error_px": 0,
+          "boundary_offset_px": 245,
+          "card_index": 2,
+          "cycle_error_s": -4.440892098500626e-16
+        }
+      ],
+      "aligned_dwell_boundaries": [
+        {
+          "boundary_error_px": 0,
+          "offset_px": 83,
+          "traveled_span_px": 83
+        },
+        {
+          "boundary_error_px": 0,
+          "offset_px": 164,
+          "traveled_span_px": 81
+        },
+        {
+          "boundary_error_px": 0,
+          "offset_px": 245,
+          "traveled_span_px": 81
+        }
+      ],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 6,
+      "candidate_name": "aligned-dwell",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        1.0671428571428567,
+        1.041428571428571,
+        1.041428571428571
+      ],
+      "end_s": 65.130886,
+      "expected_px_per_second": 23.333333333333336,
+      "frame_interval_s": 0.03,
+      "frames": 231,
+      "kind": "motion",
+      "phase": "measurement",
+      "requested_interval_s": 0.04285714285714285,
+      "scrolling": true,
+      "speed_level": 5,
+      "start_s": 57.121839
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 6,
+      "candidate_name": "aligned-dwell",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 67.14161,
+      "expected_px_per_second": 33.333333333333336,
+      "frame_interval_s": 0.03,
+      "frames": 67,
+      "kind": "motion",
+      "phase": "warmup",
+      "requested_interval_s": 0.03,
+      "scrolling": true,
+      "speed_level": 8,
+      "start_s": 65.131517
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 6,
+      "candidate_name": "aligned-dwell",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 75.151949,
+      "expected_px_per_second": 33.333333333333336,
+      "frame_interval_s": 0.03,
+      "frames": 267,
+      "kind": "motion",
+      "phase": "measurement",
+      "requested_interval_s": 0.03,
+      "scrolling": true,
+      "speed_level": 8,
+      "start_s": 67.141857
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 6,
+      "candidate_name": "aligned-dwell",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 77.15261,
+      "expected_px_per_second": 40.0,
+      "frame_interval_s": 0.025,
+      "frames": 80,
+      "kind": "motion",
+      "phase": "warmup",
+      "requested_interval_s": 0.025,
+      "scrolling": true,
+      "speed_level": 10,
+      "start_s": 75.152514
+    },
+    {
+      "aligned_boundary_proof": [],
+      "aligned_dwell_boundaries": [],
+      "badge_mask_rect": [
+        0,
+        0,
+        39,
+        10
+      ],
+      "blend": false,
+      "candidate": 6,
+      "candidate_name": "aligned-dwell",
+      "card_span_px": [
+        83,
+        81,
+        81
+      ],
+      "dither": false,
+      "dwell_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_s": 85.152957,
+      "expected_px_per_second": 40.0,
+      "frame_interval_s": 0.025,
+      "frames": 320,
+      "kind": "motion",
+      "phase": "measurement",
+      "requested_interval_s": 0.025,
+      "scrolling": true,
+      "speed_level": 10,
+      "start_s": 77.152862
+    }
+  ],
+  "service_restoration": "Caller must run this tool under an external unconditional service-restoration unit.",
+  "status": "complete",
+  "sync_marker": {
+    "name": "SYNC_MOTION_TRIAL",
+    "power_level": 16,
+    "visual": "one_dim_corner_pixel"
+  },
+  "trial_end_s": 85.88906982800108,
+  "warmup_seconds": 2.0
+}

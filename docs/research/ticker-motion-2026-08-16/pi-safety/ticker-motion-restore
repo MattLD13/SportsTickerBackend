@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+marker=/run/ticker-motion-trial.active
+if [ -e "$marker" ]; then
+    exit 0
+fi
+
+/usr/bin/systemctl start ticker-controller.service
+/usr/bin/systemctl is-active --quiet ticker-controller.service

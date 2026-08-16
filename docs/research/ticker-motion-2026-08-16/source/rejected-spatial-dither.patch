@@ -1,0 +1,377 @@
+diff --git a/tests/rewrite/application/test_frame_builder.py b/tests/rewrite/application/test_frame_builder.py
+index f4f74ff..e16264c 100644
+--- a/tests/rewrite/application/test_frame_builder.py
++++ b/tests/rewrite/application/test_frame_builder.py
+@@ -45,8 +45,8 @@ class News:
+
+
+ class Viewport:
+-    def frame(self, offset):
+-        del offset
++    def frame(self, offset, *, scroll_step=None):
++        del offset, scroll_step
+         return Image.new("RGB", (384, 32))
+
+
+@@ -139,6 +139,9 @@ def test_visual_key_invalidates_empty_scroll_overlays_output_and_assets() -> Non
+     assert builder.visual_key(scroll) != builder.visual_key(
+         decision(FrameKind.SCROLL, scroll_offset=2),
+     )
++    assert builder.visual_key(decision(FrameKind.SCROLL, scroll_offset=0.30)) == builder.visual_key(
++        decision(FrameKind.SCROLL, scroll_offset=0.31),
++    )
+     pairing = decision(FrameKind.PAIRING, pairing_code="123456")
+     assert builder.visual_key(pairing) != builder.visual_key(
+         FrameDecision(FrameKind.PAIRING, 0.03, 100, False, base + timedelta(seconds=0.5), "sports", pairing_code="123456"),
+diff --git a/tests/rewrite/application/test_viewport.py b/tests/rewrite/application/test_viewport.py
+index 5885359..9814f57 100644
+--- a/tests/rewrite/application/test_viewport.py
++++ b/tests/rewrite/application/test_viewport.py
+@@ -51,8 +51,8 @@ def test_viewport_renders_only_changed_card() -> None:
+         viewport.close()
+
+
+-def test_viewport_blends_fractional_led_positions() -> None:
+-    """Use adjacent LED columns to show motion between whole-pixel positions."""
++def test_viewport_uses_spatial_coverage_for_slow_fractional_motion() -> None:
++    """Keep slow motion smooth through quantized spatial coverage."""
+
+     catalog = Catalog()
+     viewport = CardViewport(catalog)
+@@ -61,11 +61,32 @@ def test_viewport_blends_fractional_led_positions() -> None:
+         viewport.update((Content("game", "scoreboard", "nfl", {}),), context, "sports")
+         _drain(viewport, catalog, 1)
+
+-        current = viewport.frame(0.0)
+-        following = viewport.frame(1.0)
+-        fractional = viewport.frame(0.5)
++        current = viewport.frame(0.0, scroll_step=0.5)
++        following = viewport.frame(1.0, scroll_step=0.5)
++        fractional = viewport.frame(0.5, scroll_step=0.5)
+
+-        assert fractional.tobytes() == Image.blend(current, following, 0.5).tobytes()
++        current_pixel = current.getpixel((0, 1))
++        following_pixel = following.getpixel((0, 1))
++        fractional_pixel = fractional.getpixel((0, 1))
++        assert current_pixel != fractional_pixel != following_pixel
++        for current, fractional, following in zip(current_pixel, fractional_pixel, following_pixel):
++            assert min(current, following) <= fractional <= max(current, following)
++    finally:
++        viewport.close()
++
++
++def test_viewport_keeps_fast_fractional_motion_crisp() -> None:
++    """Use integer LED columns when speed exceeds one column per frame."""
++
++    catalog = Catalog()
++    viewport = CardViewport(catalog)
++    context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
++    try:
++        viewport.update((Content("game", "scoreboard", "nfl", {}),), context, "sports")
++        _drain(viewport, catalog, 1)
++
++        assert viewport.frame(0.5, scroll_step=1.0).tobytes() == viewport.frame(0.0).tobytes()
++        assert viewport.frame(0.5, scroll_step=1.2).tobytes() == viewport.frame(0.0).tobytes()
+     finally:
+         viewport.close()
+
+diff --git a/tests/rewrite/runtime/test_state.py b/tests/rewrite/runtime/test_state.py
+index 54abdee..ec99ed6 100644
+--- a/tests/rewrite/runtime/test_state.py
++++ b/tests/rewrite/runtime/test_state.py
+@@ -50,16 +50,17 @@ def test_runtime_uses_v2_settings_for_scroll_and_panel_controls() -> None:
+
+
+ @pytest.mark.parametrize(
+-    ("scroll_speed", "expected_offsets"),
++    ("scroll_speed", "expected_offsets", "expected_step"),
+     (
+-        (0.10, (0.0, 0.3, 0.6, 0.9)),
+-        (0.03, (0.0, 1.0, 2.0, 3.0)),
+-        (0.01, (0.0, 3.0, 6.0, 9.0)),
++        (0.10, (0.0, 0.3, 0.6, 0.9), 0.3),
++        (0.03, (0.0, 1.0, 2.0, 3.0), 1.0),
++        (0.01, (0.0, 3.0, 6.0, 9.0), 3.0),
+     ),
+ )
+ def test_scroll_speed_changes_distance_without_changing_smooth_cadence(
+     scroll_speed: float,
+     expected_offsets: tuple[float, ...],
++    expected_step: float,
+ ) -> None:
+     """Move through fractional pixels while every speed retains the proven Pi cadence."""
+
+@@ -72,6 +73,7 @@ def test_scroll_speed_changes_distance_without_changing_smooth_cadence(
+
+     assert tuple(frame.interval for frame in frames) == (0.03,) * len(expected_offsets)
+     assert tuple(frame.scroll_offset for frame in frames) == pytest.approx(expected_offsets)
++    assert tuple(frame.scroll_step for frame in frames) == pytest.approx((expected_step,) * len(expected_offsets))
+
+
+ def test_strip_refresh_preserves_the_visible_card_and_fractional_position() -> None:
+diff --git a/ticker_core/app/frame_builder.py b/ticker_core/app/frame_builder.py
+index fe00565..7040d4a 100644
+--- a/ticker_core/app/frame_builder.py
++++ b/ticker_core/app/frame_builder.py
+@@ -19,7 +19,14 @@ from ticker_core.runtime import Content, FrameDecision, FrameKind
+ class ViewportSource(Protocol):
+     """Provide a frame from the current card surfaces."""
+
+-    def frame(self, offset: float, width: int = 384, height: int = 32) -> Image.Image:
++    def frame(
++        self,
++        offset: float,
++        width: int = 384,
++        height: int = 32,
++        *,
++        scroll_step: float | None = None,
++    ) -> Image.Image:
+         """Return one scrolling viewport frame."""
+
+
+@@ -52,7 +59,17 @@ class FrameBuilder:
+             scene = ContentScene(_content_mapping(decision.content), decision.mode, decision.content_elapsed or 0.0)
+             key.append(self._catalog.visual_key(context, scene, asset_revision))
+         elif decision.kind is FrameKind.SCROLL:
+-            key.append(decision.scroll_offset)
++            step = decision.scroll_step or 0.0
++            position = max(0.0, decision.scroll_offset or 0.0)
++            column = int(position)
++            if step >= 1.0:
++                key.append(column)
++            else:
++                phase_ticks = round((position - column) * 16)
++                if phase_ticks >= 16:
++                    column += 1
++                    phase_ticks = 0
++                key.append((column, phase_ticks))
+         elif decision.kind is FrameKind.EMPTY:
+             key.append(int(timestamp * 384 / 60.0))
+         elif decision.kind is FrameKind.PAIRING:
+@@ -144,7 +161,7 @@ class FrameBuilder:
+
+     def _scroll_frame(self, decision: FrameDecision) -> Image.Image:
+         offset = max(0.0, decision.scroll_offset or 0.0)
+-        return self._viewport.frame(offset)
++        return self._viewport.frame(offset, scroll_step=decision.scroll_step)
+
+
+ def _plain_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
+diff --git a/ticker_core/app/viewport.py b/ticker_core/app/viewport.py
+index af5efca..e473a77 100644
+--- a/ticker_core/app/viewport.py
++++ b/ticker_core/app/viewport.py
+@@ -2,6 +2,7 @@
+
+ from __future__ import annotations
+
++from base64 import b85decode
+ from collections import OrderedDict
+ from collections.abc import Iterable, Mapping
+ from concurrent.futures import Executor, Future, ProcessPoolExecutor, ThreadPoolExecutor
+@@ -10,16 +11,78 @@ from dataclasses import dataclass
+ from multiprocessing import get_context
+ import os
+ from pathlib import Path
++from functools import lru_cache
+ from threading import Lock
+ from typing import Any, Callable
+
+-from PIL import Image, ImageDraw
++from PIL import Image, ImageChops, ImageDraw
+
+ from ticker_core.context import RenderContext
+ from ticker_core.rendering import ContentRendererCatalog, ContentScene
+ from ticker_core.runtime import Content, StripLayout, StripSegment
+
+
++_RANK_TILE_SIZE = 32
++_RANK_GROUPS = 64
++_RANK_DATA = (
++    '022dN1Cap90^|TL0b2sc1CIl81LgvC06+n010?`!0_X#l01E@20IdQg0~!O+0Br(C1JeN<0y+SB0igo;',
++    '0mK1N0Coez1F{3h1DXJ-0gC_t1APPI0_y<U133ae0bT;R0onoZ0Zah90eu710j2{t0EGj%1O5TK0L=kQ',
++    '0fPcD0kH$Z0Hgua08{~G0Qm!}0m=ZA0h<Ce03ZYR1K$8!13ClO0C)jb0_^}c12_Wn0rCT>04xF90!sjD',
++    '0uTT+0h0j*0-ymK0*L~n1AhVI0YCyX0O|pN1JMJ<0Pg}30Q3Ul0@VX{1G56Y0i^(o1IYsr0lxvY0XG9;',
++    '0ssOR0~rF_01^V50$2d91GfN516=^R0iOf;0%!n+0>uJz0%-sq0qFvd0D}SK0gnUj0muMP0t5id0tx{Q',
++    '0FDEt08s+@1BC;A0MP=Z0NesT0Qv&Y0!08~0(Jrc0(}5=0aF3{0mcC<1H=Km02TtK0ZjqX1Ka^d00{#M',
++    '0bm180$TwY0+Iq(1A+iD0f_*{0uBHl0d)f^0g3<>0n7v11GWO00F?qF1L*-s1K<H!0J8!I0B-_s1ET=(',
++    '1DF6S11tgy18o4n1Bd}+0XYFt0)hc~155!10kQ$815p9^0C53f162b(09*oX0HOj}0=fY(0f7Ph0R004',
++    '1HA$M1Aqe706GEP0GtB}0nh<#0LlZ_0G|VR0DA-c0SE&@0>c6n00jcz0}BBv19Sr305}8m0TKck15yB4',
++    '0ayX20D=R^0=oiJ0Zswv01*P(0w4nM0%ic~16u*l0_p%Y0}TT^0^<Yg0JZ~P0U`mZ0yhHk0}KFX0#*U{',
++    '06qdZ1C9Zj0<!>R0|f)M0=xj|1N8t&0%QSC0u2Ci0d4_10p<Xx0xbZ20dxW01JwX`0;d4;0tN#v0?GoZ',
++    '0f+$u0wDkd0&4<E0c`+&0viGX1C;`c1DyZ}0=ENK0OJE@0WtyW0OA5q1I_>&0>1(S0Y?Fm01g8d0V4sn',
++    '1KtBo0VD$c0TlvK0Sf~40Vx9906YRF0rmr+0?PpD1F!&;1Ev5W0qg+10+a$?0d@ee0e%9G0dD}(0i*zK',
++    '0-pd*0-6KG1G)f111JEO0&W2w0o(#`0H6b70AK^Z0_Ouh0Pq6`0UZIs0p$SQ0!#w00<r*M0bc^W0u=(~',
++    '19Jj*0wVx$0$&0_0Jj4h16cuA0Hy*x0hR#l1Cj!S06zkk0pI|c0iyz{096Ab15*G&0pbFp13Ute04f7N',
++    '0K5Vz0Tu##0Q&(-0!;(001yJ00m}j`04M^60D%L91Ih!w0TTi50KWqL1CRkT0nGx}0Mi1B09FDd1BL@=',
++    '0`3450fYdo0p9>E0r3F#1FQhT0h|FR1Kj}61C0ZD0FnY~1494|0$l+(0u}*q0DJ-c0w@6f0gMC90RaJW',
++    '1M>st0WSlT0JQ>C0S5xa0Vo3$09OHX0G0w008#?60ki{`0RIC412X}+06PPd1NZ`Y009E~104W40v-UT',
++    '0-gZ!0vG^70cQc20|)?E0ek^m0b&5*1MdLC1BwG+0QUmf0#E}I0K@~T0cZj|0Hpz!0zd%d0b>Dw0x|<M',
++    '07wBu0LTIV0|WqG0*wRZ0{Q@50?-1T00IKt1JVG01Iz#^0x$rO1BU^w0_g!D0c!&x0Gk6G0a5|C0ObM2',
++    '0$c*90YU-c0Ko$v0*C=D0n!1D0Wkv;0jdF_0L21l0}%pJ0Ivfi1K9u=0`~!s07L>v17!f$0r>zK1Fi#P',
++    '1IqxO14{r00lEX~0NDda03-og1Bn1=0`LH#17`#60L%gU0;K^20~G@p0OtXC0>A?=0N?{$0SN-g0h9o=',
++    '0VV<00XzcV0RRK!1EB)g0-OV00RjVB0tf<N1NHzS0+j*n07nC{0N(=t0(1b|1KR-Z0`ve=0)7C90(t?s',
++    '1B(LD0k8nF18)FJ0tEny1Ec_K1N{So051ZN1K0u90Y3t+1Gxau0!{!-11SR203`u;0T%;80I>o)0rUVT',
++    '126z)1Azh>0X75h0UrYf0QCXD1G@m;1B?TF0BHiN0<-{n12O`D0OkQj0LKGK1Ly%111AHY12q7v0)+y6',
++    '0?h(10@MIA1119D14aNG1MC2d0jvWf16TnL0m1@R0SW^|15W@30@4F&0j&Us0-*wj0n`8u0%Za715f~%',
++    '1Hl0g0iFW50_*^t0j~ph0`>t_191Qk0oei%1M&bS0)qiG12zIe0%HJB1OEa!0eb*|0{jBC1E&E#0i6ST',
++    '038Dt18xA$18W0C0)GN{0AB-a0v!QV0?q)00eS*T0YL*w0ICAE18D=a1DpUC0<Zz@19b!90CWN$0Gb0x',
++    '0hI$Q0FMFK015+P0Sp300louN0Mr3$0M-Kz0dWA41H1r60z?Cu05<{710Dk)0&xMy06hVj0xkl~1MvYh',
++    '0T=@<0cHUF0>J@}18@K_0&)QO1E>H+0rdeo0to}60jmNw0U81m0>%Rm0HXtX0AvE@0qO(c0fzuE0m%Wg',
++    '0?7h308Igs0>S`^0+s<o0$Krv0Z9U40WAT&02%@+0F46x0X+b70mA_i0p|f-0xJNx0w(~~0fhn#0`CB0',
++    '0$~8{0&D@G0N4XS0WJc809ph30KNg$0vrJ$1Fr&;0;~Zg1Hc2%0<8lA03!i{1N#G;00RRt0J#D~0T2R=',
++)
++_BLOCK_RANK_DATA = (
++    '0T>$+I0GCy6b?BDAwDELG!-x?3@iyXGd2YvI|>#85HA@Q039VFKLjZwCp`uqE;lO(Dho0XF(wfj4IUFM',
++    'ArCeMBr6aG7a$ok5dt_W02T>8EGZKxI}9y64iqvH2p9xCCmIVS9u+hk0UItI10n|>IwK7xH8(jhFA6a~',
++    '1tBH^G9D#5FB%&y5ElU*2O|k8A}1~wBoZ_z6bdm92s{8RGamy!KNB?#FcCN$DLV@w1{OI46%IWaD-1R_',
++    'JQ6AtH4r}m3oRNc0w)e6I~fKZB@r_d1sgOm3@8XM6)YeCGAl3`E)OCXIte}l4Idl|IX4z2I5q?!2OT3l',
++    '2qruaIszpfG8-ur5-tl98Y=)b9~U?T4Kpt+2^<+TKOP4mHz*JWFbpIhDgz@T0X;1a7BLt$ITZyv5k3kh',
++    'Co4S-83il|6E+4W4i*a+KOrOxG72C96b~sQ8$1v>FEju*A_OfF2{<znC_XVBE*KRZ2O0r8Is-5tDm5G>',
++    'Bq{+F8XqeO5-B(^3M~&WGzdKfHwQKg88JT|5k3<xCp7~(BM=+_6eT({1{Mt+G8haXB0M_|1R)nD8v-aS',
++    '5+gYY9V-wrJ^?8k6b3yl7a2PiF&GsGE($*+0x&cv5iAZbARY`SB?B`HDmoen4>lq<JOCdYArk~R4JI`O',
++    '05TgO11&Q-B^DhS9}hGT3oHf{2rvaTArdbnHa#g31U?rH6#+3CCO-lrHzE!w3KJYB2Rl3%9x4nvD=rB*',
++    'E*Co@1v&^T2^Ih_8zUGYARIk3Cj&7NDg+b{JU$9J4jB+L1|>HYEDIVxI4A)%4K^kMEgv2!BnJ~OG7KFO',
++    'A`%uiJqtP!0yGy2A1V|q6B-OI7zQ{G2`?N2J}3@5B`_H^BnUGh9W4Yl6)8Lc5IG<w9tA5S8x21IF()zy',
++    '7B~(S9RociF$p;cJ{u+l4=6M%6C4aFCprKkGZ7;P5-J!q1~MKuKRgW|EE)kY3N||g84Dm3Ednkt7bOrO',
++    'DlZN+G8H@w2plN@CL#nQGY}6F6cIQu7#b@m4I4WKAOk-NJ~k6KCm|j+IRPaJF)Rfg79Twq0vRqk2Q3RE',
++    'HY^Sp6eb-CDi=EgJ_k2F03{YEKO7?>Bsd8(3n>O68w4H_Ee|yl4KXVp0T~P$FFFt>G!-BMJOwThIS4W^',
++    '2{{8X6&wI1BoiSo8#*!y3?3N=EfF;*I}a-&4jm%`DIfth8U-pS4Lvv*7A6urHv}#V7Z5)PGZZjB1~eZm',
++    'B@-Vt8wWlBFAXRHIx;yT1}P944jvLGCLK2lEd?qOFbpm{7%UYaI5aT<I|x4m83ZF74>JiD6d@K1Ha#RO',
++)
++_BLOCK_RANK_FIELD = b85decode("".join(_BLOCK_RANK_DATA).encode("ascii"))
++_MASK_TABLES = tuple(
++    tuple(255 if value < threshold else 0 for value in range(256))
++    for threshold in range(_RANK_GROUPS + 1)
++)
++
++
+ @dataclass(frozen=True, slots=True)
+ class _CardRequest:
+     """Describe one card image that a worker must render."""
+@@ -235,8 +298,15 @@ class CardViewport:
+             self._start_next()
+             self._maybe_commit()
+
+-    def frame(self, offset: float, width: int = 384, height: int = 32) -> Image.Image:
+-        """Build one subpixel viewport from only cards visible at this offset."""
++    def frame(
++        self,
++        offset: float,
++        width: int = 384,
++        height: int = 32,
++        *,
++        scroll_step: float | None = None,
++    ) -> Image.Image:
++        """Build a spatially covered slow frame or crisp fast frame."""
+         with self._lock:
+             layout = self._layout
+             surfaces = dict(self._surfaces)
+@@ -244,7 +314,8 @@ class CardViewport:
+         if layout is None or not order:
+             return Image.new("RGB", (width, height), "black")
+         position, phase = _scroll_position(offset, layout.width)
+-        render_width = width if phase == 0.0 else width + 1
++        needs_following = phase != 0.0 and not (scroll_step is not None and scroll_step >= 1.0)
++        render_width = width + 1 if needs_following else width
+         image = Image.new("RGB", (render_width, height), "black")
+         start = 0
+         index = 0
+@@ -262,11 +333,9 @@ class CardViewport:
+                 image.paste(surface.image, (x + 1, 0), surface.image)
+             x += segment.width
+             index += 1
+-        if phase == 0.0:
++        if phase == 0.0 or (scroll_step is not None and scroll_step >= 1.0):
+             return image
+-        current = image.crop((0, 0, width, height))
+-        following = image.crop((1, 0, width + 1, height))
+-        return Image.blend(current, following, phase)
++        return _cover_fractional_column(image, width, height, phase, position)
+
+     def close(self) -> None:
+         """Stop the owned card renderer."""
+@@ -474,11 +543,55 @@ def _plain(value: Any) -> Any:
+
+
+ def _scroll_position(offset: float, width: int) -> tuple[int, float]:
+-    """Split one continuous strip position into an LED column and blend phase."""
++    """Split logical motion into an integer LED column and fractional coverage."""
+
+     position = float(offset) % width
+-    nearest = round(position)
+-    if abs(position - nearest) < 1e-9:
+-        return int(nearest) % width, 0.0
+     column = int(position)
+     return column, position - column
++
++
++def _cover_fractional_column(
++    image: Image.Image,
++    width: int,
++    height: int,
++    phase: float,
++    position: int,
++) -> Image.Image:
++    """Dither exact source columns to simulate slow spatial coverage without RGB mixing."""
++
++    current = image.crop((0, 0, width, height))
++    following = image.crop((1, 0, width + 1, height))
++    quantum = max(0, min(64, round(max(0.0, min(1.0, phase)) * 64)))
++    if quantum <= 0:
++        return current
++    if quantum >= 64:
++        return following
++    base = _coverage_mask_base(width, height, quantum)
++    shifted = ImageChops.offset(base, -(position % _RANK_TILE_SIZE), 0)
++    return Image.composite(following, current, shifted.crop((0, 0, width, height)))
++
++
++@lru_cache(maxsize=8)
++def _rank_plane(width: int, height: int) -> Image.Image:
++    """Build one compact rank-group plane for the requested viewport geometry."""
++
++    source_width = width + _RANK_TILE_SIZE
++    rows = []
++    for y in range(height):
++        row = bytes(
++            _BLOCK_RANK_FIELD[
++                (((y % _RANK_TILE_SIZE) // 8) * 4 + ((x % _RANK_TILE_SIZE) // 8)) * 64
++                + (y % 8) * 8
++                + (x % 8)
++            ]
++            for x in range(source_width)
++        )
++        rows.append(row)
++    return Image.frombytes("L", (source_width, height), b"".join(rows))
++
++
++@lru_cache(maxsize=128)
++def _coverage_mask_base(width: int, height: int, quantum: int) -> Image.Image:
++    """Cache one C-level threshold mask for one phase quantum and geometry."""
++
++    return _rank_plane(width, height).point(_MASK_TABLES[quantum])
+diff --git a/ticker_core/runtime/model.py b/ticker_core/runtime/model.py
+index a1f5c91..bc1acf2 100644
+--- a/ticker_core/runtime/model.py
++++ b/ticker_core/runtime/model.py
+@@ -108,6 +108,7 @@ class FrameDecision:
+     content: Content | None = None
+     content_elapsed: float | None = None
+     scroll_offset: float | None = None
++    scroll_step: float | None = None
+     alert: Mapping[str, Any] | None = None
+     alert_elapsed: float | None = None
+     news: Mapping[str, Any] | None = None
+diff --git a/ticker_core/runtime/state.py b/ticker_core/runtime/state.py
+index 6c441d9..e98a95b 100644
+--- a/ticker_core/runtime/state.py
++++ b/ticker_core/runtime/state.py
+@@ -486,6 +486,7 @@ class TickerRuntime:
+             self.config.scroll_frame_interval,
+             wall_time,
+             scroll_offset=offset,
++            scroll_step=step,
+         )
+
+     def _next_static(self, now: float) -> Content | None:

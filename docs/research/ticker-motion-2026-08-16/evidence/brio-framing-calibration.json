@@ -1,0 +1,5 @@
+{
+  "points": [[103, 434], [1233, 273], [1243, 321], [110, 484]],
+  "source": "brio/framing/frame-02.png",
+  "notes": "Manual active-panel corners for the fixed 1280x720 BRIO framing view. Recheck if the camera moves."
+}

@@ -1,0 +1,117 @@
+{
+  "baseline": {
+    "edge_energy_median": 0.202113,
+    "video": "temp\\camera-calibration\\brio\\brio-720p60.mkv"
+  },
+  "calibration_reprojection_px": 0.0,
+  "confidence": {
+    "reason": "30/60fps capture aliases 33.33fps display timing",
+    "spatial": "high",
+    "temporal": "low"
+  },
+  "duration_s": 2.991,
+  "fps": 60.0,
+  "frames": 181,
+  "low_confidence": {
+    "flicker_pwm": true,
+    "jitter": true,
+    "judder": true,
+    "nausea": true
+  },
+  "metrics": {
+    "camera_panel_drift_px_median": 0.625257,
+    "edge_energy_median": 0.462208,
+    "edge_width_proxy_ratio_vs_baseline": 0.437277,
+    "exposure": {
+      "clipped_fraction_median": 0.0,
+      "median": 29.0,
+      "p01": 1.0,
+      "p99": 227.0,
+      "p99_cv": 0.01818
+    },
+    "freeze_longest_frames": 0,
+    "freeze_longest_s": 0.0,
+    "ghost_ratio_median": 1.789045,
+    "ghost_ratio_p95": 3.464689,
+    "motion": {
+      "average_px_s": 33.23345280148004,
+      "beat_cycles": 20,
+      "expected_px_s": 33.333333333333336,
+      "large_jump_ratio": 0.0,
+      "phase_bins": [
+        {
+          "large_jump_ratio": 0.0,
+          "median_px_s": 32.328148,
+          "phase": 0,
+          "samples": 20,
+          "zero_hold_ratio": 0.1
+        },
+        {
+          "large_jump_ratio": 0.0,
+          "median_px_s": 5.259294,
+          "phase": 1,
+          "samples": 19,
+          "zero_hold_ratio": 0.368421
+        },
+        {
+          "large_jump_ratio": 0.0,
+          "median_px_s": 0.337314,
+          "phase": 2,
+          "samples": 20,
+          "zero_hold_ratio": 0.95
+        },
+        {
+          "large_jump_ratio": 0.0,
+          "median_px_s": 0.297649,
+          "phase": 3,
+          "samples": 20,
+          "zero_hold_ratio": 0.85
+        },
+        {
+          "large_jump_ratio": 0.0,
+          "median_px_s": 32.978332,
+          "phase": 4,
+          "samples": 21,
+          "zero_hold_ratio": 0.095238
+        },
+        {
+          "large_jump_ratio": 0.0,
+          "median_px_s": 54.037521,
+          "phase": 5,
+          "samples": 20,
+          "zero_hold_ratio": 0.1
+        },
+        {
+          "large_jump_ratio": 0.0,
+          "median_px_s": 58.138269,
+          "phase": 6,
+          "samples": 20,
+          "zero_hold_ratio": 0.05
+        },
+        {
+          "large_jump_ratio": 0.0,
+          "median_px_s": 61.805834,
+          "phase": 7,
+          "samples": 19,
+          "zero_hold_ratio": 0.0
+        },
+        {
+          "large_jump_ratio": 0.0,
+          "median_px_s": 57.389866,
+          "phase": 8,
+          "samples": 21,
+          "zero_hold_ratio": 0.0
+        }
+      ],
+      "velocity_mad_px_s": 16.37807492145427,
+      "zero_hold_ratio": 0.2777777777777778
+    },
+    "persistent_ghost_fraction": 1.0,
+    "persistent_spray_fraction": 0.0,
+    "spray_ratio_median": 0.0,
+    "spray_ratio_p95": 0.000432,
+    "visible_flicker_index": 0.02188
+  },
+  "timestamp_source": "opencv_pos_msec",
+  "video": "temp\\camera-calibration\\brio\\framing\\brio-framing-720p60.mkv"
+}
