@@ -63,8 +63,11 @@ def test_response_can_cross_the_poll_process_without_mapping_proxy_errors() -> N
 
 
 def test_display_delta_replaces_only_changed_renderer_scene() -> None:
-    before = TickerResponse.from_payload(_payload())
+    before_payload = _payload()
+    before_payload["settings"]["my_teams"] = ["nba:NY"]
+    before = TickerResponse.from_payload(before_payload)
     after_payload = _payload()
+    after_payload["settings"]["my_teams"] = ["nba:NY"]
     after_payload["content"]["sports"][0]["data"]["state"] = "post"
     after = TickerResponse.from_payload(after_payload)
 
@@ -72,5 +75,22 @@ def test_display_delta_replaces_only_changed_renderer_scene() -> None:
     restored = apply_display_delta(before, delta)
 
     assert len(delta.changed) == 1
+    assert not delta.settings_changed
     assert restored.content[0].data["state"] == "post"
     assert restored.payload_key == after.payload_key
+
+
+def test_display_delta_marks_a_real_settings_change() -> None:
+    """Keep settings change detection inside the frozen protocol boundary."""
+
+    before_payload = _payload()
+    before_payload["settings"]["my_teams"] = ["nba:NY"]
+    after_payload = _payload("clock")
+    after_payload["settings"]["my_teams"] = ["nba:NY"]
+
+    delta = display_delta(
+        TickerResponse.from_payload(before_payload),
+        TickerResponse.from_payload(after_payload),
+    )
+
+    assert delta.settings_changed

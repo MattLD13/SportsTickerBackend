@@ -399,6 +399,7 @@ class DisplayDelta:
     ticker_id: str
     pairing_code: str | None
     settings: dict[str, Any]
+    settings_changed: bool
     order: tuple[str, ...]
     changed: tuple[DisplayItemDelta, ...]
     alerts: tuple[tuple[str, str, dict[str, Any]], ...]
@@ -425,6 +426,7 @@ def display_delta(previous: TickerResponse, current: TickerResponse) -> DisplayD
         current.ticker_id,
         current.pairing_code,
         _thaw(current.settings.data),
+        previous.settings.data != current.settings.data,
         tuple(item.id for item in current.content),
         changed,
         tuple((item.id, item.kind, _thaw(item.data)) for item in current.alerts),

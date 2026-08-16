@@ -317,7 +317,7 @@ class TickerApplication:
                     current_response = apply_display_delta(previous_response, response)
                     asset_source = (
                         current_response
-                        if response.settings != previous_response.settings.data
+                        if response.settings_changed
                         else _delta_asset_source(response)
                     )
                     self._accept_fresh(

@@ -330,8 +330,11 @@ def test_delta_prefetches_only_changed_asset_scenes(tmp_path) -> None:
         repository=tmp_path,
         wall_clock=lambda: wall,
     )
-    before = TickerResponse.from_payload(payload())
+    before_payload = payload()
+    before_payload["settings"]["my_teams"] = ["nba:NY"]
+    before = TickerResponse.from_payload(before_payload)
     updated_payload = payload()
+    updated_payload["settings"]["my_teams"] = ["nba:NY"]
     updated_payload["content"]["sports"][0]["data"]["status"] = "Q2 08:14"
     updated = TickerResponse.from_payload(updated_payload)
     delta = display_delta(before, updated)
@@ -343,15 +346,19 @@ def test_delta_prefetches_only_changed_asset_scenes(tmp_path) -> None:
         application.step()
 
         assert len(delta.changed) == 1
+        assert not delta.settings_changed
         assert assets.payloads == [before, (delta.changed[0].data,)]
 
         mode_payload = payload()
+        mode_payload["settings"]["my_teams"] = ["nba:NY"]
         mode_payload["content"]["sports"][0]["data"]["status"] = "Q2 08:14"
         mode_payload["settings"]["mode"] = "clock"
         mode_response = TickerResponse.from_payload(mode_payload)
-        application._events.put(PollSucceeded(display_delta(updated, mode_response)))
+        mode_delta = display_delta(updated, mode_response)
+        application._events.put(PollSucceeded(mode_delta))
         application.step()
 
+        assert mode_delta.settings_changed
         assert assets.payloads[-1].payload_key == mode_response.payload_key
     finally:
         application.close()
