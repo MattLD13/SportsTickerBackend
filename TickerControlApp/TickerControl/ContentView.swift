@@ -168,7 +168,7 @@ final class BLEProvisioningCoordinator: NSObject, CBCentralManagerDelegate, CBPe
     }
 
     private func makeChunks(challenge: Data) throws -> [Data] {
-        let key = HKDF<SHA256>.deriveKey(input: SymmetricKey(data: Data(setupCode.utf8)), salt: challenge, info: protocolInfo, outputByteCount: 32)
+        let key = HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: Data(setupCode.utf8)), salt: challenge, info: protocolInfo, outputByteCount: 32)
         let nonce = AES.GCM.Nonce()
         let plaintext = try JSONSerialization.data(withJSONObject: ["ssid": homeSSID, "password": homePassword])
         let sealed = try AES.GCM.seal(plaintext, using: key, nonce: nonce, authenticating: challenge)
