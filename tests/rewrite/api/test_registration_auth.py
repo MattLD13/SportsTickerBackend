@@ -75,6 +75,28 @@ def test_empty_repository_registers_pairing_snapshot_for_pi_bootstrap(tmp_path) 
         app.extensions["sports_ticker.backend_application"].close()
 
 
+def test_device_registration_renews_expired_pairing_code(tmp_path) -> None:
+    """Give an offline ticker a fresh code after its previous code expires."""
+
+    now = [1_000.0]
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None, clock=lambda: now[0])
+    try:
+        client = app.test_client()
+        first = _register(client, "pi-expired")
+        now[0] = 2_000.0
+        second_response = client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "pi-expired", "name": "pi-expired", "metadata": {}},
+        )
+
+        assert second_response.status_code == 200
+        second = second_response.get_json()
+        assert second["pairing_code"]
+        assert second["pairing_code"] != first["pairing_code"]
+    finally:
+        app.extensions["sports_ticker.backend_application"].close()
+
+
 def test_controller_routes_return_only_the_owner_and_protect_mutations(tmp_path) -> None:
     """Require controller authorization while leaving device routes unauthenticated."""
 

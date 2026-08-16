@@ -1432,6 +1432,14 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         }
     }
     
+    private func pairingServerMessage(_ data: Data?) -> String? {
+        guard let data,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = root["error"] as? [String: Any],
+              let message = error["message"] as? String else { return nil }
+        return message
+    }
+
     func pairTicker(code: String, name: String, shareGroup: Bool = true) {
             let base = getBaseURL()
             guard let url = URL(string: "\(base)/api/v2/pairings/exchange") else {
@@ -1466,7 +1474,8 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 
                 // Check HTTP Status Code
                 if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 201 {
-                     DispatchQueue.main.async { self.pairError = "Server Error (Status: \(httpResponse.statusCode))" }
+                     let detail = self.pairingServerMessage(data).map { ": \($0)" } ?? ""
+                     DispatchQueue.main.async { self.pairError = "Server Error (Status: \(httpResponse.statusCode))\(detail)" }
                      return
                 }
                 

@@ -132,7 +132,8 @@ class BackendApplication:
         pairing_code = None
         if pairing is None or not pairing.paired:
             pairing_code = pairing.pairing_code if pairing is not None else None
-            if not pairing_code:
+            expires_at = pairing.pairing_code_expires_at if pairing is not None else None
+            if not pairing_code or (expires_at is not None and self._clock() >= float(expires_at)):
                 pairing_code = self.issue_pairing_code(identifier)
                 current = self.repository.get_ticker(identifier)
                 if current is None:
