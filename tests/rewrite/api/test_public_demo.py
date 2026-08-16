@@ -19,6 +19,7 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
             assert response.status_code == 200
             assert b"data-ticker-demo" in response.data
             assert b"private-pi" not in response.data
+        assert b'href="#fleet"' in client.get("/").data
 
         for asset in ("style.css", "led.js", "ticker-demo.js"):
             response = client.get(f"/dashboard/static/{asset}")
