@@ -45,7 +45,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install test dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt pytest
       - name: Verify approved public demo assets
         run: python tools/verify_public_demo.py
       - name: Verify public demo route
