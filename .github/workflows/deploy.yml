@@ -23,7 +23,6 @@ jobs:
           filters: |
             backend:
               - 'sports_ticker/**'
-              - 'ticker_core/**'
               - 'requirements.txt'
               - '*.json'
               - 'ticker.service'
@@ -71,7 +70,7 @@ jobs:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_KEY }}
-          source:   "sports_ticker/**,ticker_core/**,requirements.txt,ticker.service,VERSION"
+          source:   "sports_ticker/**,requirements.txt,ticker.service,VERSION"
           target:   "/home/${{ secrets.SSH_USER }}/"
 
       - name: Write .env and restart backend

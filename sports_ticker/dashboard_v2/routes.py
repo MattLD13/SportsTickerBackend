@@ -378,6 +378,9 @@ def _preview_catalog():
 
 
 def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> Image.Image:
+    if mode == "airports":
+        return _render_ewr_airport_demo()
+
     from ticker_core.context import RenderContext
     from ticker_core.rendering import ContentScene
 
@@ -401,6 +404,35 @@ def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> I
         strip.alpha_composite(card, (x, 0))
         x += card.width
     return strip.convert("RGB")
+
+
+def _render_ewr_airport_demo() -> Image.Image:
+    """Render the complete fixed EWR board without renderer version coupling."""
+
+    from ticker_core.rendering.pixels import draw_tiny_text
+
+    image = Image.new("RGB", (384, 32), "black")
+    draw = ImageDraw.Draw(image)
+    blue = (80, 180, 255)
+    green = (80, 255, 80)
+    red = (255, 60, 60)
+    white = (220, 220, 230)
+    grey = (120, 120, 130)
+    draw_tiny_text(draw, 3, 0, "EWR NEWARK", blue)
+    draw_tiny_text(draw, 68, 0, "INBOUND", green)
+    draw_tiny_text(draw, 196, 0, "OUTBOUND", red)
+    draw_tiny_text(draw, 281, 0, "76F PARTLY CLOUDY", grey)
+    draw.line((0, 6, 383, 6), fill=(30, 60, 100))
+    draw.line((190, 8, 190, 31), fill=(30, 60, 100))
+    for y, flight, airport, city in ((9, "UA188", "LAX", "LOS ANGELES"), (17, "DL402", "ATL", "ATLANTA")):
+        draw_tiny_text(draw, 3, y, flight, green)
+        draw_tiny_text(draw, 33, y, airport, grey)
+        draw_tiny_text(draw, 53, y, city, white)
+    for y, flight, airport, city in ((9, "UA205", "SFO", "SAN FRANCISCO"), (17, "B6117", "MCO", "ORLANDO")):
+        draw_tiny_text(draw, 196, y, flight, red)
+        draw_tiny_text(draw, 226, y, airport, grey)
+        draw_tiny_text(draw, 246, y, city, white)
+    return image
 
 
 def _duration(value: object) -> str:
