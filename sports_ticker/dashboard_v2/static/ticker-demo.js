@@ -51,12 +51,12 @@
       vinylRot:     0,               // degrees
       scrollPos:    0,               // pixels
       lastFrame:    performance.now(),
-      progress:     0,               // seconds
-      duration:     240,             // seconds
+      progress:     112,             // seconds
+      duration:     303,             // seconds
       fetchTs:      Date.now() / 1000,
-      isPlaying:    false,
-      title:        'LOADING...',
-      artist:       '',
+      isPlaying:    true,
+      title:        'MR. BLUE SKY',
+      artist:       'ELECTRIC LIGHT ORCHESTRA',
       vizH:         Array(16).fill(2),
       vizPhase:     Array.from({ length: 16 }, () => Math.random() * 10),
     };
@@ -324,6 +324,7 @@
   function mount(root) {
     const vp       = root.querySelector('[data-demo-vp]');
     const controls = root.querySelector('[data-demo-controls]');
+    const sampleMusic = root.getAttribute('data-demo-music') === 'sample';
     if (!vp) return;
 
     const base = resolveBase(root);
@@ -441,7 +442,7 @@
     function buildMusic() {
       const canvas = newCanvas();
       const ms = initMusicState();
-      pollFn  = () => fetchSpotify(base, ms);
+      if (!sampleMusic) pollFn = () => fetchSpotify(base, ms);
       frameFn = () => drawMusicFrame(canvas, ms);
       drawMusicFrame(canvas, ms);
       if (visible) { startPoll(); startLoop(); }

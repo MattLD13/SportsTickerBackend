@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='style.css') }}">
 </head>
 <body class="demo-page">
-<div class="demo" data-ticker-demo data-autorotate="true" data-scroll-rate="{{ scroll_px_s }}" data-modes='{{ demo_modes | tojson }}'>
+<div class="demo" data-ticker-demo data-demo-music="sample" data-autorotate="true" data-scroll-rate="{{ scroll_px_s }}" data-modes='{{ demo_modes | tojson }}'>
   <div class="demo-page-head"><p class="lede">The board, live at <span data-led data-led-inline data-led-scale="2" data-led-pad="0" data-led-color="amber">{{ panel_w }}X{{ panel_h }}</span></p></div>
   <div class="panel-stage"><div class="panel"><div class="demo-vp" data-demo-vp><div class="demo-status">CONNECTING TO TICKER...</div></div></div></div>
   <div class="demo-controls" data-demo-controls></div>

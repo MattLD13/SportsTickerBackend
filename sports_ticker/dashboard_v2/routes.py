@@ -84,16 +84,12 @@ def demo():
 
 @dashboard_v2.get("/api/preview/strip.png")
 def preview_strip():
-    """Render one no-hardware panel preview from current V2 data."""
+    """Render one stable public panel preview without ticker state."""
 
     mode = str(request.args.get("mode") or "sports").strip().lower()
     if mode not in {item["id"] for item in _demo_modes()}:
         abort(404)
-    application = current_app.extensions["sports_ticker.backend_application"]
-    tickers = application.list_tickers()
-    if not tickers:
-        abort(404)
-    image = _render_preview(_display_content(application, tickers[0].ticker_id, mode=mode), mode)
+    image = _render_preview(_demo_content(mode), mode)
     output = BytesIO()
     image.save(output, format="PNG")
     output.seek(0)
@@ -189,6 +185,95 @@ def _demo_modes() -> list[dict[str, str]]:
     ]
 
 
+def _demo_content(mode: str) -> dict[str, list[dict[str, object]]]:
+    """Return fixed public samples for every data-driven demo mode."""
+
+    samples = {
+        "sports": {
+            "sports": [{
+                "data": {
+                    "type": "scoreboard",
+                    "sport": "nhl",
+                    "away_abbr": "NYR",
+                    "away_score": 3,
+                    "away_color": "#0038a8",
+                    "away_logo": "demo:nyr",
+                    "home_abbr": "NJD",
+                    "home_score": 2,
+                    "home_color": "#ce1126",
+                    "home_logo": "demo:njd",
+                    "state": "in",
+                    "status": "3RD 12:41",
+                    "situation": {"possession": "NYR"},
+                },
+            }],
+        },
+        "weather": {
+            "weather": [{
+                "data": {
+                    "type": "weather",
+                    "sport": "weather",
+                    "home_abbr": "76",
+                    "away_abbr": "NEW YORK CITY",
+                    "status": "PARTLY CLOUDY",
+                    "situation": {
+                        "icon": "partly_cloudy",
+                        "is_day": 1,
+                        "cloud_cover": 42,
+                        "stats": {"aqi": "38", "uv": "6", "feels": "77", "wind": "9", "humidity": "58"},
+                        "forecast": [
+                            {"day": "TODAY", "icon": "partly_cloudy", "high": 79, "low": 66},
+                            {"day": "TUE", "icon": "sun", "high": 82, "low": 68},
+                            {"day": "WED", "icon": "rain", "high": 75, "low": 65, "pop": 65, "wind": 12},
+                            {"day": "THU", "icon": "cloud", "high": 77, "low": 64},
+                            {"day": "FRI", "icon": "sun", "high": 81, "low": 67},
+                        ],
+                    },
+                },
+            }],
+        },
+        "flights": {
+            "flights": [{
+                "data": {
+                    "type": "flight_visitor",
+                    "sport": "flight",
+                    "id": "flight_blank",
+                    "guest_name": "NO FLIGHT SELECTED",
+                    "route": "TRACKER > SETUP",
+                    "origin_city": "TRACKER",
+                    "dest_city": "SETUP",
+                    "alt": 0,
+                    "dist": 0,
+                    "eta_str": "--",
+                    "speed": 0,
+                    "progress": 0,
+                    "status": "ADD FLIGHT",
+                    "is_delayed": False,
+                    "is_live": False,
+                },
+            }],
+        },
+        "airports": {
+            "airports": [{
+                "data": {
+                    "type": "flight_airport_hud",
+                    "sport": "airport",
+                    "weather": {"iata": "EWR", "city": "NEWARK", "away_abbr": "76F", "status": "PARTLY CLOUDY"},
+                    "arrivals": [
+                        {"flight_number": "UA 188", "airport_code": "LAX", "airport_city": "LOS ANGELES"},
+                        {"flight_number": "DL 402", "airport_code": "ATL", "airport_city": "ATLANTA"},
+                    ],
+                    "departures": [
+                        {"flight_number": "UA 205", "airport_code": "SFO", "airport_city": "SAN FRANCISCO"},
+                        {"flight_number": "B6 117", "airport_code": "MCO", "airport_city": "ORLANDO"},
+                    ],
+                },
+            }],
+        },
+    }
+    return samples.get(mode, {})
+
+
 def _display_content(application, ticker_id: str, *, mode: str | None = None) -> dict[str, list[dict[str, object]]]:
     data = application.project_data(ticker_id)
     settings = dict(data["settings"])
@@ -198,16 +283,40 @@ def _display_content(application, ticker_id: str, *, mode: str | None = None) ->
     return select_display_content(data["content"], settings)
 
 
-class _PreviewAssets:
+class _DemoAssets:
+    """Supply the public sample team marks from memory only."""
+
     def image(self, url: str, processor: str, size: tuple[int, int]):
-        del url, processor, size
+        del processor
+        return _demo_logo(url, size)
+
+
+@lru_cache(maxsize=4)
+def _demo_logo(url: str, size: tuple[int, int]) -> Image.Image | None:
+    """Draw a compact team mark for the fixed sports sample."""
+
+    team = {
+        "demo:nyr": ((0, 56, 168), (255, 255, 255), "NYR"),
+        "demo:njd": ((206, 17, 38), (255, 255, 255), "NJD"),
+    }.get(url)
+    if team is None:
         return None
+    width, height = size
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    fill, text, label = team
+    draw.rounded_rectangle((0, 0, width - 1, height - 1), radius=max(2, width // 5), fill=fill, outline=text)
+    box = draw.textbbox((0, 0), label)
+    x = (width - (box[2] - box[0])) // 2
+    y = (height - (box[3] - box[1])) // 2 - 1
+    draw.text((x, y), label, fill=text)
+    return image
 
 
 @lru_cache(maxsize=1)
 def _preview_catalog():
     from ticker_core.bootstrap import create_default_content_catalog
-    return create_default_content_catalog(_PreviewAssets())
+    return create_default_content_catalog(_DemoAssets())
 
 
 def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> Image.Image:
