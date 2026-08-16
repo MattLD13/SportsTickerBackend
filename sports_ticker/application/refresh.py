@@ -13,6 +13,7 @@ from sports_ticker.providers import (
     normalize_provider_result,
     normalize_settings,
 )
+from sports_ticker.providers.sports_display import sports_content_sort_key
 
 from .state_store import SnapshotStore
 
@@ -101,11 +102,21 @@ class RefreshService:
             (result.observed_at for result in normalized if result.observed_at is not None),
             default=datetime.now(timezone.utc),
         )
+        content = tuple(item for result in normalized for item in result.content)
+        scoreboard = iter(
+            sorted(
+                (item for item in content if item.family == "sports"),
+                key=sports_content_sort_key,
+            )
+        )
+        ordered_content = tuple(
+            next(scoreboard) if item.family == "sports" else item for item in content
+        )
         snapshot = TickerSnapshot(
             ticker_id=str(ticker_id),
             revision=0,
             observed_at=observed_at,
-            content=tuple(item for result in normalized for item in result.content),
+            content=ordered_content,
             alerts=tuple(item for result in normalized for item in result.alerts),
             news=tuple(item for result in normalized for item in result.news),
             effective_settings=effective_settings,

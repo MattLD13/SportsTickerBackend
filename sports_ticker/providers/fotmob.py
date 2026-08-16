@@ -52,7 +52,7 @@ class _DetailCacheEntry:
     """Store one detail payload with its terminal-state certainty."""
 
     fetched_at: float
-    is_final: bool
+    state: str
     payload: Mapping[str, Any]
 
 
@@ -134,7 +134,7 @@ class FotMobSoccerProvider:
     def _fetch_details(
         self, records: Sequence[tuple[str, Mapping[str, Any]]]
     ) -> dict[str, Mapping[str, Any]]:
-        """Fetch live and final match details concurrently."""
+        """Fetch match details concurrently for colors and live facts."""
 
         targets = [match for _, match in records if _needs_details(match)]
         if not targets:
@@ -158,15 +158,15 @@ class FotMobSoccerProvider:
             return None
         now = monotonic()
         state = _match_state(match)
-        final = state == "post"
         fallback: Mapping[str, Any] | None = None
         with self._details_lock:
             cached = self._details.get(match_id)
             if cached is not None:
                 fallback = cached.payload
-                if cached.is_final and now - cached.fetched_at < self._cache_seconds:
+                age = now - cached.fetched_at
+                if state in {"pre", "post"} and cached.state == state and age < self._cache_seconds:
                     return cached.payload
-                if not final and now - cached.fetched_at < _LIVE_DETAIL_SECONDS:
+                if state in {"in", "half"} and cached.state in {"in", "half"} and age < _LIVE_DETAIL_SECONDS:
                     return cached.payload
         try:
             payload = self._client.get_json(_DETAIL_URL.format(match_id=match_id), timeout=self._timeout)
@@ -176,7 +176,7 @@ class FotMobSoccerProvider:
             return fallback
         detail = dict(payload)
         with self._details_lock:
-            self._details[match_id] = _DetailCacheEntry(now, final, detail)
+            self._details[match_id] = _DetailCacheEntry(now, state, detail)
         return detail
 
     def _stale_result(self, settings: DisplaySettings, error: str) -> ProviderResult:
@@ -331,9 +331,10 @@ def _match_status(match: Mapping[str, Any], state: str, timezone_name: str) -> s
 
 
 def _needs_details(match: Mapping[str, Any]) -> bool:
-    state = _match_state(match)
-    reason = str(_mapping(_mapping(match.get("status")).get("reason")).get("short") or "").upper()
-    return state in {"in", "half", "post"} or "PEN" in reason
+    """Return true because FotMob details own colors for every match state."""
+
+    del match
+    return True
 
 
 def _situation(detail: Mapping[str, Any] | None) -> dict[str, object]:

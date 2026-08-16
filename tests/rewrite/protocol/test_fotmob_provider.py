@@ -1,6 +1,12 @@
 """Verify canonical FotMob soccer display facts."""
 
-from sports_ticker.providers.fotmob import FotMobSoccerProvider, _match_status, _needs_details, _situation
+from sports_ticker.providers.fotmob import (
+    FotMobSoccerProvider,
+    _content_item,
+    _match_status,
+    _needs_details,
+    _situation,
+)
 
 
 def test_fotmob_live_clock_has_one_apostrophe_without_hidden_spacing() -> None:
@@ -46,6 +52,22 @@ def test_fotmob_keeps_final_match_details_until_the_display_window_closes() -> N
     assert _needs_details(match)
 
 
+def test_fotmob_fetches_pregame_details_for_team_colors() -> None:
+    match = {
+        "id": "5836754",
+        "status": {"started": False, "utcTime": "2026-08-15T23:30:00Z"},
+        "home": {"id": "1", "longName": "Atlanta United", "score": 0},
+        "away": {"id": "2", "longName": "Charlotte FC", "score": 0},
+    }
+    detail = {"general": {"teamColors": {"darkMode": {"home": "#80000A", "away": "#00AEEF"}}}}
+
+    item = _content_item("soccer_mls", match, detail, timezone_name="UTC")
+
+    assert _needs_details(match)
+    assert item.data["home_color"] == "#80000A"
+    assert item.data["away_color"] == "#00AEEF"
+
+
 def test_fotmob_replaces_the_last_live_details_with_one_final_snapshot() -> None:
     class Client:
         calls = 0
@@ -63,4 +85,24 @@ def test_fotmob_replaces_the_last_live_details_with_one_final_snapshot() -> None
     assert provider._details_for(live) == {"revision": 1}
     assert provider._details_for(final) == {"revision": 2}
     assert provider._details_for(final) == {"revision": 2}
+    assert client.calls == 2
+
+
+def test_fotmob_reuses_pregame_details_until_the_match_starts() -> None:
+    class Client:
+        calls = 0
+
+        def get_json(self, url: str, *, timeout: float) -> dict:
+            del url, timeout
+            self.calls += 1
+            return {"revision": self.calls}
+
+    client = Client()
+    provider = FotMobSoccerProvider({"soccer_mls": 130}, client=client)
+    pregame = {"id": "5836754", "status": {"started": False}}
+    live = {"id": "5836754", "status": {"started": True}}
+
+    assert provider._details_for(pregame) == {"revision": 1}
+    assert provider._details_for(pregame) == {"revision": 1}
+    assert provider._details_for(live) == {"revision": 2}
     assert client.calls == 2

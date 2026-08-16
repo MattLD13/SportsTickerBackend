@@ -98,6 +98,22 @@ class SportsDisplayProjector:
         return situation
 
 
+def sports_content_sort_key(item: ContentItem) -> tuple[int, str, str, str, str]:
+    """Order scoreboard items consistently after ESPN and FotMob content merge."""
+
+    data = item.data
+    state = str(data.get("state") or "pre").lower()
+    status = str(data.get("status") or "").upper()
+    priority = 3 if state == "post" or "FINAL" in status else 2
+    return (
+        priority,
+        str(data.get("startTimeUTC") or "9999"),
+        str(data.get("sport") or ""),
+        str(data.get("home_abbr") or ""),
+        str(data.get("away_abbr") or ""),
+    )
+
+
 def _status(
     league: str,
     state: str,
@@ -487,4 +503,5 @@ __all__ = [
     "display_situation",
     "normalize_soccer_clock",
     "soccer_event",
+    "sports_content_sort_key",
 ]

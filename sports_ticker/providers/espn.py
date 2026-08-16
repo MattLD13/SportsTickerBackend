@@ -17,7 +17,13 @@ from .contracts import ProviderHealth, ProviderResult
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .logo_overrides import corrected_logo
 from .score_alerts import ScoreAlertTracker, alerts_for_settings
-from .sports_display import SportsDisplayProjector, assign_active_team, display_situation, soccer_event
+from .sports_display import (
+    SportsDisplayProjector,
+    assign_active_team,
+    display_situation,
+    soccer_event,
+    sports_content_sort_key,
+)
 from .stale_cache import SettingsResultCache
 
 
@@ -139,7 +145,7 @@ class EspnScoreboardProvider:
             error="; ".join(errors) if errors else None,
         )
         result = ProviderResult(
-            content=tuple(sorted(items, key=_content_sort_key)),
+            content=tuple(sorted(items, key=sports_content_sort_key)),
             alerts=alerts,
             observed_at=datetime.now(timezone.utc),
             health=health,
@@ -315,22 +321,6 @@ def _event_time(value: object) -> datetime | None:
     except ValueError:
         return None
     return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
-
-
-def _content_sort_key(item: ContentItem) -> tuple[int, str, str, str, str]:
-    """Keep the original scoreboard order after all leagues merge."""
-
-    data = item.data
-    state = _text(data.get("state"), "pre").lower()
-    status = _text(data.get("status")).upper()
-    priority = 3 if state == "post" or "FINAL" in status else 2
-    return (
-        priority,
-        _text(data.get("startTimeUTC"), "9999"),
-        _text(data.get("sport")),
-        _text(data.get("home_abbr")),
-        _text(data.get("away_abbr")),
-    )
 
 
 def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:
