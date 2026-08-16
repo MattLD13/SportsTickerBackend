@@ -22,8 +22,8 @@ jobs:
         with:
           filters: |
             backend:
-            - 'sports_ticker/**'
-            - 'ticker_core/**'
+              - 'sports_ticker/**'
+              - 'ticker_core/**'
               - 'requirements.txt'
               - '*.json'
               - 'ticker.service'
