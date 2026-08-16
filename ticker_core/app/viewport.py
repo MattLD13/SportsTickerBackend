@@ -235,17 +235,16 @@ class CardViewport:
             self._start_next()
             self._maybe_commit()
 
-    def frame(self, offset: float, width: int = 384, height: int = 32) -> Image.Image:
-        """Build one subpixel viewport from only cards visible at this offset."""
+    def frame(self, offset: int, width: int = 384, height: int = 32) -> Image.Image:
+        """Build one viewport from only cards visible at this offset."""
         with self._lock:
             layout = self._layout
             surfaces = dict(self._surfaces)
             order = self._order
+        image = Image.new("RGB", (width, height), "black")
         if layout is None or not order:
-            return Image.new("RGB", (width, height), "black")
-        position, phase = _scroll_position(offset, layout.width)
-        render_width = width if phase == 0.0 else width + 1
-        image = Image.new("RGB", (render_width, height), "black")
+            return image
+        position = offset % layout.width
         start = 0
         index = 0
         for index, segment in enumerate(layout.segments):
@@ -254,7 +253,7 @@ class CardViewport:
             start += segment.width
         x = start - position
         draw = ImageDraw.Draw(image)
-        while x < render_width:
+        while x < width:
             segment = layout.segments[index % len(layout.segments)]
             surface = surfaces.get(segment.item_id)
             draw.line((x, 0, x, height - 1), fill=(45, 45, 45))
@@ -262,11 +261,7 @@ class CardViewport:
                 image.paste(surface.image, (x + 1, 0), surface.image)
             x += segment.width
             index += 1
-        if phase == 0.0:
-            return image
-        current = image.crop((0, 0, width, height))
-        following = image.crop((1, 0, width + 1, height))
-        return Image.blend(current, following, phase)
+        return image
 
     def close(self) -> None:
         """Stop the owned card renderer."""
@@ -471,14 +466,3 @@ def _plain(value: Any) -> Any:
     if isinstance(value, list):
         return [_plain(item) for item in value]
     return value
-
-
-def _scroll_position(offset: float, width: int) -> tuple[int, float]:
-    """Split one continuous strip position into an LED column and blend phase."""
-
-    position = float(offset) % width
-    nearest = round(position)
-    if abs(position - nearest) < 1e-9:
-        return int(nearest) % width, 0.0
-    column = int(position)
-    return column, position - column

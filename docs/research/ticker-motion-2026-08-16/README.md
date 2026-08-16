@@ -23,7 +23,7 @@ The experiment found no candidate that passed both the logical contract and the 
 
 ## Exact speed contract
 
-The iOS scale owns these persisted intervals. The runtime owns a 30 ms scroll cadence. The expected distance per scroll frame is the cadence divided by the interval.
+The experiment recorded these proposed persisted intervals. The active iOS mapping uses the direct `DeviceRow` formula `0.11 - (speedInt * 0.01)`. No `ScrollSpeedScale.swift` source remains active. The runtime uses its original payload interval and cadence.
 
 | Level | Interval seconds per pixel | Expected pixels per 30 ms frame |
 | ---: | ---: | ---: |
@@ -42,7 +42,7 @@ Level 8 remains the reference setting because it advances exactly one source col
 
 ## Candidate contracts
 
-Candidates 1 through 4 are reconstructed runnable equivalents in the research tool. Their exact original uncommitted runner was overwritten. Candidate 1 is associated with release `42d700b`. Candidate 2 has an exact rejected diff in [`source/rejected-spatial-dither.patch`](source/rejected-spatial-dither.patch).
+Candidates 1 through 4 are reconstructed runnable equivalents in the research tool. Their exact original uncommitted runner was overwritten. Candidate 1 entered release `42d700b` and was reverted to the `ce1af86` baseline. Candidate 2 has an exact rejected diff in [`source/rejected-spatial-dither.patch`](source/rejected-spatial-dither.patch).
 
 | Candidate | Reconstructed or recorded contract | Reported result |
 | ---: | --- | --- |
@@ -53,7 +53,7 @@ Candidates 1 through 4 are reconstructed runnable equivalents in the research to
 | 5 | Recorded as `uniform-native-pixel`. Advance one source column at each requested interval. Use no dwell, blend, or dither. | Hardware capture showed crisp source behavior, but timing proof failed under the unsynchronized capture. Level 10 contained a long apparent hold. |
 | 6 | Recorded as `aligned-dwell`. Advance one source column every 30 ms, then dwell at each real card boundary to realize the requested card cycle. Use no blend or dither. | Hardware capture showed reduced spray, but low levels froze or moved far below contract speed. |
 
-The candidate 1 through 4 labels preserve the reported feedback and runnable-equivalent contracts only. They do not claim that the overwritten runner remains reproducible.
+The candidate 1 through 4 labels preserve the reported feedback and runnable-equivalent contracts only. Candidate 1 is no longer active after the `42d700b` restoration. No candidate remains active in production. They do not claim that the overwritten runner remains reproducible.
 
 ## Trial order and schedule
 
@@ -93,7 +93,7 @@ The camera reports also contain exposure variation, panel drift, phase aliasing,
 
 Candidate 5 did not prove the exact slow-speed contract. Candidate 6 preserved crisp source pixels but introduced unacceptable low-speed holds. Candidates 1 through 4 remain reconstructed research labels rather than repeatable results.
 
-No motion candidate won. No candidate was deployed to the production release. The production state remains unchanged by this document.
+No motion candidate won. Candidate 1 entered `42d700b` and was then reverted. No candidate remains active in the production release. The production state remains unchanged by this document.
 
 ## Ownership, former path, and proof
 
@@ -102,7 +102,7 @@ The ownership boundaries are:
 - `TickerRuntime` owns cadence, logical distance, and strip-offset continuity.
 - `CardViewport` owns card composition, source-column selection, and panel pixels.
 - `FrameBuilder` owns visual-key identity and frame requests.
-- `ScrollSpeedScale` owns the iOS persistence table.
+- `DeviceRow` owns the iOS persistence mapping through its direct speed formula.
 - The trial runner and camera evaluator own research measurements only. They do not own production policy or service restoration.
 
 The former path under test used a full-frame adjacent-image blend for fractional viewport positions. The experimental replacement attempted source-column spatial coverage and added `scroll_step` to the frame contract. The replacement remains unaccepted because low-speed brightness and temporal gates fail.

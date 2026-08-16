@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import datetime
 import hashlib
 import json
-from math import nextafter
 from types import MappingProxyType
 from typing import Any, TypeVar
 
@@ -140,12 +139,12 @@ def classify_content(
     return ContentClassification(sports, ())
 
 
-def remap_strip_offset(previous: StripLayout, offset: float, current: StripLayout) -> float:
+def remap_strip_offset(previous: StripLayout, offset: int, current: StripLayout) -> int:
     """Keep the visible item stable when a strip changes."""
-    old_offset = max(0.0, min(float(offset), nextafter(float(previous.width), 0.0)))
+    old_offset = max(0, min(offset, previous.width - 1))
     position = 0
     item_id = ""
-    item_delta = 0.0
+    item_delta = 0
     for segment in previous.segments:
         if old_offset < position + segment.width:
             item_id = segment.item_id
@@ -155,11 +154,10 @@ def remap_strip_offset(previous: StripLayout, offset: float, current: StripLayou
     new_position = 0
     for segment in current.segments:
         if segment.item_id == item_id:
-            segment_end = nextafter(float(new_position + segment.width), float(new_position))
-            return min(new_position + item_delta, segment_end)
+            return min(new_position + item_delta, new_position + segment.width - 1)
         new_position += segment.width
     progress = old_offset / previous.width
-    return min(progress * current.width, nextafter(float(current.width), 0.0))
+    return min(int(progress * current.width), current.width - 1)
 
 
 @dataclass(slots=True)
@@ -201,7 +199,7 @@ class TickerRuntime:
         self._update_started_at = 0.0
         self._strip: StripLayout | None = None
         self._strip_key: str | None = None
-        self._strip_offset = 0.0
+        self._strip_offset = 0
         self._static_index = 0
         self._static_until = 0.0
         self._static_started_at = 0.0
@@ -388,9 +386,9 @@ class TickerRuntime:
         self._strip = strip
         self._strip_key = self._snapshot.strip_key if strip else None
         if strip is None:
-            self._strip_offset = 0.0
+            self._strip_offset = 0
         elif previous is None:
-            self._strip_offset = 0.0
+            self._strip_offset = 0
         else:
             self._strip_offset = remap_strip_offset(previous, previous_offset, strip)
         self._static_index = 0
@@ -466,12 +464,9 @@ class TickerRuntime:
     def _scroll_decision(self, now: float, wall_time: datetime) -> FrameDecision | None:
         assert self._strip is not None
         offset = self._strip_offset
-        pixel_interval = self._snapshot.scroll_interval if self._snapshot else self.config.scroll_frame_interval
-        step = self.config.scroll_frame_interval / pixel_interval
-        next_offset = self._strip_offset + step
-        wrapped = next_offset >= self._strip.width
-        self._strip_offset = next_offset % self._strip.width
-        if wrapped:
+        self._strip_offset += 1
+        if self._strip_offset >= self._strip.width:
+            self._strip_offset = 0
             static = self._next_static(now)
             if static is not None:
                 return self._decision(
@@ -483,7 +478,7 @@ class TickerRuntime:
                 )
         return self._decision(
             FrameKind.SCROLL,
-            self.config.scroll_frame_interval,
+            self._snapshot.scroll_interval if self._snapshot else self.config.frame_interval,
             wall_time,
             scroll_offset=offset,
         )
@@ -545,7 +540,7 @@ class TickerRuntime:
     def _clear_strip(self) -> None:
         self._strip = None
         self._strip_key = None
-        self._strip_offset = 0.0
+        self._strip_offset = 0
         self._static_index = 0
         self._active_static = None
         self._static_until = 0.0
@@ -590,12 +585,12 @@ def _brightness(raw: object) -> float:
 
 
 def _interval(raw: object, fallback: float) -> float:
-    """Read one positive frame interval."""
+    """Read one nonnegative frame interval."""
     try:
         value = float(raw)
     except (TypeError, ValueError):
         return fallback
-    return value if value > 0 else fallback
+    return value if value >= 0 else fallback
 
 
 def _canonical_mode(value: object) -> str:

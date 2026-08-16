@@ -19,7 +19,7 @@ from ticker_core.runtime import Content, FrameDecision, FrameKind
 class ViewportSource(Protocol):
     """Provide a frame from the current card surfaces."""
 
-    def frame(self, offset: float, width: int = 384, height: int = 32) -> Image.Image:
+    def frame(self, offset: int, width: int = 384, height: int = 32) -> Image.Image:
         """Return one scrolling viewport frame."""
 
 
@@ -143,7 +143,7 @@ class FrameBuilder:
         return rendered.image
 
     def _scroll_frame(self, decision: FrameDecision) -> Image.Image:
-        offset = max(0.0, decision.scroll_offset or 0.0)
+        offset = max(0, decision.scroll_offset or 0)
         return self._viewport.frame(offset)
 
 

@@ -3250,7 +3250,8 @@ struct DeviceRow: View {
         _brightness = State(initialValue: Double(device.settings.brightness) / 100.0)
         
         let raw = device.settings.scroll_speed
-        _speedInt = State(initialValue: ScrollSpeedScale.level(forPixelInterval: raw))
+        let uiVal = round((0.11 - raw) * 100)
+        _speedInt = State(initialValue: max(1, min(10, uiVal)))
         
         let ds = device.settings.live_delay_seconds ?? 45
         _delaySecondsInt = State(initialValue: Double(ds))
@@ -3294,7 +3295,7 @@ struct DeviceRow: View {
                 }
                 Slider(value: $speedInt, in: 1...10, step: 1, onEditingChanged: { editing in
                     if !editing {
-                        let newFloat = ScrollSpeedScale.pixelInterval(for: speedInt)
+                        let newFloat = 0.11 - (speedInt * 0.01)
                         vm.updateDeviceSettings(id: device.id, speed: newFloat)
                     }
                 }).tint(.blue).onChange(of: speedInt) { _ in haptic.impactOccurred() }

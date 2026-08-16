@@ -51,25 +51,6 @@ def test_viewport_renders_only_changed_card() -> None:
         viewport.close()
 
 
-def test_viewport_blends_fractional_led_positions() -> None:
-    """Use adjacent LED columns to show motion between whole-pixel positions."""
-
-    catalog = Catalog()
-    viewport = CardViewport(catalog)
-    context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
-    try:
-        viewport.update((Content("game", "scoreboard", "nfl", {}),), context, "sports")
-        _drain(viewport, catalog, 1)
-
-        current = viewport.frame(0.0)
-        following = viewport.frame(1.0)
-        fractional = viewport.frame(0.5)
-
-        assert fractional.tobytes() == Image.blend(current, following, 0.5).tobytes()
-    finally:
-        viewport.close()
-
-
 def test_viewport_keeps_cold_start_unpublished_until_a_surface_is_ready() -> None:
     catalog = Catalog()
     viewport = CardViewport(catalog)
