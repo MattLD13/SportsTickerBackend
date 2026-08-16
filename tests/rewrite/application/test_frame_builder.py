@@ -53,7 +53,7 @@ class Viewport:
 def keyed_catalog() -> ContentRendererCatalog:
     catalog = ContentRendererCatalog()
     renderer = Catalog()
-    for family in ("scoreboard", "music", "weather", "racing", "golf", "clock"):
+    for family in ("scoreboard", "music", "weather", "racing", "golf", "clock", "empty"):
         catalog.register(family, renderer)
     return catalog
 
@@ -149,3 +149,21 @@ def test_visual_key_invalidates_empty_scroll_overlays_output_and_assets() -> Non
     )
     static = decision(FrameKind.STATIC, content=Content("game", "scoreboard", "nfl", {"type": "scoreboard", "sport": "nfl"}))
     assert builder.visual_key(static, asset_revision=1) != builder.visual_key(static, asset_revision=2)
+
+
+def test_static_no_games_content_advances_the_minute_progress_bar() -> None:
+    builder = FrameBuilder(keyed_catalog(), Utility(), Alerts(), News(), Viewport())
+    base = datetime(2026, 8, 12, tzinfo=timezone.utc)
+    content = Content("no-games", "empty", "sports", {"no_games": True})
+    first = FrameDecision(FrameKind.STATIC, 0.03, 100, False, base, "sports", content=content)
+    second = FrameDecision(
+        FrameKind.STATIC,
+        0.03,
+        100,
+        False,
+        base + timedelta(seconds=0.2),
+        "sports",
+        content=content,
+    )
+
+    assert builder.visual_key(first) != builder.visual_key(second)

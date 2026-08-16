@@ -97,6 +97,8 @@ def _stable_item(item: Mapping[str, Any]) -> str:
 def _family_phase(family: str, item: Mapping[str, Any], context: RenderContext, elapsed: float = 0.0) -> int | None:
     """Own cadence facts for renderers without local animation state."""
     timestamp = context.now.timestamp()
+    if family == "empty":
+        return int(timestamp * 384 / 60.0)
     if family in {"music", "weather", "racing"}:
         return int(timestamp * 30)
     if family == "golf" and str(item.get("sports_presentation", "")).lower() == "pinned":
