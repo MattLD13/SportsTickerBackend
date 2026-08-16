@@ -55,6 +55,7 @@ def create_application() -> TickerApplication:
             interface=details.interface,
         ),
         state_path=data_directory / "wifi_setup.json",
+        force_setup_path=data_directory / "force_wifi_setup.json",
         portal_cert_path=data_directory / "wifi_setup.crt",
         portal_key_path=data_directory / "wifi_setup.key",
     )

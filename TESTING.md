@@ -32,6 +32,14 @@ Run the destructive hotspot and portal check only on a controlled bench:
 python test.py --sink hardware --wifi-setup --portal --report C:\ticker\wifi-diagnostic.json
 ```
 
+Force the running ticker service into its real Wi-Fi setup mode without changing saved credentials:
+
+```bash
+python3 test.py --force-wifi-setup
+```
+
+Keep the command running while the app joins `SportsTicker_Setup` and submits the network. Press `Ctrl+C` after setup so the command removes its fifteen-minute test marker.
+
 The diagnostic flashes every panel color, checks the backend payload, probes internet access, scans NetworkManager, validates the setup portal, and records bounded JSON results. It requests no reboot unless `--reboot` is supplied.
 
 The harness checks sports filters, pin, unpin, strip replacement, and live delay without an iOS build.

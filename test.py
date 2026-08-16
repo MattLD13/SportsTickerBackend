@@ -34,6 +34,8 @@ COLORS = (
 def main() -> int:
     """Run requested diagnostics and return a shell-friendly status code."""
     args = parse_args()
+    if args.force_wifi_setup:
+        return run_forced_wifi_setup(args)
     failures: list[str] = []
     results: list[dict[str, object]] = []
     print_report_header(args)
@@ -77,11 +79,39 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-server", action="store_true")
     parser.add_argument("--skip-platform", action="store_true")
     parser.add_argument("--wifi-setup", action="store_true", help="Start the setup hotspot")
+    parser.add_argument(
+        "--force-wifi-setup",
+        action="store_true",
+        help="Ask the running ticker service to enter Wi-Fi setup without changing saved credentials",
+    )
     parser.add_argument("--portal", action="store_true", help="Keep the setup portal running")
     parser.add_argument("--portal-port", type=int, default=80)
     parser.add_argument("--reboot", action="store_true", help="Request a reboot after checks")
     parser.add_argument("--report", type=Path, help="Write a JSON manufacturing report to this path")
     return parser.parse_args()
+
+
+def run_forced_wifi_setup(args: argparse.Namespace) -> int:
+    """Request the running ticker service to enter its real Wi-Fi setup mode."""
+
+    data_directory = Path(os.environ.get("TICKER_DATA_DIR", "~/ticker")).expanduser()
+    marker = data_directory / "force_wifi_setup.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        json.dumps({"expires_at": time.time() + 900.0}, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    print("Forced Wi-Fi setup requested for the running ticker service.")
+    print("The ticker will start SportsTicker_Setup on its next Wi-Fi check.")
+    print("Press Ctrl+C after completing Wi-Fi setup to remove the test marker.")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nWi-Fi setup test stopped.")
+        return 0
+    finally:
+        marker.unlink(missing_ok=True)
 
 
 def print_report_header(args: argparse.Namespace) -> None:

@@ -183,6 +183,7 @@ class WiFiRecoveryService:
         max_setup_attempts: int = 5,
         setup_attempt_window_seconds: float = 60.0,
         state_path: Path | str | None = None,
+        force_setup_path: Path | str | None = None,
     ) -> None:
         self._commands = commands
         self._internet_probe = internet_probe
@@ -190,6 +191,7 @@ class WiFiRecoveryService:
         self._portal_runner = portal_runner
         self._background = background or _start_background
         self._state_path = Path(state_path) if state_path is not None else None
+        self._force_setup_path = Path(force_setup_path) if force_setup_path is not None else None
         self._portal_host = portal_host
         self._portal_port = portal_port
         self._portal_address = portal_address
@@ -247,16 +249,15 @@ class WiFiRecoveryService:
 
     def start_setup(self) -> WiFiSetupState:
         """Start the setup hotspot when the internet is unavailable."""
-        internet_available = self.is_internet_available()
+        forced = self._force_setup_requested()
+        internet_available = self.is_internet_available() and not forced
         self._last_internet_available = internet_available
         if internet_available:
             self._consecutive_failures = 0
         else:
             self._consecutive_failures += 1
-        if (
-            not internet_available
-            and not self._hotspot_active
-            and self._consecutive_failures >= self._setup_failure_threshold
+        if not internet_available and not self._hotspot_active and (
+            forced or self._consecutive_failures >= self._setup_failure_threshold
         ):
             self._hotspot_starter(self._hotspot)
             self._hotspot_active = True
@@ -269,6 +270,17 @@ class WiFiRecoveryService:
             self._setup_url,
             self._setup_code,
         )
+
+    def _force_setup_requested(self) -> bool:
+        """Return true while a short-lived test marker requests Wi-Fi setup."""
+
+        if self._force_setup_path is None:
+            return False
+        try:
+            value = json.loads(self._force_setup_path.read_text(encoding="utf-8"))
+            return time.time() < float(value.get("expires_at") or 0.0)
+        except (OSError, ValueError, TypeError, AttributeError):
+            return False
 
     def portal_app(self) -> Flask:
         """Return the setup portal without running a server."""

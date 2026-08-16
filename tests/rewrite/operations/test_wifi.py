@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import time
+import json
 
 from ticker_core.context import RenderContext
 from ticker_core.features.utility import UtilityRenderer
@@ -161,6 +162,26 @@ def test_local_setup_pin_persists_without_storing_wifi_password(tmp_path) -> Non
     )
     assert second.start_setup().setup_code == first.start_setup().setup_code
     assert "password" not in state_path.read_text(encoding="utf-8").lower()
+
+
+def test_force_setup_marker_starts_wifi_mode_without_network_change(tmp_path) -> None:
+    """Force setup mode from a short-lived marker while internet remains available."""
+
+    marker = tmp_path / "force_wifi_setup.json"
+    marker.write_text(json.dumps({"expires_at": time.time() + 60}), encoding="utf-8")
+    hotspots: list[HotspotDetails] = []
+    service = WiFiRecoveryService(
+        Commands(),
+        internet_probe=lambda: True,
+        hotspot_starter=hotspots.append,
+        force_setup_path=marker,
+    )
+
+    state = service.start_setup()
+
+    assert state.internet_available is False
+    assert state.hotspot_active is True
+    assert len(hotspots) == 1
 
 
 def test_local_setup_portal_requires_tls_context(tmp_path) -> None:
