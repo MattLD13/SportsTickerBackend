@@ -931,17 +931,25 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         configuration.joinOnce = true
         NEHotspotConfigurationManager.shared.apply(configuration) { error in
             DispatchQueue.main.async {
-                if let error {
+                if let error, !Self.isAlreadyAssociatedHotspot(error) {
                     self.isWifiSetupInProgress = false
+                    self.wifiSetupStatus = ""
                     self.wifiSetupError = "Could not join the ticker Wi-Fi: \(error.localizedDescription)"
                     return
                 }
+                self.wifiSetupError = nil
                 self.wifiSetupStatus = "Connected to the ticker. Sending home Wi-Fi..."
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     self.submitWiFiSetup(code: normalizedCode, homeSSID: normalizedSSID, homePassword: homePassword)
                 }
             }
         }
+    }
+
+    private static func isAlreadyAssociatedHotspot(_ error: Error) -> Bool {
+        let value = error as NSError
+        return value.domain == NEHotspotConfigurationErrorDomain
+            && value.code == NEHotspotConfigurationError.alreadyAssociated.rawValue
     }
 
     private func submitWiFiSetup(code: String, homeSSID: String, homePassword: String) {
