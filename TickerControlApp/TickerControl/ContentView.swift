@@ -928,7 +928,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         wifiSetupStatus = "Waiting for Wi-Fi permission..."
         isWifiSetupInProgress = true
         let hotspotPassword = "T\(normalizedCode)!"
-        let configuration = NEHotspotConfiguration(ssid: "SportsTicker_Setup", passphrase: hotspotPassword)
+        let configuration = NEHotspotConfiguration(ssid: "SportsTicker_Setup", passphrase: hotspotPassword, isWEP: false)
         configuration.joinOnce = true
         NEHotspotConfigurationManager.shared.apply(configuration) { error in
             DispatchQueue.main.async {
