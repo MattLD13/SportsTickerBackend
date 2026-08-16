@@ -170,8 +170,8 @@ class AssetCoordinator(AssetView):
                 raise RuntimeError("Asset workers are not running.")
             future = executor.submit(self._prepare, request)
             self._inflight[request] = future
-            future.add_done_callback(lambda complete: self._complete(request, complete))
-            return future
+        future.add_done_callback(lambda complete: self._complete(request, complete))
+        return future
 
     def _complete(self, request: AssetRequest, complete: Future[Image.Image | None]) -> None:
         with self._lock:

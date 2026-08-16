@@ -1,12 +1,43 @@
 from __future__ import annotations
 
 import io
+from concurrent.futures import Future
 from threading import Event, Thread
 
 from PIL import Image
 
 from ticker_core.assets import AssetPlanner, AssetRequest, LogoAssetView, PreparedAssetStore, ShortTermContentCache
 from ticker_core.platform import AssetCoordinator, LongTermAssetCache
+
+
+def test_completed_asset_future_registers_callback_outside_coordinator_lock(tmp_path) -> None:
+    """Let an already completed asset future clear itself without reacquiring an owned lock."""
+    request = AssetRequest("https://assets.example/cached.png", "logo", (8, 8))
+    coordinator = AssetCoordinator(tmp_path)
+
+    class LockCheckingFuture(Future):
+        def add_done_callback(self, callback, *, context=None) -> None:
+            acquired = coordinator._lock.acquire(blocking=False)
+            assert acquired, "Asset callback registration held the coordinator lock."
+            coordinator._lock.release()
+            super().add_done_callback(callback)
+
+    class ImmediateExecutor:
+        def submit(self, _function, *_args) -> Future:
+            future = LockCheckingFuture()
+            future.set_result(None)
+            return future
+
+        def shutdown(self, *, wait=True, cancel_futures=False) -> None:
+            return None
+
+    coordinator._executor = ImmediateExecutor()
+    try:
+        future = coordinator.prefetch((request,))[0]
+        assert future.done()
+        assert request not in coordinator._inflight
+    finally:
+        coordinator.close()
 
 
 def test_coordinator_reuses_persistent_original_bytes(tmp_path) -> None:
