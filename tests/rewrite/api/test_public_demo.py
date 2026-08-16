@@ -31,6 +31,12 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
             response = client.get(f"/dashboard/static/{asset}")
             assert response.status_code == 200
 
+        demo_script = client.get("/dashboard/static/ticker-demo.js").get_data(as_text=True)
+        assert "makeMrBlueSkyCover" in demo_script
+        assert "MR. BLUE SKY" in demo_script
+        assert "clockStr" in demo_script
+        assert "trackW = 180" in demo_script
+
         for mode in ("sports", "weather", "flights", "airports"):
             response = client.get(f"/api/preview/strip.png?mode={mode}")
             assert response.status_code == 200

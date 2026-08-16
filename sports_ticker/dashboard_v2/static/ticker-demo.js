@@ -62,6 +62,37 @@
     };
   }
 
+  // This generated cover renders immediately in the browser and keeps the offline demo populated when the external art service is unavailable or slow during startup.
+  function makeMrBlueSkyCover() {
+    const cover = document.createElement('canvas');
+    cover.width = cover.height = 84;
+    const ctx = cover.getContext('2d');
+    const sky = ctx.createLinearGradient(0, 0, 0, 84);
+    sky.addColorStop(0, '#1769aa');
+    sky.addColorStop(1, '#8bd5f7');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, 84, 84);
+
+    ctx.fillStyle = '#ffd34e';
+    ctx.beginPath();
+    ctx.arc(63, 19, 17, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.beginPath();
+    ctx.arc(20, 42, 11, 0, Math.PI * 2);
+    ctx.arc(32, 38, 14, 0, Math.PI * 2);
+    ctx.arc(46, 43, 10, 0, Math.PI * 2);
+    ctx.fillRect(12, 42, 43, 12);
+    ctx.fill();
+
+    ctx.fillStyle = '#102a43';
+    ctx.font = 'bold 10px Arial, sans-serif';
+    ctx.fillText('MR. BLUE', 6, 67);
+    ctx.fillText('SKY', 6, 79);
+    return cover;
+  }
+
   async function fetchSpotify(base, ms) {
     try {
       const r = await fetch(`${base}/api/spotify/now`);
@@ -259,12 +290,31 @@
       ctx.fillRect(VX + i * (BW + BG), CY - h / 2, BW, h);
     }
 
-    // ── Progress bar real: y=31, 1px, colored ───────────────────────────
+    // ── Progress bar: a visible colored track with a moving white head ───
     const pct = Math.max(0, Math.min(1, localProg / ms.duration));
+    const trackX = 60, trackW = 180, trackY = 29;
+    ctx.fillStyle = 'rgba(120,180,220,0.35)';
+    ctx.fillRect(trackX, trackY, trackW, 2);
+    ctx.fillStyle = domRgb;
+    ctx.fillRect(trackX, trackY, trackW * pct, 2);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(trackX + Math.max(0, trackW * pct - 1), trackY - 1, 2, 4);
+
+    // ── Panel progress line: y=31, 1px, colored ─────────────────────────
     ctx.fillStyle = '#222';
     ctx.fillRect(0, 31, W, 1);
     ctx.fillStyle = domRgb;
     ctx.fillRect(0, 31, W * pct | 0, 1);
+
+    // ── Elapsed / total clock: fixed at the right edge ──────────────────
+    const elapsedS = Math.max(0, localProg) | 0;
+    const elapsedStr = `${elapsedS / 60 | 0}:${String(elapsedS % 60).padStart(2, '0')}`;
+    const totalStr = `${ms.duration / 60 | 0}:${String(ms.duration % 60).padStart(2, '0')}`;
+    const clockStr = `${elapsedStr}/${totalStr}`;
+    ctx.font = '8px "Courier New", monospace';
+    ctx.fillStyle = '#b9e7ff';
+    ctx.textBaseline = 'top';
+    ctx.fillText(clockStr, W - ctx.measureText(clockStr).width - 3, 0);
 
     // ── Time remaining real: right-aligned, y=10, tiny ──────────────────
     const remS   = Math.max(0, ms.duration - localProg) | 0;
@@ -442,6 +492,9 @@
     function buildMusic() {
       const canvas = newCanvas();
       const ms = initMusicState();
+      ms.albumImg = makeMrBlueSkyCover();
+      ms.domColor = [28, 137, 218];
+      ms.spindleColor = '#fff';
       if (!sampleMusic) pollFn = () => fetchSpotify(base, ms);
       frameFn = () => drawMusicFrame(canvas, ms);
       drawMusicFrame(canvas, ms);
