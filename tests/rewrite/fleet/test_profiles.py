@@ -5,12 +5,18 @@ import pytest
 from sports_ticker.fleet import TickerProfile
 
 
-def test_normal_profile_has_six_panel_geometry() -> None:
-    profile = TickerProfile.from_mapping({"product_family": "normal"})
+def test_full_profile_has_six_panel_geometry() -> None:
+    profile = TickerProfile.from_mapping({"product_family": "full"})
 
     assert profile.display.width == 384
     assert profile.display.panel_count == 6
     assert "weather" in profile.capabilities.modes
+
+
+def test_legacy_normal_profile_reads_as_full() -> None:
+    profile = TickerProfile.from_mapping({"product_family": "normal"})
+
+    assert profile.product_family == "full"
 
 
 def test_mini_profile_has_one_panel_and_sports_only() -> None:

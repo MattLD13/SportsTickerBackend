@@ -4,11 +4,11 @@ The backend stores hardware identity separately from display mode.
 
 | Profile | Hardware | Logical display | Modes |
 | --- | --- | --- | --- |
-| `normal` | Raspberry Pi Zero 2 W | six panels, `384x32` | all V2 modes |
+| `full` | Raspberry Pi Zero 2 W | six panels, `384x32` | all V2 modes |
 | `mini` | ESP32-S3 | one panel, `64x32` | sports |
 | `custom` | administrator-defined | validated dimensions | validated capabilities |
 
-Every device registration can include a `profile` object. Legacy registrations infer `normal` unless their metadata identifies an ESP32 device. Custom profiles must include display width, height, and panel count.
+Every device registration can include a `profile` object. Legacy registrations infer `full` unless their metadata identifies an ESP32 device. Custom profiles must include display width, height, and panel count.
 
 The backend persists the normalized profile in device metadata, returns it in ticker responses, and filters projected modes using its declared capabilities.
 

@@ -16,7 +16,7 @@
       "type": "object",
       "required": ["product_family"],
       "properties": {
-        "product_family": {"enum": ["normal", "mini", "custom"]},
+        "product_family": {"enum": ["full", "mini", "custom"]},
         "hardware": {"type": "string"},
         "firmware": {"type": "string"},
         "display": {

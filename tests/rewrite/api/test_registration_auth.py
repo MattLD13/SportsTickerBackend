@@ -33,6 +33,7 @@ def test_empty_repository_registers_pairing_snapshot_for_pi_bootstrap(tmp_path) 
         assert registration["ticker_id"] == "pi-1"
         assert registration["paired"] is False
         assert registration["pairing_code"]
+        assert registration["ticker"]["profile"]["product_family"] == "full"
 
         response = client.get("/api/v2/tickers/pi-1/data")
         assert response.status_code == 200

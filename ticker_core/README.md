@@ -52,7 +52,7 @@ All renderers use the same memory-only asset view. Render methods never start do
 
 The controller resolves one display action for each frame.
 
-Hardware profiles declare the logical frame geometry and supported modes. The normal Pi profile uses `384x32`. Custom Pi deployments can set `TICKER_DISPLAY_WIDTH`, `TICKER_DISPLAY_HEIGHT`, `TICKER_DISPLAY_FIT_MODE`, and `TICKER_PANEL_COUNT`.
+Hardware profiles declare the logical frame geometry and supported modes. The full Pi profile uses `384x32`. Custom Pi deployments can set `TICKER_DISPLAY_WIDTH`, `TICKER_DISPLAY_HEIGHT`, `TICKER_DISPLAY_FIT_MODE`, and `TICKER_PANEL_COUNT`.
 
 1. Show an update screen during an active update.
 2. Show the pairing code before ordinary content.

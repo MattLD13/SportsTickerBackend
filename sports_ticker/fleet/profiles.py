@@ -7,10 +7,10 @@ from dataclasses import dataclass
 from typing import Any
 
 
-PROFILE_NORMAL = "normal"
+PROFILE_FULL = "full"
 PROFILE_MINI = "mini"
 PROFILE_CUSTOM = "custom"
-PROFILE_NAMES = frozenset((PROFILE_NORMAL, PROFILE_MINI, PROFILE_CUSTOM))
+PROFILE_NAMES = frozenset((PROFILE_FULL, PROFILE_MINI, PROFILE_CUSTOM))
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,10 +108,12 @@ class TickerProfile:
         raw_metadata = metadata or {}
         build = str(source.get("firmware") or raw_metadata.get("build") or "unknown")
         family = str(source.get("product_family") or "").strip().lower()
+        if family == "normal":
+            family = PROFILE_FULL
         if not family:
             capabilities = raw_metadata.get("capabilities")
-            family = PROFILE_MINI if "esp32" in build.lower() or isinstance(capabilities, (list, tuple)) and "sports" in capabilities else PROFILE_NORMAL
-        if family == PROFILE_NORMAL:
+            family = PROFILE_MINI if "esp32" in build.lower() or isinstance(capabilities, (list, tuple)) and "sports" in capabilities else PROFILE_FULL
+        if family == PROFILE_FULL:
             defaults = {
                 "hardware": "pi-zero-2w",
                 "display": {"width": 384, "height": 32, "panel_count": 6},

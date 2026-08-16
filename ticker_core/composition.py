@@ -86,7 +86,7 @@ def create_application() -> TickerApplication:
 def _device_profile() -> dict[str, object]:
     """Return the explicit Pi hardware profile sent during registration."""
 
-    family = os.environ.get("TICKER_PRODUCT_FAMILY", "normal").strip().lower() or "normal"
+    family = os.environ.get("TICKER_PRODUCT_FAMILY", "full").strip().lower() or "full"
     profile: dict[str, object] = {"product_family": family, "hardware": os.environ.get("TICKER_HARDWARE", "pi-zero-2w")}
     if family == "custom":
         profile["display"] = {
@@ -100,7 +100,7 @@ def _device_profile() -> dict[str, object]:
 def _frame_geometry() -> FrameGeometry:
     """Return the configured logical frame geometry for a Pi deployment."""
 
-    family = os.environ.get("TICKER_PRODUCT_FAMILY", "normal").strip().lower() or "normal"
+    family = os.environ.get("TICKER_PRODUCT_FAMILY", "full").strip().lower() or "full"
     configured = os.environ.get("TICKER_DISPLAY_FIT_MODE", "").strip().lower()
     fit_mode = configured or ("crop" if family == "mini" else "letterbox" if family == "custom" else "scale")
     return FrameGeometry(

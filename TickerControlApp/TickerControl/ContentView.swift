@@ -3475,8 +3475,6 @@ struct TeamsView: View {
 struct SettingsView: View {
     @ObservedObject var vm: TickerViewModel
     @State private var showPairing = false
-    @State private var showTickerSwitcher = false
-    @State private var showWiFiSetup = false
     @State private var rebootConfirm = false
     @State private var showRawJSON = false
     
@@ -3494,42 +3492,6 @@ struct SettingsView: View {
                     }.padding().liquidGlass()
                 }.padding(.horizontal)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("ACTIVE TICKER").font(.caption).bold().foregroundStyle(.secondary)
-                    Button { showTickerSwitcher = true } label: {
-                        HStack {
-                            Image(systemName: "rectangle.connected.to.line.below")
-                                .foregroundColor(.blue)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(vm.activeTicker?.name ?? "Choose a ticker")
-                                    .font(.headline)
-                                    .foregroundColor(.white)
-                                Text(vm.activeTickerIndicator)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundColor(.blue)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                    }
-                    .buttonStyle(.plain)
-                    .liquidGlass()
-                }.padding(.horizontal)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("TICKER WI-FI").font(.caption).bold().foregroundStyle(.secondary)
-                    Button { showWiFiSetup = true } label: {
-                        Label("Set Up Ticker Wi-Fi", systemImage: "wifi")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
-                            .foregroundColor(.blue)
-                    }
-                    .liquidGlass()
-                }.padding(.horizontal)
-                
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Text("MY DEVICES").font(.caption).bold().foregroundStyle(.secondary)
@@ -3597,12 +3559,6 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showPairing) {
             PairingView(vm: vm, isPresented: $showPairing)
-        }
-        .sheet(isPresented: $showTickerSwitcher) {
-            TickerSwitcherView(vm: vm, isPresented: $showTickerSwitcher)
-        }
-        .sheet(isPresented: $showWiFiSetup) {
-            WiFiSetupView(vm: vm, isPresented: $showWiFiSetup)
         }
         .sheet(isPresented: $showRawJSON) {
             ScrollView { Text(String(describing: vm.games)).font(.caption.monospaced()).padding() }.presentationDetents([.medium])
@@ -3746,6 +3702,15 @@ struct DeviceRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
+                Button {
+                    vm.switchToTicker(device.id)
+                } label: {
+                    Image(systemName: device.id == vm.activeTicker?.id ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundColor(device.id == vm.activeTicker?.id ? .blue : .secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(device.id == vm.activeTicker?.id ? "Active ticker" : "Use this ticker")
                 VStack(alignment: .leading) {
                     Text(device.name).font(.headline).foregroundColor(.white)
                     Text("ID: \(device.id.prefix(8))...").font(.caption).foregroundColor(.gray)
@@ -3858,6 +3823,7 @@ struct PairingView: View {
     @Binding var isPresented: Bool
     @State private var pairingMode = 0
     @State private var shareWithApp = false
+    @State private var showWiFiSetup = false
     var body: some View {
         NavigationView {
             Form {
@@ -3868,6 +3834,17 @@ struct PairingView: View {
                         TextField("Friendly Name", text: $vm.pairName)
                         TextField("6-Digit Code", text: $vm.pairCode).keyboardType(.numberPad)
                         Toggle("Share teams and Spotify with my other tickers", isOn: $shareWithApp)
+                    }
+                    Section(header: Text("Ticker Wi-Fi")) {
+                        Text("Optional. Set up the ticker network before pairing this ticker.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Button {
+                            vm.wifiSetupCode = vm.pairCode
+                            showWiFiSetup = true
+                        } label: {
+                            Label("Set Up Ticker Wi-Fi", systemImage: "wifi")
+                        }
                     }
                     Button("Pair with Code") {
                         vm.pairError = nil
@@ -3886,6 +3863,9 @@ struct PairingView: View {
             .navigationTitle("Pair Ticker")
             .navigationBarItems(trailing: Button("Close") { isPresented = false })
             .onAppear { shareWithApp = vm.canShareTickerGroup }
+            .sheet(isPresented: $showWiFiSetup) {
+                WiFiSetupView(vm: vm, isPresented: $showWiFiSetup)
+            }
             .alert(isPresented: $vm.showPairSuccess) {
                 Alert(title: Text("Success"), message: Text("Ticker paired successfully!"), dismissButton: .default(Text("OK")) { isPresented = false })
             }
