@@ -18,11 +18,15 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
             json={"device_id": "private-pi", "name": "Private", "metadata": {}},
         )
 
-        for route in ("/", "/demo"):
+        for route in ("/", "/demo", "/demo/portfolio"):
             response = client.get(route)
             assert response.status_code == 200
             assert b"data-ticker-demo" in response.data
             assert b"private-pi" not in response.data
+        portfolio_page = client.get("/demo/portfolio").get_data(as_text=True)
+        assert "demo-portfolio" in portfolio_page
+        assert "demo-page-head" not in portfolio_page
+        assert "demo-page-foot" not in portfolio_page
         assert b'href="#fleet"' in client.get("/").data
         assert b'data-demo-music="sample"' in client.get("/").data
         assert b'"id": "music", "kind": "canvas"' in client.get("/").data

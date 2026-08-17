@@ -657,6 +657,56 @@ body.demo-page {
 }
 .demo-page-foot { display: flex; justify-content: center; margin-top: 26px; }
 
+/* ── Portfolio embed /demo/portfolio ──────────────────────────────────────── */
+body.demo-portfolio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 10px 12px;
+  background: transparent;
+  overflow: hidden;
+}
+.demo-portfolio .demo {
+  width: 100%;
+  max-width: 1080px;
+}
+.demo-portfolio .panel-stage {
+  padding: 0;
+}
+.demo-portfolio .panel-stage::before {
+  top: 50%;
+  transform: translateY(-50%);
+  height: 50px;
+  filter: blur(20px);
+}
+.demo-portfolio .demo-controls {
+  margin-top: 14px;
+  gap: 8px;
+}
+.demo-portfolio .demo-btn {
+  font-size: 12.5px;
+  height: 32px;
+  padding: 0 14px;
+}
+
+@media (max-width: 600px) {
+  body.demo-portfolio {
+    padding: 6px 8px;
+  }
+  .demo-portfolio .demo-controls {
+    margin-top: 10px;
+    gap: 5px;
+  }
+  .demo-portfolio .demo-btn {
+    font-size: 11px;
+    height: 28px;
+    padding: 0 10px;
+  }
+}
+
+
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 1000px) {
   :root { --pad-x: 26px; }

@@ -85,6 +85,23 @@ def demo():
     )
 
 
+@dashboard_v2.get("/demo/portfolio")
+def demo_portfolio():
+    """Render an embeddable panel demo for portfolio pages."""
+
+    application = current_app.extensions["sports_ticker.backend_application"]
+    tickers = application.list_tickers()
+    settings = tickers[0].display_settings if tickers else None
+    return render_template(
+        "demo_portfolio.html",
+        version_hash=_version_hash(),
+        demo_modes=_demo_modes(),
+        panel_w=384,
+        panel_h=32,
+        scroll_px_s=round(1 / settings.scroll_speed) if settings and settings.scroll_speed else 33,
+    )
+
+
 @dashboard_v2.get("/api/preview/strip.png")
 def preview_strip():
     """Render one stable public panel preview without ticker state."""
