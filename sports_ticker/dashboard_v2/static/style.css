@@ -665,7 +665,7 @@ body.demo-portfolio {
   justify-content: center;
   min-height: 100vh;
   padding: 10px 12px;
-  background: transparent;
+  background: #000;
   overflow: hidden;
 }
 .demo-portfolio .demo {
