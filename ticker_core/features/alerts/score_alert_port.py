@@ -262,7 +262,7 @@ class ScoreAlertMixin:
                 break
         # Every headline in the vocabulary fits at one of these sizes; a longer
         # one from a future sport gets clipped rather than overrunning the logo.
-        baseline_y = 11 if detail else PANEL_H // 2 - 1
+        baseline_y = 10 if detail else PANEL_H // 2 - 1
 
         shown = self._flap_headline(headline, phase)
         self.draw_outlined_text(d, center, baseline_y, shown, font,
@@ -271,10 +271,19 @@ class ScoreAlertMixin:
         # The name lands once the flaps have stopped, so the two reveals read as
         # one sequence rather than competing for attention.
         if detail and shown == headline:
-            detail_w = len(detail) * 5
+            detail_w = len(detail) * 5 - 1
             x = center - detail_w // 2
-            d.rectangle([x - 4, 23, x + detail_w + 2, 30], fill=(0, 0, 0, 190))
-            draw_tiny_text(d, x, 24, detail, _mix(accent, (255, 255, 255), 0.4))
+            pad_x = 5
+            pill_x0 = x - pad_x
+            pill_x1 = x + detail_w + pad_x
+            pill_y0 = 21
+            pill_y1 = 29
+            d.rounded_rectangle([pill_x0 - 1, pill_y0, pill_x1 + 1, pill_y1 + 1], radius=2,
+                                fill=(0, 0, 0, 180))
+            d.rounded_rectangle([pill_x0, pill_y0, pill_x1, pill_y1], radius=2,
+                                fill=(12, 14, 20, 240),
+                                outline=_mix(accent, (255, 255, 255), 0.4), width=1)
+            draw_tiny_text(d, x, 23, detail, (255, 255, 255))
 
     # ── frame ────────────────────────────────────────────────────────────────
     def draw_score_alert(self, alert, elapsed, under=None):

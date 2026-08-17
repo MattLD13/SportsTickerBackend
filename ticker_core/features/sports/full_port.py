@@ -60,6 +60,24 @@ class SportsMixin:
             else:
                 draw.rectangle((x, dy, x+2, dy+2), fill=(80, 80, 80))
 
+    def _draw_nhl_so_col(self, draw, x, y, results):
+        n_show = 3
+        for i in range(n_show):
+            res = results[i] if i < len(results) else 'pending'
+            dy = y + i * 7
+            if res == 'goal':
+                draw.rectangle((x, dy, x + 4, dy + 4), fill=(50, 200, 70))
+            elif res == 'miss':
+                draw.rectangle((x, dy, x + 1, dy + 1), fill=(220, 55, 55))
+                draw.rectangle((x + 3, dy, x + 4, dy + 1), fill=(220, 55, 55))
+                draw.rectangle((x + 1, dy + 2, x + 3, dy + 2), fill=(220, 55, 55))
+                draw.rectangle((x, dy + 3, x + 1, dy + 4), fill=(220, 55, 55))
+                draw.rectangle((x + 3, dy + 3, x + 4, dy + 4), fill=(220, 55, 55))
+            else:
+                draw.rectangle((x, dy, x + 4, dy + 4), fill=(55, 55, 55))
+                draw.rectangle((x + 1, dy + 1, x + 3, dy + 3), fill=(10, 10, 14))
+
+
     def draw_baseball_hud(self, draw, x, y, o):
         for i in range(3): draw.rectangle((x+(i*4), y, x+(i*4)+1, y+1), fill=((255, 0, 0) if i < o else (40, 40, 40)))
 
@@ -452,8 +470,10 @@ class SportsMixin:
             if sit.get('shootout'):
                 so_a = sit.get('shootout', {}).get('away', [])
                 so_h = sit.get('shootout', {}).get('home', [])
-                self._draw_soccer_so_col(d, a_logo_x + LOGO_SZ + 2, 8, so_h)
-                self._draw_soccer_so_col(d, h_logo_x - 5, 8, so_a)
+                so_h_x = int(h_sc_x + h_sc_w + 10)
+                so_a_x = int(a_sc_x - a_sc_w - 13)
+                self._draw_soccer_so_col(d, so_h_x, 5, so_h)
+                self._draw_soccer_so_col(d, so_a_x, 5, so_a)
 
             return img
 
@@ -751,13 +771,13 @@ class SportsMixin:
         # Hockey PP / EN badges
         h_badge = a_badge = ''
         if is_nhl and sit.get('emptyNet'):
-            # If home has possession (extra skater), home net is empty
-            if poss_ab == home_ab:
+            en_side = str(sit.get('emptyNetSide', '')).strip().upper()
+            if en_side == home_ab or (not en_side and poss_ab == home_ab):
                 h_badge = 'EN'
-            elif poss_ab == away_ab:
+            elif en_side == away_ab or (not en_side and poss_ab == away_ab):
                 a_badge = 'EN'
             else:
-                a_badge = 'EN' # Fallback
+                h_badge = 'EN' if poss_ab == home_ab else 'EN'
         elif is_nhl and sit.get('powerPlay'):
             if poss_ab == home_ab:   h_badge = 'PP'
             elif poss_ab == away_ab: a_badge = 'PP'
@@ -816,6 +836,14 @@ class SportsMixin:
             a_badge_x = int(a_sc_x - a_sc_w - 9)
             self.draw_outlined_text(d, a_badge_x, H // 2, a_badge,
                                     self.tiny, a_col, (0, 0, 0, 220), anchor='mm')
+
+        if is_nhl and sit.get('shootout'):
+            so_h = sit.get('shootout', {}).get('home', [])
+            so_a = sit.get('shootout', {}).get('away', [])
+            so_h_x = int(h_sc_x + h_sc_w + 10)
+            so_a_x = int(a_sc_x - a_sc_w - 15)
+            self._draw_nhl_so_col(d, so_h_x, 6, so_h)
+            self._draw_nhl_so_col(d, so_a_x, 6, so_a)
 
         # No possession arrow for hockey/basketball full-bleed mode.
 

@@ -78,6 +78,78 @@ def _describe(sport: object, delta: int) -> tuple[str, str]:
     return "score", f"+{delta}"
 
 
+def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str:
+    """Extract clean play details (scorer, assists, goal type) for score alerts."""
+
+    sit = game.get("situation")
+    situation = sit if isinstance(sit, Mapping) else {}
+    explicit = str(situation.get("detail") or game.get("detail") or "").strip()
+    if explicit:
+        return explicit[:24].upper()
+
+    family = _sport_family(sport)
+    is_home = (side == "home")
+
+    if family == "soccer":
+        goal_events = situation.get("goal_events") or game.get("goal_events")
+        if isinstance(goal_events, (list, tuple)) and goal_events:
+            matching = [
+                g for g in goal_events
+                if isinstance(g, Mapping) and bool(g.get("is_home")) == is_home
+            ]
+            if matching:
+                last_g = matching[-1]
+                player = str(last_g.get("player") or "").strip().upper()
+                minute = str(last_g.get("minute") or "").strip()
+                own_goal = bool(last_g.get("own_goal"))
+                g_type = str(last_g.get("goal_type") or last_g.get("type") or "").strip().upper()
+
+                parts: list[str] = []
+                if player:
+                    parts.append(player)
+                if minute:
+                    parts.append(minute)
+                if own_goal:
+                    parts.append("(OG)")
+                elif g_type in {"PEN", "PENALTY", "HEADER", "FREE KICK", "VOLLEY"}:
+                    parts.append(f"({g_type[:3] if g_type == 'PENALTY' else g_type})")
+                elif last_g.get("assist"):
+                    parts.append(f"({str(last_g['assist']).strip().upper()})")
+                if parts:
+                    return " ".join(parts)[:24]
+
+    if family == "hockey":
+        scoring_plays = situation.get("scoring_plays") or game.get("scoring_plays")
+        if isinstance(scoring_plays, (list, tuple)) and scoring_plays:
+            matching = [
+                p for p in scoring_plays
+                if isinstance(p, Mapping) and (
+                    str(p.get("team") or p.get("side") or "").lower() == str(game.get(f"{side}_abbr") or side).lower()
+                )
+            ]
+            if matching:
+                last_p = matching[-1]
+                scorer = str(last_p.get("scorer") or last_p.get("player") or "").strip().upper()
+                strength = str(last_p.get("strength") or "").strip().upper()
+                assists = [
+                    str(a).strip().upper()
+                    for a in (last_p.get("assists") or ())
+                    if str(a).strip()
+                ]
+                if scorer:
+                    if assists:
+                        return f"{scorer} ({', '.join(assists[:2])})"[:24]
+                    if strength in {"PPG", "SHG", "ENG", "OTG"}:
+                        return f"{scorer} {strength}"[:24]
+                    return scorer[:24]
+
+    last_play = str(situation.get("last_play") or game.get("last_play") or "").strip()
+    if last_play:
+        return last_play[:24].upper()
+
+    return ""
+
+
 class ScoreAlertTracker:
     """Keep score memory across scoreboard polls and release recent alerts."""
 
@@ -113,6 +185,7 @@ class ScoreAlertTracker:
                     if delta <= 0:
                         continue
                     kind, headline = _describe(sport, delta)
+                    detail = _extract_alert_detail(sport, game, side)
                     other = "away" if side == "home" else "home"
                     self._alerts.append(
                         {
@@ -123,7 +196,7 @@ class ScoreAlertTracker:
                             "side": side,
                             "kind": kind,
                             "headline": headline,
-                            "detail": "",
+                            "detail": detail,
                             "points": delta,
                             "big": kind in _BIG_KINDS,
                             "team_abbr": str(game.get(f"{side}_abbr") or "").upper(),

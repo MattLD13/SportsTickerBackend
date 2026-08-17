@@ -527,7 +527,8 @@ class StadiumRenderer:
                          else (a_logo_x + LOGO_SZ // 2)
 
             if is_en:
-                en_is_home = (poss_side == 'home')
+                en_side = _side_from_value(en_team) or poss_side
+                en_is_home = (en_side == 'home')
                 en_hdr_x = (h_logo_x + LOGO_SZ // 2) if en_is_home \
                            else (a_logo_x + LOGO_SZ // 2)
                 pf_text(d, 'EN', en_hdr_x - pf_w('EN') // 2, 2, 255, 100, 100)
