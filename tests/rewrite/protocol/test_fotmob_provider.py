@@ -10,6 +10,23 @@ from sports_ticker.providers.fotmob import (
 )
 
 
+def test_fotmob_normalizes_first_half_stoppage_clock() -> None:
+    """Normalize elapsed minutes over 45 to 45'+X' during first half."""
+    match = {
+        "status": {
+            "started": True,
+            "halfs": {"firstHalfStarted": "17.08.2026 21:01:24"},
+            "liveTime": {
+                "short": "46\u200e\u2019\u200e",
+                "long": "46:15",
+                "maxTime": 45,
+                "basePeriod": 45,
+            },
+        }
+    }
+    assert _match_status(match, "in", "UTC") == "45'+1:15'"
+
+
 def test_fotmob_live_clock_has_one_apostrophe_without_hidden_spacing() -> None:
     match = {
         "status": {

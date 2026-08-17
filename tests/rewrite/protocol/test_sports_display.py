@@ -80,3 +80,17 @@ def test_soccer_clock_handles_first_half_stoppage_with_period() -> None:
     assert normalize_soccer_clock("49'", period=2) == "49'"
     assert normalize_soccer_clock("49'") == "49'"
 
+
+def test_espn_soccer_first_half_stoppage_projection() -> None:
+    event = {
+        "status": {"type": {"state": "in", "shortDetail": "46'"}, "period": 1, "displayClock": "46:20"},
+        "competitions": [{"situation": {}, "competitors": [
+            {"homeAway": "home", "team": {"id": "1", "abbreviation": "HOM"}},
+            {"homeAway": "away", "team": {"id": "2", "abbreviation": "AWY"}},
+        ]}],
+    }
+
+    soccer = SportsDisplayProjector().project(_item("soccer", "soccer_epl"), event)
+    assert soccer.data["status"] == "45'+1:20'"
+
+

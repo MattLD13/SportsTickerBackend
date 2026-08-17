@@ -360,6 +360,19 @@ def _status_label(value: object) -> str:
     return " ".join(text.replace("-", " ").upper().split())
 
 
+def _fotmob_period(status: Mapping[str, Any]) -> int:
+    """Determine the match period (1=1st half, 2=2nd half, 3+=ET) from FotMob status."""
+    halfs = _mapping(status.get("halfs"))
+    live = _mapping(status.get("liveTime"))
+    max_time = _integer(live.get("maxTime") or live.get("basePeriod"), 0)
+
+    if halfs.get("secondHalfStarted") or max_time >= 90:
+        return 2 if max_time <= 90 else 3
+    if halfs.get("firstHalfStarted") or max_time == 45:
+        return 1
+    return _integer(status.get("period"), _integer(live.get("period"), 0))
+
+
 def _match_status(match: Mapping[str, Any], state: str, timezone_name: str) -> str:
     status = _mapping(match.get("status"))
     reason = _mapping(status.get("reason"))
@@ -376,10 +389,7 @@ def _match_status(match: Mapping[str, Any], state: str, timezone_name: str) -> s
     if state == "half":
         return "Half"
     live = _mapping(status.get("liveTime"))
-    try:
-        period = int(str(status.get("period") or live.get("period") or "0").strip() or 0)
-    except ValueError:
-        period = 0
+    period = _fotmob_period(status)
     for value in (live.get("long"), live.get("short")):
         clock = normalize_soccer_clock(value, period=period)
         if clock:
@@ -489,6 +499,13 @@ def _event_minute(event: Mapping[str, Any]) -> str:
 def _color(value: object) -> str:
     text = str(value or "").strip()
     return text if text.startswith("#") and len(text) == 7 else "#333333"
+
+
+def _integer(value: object, fallback: int = 0) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return fallback
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
