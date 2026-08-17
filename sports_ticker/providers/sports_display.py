@@ -525,11 +525,106 @@ def _first_mapping(value: object) -> Mapping[str, Any]:
     return _mapping(_sequence(value)[0]) if _sequence(value) else {}
 
 
+_TEAM_ALIASES: dict[str, tuple[str, ...]] = {
+    # NBA
+    "NY": ("NY", "NYK", "NYC", "RBNY"),
+    "NYK": ("NY", "NYK"),
+    "GS": ("GS", "GSW"),
+    "GSW": ("GS", "GSW"),
+    "NO": ("NO", "NOP"),
+    "NOP": ("NO", "NOP"),
+    "SA": ("SA", "SAS"),
+    "SAS": ("SA", "SAS"),
+    "PHX": ("PHX", "PHO"),
+    "PHO": ("PHX", "PHO"),
+    "UTA": ("UTA", "UTAH"),
+    "UTAH": ("UTA", "UTAH"),
+    # NFL
+    "WAS": ("WAS", "WSH"),
+    "WSH": ("WAS", "WSH"),
+    "JAC": ("JAC", "JAX"),
+    "JAX": ("JAC", "JAX"),
+    "TB": ("TB", "TAM"),
+    "TAM": ("TB", "TAM"),
+    # MLS / Soccer
+    "RBNY": ("RBNY", "NYR", "NY"),
+    "NYR": ("NYR", "RBNY", "NY"),
+    "LAFC": ("LAFC", "LAF"),
+    "LAF": ("LAFC", "LAF"),
+    "LA": ("LA", "LAG", "LAD", "LAC", "LAR"),
+    "LAG": ("LAG", "LA"),
+    "SJ": ("SJ", "SJE"),
+    "SJE": ("SJ", "SJE"),
+    "NE": ("NE", "NER"),
+    "NER": ("NE", "NER"),
+    "DC": ("DC", "DCU"),
+    "DCU": ("DC", "DCU"),
+    "WXM": ("WXM", "WRE", "WREXHAM"),
+    "WRE": ("WXM", "WRE", "WREXHAM"),
+    "ATX": ("ATX", "AUS"),
+    "AUS": ("ATX", "AUS"),
+    "SKC": ("SKC", "KC"),
+    "KC": ("SKC", "KC"),
+    "SEA": ("SEA", "SEATTLE"),
+    "VAN": ("VAN", "VANCOUVER"),
+    "NYC": ("NYC", "NYCF"),
+    "BHA": ("BHA", "BRI"),
+    "BRI": ("BHA", "BRI"),
+    "NFO": ("NFO", "NOT"),
+    "NOT": ("NFO", "NOT"),
+    "MCI": ("MCI", "MNC"),
+    "MNC": ("MCI", "MNC"),
+    "MUN": ("MUN", "MAN"),
+    "MAN": ("MUN", "MAN"),
+}
+
+
+def sport_family(sport: object) -> str:
+    """Return the broad sport category for one league identifier."""
+    value = str(sport or "").strip().lower()
+    if value in {"mlb", "wbc"} or "baseball" in value:
+        return "baseball"
+    if value in {"nfl"} or value.startswith("ncf") or "football" in value:
+        return "football"
+    if value in {"nhl"} or "hockey" in value:
+        return "hockey"
+    if value in {"nba", "wnba"} or value.startswith(("ncb", "ncw")) or "basketball" in value:
+        return "basketball"
+    if value.startswith("soccer") or value in {"mls", "epl", "championship", "champions_league"}:
+        return "soccer"
+    return value or "other"
+
+
+def matches_followed_team(sport: str, team_abbr: str, followed_entries: set[str] | frozenset[str] | Sequence[str]) -> bool:
+    """Return whether one team in a sport matches any followed team identifier."""
+    sport_str = str(sport or "").strip().lower()
+    team_str = str(team_abbr or "").strip().lower()
+    if not sport_str or not team_str:
+        return False
+    followed_set = {str(item).strip().lower() for item in followed_entries if str(item).strip()}
+    if not followed_set:
+        return False
+    family = sport_family(sport_str)
+    sport_variants = {sport_str, family}
+    if "_" in sport_str:
+        sport_variants.add(sport_str.split("_", 1)[1])
+        sport_variants.add(sport_str.replace("_", ""))
+    team_aliases = _TEAM_ALIASES.get(team_str.upper(), (team_str.upper(),))
+    team_variants = {t.lower() for t in team_aliases} | {team_str}
+    for s in sport_variants:
+        for t in team_variants:
+            if f"{s}:{t}" in followed_set or t in followed_set:
+                return True
+    return False
+
+
 __all__ = [
     "SportsDisplayProjector",
     "assign_active_team",
     "display_situation",
+    "matches_followed_team",
     "normalize_soccer_clock",
     "soccer_event",
+    "sport_family",
     "sports_content_sort_key",
 ]

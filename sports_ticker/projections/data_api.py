@@ -9,6 +9,7 @@ from typing import Any
 from ..domain import CONTENT_FAMILIES, ContentItem, DisplaySettings, TickerSnapshot
 from ..markets import selected_market_groups
 from ..providers.contracts import ProviderHealth
+from ..providers.sports_display import matches_followed_team
 
 
 _SPORTS_FAMILIES = frozenset(("sports", "golf", "racing"))
@@ -158,23 +159,18 @@ def _market_items(
 def _is_my_team_game(item: Mapping[str, Any], settings: Mapping[str, Any]) -> bool:
     """Return if either game team belongs to the selected team list."""
 
-    team_ids = {
-        str(value).strip().lower()
-        for value in settings.get("my_teams", ())
-        if str(value).strip()
-    }
-    if not team_ids:
+    raw_teams = settings.get("my_teams", ())
+    if not raw_teams:
         return False
     data = _item_data(item)
     sport = str(data.get("sport") or "").strip().lower()
     if not sport:
         return False
-    candidates = {
-        f"{sport}:{str(data.get(side) or '').strip().lower()}"
-        for side in ("home_abbr", "away_abbr")
-    }
-    candidates.discard(f"{sport}:")
-    return bool(candidates & team_ids)
+    for side in ("home_abbr", "away_abbr"):
+        team_abbr = str(data.get(side) or "").strip()
+        if team_abbr and matches_followed_team(sport, team_abbr, raw_teams):
+            return True
+    return False
 
 
 def _item_data(item: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -185,8 +181,6 @@ def _item_data(item: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _content_item(item: ContentItem) -> dict[str, Any]:
-    """Serialize one canonical content item without retaining its object."""
-
     if not isinstance(item, ContentItem):
         raise TypeError("snapshot content must contain ContentItem values")
     return {

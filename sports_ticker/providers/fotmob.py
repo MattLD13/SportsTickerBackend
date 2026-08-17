@@ -24,27 +24,32 @@ _MATCHES_URL = "https://www.fotmob.com/api/data/matches"
 _DETAIL_URL = "https://www.fotmob.com/api/data/matchDetails?matchId={match_id}"
 _LIVE_DETAIL_SECONDS = 5.0
 _SOCCER_ABBREVIATIONS = {
+    # Premier League
     "Arsenal": "ARS", "Aston Villa": "AVL", "Bournemouth": "BOU", "Brentford": "BRE",
     "Brighton & Hove Albion": "BHA", "Burnley": "BUR", "Chelsea": "CHE", "Crystal Palace": "CRY",
-    "Everton": "EVE", "Fulham": "FUL", "Leeds United": "LEE", "Leicester City": "LEI",
-    "Liverpool": "LIV", "Manchester City": "MCI", "Manchester United": "MUN",
+    "Everton": "EVE", "Fulham": "FUL", "Ipswich Town": "IPS", "Leeds United": "LEE",
+    "Leicester City": "LEI", "Liverpool": "LIV", "Manchester City": "MCI", "Manchester United": "MUN",
     "Newcastle United": "NEW", "Nottingham Forest": "NFO", "Southampton": "SOU",
     "Tottenham Hotspur": "TOT", "West Ham United": "WHU", "Wolverhampton": "WOL",
+    "Wolverhampton Wanderers": "WOL",
+    # Championship
     "Blackburn Rovers": "BLA", "Bristol City": "BRC", "Cardiff City": "CAR", "Coventry City": "COV",
-    "Derby County": "DER", "Hull City": "HUL", "Middlesbrough": "MID", "Millwall": "MIL",
-    "Norwich City": "NOR", "Oxford United": "OXF", "Plymouth Argyle": "PLY", "Portsmouth": "POR",
-    "Preston North End": "PNE", "Queens Park Rangers": "QPR", "Sheffield United": "SHU",
-    "Sheffield Wednesday": "SHW", "Stoke City": "STK", "Sunderland": "SUN", "Swansea City": "SWA",
-    "Watford": "WAT", "West Bromwich Albion": "WBA",
-    "Atlanta United": "ATL", "Charlotte FC": "CLT", "Chicago Fire": "CHI", "FC Cincinnati": "CIN",
-    "Colorado Rapids": "COL", "Columbus Crew": "CLB", "D.C. United": "DCU", "FC Dallas": "DAL",
-    "Houston Dynamo FC": "HOU", "Inter Miami CF": "MIA", "LA Galaxy": "LAG", "Los Angeles FC": "LAF",
-    "Minnesota United": "MIN", "CF Montreal": "MTL", "CF Montréal": "MTL", "Nashville SC": "NSH",
-    "New England Revolution": "NER", "New York City FC": "NYC", "New York Red Bulls": "NYR",
-    "Orlando City SC": "ORL", "Philadelphia Union": "PHI", "Portland Timbers": "POR",
-    "Real Salt Lake": "RSL", "San Diego FC": "SD", "San Jose Earthquakes": "SJE",
-    "Seattle Sounders FC": "SEA", "Sporting Kansas City": "SKC", "St. Louis City SC": "STL",
-    "Toronto FC": "TOR", "Vancouver Whitecaps": "VAN",
+    "Derby County": "DER", "Hull City": "HUL", "Luton Town": "LUT", "Middlesbrough": "MID",
+    "Millwall": "MIL", "Norwich City": "NOR", "Oxford United": "OXF", "Plymouth Argyle": "PLY",
+    "Portsmouth": "POR", "Preston North End": "PNE", "Queens Park Rangers": "QPR",
+    "Sheffield United": "SHU", "Sheffield Wednesday": "SHW", "Stoke City": "STK",
+    "Sunderland": "SUN", "Swansea City": "SWA", "Watford": "WAT", "West Bromwich Albion": "WBA",
+    "Wrexham": "WXM", "Wrexham AFC": "WXM",
+    # MLS
+    "Atlanta United": "ATL", "Austin FC": "ATX", "Charlotte FC": "CLT", "Chicago Fire": "CHI",
+    "FC Cincinnati": "CIN", "Colorado Rapids": "COL", "Columbus Crew": "CLB", "D.C. United": "DC",
+    "FC Dallas": "DAL", "Houston Dynamo FC": "HOU", "Inter Miami CF": "MIA", "LA Galaxy": "LA",
+    "Los Angeles FC": "LAFC", "Minnesota United": "MIN", "CF Montreal": "MTL", "CF Montréal": "MTL",
+    "Nashville SC": "NSH", "New England Revolution": "NE", "New York City FC": "NYC",
+    "New York Red Bulls": "RBNY", "Orlando City SC": "ORL", "Philadelphia Union": "PHI",
+    "Portland Timbers": "POR", "Real Salt Lake": "RSL", "San Diego FC": "SD",
+    "San Jose Earthquakes": "SJ", "Seattle Sounders FC": "SEA", "Sporting Kansas City": "SKC",
+    "St. Louis City SC": "STL", "Toronto FC": "TOR", "Vancouver Whitecaps": "VAN",
 }
 
 

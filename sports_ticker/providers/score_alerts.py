@@ -7,6 +7,8 @@ from threading import Lock
 from time import time
 from typing import Any, Callable
 
+from .sports_display import matches_followed_team, sport_family
+
 
 _LIVE_STATES = frozenset(("in", "half", "crit"))
 _BIG_KINDS = frozenset(
@@ -36,23 +38,8 @@ def _number(value: object) -> int | None:
         return None
 
 
-def _sport_family(sport: object) -> str:
-    value = str(sport or "").lower()
-    if value in {"mlb", "wbc"} or "baseball" in value:
-        return "baseball"
-    if value == "nfl" or value.startswith("ncf") or "football" in value:
-        return "football"
-    if value in {"nhl"} or "hockey" in value:
-        return "hockey"
-    if value in {"nba", "wnba"} or value.startswith(("ncb", "ncw")) or "basketball" in value:
-        return "basketball"
-    if value.startswith("soccer"):
-        return "soccer"
-    return "other"
-
-
 def _describe(sport: object, delta: int) -> tuple[str, str]:
-    family = _sport_family(sport)
+    family = sport_family(sport)
     if family == "football":
         if delta >= 6:
             return "touchdown", "TOUCHDOWN"
@@ -87,7 +74,7 @@ def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str
     if explicit:
         return explicit[:24].upper()
 
-    family = _sport_family(sport)
+    family = sport_family(sport)
     is_home = (side == "home")
 
     if family == "soccer":
@@ -225,49 +212,6 @@ class ScoreAlertTracker:
             return tuple(dict(item) for item in self._alerts if cutoff <= item["ts"] <= now)
 
 
-_TEAM_ALIASES: dict[str, tuple[str, ...]] = {
-    "NY": ("NY", "NYK", "NYC"),
-    "NYK": ("NY", "NYK"),
-    "WAS": ("WAS", "WSH"),
-    "WSH": ("WAS", "WSH"),
-    "JAC": ("JAC", "JAX"),
-    "JAX": ("JAC", "JAX"),
-    "TAM": ("TAM", "TB"),
-    "TB": ("TAM", "TB"),
-    "SAS": ("SAS", "SA"),
-    "SA": ("SAS", "SA"),
-    "GSW": ("GSW", "GS"),
-    "GS": ("GSW", "GS"),
-    "NOP": ("NOP", "NO"),
-    "NO": ("NOP", "NO"),
-    "PHO": ("PHO", "PHX"),
-    "PHX": ("PHO", "PHX"),
-    "UTAH": ("UTAH", "UTA"),
-    "UTA": ("UTAH", "UTA"),
-    "WXM": ("WXM", "WREXHAM"),
-    "SEA": ("SEA", "SEATTLE"),
-    "VAN": ("VAN", "VANCOUVER"),
-}
-
-
-def _matches_followed(alert: Mapping[str, Any], followed_entries: set[str]) -> bool:
-    """Return whether one alert matches any followed team specifier."""
-    sport = str(alert.get("sport") or "").lower()
-    family = _sport_family(sport)
-    team = str(alert.get("team_abbr") or "").lower()
-    sport_variants = {sport, family}
-    if "_" in sport:
-        sport_variants.add(sport.split("_", 1)[1])
-        sport_variants.add(sport.replace("_", ""))
-    team_aliases = _TEAM_ALIASES.get(team.upper(), (team.upper(),))
-    team_variants = {t.lower() for t in team_aliases} | {team}
-    for s in sport_variants:
-        for t in team_variants:
-            if f"{s}:{t}" in followed_entries:
-                return True
-    return False
-
-
 def alerts_for_settings(
     alerts: Sequence[Mapping[str, Any]], settings: Any
 ) -> tuple[Mapping[str, Any], ...]:
@@ -275,8 +219,16 @@ def alerts_for_settings(
 
     if settings.mode != "sports" or not settings.score_alerts or not settings.my_teams:
         return ()
-    followed = {str(value).strip().lower() for value in settings.my_teams}
-    return tuple(alert for alert in alerts if _matches_followed(alert, followed))
+    followed = {str(value).strip().lower() for value in settings.my_teams if str(value).strip()}
+    return tuple(
+        alert
+        for alert in alerts
+        if matches_followed_team(
+            str(alert.get("sport") or ""),
+            str(alert.get("team_abbr") or ""),
+            followed,
+        )
+    )
 
 
 __all__ = ["ScoreAlertTracker", "alerts_for_settings"]
