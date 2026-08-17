@@ -44,18 +44,26 @@ def test_finished_game_has_no_live_play_context() -> None:
 
 def test_soccer_clock_has_one_apostrophe_without_provider_spacing() -> None:
     event = _event("93'", {}, "in")
-    event["status"]["displayClock"] = "93\u200e�\u200e'"
+    event["status"]["displayClock"] = "93\u200e\u200e'"
 
     soccer = SportsDisplayProjector().project(_item("soccer", "soccer_champ"), event)
 
-    assert soccer.data["status"] == "93'"
+    assert soccer.data["status"] == "90'+3'"
 
 
 @pytest.mark.parametrize(
     ("provider_clock", "status"),
     (
         ("45:00 + 1:12", "45'+1:12'"),
+        ("45+1'", "45'+1'"),
         ("90:00 + 1:18", "90'+1:18'"),
+        ("90+8'", "90'+8'"),
+        ("98:00", "90'+8:00'"),
+        ("98:15", "90'+8:15'"),
+        ("98'", "90'+8'"),
+        ("122:30", "120'+2:30'"),
+        ("34'", "34'"),
+        ("34:12", "34'"),
     ),
 )
 def test_soccer_clock_keeps_stoppage_minutes_and_seconds(provider_clock: str, status: str) -> None:

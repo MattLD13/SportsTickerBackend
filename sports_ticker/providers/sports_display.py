@@ -367,11 +367,23 @@ def normalize_soccer_clock(value: object) -> str:
         return ""
     minute = match.group("minute")
     added_minute = match.group("added_minute")
-    if added_minute is None:
-        return f"{minute}'"
-    added_seconds = match.group("added_seconds")
-    added = added_minute if added_seconds is None else f"{added_minute}:{added_seconds.zfill(2)}"
-    return f"{minute}'+{added}'"
+    if added_minute is not None:
+        added_seconds = match.group("added_seconds")
+        added = added_minute if added_seconds is None else f"{added_minute}:{added_seconds.zfill(2)}"
+        return f"{minute}'+{added}'"
+
+    minute_value = int(minute)
+    seconds = match.group("seconds")
+    if minute_value > 120:
+        extra = minute_value - 120
+        added = str(extra) if seconds is None else f"{extra}:{seconds.zfill(2)}"
+        return f"120'+{added}'"
+    if minute_value > 90:
+        extra = minute_value - 90
+        added = str(extra) if seconds is None else f"{extra}:{seconds.zfill(2)}"
+        return f"90'+{added}'"
+    return f"{minute}'"
+
 
 
 def _seeds(competition: Mapping[str, Any]) -> dict[str, str]:
