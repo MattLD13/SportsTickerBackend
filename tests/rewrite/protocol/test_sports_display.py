@@ -70,3 +70,13 @@ def test_soccer_clock_keeps_stoppage_minutes_and_seconds(provider_clock: str, st
     """Keep the regulation minute and precise stoppage clock in one shared label."""
 
     assert normalize_soccer_clock(provider_clock) == status
+
+
+def test_soccer_clock_handles_first_half_stoppage_with_period() -> None:
+    """Normalize elapsed minutes over 45 to added time when in first half."""
+
+    assert normalize_soccer_clock("49:00", period=1) == "45'+4:00'"
+    assert normalize_soccer_clock("49'", period=1) == "45'+4'"
+    assert normalize_soccer_clock("49'", period=2) == "49'"
+    assert normalize_soccer_clock("49'") == "49'"
+

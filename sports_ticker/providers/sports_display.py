@@ -151,7 +151,7 @@ def _status(
     if league == "nhl":
         return _period_status("P", period, clock, overtime_base=3)
     if league.startswith("soccer"):
-        label = normalize_soccer_clock(clock) or normalize_soccer_clock(detail)
+        label = normalize_soccer_clock(clock, period=period) or normalize_soccer_clock(detail, period=period)
         if label:
             return f"ET {label}" if period >= 3 or "ET" in upper else label
         return "ET" if period >= 3 or "ET" in upper else detail
@@ -341,7 +341,7 @@ def _baseball_status(value: str) -> str:
     return text or "In Progress"
 
 
-def normalize_soccer_clock(value: object) -> str:
+def normalize_soccer_clock(value: object, *, period: int | None = None) -> str:
     """Return one canonical soccer clock label."""
 
     text = (
@@ -360,9 +360,9 @@ def normalize_soccer_clock(value: object) -> str:
     if match is None:
         return ""
     if any(
-        int(value) >= 60
-        for value in (match.group("seconds"), match.group("added_seconds"))
-        if value is not None
+        int(val) >= 60
+        for val in (match.group("seconds"), match.group("added_seconds"))
+        if val is not None
     ):
         return ""
     minute = match.group("minute")
@@ -374,8 +374,12 @@ def normalize_soccer_clock(value: object) -> str:
 
     minute_value = int(minute)
     seconds = match.group("seconds")
-    if minute_value > 120:
-        extra = minute_value - 120
+    if period == 1 and minute_value > 45:
+        extra = minute_value - 45
+        added = str(extra) if seconds is None else f"{extra}:{seconds.zfill(2)}"
+        return f"45'+{added}'"
+    if minute_value > 120 or (period is not None and period >= 3 and minute_value > 15):
+        extra = minute_value - 120 if minute_value > 120 else minute_value - 15
         added = str(extra) if seconds is None else f"{extra}:{seconds.zfill(2)}"
         return f"120'+{added}'"
     if minute_value > 90:
