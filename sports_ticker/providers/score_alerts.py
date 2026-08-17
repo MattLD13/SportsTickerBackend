@@ -225,6 +225,49 @@ class ScoreAlertTracker:
             return tuple(dict(item) for item in self._alerts if cutoff <= item["ts"] <= now)
 
 
+_TEAM_ALIASES: dict[str, tuple[str, ...]] = {
+    "NY": ("NY", "NYK", "NYC"),
+    "NYK": ("NY", "NYK"),
+    "WAS": ("WAS", "WSH"),
+    "WSH": ("WAS", "WSH"),
+    "JAC": ("JAC", "JAX"),
+    "JAX": ("JAC", "JAX"),
+    "TAM": ("TAM", "TB"),
+    "TB": ("TAM", "TB"),
+    "SAS": ("SAS", "SA"),
+    "SA": ("SAS", "SA"),
+    "GSW": ("GSW", "GS"),
+    "GS": ("GSW", "GS"),
+    "NOP": ("NOP", "NO"),
+    "NO": ("NOP", "NO"),
+    "PHO": ("PHO", "PHX"),
+    "PHX": ("PHO", "PHX"),
+    "UTAH": ("UTAH", "UTA"),
+    "UTA": ("UTAH", "UTA"),
+    "WXM": ("WXM", "WREXHAM"),
+    "SEA": ("SEA", "SEATTLE"),
+    "VAN": ("VAN", "VANCOUVER"),
+}
+
+
+def _matches_followed(alert: Mapping[str, Any], followed_entries: set[str]) -> bool:
+    """Return whether one alert matches any followed team specifier."""
+    sport = str(alert.get("sport") or "").lower()
+    family = _sport_family(sport)
+    team = str(alert.get("team_abbr") or "").lower()
+    sport_variants = {sport, family}
+    if "_" in sport:
+        sport_variants.add(sport.split("_", 1)[1])
+        sport_variants.add(sport.replace("_", ""))
+    team_aliases = _TEAM_ALIASES.get(team.upper(), (team.upper(),))
+    team_variants = {t.lower() for t in team_aliases} | {team}
+    for s in sport_variants:
+        for t in team_variants:
+            if f"{s}:{t}" in followed_entries:
+                return True
+    return False
+
+
 def alerts_for_settings(
     alerts: Sequence[Mapping[str, Any]], settings: Any
 ) -> tuple[Mapping[str, Any], ...]:
@@ -233,11 +276,8 @@ def alerts_for_settings(
     if settings.mode != "sports" or not settings.score_alerts or not settings.my_teams:
         return ()
     followed = {str(value).strip().lower() for value in settings.my_teams}
-    return tuple(
-        alert
-        for alert in alerts
-        if f"{str(alert.get('sport') or '').lower()}:{str(alert.get('team_abbr') or '').lower()}" in followed
-    )
+    return tuple(alert for alert in alerts if _matches_followed(alert, followed))
 
 
 __all__ = ["ScoreAlertTracker", "alerts_for_settings"]
+

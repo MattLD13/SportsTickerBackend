@@ -165,7 +165,12 @@ def _provider_settings_key(name: str):
             settings.live_delay_seconds,
         )
     if name == "fotmob":
-        return lambda settings: _sports_key(settings, FOTMOB_LEAGUES)
+        return lambda settings: _sports_key(settings, FOTMOB_LEAGUES) + (
+            settings.my_teams,
+            settings.score_alerts,
+            settings.live_delay_mode,
+            settings.live_delay_seconds,
+        )
     if name == "golf":
         return lambda settings: (settings.timezone, settings.active_sports.get("golf", True))
     if name == "racing":

@@ -15,6 +15,7 @@ from sports_ticker.domain import ContentItem, DisplaySettings
 
 from .contracts import ProviderHealth, ProviderResult
 from .http import JsonHttpClient, UrllibJsonHttpClient
+from .score_alerts import ScoreAlertTracker, alerts_for_settings
 from .stale_cache import SettingsResultCache
 from .sports_display import normalize_soccer_clock, soccer_event
 
@@ -80,8 +81,22 @@ class FotMobSoccerProvider:
         self._details: dict[str, _DetailCacheEntry] = {}
         self._details_lock = Lock()
         self._stale_cache = SettingsResultCache()
+        self._score_alerts = ScoreAlertTracker()
+        self._score_alerts_by_ticker: dict[str, ScoreAlertTracker] = {}
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
+        """Fetch current scoreboard events from each configured active league."""
+
+        return self._fetch(settings, self._score_alerts)
+
+    def fetch_for_ticker(self, ticker_id: str, settings: DisplaySettings) -> ProviderResult:
+        """Fetch one ticker scoreboard with score memory isolated to that ticker."""
+
+        identifier = str(ticker_id).strip()
+        tracker = self._score_alerts_by_ticker.setdefault(identifier, ScoreAlertTracker())
+        return self._fetch(settings, tracker)
+
+    def _fetch(self, settings: DisplaySettings, score_alerts: ScoreAlertTracker) -> ProviderResult:
         """Fetch all enabled soccer leagues inside the local display window."""
 
         if not isinstance(settings, DisplaySettings):
@@ -116,6 +131,17 @@ class FotMobSoccerProvider:
             )
             for identifier, match in selected
         )
+        score_games = [
+            {"kind": item.kind, "id": item.id, **dict(item.data)}
+            for item in content
+        ]
+        score_alerts.ingest(score_games)
+        alerts = alerts_for_settings(
+            score_alerts.recent(
+                delay=settings.live_delay_seconds if settings.live_delay_mode else 0.0
+            ),
+            settings,
+        )
         health = ProviderHealth(
             healthy=not errors,
             provider=self.provider_name,
@@ -123,6 +149,7 @@ class FotMobSoccerProvider:
         )
         result = ProviderResult(
             content=tuple(sorted(content, key=_sort_key)),
+            alerts=alerts,
             observed_at=datetime.now(timezone.utc),
             health=health,
         )

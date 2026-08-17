@@ -128,3 +128,33 @@ def test_score_alerts_filtering_for_followed_teams() -> None:
     # Score alerts disabled -> Excluded
     settings_disabled = DisplaySettings(mode="sports", score_alerts=False, my_teams=("nhl:nyr",))
     assert len(alerts_for_settings(raw_alerts, settings_disabled)) == 0
+
+
+def test_score_alerts_alias_and_namespace_matching() -> None:
+    now = 400.0
+    tracker = ScoreAlertTracker(clock=lambda: now)
+
+    tracker.ingest([
+        {"kind": "scoreboard", "id": "nba-1", "sport": "nba", "state": "in", "home_abbr": "NYK", "away_abbr": "BOS", "home_score": 100, "away_score": 98},
+        {"kind": "scoreboard", "id": "soc-1", "sport": "soccer_mls", "state": "in", "home_abbr": "SEA", "away_abbr": "VAN", "home_score": 0, "away_score": 0},
+    ])
+    tracker.ingest([
+        {"kind": "scoreboard", "id": "nba-1", "sport": "nba", "state": "in", "home_abbr": "NYK", "away_abbr": "BOS", "home_score": 103, "away_score": 98},
+        {"kind": "scoreboard", "id": "soc-1", "sport": "soccer_mls", "state": "in", "home_abbr": "SEA", "away_abbr": "VAN", "home_score": 1, "away_score": 0},
+    ])
+    alerts = tracker.recent()
+    assert len(alerts) == 2
+
+    # nba:NY matches NYK
+    settings_nba_alias = DisplaySettings(mode="sports", score_alerts=True, my_teams=("nba:NY",))
+    matched = alerts_for_settings(alerts, settings_nba_alias)
+    assert len(matched) == 1
+    assert matched[0]["team_abbr"] == "NYK"
+
+    # soccer_mls:SEA matches soccer_mls
+    settings_mls = DisplaySettings(mode="sports", score_alerts=True, my_teams=("soccer_mls:SEA",))
+    matched_mls = alerts_for_settings(alerts, settings_mls)
+    assert len(matched_mls) == 1
+    assert matched_mls[0]["team_abbr"] == "SEA"
+
+

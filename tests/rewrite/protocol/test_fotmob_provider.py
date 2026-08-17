@@ -152,3 +152,53 @@ def test_fotmob_reuses_pregame_details_until_the_match_starts() -> None:
     assert provider._details_for(pregame) == {"revision": 1}
     assert provider._details_for(live) == {"revision": 2}
     assert client.calls == 2
+
+
+def test_fotmob_emits_score_alerts_for_followed_teams() -> None:
+    from sports_ticker.domain.models import DisplaySettings
+
+    class Client:
+        score = 0
+
+        def get_json(self, url: str, *, timeout: float) -> dict:
+            del timeout
+            if "matchDetails" in url:
+                return {}
+            return {
+                "leagues": [
+                    {
+                        "primaryId": 130,
+                        "matches": [
+                            {
+                                "id": 5071275,
+                                "status": {
+                                    "started": True,
+                                    "finished": False,
+                                    "cancelled": False,
+                                    "liveTime": {"short": "53'"},
+                                },
+                                "home": {"id": "130394", "longName": "Seattle Sounders FC", "score": self.score},
+                                "away": {"id": "307691", "longName": "Vancouver Whitecaps", "score": 0},
+                            }
+                        ],
+                    }
+                ]
+            }
+
+    client = Client()
+    provider = FotMobSoccerProvider({"soccer_mls": 130}, client=client)
+    settings = DisplaySettings(mode="sports", score_alerts=True, my_teams=("soccer_mls:SEA",))
+
+    # First poll: initial score 0-0 -> no alerts
+    result1 = provider.fetch_for_ticker("ticker-1", settings)
+    assert len(result1.alerts) == 0
+
+    # Second poll: Seattle scores 1-0 -> emits alert
+    client.score = 1
+    result2 = provider.fetch_for_ticker("ticker-1", settings)
+    assert len(result2.alerts) == 1
+    alert = result2.alerts[0]
+    assert alert["team_abbr"] == "SEA"
+    assert alert["headline"] == "GOAL"
+    assert alert["home_score"] == 1
+
