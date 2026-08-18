@@ -53,15 +53,16 @@ class AssetPlanner:
                     _add(requests, record.get(key), "logo", (24, 24))
                 _add(requests, _flight_logo_url(record), "logo", (22, 22))
             return
-        if item_type == "racing" or sport in {"indycar", "f1", "nascar"} or family == "racing" or kind in {"racing", "indycar", "f1", "nascar"}:
-            series = _mapping(item.get(sport)) or _mapping(item.get(kind)) or _mapping(item.get("indycar")) or _mapping(item.get("f1")) or _mapping(item.get("nascar"))
+        if item_type == "racing" or sport in {"indycar", "f1", "nascar", "wec", "imsa"} or family == "racing" or kind in {"racing", "indycar", "f1", "nascar", "wec", "imsa"}:
+            series = _mapping(item.get(sport)) or _mapping(item.get(kind)) or _mapping(item.get("indycar")) or _mapping(item.get("f1")) or _mapping(item.get("nascar")) or _mapping(item.get("wec")) or _mapping(item.get("imsa"))
             for driver in series.get("drivers", ()):
                 if not isinstance(driver, Mapping):
                     continue
                 _add(requests, driver.get("team_logo"), "logo", (18, 18))
                 _add(requests, driver.get("team_logo"), "logo", (21, 21))
                 car = driver.get("car_illustration")
-                _add(requests, car, "car" if "nascar.com" in str(car or "") else "image", (130, 20) if "nascar.com" in str(car or "") else (120, 19))
+                processor = "nascar_car" if "nascar.com" in str(car or "") or sport == "nascar" or kind == "nascar" else ("imsa_car" if "imsa.com" in str(car or "") or sport == "imsa" or kind == "imsa" else "image")
+                _add(requests, car, processor, (130, 20) if "nascar.com" in str(car or "") or sport == "nascar" or kind == "nascar" else (120, 19))
             return
         for key in ("home_logo", "away_logo"):
             for size in ((16, 16), (22, 22), (24, 24)):

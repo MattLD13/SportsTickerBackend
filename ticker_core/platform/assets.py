@@ -9,12 +9,13 @@ import json
 import os
 from pathlib import Path
 import threading
+import time
 from typing import Protocol
 from uuid import uuid4
 
 from PIL import Image
 
-from ticker_core.assets import AssetPlanner, AssetRequest, AssetView, PreparedAssetStore, prepare_car, prepare_contained
+from ticker_core.assets import AssetPlanner, AssetRequest, AssetView, PreparedAssetStore, prepare_car, prepare_contained, prepare_imsa_car, prepare_nascar_car
 
 
 class AssetFetcher(Protocol):
@@ -24,18 +25,31 @@ class AssetFetcher(Protocol):
         """Return response bytes or no result."""
 
 
+def _asset_ttl_seconds(url: str) -> float:
+    """Return cache TTL based on series livery change frequency."""
+    lowered = str(url or "").lower()
+    if any(k in lowered for k in ("nascar.com", "indycar.com", "indycar.blob.core.windows.net")):
+        return 7 * 86400.0  # 1 week for race-by-race NASCAR and IndyCar liveries
+    return 300 * 86400.0  # 300 days (season-long) for IMSA, WEC, F1, and general assets
+
+
 class PersistentAssetStore:
-    """Retain original downloaded bytes across process restarts."""
+    """Retain original downloaded bytes across process restarts with series-aware TTL."""
 
     def __init__(self, directory: Path | str) -> None:
         self.directory = Path(directory)
 
-    def load(self, url: str) -> bytes | None:
-        """Return the latest verified original bytes for one URL."""
+    def load(self, url: str, *, now: float | None = None, ignore_expiry: bool = False) -> bytes | None:
+        """Return the latest verified original bytes for one URL if within TTL (or if ignore_expiry is True)."""
         metadata = self._metadata_path(url)
         try:
             details = json.loads(metadata.read_text(encoding="utf-8"))
             content_hash = str(details["content_hash"])
+            saved_at = float(details.get("saved_at", 0.0))
+            ttl = _asset_ttl_seconds(url)
+            current_time = now if now is not None else time.time()
+            if not ignore_expiry and saved_at > 0 and current_time - saved_at > ttl:
+                return None
             path = self.directory / "originals" / self._url_hash(url) / f"{content_hash}.bin"
             raw = path.read_bytes()
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
@@ -44,17 +58,18 @@ class PersistentAssetStore:
             return None
         return raw
 
-    def store(self, url: str, raw: bytes) -> Path:
-        """Atomically store original bytes and their URL index."""
+    def store(self, url: str, raw: bytes, *, now: float | None = None) -> Path:
+        """Atomically store original bytes and their URL index with timestamp."""
         content_hash = sha256(raw).hexdigest()
         folder = self.directory / "originals" / self._url_hash(url)
         target = folder / f"{content_hash}.bin"
         folder.mkdir(parents=True, exist_ok=True)
         if not target.exists():
             self._atomic_write(target, raw)
+        current_time = now if now is not None else time.time()
         self._atomic_write(
             self._metadata_path(url),
-            json.dumps({"url": url, "content_hash": content_hash}, separators=(",", ":")).encode("utf-8"),
+            json.dumps({"url": url, "content_hash": content_hash, "saved_at": current_time}, separators=(",", ":")).encode("utf-8"),
         )
         return target
 
@@ -116,6 +131,8 @@ class AssetCoordinator(AssetView):
             "artwork": prepare_contained,
             "image": prepare_contained,
             "car": prepare_car,
+            "imsa_car": prepare_imsa_car,
+            "nascar_car": prepare_nascar_car,
         }
         self._workers = workers
         self._executor: ThreadPoolExecutor | None = None
@@ -133,8 +150,12 @@ class AssetCoordinator(AssetView):
         return self.long_term.revision
 
     def image(self, url: str, processor: str, size: tuple[int, int]) -> Image.Image | None:
-        """Return a prepared memory image without doing any I/O."""
+        """Return a prepared image if one exists in memory."""
         return self.long_term.prepared.get_memory(AssetRequest(url, processor, size))
+
+    def plan(self, item: Mapping[str, object]) -> tuple[AssetRequest, ...]:
+        """Extract needed asset requests from one content item."""
+        return self._planner.plan(item)
 
     def prefetch_payload(self, payload_or_content: object) -> tuple[Future[Image.Image | None], ...]:
         """Plan and prefetch all assets before a mode chooses content."""
@@ -194,6 +215,8 @@ class AssetCoordinator(AssetView):
                     self.long_term.originals.store(request.url, raw)
                 except OSError:
                     pass
+            else:
+                raw = self.long_term.originals.load(request.url, ignore_expiry=True)
         processor = self._processors.get(request.processor)
         if not raw or processor is None:
             self.long_term.prepared.put(request, None)
@@ -210,5 +233,22 @@ def _fetch_with_requests(url: str) -> bytes | None:
     """Fetch bytes with requests only when the coordinator needs them."""
     import requests
 
-    response = requests.get(url, headers={"User-Agent": "SportsTicker/2"}, timeout=5)
-    return response.content if response.status_code == 200 else None
+    referer = (
+        "https://www.nascar.com/"
+        if "nascar.com" in url
+        else (
+            "https://www.imsa.com/"
+            if "imsa.com" in url
+            else ("https://www.fiawec.com/" if "fiawec.com" in url else "https://www.google.com/")
+        )
+    )
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "Referer": referer,
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=6)
+        return response.content if response.status_code == 200 else None
+    except Exception:
+        return None

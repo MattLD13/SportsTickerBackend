@@ -47,6 +47,8 @@ LEAGUES: Final[tuple[League, ...]] = (
     League("golf", "Golf (PGA)", my_teams_enabled=False),
     League("f1", "Formula 1", my_teams_enabled=False),
     League("indycar", "IndyCar", my_teams_enabled=False),
+    League("imsa", "IMSA", my_teams_enabled=False),
+    League("wec", "FIA WEC", my_teams_enabled=False),
     # League("nascar", "NASCAR", my_teams_enabled=False),
     League("soccer_epl", "Premier League", "soccer/eng.1", fotmob_league_id=47),
     League("soccer_fa_cup", "FA Cup", "soccer/eng.fa", my_teams_enabled=False, fotmob_league_id=132),

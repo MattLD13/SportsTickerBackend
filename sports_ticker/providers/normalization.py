@@ -27,7 +27,7 @@ _FAMILY_ALIASES = {
     "system": "status",
 }
 _RACING_SPORTS = frozenset(
-    {"f1", "formula1", "formula_1", "indycar", "nascar", "racing"}
+    {"f1", "formula1", "formula_1", "indycar", "nascar", "imsa", "wec", "racing"}
 )
 _VISITOR_FLIGHT_KINDS = frozenset({"flight", "flight_visitor"})
 _AIRPORT_KINDS = frozenset(

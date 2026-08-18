@@ -18,7 +18,7 @@ def prepare_contained(raw: bytes, size: tuple[int, int]) -> Image.Image:
     return _enhance_dark_image(target)
 
 
-def prepare_car(raw: bytes, size: tuple[int, int]) -> Image.Image:
+def prepare_car(raw: bytes, size: tuple[int, int], *, mirror: bool = False) -> Image.Image:
     """Remove a white car field and fit the car into its target box."""
     with Image.open(io.BytesIO(raw)) as source:
         image = source.convert("RGBA")
@@ -28,8 +28,20 @@ def prepare_car(raw: bytes, size: tuple[int, int]) -> Image.Image:
     bbox = image.getbbox()
     if bbox:
         image = image.crop(bbox)
+    if mirror:
+        image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
     image.thumbnail(size, Image.Resampling.LANCZOS)
     return image
+
+
+def prepare_imsa_car(raw: bytes, size: tuple[int, int]) -> Image.Image:
+    """Prepare and mirror an IMSA car to face right."""
+    return prepare_car(raw, size, mirror=True)
+
+
+def prepare_nascar_car(raw: bytes, size: tuple[int, int]) -> Image.Image:
+    """Prepare and mirror a NASCAR car to face right."""
+    return prepare_car(raw, size, mirror=True)
 
 
 def remove_border_background(image: Image.Image, tolerance: int = 20) -> Image.Image:

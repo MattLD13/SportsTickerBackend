@@ -59,8 +59,30 @@ def test_coordinator_reuses_persistent_original_bytes(tmp_path) -> None:
     assert calls == [request.url]
 
 
+def test_series_aware_ttl_caching(tmp_path) -> None:
+    from ticker_core.platform.assets import PersistentAssetStore
+    store = PersistentAssetStore(tmp_path)
+    raw = _png()
+    nascar_url = "https://www.nascar.com/wp-content/uploads/sites/7/2026/08/12/26_NCS_26Richmond_1-922x400.jpg"
+    imsa_url = "https://www.imsa.com/wp-content/uploads/sites/32/2025/01/18/25_WT_GTP_10_WTR.png"
+    base_time = 1000000.0
+
+    store.store(nascar_url, raw, now=base_time)
+    store.store(imsa_url, raw, now=base_time)
+
+    # 3 days later (within 1 week): both valid
+    assert store.load(nascar_url, now=base_time + 3 * 86400) is not None
+    assert store.load(imsa_url, now=base_time + 3 * 86400) is not None
+
+    # 10 days later (past 1 week): NASCAR expired, IMSA still valid
+    assert store.load(nascar_url, now=base_time + 10 * 86400) is None
+    assert store.load(imsa_url, now=base_time + 10 * 86400) is not None
+
+    # 350 days later (past 300 days): IMSA expired
+    assert store.load(imsa_url, now=base_time + 350 * 86400) is None
+
+
 def test_coordinator_reuses_prepared_logo_after_restart(tmp_path) -> None:
-    """Load a prepared logo from the long-term cache without refetching it."""
     raw = _png()
     request = AssetRequest("https://assets.example/logo.png", "logo", (8, 8))
     writer = AssetCoordinator(tmp_path, fetch=lambda _url: raw)
@@ -262,7 +284,7 @@ def test_planner_extracts_every_family_without_mode_filtering() -> None:
     assert ("airline", "logo", (24, 24)) in signatures
     assert ("team", "logo", (18, 18)) in signatures
     assert ("team", "logo", (21, 21)) in signatures
-    assert ("https://nascar.com/car.jpg", "car", (130, 20)) in signatures
+    assert ("https://nascar.com/car.jpg", "nascar_car", (130, 20)) in signatures
 
 
 def _png() -> bytes:

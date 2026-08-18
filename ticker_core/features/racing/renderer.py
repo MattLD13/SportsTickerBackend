@@ -22,6 +22,29 @@ PANEL_HEIGHT = 32
 _NON_FLAG_STATES = {"WARM", "COLD", "FINAL", "OFFICIAL", "UNOFFICIAL", "ENDED", "STANDBY"}
 
 
+def _is_timed_session(session: object) -> bool:
+    """Return whether a session is time trial, practice, or multi-stage qualifying."""
+    name = str(session or "").lower()
+    return any(
+        keyword in name
+        for keyword in (
+            "qual",
+            "fast",
+            "top 12",
+            "last chance",
+            "hyperpole",
+            "pole",
+            "shootout",
+            "prac",
+            "fp",
+            "warm",
+            "shakedown",
+            "test",
+            "time trial",
+        )
+    )
+
+
 def racing_flag_color(value: object) -> tuple[int, int, int]:
     """Return the panel color for one race control state."""
     name = str(value or "").strip().upper()
@@ -68,6 +91,8 @@ class RacingRenderer:
             return _mapping(item.get("f1"))
         if sport == "nascar":
             return _nascar_payload(_mapping(item.get("nascar")))
+        if sport and sport in item:
+            return _mapping(item.get(sport))
         return _mapping(item.get("indycar"))
 
     def _render_scroll(self, item: Mapping[str, Any]) -> Image.Image:
@@ -82,44 +107,72 @@ class RacingRenderer:
         flag = _display_flag(payload.get("flag"), item.get("state", "pre"))
         _draw_mini_flag(draw, width - 12, 0, flag)
         draw.line([(0, 7), (width - 1, 7)], fill=(55, 76, 130))
-        session = str(payload.get("session_type") or "Race").lower()
-        qualifying = "qual" in session
+        session = str(payload.get("session_name") or payload.get("session_type") or "Race").lower()
         sport = str(item.get("sport", "")).lower()
+        metric = str(payload.get("qualifying_metric") or "").lower()
+        timed = _is_timed_session(session) or metric in {"mph", "time"}
+        is_mph = metric == "mph" or (timed and metric != "time" and sport == "indycar" and "mph" in str(payload.get("track_type") or "").lower())
+        state = str(item.get("state", "pre")).lower()
+        lap = int(payload.get("lap") or 0)
+        total_laps = int(payload.get("total_laps") or 0)
+        time_to_go = str(payload.get("time_to_go") or "").strip()
         if not drivers:
             _draw_empty_or_session(draw, payload, item, width)
             return image
         draw_tiny_text(draw, 1, 8, "P", (70, 90, 140))
-        draw_tiny_text(draw, 34, 8, "DRIVER", (70, 90, 140))
-        metric = str(payload.get("qualifying_metric") or "time").lower()
-        label = "TIME" if qualifying and (sport == "f1" or metric == "time") else "MPH" if qualifying else "INTERVAL" if sport == "nascar" else "GAP"
+        draw_tiny_text(draw, 10, 8, "CAR" if sport in {"wec", "imsa"} else "DRIVER", (70, 90, 140))
+        label = "MPH" if is_mph else "TIME" if timed and (sport == "f1" or metric == "time") else "INTERVAL" if sport == "nascar" else "GAP"
         draw_tiny_text(draw, 90, 8, label, (70, 90, 140))
         for index, driver in enumerate(drivers[:3]):
             y = (13, 20, 27)[index]
             position = str(driver.get("pos") or index + 1)
             abbreviation = str(driver.get("abbr") or "???").upper()[:3]
             car = str(driver.get("car") or "").strip()
-            if qualifying:
+            if is_mph:
+                right = str(driver.get("speed") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
+            elif timed:
                 if sport == "f1":
-                    right = str(driver.get("interval") or driver.get("gap") or "")[:12]
+                    right = str(driver.get("interval") or driver.get("gap") or driver.get("best_time") or "")[:12]
                 elif metric == "time":
-                    right = str(driver.get("best_time") or driver.get("gap") or "")[:7]
+                    right = str(driver.get("best_time") or driver.get("qualifying_value") or driver.get("gap") or "")[:7]
                 else:
-                    right = str(driver.get("speed") or driver.get("gap") or "")[:7]
+                    right = str(driver.get("speed") or driver.get("best_time") or driver.get("gap") or "")[:7]
+            elif position == "1":
+                if state == "post":
+                    right = "LEADER"
+                elif lap > 0 and total_laps > 0:
+                    right = f"{lap}/{total_laps}"
+                elif time_to_go and "00:00" not in time_to_go and time_to_go != "0":
+                    right = time_to_go
+                else:
+                    right = "LEADER"
             else:
                 right = str(driver.get("interval") or driver.get("gap") or "")[:12]
-            draw_tiny_text(draw, 0, y, position, (255, 215, 0) if position == "1" else (200, 200, 200))
+            draw_tiny_text(draw, 1, y, position, (255, 215, 0) if position == "1" else (200, 200, 200))
             primary, _ = self._driver_colors(driver)
             number = car or abbreviation
             number_width = _tiny_width(number)
-            total = number_width + 2 + _tiny_width(abbreviation)
-            start = max(5, int(round(34 + (_tiny_width("DRIVER") / 2) - total / 2)))
-            if _luminance(primary) < 80:
-                for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                    draw_tiny_text(draw, start + dx, y + dy, number, (255, 255, 255, 200))
-            draw_tiny_text(draw, start, y, number, primary)
-            draw_tiny_text(draw, start + number_width + 2, y, abbreviation, (255, 255, 255))
+            start = 10
+            draw_tiny_text(draw, start, y, number, _brighten_if_dark(primary))
+            right_x = min(82, width - len(right) * 4 - 2) if right else width - 2
+            avail_width = max(10, right_x - (start + number_width + 3))
+            if sport in {"wec", "imsa"}:
+                # In LMP2 all cars are Oreca chassis, so prioritize team name over manufacturer
+                is_lmp2 = "lmp2" in session or str(driver.get("class") or "").lower() == "lmp2" or str(driver.get("manufacturer") or "").upper() == "ORECA"
+                raw_name = str((driver.get("team") or driver.get("team_abbr")) if is_lmp2 else (driver.get("manufacturer") or driver.get("team") or driver.get("abbr") or "???")).upper()
+                if _tiny_width(raw_name) <= avail_width:
+                    display_name = raw_name
+                else:
+                    first_word = raw_name.split()[0]
+                    if _tiny_width(first_word) <= avail_width:
+                        display_name = first_word
+                    else:
+                        display_name = str(driver.get("abbr") or raw_name[:4]).upper()
+            else:
+                display_name = abbreviation
+            draw_tiny_text(draw, start + number_width + 3, y, display_name, (255, 255, 255))
             if right:
-                draw_tiny_text(draw, min(82, width - len(right) * 4 - 2), y, right, (255, 215, 0) if position == "1" or right.upper() == "LEADER" else (180, 210, 255))
+                draw_tiny_text(draw, right_x, y, right, (255, 215, 0) if position == "1" else (180, 210, 255))
         return image
 
     def _render_full(self, item: Mapping[str, Any], elapsed: float) -> Image.Image:
@@ -152,13 +205,22 @@ class RacingRenderer:
             crop = strip.crop((int(max(0, elapsed) * 14) % loop, 0, int(max(0, elapsed) * 14) % loop + available, 7))
             draw._image.paste(crop, (4, 1), crop)
         weather = _mapping(payload.get("weather"))
-        draw_tiny_text(draw, 4, 8, session[:11], (180, 210, 255))
+        lap = int(payload.get("lap") or 0)
+        total_laps = int(payload.get("total_laps") or 0)
+        time_to_go = str(payload.get("time_to_go") or "").strip()
+        if lap > 0 and total_laps > 0:
+            session_display = f"{lap}/{total_laps}"
+        elif time_to_go and "00:00" not in time_to_go and time_to_go != "0":
+            session_display = time_to_go[:11]
+        else:
+            session_display = session[:11]
+        draw_tiny_text(draw, 4, 8, session_display, (180, 210, 255))
         _draw_weather(draw, weather)
 
     def _draw_driver_panel(self, image: Image.Image, payload: Mapping[str, Any], item: Mapping[str, Any], x_offset: int, elapsed: float) -> None:
         panel_width = PANEL_WIDTH - x_offset
         panel = Image.new("RGBA", (panel_width, PANEL_HEIGHT), (0, 0, 0, 0))
-        drivers = sorted(_drivers(payload), key=_driver_position)
+        drivers = sorted(_drivers(payload), key=_driver_position)[:10]
         if not drivers:
             label = _header_label(payload)
             draw_tiny_text(ImageDraw.Draw(panel), max(4, (panel_width - _tiny_width(label)) // 2), 10, label, (180, 210, 255))
@@ -169,11 +231,12 @@ class RacingRenderer:
                     draw_tiny_text(ImageDraw.Draw(panel), max(4, (panel_width - _tiny_width(starts)) // 2), 18, starts, (200, 200, 200))
             image.paste(panel, (x_offset, 0), panel)
             return
-        qualifying = "qual" in str(payload.get("session_type") or "").lower() or "prac" in str(payload.get("session_type") or "").lower()
-        f1 = str(item.get("sport") or "").lower() == "f1"
+        session = str(payload.get("session_name") or payload.get("session_type") or "").lower()
         metric = str(payload.get("qualifying_metric") or "time").lower()
-        key = (tuple(_driver_key(driver) for driver in drivers), qualifying, f1, metric, self.assets.revision)
-        cards, strip, strip_width = self._driver_strip(drivers, qualifying, f1, metric, key)
+        timed = _is_timed_session(session) or metric in {"mph", "time"}
+        f1 = str(item.get("sport") or "").lower() == "f1"
+        key = (tuple(_driver_key(driver) for driver in drivers), timed, f1, metric, self.assets.revision)
+        cards, strip, strip_width = self._driver_strip(drivers, timed, f1, metric, key)
         if len(cards) == 1:
             panel.paste(cards[0], (max(0, (panel_width - cards[0].width) // 2), 1), cards[0])
         else:
@@ -222,7 +285,7 @@ class RacingRenderer:
             name_width = _text_width(name_font, name)
         team_logo = str(driver.get("team_logo") or "")
         car_image = str(driver.get("car_illustration") or "")
-        badge_card = bool(team_logo) and (not car_image or "nascar.com" in car_image)
+        badge_card = bool(team_logo) and not car_image
         if badge_card:
             width = max(PANEL_HEIGHT - 7 + int(name_width) + 18, 80)
         else:
@@ -231,14 +294,18 @@ class RacingRenderer:
         draw = ImageDraw.Draw(card)
         primary, secondary = self._driver_colors(driver)
         draw.rectangle([0, 0, width - 1, card.height - 1], fill=(12, 12, 18), outline=(255, 215, 0) if position == "1" else (60, 60, 72))
-        image = self.assets.image(car_image, "car", (130, 20)) if car_image else None
-        if image is None and car_image and "nascar.com" not in car_image:
-            image = self.assets.image(car_image, "image", (120, 19))
+        image = None
+        if car_image:
+            image = (
+                self.assets.image(car_image, "nascar_car", (130, 20))
+                or self.assets.image(car_image, "imsa_car", (120, 19))
+                or self.assets.image(car_image, "car", (130, 20))
+                or self.assets.image(car_image, "image", (120, 19))
+            )
         drew = False
         if image is not None:
             car = image.convert("RGBA")
-            if "nascar.com" not in car_image:
-                car = _trim_transparent_padding(car)
+            car = _trim_transparent_padding(car)
             car.thumbnail((120, 19), Image.Resampling.LANCZOS)
             card.paste(car, (0, max(0, card.height - car.height - 1)), car)
             drew = True
@@ -263,10 +330,15 @@ class RacingRenderer:
                     draw.text((number_x + offset_x, offset_y), car_number, font=self.fonts.normal, fill=(255, 255, 255, 200))
             draw.text((number_x, 0), car_number, font=self.fonts.normal, fill=primary)
         draw.text((max(4, width - int(name_width) - 5), 10), name, font=name_font, fill=(255, 255, 255))
-        if qualifying and not f1 and metric == "time":
-            right = str(driver.get("best_time") or driver.get("gap") or "")[:8]
+        is_mph = metric == "mph"
+        if is_mph:
+            right = str(driver.get("speed") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
+        elif qualifying and not f1 and metric == "time":
+            right = str(driver.get("best_time") or driver.get("qualifying_value") or driver.get("gap") or "")[:8]
+        elif qualifying:
+            right = str(driver.get("speed") or driver.get("best_time") or driver.get("gap") or "")[:8]
         else:
-            right = str(driver.get("speed") or driver.get("gap") or "")[:8] if qualifying else str(driver.get("gap") or "")[:10]
+            right = str(driver.get("gap") or driver.get("interval") or "")[:10]
         if right:
             draw_tiny_text(draw, max(4, width - _tiny_width(right) - 4), 23, right, (255, 215, 0) if position == "1" or right.upper() == "LEADER" else (140, 190, 255))
         return card
@@ -582,6 +654,15 @@ def _ordinal(value: str) -> str:
 def _luminance(color: tuple[int, int, int]) -> float:
     """Return visible luminance for one RGB color."""
     return 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]
+
+
+def _brighten_if_dark(color: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Ensure text color is legible on a black matrix background without blurry outlines."""
+    lum = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]
+    if lum < 90:
+        boost = int(90 - lum)
+        return (min(255, color[0] + boost), min(255, color[1] + boost), min(255, color[2] + boost))
+    return color
 
 
 def _wind(value: object) -> str:
