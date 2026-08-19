@@ -10,6 +10,8 @@ from ticker_core.platform import HotspotDetails, WiFiNetwork, WiFiRecoveryServic
 from ticker_core.rendering import load_default_font_set
 
 
+
+
 class Commands:
     def __init__(self) -> None:
         self.connected: list[tuple[str, str, str]] = []
@@ -41,6 +43,7 @@ def test_wifi_setup_starts_hotspot_and_connects_from_portal() -> None:
         internet_probe=lambda: False,
         hotspot_starter=hotspots.append,
         background=lambda action: background.append(action),
+        setup_failure_threshold=3,
     )
 
     service.start_setup()
@@ -90,6 +93,7 @@ def test_wifi_setup_page_is_mobile_friendly_and_rejects_wrong_code() -> None:
         internet_probe=lambda: False,
         hotspot_starter=lambda details: None,
         background=lambda action: background.append(action),
+        setup_failure_threshold=3,
     )
     service.start_setup()
     service.start_setup()
@@ -119,6 +123,7 @@ def test_wifi_setup_expires_and_limits_code_attempts() -> None:
         hotspot_starter=lambda details: None,
         setup_ttl_seconds=0.001,
         max_setup_attempts=1,
+        setup_failure_threshold=3,
     )
     service.start_setup()
     service.start_setup()
@@ -136,6 +141,7 @@ def test_wifi_setup_expires_and_limits_code_attempts() -> None:
         internet_probe=lambda: False,
         hotspot_starter=lambda details: None,
         max_setup_attempts=1,
+        setup_failure_threshold=3,
     )
     service.start_setup()
     service.start_setup()
@@ -249,3 +255,74 @@ def test_local_setup_portal_requires_tls_context(tmp_path) -> None:
     assert host == "0.0.0.0"
     assert port == 443
     assert app.config["TICKER_SSL_CONTEXT"] == (str(certificate), str(key))
+
+
+def test_wifi_setup_default_threshold_is_twelve() -> None:
+    """Trigger setup only after 12 consecutive failed probes by default."""
+
+    hotspots: list[HotspotDetails] = []
+    service = WiFiRecoveryService(
+        Commands(),
+        internet_probe=lambda: False,
+        hotspot_starter=hotspots.append,
+    )
+
+    for _ in range(11):
+        state = service.start_setup()
+        assert state.hotspot_active is False
+        assert state.internet_available is False
+
+    state = service.start_setup()
+    assert state.hotspot_active is True
+    assert len(hotspots) == 1
+
+
+def test_wifi_setup_auto_recovers_when_internet_returns() -> None:
+    """Tear down hotspot or BLE setup when internet connectivity returns."""
+
+    commands = Commands()
+    hotspots: list[HotspotDetails] = []
+    internet_status = [False]
+    captured_stops: list[str] = []
+    service = WiFiRecoveryService(
+        commands,
+        internet_probe=lambda: internet_status[0],
+        hotspot_starter=hotspots.append,
+        setup_failure_threshold=1,
+        ble_starter=lambda code, cb: None,
+        ble_stopper=lambda: captured_stops.append("ble_stopped"),
+    )
+
+    state = service.start_setup()
+    assert state.ble_active is True
+    assert state.internet_available is False
+
+    internet_status[0] = True
+    recovered = service.start_setup()
+
+    assert recovered.ble_active is False
+    assert recovered.internet_available is True
+    assert captured_stops == ["ble_stopped"]
+
+    hotspot_service = WiFiRecoveryService(
+        commands,
+        internet_probe=lambda: internet_status[0],
+        hotspot_starter=hotspots.append,
+        setup_failure_threshold=1,
+    )
+    internet_status[0] = False
+    active = hotspot_service.start_setup()
+    assert active.hotspot_active is True
+
+    internet_status[0] = True
+    recovered_hotspot = hotspot_service.start_setup()
+    assert recovered_hotspot.hotspot_active is False
+    assert recovered_hotspot.internet_available is True
+    assert commands.stopped == ["wlan0"]
+
+
+def test_probe_internet_checks_targets() -> None:
+    """Return true when a target connection succeeds and false when all fail."""
+    from ticker_core.platform.wifi import probe_internet
+
+    assert probe_internet(targets=(("127.0.0.1", 1),), timeout=0.01) is False

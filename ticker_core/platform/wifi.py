@@ -155,13 +155,23 @@ class SetupRateLimitError(RuntimeError):
     """Report too many setup submissions within the configured window."""
 
 
-def probe_internet() -> bool:
-    """Return true when the Pi can reach a public DNS endpoint."""
-    try:
-        with socket.create_connection(("8.8.8.8", 53), timeout=3):
-            return True
-    except OSError:
-        return False
+PUBLIC_INTERNET_TARGETS: tuple[tuple[str, int], ...] = (
+    ("1.1.1.1", 53),
+    ("8.8.8.8", 53),
+    ("1.1.1.1", 443),
+    ("8.8.8.8", 443),
+)
+
+
+def probe_internet(*, targets: Sequence[tuple[str, int]] = PUBLIC_INTERNET_TARGETS, timeout: float = 2.0) -> bool:
+    """Return true when the Pi can reach any public internet endpoint."""
+    for host, port in targets:
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def run_flask_portal(app: Flask, host: str, port: int) -> None:
@@ -187,7 +197,7 @@ class WiFiRecoveryService:
         portal_address: str = "10.42.0.1",
         portal_cert_path: Path | str | None = None,
         portal_key_path: Path | str | None = None,
-        setup_failure_threshold: int = 3,
+        setup_failure_threshold: int = 12,
         setup_ttl_seconds: float = 900.0,
         max_setup_attempts: int = 5,
         setup_attempt_window_seconds: float = 60.0,
@@ -270,6 +280,15 @@ class WiFiRecoveryService:
         self._last_internet_available = internet_available
         if internet_available:
             self._consecutive_failures = 0
+            if (self._hotspot_active or self._ble_active) and not forced:
+                if self._ble_active and self._ble_stopper is not None:
+                    self._ble_stopper()
+                if self._hotspot_active:
+                    self._commands.stop_hotspot(interface=self._hotspot.interface)
+                self._hotspot_active = False
+                self._ble_active = False
+                self._setup_started_at = None
+                self._clear_setup_state()
         else:
             self._consecutive_failures += 1
         if not internet_available and not self._hotspot_active and not self._ble_active and (

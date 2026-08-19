@@ -467,7 +467,12 @@ class TickerApplication:
         if self._runtime.snapshot is None and entry is not None:
             self._restore_cached_content()
             return
-        expires_in = self._cache.remaining(entry) if entry is not None else 0.0
+        if entry is not None:
+            expires_in = max(30.0, self._cache.remaining(entry))
+        elif self._runtime.snapshot is not None:
+            expires_in = 30.0
+        else:
+            expires_in = self._runtime.config.offline_after
         self._runtime.mark_disconnected(expires_in=expires_in)
 
     def _refresh_viewport(self, snapshot=None) -> None:

@@ -495,3 +495,43 @@ def test_unintended_black_frame_is_rejected_and_retried(tmp_path) -> None:
         assert sink.presented[0][0].getbbox() is not None
     finally:
         application.close()
+
+
+def test_poll_failure_grants_grace_period_for_disconnected_content(tmp_path) -> None:
+    """Retain content with connection_lost overlay during temporary poll outages."""
+    from ticker_core.app.poller import PollFailed
+
+    wall = datetime.now(timezone.utc)
+    now = [0.0]
+    runtime = TickerRuntime(monotonic=lambda: now[0], wall_clock=lambda: wall)
+    application = TickerApplication(
+        client=Client(),
+        poller=IdlePoller(),
+        cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=Assets(),
+        runtime=runtime,
+        viewport=Viewport(),
+        frames=Frames(),
+        pacer=FramePacer(lambda: now[0]),
+        sink=Sink(),
+        commands=Commands(),
+        device_id="ticker-1",
+        repository=tmp_path,
+        wall_clock=lambda: wall,
+    )
+    try:
+        application.start()
+        application._events.put(PollFailed(RuntimeError("temporary timeout"), retry_in=1.0))
+        decision = application.step()
+        assert decision.connection_lost is True
+        assert decision.kind != FrameKind.OFFLINE
+
+        now[0] = 30.0
+        active_decision = application.step()
+        assert active_decision.kind != FrameKind.OFFLINE
+
+        now[0] = 61.0
+        expired_decision = application.step()
+        assert expired_decision.kind == FrameKind.OFFLINE
+    finally:
+        application.close()
