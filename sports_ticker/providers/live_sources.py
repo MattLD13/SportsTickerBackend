@@ -7,7 +7,7 @@ import re
 import json
 import hashlib
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from math import atan2, cos, isfinite, radians, sin, sqrt
 from pathlib import Path
 from threading import Lock, Thread
@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.markets import MARKET_GROUPS
 
-from .espn import _is_current_event
+from .espn import _display_timezone, _event_time
 from .http import JsonHttpClient, UrllibJsonHttpClient
 
 
@@ -81,14 +81,21 @@ _AIRLINE_DOMAINS = {
 class EspnGolfSource:
     """Read the PGA scoreboard directly from ESPN."""
 
-    def __init__(self, client: JsonHttpClient | None = None, *, timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        client: JsonHttpClient | None = None,
+        *,
+        timeout: float = 10.0,
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
         self._client = client or UrllibJsonHttpClient()
         self._timeout = _timeout(timeout)
+        self._now = now or (lambda: datetime.now(timezone.utc))
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
         payload = self._client.get_json(ESPN_GOLF_URL, timeout=self._timeout)
         event = _first_event(payload)
-        if event is None or not _is_current_event(event, timezone_name=settings.timezone):
+        if event is None or not _is_current_golf_event(event, timezone_name=settings.timezone, now=self._now()):
             return {"content": []}
         competition = _first_mapping(event.get("competitions"))
         players = [_golf_player(value) for value in _mappings(competition.get("competitors"))]
@@ -106,7 +113,7 @@ class EspnGolfSource:
                     "golf": {
                         "brand": _golf_brand(str(event.get("name") or "")),
                         "event_name": str(event.get("name") or "PGA TOUR"),
-                        "year": _mapping(event.get("season")).get("year", datetime.now(timezone.utc).year),
+                        "year": _mapping(event.get("season")).get("year", self._now().year),
                         "round": _golf_round(status["text"]),
                         "players": players,
                     },
@@ -1750,6 +1757,40 @@ def _status(event: Mapping[str, Any], competition: Mapping[str, Any]) -> dict[st
         "state": str(kind.get("state") or "pre").lower(),
         "text": str(kind.get("shortDetail") or kind.get("detail") or kind.get("description") or "Scheduled"),
     }
+
+
+def _is_current_golf_event(
+    event: Mapping[str, Any],
+    *,
+    timezone_name: str = "",
+    now: datetime | None = None,
+) -> bool:
+    """Return True if one golf event is live or scheduled for the active local day."""
+
+    source = _first_mapping(event.get("competitions")) or event
+    status = _mapping(source.get("status")) or _mapping(event.get("status"))
+    kind = _mapping(status.get("type"))
+    state = str(kind.get("state") or "pre").strip().lower()
+    if state in {"in", "half", "crit"}:
+        return True
+
+    starts_at = _event_time(event.get("date") or source.get("date"))
+    if starts_at is None:
+        return False
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    tz = _display_timezone(timezone_name)
+    local_now = current.astimezone(tz)
+    local_start = starts_at.astimezone(tz)
+    current_date = (local_now - timedelta(days=1)).date() if local_now.hour < 3 else local_now.date()
+
+    if state == "pre":
+        return current_date >= local_start.date()
+
+    ends_at = _event_time(event.get("endDate") or source.get("endDate")) or starts_at
+    local_end = ends_at.astimezone(tz)
+    return local_start.date() <= current_date <= local_end.date()
 
 
 def _golf_round(status: str) -> str:
