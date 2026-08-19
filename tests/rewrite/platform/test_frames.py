@@ -5,6 +5,8 @@ import pytest
 
 from ticker_core.drivers import MemoryFrameSink, RgbMatrixFrameSink
 
+pytestmark = pytest.mark.critical
+
 
 def test_memory_sink_converts_inverts_and_clamps_brightness() -> None:
     sink = MemoryFrameSink(width=2, height=1)

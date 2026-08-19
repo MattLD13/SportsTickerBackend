@@ -42,7 +42,9 @@ Before a commit, state these facts in the change notes:
 ## Common Commands
 
 - Compile touched Python: `python -m py_compile path\to\file.py`
-- Run focused V2 tests: `python -m pytest -q`
+- Run critical pre-push tests: `python -m pytest -m critical`
+- Run all V2 tests: `python -m pytest -q`
+- See `tests/AGENTS.md` for domain test commands and testing procedures.
 - Render a V2 frame: `python tools\render_rewrite.py --snapshot tests\rewrite\debug\v2_render_snapshot.json --mode sports --item-id nfl-live --no-prefetch --output previews\nfl.png`
 - Render the offline panel: `python tools\render_offline_screen.py --out-dir previews\offline`
 - Check fleet health: open `http://<backend>/api/v2/health`

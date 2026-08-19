@@ -6,6 +6,8 @@ from ticker_core.protocol import TickerResponse
 from ticker_core.runtime import classify_content
 from ticker_core.modes import DisplayMode, display_mode
 
+pytestmark = pytest.mark.critical
+
 
 def test_user_modes_have_one_explicit_owner():
     assert tuple(DisplayMode) == (

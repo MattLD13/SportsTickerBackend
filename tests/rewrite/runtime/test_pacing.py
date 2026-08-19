@@ -2,6 +2,8 @@ import pytest
 
 from ticker_core.runtime import FramePacer
 
+pytestmark = pytest.mark.critical
+
 
 class Clock:
     def __init__(self, value: float = 0.0) -> None:

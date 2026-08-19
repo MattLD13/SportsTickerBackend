@@ -53,11 +53,9 @@ def test_media_and_flight_keep_explicit_animation_state() -> None:
     assert golf_state.pair == 0
 
 
-def test_golf_names_use_led_safe_ascii() -> None:
+def test_golf_renderer_transliterates_special_names() -> None:
     assert normalize_special_chars("Ludvig Åberg and Nicolai Højgaard") == "Ludvig Aberg and Nicolai Hojgaard"
 
-
-def test_golf_renderer_transliterates_special_names() -> None:
     renderer = GolfRenderer(load_default_font_set())
     context = RenderContext(datetime(2026, 8, 14, 20, 50, 40))
     special = {"golf": {"players": [{"pos": "1", "name": "Ludvig Åberg", "total": -2, "holes": [4] * 18, "thru": 18}]}}
@@ -127,4 +125,3 @@ def test_golf_scroll_right_justifies_today_and_total() -> None:
     card = renderer.scroll(item)
     assert card.height == 32
     assert card.width >= 128
-

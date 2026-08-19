@@ -1,11 +1,14 @@
 """Validate the canonical version two display projection."""
 
 from datetime import datetime, timezone
+import pytest
 
 from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.providers.contracts import ProviderHealth
 from sports_ticker.projections import project_data_v2, select_display_content
 from ticker_core.protocol import TickerResponse
+
+pytestmark = pytest.mark.critical
 
 
 def test_provider_overlays_use_the_v2_event_envelope() -> None:

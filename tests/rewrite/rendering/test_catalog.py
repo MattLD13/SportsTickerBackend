@@ -12,11 +12,12 @@ from ticker_core.rendering import (
     UnknownContentRendererError,
 )
 
+pytestmark = pytest.mark.critical
+
 
 class SolidRenderer:
     def render(self, context, scene):
         return RenderedContent(Image.new("RGB", (64, 32), "red"))
-
 
 def test_catalog_routes_by_content_family():
     catalog = ContentRendererCatalog()

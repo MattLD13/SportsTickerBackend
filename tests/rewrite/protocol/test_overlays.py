@@ -1,6 +1,10 @@
+import pytest
+
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.espn import EspnScoreboardProvider
 from sports_ticker.providers.live_sources import EspnNewsSource
+
+pytestmark = pytest.mark.critical
 
 
 class SequenceClient:

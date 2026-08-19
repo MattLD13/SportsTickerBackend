@@ -4,6 +4,8 @@ import pytest
 
 from sports_ticker.fleet import TickerProfile
 
+pytestmark = pytest.mark.critical
+
 
 def test_full_profile_has_six_panel_geometry() -> None:
     profile = TickerProfile.from_mapping({"product_family": "full"})

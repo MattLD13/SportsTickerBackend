@@ -1,9 +1,12 @@
 """Exercise the version two runtime state boundary."""
 
 from datetime import datetime, timezone
+import pytest
 
 from ticker_core.protocol import TickerResponse
 from ticker_core.runtime import FrameKind, RuntimeConfig, StripLayout, StripSegment, TickerRuntime, classify_content
+
+pytestmark = pytest.mark.critical
 
 
 def _response(*, mode: str = "sports", presentation: str = "rotation", state: str = "in") -> TickerResponse:

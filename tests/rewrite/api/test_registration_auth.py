@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import pytest
 
 from sports_ticker.bootstrap_v2 import create_backend_application
 from ticker_core.protocol import DeviceState, TickerResponse
@@ -11,6 +12,8 @@ from ticker_core.features.alerts import NewsBannerRenderer, ScoreAlertRenderer
 from ticker_core.features.utility import UtilityRenderer
 from ticker_core.rendering import ContentRendererCatalog, load_default_font_set
 from ticker_core.runtime import FrameDecision, FrameKind
+
+pytestmark = pytest.mark.critical
 
 
 def _register(client, ticker_id: str) -> dict:

@@ -1,6 +1,9 @@
 from pathlib import Path
+import pytest
 
 from ticker_core.platform import HealthCollector
+
+pytestmark = pytest.mark.critical
 
 
 def test_health_collector_reports_snapshot_and_caches_build(tmp_path: Path):

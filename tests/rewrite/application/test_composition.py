@@ -1,6 +1,9 @@
 """Test safe device identity composition."""
 
+import pytest
 from ticker_core.composition import load_device_id
+
+pytestmark = pytest.mark.critical
 
 
 def test_device_identity_uses_explicit_value_and_windows_data_path(tmp_path, monkeypatch) -> None:

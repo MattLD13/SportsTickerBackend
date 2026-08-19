@@ -7,11 +7,14 @@ from threading import Event
 from time import monotonic, sleep
 
 from PIL import Image
+import pytest
 
 from ticker_core.app.viewport import CardViewport
 from ticker_core.context import RenderContext
 from ticker_core.rendering import RenderedContent
 from ticker_core.runtime import Content
+
+pytestmark = pytest.mark.critical
 
 
 class Catalog:

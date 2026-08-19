@@ -22,17 +22,17 @@ def _item(series: str) -> dict:
     }
 
 
-@pytest.mark.parametrize("series", ["indycar", "f1", "nascar"])
-def test_each_racing_series_renders_a_panel_frame(series: str) -> None:
+def test_each_racing_series_renders_a_panel_frame() -> None:
     renderer = RacingRenderer(load_default_font_set(), MemoryRacingAssets())
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
 
-    scroll = renderer.render(context, ContentScene(_item(series), "sports")).image
-    full = renderer.render(
-        context,
-        ContentScene({**_item(series), "sports_presentation": "pinned"}, "sports"),
-    ).image
+    for series in ("indycar", "f1", "nascar"):
+        scroll = renderer.render(context, ContentScene(_item(series), "sports")).image
+        full = renderer.render(
+            context,
+            ContentScene({**_item(series), "sports_presentation": "pinned"}, "sports"),
+        ).image
 
-    assert scroll.height == full.height == 32
-    assert scroll.width >= 128
-    assert full.size == (384, 32)
+        assert scroll.height == full.height == 32
+        assert scroll.width >= 128
+        assert full.size == (384, 32)

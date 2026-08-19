@@ -51,9 +51,9 @@ def test_soccer_clock_has_one_apostrophe_without_provider_spacing() -> None:
     assert soccer.data["status"] == "90'+3'"
 
 
-@pytest.mark.parametrize(
-    ("provider_clock", "status"),
-    (
+def test_soccer_clock_keeps_stoppage_minutes_and_seconds() -> None:
+    """Keep the regulation minute and precise stoppage clock in one shared label."""
+    cases = (
         ("45:00 + 1:12", "45'+1:12'"),
         ("45+1'", "45'+1'"),
         ("90:00 + 1:18", "90'+1:18'"),
@@ -64,12 +64,9 @@ def test_soccer_clock_has_one_apostrophe_without_provider_spacing() -> None:
         ("122:30", "120'+2:30'"),
         ("34'", "34'"),
         ("34:12", "34'"),
-    ),
-)
-def test_soccer_clock_keeps_stoppage_minutes_and_seconds(provider_clock: str, status: str) -> None:
-    """Keep the regulation minute and precise stoppage clock in one shared label."""
-
-    assert normalize_soccer_clock(provider_clock) == status
+    )
+    for provider_clock, expected in cases:
+        assert normalize_soccer_clock(provider_clock) == expected
 
 
 def test_soccer_clock_handles_first_half_stoppage_with_period() -> None:

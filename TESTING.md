@@ -1,10 +1,18 @@
 # Testing
 
-Run the focused V2 suite from the repository root:
+Run the critical pre-push test suite:
+
+```powershell
+python -m pytest -m critical
+```
+
+Run the complete test suite:
 
 ```powershell
 python -m pytest -q
 ```
+
+See [`tests/AGENTS.md`](tests/AGENTS.md) for the domain test command matrix and test procedures.
 
 The tests live in `tests/rewrite/`. They use temporary SQLite files, injected provider ports, and memory frame sinks. They do not start the production scheduler or require panel hardware.
 

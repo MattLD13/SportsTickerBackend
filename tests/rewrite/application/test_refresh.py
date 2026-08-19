@@ -1,11 +1,14 @@
 """Verify cross-provider scoreboard ordering."""
 
 from datetime import datetime, timezone
+import pytest
 
 from sports_ticker.application.refresh import RefreshService
 from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.domain import ContentItem, DisplaySettings
 from sports_ticker.providers.contracts import ProviderHealth, ProviderResult
+
+pytestmark = pytest.mark.critical
 
 
 class Source:

@@ -47,23 +47,21 @@ def clock_fonts():
     return load_monospace_font(9), load_display_font(28, bold=True)
 
 
-@pytest.mark.parametrize(
-    "now",
-    [
+def test_clock_renderer_matches_legacy_pixels(clock_fonts):
+    """The rewrite keeps every legacy clock pixel for fixed input."""
+    tiny_font, clock_font = clock_fonts
+    timestamps = [
         datetime(2026, 1, 1, 0, 0, 0),
         datetime(2026, 7, 4, 12, 30, 0, 500_000),
         datetime(2026, 12, 31, 23, 59, 59, 999_999),
-    ],
-)
-def test_clock_renderer_matches_legacy_pixels(now, clock_fonts):
-    """The rewrite keeps every legacy clock pixel for fixed input."""
-    tiny_font, clock_font = clock_fonts
-    actual = ClockRenderer(tiny_font, clock_font).render(RenderContext(now), ClockScene())
-    expected = legacy_clock_frame(now, tiny_font, clock_font)
+    ]
+    for now in timestamps:
+        actual = ClockRenderer(tiny_font, clock_font).render(RenderContext(now), ClockScene())
+        expected = legacy_clock_frame(now, tiny_font, clock_font)
 
-    assert actual.mode == "RGBA"
-    assert actual.size == (PANEL_WIDTH, PANEL_HEIGHT)
-    assert actual.tobytes() == expected.tobytes()
+        assert actual.mode == "RGBA"
+        assert actual.size == (PANEL_WIDTH, PANEL_HEIGHT)
+        assert actual.tobytes() == expected.tobytes()
 
 
 def test_clock_renderer_fills_minute_progress_inclusive(clock_fonts):

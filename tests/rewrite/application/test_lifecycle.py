@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from queue import Queue
 from threading import Event
+import pytest
 
 from PIL import Image
 
@@ -11,6 +12,8 @@ from ticker_core.assets import ShortTermContentCache
 from ticker_core.platform import HotspotDetails, WiFiSetupState
 from ticker_core.runtime import FrameKind, FramePacer, RuntimeConfig, TickerRuntime
 from ticker_core.protocol import TickerResponse, display_delta
+
+pytestmark = pytest.mark.critical
 
 
 def payload() -> dict:

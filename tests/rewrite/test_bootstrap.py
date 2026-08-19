@@ -1,10 +1,13 @@
 """Integration tests for the rewrite scene registry."""
 
 from datetime import datetime
+import pytest
 
 from ticker_core import RenderContext
 from ticker_core.bootstrap import create_default_scene_registry
 from ticker_core.features.clock import ClockRenderer, ClockScene
+
+pytestmark = pytest.mark.critical
 
 
 def test_default_registry_resolves_and_renders_clock_scene():

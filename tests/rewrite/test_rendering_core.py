@@ -12,6 +12,8 @@ from ticker_core import (
     UnknownSceneKindError,
 )
 
+pytestmark = pytest.mark.critical
+
 
 @dataclass(frozen=True)
 class SampleScene:

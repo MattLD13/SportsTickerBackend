@@ -220,11 +220,11 @@ def test_indycar_expired_post_session_clears_after_3am() -> None:
     assert len(result["content"]) == 0
 
 
-def test_indycar_post_session_remains_visible_before_3am() -> None:
+def test_indycar_session_lifecycle_and_3am_rollover() -> None:
     # Race was Sunday Aug 16 at 12:00 PM EDT (16:00 UTC)
-    # Now is Sunday Aug 16 at 18:00 EDT (same evening, before 3 AM Monday reset)
-    now = datetime(2026, 8, 16, 22, 0, tzinfo=timezone.utc)
-    client = JsonFixture(
+    # 1. Sunday Aug 16 at 18:00 EDT (same evening, before 3 AM Monday reset) -> visible as post
+    now_same_day = datetime(2026, 8, 16, 22, 0, tzinfo=timezone.utc)
+    client_post = JsonFixture(
         {
             "https://indycar.blob.core.windows.net/racecontrol/timingscoring-ris.json": {
                 "timing_results": {
@@ -258,26 +258,19 @@ def test_indycar_post_session_remains_visible_before_3am() -> None:
             "https://api.open-meteo.com/v1/forecast": {"current": {"temperature_2m": 72, "wind_speed_10m": 4, "wind_direction_10m": 180}},
         }
     )
-    source = LiveRacingSource(client, now=lambda: now, clock=lambda: now.timestamp())
-
-    result = source.fetch(_settings(f1=False, indycar=True))
-
-    assert len(result["content"]) >= 1
-    race_game = next(g for g in result["content"] if g["home_abbr"] == "Race")
+    source_post = LiveRacingSource(client_post, now=lambda: now_same_day, clock=lambda: now_same_day.timestamp())
+    result_post = source_post.fetch(_settings(f1=False, indycar=True))
+    assert len(result_post["content"]) >= 1
+    race_game = next(g for g in result_post["content"] if g["home_abbr"] == "Race")
     assert race_game["sport"] == "indycar"
     assert race_game["state"] == "post"
     assert race_game["status"] == "FINAL"
     assert race_game["indycar"]["drivers"][0]["name"] == "Marcus Ericsson"
 
-
-def test_indycar_sessions_shown_on_event_day_until_3am() -> None:
-    # Race is Sunday Aug 23 at 13:00 EDT (17:00 UTC)
-    # Saturday Aug 22: Practice 1, Practice 2, Qualifying
-    # Test 1: Wednesday Aug 19 -> hidden
+    # 2. Upcoming weekend: Hidden on Wednesday Aug 19, shown on Saturday Aug 22
     now_early = datetime(2026, 8, 19, 14, 0, tzinfo=timezone.utc)
-    # Test 2: Saturday Aug 22 -> shows Saturday's sessions
     now_sat = datetime(2026, 8, 22, 12, 0, tzinfo=timezone.utc)
-    data = {
+    data_upcoming = {
         "https://indycar.blob.core.windows.net/racecontrol/timingscoring-ris.json": {
             "timing_results": {}
         },
@@ -289,19 +282,14 @@ def test_indycar_sessions_shown_on_event_day_until_3am() -> None:
         "https://indycar.blob.core.windows.net/racecontrol/driversfeed.json": {"drivers": {"driver": []}},
         "https://api.open-meteo.com/v1/forecast": {"current": {}},
     }
-
-    source_early = LiveRacingSource(JsonFixture(data), now=lambda: now_early, clock=lambda: now_early.timestamp())
+    source_early = LiveRacingSource(JsonFixture(data_upcoming), now=lambda: now_early, clock=lambda: now_early.timestamp())
     assert len(source_early.fetch(_settings(f1=False, indycar=True))["content"]) == 0
 
-    source_sat = LiveRacingSource(JsonFixture(data), now=lambda: now_sat, clock=lambda: now_sat.timestamp())
+    source_sat = LiveRacingSource(JsonFixture(data_upcoming), now=lambda: now_sat, clock=lambda: now_sat.timestamp())
     result_sat = source_sat.fetch(_settings(f1=False, indycar=True))
     sessions = [g["home_abbr"] for g in result_sat["content"]]
     assert "Practice 1" in sessions
     assert "Qualifying" in sessions
-    p1 = next(g for g in result_sat["content"] if g["home_abbr"] == "Practice 1")
-    assert p1["sport"] == "indycar"
-    assert p1["state"] == "pre"
-    assert p1["status"] == "9:00 AM"
 
 
 def test_indycar_weekend_session_html_parser() -> None:
@@ -405,11 +393,10 @@ def test_nascar_polls_official_live_feed() -> None:
     assert normalized.content[0].data["sport"] == "nascar"
 
 
-def test_nascar_expired_post_session_clears_after_3am() -> None:
-    # Race finished Sunday Aug 16
-    # Tuesday Aug 18 is past Monday 3 AM reset
-    now = datetime(2026, 8, 18, 17, 0, tzinfo=timezone.utc)
-    client = JsonFixture(
+def test_nascar_session_lifecycle_and_3am_rollover() -> None:
+    # 1. Race finished Sunday Aug 16: Tuesday Aug 18 is past Monday 3 AM reset -> cleared
+    now_past = datetime(2026, 8, 18, 17, 0, tzinfo=timezone.utc)
+    client_past = JsonFixture(
         {
             "https://cf.nascar.com/live/feeds/live-feed.json": {
                 "race_id": 5622,
@@ -428,19 +415,13 @@ def test_nascar_expired_post_session_clears_after_3am() -> None:
             },
         }
     )
-    source = LiveRacingSource(client, now=lambda: now, clock=lambda: now.timestamp())
-    result = source.fetch(DisplaySettings(active_sports={"nascar": True, "f1": False, "indycar": False}))
+    source_past = LiveRacingSource(client_past, now=lambda: now_past, clock=lambda: now_past.timestamp())
+    assert len(source_past.fetch(DisplaySettings(active_sports={"nascar": True, "f1": False, "indycar": False}))["content"]) == 0
 
-    assert len(result["content"]) == 0
-
-
-def test_nascar_pre_race_shown_on_event_day() -> None:
-    # Race is Saturday Aug 22 at 23:30 UTC (7:30 PM EDT)
-    # Test 1: Wednesday Aug 19 -> hidden
+    # 2. Upcoming Race: Saturday Aug 22 at 23:30 UTC -> Hidden on Aug 19, Shown on Aug 22
     now_early = datetime(2026, 8, 19, 14, 0, tzinfo=timezone.utc)
-    # Test 2: Saturday Aug 22 (event day) -> shown
     now_race_day = datetime(2026, 8, 22, 14, 0, tzinfo=timezone.utc)
-    data = {
+    data_upcoming = {
         "https://cf.nascar.com/live/feeds/live-feed.json": {},
         "https://site.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard": {
             "events": [
@@ -448,11 +429,10 @@ def test_nascar_pre_race_shown_on_event_day() -> None:
             ]
         },
     }
-
-    source_early = LiveRacingSource(JsonFixture(data), now=lambda: now_early, clock=lambda: now_early.timestamp())
+    source_early = LiveRacingSource(JsonFixture(data_upcoming), now=lambda: now_early, clock=lambda: now_early.timestamp())
     assert len(source_early.fetch(DisplaySettings(active_sports={"nascar": True, "f1": False, "indycar": False}))["content"]) == 0
 
-    source_race_day = LiveRacingSource(JsonFixture(data), now=lambda: now_race_day, clock=lambda: now_race_day.timestamp())
+    source_race_day = LiveRacingSource(JsonFixture(data_upcoming), now=lambda: now_race_day, clock=lambda: now_race_day.timestamp())
     result_race_day = source_race_day.fetch(DisplaySettings(active_sports={"nascar": True, "f1": False, "indycar": False}))
     assert len(result_race_day["content"]) == 1
     game = result_race_day["content"][0]

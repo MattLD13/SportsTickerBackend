@@ -1,8 +1,11 @@
 """Verify browser controller surfaces use the scoped token boundary."""
 
 from __future__ import annotations
+import pytest
 
 from sports_ticker.bootstrap_v2 import create_backend_application
+
+pytestmark = pytest.mark.critical
 
 
 def test_dashboard_shell_does_not_render_fleet_before_controller_token(tmp_path) -> None:

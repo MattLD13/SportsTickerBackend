@@ -5,8 +5,11 @@ from __future__ import annotations
 from io import BytesIO
 
 from PIL import Image
+import pytest
 
 from sports_ticker.bootstrap_v2 import create_backend_application
+
+pytestmark = pytest.mark.critical
 
 
 def test_public_demo_stays_available_without_controller_access(tmp_path) -> None:
