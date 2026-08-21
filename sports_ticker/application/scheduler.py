@@ -229,16 +229,14 @@ class RefreshScheduler:
 
         current = self._monotonic() if now is None else float(now)
         settings_by_ticker: dict[str, DisplaySettings] = {}
-        failures_by_ticker: dict[str, list[str]] = {}
+        settings_failures: set[str] = set()
         for ticker in self._tickers.values():
             try:
                 settings_by_ticker[ticker.ticker_id] = normalize_settings(
                     ticker.settings(ticker.ticker_id)
                 )
-            except Exception as error:
-                failures_by_ticker.setdefault(ticker.ticker_id, []).append(
-                    f"settings: {_error_text(error)}"
-                )
+            except Exception:
+                settings_failures.add(ticker.ticker_id)
 
         due_by_name = {
             job.name: job
@@ -277,9 +275,6 @@ class RefreshScheduler:
                         raise RuntimeError(error or "provider refresh failed")
                 except Exception as error:
                     message = _error_text(error)
-                    failures_by_ticker.setdefault(ticker_id, []).append(
-                        f"{job.name}: {message}"
-                    )
                     errors.append(f"{ticker_id}: {message}")
                 else:
                     data_by_ticker[ticker_id] = _CachedProviderData(
@@ -312,32 +307,35 @@ class RefreshScheduler:
         for ticker in self._tickers.values():
             ticker_id = ticker.ticker_id
             settings = settings_by_ticker.get(ticker_id)
-            if settings is None or ticker_id in failures_by_ticker:
+            if settings is None or ticker_id in settings_failures:
                 continue
+
             provider_data: dict[str, object] = {}
             for name, job in self._providers.items():
                 cached = job.data_by_ticker.get(ticker_id)
-                if cached is None or cached.settings_key != _freeze(job.settings_key(settings)):
-                    break
+                if cached is None:
+                    continue
+                if cached.settings_key != _freeze(job.settings_key(settings)):
+                    continue
                 provider_data[name] = cached.value
-            else:
-                try:
-                    result = _run_snapshot_refresh(
-                        self._refresh_service,
-                        ticker_id,
-                        settings,
-                        MappingProxyType(provider_data),
-                    )
-                    ok, error = _refresh_succeeded(result)
-                    if not ok:
-                        raise RuntimeError(error or "snapshot refresh failed")
-                except Exception as error:
-                    self._record_refresh_failure(due, error)
-                else:
-                    published.append(ticker_id)
+
+            if not provider_data:
                 continue
-            # A provider can wait for its first successful fetch.
-            # Keep its own health result. Skip unrelated health changes.
+
+            try:
+                result = _run_snapshot_refresh(
+                    self._refresh_service,
+                    ticker_id,
+                    settings,
+                    MappingProxyType(provider_data),
+                )
+                ok, error = _refresh_succeeded(result)
+                if not ok:
+                    raise RuntimeError(error or "snapshot refresh failed")
+            except Exception as error:
+                self._record_refresh_failure(due, error)
+            else:
+                published.append(ticker_id)
 
         return tuple(published)
 
