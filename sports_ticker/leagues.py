@@ -1,4 +1,4 @@
-"""Define every selectable scoreboard league in one place."""
+ """Define every selectable scoreboard league in one place."""
 
 from __future__ import annotations
 
