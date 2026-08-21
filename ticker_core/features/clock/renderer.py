@@ -15,6 +15,7 @@ DATE_COLOR = (200, 200, 200)
 TIME_COLOR = (255, 255, 255)
 RAIL_COLOR = (30, 30, 30)
 PROGRESS_COLOR = (0, 200, 255)
+WELCOME_TEXT = "Welcome to D207 Hubert, Jake, and Marco"
 Font: TypeAlias = ImageFont.ImageFont | ImageFont.FreeTypeFont
 
 
@@ -31,7 +32,29 @@ class ClockRenderer:
         return self.render_at(context.now)
 
     def render_at(self, now: datetime) -> Image.Image:
-        """Render a clock frame for one injected local time."""
+        """Render the temporary D207 welcome message in clock mode."""
+        # Temporary D207 override. To restore the normal clock, comment out the
+        # next line and uncomment the normal clock return directly below it.
+        return self._render_d207_welcome()
+        # return self._render_clock_at(now)
+
+    def _render_d207_welcome(self) -> Image.Image:
+        """Render the temporary full-panel D207 welcome message."""
+        image = Image.new("RGBA", (PANEL_WIDTH, PANEL_HEIGHT), (0, 0, 0, 255))
+        draw = ImageDraw.Draw(image)
+        text_width = draw.textlength(WELCOME_TEXT, font=self._tiny_font)
+        bbox = draw.textbbox((0, 0), WELCOME_TEXT, font=self._tiny_font)
+        text_height = bbox[3] - bbox[1]
+        draw.text(
+            ((PANEL_WIDTH - text_width) / 2, (PANEL_HEIGHT - text_height) / 2 - bbox[1]),
+            WELCOME_TEXT,
+            font=self._tiny_font,
+            fill=TIME_COLOR,
+        )
+        return image
+
+    def _render_clock_at(self, now: datetime) -> Image.Image:
+        """Render the normal clock frame for one injected local time."""
         image = Image.new("RGBA", (PANEL_WIDTH, PANEL_HEIGHT), (0, 0, 0, 255))
         draw = ImageDraw.Draw(image)
 
