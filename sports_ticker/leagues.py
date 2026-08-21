@@ -1,4 +1,4 @@
- """Define every selectable scoreboard league in one place."""
+"""Define every selectable scoreboard league in one place."""
 
 from __future__ import annotations
 
@@ -71,6 +71,8 @@ ESPN_SCOREBOARD_PATHS: Final = MappingProxyType(
 FOTMOB_LEAGUES: Final = MappingProxyType(
     {league.id: league.fotmob_league_id for league in LEAGUES if league.fotmob_league_id is not None}
 )
+
+
 def league_for(identifier: str) -> League:
     """Return one configured league by its stable identifier."""
 
