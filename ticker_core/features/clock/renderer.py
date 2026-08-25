@@ -31,7 +31,11 @@ class ClockRenderer:
         return self.render_at(context.now)
 
     def render_at(self, now: datetime) -> Image.Image:
-        """Render a clock frame for one injected local time."""
+        """Render the normal clock frame for one injected local time."""
+        return self._render_clock_at(now)
+
+    def _render_clock_at(self, now: datetime) -> Image.Image:
+        """Render the normal clock frame for one injected local time."""
         image = Image.new("RGBA", (PANEL_WIDTH, PANEL_HEIGHT), (0, 0, 0, 255))
         draw = ImageDraw.Draw(image)
 
