@@ -6,13 +6,16 @@ from collections.abc import Mapping
 from datetime import datetime
 from hmac import compare_digest
 import os
+from pathlib import Path
 import time
 from typing import Any
+from urllib.parse import urlparse
 
-from flask import Flask, jsonify, redirect, request
+from flask import Flask, jsonify, redirect, request, send_from_directory
 
 from sports_ticker.application.composition import BackendApplication
 from sports_ticker.domain import DisplaySettings
+from sports_ticker.firmware import FirmwareManifest
 from sports_ticker.integrations import SpotifyIntegrationError
 
 
@@ -26,7 +29,13 @@ class ApiError(Exception):
         self.code = code
 
 
-def register_routes(app: Flask, application: BackendApplication) -> None:
+def register_routes(
+    app: Flask,
+    application: BackendApplication,
+    *,
+    firmware_manifest: FirmwareManifest | None = None,
+    firmware_directory: str | Path | None = None,
+) -> None:
     """Register rewrite routes against one injected application."""
 
     @app.errorhandler(ApiError)
@@ -57,6 +66,26 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
     @app.errorhandler(405)
     def handle_method_not_allowed(error):
         return _error_response("method not allowed", 405, "method_not_allowed")
+
+    @app.get("/firmware/<path:filename>")
+    def firmware_binary(filename: str):
+        """Serve only the currently configured mini firmware release binary."""
+
+        if firmware_manifest is None or firmware_directory is None:
+            raise ApiError("firmware binary is unavailable", 404, "not_found")
+        requested = Path(filename)
+        published = Path(urlparse(firmware_manifest.binary_url).path).name
+        if requested.name != filename or requested.name != published or requested.suffix != ".bin":
+            raise ApiError("firmware binary is unavailable", 404, "not_found")
+        directory = Path(firmware_directory)
+        if not (directory / requested.name).is_file():
+            raise ApiError("firmware binary is unavailable", 404, "not_found")
+        return send_from_directory(
+            directory,
+            requested.name,
+            mimetype="application/octet-stream",
+            conditional=True,
+        )
 
     @app.get("/api/v2/health")
     def health():
@@ -138,11 +167,14 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
     @app.post("/api/v2/devices/register")
     def register_device():
         payload = _json_object()
-        _check_keys(payload, {"device_id", "name", "metadata", "profile"})
+        _check_keys(payload, {"device_id", "name", "metadata", "profile", "pairing_code"})
         device_id = _ticker_id(payload.get("device_id", ""))
         name = payload.get("name", "Ticker")
         if not isinstance(name, str):
             raise ApiError("name must be a string", 400, "invalid_request")
+        pairing_code = payload.get("pairing_code")
+        if pairing_code is not None and not isinstance(pairing_code, str):
+            raise ApiError("pairing_code must be a string", 400, "invalid_request")
         metadata = payload.get("metadata", {})
         if not isinstance(metadata, Mapping):
             raise ApiError("metadata must be an object", 400, "invalid_request")
@@ -155,6 +187,7 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
                 name=name,
                 metadata=metadata,
                 profile=profile,
+                pairing_code=pairing_code,
             )
         except ValueError as error:
             raise ApiError(str(error), 400, "invalid_request") from error
@@ -261,8 +294,38 @@ def register_routes(app: Flask, application: BackendApplication) -> None:
         version = payload.get("version")
         if not isinstance(version, str) or not version.strip():
             raise ApiError("version must be a non-empty string", 400, "invalid_request")
-        ticker = application.request_update(_ticker_id(ticker_id), version)
+        identifier = _ticker_id(ticker_id)
+        ticker = _require_ticker(application, identifier)
+        if ticker.profile.product_family == "mini":
+            if firmware_manifest is None or firmware_manifest.version != version.strip():
+                raise ApiError("requested mini firmware manifest is unavailable", 409, "firmware_unavailable")
+            if firmware_manifest.hardware != ticker.profile.hardware:
+                raise ApiError("firmware hardware does not match ticker hardware", 409, "firmware_incompatible")
+        ticker = application.request_update(identifier, version)
         return jsonify(_ticker_value(ticker)), 201
+
+    @app.get("/api/v2/tickers/<ticker_id>/firmware")
+    def check_ticker_firmware(ticker_id: str):
+        """Return one device-compatible firmware manifest after ticker identity lookup."""
+
+        identifier = _ticker_id(ticker_id)
+        ticker = _require_ticker(application, identifier)
+        if ticker.profile.product_family != "mini" or not ticker.profile.capabilities.ota:
+            raise ApiError("firmware updates are not available for this ticker", 409, "firmware_unavailable")
+        if firmware_manifest is None:
+            raise ApiError("firmware manifest is unavailable", 404, "not_found")
+        requested_version = str(request.args.get("version") or "").strip()
+        if requested_version and requested_version != firmware_manifest.version:
+            raise ApiError("requested firmware version is unavailable", 404, "not_found")
+        if firmware_manifest.hardware != ticker.profile.hardware:
+            raise ApiError("firmware hardware does not match ticker hardware", 409, "firmware_incompatible")
+        return jsonify(
+            {
+                "api_version": "v2",
+                "ticker_id": identifier,
+                "firmware": firmware_manifest.to_mapping(),
+            }
+        )
 
     @app.post("/api/v2/tickers/<ticker_id>/updates/ack")
     def acknowledge_ticker_update(ticker_id: str):

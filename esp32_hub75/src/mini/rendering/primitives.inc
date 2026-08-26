@@ -160,6 +160,35 @@ void drawDownloadingProgress(uint16_t complete, uint16_t total) {
   presentFrame();
 }
 
+void drawFirmwareUpdate(uint8_t state, uint32_t complete, uint32_t total, const char* detail) {
+  if (matrix == nullptr) {
+    return;
+  }
+  const uint16_t cyan = color(30, 150, 220);
+  const uint16_t yellow = color(255, 220, 80);
+  const uint16_t red = color(255, 75, 75);
+  const char* title = state == 1 ? "CHECK UPDATE" :
+                      state == 2 ? "DOWNLOAD FW" :
+                      state == 3 ? "INSTALL FW" : "UPDATE FAIL";
+  const uint16_t titleColor = state == 4 ? red : yellow;
+  matrix->fillScreen(0);
+  matrix->drawFastHLine(0, 0, 64, state == 4 ? red : cyan);
+  drawTextFit(title, 2, 3, titleColor, 60);
+  if (state == 2 && total > 0) {
+    const uint8_t percent = static_cast<uint8_t>(min<uint32_t>(100, (complete * 100U) / total));
+    drawTextRight(String(percent) + "%", 61, 3, cyan, 2);
+    matrix->drawRect(2, 13, 60, 7, cyan);
+    const uint16_t filledWidth = static_cast<uint16_t>((58U * min(complete, total)) / total);
+    if (filledWidth > 0) {
+      matrix->fillRect(3, 15, filledWidth, 3, yellow);
+    }
+    drawTextRight(String(complete / 1024) + "/" + String(total / 1024) + "K", 61, 24, color(180, 200, 220), 2);
+  } else {
+    drawTextFit(detail == nullptr ? "WAIT" : detail, 2, 16, state == 4 ? red : color(180, 200, 220), 60);
+  }
+  presentFrame();
+}
+
 void drawSolidColorTest() {
   const uint16_t colors[] = {
     color(255, 0, 0),
@@ -249,6 +278,43 @@ void drawPixelText(const String& value, int16_t x, int16_t y, uint16_t foregroun
 int16_t compactPixelTextWidth(const String& value, uint8_t scale) {
   if (value.length() == 0) return 0;
   return static_cast<int16_t>((value.length() - 1) * (3 * scale + 1) + 3 * scale);
+}
+
+const char* mediumScoreGlyph(char value) {
+  switch (value) {
+    case '0': return "1111100110011001100110011111";
+    case '1': return "0110111001100110011001101111";
+    case '2': return "1111000100011111100010001111";
+    case '3': return "1111000100011111000100011111";
+    case '4': return "1001100110011111000100010001";
+    case '5': return "1111100010001111000100011111";
+    case '6': return "1111100010001111100110011111";
+    case '7': return "1111000100100010010001000100";
+    case '8': return "1111100110011111100110011111";
+    case '9': return "1111100110011111000100011111";
+    case '-': return "0000000000001111000000000000";
+    default: return "0000000000000000000000000000";
+  }
+}
+
+int16_t mediumScoreTextWidth(const String& value) {
+  if (value.length() == 0) return 0;
+  return static_cast<int16_t>(value.length() * 5 - 1);
+}
+
+void drawMediumScoreText(const String& value, int16_t x, int16_t y, uint16_t foreground) {
+  int16_t cursor = x + CONTENT_X_OFFSET;
+  for (size_t characterIndex = 0; characterIndex < value.length(); ++characterIndex) {
+    const char* glyph = mediumScoreGlyph(value[characterIndex]);
+    for (uint8_t row = 0; row < 7; ++row) {
+      for (uint8_t column = 0; column < 4; ++column) {
+        if (glyph[row * 4 + column] == '1') {
+          matrix->drawPixel(cursor + column, y + row, foreground);
+        }
+      }
+    }
+    cursor += 5;
+  }
 }
 
 int16_t centeredPixelX(int16_t width) {

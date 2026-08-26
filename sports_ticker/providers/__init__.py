@@ -31,7 +31,7 @@ from .racing import RacingProvider
 from .racing_live import LiveRacingSource
 from .score_alerts import ScoreAlertTracker
 from .stocks import StockProvider
-from .weather import OpenMeteoWeatherProvider
+from .weather import HybridWeatherProvider, OpenMeteoWeatherProvider, WeatherLocationResolver
 
 __all__ = [
     "Provider",
@@ -56,6 +56,8 @@ __all__ = [
     "NewsProvider",
     "NewsSource",
     "OpenMeteoWeatherProvider",
+    "HybridWeatherProvider",
+    "WeatherLocationResolver",
     "RacingProvider",
     "RacingSource",
     "ScoreAlertTracker",

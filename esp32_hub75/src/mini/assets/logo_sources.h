@@ -7,3 +7,5 @@ String fallbackSportsLogoUrl(JsonObjectConst game, const String& abbreviation);
 String derivedSportsLogoUrl(JsonObjectConst game, const char* field, const String& abbreviation);
 String miniLogoOverrideUrl(JsonObjectConst game, const String& abbreviation);
 String sportsLogoUrl(JsonObjectConst game, const char* field, const String& abbreviation);
+bool miniGeneratedLogoAvailable(const String& token);
+bool miniGeneratedLogoAsset(const String& token, const uint16_t*& pixels, const uint8_t*& mask);

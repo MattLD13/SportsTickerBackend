@@ -82,3 +82,38 @@ def test_failed_refresh_keeps_compatible_cached_provider_data() -> None:
     assert scheduler.get_health("racing").last_error == (
         "ticker-1: OpenF1 unavailable"
     )
+
+
+def test_settings_key_is_frozen_once_per_provider_ticker_pass() -> None:
+    """Reuse one immutable settings key across refresh and publication checks."""
+
+    calls = []
+    published = []
+
+    def publish(ticker_id, settings, provider_data):
+        published.append((ticker_id, dict(provider_data)))
+        return True
+
+    def settings_key(settings):
+        calls.append(settings)
+        return settings.timezone
+
+    scheduler = RefreshScheduler(
+        publish,
+        monotonic=lambda: 0.0,
+        wall_clock=lambda: datetime(2026, 8, 21, 18, 52, tzinfo=timezone.utc),
+    )
+    scheduler.register_provider(
+        "espn",
+        5.0,
+        lambda settings: {"scores": 1},
+        settings_key=settings_key,
+    )
+    scheduler.register_ticker("ticker-1", lambda ticker_id: {})
+
+    assert scheduler.run_due(0.0) == ("ticker-1",)
+    assert len(calls) == 1
+
+    assert scheduler.run_due(5.0) == ("ticker-1",)
+    assert len(calls) == 2
+    assert len(published) == 2

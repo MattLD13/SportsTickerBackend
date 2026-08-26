@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from threading import Lock
 from time import monotonic
-from typing import Any
 from urllib.parse import urlparse
 
 from sports_ticker.leagues import LEAGUES, league_for

@@ -78,6 +78,40 @@ def test_empty_repository_registers_pairing_snapshot_for_pi_bootstrap(tmp_path) 
         app.extensions["sports_ticker.backend_application"].close()
 
 
+def test_partial_display_settings_patch_preserves_other_ticker_controls(tmp_path) -> None:
+    """Preserve inversion when a controller patches only shared team settings."""
+
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    try:
+        client = app.test_client()
+        registration = _register(client, "pi-settings")
+        exchange = client.post(
+            "/api/v2/pairings/exchange",
+            json={"pairing_code": registration["pairing_code"]},
+        )
+        assert exchange.status_code == 201
+        headers = {"Authorization": f"Bearer {exchange.get_json()['controller_token']}"}
+
+        enabled = client.patch(
+            "/api/v2/tickers/pi-settings",
+            headers=headers,
+            json={"display_settings": {"inverted": True}},
+        )
+        assert enabled.status_code == 200
+        shared_update = client.patch(
+            "/api/v2/tickers/pi-settings",
+            headers=headers,
+            json={"display_settings": {"my_teams": ["nfl:DAL"]}},
+        )
+
+        assert shared_update.status_code == 200
+        settings = shared_update.get_json()["display_settings"]
+        assert settings["inverted"] is True
+        assert settings["my_teams"] == ["nfl:DAL"]
+    finally:
+        app.extensions["sports_ticker.backend_application"].close()
+
+
 def test_device_registration_renews_expired_pairing_code(tmp_path) -> None:
     """Give an offline ticker a fresh code after its previous code expires."""
 
@@ -96,6 +130,38 @@ def test_device_registration_renews_expired_pairing_code(tmp_path) -> None:
         second = second_response.get_json()
         assert second["pairing_code"]
         assert second["pairing_code"] != first["pairing_code"]
+    finally:
+        app.extensions["sports_ticker.backend_application"].close()
+
+
+def test_device_registration_renews_the_code_exposed_by_ble_session(tmp_path) -> None:
+    """Keep one expired BLE code stable until the controller exchanges it."""
+
+    now = [1_000.0]
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None, clock=lambda: now[0])
+    try:
+        client = app.test_client()
+        first = _register(client, "pi-ble")
+        now[0] = 2_000.0
+        second_response = client.post(
+            "/api/v2/devices/register",
+            json={
+                "device_id": "pi-ble",
+                "name": "pi-ble",
+                "metadata": {},
+                "pairing_code": first["pairing_code"],
+            },
+        )
+
+        assert second_response.status_code == 200
+        second = second_response.get_json()
+        assert second["pairing_code"] == first["pairing_code"]
+
+        exchange = client.post(
+            "/api/v2/pairings/exchange",
+            json={"pairing_code": first["pairing_code"]},
+        )
+        assert exchange.status_code == 201
     finally:
         app.extensions["sports_ticker.backend_application"].close()
 

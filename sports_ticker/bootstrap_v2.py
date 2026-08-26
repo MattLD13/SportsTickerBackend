@@ -11,7 +11,8 @@ from flask import Flask
 from sports_ticker.application import BackendApplication, RefreshScheduler, RefreshService
 from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.fleet import TickerRepository
-from sports_ticker.providers import Provider
+from sports_ticker.firmware import FirmwareManifest
+from sports_ticker.providers import Provider, WeatherLocationResolver
 
 
 def create_backend_application(
@@ -20,6 +21,8 @@ def create_backend_application(
     *,
     scheduler: RefreshScheduler | None = None,
     spotify_service: object | None = None,
+    firmware_manifest: FirmwareManifest | dict[str, object] | None = None,
+    firmware_directory: str | Path | None = None,
     clock: Callable[[], float] = time.time,
 ) -> Flask:
     """Build the rewrite Flask app without discovery, configuration, or startup side effects."""
@@ -35,13 +38,23 @@ def create_backend_application(
         snapshot_store,
         scheduler=scheduler,
         spotify_service=spotify_service,
+        weather_location_resolver=WeatherLocationResolver().resolve,
         clock=clock,
     )
     event_service = application.event_service
 
     from sports_ticker.api.app import create_app
 
-    app = create_app(application)
+    manifest = None if firmware_manifest is None else (
+        firmware_manifest
+        if isinstance(firmware_manifest, FirmwareManifest)
+        else FirmwareManifest.from_mapping(firmware_manifest)
+    )
+    app = create_app(
+        application,
+        firmware_manifest=manifest,
+        firmware_directory=firmware_directory,
+    )
     app.extensions["sports_ticker.backend_application"] = application
     app.extensions["sports_ticker.repository"] = repository
     app.extensions["sports_ticker.snapshot_store"] = snapshot_store

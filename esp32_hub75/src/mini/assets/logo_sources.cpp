@@ -4,6 +4,38 @@
 #include "logo_overrides_generated.h"
 #include "logo_sources.h"
 
+static constexpr char MINI_GENERATED_LOGO_PREFIX[] = "mini-logo:";
+
+bool miniGeneratedLogoAsset(const String& token, const uint16_t*& pixels, const uint8_t*& mask) {
+  pixels = nullptr;
+  mask = nullptr;
+  if (!token.startsWith(MINI_GENERATED_LOGO_PREFIX)) {
+    return false;
+  }
+  const String indexValue = token.substring(sizeof(MINI_GENERATED_LOGO_PREFIX) - 1);
+  if (indexValue.length() == 0) {
+    return false;
+  }
+  for (size_t index = 0; index < indexValue.length(); ++index) {
+    if (!isDigit(indexValue[index])) {
+      return false;
+    }
+  }
+  const size_t index = static_cast<size_t>(indexValue.toInt());
+  if (index >= MINI_GENERATED_LOGO_OVERRIDE_COUNT) {
+    return false;
+  }
+  pixels = MINI_GENERATED_LOGO_OVERRIDES[index].pixels;
+  mask = MINI_GENERATED_LOGO_OVERRIDES[index].mask;
+  return pixels != nullptr && mask != nullptr;
+}
+
+bool miniGeneratedLogoAvailable(const String& token) {
+  const uint16_t* pixels = nullptr;
+  const uint8_t* mask = nullptr;
+  return miniGeneratedLogoAsset(token, pixels, mask);
+}
+
 String fallbackSportsLogoUrl(JsonObjectConst game, const String& abbreviation) {
   String league = game["league"] | game["sport"] | "";
   league.toLowerCase();
@@ -11,6 +43,7 @@ String fallbackSportsLogoUrl(JsonObjectConst game, const String& abbreviation) {
   else if (league == "hockey") league = "nhl";
   else if (league == "baseball") league = "mlb";
   else if (league == "basketball") league = "nba";
+  else if (league == "march_madness" || league == "march madness") league = "ncaa";
   if (league.length() == 0 || abbreviation.length() == 0) {
     return "";
   }
@@ -58,7 +91,7 @@ String miniLogoOverrideUrl(JsonObjectConst game, const String& abbreviation) {
   for (size_t index = 0; index < MINI_GENERATED_LOGO_OVERRIDE_COUNT; ++index) {
     const MiniGeneratedLogoOverride& override = MINI_GENERATED_LOGO_OVERRIDES[index];
     if (key == override.key) {
-      return override.url;
+      return String(MINI_GENERATED_LOGO_PREFIX) + String(index);
     }
   }
   return "";

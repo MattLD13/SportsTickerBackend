@@ -23,16 +23,26 @@ void sendHeartbeat() {
   if (WiFi.status() != WL_CONNECTED || !registered) {
     return;
   }
+  if (!acquireNetwork(1000)) {
+    return;
+  }
 
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(8);
+  client.setHandshakeTimeout(8);
   HTTPClient http;
+  http.useHTTP10(true);
+  http.setReuse(false);
   http.setConnectTimeout(4000);
   http.setTimeout(4000);
-  if (!http.begin(heartbeatUrl)) {
+  if (!http.begin(client, heartbeatUrl)) {
+    releaseNetwork();
     return;
   }
 
   JsonDocument heartbeat;
-  heartbeat["metadata"]["build"] = "esp32s3-hub75";
+  heartbeat["metadata"]["build"] = MINI_FIRMWARE_VERSION;
   heartbeat["metadata"]["mode"] = displayMode;
   const char* modes[] = {"sports", "stock", "weather", "music", "flights", "airports", "clock"};
   for (uint8_t index = 0; index < sizeof(modes) / sizeof(modes[0]); ++index) {
@@ -42,8 +52,10 @@ void sendHeartbeat() {
   String body;
   serializeJson(heartbeat, body);
   http.addHeader("Content-Type", "application/json");
-  http.POST(body);
+  const int status = http.POST(body);
+  logSecureHttpError("Heartbeat", status, client);
   http.end();
+  releaseNetwork();
 }
 
 bool fetchData() {
@@ -55,11 +67,22 @@ bool fetchData() {
     showFetchError("REGISTER");
     return false;
   }
+  if (!acquireNetwork(10000)) {
+    Serial.println("Data fetch deferred: network busy");
+    return false;
+  }
 
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(8);
+  client.setHandshakeTimeout(8);
   HTTPClient http;
+  http.useHTTP10(true);
+  http.setReuse(false);
   http.setConnectTimeout(4000);
   http.setTimeout(4000);
-  if (!http.begin(dataUrl)) {
+  if (!http.begin(client, dataUrl)) {
+    releaseNetwork();
     showFetchError("HTTP SETUP");
     return false;
   }
@@ -67,6 +90,7 @@ bool fetchData() {
   int status = http.GET();
   Serial.print("Data HTTP status: ");
   Serial.println(status);
+  logSecureHttpError("Data", status, client);
   if (status != HTTP_CODE_OK) {
     if (status == HTTP_CODE_NOT_FOUND) {
       registered = false;
@@ -79,11 +103,13 @@ bool fetchData() {
       showFetchError("HTTP " + String(status));
     }
     http.end();
+    releaseNetwork();
     return false;
   }
 
   String body = http.getString();
   http.end();
+  releaseNetwork();
   updateFromPayload(body);
   return message.length() == 0;
 }
@@ -171,20 +197,26 @@ void miniSetup() {
   while (!Serial && millis() - serialWaitStartedAt < 5000) delay(10);
   Serial.printf("Reset reason: %d, free heap: %u\n", static_cast<int>(esp_reset_reason()), ESP.getFreeHeap());
   Serial0.printf("Reset reason: %d, free heap: %u\n", static_cast<int>(esp_reset_reason()), ESP.getFreeHeap());
+  setupRuntimeLogoMemory();
   setupLogoCache();
   loadWifiCredentials();
+  firmwareUpdateInitialize();
   setupMatrix();
   drawMessage("STARTING");
   logoCacheMutex = xSemaphoreCreateMutex();
   logoDecodeMutex = xSemaphoreCreateMutex();
   logoDownloadMutex = xSemaphoreCreateMutex();
   logoWorkMutex = xSemaphoreCreateMutex();
+  logoStorageMutex = xSemaphoreCreateMutex();
+  networkMutex = xSemaphoreCreateMutex();
   if (logoCacheMutex == nullptr || logoDecodeMutex == nullptr ||
-      logoDownloadMutex == nullptr || logoWorkMutex == nullptr) {
+      logoDownloadMutex == nullptr || logoWorkMutex == nullptr ||
+      logoStorageMutex == nullptr || networkMutex == nullptr) {
     Serial.println("Logo synchronization setup failed");
   }
   if (logoCacheMutex != nullptr && logoDecodeMutex != nullptr &&
-      logoDownloadMutex != nullptr && logoWorkMutex != nullptr) {
+      logoDownloadMutex != nullptr && logoWorkMutex != nullptr &&
+      logoStorageMutex != nullptr && networkMutex != nullptr) {
     const BaseType_t workerResult = xTaskCreatePinnedToCore(
       logoWorkerTask, "logo-worker", 8192, nullptr, 1, &logoWorkerHandle, 0
     );
@@ -215,21 +247,56 @@ void miniSetup() {
 
 void miniTick() {
   const uint32_t now = millis();
+  firmwareUpdateTick(now);
+  if (firmwareUpdateTransferActive()) {
+    delay(1);
+    return;
+  }
   refreshPreparedClock();
 
   bool workerFinished = false;
+  uint32_t workerGeneration = 0;
   if (logoWorkMutex != nullptr) {
     xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
   }
   workerFinished = logoWorkerCompleted;
   if (workerFinished) {
+    workerGeneration = logoWorkerGeneration;
     logoWorkerCompleted = false;
   }
   if (logoWorkMutex != nullptr) {
     xSemaphoreGive(logoWorkMutex);
   }
   if (workerFinished) {
-    message = "";
+    if (logoPlanDisplayPending) {
+      commitReadySportsLogoPlan(workerGeneration);
+    }
+    if (message.length() == 0) {
+      renderCurrent();
+    }
+  }
+  if (sportsMode && logoPlanDisplayPending && foregroundLogoPlanReady()) {
+    if (commitReadySportsLogoPlan(logoPlanGeneration)) {
+      if (message.length() == 0) {
+        renderCurrent();
+      }
+    }
+  }
+  if (sportsMode && logoPlanDisplayPending && !sportsFrameReady &&
+      assetLoadingStartedAt != 0 && now - assetLoadingStartedAt >= LOGO_STARTUP_TIMEOUT_MS) {
+    pageIndex = logoPlanPageIndex;
+    sportsFrameReady = true;
+    assetsLoading = false;
+    logoPlanDisplayPending = false;
+    assetLoadingStartedAt = 0;
+    lastPageAt = now;
+    Serial.println("Logo startup timed out. Showing the scoreboard while downloads continue.");
+    if (message.length() == 0) {
+      renderCurrent();
+    }
+  }
+  if (assetsLoading && !sportsFrameReady && now - lastAssetFrameAt >= LOGO_PROGRESS_REFRESH_MS) {
+    lastAssetFrameAt = now;
     renderCurrent();
   }
 
@@ -272,12 +339,26 @@ void miniTick() {
       connectWifi();
     }
 
-    // Rotate before network work so a due page cannot wait behind a refresh.
-    if (message.length() == 0 && pageCount > 1 && now - lastPageAt >= pageHoldMillis(pageHoldSeconds)) {
-      pageIndex = (pageIndex + 1) % pageCount;
-      prepareSportsLogoWorkingSet();
+    bool logoPlanBusy = false;
+    if (logoWorkMutex != nullptr) {
+      xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
+      logoPlanBusy = logoWorkerBusy || logoWorkerPending;
+      xSemaphoreGive(logoWorkMutex);
+    }
+
+    // Page timing does not wait for background asset work.
+    if (message.length() == 0 && sportsMode && sportsFrameReady &&
+        pageCount > 1 && now - lastPageAt >= pageHoldMillis(pageHoldSeconds)) {
+      const uint16_t nextPage = (pageIndex + 1) % pageCount;
+      pageIndex = nextPage;
+      lastPageAt = now;
       renderCurrent();
-      lastPageAt = millis();
+      if (!logoPlanBusy) {
+        JsonObjectConst nextGame;
+        if (selectedGame(nextGame) && !sportsGameAssetsCached(nextGame)) {
+          prepareSportsLogoWorkingSet(pageIndex);
+        }
+      }
     }
 
     if (WiFi.status() == WL_CONNECTED && !registered && now - lastRegisterAt >= REGISTER_INTERVAL_MS) {
@@ -293,15 +374,6 @@ void miniTick() {
     if (now - lastHeartbeatAt >= HEARTBEAT_INTERVAL_MS) {
       lastHeartbeatAt = now;
       sendHeartbeat();
-    }
-
-    bool loading = false;
-    uint16_t complete = 0;
-    uint16_t total = 0;
-    logoProgressSnapshot(loading, complete, total);
-    if (loading && now - lastAssetFrameAt >= 250) {
-      lastAssetFrameAt = now;
-      drawDownloadingProgress(complete, total);
     }
 
     if (message.length() > 0) {

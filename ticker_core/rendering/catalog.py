@@ -30,7 +30,6 @@ def content_family(item: Mapping[str, Any], mode: str) -> str:
     """Return the stable renderer family for one backend item."""
     item_type = str(item.get("type", "")).lower()
     sport = str(item.get("sport", "")).lower()
-    lowered_mode = mode.lower()
     if item.get("no_games"):
         return "empty"
     if sport == "clock" or sport.startswith("clock"):

@@ -198,22 +198,22 @@ class ScoreAlertMixin:
 
         Baseball gets the same ▲/▼ inning arrows the scroll cards draw, rather
         than the "^7"/"V7" letters ``shorten_status`` produces for the compact
-        strip — this panel has the room, and two conventions for the same thing
-        on one board is one too many.
+        strip. A horizontal marker identifies the neutral mid-inning state.
         """
         sport = str(alert.get('sport', '')).lower()
         raw = str(alert.get('status', ''))
         if any(k in sport for k in ('mlb', 'baseball', 'wbc')):
             upper = raw.upper()
-            # Between innings, and once the game is over, there is no half to
-            # point at — those fall through to the normal label.
-            if not any(k in upper for k in ('FINAL', 'END', 'MID', 'DELAY', 'SUSP', 'PPD')):
+            # Final and interrupted games have no active half to identify.
+            if not any(k in upper for k in ('FINAL', 'DELAY', 'SUSP', 'PPD')):
                 inning = re.search(r'\d+', raw)
                 if inning:
                     if 'TOP' in upper or '^' in upper:
                         return '▲', inning.group()
                     if 'BOT' in upper or 'V' in upper:
                         return '▼', inning.group()
+                    if any(k in upper for k in ('MID', 'MIDDLE', 'END')):
+                        return '-', inning.group()
         return '', self.shorten_status(raw, sport)[:16]
 
     # ── headline ─────────────────────────────────────────────────────────────

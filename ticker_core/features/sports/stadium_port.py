@@ -1,9 +1,8 @@
 """Stadium-style game card renderer (Python port of ticker_playground.html)."""
 
-import io
 import re
 
-from PIL import Image, ImageDraw, ImageStat, ImageFilter, ImageChops, ImageEnhance
+from PIL import Image, ImageDraw, ImageFilter, ImageChops
 
 from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP
 
@@ -239,13 +238,6 @@ def draw_so_column(d, x, y, results, vertical=True, size=5, stride=7, max_show=5
         draw_shootout_dot(d, dx, dy, r, size=size, stride=stride)
 
 
-# ── Logo loading ──────────────────────────────────────────────────────────────
-
-def _download_logo(url, size=(22, 22)):
-    """Fetch and resize a logo from URL; returns RGBA PIL Image or None."""
-    return None
-
-
 def _enhance_logo_visibility(img):
     """Only outline logos that are overwhelmingly dark."""
     try:
@@ -356,9 +348,9 @@ class StadiumRenderer:
     Parameters
     ----------
     logo_cache : dict
-        Shared logo cache dict (same one TickerStreamer uses).
+        Shared prepared-logo cache keyed by URL and requested size.
         Values are PIL RGBA images already sized to (LOGO_SZ, LOGO_SZ).
-        If the logo is not in cache, this renderer will try to fetch it.
+        Asset downloads happen before rendering in the asset coordinator.
     """
 
     LOGO_SIZE = (LOGO_SZ, LOGO_SZ)
@@ -371,10 +363,6 @@ class StadiumRenderer:
         if not url:
             return None
         key = f"{url}_{LOGO_SZ}x{LOGO_SZ}"
-        if key not in self._cache:
-            img = _download_logo(url, self.LOGO_SIZE)
-            if img:
-                self._cache[key] = img
         return self._cache.get(key)
 
     def _paste_logo(self, img, logo, x, y):

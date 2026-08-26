@@ -11,6 +11,7 @@ from typing import Any
 from sports_ticker.domain import CONTENT_FAMILIES, ContentItem, DisplaySettings
 
 from .contracts import ProviderHealth, ProviderResult
+from .logo_overrides import corrected_logo
 
 
 _HIDDEN_STATUS_KEYWORDS = frozenset(
@@ -301,10 +302,39 @@ def _data_payload(
         data["sport"] = sport
         data.setdefault("schema", f"{family}.{sport or kind}")
         if family == "sports":
+            _apply_sports_logo_overrides(data)
             data.setdefault("display", _sports_display(data))
     elif family in {"flights", "airports"}:
         data.setdefault("schema", f"{family}.{kind}")
     return data
+
+
+def _apply_sports_logo_overrides(data: dict[str, Any]) -> None:
+    """Resolve scoreboard logos through the shared provider override table."""
+
+    league = data.get("league") or data.get("sport") or ""
+    league_key = str(league).strip().upper()
+    league_key = {
+        "BASEBALL": "MLB",
+        "BASKETBALL": "NBA",
+        "FOOTBALL": "NFL",
+        "HOCKEY": "NHL",
+    }.get(league_key, league_key)
+    display = data.get("display")
+    display_copy = dict(display) if isinstance(display, Mapping) else {}
+    for side in ("away", "home"):
+        abbreviation = data.get(f"{side}_abbr") or _nested_text(data.get(side), "abbreviation", "abbr")
+        field = f"{side}_logo"
+        source_url = data.get(field)
+        corrected = corrected_logo(league_key, str(abbreviation), source_url if source_url is not None else None)
+        if corrected:
+            data[field] = corrected
+            side_display = display_copy.get(side)
+            side_copy = dict(side_display) if isinstance(side_display, Mapping) else {}
+            side_copy["logo"] = corrected
+            display_copy[side] = side_copy
+    if display_copy:
+        data["display"] = display_copy
 
 
 def _sports_display(data: Mapping[str, Any]) -> dict[str, Any]:

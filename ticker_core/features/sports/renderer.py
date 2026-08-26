@@ -162,7 +162,6 @@ class SportsRenderer:
         football = "football" in sport or "nfl" in sport
         hockey = "hockey" in sport or "nhl" in sport
         soccer = "soccer" in sport
-        sit = game["sit"]
         draw.line((0, 7, width, 7), fill=(55, 76, 130))
         away_x, home_x, logo_y = 1, width - LOGO_SIZE - 1, 9
         self._paste_logo(image, game.get("away_logo"), away_x, logo_y, game["ac"])

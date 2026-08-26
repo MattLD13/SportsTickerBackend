@@ -12,6 +12,10 @@
 #undef MOTOLONG
 #include <PNGdec.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <Update.h>
+#include <esp_image_format.h>
+#include <esp_ota_ops.h>
 #include <esp_system.h>
 #include <esp_heap_caps.h>
 #include <mbedtls/base64.h>
@@ -22,9 +26,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <new>
 #include "../platform/config.h"
 #include "../platform/matrix_driver.h"
-#include "../assets/logo_overrides_generated.h"
 #include "../assets/logo_sources.h"
 
 PNG pngDecoder;
@@ -111,7 +115,8 @@ struct PersistedLogo {
   uint8_t mask[RUNTIME_LOGO_SIZE * RUNTIME_LOGO_SIZE];
 };
 
-RuntimeLogo runtimeLogos[RUNTIME_LOGO_SLOTS];
+RuntimeLogo* runtimeLogos = nullptr;
+uint8_t runtimeLogoSlotCount = 0;
 uint8_t* logoDownloadBuffer = nullptr;
 size_t logoDownloadCapacity = 0;
 uint16_t logoDecodeLine[LOGO_DECODE_WIDTH_LIMIT];
@@ -141,6 +146,8 @@ SemaphoreHandle_t logoCacheMutex = nullptr;
 SemaphoreHandle_t logoDecodeMutex = nullptr;
 SemaphoreHandle_t logoDownloadMutex = nullptr;
 SemaphoreHandle_t logoWorkMutex = nullptr;
+SemaphoreHandle_t logoStorageMutex = nullptr;
+SemaphoreHandle_t networkMutex = nullptr;
 TaskHandle_t logoWorkerHandle = nullptr;
 String logoWorkPrimary[LOGO_WORK_QUEUE_SLOTS];
 String logoWorkFallback[LOGO_WORK_QUEUE_SLOTS];
@@ -152,11 +159,15 @@ bool logoWorkerBusy = false;
 bool logoWorkerPending = false;
 bool logoWorkerCompleted = false;
 bool assetsLoading = false;
+bool sportsFrameReady = false;
+uint16_t logoPlanPageIndex = 0;
 uint16_t logoProgressComplete = 0;
 uint16_t logoProgressTotal = 0;
 uint32_t logoPlanGeneration = 0;
 uint32_t logoWorkerGeneration = 0;
+bool logoPlanDisplayPending = false;
 uint32_t lastAssetFrameAt = 0;
+uint32_t assetLoadingStartedAt = 0;
 struct tm preparedClock = {};
 bool preparedClockValid = false;
 PreparedGameLogos preparedGameLogos;
@@ -165,12 +176,30 @@ String appliedTimezone;
 
 void renderCurrent();
 void drawDownloadingProgress(uint16_t complete, uint16_t total);
+void drawFirmwareUpdate(uint8_t state, uint32_t complete, uint32_t total, const char* detail);
 void logoWorkerTask(void* parameter);
+void firmwareUpdateInitialize();
+void firmwareUpdateObserve(JsonVariantConst command);
+void firmwareUpdateTick(uint32_t now);
+bool firmwareUpdateDisplayActive();
+bool firmwareUpdateTransferActive();
+void firmwareUpdateDisplaySnapshot(uint8_t& state, uint32_t& complete, uint32_t& total, char* detail, size_t detailSize);
 void startBlePairing();
 void startPairingMode();
 void stopBlePairing();
 void applyPendingWifiCredentials();
 void saveWifiCredentials(const String& ssid, const String& password);
+
+bool acquireNetwork(uint32_t timeoutMs) {
+  return networkMutex == nullptr ||
+    xSemaphoreTake(networkMutex, pdMS_TO_TICKS(timeoutMs)) == pdTRUE;
+}
+
+void releaseNetwork() {
+  if (networkMutex != nullptr) {
+    xSemaphoreGive(networkMutex);
+  }
+}
 
 void logoProgressSnapshot(bool& loading, uint16_t& complete, uint16_t& total) {
   if (logoWorkMutex != nullptr) {
@@ -186,6 +215,7 @@ void logoProgressSnapshot(bool& loading, uint16_t& complete, uint16_t& total) {
 
 #include "../platform/connectivity.inc"
 #include "../protocol/backend.inc"
+#include "../platform/firmware_update.inc"
 #include "../rendering/primitives.inc"
 #include "../assets/logo_pipeline.inc"
 #include "../features/renderers.inc"

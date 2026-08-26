@@ -13,11 +13,28 @@ void drawFootballPossessionIndicator(int16_t x, int16_t y, uint16_t teamColor) {
 }
 
 void drawScoreCenter(const String& awayScore, const String& homeScore) {
-  String score = awayScore + "-" + homeScore;
-  uint8_t scale = score.length() <= 4 ? 2 : 1;
-  int16_t width = compactPixelTextWidth(score, scale);
-  int16_t x = centeredPixelX(width);
-  drawCompactPixelText(score, x, scale == 2 ? 9 : 11, color(255, 255, 255), scale);
+  const size_t longestScore = awayScore.length() > homeScore.length() ? awayScore.length() : homeScore.length();
+  const bool largeScores = longestScore <= 1;
+  const bool mediumScores = longestScore == 2;
+  const uint8_t compactScale = largeScores ? 2 : 1;
+  const int16_t awayWidth = mediumScores ? mediumScoreTextWidth(awayScore) : compactPixelTextWidth(awayScore, compactScale);
+  const int16_t dashWidth = compactPixelTextWidth("-", 1);
+  const int16_t homeWidth = mediumScores ? mediumScoreTextWidth(homeScore) : compactPixelTextWidth(homeScore, compactScale);
+  const int16_t groupWidth = awayWidth + 1 + dashWidth + 1 + homeWidth;
+  const int16_t groupX = centeredPixelX(groupWidth);
+  const uint16_t scoreColor = color(255, 255, 255);
+  if (mediumScores) {
+    drawMediumScoreText(awayScore, groupX, 9, scoreColor);
+  } else {
+    drawCompactPixelText(awayScore, groupX, largeScores ? 8 : 10, scoreColor, compactScale);
+  }
+  drawCompactPixelText("-", groupX + awayWidth + 1, 10, color(185, 190, 205), 1);
+  const int16_t homeX = groupX + awayWidth + dashWidth + 2;
+  if (mediumScores) {
+    drawMediumScoreText(homeScore, homeX, 9, scoreColor);
+  } else {
+    drawCompactPixelText(homeScore, homeX, largeScores ? 8 : 10, scoreColor, compactScale);
+  }
 }
 
 bool sportIs(const String& sport, const char* value) {
@@ -77,7 +94,7 @@ void drawBaseballCountAndBases(JsonObjectConst situation, const String& away, co
   activeTeam.toUpperCase();
   const bool homeBatting = activeTeam == home || activeTeam == "HOME" || activeTeam == "H";
   const int16_t battingCenter = homeBatting ? 55 : 9;
-  const int16_t countWidth = 12;
+  const int16_t countWidth = 11;
   const int16_t countX = battingCenter - countWidth / 2;
   drawPixelText(String(balls), countX, 1, ballColor, 1);
   drawPixelText("-", countX + 4, 1, color(160, 160, 160), 1);
@@ -89,10 +106,16 @@ void drawBaseballCountAndBases(JsonObjectConst situation, const String& away, co
   const bool onFirst = situation["onFirst"] | false;
   const bool onSecond = situation["onSecond"] | false;
   const bool onThird = situation["onThird"] | false;
-  matrix->fillRect(centerX - 1, baseY, 3, 3, onSecond ? baseColor : offColor);
-  matrix->fillRect(centerX - 5, baseY + 3, 3, 3, onThird ? baseColor : offColor);
-  matrix->fillRect(centerX + 3, baseY + 3, 3, 3, onFirst ? baseColor : offColor);
-  const int16_t outX = centerX - 7;
+  auto drawBase = [&](int16_t x, int16_t y, bool occupied) {
+    const uint16_t value = occupied ? baseColor : offColor;
+    matrix->drawFastHLine(x - 2, y, 5, value);
+    matrix->drawFastHLine(x - 1, y + 1, 3, value);
+    matrix->drawPixel(x, y + 2, value);
+  };
+  drawBase(centerX, baseY, onSecond);
+  drawBase(centerX - 5, baseY + 3, onThird);
+  drawBase(centerX + 5, baseY + 3, onFirst);
+  const int16_t outX = centerX - 5;
   for (int index = 0; index < 3; ++index) {
     matrix->fillCircle(outX + index * 5, 29, 1, index < outs ? outColor : offColor);
   }
@@ -216,19 +239,89 @@ void drawModeHeader(const String& label, uint16_t accent) {
   drawPixelTextFit(label, 2, 1, accent, 1, 60);
 }
 
+void drawWeatherGlyph(const String& name, int16_t x, int16_t y, uint16_t accent) {
+  String icon = name;
+  icon.toLowerCase();
+  const uint16_t cloud = color(150, 175, 205);
+  const uint8_t frame = static_cast<uint8_t>((millis() / 350) % 4);
+  if (icon.indexOf("sun") >= 0 || icon.indexOf("clear") >= 0) {
+    const uint16_t sun = color(255, 205, 50);
+    matrix->fillCircle(x + 6, y + 6, 3, sun);
+    matrix->drawFastHLine(x + 6, y, 1, accent);
+    matrix->drawFastHLine(x + 6, y + 12, 1, accent);
+    matrix->drawFastVLine(x, y + 6, 1, accent);
+    matrix->drawFastVLine(x + 12, y + 6, 1, accent);
+    const uint8_t diagonalPhase = frame == 1 || frame == 3 ? 1 : 0;
+    matrix->drawPixel(x + 1 + diagonalPhase, y + 1, accent);
+    matrix->drawPixel(x + 10 - diagonalPhase, y + 1, accent);
+    matrix->drawPixel(x + 1 + diagonalPhase, y + 10, accent);
+    matrix->drawPixel(x + 10 - diagonalPhase, y + 10, accent);
+    return;
+  }
+  if (icon.indexOf("snow") >= 0) {
+    matrix->fillCircle(x + 4, y + 5, 3, cloud);
+    matrix->fillCircle(x + 8, y + 5, 4, cloud);
+    matrix->drawFastHLine(x + 1, y + 8, 10, cloud);
+    matrix->drawPixel(x + 3, y + 10 + (frame & 1), accent);
+    matrix->drawPixel(x + 6, y + 11 - (frame & 1), accent);
+    matrix->drawPixel(x + 9, y + 10 + ((frame + 1) & 1), accent);
+    return;
+  }
+  if (icon.indexOf("fog") >= 0 || icon.indexOf("mist") >= 0 || icon.indexOf("haze") >= 0) {
+    const int8_t drift = static_cast<int8_t>(frame) - 1;
+    matrix->drawFastHLine(x + 1 + drift, y + 3, 9, cloud);
+    matrix->drawFastHLine(x + 2 - drift, y + 6, 8, accent);
+    matrix->drawFastHLine(x + 1 + drift, y + 9, 10, cloud);
+    return;
+  }
+  matrix->fillCircle(x + 4, y + 6, 3, cloud);
+  matrix->fillCircle(x + 8, y + 5, 4, cloud);
+  matrix->drawFastHLine(x + 1, y + 8, 11, cloud);
+  if (icon.indexOf("rain") >= 0 || icon.indexOf("storm") >= 0) {
+    const uint8_t dropOffset = frame == 0 ? 0 : frame == 1 ? 1 : frame == 2 ? 2 : 1;
+    matrix->drawPixel(x + 3, y + 9 + dropOffset, accent);
+    matrix->drawPixel(x + 6, y + 10 + ((dropOffset + 1) % 3), accent);
+    matrix->drawPixel(x + 9, y + 9 + ((dropOffset + 2) % 3), accent);
+  }
+  if (icon.indexOf("storm") >= 0) {
+    const uint16_t lightning = color(255, 220, 55);
+    if (frame == 0 || frame == 3) {
+      matrix->drawPixel(x + 7, y + 8, lightning);
+      matrix->drawPixel(x + 6, y + 9, lightning);
+      matrix->drawPixel(x + 5, y + 10, lightning);
+    }
+  }
+}
+
+uint16_t weatherTemperatureColor(const String& value) {
+  const int16_t temperature = value.toInt();
+  if (temperature >= 90) return color(255, 90, 35);
+  if (temperature >= 75) return color(255, 185, 40);
+  if (temperature >= 55) return color(95, 225, 105);
+  if (temperature >= 35) return color(95, 190, 255);
+  return color(190, 230, 255);
+}
+
 void drawWeather(JsonObjectConst weather) {
   const uint16_t blue = color(50, 150, 255);
   const uint16_t yellow = color(255, 218, 70);
   const uint16_t white = color(240, 245, 255);
-  drawModeHeader(shortValue(weather["away_abbr"], "WEATHER", 12), blue);
-  String temperature = shortValue(weather["home_abbr"], "--", 4);
-  drawPixelTextFit(temperature, 2, 10, yellow, 2, 30);
-  drawPixelText("F", 30, 13, yellow, 1);
-  drawPixelTextFit(shortValue(weather["status"], "NO DATA", 12), 2, 25, white, 1, 32);
+  String city = shortValue(weather["city"], weather["away_abbr"].isNull() ? "WEATHER" : weather["away_abbr"].as<String>().c_str(), 10);
+  String temperature = shortValue(weather["temperature"], weather["home_abbr"].isNull() ? "--" : weather["home_abbr"].as<String>().c_str(), 4);
   JsonObjectConst situation = weather["situation"].as<JsonObjectConst>();
   JsonObjectConst stats = situation["stats"].as<JsonObjectConst>();
-  drawPixelTextFit("H" + shortValue(stats["humidity"], "--", 2), 39, 11, blue, 1, 24);
-  drawPixelTextFit("W" + shortValue(stats["wind"], "--", 2), 39, 18, blue, 1, 24);
+  String icon = situation["icon"] | weather["icon"] | weather["status"] | "cloud";
+  matrix->fillScreen(color(1, 4, 12));
+  drawPixelTextFit(city, 2, 1, blue, 1, 40);
+  drawWeatherGlyph(icon, 1, 9, blue);
+  const uint16_t temperatureColor = weatherTemperatureColor(temperature);
+  drawPixelTextFit(temperature, 16, 10, temperatureColor, 2, 21);
+  drawPixelText("F", 33, 13, temperatureColor, 1);
+  drawPixelTextFit("FEELS", 1, 24, yellow, 1, 20);
+  drawPixelTextFit(shortValue(stats["feels"], "--", 2), 22, 24, yellow, 1, 13);
+  drawPixelTextFit("W" + shortValue(stats["wind"], "--", 2), 43, 9, blue, 1, 21);
+  drawPixelTextFit("H" + shortValue(stats["humidity"], "--", 2), 43, 16, color(120, 210, 230), 1, 21);
+  drawPixelTextFit("A" + shortValue(stats["aqi"], "--", 2), 43, 23, color(100, 230, 125), 1, 21);
   presentFrame();
 }
 
@@ -253,16 +346,28 @@ void drawMusic(JsonObjectConst music) {
 void drawFlight(JsonObjectConst flight) {
   const uint16_t orange = color(255, 145, 45);
   const uint16_t blue = color(50, 150, 255);
-  const bool delayed = flight["is_delayed"] | false;
-  drawModeHeader(shortValue(flight["id"], "FLIGHT", 12), orange);
-  String origin = shortValue(flight["origin_city"], "DEP", 3);
-  String destination = shortValue(flight["dest_city"], "ARR", 3);
-  drawPixelTextFit(origin + "/" + destination, 2, 10, color(242, 246, 255), 1, 34);
-  drawPixelTextFit(shortValue(flight["eta_str"], "--", 8), 2, 18, blue, 1, 32);
-  drawPixelTextFit(delayed ? "DELAY" : shortValue(flight["status"], "EN ROUTE", 8), 37, 18, delayed ? color(255, 80, 75) : color(50, 225, 125), 1, 26);
+  const uint16_t red = color(255, 80, 75);
+  const uint16_t green = color(50, 225, 125);
+  const bool live = flight["is_live"] | false;
+  const bool delayed = flight["is_delayed"] | false || (flight["delay_min"] | 0) > 0;
+  String flightId = shortValue(flight["id"], "FLIGHT", 8);
+  drawModeHeader(flightId, delayed ? red : orange);
+  drawPixelText("^", 54, 1, delayed ? red : green, 1);
+  String origin = shortValue(flight["origin_iata"], flight["origin_city"].isNull() ? "DEP" : flight["origin_city"].as<String>().c_str(), 3);
+  String destination = shortValue(flight["dest_iata"], flight["dest_city"].isNull() ? "ARR" : flight["dest_city"].as<String>().c_str(), 3);
+  drawPixelTextFit(origin + ">" + destination, 2, 10, color(242, 246, 255), 1, 27);
+  if (live) {
+    drawPixelTextFit("E" + shortValue(flight["eta_str"], "--", 6), 2, 18, blue, 1, 31);
+    drawPixelTextFit("S" + shortValue(flight["speed"], "--", 4), 40, 18, color(120, 210, 230), 1, 21);
+  } else {
+    drawPixelTextFit(shortValue(flight["status"], "SCHEDULED", 8), 2, 18, orange, 1, 34);
+  }
+  String detail = delayed ? "D" + shortValue(flight["delay_min"], "--", 3) : "A" + String((flight["alt"] | 0) / 1000) + "K";
+  drawPixelTextFit(detail, 2, 24, delayed ? red : color(220, 225, 240), 1, 25);
+  drawPixelTextFit(shortValue(flight["status"], "EN ROUTE", 7), 31, 24, delayed ? red : green, 1, 31);
   const int progress = min(100, max(0, static_cast<int>(flight["progress"] | 0)));
-  matrix->fillRect(2, 29, 60, 3, color(25, 38, 58));
-  matrix->fillRect(2, 29, progress * 60 / 100, 3, blue);
+  matrix->fillRect(2, 29, 60, 3, delayed ? color(60, 10, 10) : color(15, 35, 15));
+  matrix->fillRect(2, 29, max(1, progress * 60 / 100), 3, delayed ? red : green);
   presentFrame();
 }
 
@@ -307,7 +412,8 @@ void drawClock(const struct tm& localTime, bool clockReady) {
   const uint16_t cyan = color(45, 205, 235);
   drawModeHeader("CLOCK", cyan);
   if (!clockReady) {
-    drawPixelTextFit("SYNC", 2, 12, color(255, 220, 70), 2, 32);
+    const int16_t syncWidth = compactPixelTextWidth("SYNC", 2);
+    drawCompactPixelText("SYNC", centeredPixelX(syncWidth) - CONTENT_X_OFFSET, 8, color(255, 220, 70), 2);
     presentFrame();
     return;
   }
@@ -320,24 +426,37 @@ void drawClock(const struct tm& localTime, bool clockReady) {
   String timeValue = timeBuffer;
   if (timeValue.startsWith("0")) timeValue.remove(0, 1);
   drawPixelTextFit(dateBuffer, 2, 1, color(155, 180, 210), 1, 60);
-  drawPixelTextFit(timeValue, 2, 10, color(245, 245, 255), 2, 42);
-  drawPixelTextFit(amPmBuffer, 48, 15, cyan, 1, 14);
-  matrix->fillRect(2, 29, 60, 3, color(22, 35, 54));
-  matrix->fillRect(2, 29, (localTime.tm_sec * 60) / 60, 3, cyan);
+  const int16_t timeWidth = compactPixelTextWidth(timeValue, 2);
+  const int16_t amPmWidth = compactPixelTextWidth(amPmBuffer, 1);
+  const int16_t groupWidth = timeWidth + 2 + amPmWidth;
+  const int16_t groupX = centeredPixelX(groupWidth) - CONTENT_X_OFFSET;
+  drawCompactPixelText(timeValue, groupX, 8, color(245, 245, 255), 2);
+  drawCompactPixelText(amPmBuffer, groupX + timeWidth + 2, 11, cyan, 1);
+  matrix->fillRect(CONTENT_X_OFFSET, 20, 60, 3, color(22, 35, 54));
+  matrix->fillRect(CONTENT_X_OFFSET, 20, (localTime.tm_sec * 60) / 60, 3, cyan);
   presentFrame();
 }
 
 void renderCurrent() {
-  bool loading = false;
-  uint16_t complete = 0;
-  uint16_t total = 0;
-  logoProgressSnapshot(loading, complete, total);
-  if (loading) {
-    drawDownloadingProgress(complete, total);
+  if (firmwareUpdateDisplayActive()) {
+    uint8_t state = 0;
+    uint32_t complete = 0;
+    uint32_t total = 0;
+    char detail[24] = {};
+    firmwareUpdateDisplaySnapshot(state, complete, total, detail, sizeof(detail));
+    drawFirmwareUpdate(state, complete, total, detail);
     return;
   }
   if (pairingMode) {
     drawPairingCode();
+    return;
+  }
+  bool loading = false;
+  uint16_t complete = 0;
+  uint16_t total = 0;
+  logoProgressSnapshot(loading, complete, total);
+  if (loading && sportsMode && !sportsFrameReady) {
+    drawDownloadingProgress(complete, total);
     return;
   }
   if (sportsMode) {

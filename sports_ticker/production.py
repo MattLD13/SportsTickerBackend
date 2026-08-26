@@ -16,6 +16,7 @@ from sports_ticker.application import BackendApplication, BackendRuntime, Refres
 from sports_ticker.application.state_store import SnapshotStore
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.fleet import PairingState, TickerRepository
+from sports_ticker.firmware import FirmwareManifest
 from sports_ticker.integrations import SpotifyConfig, SpotifyIntegrationService, SpotifyMusicSource
 from sports_ticker.leagues import ESPN_SCOREBOARD_PATHS, FOTMOB_LEAGUES, TEAM_CATALOG_PATHS, league_for
 from sports_ticker.providers import (
@@ -25,7 +26,8 @@ from sports_ticker.providers import (
     FlightsProvider,
     GolfProvider,
     MusicProvider,
-    OpenMeteoWeatherProvider,
+    HybridWeatherProvider,
+    WeatherLocationResolver,
     RacingProvider,
     StockProvider,
 )
@@ -79,6 +81,7 @@ def create_production_application(
         scheduler=scheduler,
         spotify_service=spotify,
         catalog=EspnTeamCatalog(TEAM_CATALOG_PATHS),
+        weather_location_resolver=WeatherLocationResolver().resolve,
     )
     runtime = BackendRuntime(
         scheduler,
@@ -86,7 +89,15 @@ def create_production_application(
         poll_interval=_positive_float(os.environ.get("TICKER_REFRESH_TICK_SECONDS", "0.2")),
     )
     application.runtime = runtime
-    app = create_app(application)
+    firmware_manifest = FirmwareManifest.from_environment()
+    firmware_directory = Path(
+        os.environ.get("TICKER_FIRMWARE_DIR", path.parent / "firmware")
+    )
+    app = create_app(
+        application,
+        firmware_manifest=firmware_manifest,
+        firmware_directory=firmware_directory,
+    )
     app.extensions["sports_ticker.backend_application"] = application
     app.extensions["sports_ticker.repository"] = repository
     app.extensions["sports_ticker.snapshot_store"] = snapshots
@@ -132,7 +143,7 @@ def _providers(spotify: SpotifyIntegrationService) -> dict[str, object]:
     return {
         "espn": EspnScoreboardProvider(scoreboard_urls),
         "fotmob": FotMobSoccerProvider(FOTMOB_LEAGUES),
-        "weather": OpenMeteoWeatherProvider(),
+        "weather": HybridWeatherProvider(),
         "golf": GolfProvider(EspnGolfSource()),
         "racing": RacingProvider(LiveRacingSource()),
         "stock": StockProvider(FinnhubStockSource()),

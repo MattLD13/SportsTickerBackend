@@ -6,12 +6,12 @@ import time
 import hashlib
 import secrets
 from uuid import uuid4
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import datetime, timezone
 from math import isfinite
 from threading import Lock
-from typing import Any, Callable
+from typing import Any
 
 from sports_ticker.domain import DisplaySettings, TickerSnapshot
 from sports_ticker.fleet import DeviceMetadata, TickerProfile, TickerRecord, TickerRepository
@@ -35,6 +35,7 @@ class BackendApplication:
         runtime: object | None = None,
         spotify_service: object | None = None,
         catalog: object | None = None,
+        weather_location_resolver: Callable[[str], Mapping[str, object] | None] | None = None,
         clock: Callable[[], float] = time.time,
         pairing_code_ttl_seconds: float = 600.0,
     ) -> None:
@@ -46,6 +47,7 @@ class BackendApplication:
         self.runtime = runtime
         self.spotify_service = spotify_service
         self.catalog = catalog
+        self.weather_location_resolver = weather_location_resolver
         self._clock = clock
         if pairing_code_ttl_seconds <= 0:
             raise ValueError("pairing_code_ttl_seconds must be positive")
@@ -97,8 +99,9 @@ class BackendApplication:
         name: str = "Ticker",
         metadata: Mapping[str, Any] | None = None,
         profile: Mapping[str, Any] | TickerProfile | None = None,
+        pairing_code: str | None = None,
     ) -> tuple[TickerRecord, str | None, bool]:
-        """Create or refresh one device-owned sports ticker and its pairing code."""
+        """Create or refresh one device-owned ticker and its pairing session code."""
 
         identifier = str(device_id).strip()
         if not identifier:
@@ -129,16 +132,34 @@ class BackendApplication:
         current = self.heartbeat(identifier, {"metadata": device_metadata})
         self._ensure_display_snapshot(current)
         pairing = current.pairing
-        pairing_code = None
+        requested_pairing_code = str(pairing_code or "").strip()
+        response_pairing_code = None
         if pairing is None or not pairing.paired:
-            pairing_code = pairing.pairing_code if pairing is not None else None
+            current_code = pairing.pairing_code if pairing is not None else None
             expires_at = pairing.pairing_code_expires_at if pairing is not None else None
-            if not pairing_code or (expires_at is not None and self._clock() >= float(expires_at)):
-                pairing_code = self.issue_pairing_code(identifier)
+            if requested_pairing_code and current_code == requested_pairing_code:
+                # Keep the code already exposed by the mini valid while its BLE session completes.
+                self.repository.issue_pairing_code(
+                    identifier,
+                    requested_pairing_code,
+                    expires_at=self._clock() + self._pairing_code_ttl_seconds,
+                )
                 current = self.repository.get_ticker(identifier)
                 if current is None:
                     raise KeyError(identifier)
-        return current, pairing_code, created
+                response_pairing_code = requested_pairing_code
+            else:
+                response_pairing_code = current_code
+            if not response_pairing_code or (
+                requested_pairing_code != response_pairing_code
+                and expires_at is not None
+                and self._clock() >= float(expires_at)
+            ):
+                response_pairing_code = self.issue_pairing_code(identifier)
+                current = self.repository.get_ticker(identifier)
+                if current is None:
+                    raise KeyError(identifier)
+        return current, response_pairing_code, created
 
     def _ensure_display_snapshot(self, ticker: TickerRecord) -> None:
         """Create the first empty snapshot before a device starts polling."""
@@ -260,7 +281,27 @@ class BackendApplication:
     def update_ticker(self, ticker_id: str, **changes: object) -> TickerRecord:
         """Apply one validated partial ticker update."""
 
+        changes = self._resolve_weather_location(changes)
         return self.repository.update_ticker(ticker_id, **changes)
+
+    def _resolve_weather_location(self, changes: Mapping[str, object]) -> dict[str, object]:
+        """Canonicalize a ZIP code before the repository stores weather settings."""
+
+        resolver = self.weather_location_resolver
+        settings = changes.get("display_settings")
+        if resolver is None or not isinstance(settings, Mapping):
+            return dict(changes)
+        try:
+            location = resolver(str(settings.get("weather_city", "")))
+        except Exception:
+            return dict(changes)
+        if not isinstance(location, Mapping):
+            return dict(changes)
+        updated = dict(settings)
+        updated.update(location)
+        resolved = dict(changes)
+        resolved["display_settings"] = updated
+        return resolved
 
     def delete_ticker(self, ticker_id: str) -> bool:
         """Delete one configured ticker."""

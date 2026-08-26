@@ -4,7 +4,11 @@ from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlsplit
 
 from sports_ticker.domain import DisplaySettings
-from sports_ticker.providers.espn import EspnScoreboardProvider, _scoreboard_url_for_dates
+from sports_ticker.providers.espn import (
+    EspnScoreboardProvider,
+    _scoreboard_url_for_dates,
+    _summary_scoring_details,
+)
 
 
 def _event(event_id: str, start: str, *, state: str = "pre") -> dict:
@@ -186,3 +190,35 @@ def test_espn_missing_event_id_is_unhealthy() -> None:
     assert result.health.healthy is False
     assert result.health.error is not None
     assert "nfl event: event id is missing" in result.health.error
+
+
+def test_espn_summary_scoring_details_normalize_team_and_scorer() -> None:
+    payload = {
+        "header": {
+            "competitions": [{
+                "competitors": [
+                    {"homeAway": "home", "team": {"id": "10", "abbreviation": "BOS"}},
+                    {"homeAway": "away", "team": {"id": "20", "abbreviation": "NYY"}},
+                ]
+            }]
+        },
+        "scoringPlays": [{
+            "team": {"id": "20"},
+            "athlete": {"displayName": "Aaron Judge"},
+            "scoringType": {"displayName": "Home Run"},
+            "shortText": "Aaron Judge homers to left field",
+        }],
+    }
+
+    details = _summary_scoring_details(
+        payload,
+        {"home_abbr": "BOS", "away_abbr": "NYY"},
+    )
+
+    assert details["scoring_plays"] == [{
+        "team": "NYY",
+        "scorer": "JUDGE",
+        "player": "JUDGE",
+        "type": "Home Run",
+        "text": "Aaron Judge homers to left field",
+    }]

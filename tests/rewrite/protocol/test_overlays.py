@@ -12,7 +12,9 @@ class SequenceClient:
         self.values = iter(values)
 
     def get_json(self, url, *, timeout):
-        del url, timeout
+        del timeout
+        if "/summary" in url:
+            return {}
         return next(self.values)
 
 

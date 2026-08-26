@@ -3,6 +3,9 @@ void updateFromPayload(const String& body) {
   JsonDocument filter;
   filter["meta"]["pairing"]["paired"] = true;
   filter["meta"]["pairing"]["code"] = true;
+  filter["meta"]["update"]["version"] = true;
+  filter["meta"]["update"]["id"] = true;
+  filter["meta"]["update"]["expires_at"] = true;
   filter["settings"]["mode"] = true;
   filter["settings"]["timezone"] = true;
   filter["settings"]["scroll_speed"] = true;
@@ -85,7 +88,11 @@ void updateFromPayload(const String& body) {
   configuredTimezone = settings["timezone"] | DEFAULT_TIMEZONE;
   configuredTimezone.trim();
   if (configuredTimezone.length() == 0) configuredTimezone = DEFAULT_TIMEZONE;
+  const bool wasSportsMode = sportsMode;
   sportsMode = displayMode == "sports";
+  if (sportsMode && !wasSportsMode) {
+    sportsFrameReady = false;
+  }
   pageHoldSeconds = settings["scroll_speed"] | 0.03f;
   pageCount = sportsMode && !pairingMode ? countShownGames() : 0;
   float brightness = settings["brightness"] | 100.0f;
@@ -94,18 +101,22 @@ void updateFromPayload(const String& body) {
   matrix->setBrightness8(static_cast<uint8_t>(brightness * 2.55f));
   const uint32_t newRotationSignature = sportsRotationSignature();
   const bool workingSetChanged = newRotationSignature != rotationSignature;
+  const bool keepVisibleSportsFrame = sportsMode && sportsFrameReady;
   if (workingSetChanged) {
     rotationSignature = newRotationSignature;
-    pageIndex = 0;
   }
   if (workingSetChanged || logoWorkingSetSignature != newRotationSignature) {
     logoWorkingSetSignature = newRotationSignature;
-    prepareSportsLogoWorkingSet();
+    prepareSportsLogoWorkingSet(sportsMode ? 0 : pageIndex);
   }
   message = "";
-  renderCurrent();
+  const bool newSportsPlanReady = !sportsMode || foregroundLogoPlanReady();
+  if (!keepVisibleSportsFrame || !workingSetChanged || !sportsMode || newSportsPlanReady) {
+    renderCurrent();
+  }
   if (workingSetChanged) {
     lastPageAt = millis();
   }
+  firmwareUpdateObserve(payload["meta"]["update"]);
 }
 // Owns retained V2 payload filtering and runtime state projection.

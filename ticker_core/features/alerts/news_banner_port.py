@@ -15,10 +15,9 @@ clubs in the header over two lines of detail. Stock news shows the symbol and
 the day's move over three lines of headline.
 """
 
-import re
-
 from PIL import Image, ImageDraw
 
+from ticker_core.rendering.fonts import load_monospace_font
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text
 
 PANEL_W = 384

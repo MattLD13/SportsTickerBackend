@@ -35,6 +35,21 @@ def test_score_alert_enrichment_details() -> None:
     soc_alert = next(a for a in soc_alerts if a["sport"] == "soccer_epl")
     assert soc_alert["detail"] == "SAKA 38' (HEADER)"
 
+    # 3. Generic ESPN scoring play detail, including baseball.
+    game_mlb_p1 = {
+        "kind": "scoreboard", "id": "mlb-1", "sport": "mlb", "state": "in", "status": "Mid 7th",
+        "home_abbr": "BOS", "away_abbr": "NYY", "home_score": 2, "away_score": 2,
+    }
+    tracker.ingest([game_mlb_p1])
+    game_mlb_p2 = {
+        **game_mlb_p1,
+        "away_score": 3,
+        "situation": {"scoring_plays": [{"team": "NYY", "scorer": "Judge", "type": "HOME RUN"}]},
+    }
+    tracker.ingest([game_mlb_p2])
+    mlb_alert = next(a for a in tracker.recent() if a["sport"] == "mlb")
+    assert mlb_alert["detail"] == "JUDGE HOME RUN"
+
 
 def test_score_alerts_filtering_and_team_matching() -> None:
     tracker = ScoreAlertTracker(clock=lambda: 300.0)

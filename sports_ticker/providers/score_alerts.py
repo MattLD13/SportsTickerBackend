@@ -130,6 +130,26 @@ def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str
                         return f"{scorer} {strength}"[:24]
                     return scorer[:24]
 
+    scoring_plays = situation.get("scoring_plays") or game.get("scoring_plays")
+    if isinstance(scoring_plays, (list, tuple)) and scoring_plays:
+        matching = [
+            play for play in scoring_plays
+            if isinstance(play, Mapping)
+            and str(play.get("team") or play.get("side") or "").lower()
+            in {str(game.get(f"{side}_abbr") or side).lower(), side}
+        ]
+        if matching:
+            play = matching[-1]
+            scorer = str(play.get("scorer") or play.get("player") or "").strip().upper()
+            scoring_type = str(play.get("type") or play.get("kind") or "").strip().upper()
+            text = str(play.get("text") or "").strip().upper()
+            if scorer and scoring_type and scoring_type not in scorer:
+                return f"{scorer} {scoring_type}"[:24]
+            if scorer:
+                return scorer[:24]
+            if text:
+                return text[:24]
+
     last_play = str(situation.get("last_play") or game.get("last_play") or "").strip()
     if last_play:
         return last_play[:24].upper()
@@ -232,4 +252,3 @@ def alerts_for_settings(
 
 
 __all__ = ["ScoreAlertTracker", "alerts_for_settings"]
-

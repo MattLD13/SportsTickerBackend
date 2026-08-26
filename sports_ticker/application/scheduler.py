@@ -238,6 +238,20 @@ class RefreshScheduler:
             except Exception:
                 settings_failures.add(ticker.ticker_id)
 
+        settings_key_cache: dict[tuple[str, str], object] = {}
+
+        def settings_key_for(
+            job: _ProviderJob,
+            ticker_id: str,
+            settings: DisplaySettings,
+        ) -> object:
+            """Freeze one provider key once for this scheduler pass."""
+
+            cache_key = (job.name, ticker_id)
+            if cache_key not in settings_key_cache:
+                settings_key_cache[cache_key] = _freeze(job.settings_key(settings))
+            return settings_key_cache[cache_key]
+
         due_by_name = {
             job.name: job
             for job in self._providers.values()
@@ -248,7 +262,7 @@ class RefreshScheduler:
                 cached = job.data_by_ticker.get(ticker_id)
                 if cached is None and job.health.last_success is not None:
                     due_by_name[job.name] = job
-                elif cached is not None and cached.settings_key != _freeze(job.settings_key(settings)):
+                elif cached is not None and cached.settings_key != settings_key_for(job, ticker_id, settings):
                     due_by_name[job.name] = job
         due = tuple(due_by_name.values())
         if not due:
@@ -278,7 +292,7 @@ class RefreshScheduler:
                     errors.append(f"{ticker_id}: {message}")
                 else:
                     data_by_ticker[ticker_id] = _CachedProviderData(
-                        settings_key=_freeze(job.settings_key(settings)),
+                        settings_key=settings_key_for(job, ticker_id, settings),
                         value=_freeze(result),
                     )
                     success_count += 1
@@ -315,7 +329,7 @@ class RefreshScheduler:
                 cached = job.data_by_ticker.get(ticker_id)
                 if cached is None:
                     continue
-                if cached.settings_key != _freeze(job.settings_key(settings)):
+                if cached.settings_key != settings_key_for(job, ticker_id, settings):
                     continue
                 provider_data[name] = cached.value
 

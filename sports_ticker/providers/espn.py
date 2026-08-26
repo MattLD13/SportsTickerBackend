@@ -28,7 +28,6 @@ from .sports_display import (
 from .stale_cache import SettingsResultCache
 
 
-_DETAIL_LEAGUES = frozenset(("mlb", "nhl"))
 _MLB_PITCH_LABELS = {
     "four seam fastball": "4S Fastball",
     "two seam fastball": "2S Fastball",
@@ -78,11 +77,7 @@ class EspnScoreboardProvider:
             if str(league).strip() and str(url).strip()
         }
         self.scoreboard_urls = MappingProxyType(urls)
-        self._summary_urls = {
-            league: _summary_url(url)
-            for league, url in urls.items()
-            if league in _DETAIL_LEAGUES or league.startswith("soccer")
-        }
+        self._summary_urls = {league: _summary_url(url) for league, url in urls.items()}
         self.client = client or UrllibJsonHttpClient()
         self.timeout = float(timeout)
         if not isfinite(self.timeout) or self.timeout <= 0:
@@ -210,12 +205,20 @@ class EspnScoreboardProvider:
             summary = self.client.get_json(template.format(item.id), timeout=self.timeout)
         except Exception:
             return item
-        details = (
+        details = _summary_scoring_details(summary, item.data)
+        details.update(
             _mlb_summary_details(summary)
             if league == "mlb"
             else _nhl_summary_details(summary, item.data)
             if league == "nhl"
             else _soccer_summary_details(summary, item.data)
+            if league.startswith("soccer")
+            else display_situation(
+                league,
+                _first_mapping(_mapping(summary.get("header")).get("competitions")),
+                home_abbr=str(item.data.get("home_abbr") or ""),
+                away_abbr=str(item.data.get("away_abbr") or ""),
+            )
         )
         if not details:
             return item
@@ -554,6 +557,57 @@ def _summary_plays(summary: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
     for key in ("scoringPlays", "plays", "events"):
         records.extend(_mapping(value) for value in _sequence(summary.get(key)))
     return tuple(record for record in records if record)
+
+
+def _summary_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize ESPN scoring plays for score-alert detail rendering."""
+
+    summary = _mapping(payload)
+    header = _mapping(summary.get("header"))
+    competition = _first_mapping(header.get("competitions"))
+    home_abbr = str(item.get("home_abbr") or "")
+    away_abbr = str(item.get("away_abbr") or "")
+    raw_scoring = _sequence(summary.get("scoringPlays"))
+    records = raw_scoring or _summary_plays(summary)
+    scoring_plays: list[dict[str, Any]] = []
+    for raw_play in records:
+        play = _mapping(raw_play)
+        text = str(
+            play.get("shortText")
+            or play.get("text")
+            or play.get("description")
+            or ""
+        ).strip()
+        score_value = play.get("scoreValue")
+        is_scoring = bool(
+            raw_scoring
+            or play.get("scoringPlay")
+            or play.get("isScoringPlay")
+            or score_value not in (None, "", 0, "0")
+            or re.search(r"\b(score|goal|touchdown|field goal|home run|homer|three.?pointer|free throw)\b", text, re.IGNORECASE)
+        )
+        if not is_scoring:
+            continue
+        team = _summary_team_abbr(play, competition, home_abbr, away_abbr)
+        if not team:
+            continue
+        athlete = _summary_player(play)
+        scoring_type = str(
+            _mapping(play.get("scoringType")).get("displayName")
+            or _mapping(play.get("type")).get("text")
+            or play.get("scoringType")
+            or ""
+        ).strip()
+        scoring_plays.append(
+            {
+                "team": team,
+                "scorer": athlete,
+                "player": athlete,
+                "type": scoring_type[:18],
+                "text": text[:48],
+            }
+        )
+    return {"scoring_plays": scoring_plays} if scoring_plays else {}
 
 
 def _summary_team_abbr(

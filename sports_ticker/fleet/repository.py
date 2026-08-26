@@ -587,9 +587,19 @@ class TickerRepository:
             current = self._read_record(row)
             next_settings = current.display_settings
             if display_settings is not _UNSET:
-                next_settings = _display_settings(display_settings)  # type: ignore[arg-type]
+                if isinstance(display_settings, Mapping):
+                    merged_settings = _display_payload(current.display_settings)
+                    merged_settings.update(display_settings)
+                    next_settings = _display_settings(merged_settings)
+                else:
+                    next_settings = _display_settings(display_settings)  # type: ignore[arg-type]
             elif settings is not _UNSET:
-                next_settings = _display_settings(settings)  # type: ignore[arg-type]
+                if isinstance(settings, Mapping):
+                    merged_settings = _display_payload(current.display_settings)
+                    merged_settings.update(settings)
+                    next_settings = _display_settings(merged_settings)
+                else:
+                    next_settings = _display_settings(settings)  # type: ignore[arg-type]
             next_pairing = current.pairing if pairing is _UNSET else _pairing(pairing)  # type: ignore[arg-type]
             next_device = current.device if device is _UNSET else _device(device)  # type: ignore[arg-type]
             next_record = TickerRecord(

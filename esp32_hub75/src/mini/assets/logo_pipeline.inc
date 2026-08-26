@@ -3,17 +3,20 @@ uint32_t logoUrlHash(const String& url) {
 }
 
 RuntimeLogo* freeRuntimeLogoSlot(uint32_t urlHash) {
-  for (uint8_t index = 0; index < RUNTIME_LOGO_SLOTS; ++index) {
+  if (runtimeLogos == nullptr || runtimeLogoSlotCount == 0) {
+    return nullptr;
+  }
+  for (uint8_t index = 0; index < runtimeLogoSlotCount; ++index) {
     if (!runtimeLogos[index].valid) {
       return &runtimeLogos[index];
     }
   }
-  const uint8_t preferred = urlHash % RUNTIME_LOGO_SLOTS;
+  const uint8_t preferred = urlHash % runtimeLogoSlotCount;
   if (!runtimeLogos[preferred].pinned) {
     return &runtimeLogos[preferred];
   }
-  for (uint8_t offset = 1; offset < RUNTIME_LOGO_SLOTS; ++offset) {
-    const uint8_t index = (preferred + offset) % RUNTIME_LOGO_SLOTS;
+  for (uint8_t offset = 1; offset < runtimeLogoSlotCount; ++offset) {
+    const uint8_t index = (preferred + offset) % runtimeLogoSlotCount;
     if (!runtimeLogos[index].pinned) {
       return &runtimeLogos[index];
     }
@@ -26,10 +29,18 @@ bool readPersistedLogo(uint16_t slot, PersistedLogo& record) {
     return false;
   }
   File file = LittleFS.open(LOGO_CACHE_FILE, "r");
-  if (!file || file.size() < static_cast<size_t>(slot + 1) * sizeof(PersistedLogo)) {
+  if (!file) {
     return false;
   }
-  file.seek(static_cast<size_t>(slot) * sizeof(PersistedLogo));
+  const size_t offset = static_cast<size_t>(slot) * sizeof(PersistedLogo);
+  if (file.size() < offset + sizeof(PersistedLogo)) {
+    file.close();
+    return false;
+  }
+  if (!file.seek(offset)) {
+    file.close();
+    return false;
+  }
   const size_t readCount = file.readBytes(reinterpret_cast<char*>(&record), sizeof(record));
   file.close();
   return readCount == sizeof(record);
@@ -38,7 +49,7 @@ bool readPersistedLogo(uint16_t slot, PersistedLogo& record) {
 int findPersistedLogoSlot(uint32_t urlHash, const String& url, bool allowEmpty) {
   const uint16_t start = urlHash % FLASH_LOGO_CACHE_SLOTS;
   PersistedLogo record = {};
-  for (uint8_t attempt = 0; attempt < FLASH_LOGO_PROBE_LIMIT; ++attempt) {
+  for (uint16_t attempt = 0; attempt < FLASH_LOGO_PROBE_LIMIT; ++attempt) {
     const uint16_t slot = (start + attempt) % FLASH_LOGO_CACHE_SLOTS;
     if (!readPersistedLogo(slot, record)) {
       return allowEmpty ? slot : -1;
@@ -57,6 +68,9 @@ void persistLogo(const String& url, RuntimeLogo* logo) {
   if (!logoCacheReady || logo == nullptr || !logo->valid) {
     return;
   }
+  if (logoStorageMutex != nullptr) {
+    xSemaphoreTake(logoStorageMutex, portMAX_DELAY);
+  }
   PersistedLogo record = {};
   record.urlHash = logoUrlHash(url);
   url.substring(0, sizeof(record.url) - 1).toCharArray(record.url, sizeof(record.url));
@@ -74,6 +88,9 @@ void persistLogo(const String& url, RuntimeLogo* logo) {
     file.write(reinterpret_cast<const uint8_t*>(&record), sizeof(record));
     file.close();
   }
+  if (logoStorageMutex != nullptr) {
+    xSemaphoreGive(logoStorageMutex);
+  }
 }
 
 RuntimeLogo* loadPersistedLogo(const String& url) {
@@ -81,23 +98,40 @@ RuntimeLogo* loadPersistedLogo(const String& url) {
     return nullptr;
   }
   const uint32_t wantedHash = logoUrlHash(url);
+  PersistedLogo record = {};
+  bool recordReady = false;
+  if (logoStorageMutex != nullptr) {
+    xSemaphoreTake(logoStorageMutex, portMAX_DELAY);
+  }
   const int slot = findPersistedLogoSlot(wantedHash, url, false);
   if (slot >= 0) {
-    PersistedLogo record = {};
-    if (readPersistedLogo(static_cast<uint16_t>(slot), record)) {
-      RuntimeLogo* result = freeRuntimeLogoSlot(wantedHash);
-      if (result == nullptr) {
-        return nullptr;
-      }
-      result->url = url;
-      memcpy(result->pixels, record.pixels, sizeof(result->pixels));
-      memcpy(result->mask, record.mask, sizeof(result->mask));
-      result->valid = true;
-      result->pinned = false;
-      return result;
-    }
+    recordReady = readPersistedLogo(static_cast<uint16_t>(slot), record);
   }
-  return nullptr;
+  if (logoStorageMutex != nullptr) {
+    xSemaphoreGive(logoStorageMutex);
+  }
+  if (!recordReady) {
+    return nullptr;
+  }
+  if (logoCacheMutex != nullptr) {
+    xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
+  }
+  RuntimeLogo* result = freeRuntimeLogoSlot(wantedHash);
+  if (result == nullptr) {
+    if (logoCacheMutex != nullptr) {
+      xSemaphoreGive(logoCacheMutex);
+    }
+    return nullptr;
+  }
+  result->url = url;
+  memcpy(result->pixels, record.pixels, sizeof(result->pixels));
+  memcpy(result->mask, record.mask, sizeof(result->mask));
+  result->valid = true;
+  result->pinned = false;
+  if (logoCacheMutex != nullptr) {
+    xSemaphoreGive(logoCacheMutex);
+  }
+  return result;
 }
 
 void releaseLogoDownloadBuffer() {
@@ -175,35 +209,52 @@ bool downloadLogo(const String& url, size_t& length) {
   if (WiFi.status() != WL_CONNECTED || url.length() == 0) {
     return false;
   }
+  if (!acquireNetwork(12000)) {
+    Serial.printf("Logo deferred: network busy id=%08lX\n", static_cast<unsigned long>(logoUrlHash(url)));
+    return false;
+  }
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(10);
+  client.setHandshakeTimeout(10);
   HTTPClient http;
+  http.useHTTP10(true);
+  http.setReuse(false);
   http.setConnectTimeout(4000);
   http.setTimeout(8000);
   http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
   http.setRedirectLimit(3);
-  if (!http.begin(url)) {
-    Serial.print("Logo begin failed: ");
-    Serial.println(url);
+  if (!http.begin(client, url)) {
+    Serial.printf("Logo begin failed id=%08lX\n", static_cast<unsigned long>(logoUrlHash(url)));
+    releaseNetwork();
     return false;
   }
   http.setUserAgent("Mozilla/5.0 MiniTicker/1.0");
   http.addHeader("Accept", "image/png,image/jpeg,image/*,*/*;q=0.8");
+  const char* responseHeaders[] = {"Content-Type", "Content-Length"};
+  http.collectHeaders(responseHeaders, 2);
   const int status = http.GET();
   const int expected = http.getSize();
-  Serial.printf("Logo HTTP %d size=%d url=%s\n", status, expected, url.c_str());
+  const String contentType = http.header("Content-Type");
+  Serial.printf("Logo HTTP %d size=%d mime=%s id=%08lX\n", status, expected,
+                contentType.c_str(), static_cast<unsigned long>(logoUrlHash(url)));
+  logSecureHttpError("Logo", status, client);
   if (status != HTTP_CODE_OK) {
     lastLogoFailurePermanent = status == HTTP_CODE_NOT_FOUND || status == HTTP_CODE_BAD_REQUEST;
     http.end();
+    releaseNetwork();
     return false;
   }
   if (expected > static_cast<int>(LOGO_DOWNLOAD_LIMIT)) {
     lastLogoFailurePermanent = true;
     Serial.printf("Logo rejected: %d bytes exceeds %u-byte limit\n", expected, LOGO_DOWNLOAD_LIMIT);
     http.end();
+    releaseNetwork();
     return false;
   }
 
   logoDownloadCapacity = expected > 0 ? static_cast<size_t>(expected) : LOGO_DOWNLOAD_LIMIT;
-  if (logoDownloadCapacity > 96 * 1024 && psramFound()) {
+  if (psramFound()) {
     logoDownloadBuffer = static_cast<uint8_t*>(heap_caps_malloc(logoDownloadCapacity, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   } else {
     logoDownloadBuffer = static_cast<uint8_t*>(malloc(logoDownloadCapacity));
@@ -211,6 +262,7 @@ bool downloadLogo(const String& url, size_t& length) {
   if (logoDownloadBuffer == nullptr) {
     logoDownloadCapacity = 0;
     http.end();
+    releaseNetwork();
     return false;
   }
 
@@ -247,6 +299,7 @@ bool downloadLogo(const String& url, size_t& length) {
     Serial.printf("Logo rejected: unknown-length response reached %u-byte limit\n", LOGO_DOWNLOAD_LIMIT);
   }
   http.end();
+  releaseNetwork();
   const bool complete = length > 0 && !unknownLengthFilledBuffer &&
     (expected < 0 || length == static_cast<size_t>(expected));
   if (!complete) {
@@ -317,27 +370,69 @@ void finishLogoDecode(RuntimeLogo* logo) {
 }
 
 bool logoAvailableInCache(const String& url) {
-  if (url.length() == 0 || knownLogoFailure(url)) {
+  if (url.length() == 0) {
     return false;
   }
-  for (uint8_t index = 0; index < RUNTIME_LOGO_SLOTS; ++index) {
+  if (miniGeneratedLogoAvailable(url)) {
+    return true;
+  }
+  if (knownLogoFailure(url)) {
+    return false;
+  }
+  if (logoCacheMutex != nullptr) {
+    xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
+  }
+  for (uint8_t index = 0; index < runtimeLogoSlotCount; ++index) {
     if (runtimeLogos[index].valid && runtimeLogos[index].url == url) {
+      if (logoCacheMutex != nullptr) {
+        xSemaphoreGive(logoCacheMutex);
+      }
       return true;
     }
   }
-  return logoCacheReady && findPersistedLogoSlot(logoUrlHash(url), url, false) >= 0;
+  if (logoCacheMutex != nullptr) {
+    xSemaphoreGive(logoCacheMutex);
+  }
+  bool persisted = false;
+  if (logoCacheReady) {
+    if (logoStorageMutex != nullptr) {
+      xSemaphoreTake(logoStorageMutex, portMAX_DELAY);
+    }
+    persisted = findPersistedLogoSlot(logoUrlHash(url), url, false) >= 0;
+    if (logoStorageMutex != nullptr) {
+      xSemaphoreGive(logoStorageMutex);
+    }
+  }
+  return persisted;
 }
 
 bool logoDeferredOrUnavailable(const String& url) {
   return knownLogoFailure(url) || logoRetrySuppressed(url);
 }
 
+bool logoCandidateCached(const String& primaryUrl, const String& fallbackUrl) {
+  if (primaryUrl.length() > 0 && logoAvailableInCache(primaryUrl)) {
+    return true;
+  }
+  return fallbackUrl.length() > 0 && fallbackUrl != primaryUrl &&
+         logoAvailableInCache(fallbackUrl);
+}
+
 bool logoCandidateReady(const String& primaryUrl, const String& fallbackUrl) {
+  if (primaryUrl.length() == 0 && fallbackUrl.length() == 0) {
+    return true;
+  }
+  if (primaryUrl.length() == 0) {
+    return logoAvailableInCache(fallbackUrl) || logoDeferredOrUnavailable(fallbackUrl);
+  }
   if (logoAvailableInCache(primaryUrl)) {
     return true;
   }
   if (!logoDeferredOrUnavailable(primaryUrl)) {
     return false;
+  }
+  if (fallbackUrl.length() == 0 || fallbackUrl == primaryUrl) {
+    return true;
   }
   return logoAvailableInCache(fallbackUrl) || logoDeferredOrUnavailable(fallbackUrl);
 }
@@ -405,18 +500,26 @@ bool decodeJpegLogo(RuntimeLogo* logo, size_t length) {
   return decodeResult == 1;
 }
 
-bool decodeDownloadedLogo(RuntimeLogo* logo, size_t length) {
+bool decodeDownloadedLogo(RuntimeLogo* logo, size_t length, const String& url) {
   if (length >= 8 && memcmp(logoDownloadBuffer, "\x89PNG\r\n\x1a\n", 8) == 0) {
     return decodePngLogo(logo, length);
   }
   if (length >= 2 && logoDownloadBuffer[0] == 0xff && logoDownloadBuffer[1] == 0xd8) {
     return decodeJpegLogo(logo, length);
   }
-  return decodePngLogo(logo, length) || decodeJpegLogo(logo, length);
+  if (decodePngLogo(logo, length) || decodeJpegLogo(logo, length)) {
+    return true;
+  }
+  Serial.printf("Logo format unsupported or decode failed id=%08lX\n",
+                static_cast<unsigned long>(logoUrlHash(url)));
+  return false;
 }
 
 RuntimeLogo* ensureRuntimeLogo(const String& url) {
   if (url.length() == 0) {
+    return nullptr;
+  }
+  if (miniGeneratedLogoAvailable(url)) {
     return nullptr;
   }
   if (knownLogoFailure(url)) {
@@ -428,7 +531,7 @@ RuntimeLogo* ensureRuntimeLogo(const String& url) {
   if (logoCacheMutex != nullptr) {
     xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
   }
-  for (uint8_t index = 0; index < RUNTIME_LOGO_SLOTS; ++index) {
+  for (uint8_t index = 0; index < runtimeLogoSlotCount; ++index) {
     if (runtimeLogos[index].valid && runtimeLogos[index].url == url) {
       if (logoCacheMutex != nullptr) {
         xSemaphoreGive(logoCacheMutex);
@@ -436,14 +539,11 @@ RuntimeLogo* ensureRuntimeLogo(const String& url) {
       return &runtimeLogos[index];
     }
   }
-  if (RuntimeLogo* persisted = loadPersistedLogo(url)) {
-    if (logoCacheMutex != nullptr) {
-      xSemaphoreGive(logoCacheMutex);
-    }
-    return persisted;
-  }
   if (logoCacheMutex != nullptr) {
     xSemaphoreGive(logoCacheMutex);
+  }
+  if (RuntimeLogo* persisted = loadPersistedLogo(url)) {
+    return persisted;
   }
 
   // The download buffer is shared. Serialize transfers separately, because
@@ -469,14 +569,13 @@ RuntimeLogo* ensureRuntimeLogo(const String& url) {
   if (logoDecodeMutex != nullptr) {
     xSemaphoreTake(logoDecodeMutex, portMAX_DELAY);
   }
-  const bool decodedOk = decodeDownloadedLogo(&decoded, length);
+  const bool decodedOk = decodeDownloadedLogo(&decoded, length, url);
   if (logoDecodeMutex != nullptr) {
     xSemaphoreGive(logoDecodeMutex);
   }
   releaseLogoDownloadBuffer();
   if (!decodedOk) {
-    Serial.print("Logo decode failed: ");
-    Serial.println(url);
+    Serial.printf("Logo decode failed id=%08lX\n", static_cast<unsigned long>(logoUrlHash(url)));
     rememberLogoFailure(url);
     if (logoDownloadMutex != nullptr) {
       xSemaphoreGive(logoDownloadMutex);
@@ -491,8 +590,7 @@ RuntimeLogo* ensureRuntimeLogo(const String& url) {
     }
   }
   if (!hasPixels) {
-    Serial.print("Logo empty: ");
-    Serial.println(url);
+    Serial.printf("Logo empty id=%08lX\n", static_cast<unsigned long>(logoUrlHash(url)));
     rememberLogoFailure(url);
     if (logoDownloadMutex != nullptr) {
       xSemaphoreGive(logoDownloadMutex);
@@ -562,12 +660,16 @@ RuntimeLogo* ensureRuntimeLogo(const String& url) {
   memcpy(result->mask, decoded.mask, sizeof(result->mask));
   result->valid = true;
   result->pinned = false;
-  persistLogo(url, result);
-  Serial.print("Logo cached: ");
-  Serial.println(url);
+  RuntimeLogo persistenceSnapshot;
+  persistenceSnapshot.url = result->url;
+  memcpy(persistenceSnapshot.pixels, result->pixels, sizeof(persistenceSnapshot.pixels));
+  memcpy(persistenceSnapshot.mask, result->mask, sizeof(persistenceSnapshot.mask));
+  persistenceSnapshot.valid = true;
   if (logoCacheMutex != nullptr) {
     xSemaphoreGive(logoCacheMutex);
   }
+  persistLogo(url, &persistenceSnapshot);
+  Serial.printf("Logo cached id=%08lX\n", static_cast<unsigned long>(logoUrlHash(url)));
   if (logoDownloadMutex != nullptr) {
     xSemaphoreGive(logoDownloadMutex);
   }
@@ -578,7 +680,7 @@ RuntimeLogo* findCachedLogo(const String& url) {
   if (url.length() == 0 || knownLogoFailure(url)) {
     return nullptr;
   }
-  for (uint8_t index = 0; index < RUNTIME_LOGO_SLOTS; ++index) {
+  for (uint8_t index = 0; index < runtimeLogoSlotCount; ++index) {
     if (runtimeLogos[index].valid && runtimeLogos[index].url == url) {
       return &runtimeLogos[index];
     }
@@ -604,12 +706,42 @@ void prepareSelectedGameLogoSources(JsonObjectConst game) {
   preparedGameLogos.homeFallback = fallbackSportsLogoUrl(game, home);
 }
 
+bool setupRuntimeLogoMemory() {
+  const size_t bytes = sizeof(RuntimeLogo) * RUNTIME_LOGO_SLOTS;
+  void* storage = nullptr;
+  if (psramFound()) {
+    storage = heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  }
+  if (storage != nullptr) {
+    runtimeLogoSlotCount = RUNTIME_LOGO_SLOTS;
+    Serial.printf("Logo RAM cache: %u slots in PSRAM, internal heap=%u\n",
+                  runtimeLogoSlotCount, ESP.getFreeHeap());
+  } else {
+    runtimeLogoSlotCount = min<uint8_t>(RUNTIME_LOGO_SLOTS, 8);
+    storage = heap_caps_malloc(
+      sizeof(RuntimeLogo) * runtimeLogoSlotCount,
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT
+    );
+    Serial.printf("Logo RAM cache: PSRAM unavailable, using %u internal slots\n",
+                  runtimeLogoSlotCount);
+  }
+  if (storage == nullptr) {
+    runtimeLogoSlotCount = 0;
+    Serial.println("Logo RAM cache allocation failed");
+    return false;
+  }
+  runtimeLogos = static_cast<RuntimeLogo*>(storage);
+  for (uint8_t index = 0; index < runtimeLogoSlotCount; ++index) {
+    new (&runtimeLogos[index]) RuntimeLogo();
+  }
+  return true;
+}
+
 void setupLogoCache() {
   logoCacheReady = LittleFS.begin(true);
 }
 
 void drawFallbackLogo(const String& abbreviation, int16_t x, int16_t y, uint16_t background) {
-  (void)abbreviation;
   x += CONTENT_X_OFFSET;
   const uint8_t red = ((background >> 11) & 0x1F) * 255 / 31;
   const uint8_t green = ((background >> 5) & 0x3F) * 255 / 63;
@@ -621,6 +753,19 @@ void drawFallbackLogo(const String& abbreviation, int16_t x, int16_t y, uint16_t
     green + (255 - green) / 4,
     blue + (255 - blue) / 4
   );
+  if (abbreviation.length() > 0) {
+    String label = abbreviation;
+    label.toUpperCase();
+    if (label.length() > 3) label.remove(3);
+    const int16_t labelWidth = compactPixelTextWidth(label, 1);
+    matrix->fillRect(x, y, 18, 18, dark);
+    matrix->drawFastHLine(x, y, 18, background);
+    matrix->drawFastHLine(x, y + 17, 18, background);
+    matrix->drawFastVLine(x, y, 18, background);
+    matrix->drawFastVLine(x + 17, y, 18, background);
+    drawCompactPixelText(label, x - CONTENT_X_OFFSET + (18 - labelWidth) / 2, y + 6, highlight, 1);
+    return;
+  }
   matrix->fillRect(x, y, 18, 18, dark);
   matrix->fillRect(x + 2, y + 2, 14, 14, inner);
   matrix->drawFastHLine(x, y, 18, background);
@@ -654,6 +799,22 @@ bool drawLogoAsset(const String& url, int16_t x, int16_t y) {
   if (url.length() == 0) {
     return false;
   }
+  const uint16_t* generatedPixels = nullptr;
+  const uint8_t* generatedMask = nullptr;
+  if (miniGeneratedLogoAsset(url, generatedPixels, generatedMask)) {
+    for (uint16_t index = 0; index < LOGO_PIXEL_COUNT; ++index) {
+      const uint8_t mask = pgm_read_byte(generatedMask + index / 8);
+      if ((mask & (1U << (index % 8))) == 0) {
+        continue;
+      }
+      const int16_t targetX = x + CONTENT_X_OFFSET + index % RUNTIME_LOGO_SIZE;
+      const int16_t targetY = y + index / RUNTIME_LOGO_SIZE;
+      if (targetX >= 0 && targetX < 64 && targetY >= 0 && targetY < 32) {
+        matrix->drawPixel(targetX, targetY, pgm_read_word(generatedPixels + index));
+      }
+    }
+    return true;
+  }
   if (logoCacheMutex != nullptr) {
     xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
   }
@@ -683,8 +844,8 @@ void drawLogoWithFallback(
     return;
   }
   if (fallbackUrl != primaryUrl && drawLogoAsset(fallbackUrl, x, y)) {
-    Serial.print("Logo fallback used: ");
-    Serial.println(fallbackUrl);
+    Serial.printf("Logo fallback used id=%08lX\n",
+                  static_cast<unsigned long>(logoUrlHash(fallbackUrl)));
     return;
   }
   drawFallbackLogo(abbreviation, x, y, fallback);
@@ -705,14 +866,32 @@ void appendLogoWork(JsonObjectConst game, const char* field, const String& abbre
   if (logoWorkCount >= LOGO_WORK_QUEUE_SLOTS) {
     return;
   }
-  logoWorkPrimary[logoWorkCount] = sportsLogoUrl(game, field, abbreviation);
-  logoWorkFallback[logoWorkCount] = fallbackSportsLogoUrl(game, abbreviation);
+  const String primary = sportsLogoUrl(game, field, abbreviation);
+  const String fallback = fallbackSportsLogoUrl(game, abbreviation);
+  if (primary.length() == 0 && fallback.length() == 0) {
+    return;
+  }
+  for (uint8_t index = 0; index < logoWorkCount; ++index) {
+    if (logoWorkPrimary[index] == primary && logoWorkFallback[index] == fallback) {
+      return;
+    }
+  }
+  logoWorkPrimary[logoWorkCount] = primary;
+  logoWorkFallback[logoWorkCount] = fallback;
   ++logoWorkCount;
 }
 
 void appendLogoWorkUrls(const String& primaryUrl, const String& fallbackUrl) {
   if (logoWorkCount >= LOGO_WORK_QUEUE_SLOTS) {
     return;
+  }
+  if (primaryUrl.length() == 0 && fallbackUrl.length() == 0) {
+    return;
+  }
+  for (uint8_t index = 0; index < logoWorkCount; ++index) {
+    if (logoWorkPrimary[index] == primaryUrl && logoWorkFallback[index] == fallbackUrl) {
+      return;
+    }
   }
   logoWorkPrimary[logoWorkCount] = primaryUrl;
   logoWorkFallback[logoWorkCount] = fallbackUrl;
@@ -726,6 +905,89 @@ void appendLogoForeground(JsonObjectConst game, const char* field, const String&
   logoForegroundPrimary[logoForegroundCount] = sportsLogoUrl(game, field, abbreviation);
   logoForegroundFallback[logoForegroundCount] = fallbackSportsLogoUrl(game, abbreviation);
   ++logoForegroundCount;
+}
+
+bool foregroundLogoPlanReady() {
+  String primary[LOGO_FOREGROUND_GAMES * 2];
+  String fallback[LOGO_FOREGROUND_GAMES * 2];
+  uint8_t count = 0;
+  if (logoWorkMutex != nullptr) {
+    xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
+  }
+  count = logoForegroundCount;
+  for (uint8_t index = 0; index < count; ++index) {
+    primary[index] = logoForegroundPrimary[index];
+    fallback[index] = logoForegroundFallback[index];
+  }
+  if (logoWorkMutex != nullptr) {
+    xSemaphoreGive(logoWorkMutex);
+  }
+  bool ready = true;
+  for (uint8_t index = 0; index < count && ready; ++index) {
+    ready = logoCandidateCached(primary[index], fallback[index]);
+  }
+  return ready;
+}
+
+uint16_t foregroundLogoReadyCount() {
+  String primary[LOGO_FOREGROUND_GAMES * 2];
+  String fallback[LOGO_FOREGROUND_GAMES * 2];
+  uint8_t count = 0;
+  if (logoWorkMutex != nullptr) {
+    xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
+  }
+  count = min<uint8_t>(logoForegroundCount, LOGO_FOREGROUND_GAMES * 2);
+  for (uint8_t index = 0; index < count; ++index) {
+    primary[index] = logoForegroundPrimary[index];
+    fallback[index] = logoForegroundFallback[index];
+  }
+  if (logoWorkMutex != nullptr) {
+    xSemaphoreGive(logoWorkMutex);
+  }
+  uint16_t readyCount = 0;
+  for (uint8_t index = 0; index < count; ++index) {
+    if (logoCandidateCached(primary[index], fallback[index])) {
+      ++readyCount;
+    }
+  }
+  return readyCount;
+}
+
+uint16_t logoWorkReadyCount() {
+  String primary[LOGO_WORK_QUEUE_SLOTS];
+  String fallback[LOGO_WORK_QUEUE_SLOTS];
+  uint8_t count = 0;
+  if (logoWorkMutex != nullptr) {
+    xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
+  }
+  count = logoWorkCount;
+  for (uint8_t index = 0; index < count; ++index) {
+    primary[index] = logoWorkPrimary[index];
+    fallback[index] = logoWorkFallback[index];
+  }
+  if (logoWorkMutex != nullptr) {
+    xSemaphoreGive(logoWorkMutex);
+  }
+  uint16_t readyCount = 0;
+  for (uint8_t index = 0; index < count; ++index) {
+    if (logoCandidateCached(primary[index], fallback[index])) {
+      ++readyCount;
+    }
+  }
+  return readyCount;
+}
+
+bool commitReadySportsLogoPlan(uint32_t generation) {
+  if (generation != logoPlanGeneration || !foregroundLogoPlanReady()) {
+    return false;
+  }
+  pageIndex = logoPlanPageIndex;
+  sportsFrameReady = true;
+  assetsLoading = false;
+  logoPlanDisplayPending = false;
+  assetLoadingStartedAt = 0;
+  lastPageAt = millis();
+  return true;
 }
 
 void logoWorkerTask(void* parameter) {
@@ -771,6 +1033,10 @@ void logoWorkerTask(void* parameter) {
         if (stalePlan) {
           break;
         }
+        if (miniGeneratedLogoAvailable(primary[index])) {
+          continue;
+        }
+        const bool wasReady = logoCandidateCached(primary[index], fallback[index]);
         RuntimeLogo* logo = ensureRuntimeLogo(primary[index]);
         if (logo == nullptr && fallback[index] != primary[index]) {
           logo = ensureRuntimeLogo(fallback[index]);
@@ -780,15 +1046,17 @@ void logoWorkerTask(void* parameter) {
             xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
           }
           logo->pinned = true;
-          if (logoWorkMutex != nullptr) {
-            xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
-          }
-          ++logoProgressComplete;
-          if (logoWorkMutex != nullptr) {
-            xSemaphoreGive(logoWorkMutex);
-          }
           if (logoCacheMutex != nullptr) {
             xSemaphoreGive(logoCacheMutex);
+          }
+          if (!wasReady && logoWorkMutex != nullptr) {
+            xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
+          }
+          if (!wasReady && logoCandidateCached(primary[index], fallback[index])) {
+            ++logoProgressComplete;
+          }
+          if (!wasReady && logoWorkMutex != nullptr) {
+            xSemaphoreGive(logoWorkMutex);
           }
         }
       }
@@ -797,6 +1065,12 @@ void logoWorkerTask(void* parameter) {
         xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
       }
       const bool newerPlanPending = logoWorkerPending || logoPlanGeneration != generation;
+      if (logoWorkMutex != nullptr) {
+        xSemaphoreGive(logoWorkMutex);
+      }
+      if (logoWorkMutex != nullptr) {
+        xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
+      }
       if (!newerPlanPending) {
         logoWorkerBusy = false;
         logoWorkerGeneration = generation;
@@ -810,14 +1084,18 @@ void logoWorkerTask(void* parameter) {
       if (!newerPlanPending) {
         Serial.printf("Logo worker complete: generation=%lu assets=%u/%u, slots=%u, free heap=%u\n",
                       static_cast<unsigned long>(generation), complete, total,
-                      RUNTIME_LOGO_SLOTS, ESP.getFreeHeap());
+                      runtimeLogoSlotCount, ESP.getFreeHeap());
         break;
       }
     }
   }
 }
 
-RuntimeLogo* loadAndPinLogoForeground(const String& primaryUrl, const String& fallbackUrl) {
+RuntimeLogo* loadAndPinLogoForeground(const String& primaryUrl, const String& fallbackUrl, bool countProgress) {
+  if (miniGeneratedLogoAvailable(primaryUrl)) {
+    return nullptr;
+  }
+  const bool wasReady = countProgress && logoCandidateCached(primaryUrl, fallbackUrl);
   RuntimeLogo* logo = ensureRuntimeLogo(primaryUrl);
   if (logo == nullptr && fallbackUrl != primaryUrl) {
     logo = ensureRuntimeLogo(fallbackUrl);
@@ -830,20 +1108,15 @@ RuntimeLogo* loadAndPinLogoForeground(const String& primaryUrl, const String& fa
     if (logoCacheMutex != nullptr) {
       xSemaphoreGive(logoCacheMutex);
     }
-    if (logoWorkMutex != nullptr) {
+    if (countProgress && !wasReady && logoWorkMutex != nullptr) {
       xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
     }
-    ++logoProgressComplete;
-    if (logoWorkMutex != nullptr) {
+    if (countProgress && !wasReady && logoCandidateCached(primaryUrl, fallbackUrl)) {
+      ++logoProgressComplete;
+    }
+    if (countProgress && !wasReady && logoWorkMutex != nullptr) {
       xSemaphoreGive(logoWorkMutex);
     }
-  }
-  bool loading = false;
-  uint16_t complete = 0;
-  uint16_t total = 0;
-  logoProgressSnapshot(loading, complete, total);
-  if (loading) {
-    drawDownloadingProgress(complete, total);
   }
   return logo;
 }
@@ -864,42 +1137,30 @@ void loadQueuedLogosSynchronously() {
     xSemaphoreGive(logoWorkMutex);
   }
   for (uint8_t index = 0; index < workCount; ++index) {
-    loadAndPinLogoForeground(primary[index], fallback[index]);
+    loadAndPinLogoForeground(primary[index], fallback[index], index < LOGO_FOREGROUND_GAMES * 2);
   }
 }
 
-void prepareSportsLogoWorkingSet() {
-  bool workerActive = false;
-  if (logoWorkMutex != nullptr) {
-    xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
-  }
-  workerActive = logoWorkerBusy || logoWorkerPending;
-  if (logoWorkMutex != nullptr) {
-    xSemaphoreGive(logoWorkMutex);
-  }
+void prepareSportsLogoWorkingSet(uint16_t requestedPage = 0xFFFF) {
   if (logoCacheMutex != nullptr) {
     xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
   }
-  for (uint8_t index = 0; index < RUNTIME_LOGO_SLOTS; ++index) {
+  for (uint8_t index = 0; index < runtimeLogoSlotCount; ++index) {
     runtimeLogos[index].pinned = false;
   }
+  if (logoCacheMutex != nullptr) {
+    xSemaphoreGive(logoCacheMutex);
+  }
   if (!sportsMode || pairingMode) {
-    if (logoCacheMutex != nullptr) {
-      xSemaphoreGive(logoCacheMutex);
-    }
+    assetsLoading = false;
     return;
   }
 
   const uint16_t gameCount = countShownGames();
   if (gameCount == 0) {
-    if (logoCacheMutex != nullptr) {
-      xSemaphoreGive(logoCacheMutex);
-    }
     return;
   }
-  if (pageIndex >= gameCount) {
-    pageIndex = 0;
-  }
+  const uint16_t targetPage = requestedPage == 0xFFFF ? pageIndex : requestedPage % gameCount;
 
   const uint16_t windowSize = min<uint16_t>(gameCount, RAM_LOGO_WORKING_SET_GAMES);
   if (logoWorkMutex != nullptr) {
@@ -907,12 +1168,14 @@ void prepareSportsLogoWorkingSet() {
   }
   logoWorkCount = 0;
   logoForegroundCount = 0;
+  logoPlanPageIndex = targetPage;
+  logoPlanDisplayPending = true;
   logoProgressComplete = 0;
-  logoProgressTotal = windowSize * 2;
+  logoProgressTotal = 0;
   ++logoPlanGeneration;
   JsonArrayConst items = payload["content"]["sports"].as<JsonArrayConst>();
   for (uint16_t offset = 0; offset < windowSize; ++offset) {
-    const uint16_t targetIndex = (pageIndex + offset) % gameCount;
+    const uint16_t targetIndex = (targetPage + offset) % gameCount;
     uint16_t visibleIndex = 0;
     for (JsonObjectConst item : items) {
       if (!shownItem(item)) {
@@ -923,108 +1186,64 @@ void prepareSportsLogoWorkingSet() {
         if (!game.isNull()) {
           String away = shortValue(game["away_abbr"], "AWY", 4);
           String home = shortValue(game["home_abbr"], "HOM", 4);
-          if (offset < LOGO_FOREGROUND_GAMES && !workerActive) {
+          if (offset < LOGO_FOREGROUND_GAMES) {
             appendLogoForeground(game, "away_logo", away);
             appendLogoForeground(game, "home_logo", home);
-          } else {
-            appendLogoWork(game, "away_logo", away);
-            appendLogoWork(game, "home_logo", home);
           }
+          appendLogoWork(game, "away_logo", away);
+          appendLogoWork(game, "home_logo", home);
         }
         break;
       }
       ++visibleIndex;
     }
   }
-  if (logoCacheMutex != nullptr) {
-    xSemaphoreGive(logoCacheMutex);
-  }
   if (logoWorkMutex != nullptr) {
     xSemaphoreGive(logoWorkMutex);
   }
 
-  if (workerActive) {
-    if (logoWorkMutex != nullptr) {
-      xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
-      logoWorkerPending = true;
-      logoWorkerCompleted = false;
-      xSemaphoreGive(logoWorkMutex);
-    } else {
-      logoWorkerPending = true;
-      logoWorkerCompleted = false;
-    }
-    if (logoWorkerHandle != nullptr) {
-      xTaskNotifyGive(logoWorkerHandle);
-    }
-    return;
-  }
-
-  bool foregroundNeedsDownload = false;
-  if (logoCacheMutex != nullptr) {
-    xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
-  }
-  for (uint8_t index = 0; index < logoForegroundCount; ++index) {
-    if (!logoAvailableInCache(logoForegroundPrimary[index]) &&
-        !logoAvailableInCache(logoForegroundFallback[index])) {
-      foregroundNeedsDownload = true;
-      break;
-    }
-  }
-  if (logoCacheMutex != nullptr) {
-    xSemaphoreGive(logoCacheMutex);
-  }
+  const uint16_t initialReady = logoWorkReadyCount();
   if (logoWorkMutex != nullptr) {
     xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
   }
-  assetsLoading = foregroundNeedsDownload;
+  logoProgressTotal = logoWorkCount;
+  logoProgressComplete = initialReady;
   if (logoWorkMutex != nullptr) {
     xSemaphoreGive(logoWorkMutex);
   }
-  bool loading = false;
-  uint16_t complete = 0;
-  uint16_t total = 0;
-  logoProgressSnapshot(loading, complete, total);
-  if (loading) {
-    drawDownloadingProgress(complete, total);
-  }
-  for (uint8_t index = 0; index < logoForegroundCount; ++index) {
-    RuntimeLogo* logo = loadAndPinLogoForeground(logoForegroundPrimary[index], logoForegroundFallback[index]);
-    if (logo == nullptr) {
-      appendLogoWorkUrls(logoForegroundPrimary[index], logoForegroundFallback[index]);
+
+  const bool readyBeforeWorker = foregroundLogoPlanReady();
+  if (readyBeforeWorker) {
+    pageIndex = targetPage;
+    sportsFrameReady = true;
+    assetsLoading = false;
+    logoPlanDisplayPending = false;
+    assetLoadingStartedAt = 0;
+    lastPageAt = millis();
+  } else {
+    assetsLoading = !sportsFrameReady;
+    if (assetsLoading && assetLoadingStartedAt == 0) {
+      assetLoadingStartedAt = millis();
     }
   }
   if (logoWorkMutex != nullptr) {
     xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
   }
-  assetsLoading = false;
-  const bool hasBackgroundWork = logoWorkCount > 0;
+  const bool hasWork = logoWorkCount > 0;
   logoWorkerCompleted = false;
-  if (hasBackgroundWork && logoWorkerHandle != nullptr) {
+  if (hasWork && logoWorkerHandle != nullptr) {
     logoWorkerBusy = true;
     logoWorkerPending = true;
   }
   if (logoWorkMutex != nullptr) {
     xSemaphoreGive(logoWorkMutex);
   }
-  if (hasBackgroundWork && logoWorkerHandle != nullptr) {
+  if (hasWork && logoWorkerHandle != nullptr) {
     xTaskNotifyGive(logoWorkerHandle);
-  } else if (hasBackgroundWork) {
-    if (logoWorkMutex != nullptr) {
-      xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
-    }
-    assetsLoading = true;
-    if (logoWorkMutex != nullptr) {
-      xSemaphoreGive(logoWorkMutex);
-    }
+  } else if (hasWork) {
     Serial.println("Logo worker unavailable. Loading remaining assets on display task.");
     loadQueuedLogosSynchronously();
-    if (logoWorkMutex != nullptr) {
-      xSemaphoreTake(logoWorkMutex, portMAX_DELAY);
-    }
-    assetsLoading = false;
-    if (logoWorkMutex != nullptr) {
-      xSemaphoreGive(logoWorkMutex);
-    }
+    commitReadySportsLogoPlan(logoPlanGeneration);
   }
 }
 // Owns logo source resolution, decoding, cache storage, retry state, and worker planning.

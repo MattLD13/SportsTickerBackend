@@ -5,6 +5,7 @@ from sports_ticker.providers.racing import RacingProvider
 from sports_ticker.providers.racing_live import LiveRacingSource, _indycar_driver, _indycar_short_event
 
 
+
 class JsonFixture:
     def __init__(self, values: dict[str, object]) -> None:
         self.values = values
@@ -17,6 +18,17 @@ class JsonFixture:
             if url.startswith(prefix):
                 return value
         raise AssertionError(f"unexpected URL: {url}")
+
+
+class TextFixture:
+    def __init__(self, value: str) -> None:
+        self.value = value
+        self.urls: list[str] = []
+
+    def get_text(self, url: str, *, timeout: float) -> str:
+        del timeout
+        self.urls.append(url)
+        return self.value
 
 
 def _settings(**active_sports: bool) -> DisplaySettings:
@@ -285,7 +297,23 @@ def test_indycar_session_lifecycle_and_3am_rollover() -> None:
     source_early = LiveRacingSource(JsonFixture(data_upcoming), now=lambda: now_early, clock=lambda: now_early.timestamp())
     assert len(source_early.fetch(_settings(f1=False, indycar=True))["content"]) == 0
 
-    source_sat = LiveRacingSource(JsonFixture(data_upcoming), now=lambda: now_sat, clock=lambda: now_sat.timestamp())
+    weekend_page = """
+    <h3>Saturday, Aug 22</h3>
+    <div class="schedule-entry">
+        <div class="schedule-time">9:00AM ET</div>
+        <div class="schedule-description">NTT INDYCAR SERIES - Practice 1</div>
+    </div>
+    <div class="schedule-entry">
+        <div class="schedule-time">5:00PM ET</div>
+        <div class="schedule-description">NTT INDYCAR SERIES - Qualifying</div>
+    </div>
+    """
+    source_sat = LiveRacingSource(
+        JsonFixture(data_upcoming),
+        text_client=TextFixture(weekend_page),
+        now=lambda: now_sat,
+        clock=lambda: now_sat.timestamp(),
+    )
     result_sat = source_sat.fetch(_settings(f1=False, indycar=True))
     sessions = [g["home_abbr"] for g in result_sat["content"]]
     assert "Practice 1" in sessions
@@ -467,7 +495,4 @@ def test_racing_standardized_flags() -> None:
         token = _normalize_racing_flag(input_flag)
         assert token == expected_token, f"Failed for {input_flag}: expected {expected_token}, got {token}"
         assert (token in _CAUTION_FLAGS) == is_caution, f"Caution mismatch for {token}"
-
-
-
 

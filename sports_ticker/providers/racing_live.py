@@ -519,7 +519,6 @@ class LiveRacingSource:
                     flag = _normalize_racing_flag(heartbeat.get("currentFlag") or heartbeat.get("SessionStatus"))
                     is_live = session_status in {"LIVE", "RUNNING", "OPEN", "GREEN", "YELLOW", "RED", "CHECKERED"} or flag in {"GREEN", "YELLOW", "RED", "CHECKERED", "SAFETY CAR", "VSC"}
                     if is_live and (not series or series == "I"):
-                        session_raw = str(heartbeat.get("SessionType") or "R").strip().upper()
                         session_name = str(heartbeat.get("SessionName") or heartbeat.get("EventSessionLabel") or "Race").strip()
                         event_name = str(heartbeat.get("eventName") or "IndyCar").strip()
                         track_name = str(heartbeat.get("trackName") or "").strip()
@@ -556,20 +555,20 @@ class LiveRacingSource:
         return games
 
     def _fetch_indycar_schedule(self) -> list[dict[str, Any]]:
+        now_dt = self._now().astimezone(timezone.utc)
         now_ts = self._clock()
         cached_at, cached = self._indy_schedule
         if cached and now_ts - cached_at < 3600:
             return cached
         try:
             payload = self._client.get_json(
-                f"{_INDYCAR_ESPN_URL}?dates={self._now().year}",
+                f"{_INDYCAR_ESPN_URL}?dates={now_dt.year}",
                 timeout=self._timeout,
             )
             events = _sequence(_mapping(payload).get("events"))
             races = [_indycar_event_to_race(event) for event in events if _mapping(event)]
         except Exception:
             return []
-        now_dt = self._now().astimezone(timezone.utc)
         for race in races:
             race_sessions = _mapping(race.get("sessions"))
             race_start = next((val[0] for val in race_sessions.values()), None)
