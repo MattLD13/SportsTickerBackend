@@ -1,0 +1,40 @@
+name: Recover missed deploy trigger
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: recover-deploy-trigger
+  cancel-in-progress: false
+
+jobs:
+  dispatch-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deployed build
+        id: check
+        shell: bash
+        run: |
+          set -eu
+          head_sha=$(git rev-parse --short=12 HEAD)
+          live_sha=$(curl --fail --silent --show-error --location https://ticker.mattdicks.org/ \
+            | python -c 'import re, sys; page=sys.stdin.read(); match=re.search(r"chip-ver.*?<span[^>]*>([0-9a-f]{7,12})</span>", page, re.S); print(match.group(1) if match else "")')
+          echo "main=${head_sha} live=${live_sha}"
+          if [ -n "${live_sha}" ] && [[ "${head_sha}" == "${live_sha}"* ]]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dispatch deploy
+        if: steps.check.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy.yml --ref main
