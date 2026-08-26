@@ -10,6 +10,10 @@ on:
         required: false
         default: ""
 
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
   # Detect which parts of the repo changed
@@ -19,6 +23,7 @@ jobs:
     outputs:
       backend:    ${{ steps.filter.outputs.backend }}
       controller: ${{ steps.filter.outputs.controller }}
+      fresh:      ${{ steps.freshness.outputs.fresh }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +46,22 @@ jobs:
               - 'updater.py'
               - 'ticker-controller.service'
               - 'setup.sh'
+
+      - name: Verify current main
+        id: freshness
+        shell: bash
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          current_sha=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$current_sha" = "$GITHUB_SHA" ]; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping stale push ${GITHUB_SHA}. Current main is ${current_sha}."
+          fi
 
   # ─────────────────────────────────────────────────────────────────────────
   # Deploy backend to server (only when backend files changed)
@@ -88,8 +109,8 @@ jobs:
 
   deploy-backend:
     runs-on: ubuntu-latest
-    needs: [signal-fleet, verify-public-demo, build-mini-firmware]
-    if: always() && (needs.signal-fleet.result == 'success' || needs.signal-fleet.result == 'skipped') && needs.verify-public-demo.result == 'success' && needs.build-mini-firmware.result == 'success'
+    needs: [changes, signal-fleet, verify-public-demo, build-mini-firmware]
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.fresh == 'true' && (needs.signal-fleet.result == 'success' || needs.signal-fleet.result == 'skipped') && needs.verify-public-demo.result == 'success' && needs.build-mini-firmware.result == 'success'
     steps:
       - uses: actions/checkout@v4
 
@@ -201,7 +222,7 @@ jobs:
   signal-fleet:
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.controller == 'true'
+    if: needs.changes.outputs.fresh == 'true' && needs.changes.outputs.controller == 'true'
     steps:
       - uses: actions/checkout@v4
         with:
