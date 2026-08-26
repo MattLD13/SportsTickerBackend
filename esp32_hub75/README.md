@@ -95,6 +95,8 @@ The custom 8 MB partition table contains two 2 MiB OTA application slots, an OTA
 
 The production backend loads a complete manifest from `TICKER_FIRMWARE_MANIFEST_PATH` or the `TICKER_MINI_FIRMWARE_*` environment variables. The deploy workflow builds the mini binary, stores it in the server firmware directory, and serves it from the manifest HTTPS URL. The manifest contains `version`, `target`, `hardware`, `binary_url`, `size`, and `sha256`. A release request uses `POST /api/v2/tickers/<ticker-id>/updates` with the existing deployment token. The mini reads the pending V2 update command, fetches `GET /api/v2/tickers/<ticker-id>/firmware`, verifies the target, hardware, HTTPS URL, size, HTTP status, content length, image structure, and SHA-256, then activates the inactive slot.
 
+Every successful `main` deployment requests the current mini firmware through the same V2 update route. The mini downloads the release automatically after it reconnects to Wi-Fi.
+
 The mini renders checking, downloading, installing, and failure states. It stores the pending version in NVS and validates the new boot before acknowledgement. Transient transfer failures retry after 60 seconds. A boot rollback blocks that exact version to prevent a reboot loop.
 
 ## Pairing and startup

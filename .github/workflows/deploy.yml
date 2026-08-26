@@ -183,9 +183,9 @@ jobs:
             sudo systemctl status ticker --no-pager
 
       - name: Request mini OTA
-        if: ${{ github.event_name == 'push' || inputs.ota_ticker_id != '' }}
+        if: ${{ github.event_name == 'push' || github.event.inputs.ota_ticker_id != '' }}
         env:
-          OTA_TICKER_ID: ${{ inputs.ota_ticker_id || 'esp32s3-E47FF1818C58' }}
+          OTA_TICKER_ID: ${{ github.event.inputs.ota_ticker_id || 'esp32s3-E47FF1818C58' }}
           OTA_VERSION: ${{ needs.build-mini-firmware.outputs.version }}
           DEPLOY_TOKEN: ${{ secrets.POOP_ADMIN_PASSWORD }}
         run: |
