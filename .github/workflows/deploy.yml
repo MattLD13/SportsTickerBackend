@@ -92,6 +92,9 @@ jobs:
           name: mini-firmware
           path: mini-firmware
 
+      - name: Flatten mini firmware artifact
+        run: mv mini-firmware/mini-firmware.bin mini-firmware.bin
+
       - name: Generate VERSION file
         run: |
           SHA=$(git rev-parse --short=12 HEAD)
@@ -104,7 +107,7 @@ jobs:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_KEY }}
-          source:   "mini-firmware/mini-firmware.bin"
+          source:   "mini-firmware.bin"
           target:   "/home/${{ secrets.SSH_USER }}/firmware-staging/"
 
       - name: Copy files to server
@@ -123,10 +126,17 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key:      ${{ secrets.SSH_KEY }}
           script: |
+            set -eu
             cd /home/${{ secrets.SSH_USER }}/
 
             mkdir -p firmware firmware-staging
+            test -s firmware-staging/mini-firmware.bin
             mv -f firmware-staging/mini-firmware.bin "firmware/${{ needs.build-mini-firmware.outputs.version }}.bin"
+            FIRMWARE_PATH="firmware/${{ needs.build-mini-firmware.outputs.version }}.bin"
+            FIRMWARE_SIZE=$(stat -c%s "$FIRMWARE_PATH")
+            FIRMWARE_SHA256=$(sha256sum "$FIRMWARE_PATH" | awk '{print $1}')
+            test "$FIRMWARE_SIZE" -ge 65536
+            test "${#FIRMWARE_SHA256}" -eq 64
 
             # ── Generate .env ──────────────────────────────────────────────
             echo "FINNHUB_KEY_1=${{ secrets.FINNHUB_KEY_1 }}"           > .env
@@ -150,8 +160,8 @@ jobs:
             echo "TICKER_MINI_FIRMWARE_TARGET=esp32s3" >> .env
             echo "TICKER_MINI_FIRMWARE_HARDWARE=esp32-s3" >> .env
             echo "TICKER_MINI_FIRMWARE_URL=https://ticker.mattdicks.org/firmware/${{ needs.build-mini-firmware.outputs.version }}.bin" >> .env
-            echo "TICKER_MINI_FIRMWARE_SIZE=$(stat -c%s "firmware/${{ needs.build-mini-firmware.outputs.version }}.bin")" >> .env
-            echo "TICKER_MINI_FIRMWARE_SHA256=$(sha256sum "firmware/${{ needs.build-mini-firmware.outputs.version }}.bin" | awk '{print \$1}')" >> .env
+            echo "TICKER_MINI_FIRMWARE_SIZE=$FIRMWARE_SIZE" >> .env
+            echo "TICKER_MINI_FIRMWARE_SHA256=$FIRMWARE_SHA256" >> .env
             chmod 600 .env
             sudo rm -f /etc/systemd/system/ticker.service.d/oci.conf
             sudo cp "/home/${{ secrets.SSH_USER }}/ticker.service" /etc/systemd/system/ticker.service
