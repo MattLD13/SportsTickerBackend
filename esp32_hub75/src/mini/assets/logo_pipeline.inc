@@ -698,7 +698,6 @@ void setupLogoCache() {
 }
 
 void drawFallbackLogo(const String& abbreviation, int16_t x, int16_t y, uint16_t background) {
-  x += CONTENT_X_OFFSET;
   const uint8_t red = ((background >> 11) & 0x1F) * 255 / 31;
   const uint8_t green = ((background >> 5) & 0x3F) * 255 / 63;
   const uint8_t blue = (background & 0x1F) * 255 / 31;
@@ -738,7 +737,7 @@ void drawRuntimeLogo(const RuntimeLogo* logo, int16_t x, int16_t y) {
   }
   for (uint8_t row = 0; row < RUNTIME_LOGO_SIZE; ++row) {
     for (uint8_t column = 0; column < RUNTIME_LOGO_SIZE; ++column) {
-      const int16_t targetX = x + CONTENT_X_OFFSET + column;
+      const int16_t targetX = x + column;
       const int16_t targetY = y + row;
       if (targetX < 0 || targetX >= 64 || targetY < 0 || targetY >= 32) {
         continue;
@@ -763,7 +762,7 @@ bool drawLogoAsset(const String& url, int16_t x, int16_t y) {
       if ((mask & (1U << (index % 8))) == 0) {
         continue;
       }
-      const int16_t targetX = x + CONTENT_X_OFFSET + index % RUNTIME_LOGO_SIZE;
+      const int16_t targetX = x + index % RUNTIME_LOGO_SIZE;
       const int16_t targetY = y + index / RUNTIME_LOGO_SIZE;
       if (targetX >= 0 && targetX < 64 && targetY >= 0 && targetY < 32) {
         matrix->drawPixel(targetX, targetY, pgm_read_word(generatedPixels + index));
