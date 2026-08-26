@@ -2,7 +2,7 @@
 
 import re
 
-from PIL import Image, ImageDraw, ImageFilter, ImageChops
+from PIL import Image, ImageDraw
 
 from ticker_core.rendering.pixels import HYBRID as HYBRID_FONT_MAP
 
@@ -237,45 +237,6 @@ def draw_so_column(d, x, y, results, vertical=True, size=5, stride=7, max_show=5
         dy = y + i * stride if vertical else y
         draw_shootout_dot(d, dx, dy, r, size=size, stride=stride)
 
-
-def _enhance_logo_visibility(img):
-    """Only outline logos that are overwhelmingly dark."""
-    try:
-        if not img or img.mode != 'RGBA':
-            return img
-
-        rgba = img.copy()
-        alpha = rgba.split()[3]
-        px = list(rgba.getdata())
-
-        # Only sample fully opaque pixels to ignore dark anti-aliased edges
-        core_pixels = [p for p in px if p[3] > 200]
-        if not core_pixels:
-            core_pixels = [p for p in px if p[3] > 20]
-            if not core_pixels:
-                return rgba
-
-        dark = 0
-        for r, g, b, _ in core_pixels:
-            lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
-            if lum < 40:
-                dark += 1
-
-        dark_ratio = dark / len(core_pixels)
-
-        # If the logo isn't at least 92% very dark, skip the outline.
-        if dark_ratio < 0.92:
-            return rgba
-
-        edge = alpha.filter(ImageFilter.MaxFilter(3))
-        ring = ImageChops.subtract(edge, alpha)
-        ring_layer = Image.new('RGBA', rgba.size, (245, 245, 245, 230))
-        outlined = Image.new('RGBA', rgba.size, (0, 0, 0, 0))
-        outlined.paste(ring_layer, (0, 0), ring)
-        outlined.alpha_composite(rgba)
-        return outlined
-    except Exception:
-        return img
 
 def _fallback_logo(color, size=(22, 22)):
     """Coloured square with highlight border when no real logo available."""

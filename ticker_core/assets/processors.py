@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 
-from PIL import Image, ImageChops, ImageFilter
+from PIL import Image
 
 
 def prepare_contained(raw: bytes, size: tuple[int, int]) -> Image.Image:
@@ -15,7 +15,7 @@ def prepare_contained(raw: bytes, size: tuple[int, int]) -> Image.Image:
     image = image.convert("RGBA")
     target = Image.new("RGBA", size, (0, 0, 0, 0))
     target.alpha_composite(image, ((size[0] - image.width) // 2, (size[1] - image.height) // 2))
-    return _enhance_dark_image(target)
+    return target
 
 
 def prepare_car(raw: bytes, size: tuple[int, int], *, mirror: bool = False) -> Image.Image:
@@ -92,19 +92,3 @@ def _crop_nonwhite(image: Image.Image) -> Image.Image:
     xs, ys = zip(*changed)
     padding = 8
     return image.crop((max(0, min(xs) - padding), max(0, min(ys) - padding), min(image.width, max(xs) + padding + 1), min(image.height, max(ys) + padding + 1)))
-
-
-def _enhance_dark_image(image: Image.Image) -> Image.Image:
-    """Outline images that would disappear on the black panel."""
-    opaque = [pixel for pixel in image.getdata() if pixel[3] > 200]
-    if not opaque:
-        return image
-    dark = sum(0.2126 * red + 0.7152 * green + 0.0722 * blue < 40 for red, green, blue, _ in opaque)
-    if dark / len(opaque) < 0.92:
-        return image
-    alpha = image.getchannel("A")
-    ring = ImageChops.subtract(alpha.filter(ImageFilter.MaxFilter(3)), alpha)
-    outlined = Image.new("RGBA", image.size, (0, 0, 0, 0))
-    outlined.paste(Image.new("RGBA", image.size, (245, 245, 245, 230)), mask=ring)
-    outlined.alpha_composite(image)
-    return outlined

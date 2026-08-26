@@ -441,7 +441,7 @@ int pngLogoDraw(PNGDRAW* draw) {
   if (activeLogoDecode == nullptr || draw->iWidth > LOGO_DECODE_WIDTH_LIMIT) {
     return 0;
   }
-  pngDecoder.getLineAsRGB565(draw, logoDecodeLine, PNG_RGB565_LITTLE_ENDIAN, 0xffffffff);
+  pngDecoder.getLineAsRGB565(draw, logoDecodeLine, PNG_RGB565_LITTLE_ENDIAN, 0x00000000);
   pngDecoder.getAlphaMask(draw, logoDecodeMask, 128);
   for (int sourceX = 0; sourceX < draw->iWidth; ++sourceX) {
     const bool opaque = (logoDecodeMask[sourceX / 8] & (0x80 >> (sourceX % 8))) != 0;
@@ -596,50 +596,6 @@ RuntimeLogo* ensureRuntimeLogo(const String& url) {
       xSemaphoreGive(logoDownloadMutex);
     }
     return nullptr;
-  }
-  // Match the larger ticker asset pipeline. Dark logos receive a one-pixel
-  // light ring so they remain visible on the black matrix background.
-  uint16_t opaqueCount = 0;
-  uint16_t darkCount = 0;
-  for (uint8_t row = 0; row < RUNTIME_LOGO_SIZE; ++row) {
-    for (uint8_t column = 0; column < RUNTIME_LOGO_SIZE; ++column) {
-      const size_t index = static_cast<size_t>(row) * RUNTIME_LOGO_SIZE + column;
-      if (decoded.mask[index] == 0) continue;
-      ++opaqueCount;
-      const uint16_t pixel = decoded.pixels[index];
-      const uint8_t red = ((pixel >> 11) & 0x1F) * 255 / 31;
-      const uint8_t green = ((pixel >> 5) & 0x3F) * 255 / 63;
-      const uint8_t blue = (pixel & 0x1F) * 255 / 31;
-      if (red * 212 + green * 715 + blue * 72 < 40000) ++darkCount;
-    }
-  }
-  if (opaqueCount > 0 && darkCount * 100 >= opaqueCount * 92) {
-    uint8_t originalMask[RUNTIME_LOGO_SIZE * RUNTIME_LOGO_SIZE] = {};
-    memcpy(originalMask, decoded.mask, sizeof(originalMask));
-    const uint16_t ringColor = color(245, 245, 245);
-    for (uint8_t row = 0; row < RUNTIME_LOGO_SIZE; ++row) {
-      for (uint8_t column = 0; column < RUNTIME_LOGO_SIZE; ++column) {
-        const size_t index = static_cast<size_t>(row) * RUNTIME_LOGO_SIZE + column;
-        if (originalMask[index] != 0) continue;
-        bool adjacent = false;
-        for (int8_t rowDelta = -1; rowDelta <= 1 && !adjacent; ++rowDelta) {
-          for (int8_t columnDelta = -1; columnDelta <= 1; ++columnDelta) {
-            const int16_t neighborRow = row + rowDelta;
-            const int16_t neighborColumn = column + columnDelta;
-            if (neighborRow >= 0 && neighborRow < RUNTIME_LOGO_SIZE &&
-                neighborColumn >= 0 && neighborColumn < RUNTIME_LOGO_SIZE &&
-                originalMask[static_cast<size_t>(neighborRow) * RUNTIME_LOGO_SIZE + neighborColumn] != 0) {
-              adjacent = true;
-              break;
-            }
-          }
-        }
-        if (adjacent) {
-          decoded.pixels[index] = ringColor;
-          decoded.mask[index] = 1;
-        }
-      }
-    }
   }
   if (logoCacheMutex != nullptr) {
     xSemaphoreTake(logoCacheMutex, portMAX_DELAY);
