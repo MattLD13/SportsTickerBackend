@@ -7,7 +7,7 @@ static const char* BACKEND_URL = "https://ticker.mattdicks.org";
 static const char* DEVICE_NAME = "MiniTicker";
 static const char* DEFAULT_TIMEZONE = "America/New_York";
 static const char* DEFAULT_TIMEZONE_SPEC = "EST5EDT,M3.2.0,M11.1.0";
-static constexpr char MINI_FIRMWARE_VERSION[] = "mini-1.2.2";
+static constexpr char MINI_FIRMWARE_VERSION[] = "mini-1.2.3";
 static constexpr char MINI_FIRMWARE_TARGET[] = "esp32s3";
 static constexpr char MINI_FIRMWARE_HARDWARE[] = "esp32-s3";
 
@@ -58,5 +58,5 @@ static constexpr uint16_t FLASH_LOGO_CACHE_SLOTS = 256;
 static constexpr uint16_t FLASH_LOGO_PROBE_LIMIT = FLASH_LOGO_CACHE_SLOTS;
 static constexpr size_t LOGO_DOWNLOAD_LIMIT = 256 * 1024;
 static constexpr uint16_t LOGO_DECODE_WIDTH_LIMIT = 1024;
-static constexpr char LOGO_CACHE_FILE[] = "/logo_cache_v9.bin";
+static constexpr char LOGO_CACHE_FILE[] = "/logo_cache_v10.bin";
 static constexpr size_t LOGO_PIXEL_COUNT = RUNTIME_LOGO_SIZE * RUNTIME_LOGO_SIZE;
