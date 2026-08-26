@@ -4,6 +4,11 @@ on:
   push:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      ota_ticker_id:
+        description: "Request OTA for one mini ticker after deploy"
+        required: false
+        default: ""
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
@@ -176,6 +181,19 @@ jobs:
             echo "Restarting ticker (backend)..."
             sudo systemctl restart ticker
             sudo systemctl status ticker --no-pager
+
+      - name: Request mini OTA
+        if: ${{ inputs.ota_ticker_id != '' }}
+        env:
+          OTA_TICKER_ID: ${{ inputs.ota_ticker_id }}
+          OTA_VERSION: ${{ needs.build-mini-firmware.outputs.version }}
+          DEPLOY_TOKEN: ${{ secrets.POOP_ADMIN_PASSWORD }}
+        run: |
+          curl --fail --retry 3 --retry-delay 2 \
+            -X POST "https://ticker.mattdicks.org/api/v2/tickers/${OTA_TICKER_ID}/updates" \
+            -H "X-Deployment-Token: ${DEPLOY_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"version\":\"${OTA_VERSION}\"}"
 
   # ─────────────────────────────────────────────────────────────────────────
   # Signal all Pi tickers to pull the new controller code
