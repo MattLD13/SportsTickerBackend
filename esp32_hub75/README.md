@@ -97,6 +97,8 @@ The production backend loads a complete manifest from `TICKER_FIRMWARE_MANIFEST_
 
 Every successful `main` deployment requests the current mini firmware through the same V2 update route. The mini downloads the release automatically after it reconnects to Wi-Fi.
 
+Manual workflow dispatch accepts `ota_ticker_id` when one ticker needs a targeted release request.
+
 The mini renders checking, downloading, installing, and failure states. It stores the pending version in NVS and validates the new boot before acknowledgement. Transient transfer failures retry after 60 seconds. A boot rollback blocks that exact version to prevent a reboot loop.
 
 ## Pairing and startup
