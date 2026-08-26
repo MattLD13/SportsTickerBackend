@@ -7,7 +7,7 @@ static const char* BACKEND_URL = "https://ticker.mattdicks.org";
 static const char* DEVICE_NAME = "MiniTicker";
 static const char* DEFAULT_TIMEZONE = "America/New_York";
 static const char* DEFAULT_TIMEZONE_SPEC = "EST5EDT,M3.2.0,M11.1.0";
-static constexpr char MINI_FIRMWARE_VERSION[] = "mini-1.2.4";
+static constexpr char MINI_FIRMWARE_VERSION[] = "mini-1.2.5";
 static constexpr char MINI_FIRMWARE_TARGET[] = "esp32s3";
 static constexpr char MINI_FIRMWARE_HARDWARE[] = "esp32-s3";
 

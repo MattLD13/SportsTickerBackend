@@ -21,7 +21,7 @@ void setupMatrix() {
   };
   HUB75_I2S_CFG config(64, 32, 1, pins);
   config.double_buff = true;
-  config.clkphase = true;
+  config.clkphase = false;
   config.latch_blanking = 1;
   config.i2sspeed = HUB75_I2S_CFG::HZ_8M;
   config.min_refresh_rate = 240;
