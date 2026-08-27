@@ -104,7 +104,7 @@ class EspnTeamCatalog:
 
         return {
             "id": conference["id"],
-            "label": f"{league.label} / {conference['label']}",
+            "label": f"Conference / {conference['label']}",
             "type": "sport",
             "enabled": True,
             "my_teams_enabled": False,
