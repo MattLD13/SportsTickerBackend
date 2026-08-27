@@ -226,7 +226,7 @@ def _content_item(
     sunrise = _first(daily.get("sunrise"))
     sunset = _first(daily.get("sunset"))
     aqi_value = _optional_int(aqi)
-    forecast = _forecast(daily)
+    forecast = _forecast(daily, today=_source_date(payload))
     day_night = None if is_day is None else ("day" if is_day else "night")
     stats = {
         "aqi": _display(aqi_value),
@@ -440,7 +440,9 @@ def _nws_content_item(
         is_day = None
     cloud_cover = None
     aqi_value = _optional_int(aqi)
-    forecast = _nws_forecast(periods)
+    obs_time = current_properties.get("timestamp") or hourly_period.get("startTime") or first_period.get("startTime")
+    source_time = _parse_datetime(obs_time)
+    forecast = _nws_forecast(periods, today=source_time.date() if source_time is not None else None)
     day_night = None if is_day is None else ("day" if is_day else "night")
     stats = {
         "aqi": _display(aqi_value),
@@ -449,7 +451,6 @@ def _nws_content_item(
         "wind": str(wind),
         "humidity": str(humidity),
     }
-    obs_time = current_properties.get("timestamp") or hourly_period.get("startTime") or first_period.get("startTime")
     situation = {
         "icon": icon,
         "is_day": is_day,
@@ -513,9 +514,20 @@ def _nws_observation_is_fresh(observation: Mapping[str, Any]) -> bool:
     return datetime.now(timezone.utc) - observed_at <= timedelta(hours=2)
 
 
-def _nws_forecast(periods: Sequence[Any]) -> list[dict[str, Any]]:
+def _nws_forecast(periods: Sequence[Any], *, today: date | None = None) -> list[dict[str, Any]]:
     """Convert NWS day and night periods into the existing five-day view."""
 
+    if today is None:
+        today = next(
+            (
+                parsed.date()
+                for raw_period in periods
+                if _mapping(raw_period).get("isDaytime") is True
+                for parsed in [_parse_datetime(_mapping(raw_period).get("startTime"))]
+                if parsed is not None
+            ),
+            None,
+        )
     result: list[dict[str, Any]] = []
     for index, raw_period in enumerate(periods):
         period = _mapping(raw_period)
@@ -527,7 +539,7 @@ def _nws_forecast(periods: Sequence[Any]) -> list[dict[str, Any]]:
         probability = _mapping(period.get("probabilityOfPrecipitation")).get("value")
         result.append(
             {
-                "day": _nws_day_name(period.get("startTime")),
+                "day": _nws_day_name(period.get("startTime"), today=today),
                 "icon": _condition_icon(_text(period.get("shortForecast"))),
                 "high": temperature,
                 "low": low,
@@ -539,15 +551,13 @@ def _nws_forecast(periods: Sequence[Any]) -> list[dict[str, Any]]:
     return result
 
 
-def _nws_day_name(value: Any) -> str:
+def _nws_day_name(value: Any, *, today: date | None = None) -> str:
     """Return the local calendar label from an NWS ISO timestamp."""
 
-    raw = _text(value)
-    try:
-        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except ValueError:
+    parsed = _parse_datetime(value)
+    if parsed is None:
         return "DAY"
-    return _day_name(parsed.date().isoformat())
+    return _day_name(parsed.date(), today=today)
 
 
 def _condition_icon(value: Any) -> str:
@@ -607,7 +617,7 @@ def _text(value: Any) -> str:
     return str(value).strip() if value is not None else ""
 
 
-def _forecast(daily: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _forecast(daily: Mapping[str, Any], *, today: date | None = None) -> list[dict[str, Any]]:
     days = daily.get("time")
     if not isinstance(days, Sequence) or isinstance(days, (str, bytes)):
         return []
@@ -615,7 +625,7 @@ def _forecast(daily: Mapping[str, Any]) -> list[dict[str, Any]]:
     for index, raw_day in enumerate(days[:5]):
         try:
             item = {
-                "day": _day_name(raw_day),
+                "day": _day_name(raw_day, today=today),
                 "icon": _weather_icon(_at(daily.get("weather_code"), index, 0)),
                 "high": _rounded(_at(daily.get("temperature_2m_max"), index), 0),
                 "low": _rounded(_at(daily.get("temperature_2m_min"), index), 0),
@@ -674,12 +684,39 @@ def _display(value: Any) -> str:
     return "--" if value is None else str(value)
 
 
-def _day_name(value: Any) -> str:
+def _source_date(payload: Mapping[str, Any]) -> date | None:
+    """Return the forecast source's local calendar date."""
+
+    current = _mapping(payload.get("current"))
+    parsed = _parse_datetime(current.get("time"))
+    if parsed is not None:
+        return parsed.date()
+    daily = _mapping(payload.get("daily"))
+    return _parse_date(_first(daily.get("time")))
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    raw = _text(value)
+    if not raw:
+        return None
     try:
-        parsed = date.fromisoformat(str(value))
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
+        return None
+
+
+def _parse_date(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
+def _day_name(value: Any, *, today: date | None = None) -> str:
+    parsed = value if isinstance(value, date) else _parse_date(value)
+    if parsed is None:
         return "DAY"
-    return "TODAY" if parsed == date.today() else parsed.strftime("%a").upper()
+    return "TODAY" if parsed == (today or date.today()) else parsed.strftime("%a").upper()
 
 
 def _weather_icon(value: Any) -> str:

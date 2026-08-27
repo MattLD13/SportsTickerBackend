@@ -159,6 +159,20 @@ def test_espn_empty_date_response_is_healthy_and_empty() -> None:
     assert result.health.healthy is True
 
 
+def test_espn_source_reads_once_for_any_number_of_tickers() -> None:
+    client = RecordingClient({"20260816-20260817": {"events": []}})
+    provider = EspnScoreboardProvider(
+        {"nfl": "https://example.test/football/nfl/scoreboard"},
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 7, tzinfo=timezone.utc),
+    )
+
+    for ticker_index in range(100):
+        provider.fetch_for_ticker(f"ticker-{ticker_index}", _settings())
+
+    assert len(client.urls) == 1
+
+
 def test_espn_failed_date_requests_return_unhealthy_stale_contract() -> None:
     provider = EspnScoreboardProvider(
         {"nfl": "https://example.test/football/nfl/scoreboard"},

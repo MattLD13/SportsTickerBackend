@@ -1,5 +1,5 @@
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from PIL import Image, ImageDraw
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 
@@ -19,6 +19,17 @@ TREND_STYLES = {
     'band': dict(top=19, bot=29, gain=0.45, step=1, fill=False),
     'whisper': dict(top=13, bot=28, gain=0.26, step=1, fill=False),
 }
+
+
+def _forecast_day_label(day, index: int, now: datetime) -> str:
+    """Use the provider's local calendar label for each forecast column."""
+
+    label = str(day.get('day') or '').strip().upper()
+    if label:
+        return label
+    if index == 0:
+        return 'TODAY'
+    return (now + timedelta(days=index)).strftime('%a').upper()
 
 
 class PreparedWeatherRenderer:
@@ -507,10 +518,7 @@ class PreparedWeatherRenderer:
         # Pass 3: labels, icons and temperatures on top.
         for i, day in enumerate(forecast[:5]):
             cx, col_right = col_bounds(i)
-            if i == 0:
-                day_str = 'TODAY'
-            else:
-                day_str = (self._now + __import__('datetime').timedelta(days=i)).strftime('%a').upper()
+            day_str = _forecast_day_label(day, i, self._now)
             day_w = len(day_str) * 5
             day_x = cx + max(0, ((col_right - cx + 1) - day_w) // 2)
             lbl_col = (255, 255, 255) if i == 0 else (110, 160, 220)

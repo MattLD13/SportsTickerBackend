@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, datetime, timezone
+
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers import HybridWeatherProvider, WeatherLocationResolver
 from sports_ticker.providers.http import JsonHttpError
@@ -102,6 +104,7 @@ def test_hybrid_weather_uses_nws_for_us_coordinates() -> None:
     assert data["situation"]["sunrise"] == "2026-08-24T06:00"
     assert data["situation"]["sunset"] == "2026-08-24T19:45"
     assert data["forecast"][0]["high"] == 75
+    assert data["forecast"][0]["day"] == "TODAY"
     assert any(url.startswith("https://api.weather.gov/points/") for url in client.urls)
     assert not any(url.endswith("/v1/forecast") for url in client.urls)
 
@@ -114,7 +117,28 @@ def test_hybrid_weather_uses_open_meteo_when_nws_does_not_cover_location() -> No
     assert result.health.healthy is True
     assert data["temperature"] == 68
     assert data["icon"] == "cloud"
+    assert data["forecast"][0]["day"] == "TODAY"
     assert any("api.open-meteo.com/v1/forecast" in url for url in client.urls)
+
+
+def test_weather_renderer_keeps_provider_calendar_labels() -> None:
+    from ticker_core.features.weather.legacy_port import _forecast_day_label
+
+    now = datetime(2026, 8, 26, tzinfo=timezone.utc)
+
+    assert _forecast_day_label({"day": "TODAY"}, 0, now) == "TODAY"
+    assert _forecast_day_label({"day": "MON"}, 1, now) == "MON"
+
+
+def test_nws_forecast_uses_observation_day_when_tonight_is_first() -> None:
+    from sports_ticker.providers.weather import _nws_forecast
+
+    periods = [
+        {"isDaytime": False, "startTime": "2026-08-27T18:00:00-04:00", "temperature": 60},
+        {"isDaytime": True, "startTime": "2026-08-28T08:00:00-04:00", "temperature": 75},
+    ]
+
+    assert _nws_forecast(periods, today=date(2026, 8, 27))[0]["day"] == "FRI"
 
 
 def test_hybrid_weather_uses_hourly_forecast_when_station_observation_is_missing() -> None:

@@ -91,35 +91,49 @@ class EspnGolfSource:
         self._client = client or UrllibJsonHttpClient()
         self._timeout = _timeout(timeout)
         self._now = now or (lambda: datetime.now(timezone.utc))
+        self._cache_lock = Lock()
+        self._cache: tuple[float, tuple[str, object], Mapping[str, object]] | None = None
 
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
-        payload = self._client.get_json(ESPN_GOLF_URL, timeout=self._timeout)
-        event = _first_event(payload)
-        if event is None or not _is_current_golf_event(event, timezone_name=settings.timezone, now=self._now()):
-            return {"content": []}
-        competition = _first_mapping(event.get("competitions"))
-        players = [_golf_player(value) for value in _mappings(competition.get("competitors"))]
-        players = _rank_golf_players(value for value in players if value is not None)
-        status = _status(event, competition)
-        return {
-            "content": [
-                {
-                    "id": f"golf:{event.get('id', 'pga')}",
-                    "type": "golf",
-                    "sport": "golf",
-                    "state": status["state"],
-                    "status": status["text"],
-                    "away_abbr": str(event.get("shortName") or event.get("name") or "PGA TOUR"),
-                    "golf": {
-                        "brand": _golf_brand(str(event.get("name") or "")),
-                        "event_name": str(event.get("name") or "PGA TOUR"),
-                        "year": _mapping(event.get("season")).get("year", self._now().year),
-                        "round": _golf_round(status["text"]),
-                        "players": players,
-                    },
+        now = self._now()
+        cache_key = (settings.timezone, now.astimezone(_display_timezone(settings.timezone)).date())
+        monotonic_now = monotonic()
+        with self._cache_lock:
+            if self._cache is not None:
+                cached_at, cached_key, cached_value = self._cache
+                if cached_key == cache_key and 0 <= monotonic_now - cached_at < 5.0:
+                    return cached_value
+
+            payload = self._client.get_json(ESPN_GOLF_URL, timeout=self._timeout)
+            event = _first_event(payload)
+            if event is None or not _is_current_golf_event(event, timezone_name=settings.timezone, now=now):
+                result: Mapping[str, object] = {"content": []}
+            else:
+                competition = _first_mapping(event.get("competitions"))
+                players = [_golf_player(value) for value in _mappings(competition.get("competitors"))]
+                players = _rank_golf_players(value for value in players if value is not None)
+                status = _status(event, competition)
+                result = {
+                    "content": [
+                        {
+                            "id": f"golf:{event.get('id', 'pga')}",
+                            "type": "golf",
+                            "sport": "golf",
+                            "state": status["state"],
+                            "status": status["text"],
+                            "away_abbr": str(event.get("shortName") or event.get("name") or "PGA TOUR"),
+                            "golf": {
+                                "brand": _golf_brand(str(event.get("name") or "")),
+                                "event_name": str(event.get("name") or "PGA TOUR"),
+                                "year": _mapping(event.get("season")).get("year", now.year),
+                                "round": _golf_round(status["text"]),
+                                "players": players,
+                            },
+                        }
+                    ]
                 }
-            ]
-        }
+            self._cache = (monotonic_now, cache_key, result)
+            return result
 
 
 class FinnhubStockSource:

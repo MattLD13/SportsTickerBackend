@@ -8,9 +8,11 @@ from sports_ticker.providers.live_sources import EspnGolfSource, _golf_brand, _i
 class MockHttpClient:
     def __init__(self, payload: dict) -> None:
         self.payload = payload
+        self.calls = 0
 
     def get_json(self, url: str, *, timeout: float):
         del url, timeout
+        self.calls += 1
         return self.payload
 
 
@@ -83,4 +85,16 @@ def test_golf_source_includes_live_tournament() -> None:
 
     assert len(result["content"]) == 1
     assert result["content"][0]["id"] == "golf:401811963"
+
+
+def test_golf_source_reads_once_for_many_tickers_in_one_refresh() -> None:
+    now = datetime(2026, 8, 21, 18, 0, tzinfo=timezone.utc)
+    settings = DisplaySettings(timezone="America/New_York")
+    client = MockHttpClient(_sample_golf_payload(state="in", date="2026-08-20T04:00Z"))
+    source = EspnGolfSource(client=client, now=lambda: now)
+
+    for _ in range(100):
+        source.fetch(settings)
+
+    assert client.calls == 1
 

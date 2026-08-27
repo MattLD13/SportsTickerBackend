@@ -1625,8 +1625,8 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             print("❌ Invalid URL for device update")
             return
         }
-        let body = ["display_settings": v2DisplaySettingsPayload(
-            brightness: brightness.map { $0 * 100 },
+        let body: [String: Any] = ["display_settings": v2DeviceSettingsPatch(
+            brightness: brightness,
             scrollSpeed: speed,
             seamless: seamless,
             inverted: inverted,
@@ -1659,6 +1659,24 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 }
             }
         }.resume()
+    }
+
+    private func v2DeviceSettingsPatch(
+        brightness: Double? = nil,
+        scrollSpeed: Double? = nil,
+        seamless: Bool? = nil,
+        inverted: Bool? = nil,
+        liveDelayMode: Bool? = nil,
+        liveDelaySeconds: Int? = nil
+    ) -> [String: Any] {
+        var patch: [String: Any] = [:]
+        if let brightness { patch["brightness"] = brightness * 100 }
+        if let scrollSpeed { patch["scroll_speed"] = scrollSpeed }
+        if let seamless { patch["scroll_seamless"] = seamless }
+        if let inverted { patch["inverted"] = inverted }
+        if let liveDelayMode { patch["live_delay_mode"] = liveDelayMode }
+        if let liveDelaySeconds { patch["live_delay_seconds"] = liveDelaySeconds }
+        return patch
     }
 
     private func updateTickerName(_ name: String, tickerID: String) {

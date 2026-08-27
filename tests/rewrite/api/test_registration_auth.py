@@ -112,6 +112,59 @@ def test_partial_display_settings_patch_preserves_other_ticker_controls(tmp_path
         app.extensions["sports_ticker.backend_application"].close()
 
 
+def test_live_delay_patch_isolated_to_target_ticker(tmp_path) -> None:
+    """Keep live delay changes isolated when one controller owns multiple tickers."""
+
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    try:
+        client = app.test_client()
+        first = _register(client, "delay-one")
+        first_exchange = client.post(
+            "/api/v2/pairings/exchange",
+            json={"pairing_code": first["pairing_code"]},
+        )
+        assert first_exchange.status_code == 201
+        first_payload = first_exchange.get_json()
+        second = _register(client, "delay-two")
+        second_exchange = client.post(
+            "/api/v2/pairings/exchange",
+            json={
+                "pairing_code": second["pairing_code"],
+                "controller_group_id": first_payload["controller_group_id"],
+                "controller_group_secret": first_payload["controller_group_secret"],
+            },
+        )
+        assert second_exchange.status_code == 201
+        headers = {"Authorization": f"Bearer {second_exchange.get_json()['controller_token']}"}
+
+        other_enabled = client.patch(
+            "/api/v2/tickers/delay-two",
+            headers=headers,
+            json={"display_settings": {"live_delay_mode": True, "live_delay_seconds": 60}},
+        )
+        assert other_enabled.status_code == 200
+
+        enabled = client.patch(
+            "/api/v2/tickers/delay-one",
+            headers=headers,
+            json={"display_settings": {"live_delay_mode": True, "live_delay_seconds": 120}},
+        )
+        assert enabled.status_code == 200
+
+        disabled = client.patch(
+            "/api/v2/tickers/delay-one",
+            headers=headers,
+            json={"display_settings": {"live_delay_mode": False}},
+        )
+        assert disabled.status_code == 200
+        assert disabled.get_json()["display_settings"]["live_delay_mode"] is False
+        assert app.extensions["sports_ticker.backend_application"].get_ticker(
+            "delay-two"
+        ).display_settings.live_delay_mode is True
+    finally:
+        app.extensions["sports_ticker.backend_application"].close()
+
+
 def test_device_registration_renews_expired_pairing_code(tmp_path) -> None:
     """Give an offline ticker a fresh code after its previous code expires."""
 

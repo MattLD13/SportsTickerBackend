@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from math import isfinite
 import re
+import time
+from threading import RLock
 from types import MappingProxyType
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -58,6 +61,31 @@ _MLB_PITCH_ABBREVIATIONS = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class _ScoreboardSource:
+    """Keep one upstream scoreboard view for all matching ticker settings."""
+
+    content: tuple[ContentItem, ...]
+    errors: tuple[str, ...]
+    active_sources: int
+    failed_sources: int
+    observed_at: datetime
+
+
+def _source_key(
+    scoreboard_urls: Mapping[str, str],
+    settings: DisplaySettings,
+    dates: Sequence[date],
+) -> tuple[object, ...]:
+    """Identify the upstream view without including ticker-specific alert settings."""
+
+    enabled = tuple(
+        (league, bool(settings.active_sports.get(league, True)))
+        for league in scoreboard_urls
+    )
+    return settings.timezone, tuple(dates), enabled
+
+
 class EspnScoreboardProvider:
     """Fetch explicitly enabled ESPN scoreboard leagues into canonical content."""
 
@@ -87,31 +115,88 @@ class EspnScoreboardProvider:
         self._score_alerts = ScoreAlertTracker()
         self._score_alerts_by_ticker: dict[str, ScoreAlertTracker] = {}
         self._now = now or (lambda: datetime.now(timezone.utc))
+        self._monotonic = time.monotonic
+        self._source_cache: dict[tuple[object, ...], tuple[float, _ScoreboardSource]] = {}
+        self._source_cache_lock = RLock()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch current scoreboard events from each configured active league."""
 
-        return self._fetch(settings, self._score_alerts)
+        return self._fetch(settings, self._score_alerts, cache_source=False)
 
     def fetch_for_ticker(self, ticker_id: str, settings: DisplaySettings) -> ProviderResult:
         """Fetch one ticker scoreboard with score memory isolated to that ticker."""
 
         identifier = str(ticker_id).strip()
         tracker = self._score_alerts_by_ticker.setdefault(identifier, ScoreAlertTracker())
-        return self._fetch(settings, tracker)
+        return self._fetch(settings, tracker, cache_source=True)
 
-    def _fetch(self, settings: DisplaySettings, score_alerts: ScoreAlertTracker) -> ProviderResult:
+    def _fetch(
+        self,
+        settings: DisplaySettings,
+        score_alerts: ScoreAlertTracker,
+        *,
+        cache_source: bool,
+    ) -> ProviderResult:
         """Fetch scoreboard content and emit only alerts allowed by ticker settings."""
 
         if not isinstance(settings, DisplaySettings):
             raise TypeError("settings must be DisplaySettings")
 
+        current = self._now()
+        dates = _scoreboard_dates(settings.timezone, now=current)
+        source_key = _source_key(self.scoreboard_urls, settings, dates)
+        if cache_source:
+            now = self._monotonic()
+            with self._source_cache_lock:
+                cached = self._source_cache.get(source_key)
+                if cached is not None and 0 <= now - cached[0] < 5.0:
+                    source = cached[1]
+                else:
+                    source = self._read_source(settings, current, dates)
+                    self._source_cache[source_key] = (now, source)
+        else:
+            source = self._read_source(settings, current, dates)
+
+        items = source.content
+        score_games = [{"kind": item.kind, "id": item.id, **dict(item.data)} for item in items]
+        score_alerts.ingest(score_games)
+        alerts = alerts_for_settings(
+            score_alerts.recent(
+                delay=settings.live_delay_seconds if settings.live_delay_mode else 0.0,
+            ),
+            settings,
+        )
+        health = ProviderHealth(
+            healthy=not source.errors,
+            provider="espn",
+            error="; ".join(source.errors) if source.errors else None,
+        )
+        result = ProviderResult(
+            content=items,
+            alerts=alerts,
+            observed_at=source.observed_at,
+            health=health,
+        )
+        if health.healthy:
+            self._stale_cache.set(settings, result)
+            return result
+        if source.active_sources and source.failed_sources == source.active_sources:
+            return self._stale_result(settings, health.error or "all sources failed")
+        return result
+
+    def _read_source(
+        self,
+        settings: DisplaySettings,
+        current: datetime,
+        dates: Sequence[date],
+    ) -> "_ScoreboardSource":
+        """Read one shared ESPN source view for all tickers with matching source settings."""
+
         items: list[ContentItem] = []
         errors: list[str] = []
         active_sources = 0
         failed_sources = 0
-        current = self._now()
-        dates = _scoreboard_dates(settings.timezone, now=current)
         seen_events: set[tuple[str, str]] = set()
         for league, url in self.scoreboard_urls.items():
             if not settings.active_sports.get(league, True):
@@ -141,32 +226,13 @@ class EspnScoreboardProvider:
                 failed_sources += 1
                 errors.append(f"{league}: {exc}")
 
-        items = self._enrich_live_items(items)
-        score_games = [{"kind": item.kind, "id": item.id, **dict(item.data)} for item in items]
-        score_alerts.ingest(score_games)
-        alerts = alerts_for_settings(
-            score_alerts.recent(
-                delay=settings.live_delay_seconds if settings.live_delay_mode else 0.0,
-            ),
-            settings,
-        )
-        health = ProviderHealth(
-            healthy=not errors,
-            provider="espn",
-            error="; ".join(errors) if errors else None,
-        )
-        result = ProviderResult(
-            content=tuple(sorted(items, key=sports_content_sort_key)),
-            alerts=alerts,
+        return _ScoreboardSource(
+            content=tuple(sorted(self._enrich_live_items(items), key=sports_content_sort_key)),
+            errors=tuple(errors),
+            active_sources=active_sources,
+            failed_sources=failed_sources,
             observed_at=datetime.now(timezone.utc),
-            health=health,
         )
-        if health.healthy:
-            self._stale_cache.set(settings, result)
-            return result
-        if active_sources and failed_sources == active_sources:
-            return self._stale_result(settings, health.error or "all sources failed")
-        return result
 
     def _stale_result(self, settings: DisplaySettings, error: str) -> ProviderResult:
         """Return last successful content with an unhealthy stale status."""
