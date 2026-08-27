@@ -72,6 +72,14 @@ class _ScoreboardSource:
     observed_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class _LeagueSchedule:
+    """Keep one league schedule until its next local 3am sweep."""
+
+    events: tuple[Mapping[str, Any], ...]
+    schedule_day: date
+
+
 def _source_key(
     scoreboard_urls: Mapping[str, str],
     settings: DisplaySettings,
@@ -96,6 +104,7 @@ class EspnScoreboardProvider:
         *,
         timeout: float = 10.0,
         now: Callable[[], datetime] | None = None,
+        monotonic: Callable[[], float] | None = None,
     ) -> None:
         if not isinstance(scoreboard_urls, Mapping):
             raise TypeError("scoreboard_urls must be a mapping")
@@ -115,8 +124,9 @@ class EspnScoreboardProvider:
         self._score_alerts = ScoreAlertTracker()
         self._score_alerts_by_ticker: dict[str, ScoreAlertTracker] = {}
         self._now = now or (lambda: datetime.now(timezone.utc))
-        self._monotonic = time.monotonic
+        self._monotonic = monotonic or time.monotonic
         self._source_cache: dict[tuple[object, ...], tuple[float, _ScoreboardSource]] = {}
+        self._league_schedules: dict[tuple[str, str, date], _LeagueSchedule] = {}
         self._source_cache_lock = RLock()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
@@ -153,10 +163,10 @@ class EspnScoreboardProvider:
                 if cached is not None and 0 <= now - cached[0] < 5.0:
                     source = cached[1]
                 else:
-                    source = self._read_source(settings, current, dates)
+                    source = self._read_source(settings, current, dates, cache_schedule=True)
                     self._source_cache[source_key] = (now, source)
         else:
-            source = self._read_source(settings, current, dates)
+            source = self._read_source(settings, current, dates, cache_schedule=False)
 
         items = source.content
         score_games = [{"kind": item.kind, "id": item.id, **dict(item.data)} for item in items]
@@ -190,6 +200,8 @@ class EspnScoreboardProvider:
         settings: DisplaySettings,
         current: datetime,
         dates: Sequence[date],
+        *,
+        cache_schedule: bool,
     ) -> "_ScoreboardSource":
         """Read one shared ESPN source view for all tickers with matching source settings."""
 
@@ -204,21 +216,42 @@ class EspnScoreboardProvider:
         )
         active_sources = len(active_leagues)
         workers = min(8, active_sources)
+        schedule_day = _schedule_day(settings.timezone, current)
+        cached_events: dict[str, tuple[Mapping[str, Any], ...]] = {}
+        refresh_leagues: list[tuple[str, str]] = []
+        for league, url in active_leagues:
+            cache_key = (settings.timezone, league, schedule_day)
+            cached = self._league_schedules.get(cache_key) if cache_schedule else None
+            if cached is None or _league_needs_refresh(cached.events, current):
+                refresh_leagues.append((league, url))
+            else:
+                cached_events[league] = cached.events
+
+        workers = min(8, len(refresh_leagues))
         with ThreadPoolExecutor(
             max_workers=max(1, workers),
             thread_name_prefix="espn-scoreboards",
         ) as pool:
             futures = {
                 league: pool.submit(self._read_scoreboard, url, dates)
-                for league, url in active_leagues
+                for league, url in refresh_leagues
             }
             for league, _url in active_leagues:
-                try:
-                    events = futures[league].result()
-                except Exception as exc:
-                    failed_sources += 1
-                    errors.append(f"{league}: {exc}")
-                    continue
+                if league in futures:
+                    try:
+                        events = futures[league].result()
+                    except Exception as exc:
+                        failed_sources += 1
+                        errors.append(f"{league}: {exc}")
+                        continue
+                    events = tuple(events)
+                    if cache_schedule:
+                        self._league_schedules[(settings.timezone, league, schedule_day)] = _LeagueSchedule(
+                            events=events,
+                            schedule_day=schedule_day,
+                        )
+                else:
+                    events = cached_events[league]
                 for event in events:
                     event_id = str(event.get("id") or "").strip()
                     if event_id and (league, event_id) in seen_events:
@@ -426,6 +459,32 @@ def _scoreboard_dates(
     if local_now.hour < 3:
         return (today - timedelta(days=1), today)
     return (today, today + timedelta(days=1))
+
+
+def _schedule_day(timezone_name: str, now: datetime) -> date:
+    """Group schedules into the local day that owns the 3am full sweep."""
+
+    current = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+    local_now = current.astimezone(_display_timezone(timezone_name))
+    return local_now.date() if local_now.hour >= 3 else local_now.date() - timedelta(days=1)
+
+
+def _league_needs_refresh(events: Sequence[Mapping[str, Any]], now: datetime) -> bool:
+    """Refresh one cached league when it contains a live or newly starting game."""
+
+    current = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+    for event in events:
+        status = _mapping(_mapping(event.get("status")).get("type"))
+        state = _text(status.get("state"), "pre").strip().lower()
+        if state in {"in", "half", "crit"}:
+            return True
+        if state in {"post", "final", "canceled", "cancelled"}:
+            continue
+        start = _event_time(event.get("date"))
+        if start is not None and start <= current <= start + timedelta(hours=6):
+            return True
+    return False
 
 
 def _scoreboard_url_for_dates(scoreboard_url: str, dates: Sequence[date]) -> str:

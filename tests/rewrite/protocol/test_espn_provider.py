@@ -203,6 +203,35 @@ def test_espn_scoreboard_leagues_read_concurrently() -> None:
     assert len(client.urls) == 3
 
 
+def test_espn_schedule_cache_refreshes_only_at_kickoff_or_during_live_play() -> None:
+    client = RecordingClient(
+        {
+            "20260816-20260817": {
+                "events": [_event("game-scheduled", "2026-08-16T18:00:00Z")]
+            }
+        }
+    )
+    current = [datetime(2026, 8, 16, 7, tzinfo=timezone.utc)]
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {"nfl": "https://example.test/football/nfl/scoreboard"},
+        client=client,
+        now=lambda: current[0],
+        monotonic=lambda: monotonic[0],
+    )
+
+    provider.fetch_for_ticker("ticker-one", _settings())
+    monotonic[0] = 6.0
+    provider.fetch_for_ticker("ticker-two", _settings())
+    assert len(client.urls) == 1
+
+    current[0] = datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)
+    monotonic[0] = 12.0
+    provider.fetch_for_ticker("ticker-three", _settings())
+
+    assert len(client.urls) == 2
+
+
 def test_espn_failed_date_requests_return_unhealthy_stale_contract() -> None:
     provider = EspnScoreboardProvider(
         {"nfl": "https://example.test/football/nfl/scoreboard"},
