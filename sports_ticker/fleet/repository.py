@@ -45,6 +45,7 @@ def _dump(value: Any) -> str:
 def _display_payload(settings: DisplaySettings) -> dict[str, Any]:
     return {
         "active_sports": dict(settings.active_sports),
+        "active_conferences": dict(settings.active_conferences),
         "my_teams": list(settings.my_teams),
         "mode": settings.mode,
         "sports_filter": settings.sports_filter,
@@ -76,6 +77,7 @@ def _display_settings(value: DisplaySettings | Mapping[str, Any] | None) -> Disp
         return DisplaySettings()
     return DisplaySettings(
         active_sports=value.get("active_sports", {}),
+        active_conferences=value.get("active_conferences", {}),
         my_teams=value.get("my_teams", ()),
         mode=value.get("mode", "sports"),
         sports_filter=value.get("sports_filter", "all"),

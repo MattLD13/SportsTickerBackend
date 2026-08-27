@@ -174,6 +174,7 @@ def _provider_settings_key(name: str):
 
     if name == "espn":
         return lambda settings: _sports_key(settings, ESPN_SCOREBOARD_PATHS) + (
+            tuple(sorted(settings.active_conferences.items())),
             settings.my_teams,
             settings.score_alerts,
             settings.live_delay_mode,

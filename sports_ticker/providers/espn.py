@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sports_ticker.domain import ContentItem, DisplaySettings
+from sports_ticker.leagues import COLLEGE_FOOTBALL_LEAGUES, allows_college_conferences
 
 from .contracts import ProviderHealth, ProviderResult
 from .espn_fastcast import EspnFastcastSource
@@ -125,7 +126,8 @@ def _source_key(
         (league, bool(settings.active_sports.get(league, True)))
         for league in scoreboard_urls
     )
-    return settings.timezone, tuple(dates), enabled
+    conferences = tuple(sorted(settings.active_conferences.items()))
+    return settings.timezone, tuple(dates), enabled, conferences
 
 
 class EspnScoreboardProvider:
@@ -284,10 +286,15 @@ class EspnScoreboardProvider:
         for league, url in active_leagues:
             cache_key = (settings.timezone, league, schedule_day)
             cached = self._league_schedules.get(cache_key) if cache_schedule else None
-            schedule_events = (
+            raw_schedule_events = (
                 self._fastcast_events(league, cached.events)
                 if cached is not None and cache_schedule
                 else cached.events if cached is not None else ()
+            )
+            schedule_events = _filter_college_conference_events(
+                league,
+                raw_schedule_events,
+                settings.active_conferences,
             )
             if cached is None:
                 refresh_leagues.append((league, url))
@@ -362,7 +369,11 @@ class EspnScoreboardProvider:
                         failed_leagues.add(league)
                         errors.append(f"{league}: {exc}")
                         continue
-                    events_by_league[league] = events
+                    events_by_league[league] = _filter_college_conference_events(
+                        league,
+                        events,
+                        settings.active_conferences,
+                    )
                     if cache_schedule:
                         self._league_schedules[(settings.timezone, league, schedule_day)] = _LeagueSchedule(
                             events=events,
@@ -372,7 +383,7 @@ class EspnScoreboardProvider:
                         discovery_ages[league] = self._league_schedules[
                             (settings.timezone, league, schedule_day)
                         ].discovery_at
-                    live_events = _unique_live_events(events, current)
+                    live_events = _unique_live_events(events_by_league[league], current)
                     for event in live_events:
                         event_id = str(event.get("id") or "").strip()
                         if event_id:
@@ -400,13 +411,28 @@ class EspnScoreboardProvider:
                     continue
                 live_update_payloads[(league, event_id)] = update
                 events = events_by_league.get(league, ())
-                events_by_league[league] = tuple(
+                updated_events = tuple(
                     _event_update(update, event) if str(event.get("id") or "").strip() == event_id else event
                     for event in events
                 )
+                events_by_league[league] = _filter_college_conference_events(
+                    league,
+                    updated_events,
+                    settings.active_conferences,
+                )
                 if cache_schedule:
+                    cached_schedule = self._league_schedules.get(
+                        (settings.timezone, league, schedule_day)
+                    )
+                    stored_events = cached_schedule.events if cached_schedule is not None else updated_events
+                    stored_events = tuple(
+                        _event_update(update, event)
+                        if str(event.get("id") or "").strip() == event_id
+                        else event
+                        for event in stored_events
+                    )
                     self._league_schedules[(settings.timezone, league, schedule_day)] = _LeagueSchedule(
-                        events=events_by_league[league],
+                        events=stored_events,
                         schedule_day=schedule_day,
                         discovery_at=discovery_ages.get(league, self._monotonic()),
                     )
@@ -777,6 +803,50 @@ def _events(payload: Any) -> tuple[Mapping[str, Any], ...]:
     return tuple(events)
 
 
+def _filter_college_conference_events(
+    league: str,
+    events: Sequence[Mapping[str, Any]],
+    active_conferences: Mapping[str, bool],
+) -> tuple[Mapping[str, Any], ...]:
+    """Keep college events that include at least one enabled conference."""
+
+    return tuple(
+        event
+        for event in events
+        if allows_college_conferences(
+            league,
+            _event_conference_ids(event),
+            active_conferences,
+        )
+    )
+
+
+def _event_conference_ids(event: Mapping[str, Any]) -> tuple[str, ...]:
+    """Read conference IDs from ESPN scoreboard team records."""
+
+    if not isinstance(event, Mapping):
+        return ()
+    competition = _first_mapping(event.get("competitions"))
+    identifiers: list[str] = []
+    for competitor in _sequence(competition.get("competitors")):
+        identifier = _conference_id(_mapping(competitor))
+        if identifier:
+            identifiers.append(identifier)
+    return tuple(dict.fromkeys(identifiers))
+
+
+def _conference_id(competitor: Mapping[str, Any]) -> str:
+    """Read one ESPN team's conference ID from a competitor record."""
+
+    team = _mapping(competitor.get("team"))
+    return str(
+        team.get("conferenceId")
+        or team.get("conference_id")
+        or competitor.get("conferenceId")
+        or ""
+    ).strip()
+
+
 def _event_payload(payload: Any) -> Mapping[str, Any]:
     """Extract one event from ESPN's single-event scoreboard response."""
 
@@ -1124,6 +1194,13 @@ def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:
         "away_color": away_team["color"],
         "away_alt_color": away_team["alt_color"],
     }
+    if league in COLLEGE_FOOTBALL_LEAGUES:
+        display_data.update(
+            {
+                "home_conference_id": _conference_id(home),
+                "away_conference_id": _conference_id(away),
+            }
+        )
     return ContentItem(
         id=event_id,
         family="sports",

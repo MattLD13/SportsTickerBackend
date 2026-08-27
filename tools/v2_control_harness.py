@@ -28,6 +28,7 @@ from ticker_core.runtime import TickerRuntime, classify_content
 
 _SETTINGS_FIELDS = (
     "active_sports",
+    "active_conferences",
     "my_teams",
     "mode",
     "sports_filter",

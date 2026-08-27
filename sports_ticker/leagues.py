@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final
@@ -18,6 +19,7 @@ class League:
     my_teams_enabled: bool = True
     team_abbreviations: frozenset[str] | None = None
     fotmob_league_id: int | None = None
+    conference_filter_enabled: bool = False
 
     def allows_team(self, abbreviation: str) -> bool:
         """Return true when this league exposes the team in My Teams."""
@@ -35,8 +37,20 @@ LEAGUES: Final[tuple[League, ...]] = (
     League("mlb", "MLB", "baseball/mlb"),
     League("nhl", "NHL", "hockey/nhl"),
     League("nba", "NBA", "basketball/nba"),
-    League("ncf_fbs", "NCAA (FBS)", "football/college-football", (("groups", "80"),)),
-    League("ncf_fcs", "NCAA (FCS)", "football/college-football", (("groups", "81"),)),
+    League(
+        "ncf_fbs",
+        "NCAA (FBS)",
+        "football/college-football",
+        (("groups", "80"),),
+        conference_filter_enabled=True,
+    ),
+    League(
+        "ncf_fcs",
+        "NCAA (FCS)",
+        "football/college-football",
+        (("groups", "81"),),
+        conference_filter_enabled=True,
+    ),
     League(
         "march_madness",
         "March Madness",
@@ -71,6 +85,61 @@ ESPN_SCOREBOARD_PATHS: Final = MappingProxyType(
 FOTMOB_LEAGUES: Final = MappingProxyType(
     {league.id: league.fotmob_league_id for league in LEAGUES if league.fotmob_league_id is not None}
 )
+COLLEGE_FOOTBALL_LEAGUES: Final = frozenset(
+    league.id for league in LEAGUES if league.conference_filter_enabled
+)
+
+
+def college_conference_key(league: str, conference_id: object) -> str:
+    """Return one stable settings key for a college conference."""
+
+    return f"{str(league).strip().lower()}:{str(conference_id).strip().lower()}"
+
+
+def college_conference_settings(
+    active_sports: Mapping[str, bool] | None,
+) -> dict[str, bool]:
+    """Extract conference controls encoded in the existing sports settings map."""
+
+    if not isinstance(active_sports, Mapping):
+        return {}
+    result: dict[str, bool] = {}
+    for raw_key, enabled in active_sports.items():
+        league, separator, conference_id = str(raw_key).strip().lower().partition(":")
+        if separator and conference_id and league in COLLEGE_FOOTBALL_LEAGUES:
+            result[college_conference_key(league, conference_id)] = bool(enabled)
+    return result
+
+
+def allows_college_conferences(
+    league: str,
+    conference_ids: Iterable[object],
+    active_conferences: Mapping[str, bool] | None,
+) -> bool:
+    """Return true when one event belongs to an enabled college conference."""
+
+    identifier = str(league).strip().lower()
+    if identifier not in COLLEGE_FOOTBALL_LEAGUES:
+        return True
+    configured = active_conferences if isinstance(active_conferences, Mapping) else {}
+    disabled = {
+        str(key).strip().lower()
+        for key, enabled in configured.items()
+        if str(key).strip() and not bool(enabled)
+    }
+    if not disabled:
+        return True
+    normalized_ids = tuple(
+        str(value).strip().lower()
+        for value in conference_ids
+        if str(value).strip()
+    )
+    if not normalized_ids:
+        return True
+    return any(
+        college_conference_key(identifier, value) not in disabled
+        for value in normalized_ids
+    )
 
 
 def league_for(identifier: str) -> League:
@@ -94,8 +163,12 @@ __all__ = [
     "LEAGUE_BY_ID",
     "ESPN_SCOREBOARD_PATHS",
     "FOTMOB_LEAGUES",
+    "COLLEGE_FOOTBALL_LEAGUES",
     "TEAM_CATALOG_PATHS",
     "League",
+    "allows_college_conferences",
     "allows_my_team_selection",
+    "college_conference_settings",
+    "college_conference_key",
     "league_for",
 ]

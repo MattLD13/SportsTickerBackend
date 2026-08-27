@@ -41,6 +41,7 @@ def _display_settings(value: DisplaySettings | Mapping[str, Any] | None) -> Disp
         active_sports = {}
     return DisplaySettings(
         active_sports=active_sports,
+        active_conferences=value.get("active_conferences", {}),
         my_teams=value.get("my_teams", ()),
         mode=value.get("mode", "sports"),
         sports_filter=value.get("sports_filter", "all"),

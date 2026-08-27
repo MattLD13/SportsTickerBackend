@@ -90,3 +90,51 @@ def test_score_alerts_filtering_and_team_matching() -> None:
     matched_mls = alerts_for_settings(raw_alerts, settings_mls)
     assert len(matched_mls) == 1
     assert matched_mls[0]["team_abbr"] == "SEA"
+
+
+def test_cfb_score_alerts_follow_conference_filters() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    tracker.ingest([
+        {
+            "kind": "scoreboard",
+            "id": "cfb-1",
+            "sport": "ncf_fbs",
+            "state": "in",
+            "home_abbr": "TCU",
+            "away_abbr": "UNC",
+            "home_score": 0,
+            "away_score": 0,
+            "home_conference_id": "4",
+            "away_conference_id": "1",
+        }
+    ])
+    tracker.ingest([
+        {
+            "kind": "scoreboard",
+            "id": "cfb-1",
+            "sport": "ncf_fbs",
+            "state": "in",
+            "home_abbr": "TCU",
+            "away_abbr": "UNC",
+            "home_score": 7,
+            "away_score": 0,
+            "home_conference_id": "4",
+            "away_conference_id": "1",
+        }
+    ])
+    alerts = tracker.recent()
+
+    assert len(alerts_for_settings(
+        alerts,
+        DisplaySettings(
+            my_teams=("ncf_fbs:TCU",),
+            active_conferences={"ncf_fbs:4": False},
+        ),
+    )) == 1
+    assert alerts_for_settings(
+        alerts,
+        DisplaySettings(
+            my_teams=("ncf_fbs:TCU",),
+            active_conferences={"ncf_fbs:4": False, "ncf_fbs:1": False},
+        ),
+    ) == ()

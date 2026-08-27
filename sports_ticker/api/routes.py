@@ -611,6 +611,7 @@ def _ticker_value(ticker: Any) -> dict[str, Any]:
 def _display_settings_value(settings: DisplaySettings) -> dict[str, Any]:
     return {
         "active_sports": _json_value(settings.active_sports),
+        "active_conferences": _json_value(settings.active_conferences),
         "my_teams": list(settings.my_teams),
         "mode": settings.mode,
         "sports_filter": settings.sports_filter,

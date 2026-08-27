@@ -7,6 +7,8 @@ from threading import Lock
 from time import time
 from typing import Any, Callable
 
+from sports_ticker.leagues import allows_college_conferences
+
 from .sports_display import matches_followed_team, sport_family
 
 
@@ -234,6 +236,8 @@ class ScoreAlertTracker:
                             "home_score": home,
                             "away_score": away,
                             "status": status,
+                            "home_conference_id": game.get("home_conference_id", ""),
+                            "away_conference_id": game.get("away_conference_id", ""),
                         }
                     )
             self._scores = {key: value for key, value in self._scores.items() if key in current_ids}
@@ -259,7 +263,15 @@ def alerts_for_settings(
     return tuple(
         alert
         for alert in alerts
-        if matches_followed_team(
+        if allows_college_conferences(
+            str(alert.get("sport") or ""),
+            (
+                alert.get("home_conference_id"),
+                alert.get("away_conference_id"),
+            ),
+            getattr(settings, "active_conferences", {}),
+        )
+        and matches_followed_team(
             str(alert.get("sport") or ""),
             str(alert.get("team_abbr") or ""),
             followed,

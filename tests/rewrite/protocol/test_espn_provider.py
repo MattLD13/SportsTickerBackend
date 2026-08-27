@@ -16,7 +16,20 @@ from sports_ticker.providers.espn import (
 )
 
 
-def _event(event_id: str, start: str, *, state: str = "pre") -> dict:
+def _event(
+    event_id: str,
+    start: str,
+    *,
+    state: str = "pre",
+    home_conference_id: str | None = None,
+    away_conference_id: str | None = None,
+) -> dict:
+    home_team = {"abbreviation": "NYG", "color": "0B2265", "alternateColor": "A71930"}
+    away_team = {"abbreviation": "DAL", "color": "041E42", "alternateColor": "869397"}
+    if home_conference_id is not None:
+        home_team["conferenceId"] = home_conference_id
+    if away_conference_id is not None:
+        away_team["conferenceId"] = away_conference_id
     return {
         "id": event_id,
         "date": start,
@@ -27,12 +40,12 @@ def _event(event_id: str, start: str, *, state: str = "pre") -> dict:
                     {
                         "homeAway": "home",
                         "score": "0",
-                        "team": {"abbreviation": "NYG", "color": "0B2265", "alternateColor": "A71930"},
+                        "team": home_team,
                     },
                     {
                         "homeAway": "away",
                         "score": "0",
-                        "team": {"abbreviation": "DAL", "color": "041E42", "alternateColor": "869397"},
+                        "team": away_team,
                     },
                 ]
             }
@@ -77,6 +90,86 @@ class RecordingClient:
 
 def _settings() -> DisplaySettings:
     return DisplaySettings(timezone="America/New_York")
+
+
+def test_cfb_conference_filters_preserve_team_ids_and_keep_mixed_games() -> None:
+    hidden = _event(
+        "cfb-hidden",
+        "2026-08-16T15:00:00Z",
+        home_conference_id="4",
+        away_conference_id="4",
+    )
+    mixed = _event(
+        "cfb-mixed",
+        "2026-08-16T16:00:00Z",
+        home_conference_id="4",
+        away_conference_id="1",
+    )
+    client = RecordingClient(
+        {"20260816-20260817": {"events": [hidden, mixed]}}
+    )
+    provider = EspnScoreboardProvider(
+        {"ncf_fbs": "https://example.test/football/college-football/scoreboard?groups=80"},
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 7, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch(
+        DisplaySettings(
+            timezone="America/New_York",
+            active_conferences={"ncf_fbs:4": False},
+            my_teams=("ncf_fbs:NYG",),
+        )
+    )
+
+    assert [item.id for item in result.content] == ["cfb-mixed"]
+    assert result.content[0].data["home_conference_id"] == "4"
+    assert result.content[0].data["away_conference_id"] == "1"
+    assert result.content[0].data["sport"] == "ncf_fbs"
+    assert result.health.healthy is True
+
+    hidden_result = provider.fetch(
+        DisplaySettings(
+            timezone="America/New_York",
+            active_conferences={"ncf_fbs:4": False, "ncf_fbs:1": False},
+        )
+    )
+    assert hidden_result.content == ()
+
+
+def test_unchanged_controller_active_sports_map_controls_cfb_conferences() -> None:
+    hidden = _event(
+        "cfb-hidden-through-legacy-map",
+        "2026-08-16T15:00:00Z",
+        home_conference_id="4",
+        away_conference_id="4",
+    )
+    visible = _event(
+        "cfb-visible-through-legacy-map",
+        "2026-08-16T16:00:00Z",
+        home_conference_id="1",
+        away_conference_id="1",
+    )
+    client = RecordingClient(
+        {"20260816-20260817": {"events": [hidden, visible]}}
+    )
+    provider = EspnScoreboardProvider(
+        {"ncf_fbs": "https://example.test/football/college-football/scoreboard?groups=80"},
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 7, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch(
+        DisplaySettings(
+            timezone="America/New_York",
+            active_sports={"ncf_fbs:4": False},
+            my_teams=("ncf_fbs:TCU",),
+        )
+    )
+
+    assert [item.id for item in result.content] == ["cfb-visible-through-legacy-map"]
+    assert result.content[0].data["sport"] == "ncf_fbs"
+    assert result.content[0].data["home_conference_id"] == "1"
 
 
 def test_espn_after_three_requests_current_date_and_accepts_event() -> None:

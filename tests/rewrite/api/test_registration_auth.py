@@ -112,6 +112,42 @@ def test_partial_display_settings_patch_preserves_other_ticker_controls(tmp_path
         app.extensions["sports_ticker.backend_application"].close()
 
 
+def test_conference_filter_patch_round_trips_without_changing_my_teams(tmp_path) -> None:
+    """Persist conference filters while retaining the existing CFB team selection."""
+
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    try:
+        client = app.test_client()
+        registration = _register(client, "pi-cfb")
+        exchange = client.post(
+            "/api/v2/pairings/exchange",
+            json={"pairing_code": registration["pairing_code"]},
+        )
+        headers = {"Authorization": f"Bearer {exchange.get_json()['controller_token']}"}
+
+        response = client.patch(
+            "/api/v2/tickers/pi-cfb",
+            headers=headers,
+            json={
+                "display_settings": {
+                    "active_sports": {"ncf_fbs:4": False},
+                    "my_teams": ["ncf_fbs:TCU"],
+                }
+            },
+        )
+
+        assert response.status_code == 200
+        settings = response.get_json()["display_settings"]
+        assert settings["active_sports"]["ncf_fbs:4"] is False
+        assert settings["active_conferences"] == {"ncf_fbs:4": False}
+        assert settings["my_teams"] == ["ncf_fbs:TCU"]
+        assert app.extensions["sports_ticker.backend_application"].get_ticker(
+            "pi-cfb"
+        ).display_settings.active_conferences == {"ncf_fbs:4": False}
+    finally:
+        app.extensions["sports_ticker.backend_application"].close()
+
+
 def test_live_delay_patch_isolated_to_target_ticker(tmp_path) -> None:
     """Keep live delay changes isolated when one controller owns multiple tickers."""
 

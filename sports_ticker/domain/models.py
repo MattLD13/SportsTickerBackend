@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
 
-from sports_ticker.leagues import allows_my_team_selection
+from sports_ticker.leagues import allows_my_team_selection, college_conference_settings
 CONTENT_FAMILIES: tuple[str, ...] = (
     "sports",
     "weather",
@@ -107,6 +107,7 @@ class DisplaySettings:
     scroll_seamless: bool = True
     scroll_speed: float = 0.03
     score_alerts: bool = True
+    active_conferences: Mapping[str, bool] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Copy mutable input and normalize scalar settings."""
@@ -116,7 +117,18 @@ class DisplaySettings:
             str(sport).strip().lower(): bool(enabled)
             for sport, enabled in active_sports.items()
         }
+        active_conferences = self.active_conferences if hasattr(self.active_conferences, "items") else {}
+        conference_normalized = {
+            str(conference).strip().lower(): bool(enabled)
+            for conference, enabled in active_conferences.items()
+            if str(conference).strip()
+        }
+        # The unchanged controller sends conference toggles through active_sports.
+        # Keep both settings views aligned for every backend consumer.
+        conference_normalized.update(college_conference_settings(normalized))
+        normalized.update(conference_normalized)
         object.__setattr__(self, "active_sports", MappingProxyType(normalized))
+        object.__setattr__(self, "active_conferences", MappingProxyType(conference_normalized))
         teams = self.my_teams if isinstance(self.my_teams, (list, tuple, set, frozenset)) else ()
         object.__setattr__(
             self,
