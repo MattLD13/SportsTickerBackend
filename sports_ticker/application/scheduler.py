@@ -407,6 +407,13 @@ class RefreshScheduler:
                 ),
             )
 
+    def close(self) -> None:
+        """Close the refresh service and its owned providers."""
+
+        close = getattr(self._refresh_service, "close", None)
+        if callable(close):
+            close()
+
 
 def _advance_due(next_due: float, now: float, interval: float) -> float:
     """Advance a due time beyond the current monotonic reading."""

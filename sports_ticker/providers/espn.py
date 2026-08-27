@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sports_ticker.domain import ContentItem, DisplaySettings
 
 from .contracts import ProviderHealth, ProviderResult
+from .espn_fastcast import EspnFastcastSource
 from .http import JsonHttpClient, UrllibJsonHttpClient
 from .logo_overrides import corrected_logo
 from .score_alerts import ScoreAlertTracker, alerts_for_settings
@@ -93,13 +94,14 @@ class _RawScoreboardResponse:
     error: str | None
     request_failed: bool
     completed_at: float
+    payload: Any | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class _RawSummaryResponse:
-    """Store one canonical ESPN summary response or its short-lived failure."""
+class _RawEventScoreboardResponse:
+    """Store one canonical ESPN single-event scoreboard response."""
 
-    payload: Any | None
+    payload: Mapping[str, Any] | None
     error: str | None
     completed_at: float
 
@@ -137,6 +139,7 @@ class EspnScoreboardProvider:
         timeout: float = 10.0,
         now: Callable[[], datetime] | None = None,
         monotonic: Callable[[], float] | None = None,
+        fastcast: EspnFastcastSource | None = None,
     ) -> None:
         if not isinstance(scoreboard_urls, Mapping):
             raise TypeError("scoreboard_urls must be a mapping")
@@ -146,7 +149,9 @@ class EspnScoreboardProvider:
             if str(league).strip() and str(url).strip()
         }
         self.scoreboard_urls = MappingProxyType(urls)
-        self._summary_urls = {league: _summary_url(url) for league, url in urls.items()}
+        self._event_scoreboard_urls = {
+            league: _event_scoreboard_url(url) for league, url in urls.items()
+        }
         self.client = client or UrllibJsonHttpClient()
         self.timeout = float(timeout)
         if not isfinite(self.timeout) or self.timeout <= 0:
@@ -160,9 +165,10 @@ class EspnScoreboardProvider:
         self._source_cache: dict[tuple[object, ...], tuple[float, _ScoreboardSource]] = {}
         self._scoreboard_cache: dict[str, _RawScoreboardResponse] = {}
         self._scoreboard_inflight: dict[str, Event] = {}
-        self._summary_cache: dict[tuple[str, str], _RawSummaryResponse] = {}
-        self._summary_inflight: dict[tuple[str, str], Event] = {}
+        self._event_scoreboard_cache: dict[tuple[str, str], _RawEventScoreboardResponse] = {}
+        self._event_scoreboard_inflight: dict[tuple[str, str], Event] = {}
         self._league_schedules: dict[tuple[str, str, date], _LeagueSchedule] = {}
+        self._fastcast = fastcast
         self._source_cache_lock = RLock()
         self._raw_cache_lock = RLock()
 
@@ -177,6 +183,12 @@ class EspnScoreboardProvider:
         identifier = str(ticker_id).strip()
         tracker = self._score_alerts_by_ticker.setdefault(identifier, ScoreAlertTracker())
         return self._fetch(settings, tracker, cache_source=True)
+
+    def close(self) -> None:
+        """Stop the optional shared Fastcast stream."""
+
+        if self._fastcast is not None:
+            self._fastcast.close()
 
     def _fetch(
         self,
@@ -251,6 +263,8 @@ class EspnScoreboardProvider:
     ) -> "_ScoreboardSource":
         """Read one shared ESPN source view for all tickers with matching source settings."""
 
+        if self._fastcast is not None:
+            self._fastcast.start()
         items: list[ContentItem] = []
         errors: list[str] = []
         seen_events: set[tuple[str, str]] = set()
@@ -266,38 +280,45 @@ class EspnScoreboardProvider:
         discovery_ages: dict[str, float] = {}
         refresh_leagues: list[tuple[str, str]] = []
         live_refreshes: list[tuple[str, Mapping[str, Any]]] = []
-        scoreboard_detail_suppressed: set[str] = set()
+        live_detail_suppressed: set[str] = set()
         for league, url in active_leagues:
             cache_key = (settings.timezone, league, schedule_day)
             cached = self._league_schedules.get(cache_key) if cache_schedule else None
+            schedule_events = (
+                self._fastcast_events(league, cached.events)
+                if cached is not None and cache_schedule
+                else cached.events if cached is not None else ()
+            )
             if cached is None:
                 refresh_leagues.append((league, url))
             elif monotonic_now - cached.discovery_at >= _FULL_SCOREBOARD_DISCOVERY_INTERVAL:
-                cached_events[league] = cached.events
+                cached_events[league] = schedule_events
                 discovery_ages[league] = cached.discovery_at
                 refresh_leagues.append((league, url))
-            elif _league_needs_refresh(cached.events, current):
-                cached_events[league] = cached.events
+            elif _league_needs_refresh(schedule_events, current):
+                cached_events[league] = schedule_events
                 discovery_ages[league] = cached.discovery_at
-                if self._summary_urls.get(league):
-                    live_events = _unique_live_events(cached.events, current)
+                if self._fastcast_active(league):
+                    live_detail_suppressed.add(league)
+                elif self._event_scoreboard_urls.get(league):
+                    live_events = _unique_live_events(schedule_events, current)
                     if len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
                         refresh_leagues.append((league, url))
-                        scoreboard_detail_suppressed.add(league)
+                        live_detail_suppressed.add(league)
                     else:
                         live_refreshes.extend((league, event) for event in live_events)
                 else:
                     refresh_leagues.append((league, url))
             else:
-                cached_events[league] = cached.events
+                cached_events[league] = schedule_events
                 discovery_ages[league] = cached.discovery_at
 
         events_by_league: dict[str, tuple[Mapping[str, Any], ...]] = dict(cached_events)
-        summary_payloads: dict[tuple[str, str], Any] = {}
-        attempted_summary_ids: set[tuple[str, str]] = set()
+        live_update_payloads: dict[tuple[str, str], Any] = {}
+        attempted_live_update_ids: set[tuple[str, str]] = set()
         failed_leagues: set[str] = set()
         invalid_leagues: set[str] = set()
-        summary_futures: dict[tuple[str, str], Any] = {}
+        live_update_futures: dict[tuple[str, str], Any] = {}
         workers = min(
             8,
             max(1, len(refresh_leagues) + len(live_refreshes), _FULL_SCOREBOARD_REFRESH_THRESHOLD - 1),
@@ -309,15 +330,16 @@ class EspnScoreboardProvider:
             scoreboard_futures = {
                 league: pool.submit(
                     self._read_scoreboard,
+                    league,
                     url,
                     dates,
                     cache_source=cache_schedule,
                 )
                 for league, url in refresh_leagues
             }
-            summary_futures.update({
+            live_update_futures.update({
                 (league, str(event.get("id") or "").strip()): pool.submit(
-                    self._read_summary,
+                    self._read_event_scoreboard,
                     league,
                     str(event.get("id") or "").strip(),
                     cache_source=cache_schedule,
@@ -351,29 +373,35 @@ class EspnScoreboardProvider:
                             (settings.timezone, league, schedule_day)
                         ].discovery_at
                     live_events = _unique_live_events(events, current)
-                    if self._summary_urls.get(league):
+                    for event in live_events:
+                        event_id = str(event.get("id") or "").strip()
+                        if event_id:
+                            live_update_payloads.setdefault((league, event_id), event)
+                    if self._fastcast_active(league):
+                        live_detail_suppressed.add(league)
+                    elif self._event_scoreboard_urls.get(league):
                         if len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
-                            scoreboard_detail_suppressed.add(league)
+                            live_detail_suppressed.add(league)
                         elif cache_schedule:
                             for event in live_events:
                                 event_id = str(event.get("id") or "").strip()
-                                if event_id and (league, event_id) not in summary_futures:
-                                    summary_futures[(league, event_id)] = pool.submit(
-                                        self._read_summary,
+                                if event_id and (league, event_id) not in live_update_futures:
+                                    live_update_futures[(league, event_id)] = pool.submit(
+                                        self._read_event_scoreboard,
                                         league,
                                         event_id,
                                         cache_source=cache_schedule,
                                     )
-            for (league, event_id), future in summary_futures.items():
-                attempted_summary_ids.add((league, event_id))
+            for (league, event_id), future in live_update_futures.items():
+                attempted_live_update_ids.add((league, event_id))
                 try:
-                    summary = future.result()
+                    update = future.result()
                 except Exception:
                     continue
-                summary_payloads[(league, event_id)] = summary
+                live_update_payloads[(league, event_id)] = update
                 events = events_by_league.get(league, ())
                 events_by_league[league] = tuple(
-                    _summary_event(summary, event) if str(event.get("id") or "").strip() == event_id else event
+                    _event_update(update, event) if str(event.get("id") or "").strip() == event_id else event
                     for event in events
                 )
                 if cache_schedule:
@@ -384,9 +412,9 @@ class EspnScoreboardProvider:
                     )
 
         failed_sources = len(failed_leagues)
-        suppressed_summary_ids = {
+        suppressed_live_update_ids = {
             (league, str(event.get("id") or "").strip())
-            for league in scoreboard_detail_suppressed
+            for league in live_detail_suppressed
             for event in events_by_league.get(league, ())
             if str(event.get("id") or "").strip() and _event_needs_live_refresh(event, current)
         }
@@ -416,9 +444,9 @@ class EspnScoreboardProvider:
                 sorted(
                     self._enrich_live_items(
                         items,
-                        summary_payloads=summary_payloads,
-                        attempted_summary_ids=attempted_summary_ids,
-                        suppressed_summary_ids=suppressed_summary_ids,
+                        update_payloads=live_update_payloads,
+                        attempted_update_ids=attempted_live_update_ids,
+                        suppressed_update_ids=suppressed_live_update_ids,
                     ),
                     key=sports_content_sort_key,
                 )
@@ -430,8 +458,32 @@ class EspnScoreboardProvider:
             observed_at=datetime.now(timezone.utc),
         )
 
+    def _fastcast_active(self, league: str) -> bool:
+        """Return whether one league can use its shared Fastcast state."""
+
+        return self._fastcast is not None and self._fastcast.active(league)
+
+    def _fastcast_events(
+        self,
+        league: str,
+        fallback: Sequence[Mapping[str, Any]],
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Merge one Fastcast snapshot over the last complete schedule."""
+
+        if self._fastcast is None:
+            return tuple(fallback)
+        snapshot = self._fastcast.snapshot(league)
+        if snapshot is None:
+            return tuple(fallback)
+        try:
+            events = _events(snapshot)
+        except (TypeError, ValueError):
+            return tuple(fallback)
+        return _merge_event_collections(fallback, events)
+
     def _read_scoreboard(
         self,
+        league: str,
         url: str,
         dates: Sequence[date],
         *,
@@ -442,6 +494,8 @@ class EspnScoreboardProvider:
         request_url = _scoreboard_url_for_dates(url, dates)
         if not cache_source:
             payload = self.client.get_json(request_url, timeout=self.timeout)
+            if self._fastcast is not None:
+                self._fastcast.prime(league, payload)
             return _events(payload)
 
         response = self._cached_scoreboard(request_url)
@@ -450,28 +504,30 @@ class EspnScoreboardProvider:
                 response.error,
                 request_failed=response.request_failed,
             )
+        if self._fastcast is not None and response.payload is not None:
+            self._fastcast.prime(league, response.payload)
         return response.events or ()
 
-    def _read_summary(
+    def _read_event_scoreboard(
         self,
         league: str,
         event_id: str,
         *,
         cache_source: bool = False,
-    ) -> Any:
-        """Read one live event without downloading the full league schedule."""
+    ) -> Mapping[str, Any]:
+        """Read one live event from ESPN's compact single-event scoreboard resource."""
 
-        template = self._summary_urls.get(league)
+        template = self._event_scoreboard_urls.get(league)
         if not template:
             return {}
         request_url = template.format(event_id)
         if not cache_source:
-            return self.client.get_json(request_url, timeout=self.timeout)
+            return _event_payload(self.client.get_json(request_url, timeout=self.timeout))
 
-        response = self._cached_summary((league, event_id), request_url)
+        response = self._cached_event_scoreboard((league, event_id), request_url)
         if response.error:
             raise RuntimeError(response.error)
-        return response.payload
+        return response.payload or {}
 
     def _cached_scoreboard(self, request_url: str) -> _RawScoreboardResponse:
         """Read one scoreboard URL once per freshness window, including temporary failures."""
@@ -516,6 +572,7 @@ class EspnScoreboardProvider:
                         error=None,
                         request_failed=False,
                         completed_at=self._monotonic(),
+                        payload=payload,
                     )
         finally:
             with self._raw_cache_lock:
@@ -525,46 +582,47 @@ class EspnScoreboardProvider:
                     active.set()
         return response
 
-    def _cached_summary(
+    def _cached_event_scoreboard(
         self,
         key: tuple[str, str],
         request_url: str,
-    ) -> _RawSummaryResponse:
-        """Read one summary URL once per freshness window, including temporary failures."""
+    ) -> _RawEventScoreboardResponse:
+        """Read one event scoreboard once per freshness window, including failures."""
 
         while True:
             with self._raw_cache_lock:
                 now = self._monotonic()
-                cached = self._summary_cache.get(key)
+                cached = self._event_scoreboard_cache.get(key)
                 if cached is not None and 0 <= now - cached.completed_at < _SOURCE_CACHE_SECONDS:
                     return cached
-                waiter = self._summary_inflight.get(key)
+                waiter = self._event_scoreboard_inflight.get(key)
                 if waiter is None:
                     waiter = Event()
-                    self._summary_inflight[key] = waiter
+                    self._event_scoreboard_inflight[key] = waiter
                     break
             waiter.wait()
 
-        response: _RawSummaryResponse
+        response: _RawEventScoreboardResponse
         try:
             try:
                 payload = self.client.get_json(request_url, timeout=self.timeout)
+                event = _event_payload(payload)
             except Exception as error:
-                response = _RawSummaryResponse(
+                response = _RawEventScoreboardResponse(
                     payload=None,
                     error=str(error) or type(error).__name__,
                     completed_at=self._monotonic(),
                 )
             else:
-                response = _RawSummaryResponse(
-                    payload=payload,
+                response = _RawEventScoreboardResponse(
+                    payload=event,
                     error=None,
                     completed_at=self._monotonic(),
                 )
         finally:
             with self._raw_cache_lock:
-                self._summary_cache[key] = response
-                active = self._summary_inflight.pop(key, None)
+                self._event_scoreboard_cache[key] = response
+                active = self._event_scoreboard_inflight.pop(key, None)
                 if active is not None:
                     active.set()
         return response
@@ -598,32 +656,32 @@ class EspnScoreboardProvider:
         league: str,
         item: ContentItem,
         *,
-        summary: Any | None = None,
+        update: Any | None = None,
     ) -> ContentItem:
         """Add detailed live facts after scoreboard projection completes."""
 
         if str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}:
             return item
-        template = self._summary_urls.get(league)
+        template = self._event_scoreboard_urls.get(league)
         if not template:
             return item
 
-        if summary is None:
+        if update is None:
             try:
-                summary = self.client.get_json(template.format(item.id), timeout=self.timeout)
+                update = self._read_event_scoreboard(league, item.id, cache_source=True)
             except Exception:
                 return item
-        details = _summary_scoring_details(summary, item.data)
+        details = _event_scoring_details(update, item.data)
         details.update(
-            _mlb_summary_details(summary)
+            _mlb_event_details(update)
             if league == "mlb"
-            else _nhl_summary_details(summary, item.data)
+            else _nhl_event_details(update, item.data)
             if league == "nhl"
-            else _soccer_summary_details(summary, item.data)
+            else _soccer_event_details(update, item.data)
             if league.startswith("soccer")
             else display_situation(
                 league,
-                _first_mapping(_mapping(summary.get("header")).get("competitions")),
+                _event_competition(update),
                 home_abbr=str(item.data.get("home_abbr") or ""),
                 away_abbr=str(item.data.get("away_abbr") or ""),
             )
@@ -653,9 +711,9 @@ class EspnScoreboardProvider:
         self,
         items: Sequence[ContentItem],
         *,
-        summary_payloads: Mapping[tuple[str, str], Any] | None = None,
-        attempted_summary_ids: set[tuple[str, str]] | None = None,
-        suppressed_summary_ids: set[tuple[str, str]] | None = None,
+        update_payloads: Mapping[tuple[str, str], Any] | None = None,
+        attempted_update_ids: set[tuple[str, str]] | None = None,
+        suppressed_update_ids: set[tuple[str, str]] | None = None,
     ) -> list[ContentItem]:
         """Fetch live game details concurrently without blocking other scoreboards."""
 
@@ -664,15 +722,15 @@ class EspnScoreboardProvider:
             (index, item)
             for index, item in indexed
             if str(item.data.get("state") or "").lower() in {"in", "half", "crit"}
-            and str(item.data.get("sport") or "") in self._summary_urls
+            and str(item.data.get("sport") or "") in self._event_scoreboard_urls
             and not (
-                suppressed_summary_ids
-                and (str(item.data.get("sport") or ""), item.id) in suppressed_summary_ids
+                suppressed_update_ids
+                and (str(item.data.get("sport") or ""), item.id) in suppressed_update_ids
             )
             and not (
-                attempted_summary_ids
-                and (str(item.data.get("sport") or ""), item.id) in attempted_summary_ids
-                and (str(item.data.get("sport") or ""), item.id) not in (summary_payloads or {})
+                attempted_update_ids
+                and (str(item.data.get("sport") or ""), item.id) in attempted_update_ids
+                and (str(item.data.get("sport") or ""), item.id) not in (update_payloads or {})
             )
         ]
         if not targets:
@@ -685,7 +743,7 @@ class EspnScoreboardProvider:
                     self._enrich_live_item,
                     str(item.data.get("sport") or ""),
                     item,
-                    summary=(summary_payloads or {}).get(
+                    update=(update_payloads or {}).get(
                         (str(item.data.get("sport") or ""), item.id)
                     ),
                 ): index
@@ -719,24 +777,74 @@ def _events(payload: Any) -> tuple[Mapping[str, Any], ...]:
     return tuple(events)
 
 
-def _summary_event(payload: Any, fallback: Mapping[str, Any]) -> Mapping[str, Any]:
-    """Merge one ESPN event summary into its cached scoreboard event."""
+def _event_payload(payload: Any) -> Mapping[str, Any]:
+    """Extract one event from ESPN's single-event scoreboard response."""
 
-    summary = _mapping(payload)
-    header = _mapping(summary.get("header"))
-    competition = _first_mapping(header.get("competitions"))
+    source = _mapping(payload)
+    if source.get("id"):
+        return source
+    events = _events(source)
+    event = next((item for item in events if _mapping(item).get("id")), None)
+    if not isinstance(event, Mapping):
+        raise TypeError("single-event scoreboard response omitted event")
+    return event
+
+
+def _merge_event_collections(
+    fallback: Sequence[Mapping[str, Any]],
+    updates: Sequence[Mapping[str, Any]],
+) -> tuple[Mapping[str, Any], ...]:
+    """Merge one Fastcast event collection into its complete schedule."""
+
+    updates_by_id = {
+        str(event.get("id") or "").strip(): event
+        for event in updates
+        if str(event.get("id") or "").strip()
+    }
+    merged: list[Mapping[str, Any]] = []
+    seen: set[str] = set()
+    for event in fallback:
+        event_id = str(event.get("id") or "").strip()
+        update = updates_by_id.get(event_id)
+        merged.append(_event_update(update, event) if update is not None else event)
+        if event_id:
+            seen.add(event_id)
+    merged.extend(
+        event
+        for event_id, event in updates_by_id.items()
+        if event_id not in seen
+    )
+    return tuple(merged)
+
+
+def _event_update(payload: Any, fallback: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Merge one native ESPN event update into its cached scoreboard event."""
+
+    source = _mapping(payload)
+    header = _mapping(source.get("header"))
+    competition = _first_mapping(
+        header.get("competitions") or source.get("competitions")
+    )
     if not competition:
         return fallback
     event = dict(fallback)
-    event_id = str(event.get("id") or header.get("id") or competition.get("id") or "").strip()
+    event_id = str(
+        event.get("id")
+        or header.get("id")
+        or source.get("id")
+        or competition.get("id")
+        or ""
+    ).strip()
     if event_id:
         event["id"] = event_id
-    if competition.get("date") or header.get("date"):
-        event["date"] = competition.get("date") or header.get("date")
+    if competition.get("date") or header.get("date") or source.get("date"):
+        event["date"] = competition.get("date") or header.get("date") or source.get("date")
     fallback_status = _mapping(event.get("status"))
-    summary_status = _mapping(competition.get("status") or header.get("status"))
-    if _status_rank(summary_status) >= _status_rank(fallback_status):
-        event["status"] = _merge_mapping(fallback_status, summary_status)
+    update_status = _mapping(
+        competition.get("status") or header.get("status") or source.get("status")
+    )
+    if _status_rank(update_status) >= _status_rank(fallback_status):
+        event["status"] = _merge_mapping(fallback_status, update_status)
     scoreboard_competition = _first_mapping(event.get("competitions"))
     merged_competition = _merge_mapping(scoreboard_competition, competition)
     merged_competition["competitors"] = _merge_competitors(
@@ -744,14 +852,22 @@ def _summary_event(payload: Any, fallback: Mapping[str, Any]) -> Mapping[str, An
         competition.get("competitors"),
     )
     scoreboard_situation = _mapping(scoreboard_competition.get("situation"))
-    summary_situation = _mapping(summary.get("situation"))
-    if scoreboard_situation or summary_situation:
+    update_situation = _mapping(source.get("situation"))
+    if scoreboard_situation or update_situation:
         merged_competition["situation"] = _merge_mapping(
             scoreboard_situation,
-            summary_situation,
+            update_situation,
         )
     event["competitions"] = [merged_competition]
     return event
+
+
+def _event_competition(payload: Any) -> Mapping[str, Any]:
+    """Read one competition from an ESPN event response."""
+
+    source = _mapping(payload)
+    header = _mapping(source.get("header"))
+    return _first_mapping(header.get("competitions") or source.get("competitions"))
 
 
 def _is_current_event(
@@ -856,7 +972,7 @@ def _unique_live_events(
 
 
 def _status_rank(status: Mapping[str, Any]) -> int:
-    """Rank summary status without allowing a live event to regress to pregame."""
+    """Rank event status without allowing a live event to regress to pregame."""
 
     state = str(_mapping(status.get("type")).get("state") or "pre").strip().lower()
     if state in {"post", "final"}:
@@ -880,7 +996,7 @@ def _merge_mapping(
 
 
 def _merge_competitors(base: Any, overlay: Any) -> list[Mapping[str, Any]]:
-    """Merge summary competitors without dropping scoreboard team metadata."""
+    """Merge event competitors without dropping scoreboard team metadata."""
 
     scoreboard = list(_sequence(base))
     summary = list(_sequence(overlay))
@@ -1050,19 +1166,18 @@ def _team(competitor: Mapping[str, Any]) -> Mapping[str, Any]:
     }
 
 
-def _summary_url(scoreboard_url: str) -> str:
-    """Derive the matching ESPN event-summary endpoint from one scoreboard URL."""
+def _event_scoreboard_url(scoreboard_url: str) -> str:
+    """Derive ESPN's compact single-event scoreboard endpoint from one league URL."""
 
     endpoint = scoreboard_url.split("?", 1)[0].rstrip("/")
-    base = endpoint.rsplit("/scoreboard", 1)[0]
-    return f"{base}/summary?event={{}}"
+    return f"{endpoint}/{{}}"
 
 
-def _nhl_summary_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
-    """Read power-play, empty-net, and shootout state from a live NHL summary."""
+def _nhl_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
+    """Read power-play, empty-net, and shootout state from a live NHL event."""
 
     summary = _mapping(payload)
-    competition = _first_mapping(_mapping(summary.get("header")).get("competitions"))
+    competition = _event_competition(summary)
     source = _mapping(summary.get("situation")) or _mapping(competition.get("situation"))
     if not source and not competition:
         return {}
@@ -1088,24 +1203,24 @@ def _nhl_summary_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any
         elif home_goalie == 0:
             details["emptyNet"] = True
             details["emptyNetSide"] = home_abbr
-    shootout = _shootout_summary(summary)
+    shootout = _shootout_details(summary)
     if shootout is not None:
         details["shootout"] = shootout
     return details
 
 
-def _soccer_summary_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
-    """Read goal, red-card, and penalty facts from an ESPN soccer summary."""
+def _soccer_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
+    """Read goal, red-card, and penalty facts from a live soccer event."""
 
     summary = _mapping(payload)
-    competition = _first_mapping(_mapping(summary.get("header")).get("competitions"))
+    competition = _event_competition(summary)
     source = _mapping(summary.get("situation")) or _mapping(competition.get("situation"))
     home_abbr = str(item.get("home_abbr") or "")
     away_abbr = str(item.get("away_abbr") or "")
     details = display_situation("soccer", competition, home_abbr=home_abbr, away_abbr=away_abbr)
     goals: list[dict[str, Any]] = []
     cards: list[dict[str, Any]] = []
-    for play in _summary_plays(summary):
+    for play in _event_plays(summary):
         text = " ".join(
             str(value or "")
             for value in (
@@ -1114,11 +1229,11 @@ def _soccer_summary_details(payload: Any, item: Mapping[str, Any]) -> dict[str, 
         ).lower()
         if "goal" not in text and "red" not in text:
             continue
-        team = _summary_team_abbr(play, competition, home_abbr, away_abbr)
+        team = _event_team_abbr(play, competition, home_abbr, away_abbr)
         event = soccer_event(
             is_home=team == home_abbr,
-            player=_summary_player(play),
-            minute=_summary_clock(play),
+            player=_event_player(play),
+            minute=_event_clock(play),
             own_goal="own goal" in text,
         )
         if "goal" in text:
@@ -1129,16 +1244,16 @@ def _soccer_summary_details(payload: Any, item: Mapping[str, Any]) -> dict[str, 
         details["goal_events"] = goals
     if cards:
         details["red_cards"] = cards
-    shootout = _shootout_summary(summary)
+    shootout = _shootout_details(summary)
     if shootout is not None:
         details["shootout"] = shootout
     if source.get("possession"):
-        details["possession"] = _summary_team_abbr(source, competition, home_abbr, away_abbr)
+        details["possession"] = _event_team_abbr(source, competition, home_abbr, away_abbr)
     return details
 
 
-def _summary_plays(summary: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
-    """Return event-like summary records without depending on one ESPN shape."""
+def _event_plays(summary: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    """Return event-like records without depending on one ESPN shape."""
 
     records: list[Mapping[str, Any]] = []
     for key in ("scoringPlays", "plays", "events"):
@@ -1146,16 +1261,15 @@ def _summary_plays(summary: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
     return tuple(record for record in records if record)
 
 
-def _summary_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
+def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:
     """Normalize ESPN scoring plays for score-alert detail rendering."""
 
     summary = _mapping(payload)
-    header = _mapping(summary.get("header"))
-    competition = _first_mapping(header.get("competitions"))
+    competition = _event_competition(summary)
     home_abbr = str(item.get("home_abbr") or "")
     away_abbr = str(item.get("away_abbr") or "")
     raw_scoring = _sequence(summary.get("scoringPlays"))
-    records = raw_scoring or _summary_plays(summary)
+    records = raw_scoring or _event_plays(summary)
     scoring_plays: list[dict[str, Any]] = []
     for raw_play in records:
         play = _mapping(raw_play)
@@ -1175,10 +1289,10 @@ def _summary_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str,
         )
         if not is_scoring:
             continue
-        team = _summary_team_abbr(play, competition, home_abbr, away_abbr)
+        team = _event_team_abbr(play, competition, home_abbr, away_abbr)
         if not team:
             continue
-        athlete = _summary_player(play)
+        athlete = _event_player(play)
         scoring_type = str(
             _mapping(play.get("scoringType")).get("displayName")
             or _mapping(play.get("type")).get("text")
@@ -1197,7 +1311,7 @@ def _summary_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str,
     return {"scoring_plays": scoring_plays} if scoring_plays else {}
 
 
-def _summary_team_abbr(
+def _event_team_abbr(
     value: Mapping[str, Any],
     competition: Mapping[str, Any],
     home_abbr: str,
@@ -1217,7 +1331,7 @@ def _summary_team_abbr(
     return ""
 
 
-def _summary_player(play: Mapping[str, Any]) -> str:
+def _event_player(play: Mapping[str, Any]) -> str:
     """Return the scorer or carded player's compact surname."""
 
     athlete = _mapping(play.get("athlete") or play.get("player"))
@@ -1231,7 +1345,7 @@ def _summary_player(play: Mapping[str, Any]) -> str:
     return text.split()[-1].upper()[:12] if text else ""
 
 
-def _summary_clock(play: Mapping[str, Any]) -> str:
+def _event_clock(play: Mapping[str, Any]) -> str:
     """Return one compact event time for soccer side-lane labels."""
 
     clock = _mapping(play.get("clock"))
@@ -1240,8 +1354,8 @@ def _summary_clock(play: Mapping[str, Any]) -> str:
     return text if not text or text.endswith("'") else f"{text}'"
 
 
-def _shootout_summary(summary: Mapping[str, Any]) -> dict[str, list[str]] | None:
-    """Normalize penalty attempts when ESPN exposes them in the event summary."""
+def _shootout_details(summary: Mapping[str, Any]) -> dict[str, list[str]] | None:
+    """Normalize penalty attempts when ESPN exposes them in one event."""
 
     raw = summary.get("shootout") or summary.get("shootoutDetails") or summary.get("penaltyShootout")
     source = _mapping(raw)
@@ -1266,7 +1380,7 @@ def _shootout_summary(summary: Mapping[str, Any]) -> dict[str, list[str]] | None
     return {"home": home, "away": away} if home or away else None
 
 
-def _mlb_summary_details(payload: Any) -> dict[str, Any]:
+def _mlb_event_details(payload: Any) -> dict[str, Any]:
     """Extract the small live MLB detail set used by the full panel."""
 
     summary = _mapping(payload)

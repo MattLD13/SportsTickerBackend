@@ -128,6 +128,14 @@ class RefreshService:
             health=ProviderHealth(healthy=True, provider="refresh"),
         )
 
+    def close(self) -> None:
+        """Stop providers that own background source work."""
+
+        for provider in self._providers:
+            close = getattr(provider, "close", None)
+            if callable(close):
+                close()
+
 
 def refresh_ticker(
     ticker_id: str,

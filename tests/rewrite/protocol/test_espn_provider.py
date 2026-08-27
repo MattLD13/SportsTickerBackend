@@ -1,6 +1,7 @@
 """Verify ESPN calendar reads and canonical scoreboard filtering."""
 
 from datetime import datetime, timezone
+from copy import deepcopy
 from threading import Barrier
 from urllib.parse import parse_qs, urlsplit
 
@@ -10,8 +11,8 @@ from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.espn import (
     EspnScoreboardProvider,
     _scoreboard_url_for_dates,
-    _summary_event,
-    _summary_scoring_details,
+    _event_update,
+    _event_scoring_details,
 )
 
 
@@ -44,19 +45,30 @@ class RecordingClient:
         self,
         responses: dict[str, dict],
         failures: set[str] | None = None,
-        summary_responses: dict[str, dict] | None = None,
+        event_updates: dict[str, dict] | None = None,
     ) -> None:
         self.responses = responses
         self.failures = failures or set()
-        self.summary_responses = summary_responses or {}
+        self.event_updates = event_updates or {}
         self.urls: list[str] = []
 
     def get_json(self, url: str, *, timeout: float):
         del timeout
         self.urls.append(url)
-        if "/summary" in url:
-            event_id = parse_qs(urlsplit(url).query)["event"][0]
-            return self.summary_responses.get(event_id, {})
+        if "/scoreboard/" in url:
+            event_id = url.rstrip("/").rsplit("/", 1)[-1]
+            payload = self.event_updates.get(event_id, {})
+            header = payload.get("header", {}) if isinstance(payload, dict) else {}
+            competitions = header.get("competitions", []) if isinstance(header, dict) else []
+            competition = competitions[0] if competitions else None
+            if isinstance(competition, dict):
+                return {
+                    "id": event_id,
+                    "date": competition.get("date"),
+                    "status": competition.get("status"),
+                    "competitions": [competition],
+                }
+            return payload
         dates = parse_qs(urlsplit(url).query)["dates"][0]
         if dates in self.failures:
             raise RuntimeError(f"failed {dates}")
@@ -192,13 +204,11 @@ def test_espn_raw_reads_share_across_active_masks_and_timezones() -> None:
 
     class LeagueClient(RecordingClient):
         def get_json(self, url: str, *, timeout: float):
-            if "/summary" in url:
-                return super().get_json(url, timeout=timeout)
             self.urls.append(url)
             del timeout
             return {"events": [live_nfl] if "/football/" in url else [pre_mlb]}
 
-    client = LeagueClient({"20260816-20260817": {}}, summary_responses={"nfl-live": {}})
+    client = LeagueClient({"20260816-20260817": {}})
     monotonic = [0.0]
     provider = EspnScoreboardProvider(
         {
@@ -223,8 +233,8 @@ def test_espn_raw_reads_share_across_active_masks_and_timezones() -> None:
 
     assert {item.data["sport"] for item in nfl_result.content} == {"nfl"}
     assert {item.data["sport"] for item in both_result.content} == {"nfl", "mlb"}
-    assert sum("/scoreboard" in url for url in client.urls) == 2
-    assert sum("/summary" in url for url in client.urls) == 1
+    assert sum("/scoreboard" in url and "/scoreboard/" not in url for url in client.urls) == 2
+    assert sum("/scoreboard/" in url for url in client.urls) == 1
 
 
 def test_espn_raw_failure_backoff_is_shared_across_ticker_views() -> None:
@@ -344,7 +354,7 @@ def test_espn_schedule_cache_refreshes_only_at_kickoff_or_during_live_play() -> 
     assert len(client.urls) == 2
 
 
-def test_espn_live_refresh_reads_one_summary_for_one_live_game_in_large_schedule() -> None:
+def test_espn_live_refresh_reads_one_event_scoreboard_for_one_live_game_in_large_schedule() -> None:
     events = [_event("game-0", "2026-08-16T18:00:00Z")]
     events.extend(_event(f"game-{index}", "2026-08-16T19:00:00Z") for index in range(1, 100))
     live_competition = dict(events[0]["competitions"][0])
@@ -359,7 +369,7 @@ def test_espn_live_refresh_reads_one_summary_for_one_live_game_in_large_schedule
     ]
     client = RecordingClient(
         {"20260816-20260817": {"events": events}},
-        summary_responses={
+        event_updates={
             "game-0": {
                 "header": {"id": "game-0", "competitions": [live_competition]}
             }
@@ -379,11 +389,65 @@ def test_espn_live_refresh_reads_one_summary_for_one_live_game_in_large_schedule
     monotonic[0] = 6.0
     result = provider.fetch_for_ticker("ticker-two", _settings())
 
-    assert sum("/scoreboard" in url for url in client.urls) == 1
-    assert sum("/summary" in url for url in client.urls) == 1
+    assert sum("/scoreboard" in url and "/scoreboard/" not in url for url in client.urls) == 1
+    assert sum("/scoreboard/" in url for url in client.urls) == 1
     live_item = next(item for item in result.content if item.id == "game-0")
     assert live_item.data["state"] == "in"
     assert live_item.data["home_score"] == "1"
+
+
+def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None:
+    scheduled = _event("game-1", "2026-08-16T18:00:00Z")
+    live = deepcopy(scheduled)
+    live["status"] = {"type": {"state": "in", "shortDetail": "Q2 08:00"}}
+    live["competitions"][0]["competitors"][0]["score"] = "7"
+
+    class FastcastStub:
+        def __init__(self) -> None:
+            self.payload = {"events": [scheduled]}
+            self.started = False
+
+        def start(self) -> None:
+            self.started = True
+
+        def close(self) -> None:
+            self.started = False
+
+        def prime(self, league: str, payload: dict) -> None:
+            del league
+            self.payload = deepcopy(payload)
+
+        def snapshot(self, league: str):
+            del league
+            return deepcopy(self.payload)
+
+        def active(self, league: str) -> bool:
+            del league
+            return self.started
+
+    fastcast = FastcastStub()
+    client = RecordingClient({"20260816-20260817": {"events": [scheduled]}})
+    current = [datetime(2026, 8, 16, 7, tzinfo=timezone.utc)]
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {"nfl": "https://example.test/football/nfl/scoreboard"},
+        client=client,
+        fastcast=fastcast,
+        now=lambda: current[0],
+        monotonic=lambda: monotonic[0],
+    )
+
+    provider.fetch_for_ticker("ticker-one", _settings())
+    fastcast.payload = {"events": [live]}
+    current[0] = datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)
+    monotonic[0] = 6.0
+    result = provider.fetch_for_ticker("ticker-two", _settings())
+
+    live_item = next(item for item in result.content if item.id == "game-1")
+    assert live_item.data["state"] == "in"
+    assert live_item.data["home_score"] == "7"
+    assert len(client.urls) == 1
+    assert all("/scoreboard/" not in url for url in client.urls)
 
 
 def test_espn_five_live_games_use_one_scoreboard_refresh() -> None:
@@ -395,8 +459,6 @@ def test_espn_five_live_games_use_one_scoreboard_refresh() -> None:
             self.scoreboard_calls = 0
 
         def get_json(self, url: str, *, timeout: float):
-            if "/summary" in url:
-                raise AssertionError("five live games must use one scoreboard request")
             self.scoreboard_calls += 1
             del timeout
             self.urls.append(url)
@@ -425,12 +487,12 @@ def test_espn_five_live_games_use_one_scoreboard_refresh() -> None:
     result = provider.fetch_for_ticker("ticker-two", _settings())
 
     assert client.scoreboard_calls == 2
-    assert sum("/summary" in url for url in client.urls) == 0
+    assert all("/summary" not in url for url in client.urls)
     assert {item.data["state"] for item in result.content} == {"in"}
 
 
 @pytest.mark.parametrize("count", (5, 10, 100))
-def test_espn_cold_dense_live_set_uses_one_scoreboard_without_summary_fanout(count: int) -> None:
+def test_espn_cold_dense_live_set_uses_one_scoreboard_request(count: int) -> None:
     events = [_event(f"game-{index}", "2026-08-16T18:00:00Z", state="in") for index in range(count)]
     client = RecordingClient({"20260816-20260817": {"events": events}})
     provider = EspnScoreboardProvider(
@@ -444,14 +506,14 @@ def test_espn_cold_dense_live_set_uses_one_scoreboard_without_summary_fanout(cou
 
     assert len(result.content) == count
     assert sum("/scoreboard" in url for url in client.urls) == 1
-    assert sum("/summary" in url for url in client.urls) == 0
+    assert all("/summary" not in url for url in client.urls)
 
 
-def test_espn_sparse_summary_requests_deduplicate_event_ids() -> None:
+def test_espn_sparse_event_scoreboard_requests_deduplicate_event_ids() -> None:
     duplicate = _event("game-1", "2026-08-16T18:00:00Z", state="in")
     client = RecordingClient(
         {"20260816-20260817": {"events": [duplicate, dict(duplicate)]}},
-        summary_responses={"game-1": {}},
+        event_updates={"game-1": {}},
     )
     provider = EspnScoreboardProvider(
         {"nfl": "https://example.test/football/nfl/scoreboard"},
@@ -462,10 +524,10 @@ def test_espn_sparse_summary_requests_deduplicate_event_ids() -> None:
 
     provider.fetch_for_ticker("ticker-one", _settings())
 
-    assert sum("/summary" in url for url in client.urls) == 1
+    assert sum("/scoreboard/" in url for url in client.urls) == 1
 
 
-def test_espn_summary_merge_preserves_scoreboard_fields_and_live_state() -> None:
+def test_espn_event_update_preserves_scoreboard_fields_and_live_state() -> None:
     fallback = _event("game-1", "2026-08-16T18:00:00Z", state="in")
     fallback["competitions"][0]["situation"] = {
         "possession": {"team": {"abbreviation": "NYG"}},
@@ -473,7 +535,7 @@ def test_espn_summary_merge_preserves_scoreboard_fields_and_live_state() -> None
         "distance": 7,
     }
     fallback["competitions"][0]["competitors"][0]["team"]["logo"] = "scoreboard-logo"
-    summary = {
+    update = {
         "header": {
             "competitions": [{
                 "status": {"type": {"state": "pre", "shortDetail": "Scheduled"}},
@@ -487,7 +549,7 @@ def test_espn_summary_merge_preserves_scoreboard_fields_and_live_state() -> None
         "situation": {"clock": "08:00"},
     }
 
-    merged = _summary_event(summary, fallback)
+    merged = _event_update(update, fallback)
     competition = merged["competitions"][0]
 
     assert merged["status"]["type"]["state"] == "in"
@@ -501,9 +563,9 @@ def test_espn_summary_merge_preserves_scoreboard_fields_and_live_state() -> None
     assert competition["competitors"][0]["score"] == "7"
 
 
-def test_espn_summary_merge_preserves_final_state() -> None:
+def test_espn_event_update_preserves_final_state() -> None:
     fallback = _event("game-1", "2026-08-16T18:00:00Z", state="post")
-    summary = {
+    update = {
         "header": {
             "competitions": [{
                 "status": {"type": {"state": "pre", "shortDetail": "Scheduled"}},
@@ -511,21 +573,21 @@ def test_espn_summary_merge_preserves_final_state() -> None:
         },
     }
 
-    merged = _summary_event(summary, fallback)
+    merged = _event_update(update, fallback)
 
     assert merged["status"]["type"]["state"] == "post"
 
 
-def test_espn_summary_failure_keeps_scoreboard_healthy() -> None:
+def test_espn_event_scoreboard_failure_keeps_scoreboard_healthy() -> None:
     events = [
         _event("nfl-1", "2026-08-16T18:00:00Z", state="in"),
         _event("mlb-1", "2026-08-16T18:00:00Z", state="in"),
     ]
     phase = ["baseline", "failed", "recovered"]
 
-    def summary(event_id: str) -> dict:
+    def event_scoreboard(event_id: str) -> dict:
         if phase[0] == "failed" and event_id == "mlb-1":
-            raise RuntimeError("summary unavailable")
+            raise RuntimeError("event scoreboard unavailable")
         score = "14" if phase[0] != "baseline" and event_id == "nfl-1" else "0"
         event = next(item for item in events if item["id"] == event_id)
         competition = dict(event["competitions"][0])
@@ -534,15 +596,20 @@ def test_espn_summary_failure_keeps_scoreboard_healthy() -> None:
             for competitor in competition["competitors"]
         ]
         competition["status"] = {"type": {"state": "in", "shortDetail": "Q1 08:00"}}
-        return {"header": {"competitions": [competition]}}
+        return {
+            "id": event_id,
+            "date": next(item for item in events if item["id"] == event_id)["date"],
+            "status": competition["status"],
+            "competitions": [competition],
+        }
 
     class SummaryClient(RecordingClient):
         def get_json(self, url: str, *, timeout: float):
             del timeout
             self.urls.append(url)
-            if "/summary" in url:
-                event_id = parse_qs(urlsplit(url).query)["event"][0]
-                return summary(event_id)
+            if "/scoreboard/" in url:
+                event_id = url.rstrip("/").rsplit("/", 1)[-1]
+                return event_scoreboard(event_id)
             event = events[0] if "/football/" in url else events[1]
             return {"events": [event]}
 
@@ -587,8 +654,6 @@ def test_espn_partial_scoreboard_failure_keeps_cached_league_and_fresh_league() 
         def get_json(self, url: str, *, timeout: float):
             del timeout
             self.urls.append(url)
-            if "/summary" in url:
-                return {}
             if phase[0] == 1 and "/baseball/" in url:
                 raise RuntimeError("scoreboard unavailable")
             source = nfl_events if "/football/" in url else mlb_events
@@ -652,8 +717,6 @@ def test_espn_partial_scoreboard_poll_publishes_healthy_alerts_only() -> None:
         def get_json(self, url: str, *, timeout: float):
             del timeout
             self.urls.append(url)
-            if "/summary" in url:
-                return {}
             if scoreboard_pass[0] == 1 and "/baseball/" in url:
                 raise RuntimeError("scoreboard unavailable")
             score = scores[scoreboard_pass[0]]
@@ -733,11 +796,10 @@ def test_espn_discovery_refresh_finds_new_games_after_sixty_seconds() -> None:
     assert {item.id for item in result.content} == {"game-1", "game-2"}
 
 
-def test_espn_summary_updates_do_not_reset_discovery_age() -> None:
+def test_espn_event_updates_do_not_reset_discovery_age() -> None:
     event = _event("game-1", "2026-08-16T18:00:00Z")
     client = RecordingClient(
         {"20260816-20260817": {"events": [event]}},
-        summary_responses={"game-1": {}},
     )
     current = [datetime(2026, 8, 16, 7, tzinfo=timezone.utc)]
     monotonic = [0.0]
@@ -816,7 +878,7 @@ def test_espn_missing_event_id_is_unhealthy() -> None:
     assert "nfl event: event id is missing" in result.health.error
 
 
-def test_espn_summary_scoring_details_normalize_team_and_scorer() -> None:
+def test_espn_event_scoring_details_normalize_team_and_scorer() -> None:
     payload = {
         "header": {
             "competitions": [{
@@ -834,7 +896,7 @@ def test_espn_summary_scoring_details_normalize_team_and_scorer() -> None:
         }],
     }
 
-    details = _summary_scoring_details(
+    details = _event_scoring_details(
         payload,
         {"home_abbr": "BOS", "away_abbr": "NYY"},
     )

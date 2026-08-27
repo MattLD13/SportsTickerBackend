@@ -6,3 +6,4 @@ FlightRadarAPI==1.5.1
 cryptography
 dbus-next
 Pillow
+websocket-client>=1.8,<2

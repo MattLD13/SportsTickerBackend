@@ -31,6 +31,7 @@ from sports_ticker.providers import (
     RacingProvider,
     StockProvider,
 )
+from sports_ticker.providers.espn_fastcast import EspnFastcastSource, fastcast_topic
 from sports_ticker.providers.live_sources import (
     ClockProvider,
     EspnGolfSource,
@@ -140,8 +141,11 @@ def _providers(spotify: SpotifyIntegrationService) -> dict[str, object]:
         league: _scoreboard_url(league, path)
         for league, path in ESPN_SCOREBOARD_PATHS.items()
     }
+    fastcast = EspnFastcastSource(
+        {league: fastcast_topic(url) for league, url in scoreboard_urls.items()}
+    )
     return {
-        "espn": EspnScoreboardProvider(scoreboard_urls),
+        "espn": EspnScoreboardProvider(scoreboard_urls, fastcast=fastcast),
         "fotmob": FotMobSoccerProvider(FOTMOB_LEAGUES),
         "weather": HybridWeatherProvider(),
         "golf": GolfProvider(EspnGolfSource()),
