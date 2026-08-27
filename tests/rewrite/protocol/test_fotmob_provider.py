@@ -7,6 +7,7 @@ import pytest
 
 from sports_ticker.domain.models import DisplaySettings
 from sports_ticker.providers.fotmob import (
+    _DetailCacheEntry,
     FotMobSoccerProvider,
     _content_item,
     _match_state,
@@ -511,4 +512,78 @@ def test_fotmob_score_alert_uses_canonical_soccer_event_time() -> None:
     tracker.ingest([updated])
 
     assert tracker.recent()[0]["detail"] == "SMITH 45+2'"
+
+
+def test_fotmob_partial_date_failure_preserves_alert_memory_and_recovery_baseline() -> None:
+    class PartialClient:
+        fail_first_date = False
+        score = 0
+
+        def get_json(self, url: str, *, timeout: float) -> dict:
+            del timeout
+            if "matchDetails" in url:
+                return {}
+            if self.fail_first_date and "date=20260816" in url:
+                raise RuntimeError("first date unavailable")
+            return {
+                "leagues": [
+                    {
+                        "primaryId": 130,
+                        "matches": [_live_match(1, score=self.score)],
+                    }
+                ]
+            }
+
+    client = PartialClient()
+    clock = [0.0]
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: clock[0],
+        detail_executor=_NoOpExecutor(),
+    )
+    settings = DisplaySettings(mode="sports", score_alerts=True, my_teams=("soccer_mls:SEA",))
+
+    provider.fetch_for_ticker("ticker-1", settings)
+    client.score = 1
+    client.fail_first_date = True
+    clock[0] = 5.0
+    partial = provider.fetch_for_ticker("ticker-1", settings)
+
+    tracker = provider._score_alerts_by_ticker["ticker-1"]
+    assert partial.health.healthy is False
+    assert partial.alerts == ()
+    assert tracker._scores["soccer_mls:1"][0:2] == (0, 0)
+
+    client.fail_first_date = False
+    clock[0] = 10.0
+    recovery = provider.fetch_for_ticker("ticker-1", settings)
+    assert recovery.alerts == ()
+
+    client.score = 2
+    clock[0] = 15.0
+    resumed = provider.fetch_for_ticker("ticker-1", settings)
+    assert len(resumed.alerts) == 1
+    assert resumed.alerts[0]["home_score"] == 2
+
+
+def test_fotmob_dense_live_snapshot_drops_stale_details() -> None:
+    clock = [0.0]
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130},
+        now=lambda: _NOW,
+        monotonic=lambda: clock[0],
+        detail_executor=_NoOpExecutor(),
+    )
+    provider._details["1"] = _DetailCacheEntry(
+        fetched_at=0.0,
+        state="in",
+        payload={"general": {"teamColors": {"darkMode": {"home": "#80000A"}}}},
+    )
+    records = tuple(("soccer_mls", _live_match(index)) for index in range(1, 6))
+
+    clock[0] = 5.0
+
+    assert provider._detail_snapshot(records) == {}
 

@@ -166,6 +166,22 @@ class ScoreAlertTracker:
         self._scores: dict[str, tuple[int, int, str]] = {}
         self._alerts: list[dict[str, Any]] = []
 
+    def prime(self, games: Sequence[Mapping[str, Any]]) -> None:
+        """Set a complete source baseline without creating score alerts."""
+
+        scores: dict[str, tuple[int, int, str]] = {}
+        for game in games:
+            if str(game.get("kind") or game.get("type") or "") != "scoreboard":
+                continue
+            game_id = str(game.get("id") or "").strip()
+            home = _number(game.get("home_score"))
+            away = _number(game.get("away_score"))
+            if not game_id or home is None or away is None:
+                continue
+            scores[game_id] = (home, away, str(game.get("status") or ""))
+        with self._lock:
+            self._scores = scores
+
     def ingest(self, games: Sequence[Mapping[str, Any]]) -> None:
         """Compare one complete scoreboard observation with the prior poll."""
 

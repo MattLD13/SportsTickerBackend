@@ -111,6 +111,7 @@ class FotMobSoccerProvider:
         self._stale_cache = SettingsResultCache()
         self._score_alerts = ScoreAlertTracker()
         self._score_alerts_by_ticker: dict[str, ScoreAlertTracker] = {}
+        self._alert_baseline_after_failure: set[ScoreAlertTracker] = set()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch current scoreboard events from each configured active league."""
@@ -157,7 +158,13 @@ class FotMobSoccerProvider:
             {"kind": item.kind, "id": item.id, **dict(item.data)}
             for item in content
         ]
-        score_alerts.ingest(score_games)
+        if source.errors:
+            self._alert_baseline_after_failure.add(score_alerts)
+        elif score_alerts in self._alert_baseline_after_failure:
+            score_alerts.prime(score_games)
+            self._alert_baseline_after_failure.discard(score_alerts)
+        else:
+            score_alerts.ingest(score_games)
         alerts = alerts_for_settings(
             score_alerts.recent(
                 delay=settings.live_delay_seconds if settings.live_delay_mode else 0.0
@@ -322,15 +329,19 @@ class FotMobSoccerProvider:
     def _detail_snapshot(
         self, records: Sequence[tuple[str, Mapping[str, Any]]]
     ) -> dict[str, Mapping[str, Any]]:
-        """Copy available optional details for shared content construction."""
+        """Copy only current-state-fresh optional details for shared content."""
 
-        identifiers = {str(match.get("id") or "").strip() for _, match in records}
         with self._details_lock:
-            return {
-                match_id: entry.payload
-                for match_id, entry in self._details.items()
-                if match_id in identifiers
-            }
+            now = self._monotonic()
+            details: dict[str, Mapping[str, Any]] = {}
+            for _, match in records:
+                match_id = str(match.get("id") or "").strip()
+                entry = self._details.get(match_id)
+                if match_id and entry is not None and _detail_entry_is_fresh(
+                    entry, _match_state(match), now, self._cache_seconds
+                ):
+                    details[match_id] = entry.payload
+            return details
 
     def _detail_is_fresh(self, match_id: str, state: str) -> bool:
         """Return whether one cached detail can serve the current match state."""
@@ -339,10 +350,7 @@ class FotMobSoccerProvider:
             cached = self._details.get(match_id)
             if cached is None:
                 return False
-            age = self._monotonic() - cached.fetched_at
-            if state in {"pre", "post"}:
-                return cached.state == state and age < self._cache_seconds
-            return state in {"in", "half"} and cached.state in {"in", "half"} and age < _LIVE_DETAIL_SECONDS
+            return _detail_entry_is_fresh(cached, state, self._monotonic(), self._cache_seconds)
 
     def _details_for(self, match: Mapping[str, Any]) -> Mapping[str, Any] | None:
         """Return live details or one final snapshot for one match."""
@@ -357,10 +365,7 @@ class FotMobSoccerProvider:
             cached = self._details.get(match_id)
             if cached is not None:
                 fallback = cached.payload
-                age = now - cached.fetched_at
-                if state in {"pre", "post"} and cached.state == state and age < self._cache_seconds:
-                    return cached.payload
-                if state in {"in", "half"} and cached.state in {"in", "half"} and age < _LIVE_DETAIL_SECONDS:
+                if _detail_entry_is_fresh(cached, state, now, self._cache_seconds):
                     return cached.payload
         try:
             payload = self._client.get_json(_DETAIL_URL.format(match_id=match_id), timeout=self._timeout)
@@ -399,6 +404,18 @@ def _source_key(
     timezone_name: str, active: Mapping[str, int], dates: Sequence
 ) -> tuple[object, ...]:
     return (str(timezone_name), tuple(dates), tuple(active.items()))
+
+
+def _detail_entry_is_fresh(
+    entry: _DetailCacheEntry,
+    state: str,
+    now: float,
+    cache_seconds: float = 86_400.0,
+) -> bool:
+    age = now - entry.fetched_at
+    if state in {"pre", "post"}:
+        return entry.state == state and age < cache_seconds
+    return state in {"in", "half"} and entry.state in {"in", "half"} and age < _LIVE_DETAIL_SECONDS
 
 
 def _display_days(timezone_name: str, *, now: datetime | None = None) -> tuple:
