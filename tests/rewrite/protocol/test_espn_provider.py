@@ -37,14 +37,23 @@ def _event(event_id: str, start: str, *, state: str = "pre") -> dict:
 
 
 class RecordingClient:
-    def __init__(self, responses: dict[str, dict], failures: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        responses: dict[str, dict],
+        failures: set[str] | None = None,
+        summary_responses: dict[str, dict] | None = None,
+    ) -> None:
         self.responses = responses
         self.failures = failures or set()
+        self.summary_responses = summary_responses or {}
         self.urls: list[str] = []
 
     def get_json(self, url: str, *, timeout: float):
         del timeout
         self.urls.append(url)
+        if "/summary" in url:
+            event_id = parse_qs(urlsplit(url).query)["event"][0]
+            return self.summary_responses.get(event_id, {})
         dates = parse_qs(urlsplit(url).query)["dates"][0]
         if dates in self.failures:
             raise RuntimeError(f"failed {dates}")
@@ -230,6 +239,48 @@ def test_espn_schedule_cache_refreshes_only_at_kickoff_or_during_live_play() -> 
     provider.fetch_for_ticker("ticker-three", _settings())
 
     assert len(client.urls) == 2
+
+
+def test_espn_live_refresh_reads_one_summary_for_one_live_game_in_large_schedule() -> None:
+    events = [_event("game-0", "2026-08-16T18:00:00Z")]
+    events.extend(_event(f"game-{index}", "2026-08-16T19:00:00Z") for index in range(1, 100))
+    live_competition = dict(events[0]["competitions"][0])
+    live_competition["status"] = {
+        "type": {"state": "in", "shortDetail": "Top 1st"}
+    }
+    live_competition["competitors"] = [
+        {**dict(competitor), "score": "1"}
+        if competitor["homeAway"] == "home"
+        else dict(competitor)
+        for competitor in live_competition["competitors"]
+    ]
+    client = RecordingClient(
+        {"20260816-20260817": {"events": events}},
+        summary_responses={
+            "game-0": {
+                "header": {"id": "game-0", "competitions": [live_competition]}
+            }
+        },
+    )
+    current = [datetime(2026, 8, 16, 7, tzinfo=timezone.utc)]
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {"nfl": "https://example.test/football/nfl/scoreboard"},
+        client=client,
+        now=lambda: current[0],
+        monotonic=lambda: monotonic[0],
+    )
+
+    provider.fetch_for_ticker("ticker-one", _settings())
+    current[0] = datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)
+    monotonic[0] = 6.0
+    result = provider.fetch_for_ticker("ticker-two", _settings())
+
+    assert sum("/scoreboard" in url for url in client.urls) == 1
+    assert sum("/summary" in url for url in client.urls) == 1
+    live_item = next(item for item in result.content if item.id == "game-0")
+    assert live_item.data["state"] == "in"
+    assert live_item.data["home_score"] == "1"
 
 
 def test_espn_failed_date_requests_return_unhealthy_stale_contract() -> None:

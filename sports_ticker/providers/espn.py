@@ -207,7 +207,6 @@ class EspnScoreboardProvider:
 
         items: list[ContentItem] = []
         errors: list[str] = []
-        failed_sources = 0
         seen_events: set[tuple[str, str]] = set()
         active_leagues = tuple(
             (league, url)
@@ -215,63 +214,116 @@ class EspnScoreboardProvider:
             if settings.active_sports.get(league, True)
         )
         active_sources = len(active_leagues)
-        workers = min(8, active_sources)
         schedule_day = _schedule_day(settings.timezone, current)
         cached_events: dict[str, tuple[Mapping[str, Any], ...]] = {}
         refresh_leagues: list[tuple[str, str]] = []
+        live_refreshes: list[tuple[str, Mapping[str, Any]]] = []
         for league, url in active_leagues:
             cache_key = (settings.timezone, league, schedule_day)
             cached = self._league_schedules.get(cache_key) if cache_schedule else None
-            if cached is None or _league_needs_refresh(cached.events, current):
+            if cached is None:
                 refresh_leagues.append((league, url))
+            elif _league_needs_refresh(cached.events, current):
+                cached_events[league] = cached.events
+                if self._summary_urls.get(league):
+                    live_refreshes.extend(
+                        (league, event)
+                        for event in cached.events
+                        if _event_needs_live_refresh(event, current)
+                    )
+                else:
+                    refresh_leagues.append((league, url))
             else:
                 cached_events[league] = cached.events
 
-        workers = min(8, len(refresh_leagues))
+        events_by_league: dict[str, tuple[Mapping[str, Any], ...]] = dict(cached_events)
+        summary_payloads: dict[tuple[str, str], Any] = {}
+        attempted_summary_ids: set[tuple[str, str]] = set()
+        failed_leagues: set[str] = set()
+        workers = min(8, len(refresh_leagues) + len(live_refreshes))
         with ThreadPoolExecutor(
             max_workers=max(1, workers),
-            thread_name_prefix="espn-scoreboards",
+            thread_name_prefix="espn-refresh",
         ) as pool:
-            futures = {
+            scoreboard_futures = {
                 league: pool.submit(self._read_scoreboard, url, dates)
                 for league, url in refresh_leagues
             }
+            summary_futures = {
+                (league, str(event.get("id") or "").strip()): pool.submit(
+                    self._read_summary,
+                    league,
+                    str(event.get("id") or "").strip(),
+                )
+                for league, event in live_refreshes
+                if str(event.get("id") or "").strip()
+            }
             for league, _url in active_leagues:
-                if league in futures:
+                if league in scoreboard_futures:
                     try:
-                        events = futures[league].result()
+                        events = tuple(scoreboard_futures[league].result())
                     except Exception as exc:
-                        failed_sources += 1
+                        failed_leagues.add(league)
                         errors.append(f"{league}: {exc}")
                         continue
-                    events = tuple(events)
+                    events_by_league[league] = events
                     if cache_schedule:
                         self._league_schedules[(settings.timezone, league, schedule_day)] = _LeagueSchedule(
                             events=events,
                             schedule_day=schedule_day,
                         )
-                else:
-                    events = cached_events[league]
-                for event in events:
-                    event_id = str(event.get("id") or "").strip()
-                    if event_id and (league, event_id) in seen_events:
-                        continue
-                    if event_id:
-                        seen_events.add((league, event_id))
-                    if not _is_current_event(
-                        event,
-                        timezone_name=settings.timezone,
-                        now=current,
-                    ):
-                        continue
-                    try:
-                        item = self._display.project(_content_item(league, event), event)
-                        items.append(item)
-                    except (KeyError, TypeError, ValueError) as exc:
-                        errors.append(f"{league} event: {exc}")
+            for (league, event_id), future in summary_futures.items():
+                attempted_summary_ids.add((league, event_id))
+                try:
+                    summary = future.result()
+                except Exception as exc:
+                    failed_leagues.add(league)
+                    errors.append(f"{league} event {event_id}: {exc}")
+                    continue
+                summary_payloads[(league, event_id)] = summary
+                events = events_by_league.get(league, ())
+                events_by_league[league] = tuple(
+                    _summary_event(summary, event) if str(event.get("id") or "").strip() == event_id else event
+                    for event in events
+                )
+                if cache_schedule:
+                    self._league_schedules[(settings.timezone, league, schedule_day)] = _LeagueSchedule(
+                        events=events_by_league[league],
+                        schedule_day=schedule_day,
+                    )
+
+        failed_sources = len(failed_leagues)
+        for league, _url in active_leagues:
+            events = events_by_league.get(league, ())
+            for event in events:
+                event_id = str(event.get("id") or "").strip()
+                if event_id and (league, event_id) in seen_events:
+                    continue
+                if event_id:
+                    seen_events.add((league, event_id))
+                if not _is_current_event(
+                    event,
+                    timezone_name=settings.timezone,
+                    now=current,
+                ):
+                    continue
+                try:
+                    item = self._display.project(_content_item(league, event), event)
+                    items.append(item)
+                except (KeyError, TypeError, ValueError) as exc:
+                    errors.append(f"{league} event: {exc}")
 
         return _ScoreboardSource(
-            content=tuple(sorted(self._enrich_live_items(items), key=sports_content_sort_key)),
+            content=tuple(
+                sorted(
+                    self._enrich_live_items(
+                        items,
+                        summary_payloads=summary_payloads,
+                        attempted_summary_ids=attempted_summary_ids,
+                    ),
+                    key=sports_content_sort_key,
+                )
+            ),
             errors=tuple(errors),
             active_sources=active_sources,
             failed_sources=failed_sources,
@@ -290,6 +342,14 @@ class EspnScoreboardProvider:
             timeout=self.timeout,
         )
         return _events(payload)
+
+    def _read_summary(self, league: str, event_id: str) -> Any:
+        """Read one live event without downloading the full league schedule."""
+
+        template = self._summary_urls.get(league)
+        if not template:
+            return {}
+        return self.client.get_json(template.format(event_id), timeout=self.timeout)
 
     def _stale_result(self, settings: DisplaySettings, error: str) -> ProviderResult:
         """Return last successful content with an unhealthy stale status."""
@@ -315,7 +375,13 @@ class EspnScoreboardProvider:
             ),
         )
 
-    def _enrich_live_item(self, league: str, item: ContentItem) -> ContentItem:
+    def _enrich_live_item(
+        self,
+        league: str,
+        item: ContentItem,
+        *,
+        summary: Any | None = None,
+    ) -> ContentItem:
         """Add detailed live facts after scoreboard projection completes."""
 
         if str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}:
@@ -324,10 +390,11 @@ class EspnScoreboardProvider:
         if not template:
             return item
 
-        try:
-            summary = self.client.get_json(template.format(item.id), timeout=self.timeout)
-        except Exception:
-            return item
+        if summary is None:
+            try:
+                summary = self.client.get_json(template.format(item.id), timeout=self.timeout)
+            except Exception:
+                return item
         details = _summary_scoring_details(summary, item.data)
         details.update(
             _mlb_summary_details(summary)
@@ -364,7 +431,13 @@ class EspnScoreboardProvider:
             data=data,
         )
 
-    def _enrich_live_items(self, items: Sequence[ContentItem]) -> list[ContentItem]:
+    def _enrich_live_items(
+        self,
+        items: Sequence[ContentItem],
+        *,
+        summary_payloads: Mapping[tuple[str, str], Any] | None = None,
+        attempted_summary_ids: set[tuple[str, str]] | None = None,
+    ) -> list[ContentItem]:
         """Fetch live game details concurrently without blocking other scoreboards."""
 
         indexed = list(enumerate(items))
@@ -373,6 +446,11 @@ class EspnScoreboardProvider:
             for index, item in indexed
             if str(item.data.get("state") or "").lower() in {"in", "half", "crit"}
             and str(item.data.get("sport") or "") in self._summary_urls
+            and not (
+                attempted_summary_ids
+                and (str(item.data.get("sport") or ""), item.id) in attempted_summary_ids
+                and (str(item.data.get("sport") or ""), item.id) not in (summary_payloads or {})
+            )
         ]
         if not targets:
             return list(items)
@@ -380,7 +458,14 @@ class EspnScoreboardProvider:
         workers = min(8, len(targets))
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ticker-details") as pool:
             futures = {
-                pool.submit(self._enrich_live_item, str(item.data.get("sport") or ""), item): index
+                pool.submit(
+                    self._enrich_live_item,
+                    str(item.data.get("sport") or ""),
+                    item,
+                    summary=(summary_payloads or {}).get(
+                        (str(item.data.get("sport") or ""), item.id)
+                    ),
+                ): index
                 for index, item in targets
             }
             for future, index in futures.items():
@@ -409,6 +494,27 @@ def _events(payload: Any) -> tuple[Mapping[str, Any], ...]:
     if not isinstance(events, Sequence) or isinstance(events, (str, bytes)):
         raise TypeError("events must be an array")
     return tuple(events)
+
+
+def _summary_event(payload: Any, fallback: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Merge one ESPN event summary into its cached scoreboard event."""
+
+    summary = _mapping(payload)
+    header = _mapping(summary.get("header"))
+    competition = _first_mapping(header.get("competitions"))
+    if not competition:
+        return fallback
+    event = dict(fallback)
+    event_id = str(event.get("id") or header.get("id") or competition.get("id") or "").strip()
+    if event_id:
+        event["id"] = event_id
+    if competition.get("date") or header.get("date"):
+        event["date"] = competition.get("date") or header.get("date")
+    status = competition.get("status") or header.get("status")
+    if status:
+        event["status"] = status
+    event["competitions"] = [competition]
+    return event
 
 
 def _is_current_event(
@@ -475,16 +581,24 @@ def _league_needs_refresh(events: Sequence[Mapping[str, Any]], now: datetime) ->
     current = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
     current = current.astimezone(timezone.utc)
     for event in events:
-        status = _mapping(_mapping(event.get("status")).get("type"))
-        state = _text(status.get("state"), "pre").strip().lower()
-        if state in {"in", "half", "crit"}:
-            return True
-        if state in {"post", "final", "canceled", "cancelled"}:
-            continue
-        start = _event_time(event.get("date"))
-        if start is not None and start <= current <= start + timedelta(hours=6):
+        if _event_needs_live_refresh(event, current):
             return True
     return False
+
+
+def _event_needs_live_refresh(event: Mapping[str, Any], now: datetime) -> bool:
+    """Refresh a cached event when it can contain live score changes."""
+
+    status = _mapping(_mapping(event.get("status")).get("type"))
+    state = _text(status.get("state"), "pre").strip().lower()
+    if state in {"in", "half", "crit"}:
+        return True
+    if state in {"post", "final", "canceled", "cancelled"}:
+        return False
+    start = _event_time(event.get("date"))
+    current = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+    return start is not None and start <= current <= start + timedelta(hours=6)
 
 
 def _scoreboard_url_for_dates(scoreboard_url: str, dates: Sequence[date]) -> str:
