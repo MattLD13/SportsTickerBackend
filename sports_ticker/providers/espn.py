@@ -195,17 +195,31 @@ class EspnScoreboardProvider:
 
         items: list[ContentItem] = []
         errors: list[str] = []
-        active_sources = 0
         failed_sources = 0
         seen_events: set[tuple[str, str]] = set()
-        for league, url in self.scoreboard_urls.items():
-            if not settings.active_sports.get(league, True):
-                continue
-            active_sources += 1
-            request_url = _scoreboard_url_for_dates(url, dates)
-            try:
-                payload = self.client.get_json(request_url, timeout=self.timeout)
-                for event in _events(payload):
+        active_leagues = tuple(
+            (league, url)
+            for league, url in self.scoreboard_urls.items()
+            if settings.active_sports.get(league, True)
+        )
+        active_sources = len(active_leagues)
+        workers = min(8, active_sources)
+        with ThreadPoolExecutor(
+            max_workers=max(1, workers),
+            thread_name_prefix="espn-scoreboards",
+        ) as pool:
+            futures = {
+                league: pool.submit(self._read_scoreboard, url, dates)
+                for league, url in active_leagues
+            }
+            for league, _url in active_leagues:
+                try:
+                    events = futures[league].result()
+                except Exception as exc:
+                    failed_sources += 1
+                    errors.append(f"{league}: {exc}")
+                    continue
+                for event in events:
                     event_id = str(event.get("id") or "").strip()
                     if event_id and (league, event_id) in seen_events:
                         continue
@@ -222,9 +236,6 @@ class EspnScoreboardProvider:
                         items.append(item)
                     except (KeyError, TypeError, ValueError) as exc:
                         errors.append(f"{league} event: {exc}")
-            except Exception as exc:
-                failed_sources += 1
-                errors.append(f"{league}: {exc}")
 
         return _ScoreboardSource(
             content=tuple(sorted(self._enrich_live_items(items), key=sports_content_sort_key)),
@@ -233,6 +244,19 @@ class EspnScoreboardProvider:
             failed_sources=failed_sources,
             observed_at=datetime.now(timezone.utc),
         )
+
+    def _read_scoreboard(
+        self,
+        url: str,
+        dates: Sequence[date],
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Read all games for one league in one request."""
+
+        payload = self.client.get_json(
+            _scoreboard_url_for_dates(url, dates),
+            timeout=self.timeout,
+        )
+        return _events(payload)
 
     def _stale_result(self, settings: DisplaySettings, error: str) -> ProviderResult:
         """Return last successful content with an unhealthy stale status."""

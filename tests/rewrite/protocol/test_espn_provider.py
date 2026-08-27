@@ -1,6 +1,7 @@
 """Verify ESPN calendar reads and canonical scoreboard filtering."""
 
 from datetime import datetime, timezone
+from threading import Barrier
 from urllib.parse import parse_qs, urlsplit
 
 from sports_ticker.domain import DisplaySettings
@@ -171,6 +172,35 @@ def test_espn_source_reads_once_for_any_number_of_tickers() -> None:
         provider.fetch_for_ticker(f"ticker-{ticker_index}", _settings())
 
     assert len(client.urls) == 1
+
+
+def test_espn_scoreboard_leagues_read_concurrently() -> None:
+    class BlockingClient(RecordingClient):
+        def __init__(self) -> None:
+            super().__init__({"20260816-20260817": {"events": []}})
+            self.barrier = Barrier(3)
+
+        def get_json(self, url: str, *, timeout: float):
+            self.urls.append(url)
+            self.barrier.wait(timeout=2)
+            del timeout
+            return {"events": []}
+
+    client = BlockingClient()
+    provider = EspnScoreboardProvider(
+        {
+            "nfl": "https://example.test/football/nfl/scoreboard",
+            "mlb": "https://example.test/baseball/mlb/scoreboard",
+            "nhl": "https://example.test/hockey/nhl/scoreboard",
+        },
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 7, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch(_settings())
+
+    assert result.health.healthy is True
+    assert len(client.urls) == 3
 
 
 def test_espn_failed_date_requests_return_unhealthy_stale_contract() -> None:
