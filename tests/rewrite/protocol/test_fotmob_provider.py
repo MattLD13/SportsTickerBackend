@@ -1,5 +1,6 @@
 """Verify canonical FotMob soccer display facts."""
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from threading import Barrier, Lock
 
@@ -342,7 +343,7 @@ def test_fotmob_ticker_source_expires_after_five_seconds() -> None:
     assert client.match_requests == 4
 
 
-def test_fotmob_source_key_ignores_ticker_projection_settings() -> None:
+def test_fotmob_raw_date_cache_ignores_ticker_projection_settings() -> None:
     client = _RecordingClient([_live_match(1)])
     provider = FotMobSoccerProvider(
         {"soccer_mls": 130, "soccer_epl": 47},
@@ -376,13 +377,108 @@ def test_fotmob_source_key_ignores_ticker_projection_settings() -> None:
         "ticker-4",
         DisplaySettings(active_sports={"soccer_mls": True, "soccer_epl": False}, timezone="UTC"),
     )
-    assert client.match_requests == 4
+    assert client.match_requests == 2
 
     provider.fetch_for_ticker(
         "ticker-5",
         DisplaySettings(active_sports={"soccer_mls": True, "soccer_epl": True}),
     )
-    assert client.match_requests == 6
+    assert client.match_requests == 2
+
+
+def test_fotmob_raw_date_cache_filters_one_hundred_varied_active_selections() -> None:
+    class VariedClient:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+            self._lock = Lock()
+
+        def get_json(self, url: str, *, timeout: float) -> dict:
+            del timeout
+            with self._lock:
+                self.urls.append(url)
+            if "matchDetails" in url:
+                return {}
+            return {
+                "leagues": [
+                    {"primaryId": 130, "matches": [_live_match(1)]},
+                    {"primaryId": 47, "matches": [_live_match(2)]},
+                    {"primaryId": 87, "matches": [_live_match(3)]},
+                ]
+            }
+
+        @property
+        def match_requests(self) -> int:
+            return sum("matchDetails" not in url for url in self.urls)
+
+    client = VariedClient()
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130, "soccer_epl": 47, "soccer_laliga": 87},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: 0.0,
+        detail_executor=_NoOpExecutor(),
+    )
+    masks = (
+        {"soccer_mls": True, "soccer_epl": False, "soccer_laliga": False},
+        {"soccer_mls": False, "soccer_epl": True, "soccer_laliga": False},
+        {"soccer_mls": True, "soccer_epl": True, "soccer_laliga": True},
+    )
+
+    def fetch(index: int):
+        settings = DisplaySettings(
+            active_sports=masks[index % len(masks)],
+            timezone="UTC" if index % 2 else "",
+        )
+        return index, provider.fetch_for_ticker(f"ticker-{index}", settings)
+
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        results = list(pool.map(fetch, range(100)))
+
+    for index, result in results:
+        assert {item.data["sport"] for item in result.content} == {
+            sport for sport, enabled in masks[index % len(masks)].items() if enabled
+        }
+
+    assert client.match_requests == 2
+
+
+def test_fotmob_raw_date_cache_backs_off_failed_dates_until_expiry() -> None:
+    class FailingDateClient(_RecordingClient):
+        fail_first_date = True
+
+        def get_json(self, url: str, *, timeout: float) -> dict:
+            if self.fail_first_date and "date=20260816" in url:
+                with self._lock:
+                    self.urls.append(url)
+                raise RuntimeError("first date unavailable")
+            return super().get_json(url, timeout=timeout)
+
+    client = FailingDateClient([_live_match(1)])
+    clock = [0.0]
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130, "soccer_epl": 47},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: clock[0],
+        detail_executor=_NoOpExecutor(),
+    )
+    settings = DisplaySettings(active_sports={"soccer_mls": True, "soccer_epl": False})
+
+    first = provider.fetch_for_ticker("ticker-1", settings)
+    assert first.health.healthy is False
+    assert client.match_requests == 2
+
+    provider.fetch_for_ticker(
+        "ticker-2",
+        DisplaySettings(active_sports={"soccer_mls": True, "soccer_epl": True}, timezone="UTC"),
+    )
+    assert client.match_requests == 2
+
+    client.fail_first_date = False
+    clock[0] = 5.0
+    recovered = provider.fetch_for_ticker("ticker-3", settings)
+    assert recovered.health.healthy
+    assert client.match_requests == 4
 
 
 def test_fotmob_reads_the_two_match_dates_concurrently() -> None:

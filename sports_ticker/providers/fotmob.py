@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Executor, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from threading import Lock, RLock
+from threading import Event, Lock, RLock
 from time import monotonic as default_monotonic
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -67,12 +67,20 @@ class _DetailCacheEntry:
 
 @dataclass(frozen=True, slots=True)
 class _MatchSource:
-    """Store one completed FotMob source view before ticker-specific alerts."""
+    """Store one projected FotMob source view before ticker-specific alerts."""
 
     content: tuple[ContentItem, ...]
     errors: tuple[str, ...]
     successes: int
     observed_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class _RawMatchesResponse:
+    """Store one canonical date response or its temporary failure."""
+
+    payload: object | None
+    error: str | None
     completed_at: float
 
 
@@ -106,8 +114,9 @@ class FotMobSoccerProvider:
         self._details_lock = Lock()
         self._detail_executor: Executor | None = detail_executor
         self._detail_inflight: set[str] = set()
-        self._source_cache: dict[tuple[object, ...], _MatchSource] = {}
-        self._source_cache_lock = RLock()
+        self._matches_cache: dict[str, _RawMatchesResponse] = {}
+        self._matches_inflight: dict[str, Event] = {}
+        self._matches_cache_lock = RLock()
         self._stale_cache = SettingsResultCache()
         self._score_alerts = ScoreAlertTracker()
         self._score_alerts_by_ticker: dict[str, ScoreAlertTracker] = {}
@@ -146,7 +155,7 @@ class FotMobSoccerProvider:
 
         current = self._now()
         dates = _display_days(settings.timezone, now=current)
-        source = self._source_for(
+        source = self._read_source(
             settings,
             active,
             dates,
@@ -187,43 +196,13 @@ class FotMobSoccerProvider:
             return result
         return result if source.successes else self._stale_result(settings, health.error or "FotMob request failed")
 
-    def _source_for(
-        self,
-        settings: DisplaySettings,
-        active: Mapping[str, int],
-        dates: Sequence,
-        *,
-        cache_source: bool,
-        now: datetime,
-    ) -> _MatchSource:
-        """Return shared content while keeping direct fetch calls fresh."""
-
-        key = _source_key(settings.timezone, active, dates)
-        if not cache_source:
-            return self._read_source(settings, active, dates, now=now)
-        with self._source_cache_lock:
-            current = self._monotonic()
-            cached = self._source_cache.get(key)
-            if cached is not None and 0 <= current - cached.completed_at < _SOURCE_CACHE_SECONDS:
-                return cached
-            source = self._read_source(settings, active, dates, now=now)
-            completed = self._monotonic()
-            cached_source = _MatchSource(
-                source.content,
-                source.errors,
-                source.successes,
-                source.observed_at,
-                completed,
-            )
-            self._source_cache[key] = cached_source
-            return cached_source
-
     def _read_source(
         self,
         settings: DisplaySettings,
         active: Mapping[str, int],
         dates: Sequence,
         *,
+        cache_source: bool,
         now: datetime,
     ) -> _MatchSource:
         """Read date responses concurrently and build content before alerts."""
@@ -234,7 +213,7 @@ class FotMobSoccerProvider:
         workers = min(8, len(dates))
         with ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="fotmob-matches") as pool:
             futures = {
-                day: pool.submit(self._read_matches, day, active)
+                day: pool.submit(self._read_matches, day, active, cache_source=cache_source)
                 for day in dates
             }
             for day, future in futures.items():
@@ -263,16 +242,52 @@ class FotMobSoccerProvider:
             errors=tuple(errors),
             successes=successes,
             observed_at=self._now(),
-            completed_at=self._monotonic(),
         )
 
     def _read_matches(
-        self, day, active: Mapping[str, int]
+        self, day, active: Mapping[str, int], *, cache_source: bool
     ) -> list[tuple[str, Mapping[str, Any]]]:
-        """Read one date response containing all configured FotMob leagues."""
+        """Read and filter one canonical date response by enabled leagues."""
 
-        payload = self._client.get_json(_matches_url(day), timeout=self._timeout)
-        return _league_matches(payload, active)
+        response = self._matches_response(day, cache_source=cache_source)
+        if response.error:
+            raise RuntimeError(response.error)
+        return _league_matches(response.payload, active)
+
+    def _matches_response(self, day, *, cache_source: bool) -> _RawMatchesResponse:
+        """Read one date response with completion freshness and failure backoff."""
+
+        url = _matches_url(day)
+        if not cache_source:
+            try:
+                payload = self._client.get_json(url, timeout=self._timeout)
+            except Exception as error:
+                return _RawMatchesResponse(None, str(error), self._monotonic())
+            return _RawMatchesResponse(payload, None, self._monotonic())
+
+        while True:
+            with self._matches_cache_lock:
+                now = self._monotonic()
+                cached = self._matches_cache.get(url)
+                if cached is not None and 0 <= now - cached.completed_at < _SOURCE_CACHE_SECONDS:
+                    return cached
+                waiter = self._matches_inflight.get(url)
+                if waiter is None:
+                    waiter = Event()
+                    self._matches_inflight[url] = waiter
+                    break
+            waiter.wait()
+
+        try:
+            payload = self._client.get_json(url, timeout=self._timeout)
+        except Exception as error:
+            response = _RawMatchesResponse(None, str(error), self._monotonic())
+        else:
+            response = _RawMatchesResponse(payload, None, self._monotonic())
+        with self._matches_cache_lock:
+            self._matches_cache[url] = response
+            self._matches_inflight.pop(url).set()
+        return response
 
     def _schedule_detail_warm(
         self, records: Sequence[tuple[str, Mapping[str, Any]]]
@@ -398,12 +413,6 @@ class FotMobSoccerProvider:
 
 def _matches_url(day) -> str:
     return f"{_MATCHES_URL}?date={day:%Y%m%d}&timezone=UTC&ccode3=USA"
-
-
-def _source_key(
-    timezone_name: str, active: Mapping[str, int], dates: Sequence
-) -> tuple[object, ...]:
-    return (str(timezone_name), tuple(dates), tuple(active.items()))
 
 
 def _detail_entry_is_fresh(
