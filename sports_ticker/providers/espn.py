@@ -173,8 +173,13 @@ class EspnScoreboardProvider:
 
         items = source.content
         score_games = [{"kind": item.kind, "id": item.id, **dict(item.data)} for item in items]
+        request_failed = source.failed_sources > 0
+        fully_failed = bool(
+            source.active_sources and source.failed_sources == source.active_sources
+        )
+        partially_failed = request_failed and not fully_failed
         health = ProviderHealth(
-            healthy=not source.errors,
+            healthy=partially_failed or not source.errors,
             provider="espn",
             error="; ".join(source.errors) if source.errors else None,
         )
@@ -196,7 +201,7 @@ class EspnScoreboardProvider:
         if health.healthy:
             self._stale_cache.set(settings, result)
             return result
-        if source.active_sources and source.failed_sources == source.active_sources:
+        if fully_failed:
             return self._stale_result(settings, health.error or "all sources failed")
         return result
 

@@ -478,7 +478,69 @@ def test_espn_summary_failure_keeps_scoreboard_healthy() -> None:
     assert recovered.alerts[0]["id"] == failed.alerts[0]["id"]
 
 
-def test_espn_failed_scoreboard_poll_does_not_advance_alert_memory() -> None:
+def test_espn_partial_scoreboard_failure_keeps_cached_league_and_fresh_league() -> None:
+    nfl_events = [_event(f"nfl-{index}", "2026-08-16T18:00:00Z", state="in") for index in range(5)]
+    mlb_events = [_event(f"mlb-{index}", "2026-08-16T18:00:00Z", state="in") for index in range(5)]
+    phase = [0]
+
+    class PartialClient(RecordingClient):
+        def get_json(self, url: str, *, timeout: float):
+            del timeout
+            self.urls.append(url)
+            if "/summary" in url:
+                return {}
+            if phase[0] == 1 and "/baseball/" in url:
+                raise RuntimeError("scoreboard unavailable")
+            source = nfl_events if "/football/" in url else mlb_events
+            if phase[0] == 1 and source is nfl_events:
+                source = [
+                    {
+                        **dict(event),
+                        "competitions": [{
+                            **dict(event["competitions"][0]),
+                            "competitors": [
+                                {
+                                    **dict(competitor),
+                                    "score": "14" if competitor["homeAway"] == "home" else "0",
+                                }
+                                for competitor in event["competitions"][0]["competitors"]
+                            ],
+                        }],
+                    }
+                    for event in source
+                ]
+            return {"events": source}
+
+    client = PartialClient({})
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {
+            "nfl": "https://example.test/football/nfl/scoreboard",
+            "mlb": "https://example.test/baseball/mlb/scoreboard",
+        },
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc),
+        monotonic=lambda: monotonic[0],
+    )
+    settings = DisplaySettings(
+        active_sports={"nfl": True, "mlb": True},
+        my_teams=("nfl:NYG",),
+    )
+
+    provider.fetch_for_ticker("ticker-one", settings)
+    phase[0] = 1
+    monotonic[0] = 6.0
+    result = provider.fetch_for_ticker("ticker-one", settings)
+
+    items = {item.id: item for item in result.content}
+    assert result.health.healthy is True
+    assert result.health.error == "mlb: scoreboard unavailable"
+    assert items["nfl-0"].data["home_score"] == "14"
+    assert items["mlb-0"].data["home_score"] == "0"
+    assert len(result.alerts) == 5
+
+
+def test_espn_partial_scoreboard_poll_publishes_healthy_alerts_only() -> None:
     events = [
         _event("nfl-1", "2026-08-16T18:00:00Z", state="in"),
         _event("mlb-1", "2026-08-16T18:00:00Z", state="in"),
@@ -511,6 +573,7 @@ def test_espn_failed_scoreboard_poll_does_not_advance_alert_memory() -> None:
             }]}
 
     client = PartialClient({})
+    monotonic = [0.0]
     provider = EspnScoreboardProvider(
         {
             "nfl": "https://example.test/football/nfl/scoreboard",
@@ -518,22 +581,25 @@ def test_espn_failed_scoreboard_poll_does_not_advance_alert_memory() -> None:
         },
         client=client,
         now=lambda: datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc),
+        monotonic=lambda: monotonic[0],
     )
     settings = DisplaySettings(
         active_sports={"nfl": True, "mlb": True},
         my_teams=("nfl:NYG",),
     )
 
-    provider.fetch(settings)
+    provider.fetch_for_ticker("ticker-one", settings)
     scoreboard_pass[0] = 1
-    failed = provider.fetch(settings)
+    monotonic[0] = 60.0
+    failed = provider.fetch_for_ticker("ticker-one", settings)
     scoreboard_pass[0] = 2
-    recovered = provider.fetch(settings)
+    monotonic[0] = 120.0
+    recovered = provider.fetch_for_ticker("ticker-one", settings)
 
-    assert failed.health.healthy is False
-    assert failed.alerts == ()
-    assert len(recovered.alerts) == 1
-    assert recovered.alerts[0]["home_score"] == 14
+    assert failed.health.healthy is True
+    assert failed.health.error == "mlb: scoreboard unavailable"
+    assert {alert["sport"] for alert in failed.alerts} == {"nfl"}
+    assert {alert["sport"] for alert in recovered.alerts} == {"nfl"}
 
 
 def test_espn_discovery_refresh_finds_new_games_after_sixty_seconds() -> None:

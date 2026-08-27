@@ -127,6 +127,14 @@ def _refresh_succeeded(result: object) -> tuple[bool, str | None]:
     return True, None
 
 
+def _refresh_warning(result: object) -> str | None:
+    """Read a nonblocking degraded-health message from an accepted provider result."""
+
+    if isinstance(result, ProviderResult) and result.health.healthy:
+        return result.health.error or None
+    return None
+
+
 class RefreshScheduler:
     """Schedule provider refreshes and publish complete ticker snapshots."""
 
@@ -280,6 +288,7 @@ class RefreshScheduler:
             )
             data_by_ticker = dict(job.data_by_ticker)
             errors: list[str] = []
+            warnings: list[str] = []
             success_count = 0
             for ticker_id, settings in settings_by_ticker.items():
                 try:
@@ -287,10 +296,13 @@ class RefreshScheduler:
                     ok, error = _refresh_succeeded(result)
                     if not ok:
                         raise RuntimeError(error or "provider refresh failed")
+                    warning = _refresh_warning(result)
                 except Exception as error:
                     message = _error_text(error)
                     errors.append(f"{ticker_id}: {message}")
                 else:
+                    if warning:
+                        warnings.append(f"{ticker_id}: {warning}")
                     data_by_ticker[ticker_id] = _CachedProviderData(
                         settings_key=settings_key_for(job, ticker_id, settings),
                         value=_freeze(result),
@@ -300,9 +312,16 @@ class RefreshScheduler:
             if errors:
                 health = SchedulerHealth(
                     last_success=wall_now if success_count else job.health.last_success,
-                    last_error="; ".join(errors),
+                    last_error="; ".join(errors + warnings),
                     next_due=wall_due,
                     consecutive_failures=job.health.consecutive_failures + 1,
+                )
+            elif warnings:
+                health = SchedulerHealth(
+                    last_success=wall_now,
+                    last_error="; ".join(warnings),
+                    next_due=wall_due,
+                    consecutive_failures=0,
                 )
             else:
                 health = SchedulerHealth(

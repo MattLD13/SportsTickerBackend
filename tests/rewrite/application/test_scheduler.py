@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import pytest
 
 from sports_ticker.application.scheduler import RefreshScheduler
+from sports_ticker.domain import ContentItem
+from sports_ticker.providers.contracts import ProviderHealth, ProviderResult
 
 
 pytestmark = pytest.mark.critical
@@ -45,6 +47,43 @@ def test_failed_provider_does_not_block_snapshot_publication() -> None:
         "ticker-1: HTTP 429 Too Many Requests"
     )
     assert scheduler.get_health("racing").consecutive_failures == 1
+
+
+def test_accepted_degraded_provider_result_publishes_and_reports_warning() -> None:
+    published = []
+
+    def publish(ticker_id, settings, provider_data):
+        del settings
+        published.append((ticker_id, dict(provider_data)))
+        return True
+
+    def espn_provider(settings):
+        del settings
+        return ProviderResult(
+            content=(ContentItem(id="game", data={"sport": "nfl"}),),
+            health=ProviderHealth(
+                healthy=True,
+                provider="espn",
+                error="mlb: scoreboard unavailable",
+            ),
+        )
+
+    scheduler = RefreshScheduler(
+        publish,
+        monotonic=lambda: 0.0,
+        wall_clock=lambda: datetime(2026, 8, 21, 18, 52, tzinfo=timezone.utc),
+    )
+    scheduler.register_provider("espn", 5.0, espn_provider)
+    scheduler.register_ticker("ticker-1", lambda ticker_id: {})
+
+    result = scheduler.run_due(0.0)
+
+    assert result == ("ticker-1",)
+    assert published[0][1]["espn"].health.error == "mlb: scoreboard unavailable"
+    assert scheduler.get_health("espn").last_error == (
+        "ticker-1: mlb: scoreboard unavailable"
+    )
+    assert scheduler.get_health("espn").consecutive_failures == 0
 
 
 def test_failed_refresh_keeps_compatible_cached_provider_data() -> None:
