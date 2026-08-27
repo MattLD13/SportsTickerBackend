@@ -60,6 +60,7 @@ _MLB_PITCH_ABBREVIATIONS = {
     "SV": "Sweeper",
 }
 _FULL_SCOREBOARD_REFRESH_THRESHOLD = 5
+_FULL_SCOREBOARD_DISCOVERY_INTERVAL = 60.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +80,7 @@ class _LeagueSchedule:
 
     events: tuple[Mapping[str, Any], ...]
     schedule_day: date
+    discovery_at: float
 
 
 def _source_key(
@@ -158,31 +160,33 @@ class EspnScoreboardProvider:
         dates = _scoreboard_dates(settings.timezone, now=current)
         source_key = _source_key(self.scoreboard_urls, settings, dates)
         if cache_source:
-            now = self._monotonic()
             with self._source_cache_lock:
+                now = self._monotonic()
                 cached = self._source_cache.get(source_key)
                 if cached is not None and 0 <= now - cached[0] < 5.0:
                     source = cached[1]
                 else:
                     source = self._read_source(settings, current, dates, cache_schedule=True)
-                    self._source_cache[source_key] = (now, source)
+                    self._source_cache[source_key] = (self._monotonic(), source)
         else:
             source = self._read_source(settings, current, dates, cache_schedule=False)
 
         items = source.content
         score_games = [{"kind": item.kind, "id": item.id, **dict(item.data)} for item in items]
-        score_alerts.ingest(score_games)
-        alerts = alerts_for_settings(
-            score_alerts.recent(
-                delay=settings.live_delay_seconds if settings.live_delay_mode else 0.0,
-            ),
-            settings,
-        )
         health = ProviderHealth(
             healthy=not source.errors,
             provider="espn",
             error="; ".join(source.errors) if source.errors else None,
         )
+        alerts: tuple[Mapping[str, Any], ...] = ()
+        if health.healthy:
+            score_alerts.ingest(score_games)
+            alerts = alerts_for_settings(
+                score_alerts.recent(
+                    delay=settings.live_delay_seconds if settings.live_delay_mode else 0.0,
+                ),
+                settings,
+            )
         result = ProviderResult(
             content=items,
             alerts=alerts,
@@ -216,7 +220,9 @@ class EspnScoreboardProvider:
         )
         active_sources = len(active_leagues)
         schedule_day = _schedule_day(settings.timezone, current)
+        monotonic_now = self._monotonic()
         cached_events: dict[str, tuple[Mapping[str, Any], ...]] = {}
+        discovery_ages: dict[str, float] = {}
         refresh_leagues: list[tuple[str, str]] = []
         live_refreshes: list[tuple[str, Mapping[str, Any]]] = []
         scoreboard_detail_suppressed: set[str] = set()
@@ -225,14 +231,15 @@ class EspnScoreboardProvider:
             cached = self._league_schedules.get(cache_key) if cache_schedule else None
             if cached is None:
                 refresh_leagues.append((league, url))
+            elif monotonic_now - cached.discovery_at >= _FULL_SCOREBOARD_DISCOVERY_INTERVAL:
+                cached_events[league] = cached.events
+                discovery_ages[league] = cached.discovery_at
+                refresh_leagues.append((league, url))
             elif _league_needs_refresh(cached.events, current):
                 cached_events[league] = cached.events
+                discovery_ages[league] = cached.discovery_at
                 if self._summary_urls.get(league):
-                    live_events = tuple(
-                        event
-                        for event in cached.events
-                        if _event_needs_live_refresh(event, current)
-                    )
+                    live_events = _unique_live_events(cached.events, current)
                     if len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
                         refresh_leagues.append((league, url))
                         scoreboard_detail_suppressed.add(league)
@@ -242,21 +249,26 @@ class EspnScoreboardProvider:
                     refresh_leagues.append((league, url))
             else:
                 cached_events[league] = cached.events
+                discovery_ages[league] = cached.discovery_at
 
         events_by_league: dict[str, tuple[Mapping[str, Any], ...]] = dict(cached_events)
         summary_payloads: dict[tuple[str, str], Any] = {}
         attempted_summary_ids: set[tuple[str, str]] = set()
         failed_leagues: set[str] = set()
-        workers = min(8, len(refresh_leagues) + len(live_refreshes))
+        summary_futures: dict[tuple[str, str], Any] = {}
+        workers = min(
+            8,
+            max(1, len(refresh_leagues) + len(live_refreshes), _FULL_SCOREBOARD_REFRESH_THRESHOLD - 1),
+        )
         with ThreadPoolExecutor(
-            max_workers=max(1, workers),
+            max_workers=workers,
             thread_name_prefix="espn-refresh",
         ) as pool:
             scoreboard_futures = {
                 league: pool.submit(self._read_scoreboard, url, dates)
                 for league, url in refresh_leagues
             }
-            summary_futures = {
+            summary_futures.update({
                 (league, str(event.get("id") or "").strip()): pool.submit(
                     self._read_summary,
                     league,
@@ -264,7 +276,7 @@ class EspnScoreboardProvider:
                 )
                 for league, event in live_refreshes
                 if str(event.get("id") or "").strip()
-            }
+            })
             for league, _url in active_leagues:
                 if league in scoreboard_futures:
                     try:
@@ -278,14 +290,29 @@ class EspnScoreboardProvider:
                         self._league_schedules[(settings.timezone, league, schedule_day)] = _LeagueSchedule(
                             events=events,
                             schedule_day=schedule_day,
+                            discovery_at=self._monotonic(),
                         )
+                        discovery_ages[league] = self._league_schedules[
+                            (settings.timezone, league, schedule_day)
+                        ].discovery_at
+                    live_events = _unique_live_events(events, current)
+                    if self._summary_urls.get(league):
+                        if len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
+                            scoreboard_detail_suppressed.add(league)
+                        elif cache_schedule:
+                            for event in live_events:
+                                event_id = str(event.get("id") or "").strip()
+                                if event_id and (league, event_id) not in summary_futures:
+                                    summary_futures[(league, event_id)] = pool.submit(
+                                        self._read_summary,
+                                        league,
+                                        event_id,
+                                    )
             for (league, event_id), future in summary_futures.items():
                 attempted_summary_ids.add((league, event_id))
                 try:
                     summary = future.result()
-                except Exception as exc:
-                    failed_leagues.add(league)
-                    errors.append(f"{league} event {event_id}: {exc}")
+                except Exception:
                     continue
                 summary_payloads[(league, event_id)] = summary
                 events = events_by_league.get(league, ())
@@ -297,6 +324,7 @@ class EspnScoreboardProvider:
                     self._league_schedules[(settings.timezone, league, schedule_day)] = _LeagueSchedule(
                         events=events_by_league[league],
                         schedule_day=schedule_day,
+                        discovery_at=discovery_ages.get(league, self._monotonic()),
                     )
 
         failed_sources = len(failed_leagues)
@@ -529,10 +557,24 @@ def _summary_event(payload: Any, fallback: Mapping[str, Any]) -> Mapping[str, An
         event["id"] = event_id
     if competition.get("date") or header.get("date"):
         event["date"] = competition.get("date") or header.get("date")
-    status = competition.get("status") or header.get("status")
-    if status:
-        event["status"] = status
-    event["competitions"] = [competition]
+    fallback_status = _mapping(event.get("status"))
+    summary_status = _mapping(competition.get("status") or header.get("status"))
+    if _status_rank(summary_status) >= _status_rank(fallback_status):
+        event["status"] = _merge_mapping(fallback_status, summary_status)
+    scoreboard_competition = _first_mapping(event.get("competitions"))
+    merged_competition = _merge_mapping(scoreboard_competition, competition)
+    merged_competition["competitors"] = _merge_competitors(
+        scoreboard_competition.get("competitors"),
+        competition.get("competitors"),
+    )
+    scoreboard_situation = _mapping(scoreboard_competition.get("situation"))
+    summary_situation = _mapping(summary.get("situation"))
+    if scoreboard_situation or summary_situation:
+        merged_competition["situation"] = _merge_mapping(
+            scoreboard_situation,
+            summary_situation,
+        )
+    event["competitions"] = [merged_competition]
     return event
 
 
@@ -618,6 +660,93 @@ def _event_needs_live_refresh(event: Mapping[str, Any], now: datetime) -> bool:
     current = now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
     current = current.astimezone(timezone.utc)
     return start is not None and start <= current <= start + timedelta(hours=6)
+
+
+def _unique_live_events(
+    events: Sequence[Mapping[str, Any]],
+    now: datetime,
+) -> tuple[Mapping[str, Any], ...]:
+    """Return live-refresh candidates once per event identifier."""
+
+    unique: list[Mapping[str, Any]] = []
+    seen: set[str] = set()
+    for event in events:
+        event_id = str(event.get("id") or "").strip()
+        if not event_id or event_id in seen or not _event_needs_live_refresh(event, now):
+            continue
+        seen.add(event_id)
+        unique.append(event)
+    return tuple(unique)
+
+
+def _status_rank(status: Mapping[str, Any]) -> int:
+    """Rank summary status without allowing a live event to regress to pregame."""
+
+    state = str(_mapping(status.get("type")).get("state") or "pre").strip().lower()
+    if state in {"post", "final"}:
+        return 2
+    if state in {"in", "half", "crit"}:
+        return 1
+    return 0
+
+
+def _merge_mapping(
+    base: Mapping[str, Any],
+    overlay: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Overlay nonempty source fields while retaining scoreboard fields."""
+
+    merged = dict(base)
+    for key, value in overlay.items():
+        if value is not None:
+            merged[key] = value
+    return merged
+
+
+def _merge_competitors(base: Any, overlay: Any) -> list[Mapping[str, Any]]:
+    """Merge summary competitors without dropping scoreboard team metadata."""
+
+    scoreboard = list(_sequence(base))
+    summary = list(_sequence(overlay))
+    used: set[int] = set()
+    merged: list[Mapping[str, Any]] = []
+    for original in scoreboard:
+        original_mapping = _mapping(original)
+        match_index = next(
+            (
+                index
+                for index, candidate in enumerate(summary)
+                if index not in used and _competitor_key(candidate) == _competitor_key(original_mapping)
+            ),
+            None,
+        )
+        if match_index is None:
+            merged.append(original_mapping)
+            continue
+        used.add(match_index)
+        candidate = _mapping(summary[match_index])
+        item = _merge_mapping(original_mapping, candidate)
+        item["team"] = _merge_mapping(
+            _mapping(original_mapping.get("team")),
+            _mapping(candidate.get("team")),
+        )
+        merged.append(item)
+    merged.extend(
+        _mapping(candidate)
+        for index, candidate in enumerate(summary)
+        if index not in used and _mapping(candidate)
+    )
+    return merged
+
+
+def _competitor_key(value: Mapping[str, Any]) -> tuple[str, str]:
+    """Identify one competitor by side and team identifier."""
+
+    team = _mapping(value.get("team"))
+    return (
+        str(value.get("homeAway") or "").strip().lower(),
+        str(value.get("id") or team.get("id") or "").strip(),
+    )
 
 
 def _scoreboard_url_for_dates(scoreboard_url: str, dates: Sequence[date]) -> str:
