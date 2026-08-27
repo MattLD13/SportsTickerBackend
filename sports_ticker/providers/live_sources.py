@@ -22,7 +22,7 @@ from .espn import _display_timezone, _event_time
 from .http import JsonHttpClient, UrllibJsonHttpClient
 
 
-ESPN_GOLF_URL = "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"
+ESPN_GOLF_URL = "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"
 FINNHUB_QUOTE_URL = "https://finnhub.io/api/v1/quote"
 FINNHUB_CANDLE_URL = "https://finnhub.io/api/v1/stock/candle"
 _ETF_LOGO_DOMAINS = {

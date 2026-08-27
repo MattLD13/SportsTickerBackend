@@ -40,7 +40,7 @@ from sports_ticker.providers.live_sources import (
 from sports_ticker.providers.racing_live import LiveRacingSource
 
 
-_ESPN_BASE: Final = "https://site.api.espn.com/apis/site/v2/sports"
+_ESPN_BASE: Final = "https://site.web.api.espn.com/apis/site/v2/sports"
 _INTERVALS: Final = {
     "espn": 5.0,
     "fotmob": 5.0,

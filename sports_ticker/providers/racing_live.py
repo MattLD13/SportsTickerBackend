@@ -15,9 +15,9 @@ from sports_ticker.domain import DisplaySettings
 from .http import JsonHttpClient, TextHttpClient, UrllibJsonHttpClient, UrllibTextHttpClient
 
 
-_F1_ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
-_INDYCAR_ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard"
-_NASCAR_ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard"
+_F1_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard"
+_INDYCAR_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard"
+_NASCAR_ESPN_URL = "https://site.web.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard"
 _NASCAR_LIVE_URL = "https://cf.nascar.com/live/feeds/live-feed.json"
 _OPENF1_BASE = "https://api.openf1.org/v1"
 _JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"

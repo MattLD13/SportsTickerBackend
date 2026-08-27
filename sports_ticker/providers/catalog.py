@@ -14,7 +14,7 @@ from .http import JsonHttpClient, UrllibJsonHttpClient
 from .logo_overrides import corrected_logo
 
 
-_ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
+_ESPN_BASE = "https://site.web.api.espn.com/apis/site/v2/sports"
 _ESPN_CORE_COLLEGE_BASE = "https://sports.core.api.espn.com/v2/sports/football/leagues/college-football"
 _COLLEGE_GROUPS = {"ncf_fbs": "80", "ncf_fcs": "81"}
 _MODE_SYMBOLS = {

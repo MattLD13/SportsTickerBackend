@@ -39,7 +39,7 @@ def test_f1_polls_openf1_positions_for_the_current_session() -> None:
     now = datetime(2026, 8, 15, 15, 0, tzinfo=timezone.utc)
     client = JsonFixture(
         {
-            "https://site.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard": {
+            "https://site.web.api.espn.com/apis/site/v2/sports/racing/f1/scoreboard": {
                 "events": [
                     {
                         "id": "f1-event",
@@ -216,7 +216,7 @@ def test_indycar_expired_post_session_clears_after_3am() -> None:
             "https://indycar.blob.core.windows.net/racecontrol/driversfeed.json": {
                 "drivers": {"driver": [{"number": "1", "carillustration": "car-1", "endplatesmall": "plate-1"}]}
             },
-            "https://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard": {
+            "https://site.web.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard": {
                 "events": [
                     {"name": "Grand Prix of Ontario", "date": "2026-08-16T16:00Z"},
                     {"name": "Grand Prix of Washington, D.C.", "date": "2026-08-23T17:00Z"},
@@ -262,7 +262,7 @@ def test_indycar_session_lifecycle_and_3am_rollover() -> None:
             "https://indycar.blob.core.windows.net/racecontrol/driversfeed.json": {
                 "drivers": {"driver": [{"number": "1", "carillustration": "car-1", "endplatesmall": "plate-1"}]}
             },
-            "https://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard": {
+            "https://site.web.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard": {
                 "events": [
                     {"name": "Grand Prix of Ontario", "date": "2026-08-16T16:00Z"},
                 ]
@@ -286,7 +286,7 @@ def test_indycar_session_lifecycle_and_3am_rollover() -> None:
         "https://indycar.blob.core.windows.net/racecontrol/timingscoring-ris.json": {
             "timing_results": {}
         },
-        "https://site.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard": {
+        "https://site.web.api.espn.com/apis/site/v2/sports/racing/irl/scoreboard": {
             "events": [
                 {"name": "Grand Prix of Washington, D.C.", "date": "2026-08-23T17:00Z"},
             ]
@@ -393,7 +393,7 @@ def test_nascar_polls_official_live_feed() -> None:
                     },
                 ],
             },
-            "https://site.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard": {
+            "https://site.web.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard": {
                 "events": [
                     {"id": "5622", "name": "Cook Out 400", "date": "2026-08-16T19:00Z"},
                 ]
@@ -435,7 +435,7 @@ def test_nascar_session_lifecycle_and_3am_rollover() -> None:
                 "flag_state": 9,
                 "vehicles": [],
             },
-            "https://site.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard": {
+            "https://site.web.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard": {
                 "events": [
                     {"id": "5622", "name": "Cook Out 400", "date": "2026-08-16T19:00Z"},
                     {"id": "5623", "name": "Coke Zero Sugar 400", "date": "2026-08-22T23:30Z"},
@@ -451,7 +451,7 @@ def test_nascar_session_lifecycle_and_3am_rollover() -> None:
     now_race_day = datetime(2026, 8, 22, 14, 0, tzinfo=timezone.utc)
     data_upcoming = {
         "https://cf.nascar.com/live/feeds/live-feed.json": {},
-        "https://site.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard": {
+        "https://site.web.api.espn.com/apis/site/v2/sports/racing/nascar-premier/scoreboard": {
             "events": [
                 {"id": "5623", "name": "Coke Zero Sugar 400", "date": "2026-08-22T23:30Z"},
             ]
@@ -495,4 +495,3 @@ def test_racing_standardized_flags() -> None:
         token = _normalize_racing_flag(input_flag)
         assert token == expected_token, f"Failed for {input_flag}: expected {expected_token}, got {token}"
         assert (token in _CAUTION_FLAGS) == is_caution, f"Caution mismatch for {token}"
-
