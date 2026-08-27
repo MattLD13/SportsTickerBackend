@@ -87,7 +87,7 @@ def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str
             if matching:
                 last_g = matching[-1]
                 player = str(last_g.get("player") or "").strip().upper()
-                minute = str(last_g.get("minute") or "").strip()
+                minute = str(last_g.get("minute") or last_g.get("time") or "").strip()
                 own_goal = bool(last_g.get("own_goal"))
                 g_type = str(last_g.get("goal_type") or last_g.get("type") or "").strip().upper()
 

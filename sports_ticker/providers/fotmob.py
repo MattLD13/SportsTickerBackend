@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import Executor, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from threading import Lock
-from time import monotonic
+from threading import Lock, RLock
+from time import monotonic as default_monotonic
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -23,6 +23,9 @@ from .sports_display import normalize_soccer_clock, soccer_event
 _MATCHES_URL = "https://www.fotmob.com/api/data/matches"
 _DETAIL_URL = "https://www.fotmob.com/api/data/matchDetails?matchId={match_id}"
 _LIVE_DETAIL_SECONDS = 5.0
+_SOURCE_CACHE_SECONDS = 5.0
+_DENSE_LIVE_DETAIL_THRESHOLD = 5
+_MAX_NONLIVE_DETAIL_WARM = 8
 _SOCCER_ABBREVIATIONS = {
     # Premier League
     "Arsenal": "ARS", "Aston Villa": "AVL", "Bournemouth": "BOU", "Brentford": "BRE",
@@ -62,6 +65,17 @@ class _DetailCacheEntry:
     payload: Mapping[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class _MatchSource:
+    """Store one completed FotMob source view before ticker-specific alerts."""
+
+    content: tuple[ContentItem, ...]
+    errors: tuple[str, ...]
+    successes: int
+    observed_at: datetime
+    completed_at: float
+
+
 class FotMobSoccerProvider:
     """Publish FotMob soccer scoreboards and live match facts."""
 
@@ -74,6 +88,9 @@ class FotMobSoccerProvider:
         *,
         timeout: float = 10.0,
         cache_seconds: float = 86_400.0,
+        now: Callable[[], datetime] | None = None,
+        monotonic: Callable[[], float] | None = None,
+        detail_executor: Executor | None = None,
     ) -> None:
         self._leagues = {
             str(identifier).strip().lower(): int(league_id)
@@ -83,8 +100,14 @@ class FotMobSoccerProvider:
         self._client = client or UrllibJsonHttpClient(user_agent="Mozilla/5.0")
         self._timeout = float(timeout)
         self._cache_seconds = float(cache_seconds)
+        self._now = now or (lambda: datetime.now(timezone.utc))
+        self._monotonic = monotonic or default_monotonic
         self._details: dict[str, _DetailCacheEntry] = {}
         self._details_lock = Lock()
+        self._detail_executor: Executor | None = detail_executor
+        self._detail_inflight: set[str] = set()
+        self._source_cache: dict[tuple[object, ...], _MatchSource] = {}
+        self._source_cache_lock = RLock()
         self._stale_cache = SettingsResultCache()
         self._score_alerts = ScoreAlertTracker()
         self._score_alerts_by_ticker: dict[str, ScoreAlertTracker] = {}
@@ -92,16 +115,22 @@ class FotMobSoccerProvider:
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch current scoreboard events from each configured active league."""
 
-        return self._fetch(settings, self._score_alerts)
+        return self._fetch(settings, self._score_alerts, cache_source=False)
 
     def fetch_for_ticker(self, ticker_id: str, settings: DisplaySettings) -> ProviderResult:
         """Fetch one ticker scoreboard with score memory isolated to that ticker."""
 
         identifier = str(ticker_id).strip()
         tracker = self._score_alerts_by_ticker.setdefault(identifier, ScoreAlertTracker())
-        return self._fetch(settings, tracker)
+        return self._fetch(settings, tracker, cache_source=True)
 
-    def _fetch(self, settings: DisplaySettings, score_alerts: ScoreAlertTracker) -> ProviderResult:
+    def _fetch(
+        self,
+        settings: DisplaySettings,
+        score_alerts: ScoreAlertTracker,
+        *,
+        cache_source: bool,
+    ) -> ProviderResult:
         """Fetch all enabled soccer leagues inside the local display window."""
 
         if not isinstance(settings, DisplaySettings):
@@ -114,28 +143,16 @@ class FotMobSoccerProvider:
         if not active:
             return ProviderResult(health=ProviderHealth(provider=self.provider_name))
 
-        records: list[tuple[str, Mapping[str, Any]]] = []
-        errors: list[str] = []
-        successes = 0
-        for day in _display_days(settings.timezone):
-            try:
-                payload = self._client.get_json(_matches_url(day), timeout=self._timeout)
-                records.extend(_league_matches(payload, active))
-                successes += 1
-            except Exception as error:
-                errors.append(f"matches {day:%Y-%m-%d}: {error}")
-
-        selected = _visible_matches(records, settings.timezone)
-        details = self._fetch_details(selected)
-        content = tuple(
-            _content_item(
-                identifier,
-                match,
-                details.get(str(match.get("id") or "")),
-                timezone_name=settings.timezone,
-            )
-            for identifier, match in selected
+        current = self._now()
+        dates = _display_days(settings.timezone, now=current)
+        source = self._source_for(
+            settings,
+            active,
+            dates,
+            cache_source=cache_source,
+            now=current,
         )
+        content = source.content
         score_games = [
             {"kind": item.kind, "id": item.id, **dict(item.data)}
             for item in content
@@ -148,39 +165,184 @@ class FotMobSoccerProvider:
             settings,
         )
         health = ProviderHealth(
-            healthy=not errors,
+            healthy=not source.errors,
             provider=self.provider_name,
-            error="; ".join(errors) if errors else None,
+            error="; ".join(source.errors) if source.errors else None,
         )
         result = ProviderResult(
-            content=tuple(sorted(content, key=_sort_key)),
+            content=content,
             alerts=alerts,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=source.observed_at,
             health=health,
         )
         if health.healthy:
             self._stale_cache.set(settings, result)
             return result
-        return result if successes else self._stale_result(settings, health.error or "FotMob request failed")
+        return result if source.successes else self._stale_result(settings, health.error or "FotMob request failed")
 
-    def _fetch_details(
+    def _source_for(
+        self,
+        settings: DisplaySettings,
+        active: Mapping[str, int],
+        dates: Sequence,
+        *,
+        cache_source: bool,
+        now: datetime,
+    ) -> _MatchSource:
+        """Return shared content while keeping direct fetch calls fresh."""
+
+        key = _source_key(settings.timezone, active, dates)
+        if not cache_source:
+            return self._read_source(settings, active, dates, now=now)
+        with self._source_cache_lock:
+            current = self._monotonic()
+            cached = self._source_cache.get(key)
+            if cached is not None and 0 <= current - cached.completed_at < _SOURCE_CACHE_SECONDS:
+                return cached
+            source = self._read_source(settings, active, dates, now=now)
+            completed = self._monotonic()
+            cached_source = _MatchSource(
+                source.content,
+                source.errors,
+                source.successes,
+                source.observed_at,
+                completed,
+            )
+            self._source_cache[key] = cached_source
+            return cached_source
+
+    def _read_source(
+        self,
+        settings: DisplaySettings,
+        active: Mapping[str, int],
+        dates: Sequence,
+        *,
+        now: datetime,
+    ) -> _MatchSource:
+        """Read date responses concurrently and build content before alerts."""
+
+        records: list[tuple[str, Mapping[str, Any]]] = []
+        errors: list[str] = []
+        successes = 0
+        workers = min(8, len(dates))
+        with ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="fotmob-matches") as pool:
+            futures = {
+                day: pool.submit(self._read_matches, day, active)
+                for day in dates
+            }
+            for day, future in futures.items():
+                try:
+                    day_records = future.result()
+                except Exception as error:
+                    errors.append(f"matches {day:%Y-%m-%d}: {error}")
+                else:
+                    records.extend(day_records)
+                    successes += 1
+
+        selected = _visible_matches(records, settings.timezone, now=now)
+        self._schedule_detail_warm(selected)
+        details = self._detail_snapshot(selected)
+        content = tuple(
+            _content_item(
+                identifier,
+                match,
+                details.get(str(match.get("id") or "")),
+                timezone_name=settings.timezone,
+            )
+            for identifier, match in selected
+        )
+        return _MatchSource(
+            content=tuple(sorted(content, key=_sort_key)),
+            errors=tuple(errors),
+            successes=successes,
+            observed_at=self._now(),
+            completed_at=self._monotonic(),
+        )
+
+    def _read_matches(
+        self, day, active: Mapping[str, int]
+    ) -> list[tuple[str, Mapping[str, Any]]]:
+        """Read one date response containing all configured FotMob leagues."""
+
+        payload = self._client.get_json(_matches_url(day), timeout=self._timeout)
+        return _league_matches(payload, active)
+
+    def _schedule_detail_warm(
+        self, records: Sequence[tuple[str, Mapping[str, Any]]]
+    ) -> None:
+        """Warm sparse live and capped non-live details without delaying scores."""
+
+        live = [match for _, match in records if _match_state(match) in {"in", "half"}]
+        live_targets = live if len(live) < _DENSE_LIVE_DETAIL_THRESHOLD else []
+        nonlive = [
+            match
+            for _, match in records
+            if _match_state(match) in {"post", "pre"}
+            and _needs_details(match)
+            and not self._detail_is_fresh(str(match.get("id") or "").strip(), _match_state(match))
+        ]
+        nonlive.sort(key=lambda match: 0 if _match_state(match) == "post" else 1)
+        targets = live_targets + nonlive[:_MAX_NONLIVE_DETAIL_WARM]
+        unique: dict[str, Mapping[str, Any]] = {
+            str(match.get("id") or ""): match
+            for match in targets
+            if str(match.get("id") or "").strip()
+        }
+        for match_id, match in unique.items():
+            if self._detail_is_fresh(match_id, _match_state(match)):
+                continue
+            with self._details_lock:
+                if match_id in self._detail_inflight:
+                    continue
+                self._detail_inflight.add(match_id)
+                if self._detail_executor is None:
+                    self._detail_executor = ThreadPoolExecutor(
+                        max_workers=8,
+                        thread_name_prefix="fotmob-details",
+                    )
+                executor = self._detail_executor
+            try:
+                executor.submit(self._warm_detail, match)
+            except Exception:
+                with self._details_lock:
+                    self._detail_inflight.discard(match_id)
+
+    def _warm_detail(self, match: Mapping[str, Any]) -> None:
+        """Refresh one optional detail payload and release its single-flight marker."""
+
+        match_id = str(match.get("id") or "").strip()
+        try:
+            self._details_for(match)
+        except Exception:
+            pass
+        finally:
+            with self._details_lock:
+                self._detail_inflight.discard(match_id)
+
+    def _detail_snapshot(
         self, records: Sequence[tuple[str, Mapping[str, Any]]]
     ) -> dict[str, Mapping[str, Any]]:
-        """Fetch match details concurrently for colors and live facts."""
+        """Copy available optional details for shared content construction."""
 
-        targets = [match for _, match in records if _needs_details(match)]
-        if not targets:
-            return {}
-        workers = min(8, len(targets))
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="fotmob-details") as pool:
-            futures = {pool.submit(self._details_for, match): str(match.get("id") or "") for match in targets}
+        identifiers = {str(match.get("id") or "").strip() for _, match in records}
+        with self._details_lock:
             return {
-                match_id: detail
-                for future, match_id in futures.items()
-                if match_id
-                for detail in (future.result(),)
-                if detail is not None
+                match_id: entry.payload
+                for match_id, entry in self._details.items()
+                if match_id in identifiers
             }
+
+    def _detail_is_fresh(self, match_id: str, state: str) -> bool:
+        """Return whether one cached detail can serve the current match state."""
+
+        with self._details_lock:
+            cached = self._details.get(match_id)
+            if cached is None:
+                return False
+            age = self._monotonic() - cached.fetched_at
+            if state in {"pre", "post"}:
+                return cached.state == state and age < self._cache_seconds
+            return state in {"in", "half"} and cached.state in {"in", "half"} and age < _LIVE_DETAIL_SECONDS
 
     def _details_for(self, match: Mapping[str, Any]) -> Mapping[str, Any] | None:
         """Return live details or one final snapshot for one match."""
@@ -188,7 +350,7 @@ class FotMobSoccerProvider:
         match_id = str(match.get("id") or "").strip()
         if not match_id:
             return None
-        now = monotonic()
+        now = self._monotonic()
         state = _match_state(match)
         fallback: Mapping[str, Any] | None = None
         with self._details_lock:
@@ -207,8 +369,9 @@ class FotMobSoccerProvider:
         if not isinstance(payload, Mapping):
             return fallback
         detail = dict(payload)
+        completed = self._monotonic()
         with self._details_lock:
-            self._details[match_id] = _DetailCacheEntry(now, state, detail)
+            self._details[match_id] = _DetailCacheEntry(completed, state, detail)
         return detail
 
     def _stale_result(self, settings: DisplaySettings, error: str) -> ProviderResult:
@@ -232,8 +395,14 @@ def _matches_url(day) -> str:
     return f"{_MATCHES_URL}?date={day:%Y%m%d}&timezone=UTC&ccode3=USA"
 
 
-def _display_days(timezone_name: str) -> tuple:
-    current = datetime.now(timezone.utc).astimezone(_display_timezone(timezone_name))
+def _source_key(
+    timezone_name: str, active: Mapping[str, int], dates: Sequence
+) -> tuple[object, ...]:
+    return (str(timezone_name), tuple(dates), tuple(active.items()))
+
+
+def _display_days(timezone_name: str, *, now: datetime | None = None) -> tuple:
+    current = (now or datetime.now(timezone.utc)).astimezone(_display_timezone(timezone_name))
     start = (current - timedelta(days=1)).date() if current.hour < 3 else current.date()
     return (start, start + timedelta(days=1))
 
@@ -257,9 +426,12 @@ def _league_matches(payload: object, leagues: Mapping[str, int]) -> list[tuple[s
 
 
 def _visible_matches(
-    records: Sequence[tuple[str, Mapping[str, Any]]], timezone_name: str
+    records: Sequence[tuple[str, Mapping[str, Any]]],
+    timezone_name: str,
+    *,
+    now: datetime | None = None,
 ) -> tuple[tuple[str, Mapping[str, Any]], ...]:
-    start, end = _display_window(timezone_name)
+    start, end = _display_window(timezone_name, now=now)
     selected: dict[tuple[str, str], tuple[str, Mapping[str, Any]]] = {}
     for identifier, match in records:
         match_id = str(match.get("id") or "").strip()
@@ -273,8 +445,10 @@ def _visible_matches(
     return tuple(selected.values())
 
 
-def _display_window(timezone_name: str) -> tuple[datetime, datetime]:
-    current = datetime.now(timezone.utc).astimezone(_display_timezone(timezone_name))
+def _display_window(
+    timezone_name: str, *, now: datetime | None = None
+) -> tuple[datetime, datetime]:
+    current = (now or datetime.now(timezone.utc)).astimezone(_display_timezone(timezone_name))
     if current.hour < 3:
         start = (current - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         end = current.replace(hour=3, minute=0, second=0, microsecond=0)

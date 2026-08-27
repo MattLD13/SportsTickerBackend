@@ -1,5 +1,11 @@
 """Verify canonical FotMob soccer display facts."""
 
+from datetime import datetime, timezone
+from threading import Barrier, Lock
+
+import pytest
+
+from sports_ticker.domain.models import DisplaySettings
 from sports_ticker.providers.fotmob import (
     FotMobSoccerProvider,
     _content_item,
@@ -8,6 +14,77 @@ from sports_ticker.providers.fotmob import (
     _needs_details,
     _situation,
 )
+
+
+_NOW = datetime(2026, 8, 16, 12, tzinfo=timezone.utc)
+
+
+class _InlineExecutor:
+    """Run optional detail work inline for deterministic request-count tests."""
+
+    def submit(self, function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+
+class _NoOpExecutor:
+    """Record optional detail work without performing network I/O."""
+
+    def __init__(self) -> None:
+        self.submissions = 0
+
+    def submit(self, function, *args, **kwargs):
+        del function, args, kwargs
+        self.submissions += 1
+
+
+class _RecordingClient:
+    def __init__(self, matches: list[dict]) -> None:
+        self.matches = matches
+        self.urls: list[str] = []
+        self._lock = Lock()
+
+    def get_json(self, url: str, *, timeout: float) -> dict:
+        del timeout
+        with self._lock:
+            self.urls.append(url)
+        if "matchDetails" in url:
+            return {}
+        return {"leagues": [{"primaryId": 130, "matches": self.matches}]}
+
+    @property
+    def match_requests(self) -> int:
+        return sum("matchDetails" not in url for url in self.urls)
+
+    @property
+    def detail_requests(self) -> int:
+        return sum("matchDetails" in url for url in self.urls)
+
+
+def _live_match(match_id: int, score: int = 0) -> dict:
+    return {
+        "id": match_id,
+        "status": {
+            "started": True,
+            "finished": False,
+            "cancelled": False,
+            "utcTime": "2026-08-16T16:00:00Z",
+            "liveTime": {"short": "53'"},
+        },
+        "home": {"id": f"home-{match_id}", "longName": "Seattle Sounders FC", "score": score},
+        "away": {"id": f"away-{match_id}", "longName": "Vancouver Whitecaps", "score": 0},
+    }
+
+
+def _final_match(match_id: int) -> dict:
+    match = _live_match(match_id)
+    match["status"].update(
+        {
+            "started": True,
+            "finished": True,
+            "reason": {"short": "FT"},
+        }
+    )
+    return match
 
 
 def test_fotmob_normalizes_first_half_stoppage_clock() -> None:
@@ -172,8 +249,6 @@ def test_fotmob_reuses_pregame_details_until_the_match_starts() -> None:
 
 
 def test_fotmob_emits_score_alerts_for_followed_teams() -> None:
-    from sports_ticker.domain.models import DisplaySettings
-
     class Client:
         score = 0
 
@@ -203,7 +278,13 @@ def test_fotmob_emits_score_alerts_for_followed_teams() -> None:
             }
 
     client = Client()
-    provider = FotMobSoccerProvider({"soccer_mls": 130}, client=client)
+    clock = [0.0]
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: clock[0],
+    )
     settings = DisplaySettings(mode="sports", score_alerts=True, my_teams=("soccer_mls:SEA",))
 
     # First poll: initial score 0-0 -> no alerts
@@ -212,10 +293,222 @@ def test_fotmob_emits_score_alerts_for_followed_teams() -> None:
 
     # Second poll: Seattle scores 1-0 -> emits alert
     client.score = 1
+    clock[0] = 5.0
     result2 = provider.fetch_for_ticker("ticker-1", settings)
     assert len(result2.alerts) == 1
     alert = result2.alerts[0]
     assert alert["team_abbr"] == "SEA"
     assert alert["headline"] == "GOAL"
     assert alert["home_score"] == 1
+
+
+def test_fotmob_ticker_source_is_shared_across_one_hundred_tickers() -> None:
+    client = _RecordingClient([_live_match(1)])
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: 0.0,
+        detail_executor=_NoOpExecutor(),
+    )
+    settings = DisplaySettings(active_sports={"soccer_mls": True})
+
+    for index in range(100):
+        provider.fetch_for_ticker(f"ticker-{index}", settings)
+
+    assert client.match_requests == 2
+
+
+def test_fotmob_ticker_source_expires_after_five_seconds() -> None:
+    client = _RecordingClient([_live_match(1)])
+    clock = [0.0]
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: clock[0],
+        detail_executor=_NoOpExecutor(),
+    )
+    settings = DisplaySettings(active_sports={"soccer_mls": True})
+
+    provider.fetch_for_ticker("ticker-1", settings)
+    clock[0] = 4.99
+    provider.fetch_for_ticker("ticker-2", settings)
+    assert client.match_requests == 2
+
+    clock[0] = 5.0
+    provider.fetch_for_ticker("ticker-3", settings)
+    assert client.match_requests == 4
+
+
+def test_fotmob_source_key_ignores_ticker_projection_settings() -> None:
+    client = _RecordingClient([_live_match(1)])
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130, "soccer_epl": 47},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: 0.0,
+        detail_executor=_NoOpExecutor(),
+    )
+    base = DisplaySettings(active_sports={"soccer_mls": True, "soccer_epl": False})
+    variants = (
+        DisplaySettings(
+            active_sports={"soccer_mls": True, "soccer_epl": False},
+            my_teams=("soccer_mls:SEA",),
+            score_alerts=False,
+            live_delay_mode=True,
+            live_delay_seconds=120,
+            sports_filter="my_teams",
+        ),
+        DisplaySettings(
+            active_sports={"soccer_mls": True, "soccer_epl": False},
+            mode="weather",
+        ),
+    )
+
+    provider.fetch_for_ticker("ticker-1", base)
+    for index, settings in enumerate(variants, start=2):
+        provider.fetch_for_ticker(f"ticker-{index}", settings)
+    assert client.match_requests == 2
+
+    provider.fetch_for_ticker(
+        "ticker-4",
+        DisplaySettings(active_sports={"soccer_mls": True, "soccer_epl": False}, timezone="UTC"),
+    )
+    assert client.match_requests == 4
+
+    provider.fetch_for_ticker(
+        "ticker-5",
+        DisplaySettings(active_sports={"soccer_mls": True, "soccer_epl": True}),
+    )
+    assert client.match_requests == 6
+
+
+def test_fotmob_reads_the_two_match_dates_concurrently() -> None:
+    class BarrierClient(_RecordingClient):
+        def __init__(self) -> None:
+            super().__init__([_live_match(1)])
+            self.barrier = Barrier(2)
+
+        def get_json(self, url: str, *, timeout: float) -> dict:
+            result = super().get_json(url, timeout=timeout)
+            if "matchDetails" not in url:
+                self.barrier.wait(timeout=1.0)
+            return result
+
+    client = BarrierClient()
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: 0.0,
+        detail_executor=_NoOpExecutor(),
+    )
+
+    result = provider.fetch_for_ticker("ticker-1", DisplaySettings())
+
+    assert result.health.healthy
+    assert client.match_requests == 2
+
+
+@pytest.mark.parametrize("live_count", [1, 5, 10, 100])
+def test_fotmob_live_detail_requests_scale_only_for_sparse_sets(live_count: int) -> None:
+    matches = [_live_match(index) for index in range(1, live_count + 1)]
+    client = _RecordingClient(matches)
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: 0.0,
+        detail_executor=_InlineExecutor(),
+    )
+
+    result = provider.fetch_for_ticker("ticker-1", DisplaySettings())
+
+    assert result.health.healthy
+    assert client.match_requests == 2
+    assert client.detail_requests == (1 if live_count == 1 else 0)
+
+
+def test_fotmob_caps_pregame_and_final_detail_warming_per_source_window() -> None:
+    client = _RecordingClient([_final_match(index) for index in range(1, 21)])
+    executor = _NoOpExecutor()
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130},
+        client=client,
+        now=lambda: _NOW,
+        detail_executor=executor,
+    )
+
+    provider.fetch_for_ticker("ticker-1", DisplaySettings())
+    assert executor.submissions == 8
+
+
+def test_fotmob_detail_failure_does_not_invalidate_fresh_scores() -> None:
+    class FailingDetailClient(_RecordingClient):
+        def get_json(self, url: str, *, timeout: float) -> dict:
+            if "matchDetails" in url:
+                raise RuntimeError("details unavailable")
+            return super().get_json(url, timeout=timeout)
+
+    client = FailingDetailClient([_live_match(1, score=2)])
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: 0.0,
+        detail_executor=_InlineExecutor(),
+    )
+
+    result = provider.fetch_for_ticker("ticker-1", DisplaySettings())
+
+    assert result.health.healthy
+    assert result.content[0].data["home_score"] == "2"
+
+
+def test_fotmob_direct_fetch_keeps_fresh_source_semantics() -> None:
+    client = _RecordingClient([_live_match(1)])
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: 0.0,
+        detail_executor=_NoOpExecutor(),
+    )
+
+    provider.fetch(DisplaySettings())
+    provider.fetch(DisplaySettings())
+
+    assert client.match_requests == 4
+
+
+def test_fotmob_score_alert_uses_canonical_soccer_event_time() -> None:
+    from sports_ticker.providers.score_alerts import ScoreAlertTracker
+
+    tracker = ScoreAlertTracker(clock=lambda: 0.0)
+    base = {
+        "kind": "scoreboard",
+        "id": "match-1",
+        "sport": "soccer_mls",
+        "state": "in",
+        "home_score": 0,
+        "away_score": 0,
+        "home_abbr": "SEA",
+        "away_abbr": "VAN",
+        "situation": {"goal_events": []},
+    }
+    updated = {
+        **base,
+        "home_score": 1,
+        "situation": {
+            "goal_events": [
+                {"is_home": True, "player": "SMITH", "time": "45+2'", "own_goal": False}
+            ]
+        },
+    }
+
+    tracker.ingest([base])
+    tracker.ingest([updated])
+
+    assert tracker.recent()[0]["detail"] == "SMITH 45+2'"
 
