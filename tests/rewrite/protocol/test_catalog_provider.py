@@ -83,15 +83,15 @@ def test_college_conferences_are_existing_controller_league_options() -> None:
     ]
     assert values["ncf_fbs:1"] == {
         "id": "ncf_fbs:1",
-        "label": "Conference / ACC",
+        "label": "ACC",
         "type": "sport",
         "enabled": True,
         "my_teams_enabled": False,
         "conference_id": "1",
         "conference_parent": "ncf_fbs",
     }
-    assert values["ncf_fbs:4"]["label"] == "Conference / Big 12"
-    assert values["ncf_fcs:20"]["label"] == "Conference / Big Sky"
+    assert values["ncf_fbs:4"]["label"] == "Big 12"
+    assert values["ncf_fcs:20"]["label"] == "Big Sky"
     assert values["ncf_fcs:32"]["my_teams_enabled"] is False
     assert "conferences" not in values["nfl"]
 
