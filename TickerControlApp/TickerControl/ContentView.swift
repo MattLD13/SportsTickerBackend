@@ -46,12 +46,19 @@ func prioritizeVibrantColor(primary: String?, alternate: String?) -> Color {
 // ==========================================
 // MARK: - 1. DATA MODELS
 // ==========================================
+struct ConferenceOption: Decodable, Identifiable, Hashable, Sendable {
+    let id: String
+    let label: String
+    let conference_id: String?
+}
 struct LeagueOption: Decodable, Identifiable, Hashable, Sendable {
     let id: String
     let label: String
     let type: String
     let enabled: Bool?
     let my_teams_enabled: Bool?
+    let conference_parent: String?
+    let conferences: [ConferenceOption]?
 }
 struct V2LeagueCatalog: Decodable, Sendable { let leagues: [LeagueOption] }
 struct V2TeamCatalog: Decodable, Sendable { let teams: [TeamData] }
@@ -3118,6 +3125,14 @@ struct ModesView: View {
     var sportsOptions: [LeagueOption] {
         vm.leagueOptions.filter { $0.type == "sport" }
     }
+
+    var standardSportsOptions: [LeagueOption] {
+        sportsOptions.filter { ($0.conferences ?? []).isEmpty && $0.conference_parent == nil }
+    }
+
+    var collegeConferenceLeagues: [LeagueOption] {
+        sportsOptions.filter { !($0.conferences ?? []).isEmpty }
+    }
     
     var stockOptions: [LeagueOption] {
         vm.leagueOptions.filter { $0.type == "stock" }
@@ -3483,20 +3498,52 @@ struct ModesView: View {
                             }
                         }
                     } else {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
-                                ForEach(sportsOptions) { opt in
-                                    let isActive = vm.state.active_sports[opt.id] ?? true
-                                    Button {
-                                        vm.state.active_sports[opt.id] = !isActive
+                        if !standardSportsOptions.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("ENABLED LEAGUES").font(.caption).bold().foregroundStyle(.secondary)
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
+                                    ForEach(standardSportsOptions) { opt in
+                                        let isActive = vm.state.active_sports[opt.id] ?? true
+                                        Button {
+                                            vm.state.active_sports[opt.id] = !isActive
+                                            vm.saveSettings()
+                                        } label: {
+                                            Text(opt.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
+                                                .background(isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
+                                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
+                                                .foregroundColor(.white)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        ForEach(collegeConferenceLeagues) { league in
+                            let conferences = league.conferences ?? []
+                            let leagueIsActive = vm.state.active_sports[league.id] ?? true
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text(league.label).font(.caption).bold().foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button(leagueIsActive ? "Disable league" : "Enable league") {
+                                        vm.state.active_sports[league.id] = !leagueIsActive
                                         vm.saveSettings()
-                                    } label: {
-                                        Text(opt.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
-                                            .background(isActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
-                                            .foregroundColor(.white)
+                                    }
+                                    .font(.caption2).foregroundStyle(leagueIsActive ? .green : .orange)
+                                }
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 12) {
+                                    ForEach(conferences) { conference in
+                                        let isActive = vm.state.active_sports[conference.id] ?? true
+                                        Button {
+                                            vm.state.active_sports[conference.id] = !isActive
+                                            vm.saveSettings()
+                                        } label: {
+                                            Text(conference.label).font(.subheadline).bold().frame(maxWidth: .infinity).padding(.vertical, 12)
+                                                .background(isActive && leagueIsActive ? Color.green.opacity(0.8) : Color.white.opacity(0.05))
+                                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(isActive && leagueIsActive ? Color.green : Color.white.opacity(0.1), lineWidth: 1))
+                                                .foregroundColor(.white)
+                                        }
                                     }
                                 }
                             }

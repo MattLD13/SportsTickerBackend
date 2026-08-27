@@ -60,7 +60,7 @@ class EspnTeamCatalog:
         conferences = self._college_conference_options()
         sports_list: list[dict[str, object]] = []
         for league in LEAGUES:
-            sports_list.append(self._league_payload(league))
+            sports_list.append(self._league_payload(league, conferences))
             sports_list.extend(
                 self._conference_payload(league, conference)
                 for conference in conferences.get(league.id, ())
@@ -80,16 +80,20 @@ class EspnTeamCatalog:
     def _league_payload(
         self,
         league,
+        conferences: Mapping[str, tuple[dict[str, object], ...]],
     ) -> dict[str, object]:
-        """Build one league catalog record for the existing controller contract."""
+        """Build one league catalog record with optional conference metadata."""
 
-        return {
+        payload: dict[str, object] = {
             "id": league.id,
             "label": league.label,
             "type": "sport",
             "enabled": True,
             "my_teams_enabled": league.my_teams_enabled,
         }
+        if league.conference_filter_enabled:
+            payload["conferences"] = list(conferences.get(league.id, ()))
+        return payload
 
     @staticmethod
     def _conference_payload(

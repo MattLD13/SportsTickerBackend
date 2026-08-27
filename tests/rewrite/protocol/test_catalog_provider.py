@@ -73,6 +73,14 @@ def test_college_conferences_are_existing_controller_league_options() -> None:
     values = {item["id"]: item for item in catalog.leagues()}
 
     assert values["ncf_fbs"]["my_teams_enabled"] is True
+    assert values["ncf_fbs"]["conferences"] == [
+        {"id": "ncf_fbs:1", "label": "ACC", "conference_id": "1"},
+        {"id": "ncf_fbs:4", "label": "Big 12", "conference_id": "4"},
+    ]
+    assert values["ncf_fcs"]["conferences"] == [
+        {"id": "ncf_fcs:20", "label": "Big Sky", "conference_id": "20"},
+        {"id": "ncf_fcs:32", "label": "FCS Independents", "conference_id": "32"},
+    ]
     assert values["ncf_fbs:1"] == {
         "id": "ncf_fbs:1",
         "label": "NCAA (FBS) / ACC",
@@ -85,7 +93,6 @@ def test_college_conferences_are_existing_controller_league_options() -> None:
     assert values["ncf_fbs:4"]["label"] == "NCAA (FBS) / Big 12"
     assert values["ncf_fcs:20"]["label"] == "NCAA (FCS) / Big Sky"
     assert values["ncf_fcs:32"]["my_teams_enabled"] is False
-    assert "conferences" not in values["ncf_fbs"]
     assert "conferences" not in values["nfl"]
 
     first_call_count = len(client.urls)
