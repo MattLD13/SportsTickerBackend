@@ -283,6 +283,49 @@ def test_espn_live_refresh_reads_one_summary_for_one_live_game_in_large_schedule
     assert live_item.data["home_score"] == "1"
 
 
+def test_espn_five_live_games_use_one_scoreboard_refresh() -> None:
+    events = [_event(f"game-{index}", "2026-08-16T18:00:00Z") for index in range(5)]
+
+    class ChangingClient(RecordingClient):
+        def __init__(self) -> None:
+            super().__init__({"20260816-20260817": {"events": events}})
+            self.scoreboard_calls = 0
+
+        def get_json(self, url: str, *, timeout: float):
+            if "/summary" in url:
+                raise AssertionError("five live games must use one scoreboard request")
+            self.scoreboard_calls += 1
+            del timeout
+            self.urls.append(url)
+            if self.scoreboard_calls == 1:
+                return {"events": events}
+            return {
+                "events": [
+                    _event(event["id"], event["date"], state="in")
+                    for event in events
+                ]
+            }
+
+    client = ChangingClient()
+    current = [datetime(2026, 8, 16, 7, tzinfo=timezone.utc)]
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {"nfl": "https://example.test/football/nfl/scoreboard"},
+        client=client,
+        now=lambda: current[0],
+        monotonic=lambda: monotonic[0],
+    )
+
+    provider.fetch_for_ticker("ticker-one", _settings())
+    current[0] = datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)
+    monotonic[0] = 6.0
+    result = provider.fetch_for_ticker("ticker-two", _settings())
+
+    assert client.scoreboard_calls == 2
+    assert sum("/summary" in url for url in client.urls) == 0
+    assert {item.data["state"] for item in result.content} == {"in"}
+
+
 def test_espn_failed_date_requests_return_unhealthy_stale_contract() -> None:
     provider = EspnScoreboardProvider(
         {"nfl": "https://example.test/football/nfl/scoreboard"},

@@ -59,6 +59,7 @@ _MLB_PITCH_ABBREVIATIONS = {
     "ST": "Sweeper",
     "SV": "Sweeper",
 }
+_FULL_SCOREBOARD_REFRESH_THRESHOLD = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,6 +219,7 @@ class EspnScoreboardProvider:
         cached_events: dict[str, tuple[Mapping[str, Any], ...]] = {}
         refresh_leagues: list[tuple[str, str]] = []
         live_refreshes: list[tuple[str, Mapping[str, Any]]] = []
+        scoreboard_detail_suppressed: set[str] = set()
         for league, url in active_leagues:
             cache_key = (settings.timezone, league, schedule_day)
             cached = self._league_schedules.get(cache_key) if cache_schedule else None
@@ -226,11 +228,16 @@ class EspnScoreboardProvider:
             elif _league_needs_refresh(cached.events, current):
                 cached_events[league] = cached.events
                 if self._summary_urls.get(league):
-                    live_refreshes.extend(
-                        (league, event)
+                    live_events = tuple(
+                        event
                         for event in cached.events
                         if _event_needs_live_refresh(event, current)
                     )
+                    if len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
+                        refresh_leagues.append((league, url))
+                        scoreboard_detail_suppressed.add(league)
+                    else:
+                        live_refreshes.extend((league, event) for event in live_events)
                 else:
                     refresh_leagues.append((league, url))
             else:
@@ -293,6 +300,12 @@ class EspnScoreboardProvider:
                     )
 
         failed_sources = len(failed_leagues)
+        suppressed_summary_ids = {
+            (league, str(event.get("id") or "").strip())
+            for league in scoreboard_detail_suppressed
+            for event in events_by_league.get(league, ())
+            if str(event.get("id") or "").strip() and _event_needs_live_refresh(event, current)
+        }
         for league, _url in active_leagues:
             events = events_by_league.get(league, ())
             for event in events:
@@ -320,6 +333,7 @@ class EspnScoreboardProvider:
                         items,
                         summary_payloads=summary_payloads,
                         attempted_summary_ids=attempted_summary_ids,
+                        suppressed_summary_ids=suppressed_summary_ids,
                     ),
                     key=sports_content_sort_key,
                 )
@@ -437,6 +451,7 @@ class EspnScoreboardProvider:
         *,
         summary_payloads: Mapping[tuple[str, str], Any] | None = None,
         attempted_summary_ids: set[tuple[str, str]] | None = None,
+        suppressed_summary_ids: set[tuple[str, str]] | None = None,
     ) -> list[ContentItem]:
         """Fetch live game details concurrently without blocking other scoreboards."""
 
@@ -446,6 +461,10 @@ class EspnScoreboardProvider:
             for index, item in indexed
             if str(item.data.get("state") or "").lower() in {"in", "half", "crit"}
             and str(item.data.get("sport") or "") in self._summary_urls
+            and not (
+                suppressed_summary_ids
+                and (str(item.data.get("sport") or ""), item.id) in suppressed_summary_ids
+            )
             and not (
                 attempted_summary_ids
                 and (str(item.data.get("sport") or ""), item.id) in attempted_summary_ids
