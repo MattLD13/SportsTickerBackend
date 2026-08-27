@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from math import isfinite
 import re
 import time
-from threading import RLock
+from threading import Event, RLock
 from types import MappingProxyType
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -59,6 +59,7 @@ _MLB_PITCH_ABBREVIATIONS = {
     "ST": "Sweeper",
     "SV": "Sweeper",
 }
+_SOURCE_CACHE_SECONDS = 5.0
 _FULL_SCOREBOARD_REFRESH_THRESHOLD = 5
 _FULL_SCOREBOARD_DISCOVERY_INTERVAL = 60.0
 
@@ -71,6 +72,7 @@ class _ScoreboardSource:
     errors: tuple[str, ...]
     active_sources: int
     failed_sources: int
+    invalid_sources: int
     observed_at: datetime
 
 
@@ -81,6 +83,33 @@ class _LeagueSchedule:
     events: tuple[Mapping[str, Any], ...]
     schedule_day: date
     discovery_at: float
+
+
+@dataclass(frozen=True, slots=True)
+class _RawScoreboardResponse:
+    """Store one canonical ESPN scoreboard response or its short-lived failure."""
+
+    events: tuple[Mapping[str, Any], ...] | None
+    error: str | None
+    request_failed: bool
+    completed_at: float
+
+
+@dataclass(frozen=True, slots=True)
+class _RawSummaryResponse:
+    """Store one canonical ESPN summary response or its short-lived failure."""
+
+    payload: Any | None
+    error: str | None
+    completed_at: float
+
+
+class _ScoreboardReadError(RuntimeError):
+    """Identify whether one cached scoreboard error came from transport or schema parsing."""
+
+    def __init__(self, message: str, *, request_failed: bool) -> None:
+        super().__init__(message)
+        self.request_failed = request_failed
 
 
 def _source_key(
@@ -129,8 +158,13 @@ class EspnScoreboardProvider:
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._monotonic = monotonic or time.monotonic
         self._source_cache: dict[tuple[object, ...], tuple[float, _ScoreboardSource]] = {}
+        self._scoreboard_cache: dict[str, _RawScoreboardResponse] = {}
+        self._scoreboard_inflight: dict[str, Event] = {}
+        self._summary_cache: dict[tuple[str, str], _RawSummaryResponse] = {}
+        self._summary_inflight: dict[tuple[str, str], Event] = {}
         self._league_schedules: dict[tuple[str, str, date], _LeagueSchedule] = {}
         self._source_cache_lock = RLock()
+        self._raw_cache_lock = RLock()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch current scoreboard events from each configured active league."""
@@ -174,12 +208,14 @@ class EspnScoreboardProvider:
         items = source.content
         score_games = [{"kind": item.kind, "id": item.id, **dict(item.data)} for item in items]
         request_failed = source.failed_sources > 0
+        invalid_source = source.invalid_sources > 0
+        unusable_sources = source.failed_sources + source.invalid_sources
         fully_failed = bool(
-            source.active_sources and source.failed_sources == source.active_sources
+            source.active_sources and unusable_sources == source.active_sources
         )
-        partially_failed = request_failed and not fully_failed
+        partially_failed = request_failed and not invalid_source and not fully_failed
         health = ProviderHealth(
-            healthy=partially_failed or not source.errors,
+            healthy=not invalid_source and (partially_failed or not source.errors),
             provider="espn",
             error="; ".join(source.errors) if source.errors else None,
         )
@@ -260,6 +296,7 @@ class EspnScoreboardProvider:
         summary_payloads: dict[tuple[str, str], Any] = {}
         attempted_summary_ids: set[tuple[str, str]] = set()
         failed_leagues: set[str] = set()
+        invalid_leagues: set[str] = set()
         summary_futures: dict[tuple[str, str], Any] = {}
         workers = min(
             8,
@@ -270,7 +307,12 @@ class EspnScoreboardProvider:
             thread_name_prefix="espn-refresh",
         ) as pool:
             scoreboard_futures = {
-                league: pool.submit(self._read_scoreboard, url, dates)
+                league: pool.submit(
+                    self._read_scoreboard,
+                    url,
+                    dates,
+                    cache_source=cache_schedule,
+                )
                 for league, url in refresh_leagues
             }
             summary_futures.update({
@@ -278,6 +320,7 @@ class EspnScoreboardProvider:
                     self._read_summary,
                     league,
                     str(event.get("id") or "").strip(),
+                    cache_source=cache_schedule,
                 )
                 for league, event in live_refreshes
                 if str(event.get("id") or "").strip()
@@ -286,6 +329,13 @@ class EspnScoreboardProvider:
                 if league in scoreboard_futures:
                     try:
                         events = tuple(scoreboard_futures[league].result())
+                    except _ScoreboardReadError as exc:
+                        if exc.request_failed:
+                            failed_leagues.add(league)
+                        else:
+                            invalid_leagues.add(league)
+                        errors.append(f"{league}: {exc}")
+                        continue
                     except Exception as exc:
                         failed_leagues.add(league)
                         errors.append(f"{league}: {exc}")
@@ -312,6 +362,7 @@ class EspnScoreboardProvider:
                                         self._read_summary,
                                         league,
                                         event_id,
+                                        cache_source=cache_schedule,
                                     )
             for (league, event_id), future in summary_futures.items():
                 attempted_summary_ids.add((league, event_id))
@@ -357,6 +408,7 @@ class EspnScoreboardProvider:
                     item = self._display.project(_content_item(league, event), event)
                     items.append(item)
                 except (KeyError, TypeError, ValueError) as exc:
+                    invalid_leagues.add(league)
                     errors.append(f"{league} event: {exc}")
 
         return _ScoreboardSource(
@@ -374,6 +426,7 @@ class EspnScoreboardProvider:
             errors=tuple(errors),
             active_sources=active_sources,
             failed_sources=failed_sources,
+            invalid_sources=len(invalid_leagues),
             observed_at=datetime.now(timezone.utc),
         )
 
@@ -381,22 +434,140 @@ class EspnScoreboardProvider:
         self,
         url: str,
         dates: Sequence[date],
+        *,
+        cache_source: bool = False,
     ) -> tuple[Mapping[str, Any], ...]:
         """Read all games for one league in one request."""
 
-        payload = self.client.get_json(
-            _scoreboard_url_for_dates(url, dates),
-            timeout=self.timeout,
-        )
-        return _events(payload)
+        request_url = _scoreboard_url_for_dates(url, dates)
+        if not cache_source:
+            payload = self.client.get_json(request_url, timeout=self.timeout)
+            return _events(payload)
 
-    def _read_summary(self, league: str, event_id: str) -> Any:
+        response = self._cached_scoreboard(request_url)
+        if response.error:
+            raise _ScoreboardReadError(
+                response.error,
+                request_failed=response.request_failed,
+            )
+        return response.events or ()
+
+    def _read_summary(
+        self,
+        league: str,
+        event_id: str,
+        *,
+        cache_source: bool = False,
+    ) -> Any:
         """Read one live event without downloading the full league schedule."""
 
         template = self._summary_urls.get(league)
         if not template:
             return {}
-        return self.client.get_json(template.format(event_id), timeout=self.timeout)
+        request_url = template.format(event_id)
+        if not cache_source:
+            return self.client.get_json(request_url, timeout=self.timeout)
+
+        response = self._cached_summary((league, event_id), request_url)
+        if response.error:
+            raise RuntimeError(response.error)
+        return response.payload
+
+    def _cached_scoreboard(self, request_url: str) -> _RawScoreboardResponse:
+        """Read one scoreboard URL once per freshness window, including temporary failures."""
+
+        while True:
+            with self._raw_cache_lock:
+                now = self._monotonic()
+                cached = self._scoreboard_cache.get(request_url)
+                if cached is not None and 0 <= now - cached.completed_at < _SOURCE_CACHE_SECONDS:
+                    return cached
+                waiter = self._scoreboard_inflight.get(request_url)
+                if waiter is None:
+                    waiter = Event()
+                    self._scoreboard_inflight[request_url] = waiter
+                    break
+            waiter.wait()
+
+        response: _RawScoreboardResponse
+        try:
+            try:
+                payload = self.client.get_json(request_url, timeout=self.timeout)
+            except Exception as error:
+                response = _RawScoreboardResponse(
+                    events=None,
+                    error=str(error) or type(error).__name__,
+                    request_failed=True,
+                    completed_at=self._monotonic(),
+                )
+            else:
+                try:
+                    events = _events(payload)
+                except Exception as error:
+                    response = _RawScoreboardResponse(
+                        events=None,
+                        error=str(error) or type(error).__name__,
+                        request_failed=False,
+                        completed_at=self._monotonic(),
+                    )
+                else:
+                    response = _RawScoreboardResponse(
+                        events=events,
+                        error=None,
+                        request_failed=False,
+                        completed_at=self._monotonic(),
+                    )
+        finally:
+            with self._raw_cache_lock:
+                self._scoreboard_cache[request_url] = response
+                active = self._scoreboard_inflight.pop(request_url, None)
+                if active is not None:
+                    active.set()
+        return response
+
+    def _cached_summary(
+        self,
+        key: tuple[str, str],
+        request_url: str,
+    ) -> _RawSummaryResponse:
+        """Read one summary URL once per freshness window, including temporary failures."""
+
+        while True:
+            with self._raw_cache_lock:
+                now = self._monotonic()
+                cached = self._summary_cache.get(key)
+                if cached is not None and 0 <= now - cached.completed_at < _SOURCE_CACHE_SECONDS:
+                    return cached
+                waiter = self._summary_inflight.get(key)
+                if waiter is None:
+                    waiter = Event()
+                    self._summary_inflight[key] = waiter
+                    break
+            waiter.wait()
+
+        response: _RawSummaryResponse
+        try:
+            try:
+                payload = self.client.get_json(request_url, timeout=self.timeout)
+            except Exception as error:
+                response = _RawSummaryResponse(
+                    payload=None,
+                    error=str(error) or type(error).__name__,
+                    completed_at=self._monotonic(),
+                )
+            else:
+                response = _RawSummaryResponse(
+                    payload=payload,
+                    error=None,
+                    completed_at=self._monotonic(),
+                )
+        finally:
+            with self._raw_cache_lock:
+                self._summary_cache[key] = response
+                active = self._summary_inflight.pop(key, None)
+                if active is not None:
+                    active.set()
+        return response
 
     def _stale_result(self, settings: DisplaySettings, error: str) -> ProviderResult:
         """Return last successful content with an unhealthy stale status."""

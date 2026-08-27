@@ -86,6 +86,31 @@ def test_accepted_degraded_provider_result_publishes_and_reports_warning() -> No
     assert scheduler.get_health("espn").consecutive_failures == 0
 
 
+def test_repeated_provider_errors_are_compact_for_many_tickers() -> None:
+    def publish(ticker_id, settings, provider_data):
+        del ticker_id, settings, provider_data
+        return True
+
+    def failing_provider(settings):
+        del settings
+        raise RuntimeError("HTTP 403 from scoreboard")
+
+    scheduler = RefreshScheduler(
+        publish,
+        monotonic=lambda: 0.0,
+        wall_clock=lambda: datetime(2026, 8, 21, 18, 52, tzinfo=timezone.utc),
+    )
+    scheduler.register_provider("espn", 5.0, failing_provider)
+    for index in range(100):
+        scheduler.register_ticker(f"ticker-{index}", lambda ticker_id: {})
+
+    scheduler.run_due(0.0)
+
+    assert scheduler.get_health("espn").last_error == (
+        "100 tickers: HTTP 403 from scoreboard"
+    )
+
+
 def test_failed_refresh_keeps_compatible_cached_provider_data() -> None:
     """Keep last good data for a provider when its next refresh fails."""
 

@@ -135,6 +135,21 @@ def _refresh_warning(result: object) -> str | None:
     return None
 
 
+def _format_ticker_messages(messages: list[tuple[str, str]]) -> str | None:
+    """Collapse repeated provider messages before publishing scheduler health."""
+
+    grouped: dict[str, list[str]] = {}
+    for ticker_id, message in messages:
+        grouped.setdefault(message, []).append(ticker_id)
+    formatted: list[str] = []
+    for message, ticker_ids in grouped.items():
+        if len(ticker_ids) == 1:
+            formatted.append(f"{ticker_ids[0]}: {message}")
+        else:
+            formatted.append(f"{len(ticker_ids)} tickers: {message}")
+    return "; ".join(formatted) if formatted else None
+
+
 class RefreshScheduler:
     """Schedule provider refreshes and publish complete ticker snapshots."""
 
@@ -287,8 +302,8 @@ class RefreshScheduler:
                 health=replace(job.health, next_due=wall_due),
             )
             data_by_ticker = dict(job.data_by_ticker)
-            errors: list[str] = []
-            warnings: list[str] = []
+            errors: list[tuple[str, str]] = []
+            warnings: list[tuple[str, str]] = []
             success_count = 0
             for ticker_id, settings in settings_by_ticker.items():
                 try:
@@ -299,10 +314,10 @@ class RefreshScheduler:
                     warning = _refresh_warning(result)
                 except Exception as error:
                     message = _error_text(error)
-                    errors.append(f"{ticker_id}: {message}")
+                    errors.append((ticker_id, message))
                 else:
                     if warning:
-                        warnings.append(f"{ticker_id}: {warning}")
+                        warnings.append((ticker_id, warning))
                     data_by_ticker[ticker_id] = _CachedProviderData(
                         settings_key=settings_key_for(job, ticker_id, settings),
                         value=_freeze(result),
@@ -312,14 +327,14 @@ class RefreshScheduler:
             if errors:
                 health = SchedulerHealth(
                     last_success=wall_now if success_count else job.health.last_success,
-                    last_error="; ".join(errors + warnings),
+                    last_error=_format_ticker_messages(errors + warnings),
                     next_due=wall_due,
                     consecutive_failures=job.health.consecutive_failures + 1,
                 )
             elif warnings:
                 health = SchedulerHealth(
                     last_success=wall_now,
-                    last_error="; ".join(warnings),
+                    last_error=_format_ticker_messages(warnings),
                     next_due=wall_due,
                     consecutive_failures=0,
                 )

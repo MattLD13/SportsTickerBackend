@@ -186,6 +186,106 @@ def test_espn_source_reads_once_for_any_number_of_tickers() -> None:
     assert len(client.urls) == 1
 
 
+def test_espn_raw_reads_share_across_active_masks_and_timezones() -> None:
+    live_nfl = _event("nfl-live", "2026-08-16T18:00:00Z", state="in")
+    pre_mlb = _event("mlb-pre", "2026-08-16T19:00:00Z")
+
+    class LeagueClient(RecordingClient):
+        def get_json(self, url: str, *, timeout: float):
+            if "/summary" in url:
+                return super().get_json(url, timeout=timeout)
+            self.urls.append(url)
+            del timeout
+            return {"events": [live_nfl] if "/football/" in url else [pre_mlb]}
+
+    client = LeagueClient({"20260816-20260817": {}}, summary_responses={"nfl-live": {}})
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {
+            "nfl": "https://example.test/football/nfl/scoreboard",
+            "mlb": "https://example.test/baseball/mlb/scoreboard",
+        },
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 7, tzinfo=timezone.utc),
+        monotonic=lambda: monotonic[0],
+    )
+
+    nfl_only = DisplaySettings(
+        timezone="America/New_York",
+        active_sports={"nfl": True, "mlb": False},
+    )
+    both_leagues = DisplaySettings(
+        timezone="UTC",
+        active_sports={"nfl": True, "mlb": True},
+    )
+    nfl_result = provider.fetch_for_ticker("ticker-nfl", nfl_only)
+    both_result = provider.fetch_for_ticker("ticker-both", both_leagues)
+
+    assert {item.data["sport"] for item in nfl_result.content} == {"nfl"}
+    assert {item.data["sport"] for item in both_result.content} == {"nfl", "mlb"}
+    assert sum("/scoreboard" in url for url in client.urls) == 2
+    assert sum("/summary" in url for url in client.urls) == 1
+
+
+def test_espn_raw_failure_backoff_is_shared_across_ticker_views() -> None:
+    client = RecordingClient({}, failures={"20260816-20260817"})
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {
+            "nfl": "https://example.test/football/nfl/scoreboard",
+            "mlb": "https://example.test/baseball/mlb/scoreboard",
+        },
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 7, tzinfo=timezone.utc),
+        monotonic=lambda: monotonic[0],
+    )
+
+    provider.fetch_for_ticker(
+        "ticker-nfl",
+        DisplaySettings(active_sports={"nfl": True, "mlb": False}),
+    )
+    provider.fetch_for_ticker(
+        "ticker-both",
+        DisplaySettings(active_sports={"nfl": True, "mlb": True}, timezone="UTC"),
+    )
+    assert sum("/scoreboard" in url for url in client.urls) == 2
+
+    monotonic[0] = 4.99
+    provider.fetch_for_ticker(
+        "ticker-nfl-2",
+        DisplaySettings(active_sports={"nfl": True, "mlb": False}),
+    )
+    assert sum("/scoreboard" in url for url in client.urls) == 2
+
+    monotonic[0] = 5.0
+    provider.fetch_for_ticker(
+        "ticker-nfl-3",
+        DisplaySettings(active_sports={"nfl": True, "mlb": False}),
+    )
+    assert sum("/scoreboard" in url for url in client.urls) == 3
+
+
+def test_espn_malformed_scoreboard_is_unhealthy_with_other_league_success() -> None:
+    malformed = _event("", "2026-08-16T18:00:00Z")
+    valid = _event("mlb-valid", "2026-08-16T19:00:00Z")
+    client = RecordingClient(
+        {"20260816-20260817": {"events": [malformed, valid]}}
+    )
+    provider = EspnScoreboardProvider(
+        {
+            "nfl": "https://example.test/football/nfl/scoreboard",
+            "mlb": "https://example.test/baseball/mlb/scoreboard",
+        },
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 7, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch_for_ticker("ticker-1", DisplaySettings())
+
+    assert result.health.healthy is False
+    assert "nfl event: event id is missing" in (result.health.error or "")
+
+
 def test_espn_scoreboard_leagues_read_concurrently() -> None:
     class BlockingClient(RecordingClient):
         def __init__(self) -> None:
