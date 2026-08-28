@@ -267,7 +267,7 @@ def calc_card_width(g):
     state = g.get('state', '')
     is_active = state == 'in'
     is_mlb = 'baseball' in sport or 'mlb' in sport
-    is_nfl = 'football' in sport or 'nfl' in sport
+    is_nfl = 'football' in sport or 'nfl' in sport or 'ncf' in sport
     is_nhl = 'hockey'   in sport or 'nhl' in sport
     sit = g.get('situation', {}) or {}
     shootout = sit.get('shootout') or (g.get('so') if 'so' in g else None)
@@ -347,7 +347,7 @@ class StadiumRenderer:
         sport = g['sport'].lower()
         is_active = g['state'] == 'in'
         is_mlb  = 'baseball' in sport or 'mlb'    in sport
-        is_nfl  = 'football' in sport or 'nfl'    in sport
+        is_nfl  = 'football' in sport or 'nfl'    in sport or 'ncf' in sport
         is_nhl  = 'hockey'   in sport or 'nhl'    in sport
         is_soc  = 'soccer'   in sport
         is_march = 'march' in sport

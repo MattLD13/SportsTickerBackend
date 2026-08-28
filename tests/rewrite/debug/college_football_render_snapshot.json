@@ -1,0 +1,64 @@
+{
+  "api_version": "v2",
+  "snapshot": {
+    "ticker_id": "college-football-render-demo",
+    "revision": 1,
+    "observed_at": "2026-08-13T00:00:00+00:00",
+    "stale": false
+  },
+  "settings": {
+    "mode": "sports",
+    "sports_presentation": "rotation",
+    "pinned_content_id": "",
+    "brightness": 100,
+    "scroll_speed": 0.03,
+    "inverted": false
+  },
+  "content": {
+    "sports": [
+      {
+        "id": "fbs-live",
+        "family": "sports",
+        "kind": "scoreboard",
+        "is_shown": true,
+        "data": {
+          "sport": "ncf_fbs",
+          "state": "in",
+          "status": "Q2 05:12",
+          "away_abbr": "AWY",
+          "home_abbr": "HOM",
+          "away_score": "17",
+          "home_score": "14",
+          "situation": {
+            "activeTeam": "AWY",
+            "downDist": "3RD & 4",
+            "isRedZone": true
+          }
+        }
+      },
+      {
+        "id": "fcs-live",
+        "family": "sports",
+        "kind": "scoreboard",
+        "is_shown": true,
+        "data": {
+          "sport": "ncf_fcs",
+          "state": "in",
+          "status": "Q2 05:12",
+          "away_abbr": "AWY",
+          "home_abbr": "HOM",
+          "away_score": "17",
+          "home_score": "14",
+          "situation": {
+            "activeTeam": "AWY",
+            "downDist": "3RD & 4",
+            "isRedZone": true
+          }
+        }
+      }
+    ]
+  },
+  "events": {"alerts": [], "news": []},
+  "health": {"provider": "scheduler", "healthy": true, "error": null},
+  "meta": {"pairing": {"paired": true, "code": null}}
+}

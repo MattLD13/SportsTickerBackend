@@ -55,3 +55,21 @@ def test_football_active_team_changes_the_live_context_position(renderer: Sports
 
     assert away.size == home.size
     assert away.tobytes() != home.tobytes()
+
+
+@pytest.mark.parametrize("sport", ["ncf_fbs", "ncf_fcs"])
+def test_college_football_scrolling_cards_match_nfl(renderer: SportsRenderer, sport: str) -> None:
+    context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
+    game = {
+        "state": "in", "status": "Q2 5:12", "away_abbr": "AWY",
+        "home_abbr": "HOM", "away_score": 7, "home_score": 3,
+        "situation": {
+            "activeTeam": "AWY", "downDist": "2nd & 4", "isRedZone": False,
+        },
+    }
+
+    nfl = renderer.render_card({**game, "sport": "nfl"})
+    college = renderer.render_card({**game, "sport": sport})
+
+    assert college.size == nfl.size
+    assert college.tobytes() == nfl.tobytes()
