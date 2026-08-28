@@ -78,6 +78,8 @@ class EspnFastcastSource:
         self._subscribed: set[str] = set()
         self._resync_required: set[str] = set()
         self._last_message_ids: dict[str, int] = {}
+        self._last_topic_message_at: dict[str, float] = {}
+        self._event_updated_at: dict[tuple[str, str], float] = {}
         self._errors: dict[str, str] = {}
         self._socket: _FastcastSocket | None = None
         self._last_message_at = 0.0
@@ -125,10 +127,47 @@ class EspnFastcastSource:
             return
         if not isinstance(payload, Mapping):
             raise TypeError("Fastcast snapshots must be objects")
+        snapshot = copy.deepcopy(payload)
+        event_ids = _snapshot_event_ids(snapshot)
+        updated_at = self._monotonic()
         with self._lock:
-            self._snapshots[identifier] = copy.deepcopy(payload)
+            self._snapshots[identifier] = snapshot
             self._resync_required.discard(identifier)
             self._errors.pop(identifier, None)
+            for key in tuple(self._event_updated_at):
+                if key[0] == identifier and key[1] not in event_ids:
+                    self._event_updated_at.pop(key, None)
+            for event_id in event_ids:
+                self._event_updated_at[(identifier, event_id)] = updated_at
+
+    def prime_event(
+        self,
+        league: str,
+        event: Mapping[str, Any],
+        *,
+        if_updated_at: float | None = None,
+    ) -> None:
+        """Merge one HTTP event refresh into the Fastcast snapshot."""
+
+        identifier = str(league).strip().lower()
+        event_id = str(event.get("id") or "").strip() if isinstance(event, Mapping) else ""
+        if identifier not in self.topics or not event_id:
+            return
+        with self._lock:
+            key = (identifier, event_id)
+            if (
+                if_updated_at is not None
+                and self._event_updated_at.get(key) != if_updated_at
+            ):
+                return
+            snapshot = self._snapshots.get(identifier)
+            if snapshot is None:
+                return
+            updated_snapshot = _replace_snapshot_event(snapshot, event)
+            if updated_snapshot is None:
+                return
+            self._snapshots[identifier] = updated_snapshot
+            self._event_updated_at[key] = self._monotonic()
 
     def snapshot(self, league: str) -> Any | None:
         """Return one immutable-by-copy scoreboard snapshot when available."""
@@ -138,12 +177,20 @@ class EspnFastcastSource:
             value = self._snapshots.get(identifier)
             return copy.deepcopy(value) if value is not None else None
 
+    def event_updated_at(self, league: str, event_id: str) -> float | None:
+        """Return the monotonic time when Fastcast last updated one event."""
+
+        key = (str(league).strip().lower(), str(event_id).strip())
+        with self._lock:
+            return self._event_updated_at.get(key)
+
     def active(self, league: str) -> bool:
         """Return whether one league has a fresh subscribed stream."""
 
         identifier = str(league).strip().lower()
         with self._lock:
             worker = self._worker
+            last_message_at = self._last_topic_message_at.get(identifier, 0.0)
             return bool(
                 identifier in self._subscribed
                 and identifier not in self._resync_required
@@ -151,8 +198,8 @@ class EspnFastcastSource:
                 and self._socket is not None
                 and worker is not None
                 and worker.is_alive()
-                and self._last_message_at > 0
-                and self._monotonic() - self._last_message_at <= _STALE_SECONDS
+                and last_message_at > 0
+                and self._monotonic() - last_message_at <= _STALE_SECONDS
             )
 
     def error(self, league: str) -> str | None:
@@ -269,6 +316,8 @@ class EspnFastcastSource:
         league = self._league_by_topic.get(topic)
         if league is None:
             return
+        with self._lock:
+            self._last_topic_message_at[league] = self._monotonic()
         operation = str(message.get("op") or "").strip().upper()
         try:
             code = int(message.get("rc") or 0)
@@ -305,6 +354,8 @@ class EspnFastcastSource:
             return
         if payload is None:
             return
+        if not isinstance(payload, Mapping) and not _is_patch_sequence(payload):
+            return
         with self._lock:
             current = self._snapshots.get(league)
             if current is None or league in self._resync_required:
@@ -316,6 +367,11 @@ class EspnFastcastSource:
                 self._errors[league] = str(error) or type(error).__name__
             else:
                 self._snapshots[league] = updated
+                updated_at = self._monotonic()
+                event_ids = _patch_event_ids(payload, current)
+                event_ids.update(_patch_event_ids(payload, updated))
+                for event_id in event_ids:
+                    self._event_updated_at[(league, event_id)] = updated_at
                 self._errors.pop(league, None)
 
     def _mark_topic_error(self, league: str, error: Exception) -> None:
@@ -353,6 +409,152 @@ class EspnFastcastSource:
             if error:
                 for league in self.topics:
                     self._errors[league] = error
+
+
+def _snapshot_events(value: Any) -> tuple[Mapping[str, Any], ...]:
+    """Read events from one complete ESPN scoreboard snapshot."""
+
+    if not isinstance(value, Mapping):
+        return ()
+    events = value.get("events")
+    if events is None:
+        leagues = value.get("leagues")
+        first_league = leagues[0] if isinstance(leagues, Sequence) and leagues else None
+        events = first_league.get("events") if isinstance(first_league, Mapping) else ()
+    if not isinstance(events, Sequence) or isinstance(events, (str, bytes)):
+        return ()
+    return tuple(event for event in events if isinstance(event, Mapping))
+
+
+def _snapshot_event_ids(value: Any) -> tuple[str, ...]:
+    """Return unique event identifiers from one scoreboard snapshot."""
+
+    return tuple(
+        dict.fromkeys(
+            str(event.get("id") or "").strip()
+            for event in _snapshot_events(value)
+            if str(event.get("id") or "").strip()
+        )
+    )
+
+
+def _replace_snapshot_event(
+    snapshot: Any,
+    update: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Replace one event in a top-level or first-league scoreboard collection."""
+
+    if not isinstance(snapshot, Mapping):
+        return None
+    event_id = str(update.get("id") or "").strip()
+    if not event_id:
+        return None
+    result = copy.deepcopy(snapshot)
+    events = result.get("events")
+    if isinstance(events, Sequence) and not isinstance(events, (str, bytes)):
+        updated_events = list(events)
+        for index, event in enumerate(updated_events):
+            if isinstance(event, Mapping) and str(event.get("id") or "").strip() == event_id:
+                updated_events[index] = copy.deepcopy(update)
+                result["events"] = updated_events
+                return result
+        updated_events.append(copy.deepcopy(update))
+        result["events"] = updated_events
+        return result
+
+    leagues = result.get("leagues")
+    if not isinstance(leagues, Sequence) or isinstance(leagues, (str, bytes)) or not leagues:
+        return None
+    updated_leagues = list(leagues)
+    for league_index, league in enumerate(updated_leagues):
+        if not isinstance(league, Mapping):
+            continue
+        league_events = league.get("events")
+        if not isinstance(league_events, Sequence) or isinstance(league_events, (str, bytes)):
+            continue
+        updated_events = list(league_events)
+        for event_index, event in enumerate(updated_events):
+            if isinstance(event, Mapping) and str(event.get("id") or "").strip() == event_id:
+                updated_league = dict(league)
+                updated_events[event_index] = copy.deepcopy(update)
+                updated_league["events"] = updated_events
+                updated_leagues[league_index] = updated_league
+                result["leagues"] = updated_leagues
+                return result
+    return None
+
+
+def _patch_event_ids(payload: Any, document: Any) -> set[str]:
+    """Identify events touched by one Fastcast patch payload."""
+
+    if not _is_patch_sequence(payload):
+        return set(_snapshot_event_ids(payload)) or set(_snapshot_event_ids(document))
+    event_ids: set[str] = set()
+    known_event_ids = set(_snapshot_event_ids(document))
+    for patch in payload:
+        if not isinstance(patch, Mapping):
+            continue
+        for key in ("path", "from"):
+            raw_path = str(patch.get(key) or "")
+            if not raw_path:
+                event_ids.update(known_event_ids)
+                continue
+            if raw_path.startswith("/"):
+                event_ids.update(_absolute_patch_event_ids(document, raw_path, known_event_ids))
+                continue
+            uid = raw_path.split("/", 1)[0]
+            uid = uid.replace("~0l:", "~l:").replace("~0e:", "~e:")
+            target = _find_uid(document, uid)
+            if isinstance(target, Mapping):
+                event_id = str(target.get("id") or "").strip()
+                if event_id:
+                    event_ids.add(event_id)
+                    continue
+            if "~e:" in uid:
+                event_id = uid.rsplit("~e:", 1)[-1].split("~", 1)[0].strip()
+                if event_id in known_event_ids:
+                    event_ids.add(event_id)
+        value = patch.get("value")
+        if isinstance(value, Mapping):
+            event_id = str(value.get("id") or "").strip()
+            if event_id:
+                event_ids.add(event_id)
+    return event_ids
+
+
+def _absolute_patch_event_ids(
+    document: Any,
+    path: str,
+    known_event_ids: set[str],
+) -> set[str]:
+    """Identify event records addressed by one absolute JSON pointer."""
+
+    try:
+        tokens = _pointer_parts(path)
+    except ValueError:
+        return set()
+    node = document
+    for index, token in enumerate(tokens):
+        if token == "events":
+            if index + 1 >= len(tokens):
+                return set(known_event_ids)
+            event_index = tokens[index + 1]
+            try:
+                event = node.get("events")[int(event_index)] if isinstance(node, Mapping) else None
+            except (AttributeError, IndexError, TypeError, ValueError):
+                return set()
+            event_id = str(event.get("id") or "").strip() if isinstance(event, Mapping) else ""
+            return {event_id} if event_id else set()
+        if isinstance(node, Mapping):
+            node = node.get(token)
+        elif isinstance(node, Sequence) and not isinstance(node, (str, bytes)):
+            try:
+                node = node[int(token)]
+            except (IndexError, TypeError, ValueError):
+                return set()
+        else:
+            return set()
+    return set()
 
 
 def fastcast_topic(scoreboard_url: str) -> str:

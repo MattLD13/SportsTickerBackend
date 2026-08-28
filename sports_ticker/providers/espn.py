@@ -62,6 +62,7 @@ _MLB_PITCH_ABBREVIATIONS = {
     "SV": "Sweeper",
 }
 _SOURCE_CACHE_SECONDS = 5.0
+_FASTCAST_EVENT_STALE_SECONDS = 5.0
 _FULL_SCOREBOARD_REFRESH_THRESHOLD = 5
 _FULL_SCOREBOARD_DISCOVERY_INTERVAL = 60.0
 
@@ -105,6 +106,15 @@ class _RawEventScoreboardResponse:
     payload: Mapping[str, Any] | None
     error: str | None
     completed_at: float
+
+
+@dataclass(frozen=True, slots=True)
+class _LiveRefresh:
+    """Describe one targeted live event refresh and its Fastcast race guard."""
+
+    league: str
+    event: Mapping[str, Any]
+    fastcast_updated_at: float | None = None
 
 
 class _ScoreboardReadError(RuntimeError):
@@ -281,7 +291,7 @@ class EspnScoreboardProvider:
         cached_events: dict[str, tuple[Mapping[str, Any], ...]] = {}
         discovery_ages: dict[str, float] = {}
         refresh_leagues: list[tuple[str, str]] = []
-        live_refreshes: list[tuple[str, Mapping[str, Any]]] = []
+        live_refreshes: list[_LiveRefresh] = []
         live_detail_suppressed: set[str] = set()
         for league, url in active_leagues:
             cache_key = (settings.timezone, league, schedule_day)
@@ -306,14 +316,44 @@ class EspnScoreboardProvider:
                 cached_events[league] = schedule_events
                 discovery_ages[league] = cached.discovery_at
                 if self._fastcast_active(league):
+                    live_events = _unique_live_events(schedule_events, current)
+                    stale_live_events = self._stale_fastcast_events(
+                        league,
+                        live_events,
+                        monotonic_now,
+                    )
                     live_detail_suppressed.add(league)
+                    if not stale_live_events:
+                        continue
+                    if (
+                        not self._event_scoreboard_urls.get(league)
+                        or len(stale_live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD
+                    ):
+                        refresh_leagues.append((league, url))
+                    else:
+                        live_refreshes.extend(
+                            _LiveRefresh(
+                                league=league,
+                                event=event,
+                                fastcast_updated_at=self._fastcast.event_updated_at(
+                                    league,
+                                    str(event.get("id") or "").strip(),
+                                )
+                                if self._fastcast is not None
+                                else None,
+                            )
+                            for event in stale_live_events
+                        )
                 elif self._event_scoreboard_urls.get(league):
                     live_events = _unique_live_events(schedule_events, current)
                     if len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
                         refresh_leagues.append((league, url))
                         live_detail_suppressed.add(league)
                     else:
-                        live_refreshes.extend((league, event) for event in live_events)
+                        live_refreshes.extend(
+                            _LiveRefresh(league=league, event=event)
+                            for event in live_events
+                        )
                 else:
                     refresh_leagues.append((league, url))
             else:
@@ -326,6 +366,7 @@ class EspnScoreboardProvider:
         failed_leagues: set[str] = set()
         invalid_leagues: set[str] = set()
         live_update_futures: dict[tuple[str, str], Any] = {}
+        live_update_expected_fastcast_at: dict[tuple[str, str], float | None] = {}
         workers = min(
             8,
             max(1, len(refresh_leagues) + len(live_refreshes), _FULL_SCOREBOARD_REFRESH_THRESHOLD - 1),
@@ -344,16 +385,18 @@ class EspnScoreboardProvider:
                 )
                 for league, url in refresh_leagues
             }
-            live_update_futures.update({
-                (league, str(event.get("id") or "").strip()): pool.submit(
+            for refresh in live_refreshes:
+                event_id = str(refresh.event.get("id") or "").strip()
+                if not event_id:
+                    continue
+                key = (refresh.league, event_id)
+                live_update_futures[key] = pool.submit(
                     self._read_event_scoreboard,
-                    league,
-                    str(event.get("id") or "").strip(),
+                    refresh.league,
+                    event_id,
                     cache_source=cache_schedule,
                 )
-                for league, event in live_refreshes
-                if str(event.get("id") or "").strip()
-            })
+                live_update_expected_fastcast_at[key] = refresh.fastcast_updated_at
             for league, _url in active_leagues:
                 if league in scoreboard_futures:
                     try:
@@ -403,6 +446,7 @@ class EspnScoreboardProvider:
                                         event_id,
                                         cache_source=cache_schedule,
                                     )
+                                    live_update_expected_fastcast_at[(league, event_id)] = None
             for (league, event_id), future in live_update_futures.items():
                 attempted_live_update_ids.add((league, event_id))
                 try:
@@ -411,15 +455,28 @@ class EspnScoreboardProvider:
                     continue
                 live_update_payloads[(league, event_id)] = update
                 events = events_by_league.get(league, ())
-                updated_events = tuple(
-                    _event_update(update, event) if str(event.get("id") or "").strip() == event_id else event
-                    for event in events
-                )
+                updated_event: Mapping[str, Any] | None = None
+                updated_events_list: list[Mapping[str, Any]] = []
+                for event in events:
+                    if str(event.get("id") or "").strip() == event_id:
+                        updated_event = _event_update(update, event)
+                        updated_events_list.append(updated_event)
+                    else:
+                        updated_events_list.append(event)
+                updated_events = tuple(updated_events_list)
                 events_by_league[league] = _filter_college_conference_events(
                     league,
                     updated_events,
                     settings.active_conferences,
                 )
+                if self._fastcast is not None and updated_event is not None:
+                    self._fastcast.prime_event(
+                        league,
+                        updated_event,
+                        if_updated_at=live_update_expected_fastcast_at.get(
+                            (league, event_id)
+                        ),
+                    )
                 if cache_schedule:
                     cached_schedule = self._league_schedules.get(
                         (settings.timezone, league, schedule_day)
@@ -488,6 +545,28 @@ class EspnScoreboardProvider:
         """Return whether one league can use its shared Fastcast state."""
 
         return self._fastcast is not None and self._fastcast.active(league)
+
+    def _stale_fastcast_events(
+        self,
+        league: str,
+        events: Sequence[Mapping[str, Any]],
+        monotonic_now: float,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Return live events that lack a recent event-specific Fastcast update."""
+
+        if self._fastcast is None:
+            return tuple(events)
+        stale: list[Mapping[str, Any]] = []
+        for event in events:
+            event_id = str(event.get("id") or "").strip()
+            updated_at = self._fastcast.event_updated_at(league, event_id)
+            if (
+                updated_at is None
+                or monotonic_now < updated_at
+                or monotonic_now - updated_at >= _FASTCAST_EVENT_STALE_SECONDS
+            ):
+                stale.append(event)
+        return tuple(stale)
 
     def _fastcast_events(
         self,

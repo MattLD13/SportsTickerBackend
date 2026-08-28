@@ -498,6 +498,7 @@ def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None
     class FastcastStub:
         def __init__(self) -> None:
             self.payload = {"events": [scheduled]}
+            self.event_times: dict[str, float] = {}
             self.started = False
 
         def start(self) -> None:
@@ -509,6 +510,11 @@ def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None
         def prime(self, league: str, payload: dict) -> None:
             del league
             self.payload = deepcopy(payload)
+            self.event_times = {
+                str(event.get("id") or "").strip(): 0.0
+                for event in self.payload.get("events", [])
+                if str(event.get("id") or "").strip()
+            }
 
         def snapshot(self, league: str):
             del league
@@ -517,6 +523,27 @@ def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None
         def active(self, league: str) -> bool:
             del league
             return self.started
+
+        def event_updated_at(self, league: str, event_id: str) -> float | None:
+            del league
+            return self.event_times.get(event_id)
+
+        def prime_event(
+            self,
+            league: str,
+            event: dict,
+            *,
+            if_updated_at: float | None = None,
+        ) -> None:
+            del league, if_updated_at
+            event_id = str(event.get("id") or "").strip()
+            self.event_times[event_id] = 6.0
+            self.payload = {
+                "events": [
+                    event if str(item.get("id") or "").strip() == event_id else item
+                    for item in self.payload.get("events", [])
+                ]
+            }
 
     fastcast = FastcastStub()
     client = RecordingClient({"20260816-20260817": {"events": [scheduled]}})
@@ -532,6 +559,7 @@ def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None
 
     provider.fetch_for_ticker("ticker-one", _settings())
     fastcast.payload = {"events": [live]}
+    fastcast.event_times["game-1"] = 6.0
     current[0] = datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)
     monotonic[0] = 6.0
     result = provider.fetch_for_ticker("ticker-two", _settings())
@@ -541,6 +569,105 @@ def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None
     assert live_item.data["home_score"] == "7"
     assert len(client.urls) == 1
     assert all("/scoreboard/" not in url for url in client.urls)
+
+
+def test_espn_stale_fastcast_game_uses_one_targeted_http_refresh() -> None:
+    scheduled = _event("game-1", "2026-08-16T18:00:00Z")
+    fastcast_live = deepcopy(scheduled)
+    fastcast_live["status"] = {"type": {"state": "in", "shortDetail": "Q2 08:00"}}
+    fastcast_live["competitions"][0]["competitors"][0]["score"] = "7"
+    http_live = deepcopy(fastcast_live)
+    http_live["status"] = {"type": {"state": "in", "shortDetail": "Q2 07:00"}}
+    http_live["competitions"][0]["competitors"][0]["score"] = "8"
+
+    class FastcastStub:
+        def __init__(self) -> None:
+            self.payload = {"events": [scheduled]}
+            self.event_times: dict[str, float] = {}
+            self.started = False
+
+        def start(self) -> None:
+            self.started = True
+
+        def close(self) -> None:
+            self.started = False
+
+        def prime(self, league: str, payload: dict) -> None:
+            del league
+            self.payload = deepcopy(payload)
+            self.event_times = {
+                str(event.get("id") or "").strip(): 0.0
+                for event in self.payload.get("events", [])
+                if str(event.get("id") or "").strip()
+            }
+
+        def snapshot(self, league: str):
+            del league
+            return deepcopy(self.payload)
+
+        def active(self, league: str) -> bool:
+            del league
+            return self.started
+
+        def event_updated_at(self, league: str, event_id: str) -> float | None:
+            del league
+            return self.event_times.get(event_id)
+
+        def prime_event(
+            self,
+            league: str,
+            event: dict,
+            *,
+            if_updated_at: float | None = None,
+        ) -> None:
+            del league, if_updated_at
+            event_id = str(event.get("id") or "").strip()
+            self.event_times[event_id] = 6.0
+            self.payload = {
+                "events": [
+                    event if str(item.get("id") or "").strip() == event_id else item
+                    for item in self.payload.get("events", [])
+                ]
+            }
+
+    fastcast = FastcastStub()
+    client = RecordingClient(
+        {"20260816-20260817": {"events": [scheduled]}},
+        event_updates={
+            "game-1": {
+                "header": {
+                    "id": "game-1",
+                    "competitions": [http_live["competitions"][0]],
+                }
+            }
+        },
+    )
+    current = [datetime(2026, 8, 16, 7, tzinfo=timezone.utc)]
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {"nfl": "https://example.test/football/nfl/scoreboard"},
+        client=client,
+        fastcast=fastcast,
+        now=lambda: current[0],
+        monotonic=lambda: monotonic[0],
+    )
+
+    provider.fetch_for_ticker("ticker-one", _settings())
+    fastcast.payload = {"events": [fastcast_live]}
+    current[0] = datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)
+    monotonic[0] = 6.0
+    result = provider.fetch_for_ticker("ticker-two", _settings())
+
+    live_item = next(item for item in result.content if item.id == "game-1")
+    assert live_item.data["home_score"] == "8"
+    assert sum("/scoreboard" in url and "/scoreboard/" not in url for url in client.urls) == 1
+    assert sum("/scoreboard/" in url for url in client.urls) == 1
+
+    monotonic[0] = 7.0
+    next_result = provider.fetch_for_ticker("ticker-three", _settings())
+    next_live_item = next(item for item in next_result.content if item.id == "game-1")
+    assert next_live_item.data["home_score"] == "8"
+    assert sum("/scoreboard/" in url for url in client.urls) == 1
 
 
 def test_espn_five_live_games_use_one_scoreboard_refresh() -> None:

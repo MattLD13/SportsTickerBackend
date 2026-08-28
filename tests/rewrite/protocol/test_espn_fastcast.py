@@ -128,6 +128,44 @@ def test_fastcast_source_waits_for_checkpoint_after_a_message_gap() -> None:
     assert source.error("nfl") is None
 
 
+def test_fastcast_source_tracks_event_specific_update_times() -> None:
+    clock = [10.0]
+    source = EspnFastcastSource(
+        {"nfl": "scoreboard-football-nfl"},
+        monotonic=lambda: clock[0],
+    )
+    source.prime("nfl", _snapshot())
+
+    assert source.event_updated_at("nfl", "401") == 10.0
+
+    clock[0] = 16.0
+    source._handle_message({
+        "op": "P",
+        "tc": "scoreboard-football-nfl",
+        "pl": json.dumps([{
+            "op": "replace",
+            "path": "s:20~l:28~e:401/status/type/state",
+            "value": "in",
+        }]),
+    })
+
+    assert source.event_updated_at("nfl", "401") == 16.0
+
+
+def test_fastcast_source_ignores_non_patch_payloads() -> None:
+    source = EspnFastcastSource({"nfl": "scoreboard-football-nfl"})
+    source.prime("nfl", _snapshot())
+
+    source._handle_message({
+        "op": "P",
+        "tc": "scoreboard-football-nfl",
+        "pl": "0",
+    })
+
+    assert source.snapshot("nfl") == _snapshot()
+    assert source.error("nfl") is None
+
+
 class _FakeSocket:
     def __init__(self, messages: list[dict]) -> None:
         self.messages = deque(json.dumps(message) for message in messages)
