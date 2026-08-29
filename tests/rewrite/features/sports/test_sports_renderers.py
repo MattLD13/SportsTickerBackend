@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from ticker_core.context import RenderContext
 from ticker_core.features.sports import SportsRenderer
@@ -19,11 +19,13 @@ class EmptyLogos:
 
 
 class SolidLogos:
-    """Provide opaque team-color logos for contrast tests."""
+    """Provide team-color logos with transparent padding."""
 
     def get(self, url: str | None, size: tuple[int, int]) -> Image.Image | None:
         colors = {"home": (128, 0, 0, 255), "away": (128, 0, 0, 255)}
-        return Image.new("RGBA", size, colors.get(url or "", (128, 0, 0, 255)))
+        logo = Image.new("RGBA", size, (0, 0, 0, 0))
+        ImageDraw.Draw(logo).rectangle((4, 4, size[0] - 5, size[1] - 5), fill=colors.get(url or "", (128, 0, 0, 255)))
+        return logo
 
 
 @pytest.fixture

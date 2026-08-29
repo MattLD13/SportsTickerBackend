@@ -39,20 +39,13 @@ def _logo_outline_color(background, alternate):
 
 
 def _logo_with_contrast(logo, size, background, alternate):
-    """Add an alternate-color halo and a one-pixel frame around one logo."""
+    """Add a contrast halo around the visible shape of one logo."""
     base = logo.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
     edge = _logo_outline_color(background, alternate)
     alpha = base.getchannel("A")
     halo_alpha = alpha.filter(ImageFilter.MaxFilter(5))
 
     result = Image.new("RGBA", (size + 4, size + 4), (0, 0, 0, 0))
-    result_draw = ImageDraw.Draw(result, "RGBA")
-    result_draw.rounded_rectangle(
-        (0, 0, size + 3, size + 3),
-        radius=2,
-        outline=(*edge, 245),
-        width=1,
-    )
     halo = Image.new("RGBA", (size, size), (*edge, 0))
     halo.putalpha(halo_alpha)
     result.alpha_composite(halo, (2, 2))
