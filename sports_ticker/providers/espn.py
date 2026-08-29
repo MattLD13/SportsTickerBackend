@@ -27,6 +27,7 @@ from .sports_display import (
     SportsDisplayProjector,
     assign_active_team,
     display_situation,
+    normalize_rank,
     soccer_event,
     sports_content_sort_key,
 )
@@ -65,6 +66,13 @@ _SOURCE_CACHE_SECONDS = 5.0
 _FASTCAST_EVENT_STALE_SECONDS = 5.0
 _FULL_SCOREBOARD_REFRESH_THRESHOLD = 5
 _FULL_SCOREBOARD_DISCOVERY_INTERVAL = 60.0
+_COLLEGE_FOOTBALL_RANKINGS_URL = (
+    "https://site.web.api.espn.com/apis/site/v2/sports/football/college-football/"
+    "rankings?region=us&lang=en"
+)
+_RANKINGS_CACHE_SECONDS = 300.0
+_FBS_RANKING_IDS = frozenset(("1", "2"))
+_FCS_RANKING_IDS = frozenset(("20",))
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,6 +188,7 @@ class EspnScoreboardProvider:
         self._event_scoreboard_cache: dict[tuple[str, str], _RawEventScoreboardResponse] = {}
         self._event_scoreboard_inflight: dict[tuple[str, str], Event] = {}
         self._league_schedules: dict[tuple[str, str, date], _LeagueSchedule] = {}
+        self._rankings_cache: tuple[float, dict[str, dict[str, str]]] | None = None
         self._fastcast = fastcast
         self._source_cache_lock = RLock()
         self._raw_cache_lock = RLock()
@@ -375,6 +384,11 @@ class EspnScoreboardProvider:
             max_workers=workers,
             thread_name_prefix="espn-refresh",
         ) as pool:
+            rankings_future = (
+                pool.submit(self._read_college_football_rankings)
+                if any(league in COLLEGE_FOOTBALL_LEAGUES for league, _url in active_leagues)
+                else None
+            )
             scoreboard_futures = {
                 league: pool.submit(
                     self._read_scoreboard,
@@ -494,6 +508,7 @@ class EspnScoreboardProvider:
                         discovery_at=discovery_ages.get(league, self._monotonic()),
                     )
 
+        football_rankings = rankings_future.result() if rankings_future is not None else {}
         failed_sources = len(failed_leagues)
         suppressed_live_update_ids = {
             (league, str(event.get("id") or "").strip())
@@ -516,7 +531,11 @@ class EspnScoreboardProvider:
                 ):
                     continue
                 try:
-                    item = self._display.project(_content_item(league, event), event)
+                    item = self._display.project(
+                        _content_item(league, event),
+                        event,
+                        football_rankings=football_rankings.get(league, {}),
+                    )
                     items.append(item)
                 except (KeyError, TypeError, ValueError) as exc:
                     invalid_leagues.add(league)
@@ -545,6 +564,26 @@ class EspnScoreboardProvider:
         """Return whether one league can use its shared Fastcast state."""
 
         return self._fastcast is not None and self._fastcast.active(league)
+
+    def _read_college_football_rankings(self) -> dict[str, dict[str, str]]:
+        """Read cached FBS and FCS ranking polls without affecting scoreboard health."""
+
+        now = self._monotonic()
+        with self._raw_cache_lock:
+            cached = self._rankings_cache
+            if cached is not None and 0 <= now - cached[0] < _RANKINGS_CACHE_SECONDS:
+                return cached[1]
+        try:
+            payload = self.client.get_json(
+                _COLLEGE_FOOTBALL_RANKINGS_URL,
+                timeout=self.timeout,
+            )
+            rankings = _parse_college_football_rankings(payload)
+        except Exception:
+            rankings = {"ncf_fbs": {}, "ncf_fcs": {}}
+        with self._raw_cache_lock:
+            self._rankings_cache = (self._monotonic(), rankings)
+        return rankings
 
     def _stale_fastcast_events(
         self,
@@ -1327,6 +1366,28 @@ def _event_scoreboard_url(scoreboard_url: str) -> str:
 
     endpoint = scoreboard_url.split("?", 1)[0].rstrip("/")
     return f"{endpoint}/{{}}"
+
+
+def _parse_college_football_rankings(payload: Any) -> dict[str, dict[str, str]]:
+    """Map ESPN FBS and FCS poll entries to team identifiers."""
+
+    result: dict[str, dict[str, str]] = {"ncf_fbs": {}, "ncf_fcs": {}}
+    for poll in _sequence(_mapping(payload).get("rankings")):
+        source = _mapping(poll)
+        poll_id = str(source.get("id") or "").strip()
+        if poll_id in _FBS_RANKING_IDS:
+            league = "ncf_fbs"
+        elif poll_id in _FCS_RANKING_IDS:
+            league = "ncf_fcs"
+        else:
+            continue
+        for entry in _sequence(source.get("ranks")):
+            rank = normalize_rank(_mapping(entry).get("current"))
+            team = _mapping(_mapping(entry).get("team"))
+            team_id = str(team.get("id") or "").strip()
+            if rank and team_id and team_id not in result[league]:
+                result[league][team_id] = rank
+    return result
 
 
 def _nhl_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:

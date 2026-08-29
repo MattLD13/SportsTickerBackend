@@ -23,7 +23,13 @@ class SportsDisplayProjector:
     _football: dict[str, dict[str, Any]] = field(default_factory=dict)
     _possession: dict[str, str] = field(default_factory=dict)
 
-    def project(self, item: ContentItem, event: Mapping[str, Any]) -> ContentItem:
+    def project(
+        self,
+        item: ContentItem,
+        event: Mapping[str, Any],
+        *,
+        football_rankings: Mapping[str, str] | None = None,
+    ) -> ContentItem:
         """Return one renderer-ready item without exposing ESPN display quirks."""
 
         data = dict(item.data)
@@ -54,7 +60,7 @@ class SportsDisplayProjector:
         if league == "march_madness":
             data.update(_seeds(competition))
         elif league in _COLLEGE_FOOTBALL:
-            data.update(_football_ranks(competition))
+            data.update(_football_ranks(competition, football_rankings))
         return ContentItem(
             id=item.id,
             family=item.family,
@@ -403,15 +409,18 @@ def _seeds(competition: Mapping[str, Any]) -> dict[str, str]:
     }
 
 
-def _football_ranks(competition: Mapping[str, Any]) -> dict[str, str]:
+def _football_ranks(
+    competition: Mapping[str, Any],
+    football_rankings: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """Project ESPN college football rankings into the shared display contract."""
 
     competitors = _competitors(competition.get("competitors"))
     home = _find_side(competitors, "home")
     away = _find_side(competitors, "away")
     return {
-        "home_rank": _rank(home),
-        "away_rank": _rank(away),
+        "home_rank": _rank(home, football_rankings),
+        "away_rank": _rank(away, football_rankings),
     }
 
 
@@ -420,10 +429,24 @@ def _seed(competitor: Mapping[str, Any]) -> str:
     return "" if value in (None, "", 99, "99") else str(value)
 
 
-def _rank(competitor: Mapping[str, Any]) -> str:
+def _rank(
+    competitor: Mapping[str, Any],
+    football_rankings: Mapping[str, str] | None = None,
+) -> str:
     """Return one ESPN ranking, excluding the provider's unranked sentinel."""
 
     value = _mapping(competitor.get("curatedRank")).get("current")
+    rank = normalize_rank(value)
+    if rank:
+        return rank
+    team = _mapping(competitor.get("team"))
+    team_id = str(competitor.get("id") or team.get("id") or "").strip()
+    return normalize_rank((football_rankings or {}).get(team_id))
+
+
+def normalize_rank(value: object) -> str:
+    """Normalize one ranking value and discard ESPN's unranked sentinel."""
+
     try:
         number = int(float(value))
     except (TypeError, ValueError):
@@ -649,6 +672,7 @@ __all__ = [
     "assign_active_team",
     "display_situation",
     "matches_followed_team",
+    "normalize_rank",
     "normalize_soccer_clock",
     "soccer_event",
     "sport_family",

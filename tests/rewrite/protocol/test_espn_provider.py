@@ -59,14 +59,20 @@ class RecordingClient:
         responses: dict[str, dict],
         failures: set[str] | None = None,
         event_updates: dict[str, dict] | None = None,
+        rankings: dict | None = None,
     ) -> None:
         self.responses = responses
         self.failures = failures or set()
         self.event_updates = event_updates or {}
+        self.rankings = rankings or {"rankings": []}
         self.urls: list[str] = []
+        self.ranking_urls: list[str] = []
 
     def get_json(self, url: str, *, timeout: float):
         del timeout
+        if "/rankings" in url:
+            self.ranking_urls.append(url)
+            return self.rankings
         self.urls.append(url)
         if "/scoreboard/" in url:
             event_id = url.rstrip("/").rsplit("/", 1)[-1]
@@ -86,6 +92,40 @@ class RecordingClient:
         if dates in self.failures:
             raise RuntimeError(f"failed {dates}")
         return self.responses.get(dates, {"events": []})
+
+
+@pytest.mark.parametrize(
+    ("league", "team_id", "poll_id", "rank"),
+    (("ncf_fbs", "30", "1", 14), ("ncf_fcs", "2329", "20", 11)),
+)
+def test_college_football_rankings_fill_scoreboard_sentinel(
+    league: str,
+    team_id: str,
+    poll_id: str,
+    rank: int,
+) -> None:
+    event = _event("ranked-game", "2026-08-16T15:00:00Z")
+    competitor = event["competitions"][0]["competitors"][0]
+    competitor["team"]["id"] = team_id
+    competitor["curatedRank"] = {"current": 99}
+    client = RecordingClient(
+        {"20260816-20260817": {"events": [event]}},
+        rankings={
+            "rankings": [
+                {"id": poll_id, "ranks": [{"current": rank, "team": {"id": team_id}}]}
+            ]
+        },
+    )
+    provider = EspnScoreboardProvider(
+        {league: "https://example.test/football/college-football/scoreboard"},
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 7, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch(_settings())
+
+    assert result.content[0].data["home_rank"] == str(rank)
+    assert len(client.ranking_urls) == 1
 
 
 def _settings() -> DisplaySettings:

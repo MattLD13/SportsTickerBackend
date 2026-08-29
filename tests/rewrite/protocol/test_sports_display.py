@@ -44,6 +44,20 @@ def test_college_football_projects_current_team_rankings() -> None:
     assert football.data["away_rank"] == "4"
 
 
+def test_college_football_uses_external_ranking_when_scoreboard_has_no_rank() -> None:
+    event = _event("2nd quarter", {})
+    event["competitions"][0]["competitors"][0]["team"]["id"] = "2329"
+    event["competitions"][0]["competitors"][0]["curatedRank"] = {"current": 99}
+
+    football = SportsDisplayProjector().project(
+        _item("college", "ncf_fcs"),
+        event,
+        football_rankings={"2329": "11"},
+    )
+
+    assert football.data["home_rank"] == "11"
+
+
 def test_finished_game_has_no_live_play_context() -> None:
     ended = SportsDisplayProjector().project(
         _item("ended", "nfl", "post"),
@@ -100,4 +114,3 @@ def test_espn_soccer_first_half_stoppage_projection() -> None:
 
     soccer = SportsDisplayProjector().project(_item("soccer", "soccer_epl"), event)
     assert soccer.data["status"] == "45'+1:20'"
-
