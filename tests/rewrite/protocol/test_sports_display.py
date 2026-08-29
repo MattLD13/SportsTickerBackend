@@ -33,6 +33,24 @@ def test_active_team_belongs_to_the_backend_sports_contract() -> None:
     assert baseball_bottom.data["situation"]["activeTeam"] == "HOM"
 
 
+@pytest.mark.parametrize(
+    ("possession", "yard_line", "expected"),
+    (("2", 80, False), ("2", 20, True), ("1", 20, False), ("1", 80, True)),
+)
+def test_football_red_zone_only_marks_the_opponents_end_zone(
+    possession: str, yard_line: int, expected: bool
+) -> None:
+    football = SportsDisplayProjector().project(
+        _item("football", "nfl"),
+        _event(
+            "2nd quarter",
+            {"possession": possession, "yardLine": yard_line, "isRedZone": True},
+        ),
+    )
+
+    assert football.data["situation"]["isRedZone"] is expected
+
+
 def test_college_football_projects_current_team_rankings() -> None:
     event = _event("2nd quarter", {})
     event["competitions"][0]["competitors"][0]["curatedRank"] = {"current": 12}

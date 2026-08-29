@@ -308,6 +308,9 @@ def _football_situation(
     goal_to_go = "goal" in short.lower() or "goal" in full.lower()
     if to_goal is not None and distance is not None and distance >= to_goal:
         goal_to_go = True
+    red_zone = bool(source.get("isRedZone"))
+    if possession and to_goal is not None:
+        red_zone = to_goal <= 20
     return {
         "possession": possession,
         "downDist": short,
@@ -317,7 +320,7 @@ def _football_situation(
         "yardsToGo": distance,
         "yardLine": yard_line,
         "isGoalToGo": goal_to_go,
-        "isRedZone": bool(source.get("isRedZone")) or bool(to_goal is not None and to_goal <= 20),
+        "isRedZone": red_zone,
     }
 
 
