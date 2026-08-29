@@ -18,6 +18,14 @@ class EmptyLogos:
         return None
 
 
+class SolidLogos:
+    """Provide opaque team-color logos for contrast tests."""
+
+    def get(self, url: str | None, size: tuple[int, int]) -> Image.Image | None:
+        colors = {"home": (128, 0, 0, 255), "away": (128, 0, 0, 255)}
+        return Image.new("RGBA", size, colors.get(url or "", (128, 0, 0, 255)))
+
+
 @pytest.fixture
 def renderer() -> SportsRenderer:
     return SportsRenderer(load_default_font_set(), EmptyLogos())
@@ -55,6 +63,26 @@ def test_football_active_team_changes_the_live_context_position(renderer: Sports
 
     assert away.size == home.size
     assert away.tobytes() != home.tobytes()
+
+
+def test_pinned_football_logos_use_alternate_color_contrast() -> None:
+    renderer = SportsRenderer(load_default_font_set(), SolidLogos())
+    game = {
+        "sport": "nfl", "state": "in", "status": "Q2 5:12",
+        "away_abbr": "AWY", "home_abbr": "HOM", "away_score": 7, "home_score": 3,
+        "away_logo": "away", "home_logo": "home",
+        "away_color": "#800000", "home_color": "#800000",
+        "away_alt_color": "#FFD700", "home_alt_color": "#FFD700",
+        "situation": {"activeTeam": "AWY", "downDist": "2nd & 4"},
+    }
+
+    image = renderer.render_full(game)
+
+    assert image.size == (384, 32)
+    assert any(
+        red > 180 and green > 120 and blue < 120
+        for _, (red, green, blue) in image.getcolors(image.width * image.height)
+    )
 
 
 @pytest.mark.parametrize("sport", ["ncf_fbs", "ncf_fcs"])

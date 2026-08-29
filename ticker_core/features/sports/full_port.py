@@ -1,6 +1,6 @@
 import math
 import time
-from PIL import Image, ImageDraw, ImageStat
+from PIL import Image, ImageDraw, ImageFilter, ImageStat
 
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 
@@ -13,6 +13,51 @@ PANEL_H = 32
 SIDE_SCRIM_SOLID = 8
 SIDE_SCRIM_FADE = 92
 SIDE_SCRIM_SPAN = SIDE_SCRIM_SOLID + SIDE_SCRIM_FADE
+
+
+def _relative_luminance(color):
+    """Return the standard relative luminance for one RGB color."""
+    channels = []
+    for value in color[:3]:
+        channel = max(0.0, min(1.0, int(value) / 255.0))
+        channels.append(channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def _contrast_ratio(first, second):
+    """Return the WCAG contrast ratio between two RGB colors."""
+    light = max(_relative_luminance(first), _relative_luminance(second))
+    dark = min(_relative_luminance(first), _relative_luminance(second))
+    return (light + 0.05) / (dark + 0.05)
+
+
+def _logo_outline_color(background, alternate):
+    """Choose the strongest available logo edge color."""
+    if alternate and _contrast_ratio(background, alternate) >= 3.0:
+        return alternate
+    return max(((0, 0, 0), (255, 255, 255)), key=lambda color: _contrast_ratio(background, color))
+
+
+def _logo_with_contrast(logo, size, background, alternate):
+    """Add an alternate-color halo and a one-pixel frame around one logo."""
+    base = logo.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
+    edge = _logo_outline_color(background, alternate)
+    alpha = base.getchannel("A")
+    halo_alpha = alpha.filter(ImageFilter.MaxFilter(5))
+
+    result = Image.new("RGBA", (size + 4, size + 4), (0, 0, 0, 0))
+    result_draw = ImageDraw.Draw(result, "RGBA")
+    result_draw.rounded_rectangle(
+        (0, 0, size + 3, size + 3),
+        radius=2,
+        outline=(*edge, 245),
+        width=1,
+    )
+    halo = Image.new("RGBA", (size, size), (*edge, 0))
+    halo.putalpha(halo_alpha)
+    result.alpha_composite(halo, (2, 2))
+    result.alpha_composite(base, (2, 2))
+    return result
 
 
 class SportsMixin:
@@ -299,28 +344,16 @@ class SportsMixin:
             h_logo_top = logo_top_up if h_sc_cx == h_logo_cx else logo_top_center
             a_logo_top = logo_top_up if a_sc_cx == a_logo_cx else logo_top_center
 
-            def _black_ring_logo(logo):
-                """Convert the artificial white enhancement ring to black (copy only)."""
-                ls = logo.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
-                px = ls.load()
-                for yy in range(ls.height):
-                    for xx in range(ls.width):
-                        r, g, b, a = px[xx, yy]
-                        # Target the white ring added by _enhance_logo_visibility:
-                        # alpha ~230, RGB all very white (>220). Fully-opaque white
-                        # pixels inside the logo (a==255) are intentional — skip those.
-                        if 180 < a < 252 and r > 220 and g > 220 and b > 220:
-                            px[xx, yy] = (0, 0, 0, a)
-                return ls
-
             hl = self.get_logo(game.get('home_logo'), (24, 24))
             al = self.get_logo(game.get('away_logo'), (24, 24))
+            home_alt = _parse_hex_color(game.get('home_alt_color'))
+            away_alt = _parse_hex_color(game.get('away_alt_color'))
             if hl:
-                ls = hl.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
-                img.paste(ls, (h_logo_cx - LOGO_SZ // 2, h_logo_top), ls)
+                ls = _logo_with_contrast(hl, LOGO_SZ, home_ez, home_alt)
+                img.alpha_composite(ls, (h_logo_cx - ls.width // 2, max(0, h_logo_top - 2)))
             if al:
-                ls = al.resize((LOGO_SZ, LOGO_SZ), Image.LANCZOS)
-                img.paste(ls, (a_logo_cx - LOGO_SZ // 2, a_logo_top), ls)
+                ls = _logo_with_contrast(al, LOGO_SZ, away_ez, away_alt)
+                img.alpha_composite(ls, (a_logo_cx - ls.width // 2, max(0, a_logo_top - 2)))
 
             for scx, sc in [(h_sc_cx, h_score), (a_sc_cx, a_score)]:
                 if not sc: continue
