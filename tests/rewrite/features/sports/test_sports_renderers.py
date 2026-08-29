@@ -73,3 +73,17 @@ def test_college_football_scrolling_cards_match_nfl(renderer: SportsRenderer, sp
 
     assert college.size == nfl.size
     assert college.tobytes() == nfl.tobytes()
+
+
+@pytest.mark.parametrize("sport", ["ncf_fbs", "ncf_fcs"])
+def test_college_football_rankings_overlay_the_logo_corners(renderer: SportsRenderer, sport: str) -> None:
+    ranked = renderer.render_card({
+        "sport": sport, "state": "in", "status": "Q2 5:12",
+        "away_abbr": "AWY", "home_abbr": "HOM", "away_score": 7, "home_score": 3,
+        "away_rank": "4", "home_rank": "12",
+        "situation": {"activeTeam": "AWY", "downDist": "2nd & 4"},
+    })
+
+    assert ranked.size[1] == 32
+    assert ranked.getcolors(ranked.width * ranked.height)
+    assert (255, 220, 80) in {color for _, color in ranked.getcolors(ranked.width * ranked.height)}

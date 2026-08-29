@@ -37,6 +37,31 @@ void drawScoreCenter(const String& awayScore, const String& homeScore) {
   }
 }
 
+void drawFootballRankText(const String& value, int16_t x, int16_t y) {
+  if (value.length() == 0) {
+    return;
+  }
+  const uint16_t rankColor = color(255, 220, 80);
+  const uint16_t outline = color(0, 0, 0);
+  drawPixelText(value, x - 1, y, outline, 1);
+  drawPixelText(value, x + 1, y, outline, 1);
+  drawPixelText(value, x, y - 1, outline, 1);
+  drawPixelText(value, x, y + 1, outline, 1);
+  drawPixelText(value, x, y, rankColor, 1);
+}
+
+void drawFootballRankings(JsonObjectConst game) {
+  const String awayRank = shortValue(game["away_rank"], "", 2);
+  const String homeRank = shortValue(game["home_rank"], "", 2);
+  if (awayRank.length() > 0) {
+    drawFootballRankText(awayRank, 2, 22);
+  }
+  if (homeRank.length() > 0) {
+    const int16_t rankWidth = static_cast<int16_t>(homeRank.length() * 4 - 1);
+    drawFootballRankText(homeRank, 64 - rankWidth - 2, 22);
+  }
+}
+
 bool sportIs(const String& sport, const char* value) {
   return sport == value;
 }
@@ -173,7 +198,8 @@ void drawGame(JsonObjectConst game, const PreparedGameLogos& logos) {
   String status = shortValue(game["status"], "UPCOMING", 12);
   String state = shortValue(game["state"], "", 5);
   JsonObjectConst situation = game["situation"].as<JsonObjectConst>();
-  const bool football = sportIs(sport, "FOOTBALL");
+  const bool collegeFootball = sport == "NCF_FBS" || sport == "NCF_FCS";
+  const bool football = sportIs(sport, "FOOTBALL") || collegeFootball;
   const bool baseball = sportIs(sport, "BASEBALL");
   const bool hockey = sportIs(sport, "HOCKEY");
   const bool soccer = sport.startsWith("SOCCER");
@@ -217,6 +243,9 @@ void drawGame(JsonObjectConst game, const PreparedGameLogos& logos) {
     drawHockeyIndicators(situation, away, home);
   } else if (soccer) {
     drawSoccerIndicators(situation);
+  }
+  if (collegeFootball) {
+    drawFootballRankings(game);
   }
   presentFrame();
 }

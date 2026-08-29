@@ -33,6 +33,17 @@ def test_active_team_belongs_to_the_backend_sports_contract() -> None:
     assert baseball_bottom.data["situation"]["activeTeam"] == "HOM"
 
 
+def test_college_football_projects_current_team_rankings() -> None:
+    event = _event("2nd quarter", {})
+    event["competitions"][0]["competitors"][0]["curatedRank"] = {"current": 12}
+    event["competitions"][0]["competitors"][1]["curatedRank"] = {"current": 4}
+
+    football = SportsDisplayProjector().project(_item("college", "ncf_fbs"), event)
+
+    assert football.data["home_rank"] == "12"
+    assert football.data["away_rank"] == "4"
+
+
 def test_finished_game_has_no_live_play_context() -> None:
     ended = SportsDisplayProjector().project(
         _item("ended", "nfl", "post"),
@@ -89,5 +100,4 @@ def test_espn_soccer_first_half_stoppage_projection() -> None:
 
     soccer = SportsDisplayProjector().project(_item("soccer", "soccer_epl"), event)
     assert soccer.data["status"] == "45'+1:20'"
-
 

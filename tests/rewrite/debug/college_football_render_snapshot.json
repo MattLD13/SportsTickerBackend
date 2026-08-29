@@ -29,6 +29,8 @@
           "home_abbr": "HOM",
           "away_score": "17",
           "home_score": "14",
+          "away_rank": "4",
+          "home_rank": "12",
           "situation": {
             "activeTeam": "AWY",
             "downDist": "3RD & 4",
@@ -49,6 +51,8 @@
           "home_abbr": "HOM",
           "away_score": "17",
           "home_score": "14",
+          "away_rank": "4",
+          "home_rank": "12",
           "situation": {
             "activeTeam": "AWY",
             "downDist": "3RD & 4",

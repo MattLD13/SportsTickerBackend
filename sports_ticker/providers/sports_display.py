@@ -11,6 +11,7 @@ from sports_ticker.domain import ContentItem
 
 
 _FOOTBALL = frozenset(("nfl", "ncf_fbs", "ncf_fcs"))
+_COLLEGE_FOOTBALL = frozenset(("ncf_fbs", "ncf_fcs"))
 _BASKETBALL = frozenset(("nba", "march_madness"))
 _ORDINALS = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}
 
@@ -52,6 +53,8 @@ class SportsDisplayProjector:
         )
         if league == "march_madness":
             data.update(_seeds(competition))
+        elif league in _COLLEGE_FOOTBALL:
+            data.update(_football_ranks(competition))
         return ContentItem(
             id=item.id,
             family=item.family,
@@ -400,9 +403,32 @@ def _seeds(competition: Mapping[str, Any]) -> dict[str, str]:
     }
 
 
+def _football_ranks(competition: Mapping[str, Any]) -> dict[str, str]:
+    """Project ESPN college football rankings into the shared display contract."""
+
+    competitors = _competitors(competition.get("competitors"))
+    home = _find_side(competitors, "home")
+    away = _find_side(competitors, "away")
+    return {
+        "home_rank": _rank(home),
+        "away_rank": _rank(away),
+    }
+
+
 def _seed(competitor: Mapping[str, Any]) -> str:
     value = _mapping(competitor.get("curatedRank")).get("current")
     return "" if value in (None, "", 99, "99") else str(value)
+
+
+def _rank(competitor: Mapping[str, Any]) -> str:
+    """Return one ESPN ranking, excluding the provider's unranked sentinel."""
+
+    value = _mapping(competitor.get("curatedRank")).get("current")
+    try:
+        number = int(float(value))
+    except (TypeError, ValueError):
+        return ""
+    return str(number) if 0 < number < 99 else ""
 
 
 def _possession(value: object, competition: Mapping[str, Any], home_abbr: str, away_abbr: str) -> str:

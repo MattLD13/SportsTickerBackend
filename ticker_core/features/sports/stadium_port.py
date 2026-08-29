@@ -13,6 +13,7 @@ H = 32          # card height, always 32px (LED panel height)
 LOGO_SZ = 22    # logo square size in pixels
 LOGO_PAD = 2    # gap between logo edge and center content zone
 ZONE = LOGO_SZ + LOGO_PAD  # space each side takes = 24px
+FOOTBALL_RANK_COLOR = (255, 220, 80)
 
 # ── 3×5 pixel font ────────────────────────────────────────────────────────────
 PF = {
@@ -419,6 +420,21 @@ class StadiumRenderer:
             self._paste_logo(img, h_logo, h_logo_x, logo_y)
         else:
             self._draw_fallback_logo(d, h_logo_x, logo_y, hc)
+
+        if sport in {'ncf_fbs', 'ncf_fcs'}:
+            for rank, logo_x, right_aligned in (
+                (g.get('away_rank'), a_logo_x, False),
+                (g.get('home_rank'), h_logo_x, True),
+            ):
+                label = str(rank or '').strip()
+                if not label:
+                    continue
+                rank_width = pf_w(label)
+                rank_x = logo_x + LOGO_SZ - rank_width - 1 if right_aligned else logo_x + 1
+                rank_y = logo_y + LOGO_SZ - 6
+                for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    pf_text(d, label, rank_x + dx, rank_y + dy, 0, 0, 0)
+                pf_text(d, label, rank_x, rank_y, *FOOTBALL_RANK_COLOR)
 
         # ── Content safe zone ─────────────────────────────────────────────────
         cL  = a_logo_x + LOGO_SZ + LOGO_PAD
