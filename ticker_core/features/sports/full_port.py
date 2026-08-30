@@ -38,9 +38,29 @@ def _logo_outline_color(background, alternate):
     return max(((0, 0, 0), (255, 255, 255)), key=lambda color: _contrast_ratio(background, color))
 
 
+def _logo_has_contrast(logo, background):
+    """Return whether enough visible logo pixels contrast with its background."""
+    visible = []
+    for red, green, blue, alpha in logo.getdata():
+        if alpha >= 96:
+            visible.append((red, green, blue))
+    if not visible:
+        return False
+    readable = sum(
+        _contrast_ratio(background, color) >= 2.2
+        or max(abs(color[index] - background[index]) for index in range(3)) >= 80
+        for color in visible
+    )
+    return readable * 5 >= len(visible)
+
+
 def _logo_with_contrast(logo, size, background, alternate):
     """Add a contrast halo around the visible shape of one logo."""
     base = logo.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
+    if _logo_has_contrast(base, background):
+        result = Image.new("RGBA", (size + 4, size + 4), (0, 0, 0, 0))
+        result.alpha_composite(base, (2, 2))
+        return result
     edge = _logo_outline_color(background, alternate)
     alpha = base.getchannel("A")
     halo_alpha = alpha.filter(ImageFilter.MaxFilter(5))
