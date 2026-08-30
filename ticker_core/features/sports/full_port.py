@@ -75,6 +75,24 @@ def _logo_with_contrast(logo, size, background, alternate):
 
 class SportsMixin:
 
+    def _missing_football_logo(self, label, size, background, alternate):
+        """Render a readable abbreviation when a school has no image asset."""
+        edge = _logo_outline_color(background, alternate)
+        outline = (255, 255, 255, 225) if edge == (0, 0, 0) else (0, 0, 0, 225)
+        result = Image.new("RGBA", (size + 4, size + 4), (0, 0, 0, 0))
+        result_draw = ImageDraw.Draw(result, "RGBA")
+        text = str(label or "?").upper()[:3]
+        self.draw_outlined_text(
+            result_draw,
+            (size + 4) // 2,
+            (size + 4) // 2,
+            text,
+            self.tiny,
+            (*edge, 255),
+            outline,
+        )
+        return result
+
     def draw_hockey_stick(self, draw, cx, cy, size):
         WOOD = (150, 75, 0); TAPE = (255, 255, 255)
         pattern = [[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,1,1,1,0],
@@ -364,8 +382,14 @@ class SportsMixin:
             if hl:
                 ls = _logo_with_contrast(hl, LOGO_SZ, home_ez, home_alt)
                 img.alpha_composite(ls, (h_logo_cx - ls.width // 2, max(0, h_logo_top - 2)))
+            else:
+                ls = self._missing_football_logo(home_ab, LOGO_SZ, home_ez, home_alt)
+                img.alpha_composite(ls, (h_logo_cx - ls.width // 2, max(0, h_logo_top - 2)))
             if al:
                 ls = _logo_with_contrast(al, LOGO_SZ, away_ez, away_alt)
+                img.alpha_composite(ls, (a_logo_cx - ls.width // 2, max(0, a_logo_top - 2)))
+            else:
+                ls = self._missing_football_logo(away_ab, LOGO_SZ, away_ez, away_alt)
                 img.alpha_composite(ls, (a_logo_cx - ls.width // 2, max(0, a_logo_top - 2)))
 
             for scx, sc in [(h_sc_cx, h_score), (a_sc_cx, a_score)]:

@@ -77,6 +77,20 @@ def test_football_active_team_changes_the_live_context_position(renderer: Sports
     assert away.tobytes() != home.tobytes()
 
 
+def test_pinned_football_missing_logos_show_team_abbreviations(renderer: SportsRenderer) -> None:
+    image = renderer.render_full({
+        "sport": "ncf_fcs", "state": "in", "status": "Q2 5:12",
+        "away_abbr": "GLN", "home_abbr": "ELON", "away_score": 7, "home_score": 3,
+        "away_color": "#800000", "home_color": "#800000",
+        "away_alt_color": "#FFD700", "home_alt_color": "#FFD700",
+        "situation": {"activeTeam": "GLN", "downDist": "2nd & 4"},
+    })
+
+    left_end_zone = image.crop((0, 0, 32, 32)).getcolors(32 * 32)
+
+    assert any(red > 180 and green > 120 and blue < 120 for _, (red, green, blue) in left_end_zone)
+
+
 def test_pinned_football_logos_use_alternate_color_contrast() -> None:
     renderer = SportsRenderer(load_default_font_set(), SolidLogos())
     game = {

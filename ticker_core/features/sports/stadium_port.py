@@ -414,12 +414,12 @@ class StadiumRenderer:
         if a_logo:
             self._paste_logo(img, a_logo, a_logo_x, logo_y)
         else:
-            self._draw_fallback_logo(d, a_logo_x, logo_y, ac)
+            self._draw_fallback_logo(d, a_logo_x, logo_y, ac, g.get('away', ''))
 
         if h_logo:
             self._paste_logo(img, h_logo, h_logo_x, logo_y)
         else:
-            self._draw_fallback_logo(d, h_logo_x, logo_y, hc)
+            self._draw_fallback_logo(d, h_logo_x, logo_y, hc, g.get('home', ''))
 
         if sport in {'ncf_fbs', 'ncf_fcs'}:
             for rank, logo_x, right_aligned in (
@@ -633,7 +633,7 @@ class StadiumRenderer:
             else:
                 fi(d, x, dy, 3, 3, 80, 80, 80)
 
-    def _draw_fallback_logo(self, d, x, y, color):
+    def _draw_fallback_logo(self, d, x, y, color, label=''):
         r, g, b = color
         dc = da(color)
         fi(d, x, y, LOGO_SZ, LOGO_SZ, *dc)
@@ -645,6 +645,12 @@ class StadiumRenderer:
         lc = li(color, 0.25)
         fi(d, x + 1, y + 1, LOGO_SZ - 2, 1, *lc)
         fi(d, x + 1, y + 1, 1, LOGO_SZ - 2, *lc)
+        text = str(label or '?').upper()[:3]
+        text_width = pf_w(text)
+        text_x = x + max(1, (LOGO_SZ - text_width) // 2)
+        text_y = y + (LOGO_SZ - 5) // 2
+        pf_text(d, text, text_x + 1, text_y + 1, 0, 0, 0)
+        pf_text(d, text, text_x, text_y, *li(color, 0.65))
 
     @staticmethod
     def _normalise(g):
