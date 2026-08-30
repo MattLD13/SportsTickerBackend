@@ -60,19 +60,25 @@ class RecordingClient:
         failures: set[str] | None = None,
         event_updates: dict[str, dict] | None = None,
         rankings: dict | None = None,
+        ncaa_schools: list[dict] | None = None,
     ) -> None:
         self.responses = responses
         self.failures = failures or set()
         self.event_updates = event_updates or {}
         self.rankings = rankings or {"rankings": []}
+        self.ncaa_schools = ncaa_schools or []
         self.urls: list[str] = []
         self.ranking_urls: list[str] = []
+        self.ncaa_school_urls: list[str] = []
 
     def get_json(self, url: str, *, timeout: float):
         del timeout
         if "/rankings" in url:
             self.ranking_urls.append(url)
             return self.rankings
+        if "/schools-index" in url:
+            self.ncaa_school_urls.append(url)
+            return self.ncaa_schools
         self.urls.append(url)
         if "/scoreboard/" in url:
             event_id = url.rstrip("/").rsplit("/", 1)[-1]
@@ -126,6 +132,41 @@ def test_college_football_rankings_fill_scoreboard_sentinel(
 
     assert result.content[0].data["home_rank"] == str(rank)
     assert len(client.ranking_urls) == 1
+
+
+def test_missing_college_logos_use_cached_ncaa_school_index() -> None:
+    event = _event("missing-logo-game", "2026-08-16T15:00:00Z")
+    home = event["competitions"][0]["competitors"][0]["team"]
+    away = event["competitions"][0]["competitors"][1]["team"]
+    home.update({"id": "127991", "location": "Roosevelt"})
+    away.update({"id": "102071", "location": "Lawrence Tech"})
+    client = RecordingClient(
+        {"20260816-20260817": {"events": [event]}},
+        ncaa_schools=[
+            {"slug": "roosevelt", "name": "Roosevelt", "long": "Roosevelt University"},
+            {"slug": "lawrence-tech", "name": "Lawrence Tech", "long": "Lawrence Technological University"},
+        ],
+    )
+    provider = EspnScoreboardProvider(
+        {"ncf_fcs": "https://example.test/football/college-football/scoreboard"},
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 7, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch(_settings())
+
+    data = result.content[0].data
+    assert data["home_logo"] == (
+        "https://wsrv.nl/?url=https%3A%2F%2Fncaa-api.henrygd.me%2Flogo%2Froosevelt.svg%3Fdark%3Dtrue&output=png"
+    )
+    assert data["away_logo"] == (
+        "https://wsrv.nl/?url=https%3A%2F%2Fncaa-api.henrygd.me%2Flogo%2Flawrence-tech.svg%3Fdark%3Dtrue&output=png"
+    )
+    assert len(client.ncaa_school_urls) == 1
+
+    provider.fetch(_settings())
+
+    assert len(client.ncaa_school_urls) == 1
 
 
 def _settings() -> DisplaySettings:

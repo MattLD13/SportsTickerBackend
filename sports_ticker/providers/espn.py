@@ -12,7 +12,7 @@ import time
 from threading import Event, RLock
 from types import MappingProxyType
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sports_ticker.domain import ContentItem, DisplaySettings
@@ -73,6 +73,41 @@ _COLLEGE_FOOTBALL_RANKINGS_URL = (
 _RANKINGS_CACHE_SECONDS = 300.0
 _FBS_RANKING_IDS = frozenset(("1", "2"))
 _FCS_RANKING_IDS = frozenset(("20",))
+_NCAA_SCHOOLS_INDEX_URL = "https://ncaa-api.henrygd.me/schools-index"
+_NCAA_LOGO_CACHE_SECONDS = 86400.0
+_NCAA_LOGO_FAILURE_RETRY_SECONDS = 60.0
+_NCAA_LOGO_PROXY = "https://wsrv.nl/?url={}&output=png"
+_NCAA_LOGO_ID_ALIASES = MappingProxyType(
+    {
+        "2355": "virginia-lynchburg",
+        "2471": "northwestern-ia",
+        "2595": "st-francis-il",
+        "2691": "webber-intl",
+        "2824": "okla-panhandle",
+        "3077": "ky-christian",
+        "102071": "lawrence-tech",
+        "102626": "texas-wesleyan",
+        "127991": "roosevelt",
+    }
+)
+_COLLEGE_LOGO_DIRECT_URLS = MappingProxyType(
+    {
+        "2347": "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/"
+        "lcwildcats.net/images/responsive_2020/logo_main_new.svg",
+    }
+)
+_NCAA_LOGO_NAME_ALIASES = MappingProxyType(
+    {
+        "lawrence tech": "lawrence-tech",
+        "northwestern ia": "northwestern-ia",
+        "oklahoma panhandle state": "okla-panhandle",
+        "roosevelt": "roosevelt",
+        "st francis il": "st-francis-il",
+        "texas wesleyan": "texas-wesleyan",
+        "virginia lynchburg": "virginia-lynchburg",
+        "webber international": "webber-intl",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +224,7 @@ class EspnScoreboardProvider:
         self._event_scoreboard_inflight: dict[tuple[str, str], Event] = {}
         self._league_schedules: dict[tuple[str, str, date], _LeagueSchedule] = {}
         self._rankings_cache: tuple[float, dict[str, dict[str, str]]] | None = None
+        self._ncaa_school_index_cache: tuple[float, dict[str, str]] | None = None
         self._fastcast = fastcast
         self._source_cache_lock = RLock()
         self._raw_cache_lock = RLock()
@@ -376,6 +412,7 @@ class EspnScoreboardProvider:
         invalid_leagues: set[str] = set()
         live_update_futures: dict[tuple[str, str], Any] = {}
         live_update_expected_fastcast_at: dict[tuple[str, str], float | None] = {}
+        ncaa_logo_future: Any | None = None
         workers = min(
             8,
             max(1, len(refresh_leagues) + len(live_refreshes), _FULL_SCOREBOARD_REFRESH_THRESHOLD - 1),
@@ -507,8 +544,11 @@ class EspnScoreboardProvider:
                         schedule_day=schedule_day,
                         discovery_at=discovery_ages.get(league, self._monotonic()),
                     )
+            if _needs_ncaa_logo_lookup(active_leagues, events_by_league):
+                ncaa_logo_future = pool.submit(self._read_ncaa_school_index)
 
         football_rankings = rankings_future.result() if rankings_future is not None else {}
+        ncaa_logo_index = ncaa_logo_future.result() if ncaa_logo_future is not None else {}
         failed_sources = len(failed_leagues)
         suppressed_live_update_ids = {
             (league, str(event.get("id") or "").strip())
@@ -532,7 +572,7 @@ class EspnScoreboardProvider:
                     continue
                 try:
                     item = self._display.project(
-                        _content_item(league, event),
+                        _content_item(league, event, ncaa_logo_index=ncaa_logo_index),
                         event,
                         football_rankings=football_rankings.get(league, {}),
                     )
@@ -584,6 +624,29 @@ class EspnScoreboardProvider:
         with self._raw_cache_lock:
             self._rankings_cache = (self._monotonic(), rankings)
         return rankings
+
+    def _read_ncaa_school_index(self) -> dict[str, str]:
+        """Read the cached NCAA school index for teams missing ESPN logos."""
+
+        now = self._monotonic()
+        with self._raw_cache_lock:
+            cached = self._ncaa_school_index_cache
+            if cached is not None:
+                age = now - cached[0]
+                limit = _NCAA_LOGO_CACHE_SECONDS if cached[1] else _NCAA_LOGO_FAILURE_RETRY_SECONDS
+                if 0 <= age < limit:
+                    return cached[1]
+        try:
+            payload = self.client.get_json(
+                _NCAA_SCHOOLS_INDEX_URL,
+                timeout=self.timeout,
+            )
+            index = _parse_ncaa_school_index(payload)
+        except Exception:
+            index = {}
+        with self._raw_cache_lock:
+            self._ncaa_school_index_cache = (self._monotonic(), index)
+        return index
 
     def _stale_fastcast_events(
         self,
@@ -1263,7 +1326,12 @@ def _event_time(value: object) -> datetime | None:
     return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
 
 
-def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:
+def _content_item(
+    league: str,
+    event: Mapping[str, Any],
+    *,
+    ncaa_logo_index: Mapping[str, str] | None = None,
+) -> ContentItem:
     if not isinstance(event, Mapping):
         raise TypeError("event must be an object")
     event_id = str(event.get("id", "")).strip()
@@ -1289,8 +1357,8 @@ def _content_item(league: str, event: Mapping[str, Any]) -> ContentItem:
         time_match = _SCHEDULED_TIME.search(status)
         if time_match:
             status = f"{time_match.group('time')} {time_match.group('meridiem')}"
-    home_team = _team(home)
-    away_team = _team(away)
+    home_team = _team(home, ncaa_logo_index if league in COLLEGE_FOOTBALL_LEAGUES else {})
+    away_team = _team(away, ncaa_logo_index if league in COLLEGE_FOOTBALL_LEAGUES else {})
     home_team["logo"] = corrected_logo(league, home_team["abbreviation"], home_team["logo"])
     away_team["logo"] = corrected_logo(league, away_team["abbreviation"], away_team["logo"])
     display_data = {
@@ -1342,12 +1410,17 @@ def _find_side(competitors: Sequence[Mapping[str, Any]], side: str) -> Mapping[s
     return competitors[index] if len(competitors) > index else {}
 
 
-def _team(competitor: Mapping[str, Any]) -> Mapping[str, Any]:
+def _team(
+    competitor: Mapping[str, Any],
+    ncaa_logo_index: Mapping[str, str] | None = None,
+) -> Mapping[str, Any]:
     source = _mapping(competitor.get("team"))
     logos = source.get("logos")
     logo = source.get("logo")
     if logo is None and isinstance(logos, Sequence) and not isinstance(logos, (str, bytes)):
         logo = _mapping(logos[0]).get("href") if logos else None
+    if not str(logo or "").strip():
+        logo = _ncaa_logo_url(source, ncaa_logo_index or {})
     return {
         "abbreviation": _text(
             source.get("abbreviation")
@@ -1359,6 +1432,99 @@ def _team(competitor: Mapping[str, Any]) -> Mapping[str, Any]:
         "color": _hex_color(source.get("color")),
         "alt_color": _hex_color(source.get("alternateColor")),
     }
+
+
+def _needs_ncaa_logo_lookup(
+    active_leagues: Sequence[tuple[str, str]],
+    events_by_league: Mapping[str, Sequence[Mapping[str, Any]]],
+) -> bool:
+    """Return whether an active college football event lacks an ESPN logo."""
+
+    for league, _url in active_leagues:
+        if league not in COLLEGE_FOOTBALL_LEAGUES:
+            continue
+        for event in events_by_league.get(league, ()):
+            competition = _first_mapping(event.get("competitions"))
+            for competitor in _competitors(competition.get("competitors")):
+                source = _mapping(competitor.get("team"))
+                if not _team_source_logo(source) and _team_name_candidates(source):
+                    return True
+    return False
+
+
+def _team_source_logo(source: Mapping[str, Any]) -> str:
+    """Return the first usable logo URL supplied by ESPN."""
+
+    logo = source.get("logo")
+    if str(logo or "").strip():
+        return str(logo).strip()
+    for value in _sequence(source.get("logos")):
+        href = _mapping(value).get("href")
+        if str(href or "").strip():
+            return str(href).strip()
+    return ""
+
+
+def _team_name_candidates(source: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return stable source names for NCAA school matching."""
+
+    values = (
+        source.get("id"),
+        source.get("location"),
+        source.get("shortDisplayName"),
+        source.get("displayName"),
+    )
+    return tuple(str(value).strip() for value in values if str(value or "").strip())
+
+
+def _ncaa_logo_url(source: Mapping[str, Any], index: Mapping[str, str]) -> str | None:
+    """Build a raster logo URL when NCAA can identify an ESPN team."""
+
+    candidates = _team_name_candidates(source)
+    svg_url = _COLLEGE_LOGO_DIRECT_URLS.get(candidates[0], "") if candidates else ""
+    if not svg_url:
+        slug = _NCAA_LOGO_ID_ALIASES.get(candidates[0], "") if candidates else ""
+        if not slug:
+            for candidate in candidates[1:]:
+                slug = _NCAA_LOGO_NAME_ALIASES.get(_normalize_team_name(candidate), "")
+                if slug:
+                    break
+                slug = index.get(_normalize_team_name(candidate), "")
+                if slug:
+                    break
+        if not slug:
+            return None
+        svg_url = f"https://ncaa-api.henrygd.me/logo/{slug}.svg?dark=true"
+    return _NCAA_LOGO_PROXY.format(quote(svg_url, safe=""))
+
+
+def _parse_ncaa_school_index(payload: Any) -> dict[str, str]:
+    """Map unique NCAA school names to logo slugs."""
+
+    records = _sequence(payload)
+    candidates: dict[str, set[str]] = {}
+    for record in records:
+        source = _mapping(record)
+        slug = str(source.get("slug") or "").strip()
+        if not slug:
+            continue
+        for value in (source.get("name"), source.get("long"), slug):
+            key = _normalize_team_name(value)
+            if key:
+                candidates.setdefault(key, set()).add(slug)
+    return {
+        key: next(iter(slugs))
+        for key, slugs in candidates.items()
+        if len(slugs) == 1
+    }
+
+
+def _normalize_team_name(value: Any) -> str:
+    """Normalize school names for conservative exact matching."""
+
+    text = str(value or "").lower().replace("&", " and ")
+    text = re.sub(r"['’]", "", text)
+    return " ".join(re.findall(r"[a-z0-9]+", text))
 
 
 def _event_scoreboard_url(scoreboard_url: str) -> str:
