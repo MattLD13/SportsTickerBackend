@@ -40,8 +40,9 @@ class _NoOpExecutor:
 
 
 class _RecordingClient:
-    def __init__(self, matches: list[dict]) -> None:
+    def __init__(self, matches: list[dict], details: dict[str, dict] | None = None) -> None:
         self.matches = matches
+        self.details = details or {}
         self.urls: list[str] = []
         self._lock = Lock()
 
@@ -50,7 +51,8 @@ class _RecordingClient:
         with self._lock:
             self.urls.append(url)
         if "matchDetails" in url:
-            return {}
+            match_id = url.split("matchId=", 1)[-1]
+            return self.details.get(match_id, {})
         return {"leagues": [{"primaryId": 130, "matches": self.matches}]}
 
     @property
@@ -208,6 +210,36 @@ def test_fotmob_fetches_pregame_details_for_team_colors() -> None:
     assert _needs_details(match)
     assert item.data["home_color"] == "#80000A"
     assert item.data["away_color"] == "#00AEEF"
+
+
+def test_fotmob_fetches_live_mls_colors_before_projection() -> None:
+    match = _live_match(1)
+    client = _RecordingClient(
+        [match],
+        details={
+            "1": {
+                "general": {
+                    "teamColors": {
+                        "darkMode": {"home": "#00CA19", "away": "#FF0000"}
+                    }
+                }
+            }
+        },
+    )
+    provider = FotMobSoccerProvider(
+        {"soccer_mls": 130},
+        client=client,
+        now=lambda: _NOW,
+        monotonic=lambda: 0.0,
+        detail_executor=_NoOpExecutor(),
+    )
+
+    result = provider.fetch_for_ticker("ticker-1", DisplaySettings())
+
+    data = result.content[0].data
+    assert data["home_color"] == "#00CA19"
+    assert data["away_color"] == "#FF0000"
+    assert client.detail_requests == 1
 
 
 def test_fotmob_replaces_the_last_live_details_with_one_final_snapshot() -> None:
@@ -508,8 +540,8 @@ def test_fotmob_reads_the_two_match_dates_concurrently() -> None:
     assert client.match_requests == 2
 
 
-@pytest.mark.parametrize("live_count", [1, 5, 10, 100])
-def test_fotmob_live_detail_requests_scale_only_for_sparse_sets(live_count: int) -> None:
+@pytest.mark.parametrize("live_count", [1, 5, 10, 32, 100])
+def test_fotmob_color_detail_requests_are_bounded(live_count: int) -> None:
     matches = [_live_match(index) for index in range(1, live_count + 1)]
     client = _RecordingClient(matches)
     provider = FotMobSoccerProvider(
@@ -524,7 +556,7 @@ def test_fotmob_live_detail_requests_scale_only_for_sparse_sets(live_count: int)
 
     assert result.health.healthy
     assert client.match_requests == 2
-    assert client.detail_requests == (1 if live_count == 1 else 0)
+    assert client.detail_requests == min(live_count, 32)
 
 
 def test_fotmob_caps_pregame_and_final_detail_warming_per_source_window() -> None:
@@ -538,7 +570,8 @@ def test_fotmob_caps_pregame_and_final_detail_warming_per_source_window() -> Non
     )
 
     provider.fetch_for_ticker("ticker-1", DisplaySettings())
-    assert executor.submissions == 8
+    assert client.detail_requests == 20
+    assert executor.submissions == 0
 
 
 def test_fotmob_detail_failure_does_not_invalidate_fresh_scores() -> None:

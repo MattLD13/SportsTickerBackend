@@ -26,6 +26,7 @@ _LIVE_DETAIL_SECONDS = 5.0
 _SOURCE_CACHE_SECONDS = 5.0
 _DENSE_LIVE_DETAIL_THRESHOLD = 5
 _MAX_NONLIVE_DETAIL_WARM = 8
+_MAX_COLOR_DETAIL_MATCHES = 32
 _SOCCER_ABBREVIATIONS = {
     # Premier League
     "Arsenal": "ARS", "Aston Villa": "AVL", "Bournemouth": "BOU", "Brentford": "BRE",
@@ -226,8 +227,9 @@ class FotMobSoccerProvider:
                     successes += 1
 
         selected = _visible_matches(records, settings.timezone, now=now)
-        self._schedule_detail_warm(selected)
         details = self._detail_snapshot(selected)
+        details.update(self._color_details(selected, details))
+        self._schedule_detail_warm(selected)
         content = tuple(
             _content_item(
                 identifier,
@@ -243,6 +245,39 @@ class FotMobSoccerProvider:
             successes=successes,
             observed_at=self._now(),
         )
+
+    def _color_details(
+        self,
+        records: Sequence[tuple[str, Mapping[str, Any]]],
+        existing: Mapping[str, Mapping[str, Any]],
+    ) -> dict[str, Mapping[str, Any]]:
+        """Read bounded MLS details before projection so colors reach the frame."""
+
+        targets = [
+            match
+            for identifier, match in records
+            if identifier == "soccer_mls"
+            and str(match.get("id") or "").strip() not in existing
+        ][:_MAX_COLOR_DETAIL_MATCHES]
+        if not targets:
+            return {}
+        with ThreadPoolExecutor(
+            max_workers=min(8, len(targets)),
+            thread_name_prefix="fotmob-colors",
+        ) as pool:
+            futures = {
+                pool.submit(self._details_for, match): str(match.get("id") or "").strip()
+                for match in targets
+            }
+            details: dict[str, Mapping[str, Any]] = {}
+            for future, match_id in futures.items():
+                try:
+                    detail = future.result()
+                except Exception:
+                    continue
+                if isinstance(detail, Mapping) and match_id:
+                    details[match_id] = detail
+            return details
 
     def _read_matches(
         self, day, active: Mapping[str, int], *, cache_source: bool
@@ -643,8 +678,13 @@ def _situation(detail: Mapping[str, Any] | None) -> dict[str, object]:
 
 def _team_colors(detail: Mapping[str, Any] | None) -> dict[str, str]:
     general = _mapping(detail.get("general")) if detail else {}
-    dark = _mapping(_mapping(general.get("teamColors")).get("darkMode"))
-    return {"home": _color(dark.get("home")), "away": _color(dark.get("away"))}
+    team_colors = _mapping(general.get("teamColors"))
+    dark = _mapping(team_colors.get("darkMode"))
+    light = _mapping(team_colors.get("lightMode"))
+    return {
+        "home": _color(dark.get("home") or light.get("home")),
+        "away": _color(dark.get("away") or light.get("away")),
+    }
 
 
 def _sort_key(item: ContentItem) -> tuple[str, str]:
