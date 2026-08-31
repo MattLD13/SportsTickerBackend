@@ -121,7 +121,7 @@ def test_hybrid_weather_uses_open_meteo_when_nws_does_not_cover_location() -> No
     assert any("api.open-meteo.com/v1/forecast" in url for url in client.urls)
 
 
-def test_hybrid_weather_falls_back_when_nws_uv_supplemental_fails() -> None:
+def test_hybrid_weather_reports_nws_uv_supplemental_failure() -> None:
     class SupplementalFailureClient(FakeJsonClient):
         def get_json(self, url: str, *, timeout: float):
             if "daily=uv_index_max%2Csunrise%2Csunset" in url:
@@ -134,8 +134,9 @@ def test_hybrid_weather_falls_back_when_nws_uv_supplemental_fails() -> None:
 
     data = result.content[0].data
     assert result.health.healthy is True
-    assert data["situation"]["stats"]["uv"] == "5"
-    assert any("api.open-meteo.com/v1/forecast" in url for url in client.urls)
+    assert result.health.error == "Open-Meteo supplemental: UV supplemental request failed"
+    assert data["situation"]["stats"]["uv"] == "--"
+    assert sum("api.open-meteo.com/v1/forecast" in url for url in client.urls) == 1
 
 
 def test_hybrid_weather_keeps_nws_when_uv_and_open_meteo_fallback_fail() -> None:
@@ -151,6 +152,7 @@ def test_hybrid_weather_keeps_nws_when_uv_and_open_meteo_fallback_fail() -> None
 
     data = result.content[0].data
     assert result.health.healthy is True
+    assert result.health.error == "Open-Meteo supplemental: Open-Meteo unavailable"
     assert data["temperature"] == 68
     assert data["situation"]["stats"]["uv"] == "--"
 
