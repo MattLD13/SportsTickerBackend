@@ -109,6 +109,20 @@ def test_hybrid_weather_uses_nws_for_us_coordinates() -> None:
     assert not any(url.endswith("/v1/forecast") for url in client.urls)
 
 
+def test_hybrid_weather_reuses_supplemental_data_for_same_location() -> None:
+    client = FakeJsonClient(nws=True)
+    provider = HybridWeatherProvider(client, monotonic=lambda: 100.0)
+
+    provider.fetch(_settings(40.7, -74.0))
+    provider.fetch(_settings(40.7, -74.0))
+
+    supplemental = [
+        url for url in client.urls
+        if "daily=uv_index_max%2Csunrise%2Csunset" in url
+    ]
+    assert len(supplemental) == 1
+
+
 def test_hybrid_weather_uses_open_meteo_when_nws_does_not_cover_location() -> None:
     client = FakeJsonClient(nws=False)
     result = HybridWeatherProvider(client, monotonic=lambda: 100.0).fetch(_settings(51.5, -0.1))

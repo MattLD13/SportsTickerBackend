@@ -22,6 +22,7 @@ _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 _AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 _NWS_POINTS_URL = "https://api.weather.gov/points"
 _NWS_POINT_CACHE_SECONDS = 24 * 60 * 60
+_SUPPLEMENTAL_CACHE_SECONDS = 5 * 60
 _GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 _POSTAL_CODE = re.compile(r"^\d{5}(?:-\d{4})?$")
 
@@ -87,12 +88,18 @@ class OpenMeteoWeatherProvider:
         client: JsonHttpClient | None = None,
         *,
         timeout: float = 10.0,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.client = client or UrllibJsonHttpClient()
         self.timeout = float(timeout)
         if not isfinite(self.timeout) or self.timeout <= 0:
             raise ValueError("timeout must be a finite positive number")
+        self._monotonic = monotonic
         self._stale_cache = SettingsResultCache()
+        self._supplemental_cache: dict[
+            tuple[float, float], tuple[float, Mapping[str, Any] | None, Exception | None]
+        ] = {}
+        self._supplemental_lock = threading.RLock()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Return fresh weather content or the provider's immutable stale result."""
@@ -166,22 +173,37 @@ class OpenMeteoWeatherProvider:
     def fetch_supplemental(self, settings: DisplaySettings) -> Mapping[str, Any]:
         """Return daily display fields that supplement an NWS weather result."""
 
-        payload = self.client.get_json(
-            _query(
-                _FORECAST_URL,
-                latitude=settings.weather_lat,
-                longitude=settings.weather_lon,
-                daily="uv_index_max,sunrise,sunset",
-                timezone="auto",
-            ),
-            timeout=self.timeout,
-        )
-        daily = _mapping(payload.get("daily")) if isinstance(payload, Mapping) else {}
-        return {
-            "uv": _rounded(_first(daily.get("uv_index_max")), 0),
-            "sunrise": _first(daily.get("sunrise")),
-            "sunset": _first(daily.get("sunset")),
-        }
+        key = _weather_location_key(settings)
+        now = float(self._monotonic())
+        with self._supplemental_lock:
+            cached = self._supplemental_cache.get(key)
+            if cached is not None and now - cached[0] < _SUPPLEMENTAL_CACHE_SECONDS:
+                if cached[2] is not None:
+                    raise cached[2]
+                return dict(cached[1] or {})
+
+            try:
+                payload = self.client.get_json(
+                    _query(
+                        _FORECAST_URL,
+                        latitude=settings.weather_lat,
+                        longitude=settings.weather_lon,
+                        daily="uv_index_max,sunrise,sunset",
+                        timezone="auto",
+                    ),
+                    timeout=self.timeout,
+                )
+                daily = _mapping(payload.get("daily")) if isinstance(payload, Mapping) else {}
+                value = {
+                    "uv": _rounded(_first(daily.get("uv_index_max")), 0),
+                    "sunrise": _first(daily.get("sunrise")),
+                    "sunset": _first(daily.get("sunset")),
+                }
+            except Exception as exc:
+                self._supplemental_cache[key] = (now, None, exc)
+                raise
+            self._supplemental_cache[key] = (now, value, None)
+            return dict(value)
 
     def _stale_result(
         self,
@@ -294,7 +316,11 @@ class HybridWeatherProvider:
         if not isfinite(self.timeout) or self.timeout <= 0:
             raise ValueError("timeout must be a finite positive number")
         self._monotonic = monotonic
-        self._open_meteo = OpenMeteoWeatherProvider(self.client, timeout=self.timeout)
+        self._open_meteo = OpenMeteoWeatherProvider(
+            self.client,
+            timeout=self.timeout,
+            monotonic=monotonic,
+        )
         self._stale_cache = SettingsResultCache()
         self._points_cache: dict[tuple[float, float], tuple[float, Mapping[str, Any]]] = {}
         self._points_lock = threading.RLock()
@@ -654,6 +680,12 @@ def _query(base: str, **params: Any) -> str:
 
 def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def _weather_location_key(settings: DisplaySettings) -> tuple[float, float]:
+    """Key shared weather facts by normalized coordinates."""
+
+    return round(settings.weather_lat, 5), round(settings.weather_lon, 5)
 
 
 def _first(value: Any) -> Any:
