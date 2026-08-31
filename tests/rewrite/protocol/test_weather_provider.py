@@ -138,6 +138,23 @@ def test_hybrid_weather_falls_back_when_nws_uv_supplemental_fails() -> None:
     assert any("api.open-meteo.com/v1/forecast" in url for url in client.urls)
 
 
+def test_hybrid_weather_keeps_nws_when_uv_and_open_meteo_fallback_fail() -> None:
+    class OpenMeteoFailureClient(FakeJsonClient):
+        def get_json(self, url: str, *, timeout: float):
+            if "api.open-meteo.com/v1/forecast" in url:
+                self.urls.append(url)
+                raise JsonHttpError("Open-Meteo unavailable")
+            return super().get_json(url, timeout=timeout)
+
+    client = OpenMeteoFailureClient(nws=True)
+    result = HybridWeatherProvider(client, monotonic=lambda: 100.0).fetch(_settings(40.7, -74.0))
+
+    data = result.content[0].data
+    assert result.health.healthy is True
+    assert data["temperature"] == 68
+    assert data["situation"]["stats"]["uv"] == "--"
+
+
 def test_weather_renderer_keeps_provider_calendar_labels() -> None:
     from ticker_core.features.weather.legacy_port import _forecast_day_label
 

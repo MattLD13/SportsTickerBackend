@@ -331,7 +331,13 @@ class HybridWeatherProvider:
         if hourly_url and not _nws_observation_is_fresh(observation):
             hourly_payload = self.client.get_json(hourly_url, timeout=self.timeout)
         aqi = self._open_meteo.fetch_aqi(settings)
-        supplemental = self._open_meteo.fetch_supplemental(settings)
+        try:
+            supplemental = self._open_meteo.fetch_supplemental(settings)
+        except Exception:
+            fallback = self._open_meteo.fetch(settings)
+            if fallback.health.healthy and fallback.content:
+                return fallback
+            supplemental = {}
         item = _nws_content_item(
             settings,
             point,
