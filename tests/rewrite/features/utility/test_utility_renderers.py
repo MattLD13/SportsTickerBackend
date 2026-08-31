@@ -1,6 +1,10 @@
 """Smoke test independent utility renderer families."""
 
+from dataclasses import replace
 from datetime import datetime
+
+from PIL import Image, ImageDraw
+
 from ticker_core.context import RenderContext
 from ticker_core.features.flight import FlightRenderer
 from ticker_core.features.golf import GolfAnimationState, GolfRenderer
@@ -8,6 +12,7 @@ from ticker_core.features.music import MusicAnimationState, MusicRenderer
 from ticker_core.features.utility import UtilityRenderer
 from ticker_core.features.weather import WeatherRenderer
 from ticker_core.rendering import ContentScene, load_default_font_set
+from ticker_core.rendering.fonts import load_display_font
 from ticker_core.rendering.pixels import normalize_special_chars
 
 
@@ -36,6 +41,20 @@ def test_no_games_panel_uses_clock_hierarchy_and_minute_progress() -> None:
     assert first.getpixel((0, 31)) == (198, 198, 204, 255)
     assert first.getpixel((383, 31)) == (42, 42, 48, 255)
     assert first.getpixel((196, 10)) == (48, 48, 54, 255)
+
+
+def test_no_games_panel_keeps_date_clear_of_wide_double_digit_clock() -> None:
+    """Keep the date visible when a two-digit clock needs more horizontal space."""
+    fonts = load_default_font_set()
+    wide_fonts = replace(fonts, clock=load_display_font(32, bold=True))
+    context = RenderContext(datetime(2026, 8, 14, 10, 42, 17))
+    actual = UtilityRenderer(wide_fonts).empty(context)
+
+    expected = Image.new("RGBA", actual.size, (0, 0, 0, 255))
+    draw = ImageDraw.Draw(expected)
+    draw.text((202, 16), "AUG 14", font=wide_fonts.tiny, fill=(150, 150, 158))
+
+    assert actual.crop((202, 16, 232, 24)).tobytes() == expected.crop((202, 16, 232, 24)).tobytes()
 
 
 def test_media_and_flight_keep_explicit_animation_state() -> None:

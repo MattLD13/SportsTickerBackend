@@ -268,12 +268,21 @@ class UtilityRenderer:
         draw.text((left, 7), "NO GAMES", font=self._fonts.normal, fill=(245, 245, 248))
         draw.text((left, 19), "CHECK BACK LATER", font=self._fonts.tiny, fill=(142, 142, 150))
 
+        clock = context.now.strftime("%I:%M %p").lstrip("0")
+        clock_right = PANEL_W - 8
+        clock_left = clock_right - draw.textlength(clock, font=self._fonts.clock)
         date_day = context.now.strftime("%a").upper()
         date_month_day = context.now.strftime("%b %d").upper()
-        draw.text((207, 6), date_day, font=self._fonts.tiny, fill=(150, 150, 158))
-        draw.text((207, 16), date_month_day, font=self._fonts.tiny, fill=(150, 150, 158))
-        clock = context.now.strftime("%I:%M %p").lstrip("0")
-        draw.text((PANEL_W - 8, -1), clock, font=self._fonts.clock, fill=(245, 245, 248), anchor="ra")
+        date_left = 207
+        date_width = max(
+            draw.textlength(date_day, font=self._fonts.tiny),
+            draw.textlength(date_month_day, font=self._fonts.tiny),
+        )
+        if date_left + date_width + 6 > clock_left:
+            date_left = max(divider_x + 6, int(clock_left - date_width - 6))
+        draw.text((date_left, 6), date_day, font=self._fonts.tiny, fill=(150, 150, 158))
+        draw.text((date_left, 16), date_month_day, font=self._fonts.tiny, fill=(150, 150, 158))
+        draw.text((clock_right, -1), clock, font=self._fonts.clock, fill=(245, 245, 248), anchor="ra")
 
         total_seconds = context.now.second + (context.now.microsecond / 1_000_000.0)
         progress_width = int((total_seconds / 60.0) * PANEL_W)
