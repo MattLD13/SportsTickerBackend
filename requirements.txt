@@ -2,6 +2,7 @@ flask
 waitress
 requests
 python-dotenv
+tzdata
 FlightRadarAPI==1.5.1
 cryptography
 dbus-next
