@@ -269,11 +269,11 @@ class UtilityRenderer:
         draw.text((left, 19), "CHECK BACK LATER", font=self._fonts.tiny, fill=(142, 142, 150))
 
         clock = context.now.strftime("%I:%M %p").lstrip("0")
-        clock_right = PANEL_W - 8
+        clock_right = PANEL_W - 1
         clock_left = clock_right - draw.textlength(clock, font=self._fonts.clock)
         date_day = context.now.strftime("%a").upper()
         date_month_day = context.now.strftime("%b %d").upper()
-        date_left = 207
+        date_left = divider_x + 6
         date_width = max(
             draw.textlength(date_day, font=self._fonts.tiny),
             draw.textlength(date_month_day, font=self._fonts.tiny),
