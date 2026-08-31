@@ -21,10 +21,14 @@ from .stale_cache import SettingsResultCache
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 _AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 _NWS_POINTS_URL = "https://api.weather.gov/points"
+_NWS_PRODUCTS_URL = "https://api.weather.gov/products"
+_NWS_UVI_LIST_URL = f"{_NWS_PRODUCTS_URL}/types/UVI"
 _NWS_POINT_CACHE_SECONDS = 24 * 60 * 60
-_SUPPLEMENTAL_CACHE_SECONDS = 5 * 60
+_NWS_UVI_CACHE_SECONDS = 24 * 60 * 60
 _GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 _POSTAL_CODE = re.compile(r"^\d{5}(?:-\d{4})?$")
+_UVI_VALUE = re.compile(r"([A-Z][A-Z .'-]*?)\s{2,}([A-Z]{2})\s+(\d+(?:\.\d+)?)")
+_UVI_VALID_DATE = re.compile(r"\bVALID\s+([A-Z]{3})\s+(\d{1,2})\s+(\d{4})\b")
 
 
 class WeatherLocationResolver:
@@ -94,12 +98,7 @@ class OpenMeteoWeatherProvider:
         self.timeout = float(timeout)
         if not isfinite(self.timeout) or self.timeout <= 0:
             raise ValueError("timeout must be a finite positive number")
-        self._monotonic = monotonic
         self._stale_cache = SettingsResultCache()
-        self._supplemental_cache: dict[
-            tuple[float, float], tuple[float, Mapping[str, Any] | None, Exception | None]
-        ] = {}
-        self._supplemental_lock = threading.RLock()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Return fresh weather content or the provider's immutable stale result."""
@@ -169,41 +168,6 @@ class OpenMeteoWeatherProvider:
 
         value, _ = self._fetch_aqi(settings)
         return value
-
-    def fetch_supplemental(self, settings: DisplaySettings) -> Mapping[str, Any]:
-        """Return daily display fields that supplement an NWS weather result."""
-
-        key = _weather_location_key(settings)
-        now = float(self._monotonic())
-        with self._supplemental_lock:
-            cached = self._supplemental_cache.get(key)
-            if cached is not None and now - cached[0] < _SUPPLEMENTAL_CACHE_SECONDS:
-                if cached[2] is not None:
-                    raise cached[2]
-                return dict(cached[1] or {})
-
-            try:
-                payload = self.client.get_json(
-                    _query(
-                        _FORECAST_URL,
-                        latitude=settings.weather_lat,
-                        longitude=settings.weather_lon,
-                        daily="uv_index_max,sunrise,sunset",
-                        timezone="auto",
-                    ),
-                    timeout=self.timeout,
-                )
-                daily = _mapping(payload.get("daily")) if isinstance(payload, Mapping) else {}
-                value = {
-                    "uv": _rounded(_first(daily.get("uv_index_max")), 0),
-                    "sunrise": _first(daily.get("sunrise")),
-                    "sunset": _first(daily.get("sunset")),
-                }
-            except Exception as exc:
-                self._supplemental_cache[key] = (now, None, exc)
-                raise
-            self._supplemental_cache[key] = (now, value, None)
-            return dict(value)
 
     def _stale_result(
         self,
@@ -319,11 +283,13 @@ class HybridWeatherProvider:
         self._open_meteo = OpenMeteoWeatherProvider(
             self.client,
             timeout=self.timeout,
-            monotonic=monotonic,
         )
         self._stale_cache = SettingsResultCache()
         self._points_cache: dict[tuple[float, float], tuple[float, Mapping[str, Any]]] = {}
         self._points_lock = threading.RLock()
+        self._nws_uvi_cache: dict[date, tuple[float, Mapping[str, int]]] = {}
+        self._nws_uvi_lock = threading.RLock()
+        self._nws_office_cache: dict[str, str] = {}
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch one normalized result, routing by the supplied coordinates."""
@@ -359,10 +325,10 @@ class HybridWeatherProvider:
         aqi = self._open_meteo.fetch_aqi(settings)
         supplemental_error = None
         try:
-            supplemental = self._open_meteo.fetch_supplemental(settings)
+            supplemental = {"uv": self._nws_uv(point, settings, observation, forecast_payload)}
         except Exception as exc:
             supplemental = {}
-            supplemental_error = f"Open-Meteo supplemental: {exc}"
+            supplemental_error = f"NWS UV: {exc}"
         item = _nws_content_item(
             settings,
             point,
@@ -381,6 +347,76 @@ class HybridWeatherProvider:
                 error=supplemental_error,
             ),
         )
+
+    def _nws_uv(
+        self,
+        point: Mapping[str, Any],
+        settings: DisplaySettings,
+        observation: Mapping[str, Any],
+        forecast_payload: Any,
+    ) -> int:
+        """Return the current-day NOAA/EPA UV forecast for a U.S. location."""
+
+        source_time = _nws_source_time(observation, forecast_payload)
+        target_date = source_time.date() if source_time is not None else date.today()
+        values = self._nws_uvi_values(target_date)
+        city = _normalize_uvi_city(settings.weather_city)
+        if city not in values:
+            city = self._nws_office_city(point)
+        if city not in values:
+            raise ValueError(f"no UV forecast city for {settings.weather_city}")
+        return int(values[city])
+
+    def _nws_uvi_values(self, target_date: date) -> Mapping[str, int]:
+        """Load and cache one NOAA UV bulletin by its forecast date."""
+
+        now = float(self._monotonic())
+        with self._nws_uvi_lock:
+            cached = self._nws_uvi_cache.get(target_date)
+            if cached is not None and now - cached[0] < _NWS_UVI_CACHE_SECONDS:
+                return cached[1]
+
+            listing = self.client.get_json(
+                _NWS_UVI_LIST_URL,
+                timeout=self.timeout,
+            )
+            products = listing.get("@graph") if isinstance(listing, Mapping) else None
+            if not isinstance(products, Sequence) or isinstance(products, (str, bytes)):
+                raise ValueError("NWS UV product list is invalid")
+            values: Mapping[str, int] = {}
+            for product in products:
+                item = _mapping(product)
+                identifier = _text(item.get("@id")) or _text(item.get("id"))
+                if not identifier:
+                    continue
+                if not identifier.startswith("http"):
+                    identifier = f"{_NWS_PRODUCTS_URL}/{identifier}"
+                detail = self.client.get_json(identifier, timeout=self.timeout)
+                text = _text(detail.get("productText")) if isinstance(detail, Mapping) else ""
+                if _nws_uvi_valid_date(text) != target_date:
+                    continue
+                values = _nws_uvi_values(text)
+                break
+            if not values:
+                raise ValueError(f"NWS UV bulletin missing for {target_date.isoformat()}")
+            self._nws_uvi_cache[target_date] = (now, values)
+            return values
+
+    def _nws_office_city(self, point: Mapping[str, Any]) -> str:
+        """Return the representative UVI city from NWS forecast-office metadata."""
+
+        forecast_office = _text(_mapping(point.get("properties")).get("forecastOffice"))
+        if not forecast_office:
+            return ""
+        with self._nws_uvi_lock:
+            cached = self._nws_office_cache.get(forecast_office)
+            if cached is not None:
+                return cached
+            detail = self.client.get_json(forecast_office, timeout=self.timeout)
+            name = _text(detail.get("name")) if isinstance(detail, Mapping) else ""
+            city = _normalize_uvi_city(name.split("/", 1)[0].split(",", 1)[0])
+            self._nws_office_cache[forecast_office] = city
+            return city
 
     def _nws_point(self, settings: DisplaySettings) -> Mapping[str, Any]:
         """Resolve one coordinate to an NWS forecast grid and cache its metadata."""
@@ -682,10 +718,50 @@ def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def _weather_location_key(settings: DisplaySettings) -> tuple[float, float]:
-    """Key shared weather facts by normalized coordinates."""
+def _nws_source_time(
+    observation: Mapping[str, Any],
+    forecast_payload: Any,
+) -> datetime | None:
+    """Return the source time that selects the current NWS UV bulletin."""
 
-    return round(settings.weather_lat, 5), round(settings.weather_lon, 5)
+    observation_time = _mapping(observation.get("properties")).get("timestamp")
+    parsed = _parse_datetime(observation_time)
+    if parsed is not None:
+        return parsed
+    periods = _mapping(forecast_payload.get("properties")).get("periods") if isinstance(forecast_payload, Mapping) else None
+    first_period = _mapping(periods[0]) if isinstance(periods, Sequence) and not isinstance(periods, (str, bytes)) and periods else {}
+    return _parse_datetime(first_period.get("startTime"))
+
+
+def _nws_uvi_valid_date(text: str) -> date | None:
+    """Read the forecast date from a NOAA UV bulletin."""
+
+    match = _UVI_VALID_DATE.search(text.upper())
+    if match is None:
+        return None
+    try:
+        return datetime.strptime(" ".join(match.groups()), "%b %d %Y").date()
+    except ValueError:
+        return None
+
+
+def _nws_uvi_values(text: str) -> Mapping[str, int]:
+    """Parse city UV values from the fixed-column NOAA bulletin table."""
+
+    values: dict[str, int] = {}
+    for match in _UVI_VALUE.finditer(text.upper()):
+        city = _normalize_uvi_city(match.group(1))
+        try:
+            values[city] = int(round(float(match.group(3))))
+        except ValueError:
+            continue
+    return values
+
+
+def _normalize_uvi_city(value: Any) -> str:
+    """Normalize one city name for comparison with the NOAA UV table."""
+
+    return " ".join(_text(value).upper().replace(".", "").split())
 
 
 def _first(value: Any) -> Any:

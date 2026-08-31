@@ -22,7 +22,20 @@ class FakeJsonClient:
                     "forecast": "https://api.weather.gov/gridpoints/OKX/33,37/forecast",
                     "forecastHourly": "https://api.weather.gov/gridpoints/OKX/33,37/forecast/hourly",
                     "observationStations": "https://api.weather.gov/gridpoints/OKX/33,37/stations",
+                    "forecastOffice": "https://api.weather.gov/offices/OKX",
                 }
+            }
+        if url == "https://api.weather.gov/offices/OKX":
+            return {"name": "New York, NY"}
+        if url == "https://api.weather.gov/products/types/UVI":
+            return {"@graph": [{"id": "uvi-test"}]}
+        if url == "https://api.weather.gov/products/uvi-test":
+            return {
+                "productText": """
+VALID AUG 24 2026 AT SOLAR NOON
+CITY               STATE  UVI       CITY               STATE  UVI
+NEW YORK             NY     5       PHILADELPHIA         PA     6
+"""
             }
         if url.endswith("/forecast"):
             return {
@@ -101,26 +114,12 @@ def test_hybrid_weather_uses_nws_for_us_coordinates() -> None:
     assert data["icon"] == "rain"
     assert data["wind"] == 22
     assert data["situation"]["stats"]["uv"] == "5"
-    assert data["situation"]["sunrise"] == "2026-08-24T06:00"
-    assert data["situation"]["sunset"] == "2026-08-24T19:45"
+    assert data["situation"]["sunrise"] is None
+    assert data["situation"]["sunset"] is None
     assert data["forecast"][0]["high"] == 75
     assert data["forecast"][0]["day"] == "TODAY"
     assert any(url.startswith("https://api.weather.gov/points/") for url in client.urls)
     assert not any(url.endswith("/v1/forecast") for url in client.urls)
-
-
-def test_hybrid_weather_reuses_supplemental_data_for_same_location() -> None:
-    client = FakeJsonClient(nws=True)
-    provider = HybridWeatherProvider(client, monotonic=lambda: 100.0)
-
-    provider.fetch(_settings(40.7, -74.0))
-    provider.fetch(_settings(40.7, -74.0))
-
-    supplemental = [
-        url for url in client.urls
-        if "daily=uv_index_max%2Csunrise%2Csunset" in url
-    ]
-    assert len(supplemental) == 1
 
 
 def test_hybrid_weather_uses_open_meteo_when_nws_does_not_cover_location() -> None:
@@ -135,39 +134,31 @@ def test_hybrid_weather_uses_open_meteo_when_nws_does_not_cover_location() -> No
     assert any("api.open-meteo.com/v1/forecast" in url for url in client.urls)
 
 
-def test_hybrid_weather_reports_nws_uv_supplemental_failure() -> None:
-    class SupplementalFailureClient(FakeJsonClient):
-        def get_json(self, url: str, *, timeout: float):
-            if "daily=uv_index_max%2Csunrise%2Csunset" in url:
-                self.urls.append(url)
-                raise JsonHttpError("UV supplemental request failed")
-            return super().get_json(url, timeout=timeout)
-
-    client = SupplementalFailureClient(nws=True)
+def test_hybrid_weather_uses_nws_uv_bulletin_without_open_meteo_forecast() -> None:
+    client = FakeJsonClient(nws=True)
     result = HybridWeatherProvider(client, monotonic=lambda: 100.0).fetch(_settings(40.7, -74.0))
 
     data = result.content[0].data
     assert result.health.healthy is True
-    assert result.health.error == "Open-Meteo supplemental: UV supplemental request failed"
-    assert data["situation"]["stats"]["uv"] == "--"
-    assert sum("api.open-meteo.com/v1/forecast" in url for url in client.urls) == 1
+    assert result.health.error is None
+    assert data["situation"]["stats"]["uv"] == "5"
+    assert not any("api.open-meteo.com/v1/forecast" in url for url in client.urls)
 
 
-def test_hybrid_weather_keeps_nws_when_uv_and_open_meteo_fallback_fail() -> None:
-    class OpenMeteoFailureClient(FakeJsonClient):
+def test_hybrid_weather_reports_nws_uv_failure() -> None:
+    class UviFailureClient(FakeJsonClient):
         def get_json(self, url: str, *, timeout: float):
-            if "api.open-meteo.com/v1/forecast" in url:
+            if "api.weather.gov/products" in url:
                 self.urls.append(url)
-                raise JsonHttpError("Open-Meteo unavailable")
+                raise JsonHttpError("NWS UV request failed")
             return super().get_json(url, timeout=timeout)
 
-    client = OpenMeteoFailureClient(nws=True)
+    client = UviFailureClient(nws=True)
     result = HybridWeatherProvider(client, monotonic=lambda: 100.0).fetch(_settings(40.7, -74.0))
 
     data = result.content[0].data
     assert result.health.healthy is True
-    assert result.health.error == "Open-Meteo supplemental: Open-Meteo unavailable"
-    assert data["temperature"] == 68
+    assert result.health.error == "NWS UV: NWS UV request failed"
     assert data["situation"]["stats"]["uv"] == "--"
 
 
