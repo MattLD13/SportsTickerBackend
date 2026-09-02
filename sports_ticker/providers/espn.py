@@ -1246,7 +1246,7 @@ def _merge_mapping(
 
     merged = dict(base)
     for key, value in overlay.items():
-        if value is not None:
+        if value is not None and (not isinstance(value, Mapping) or value):
             merged[key] = value
     return merged
 

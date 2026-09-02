@@ -908,6 +908,24 @@ def test_espn_event_update_preserves_scoreboard_fields_and_live_state() -> None:
     assert competition["competitors"][0]["score"] == "7"
 
 
+def test_espn_event_update_keeps_mlb_players_when_fastcast_sends_empty_objects() -> None:
+    fallback = _event("game-1", "2026-08-16T18:00:00Z", state="in")
+    players = {
+        "batter": {"athlete": {"displayName": "Aaron Judge"}},
+        "pitcher": {"athlete": {"displayName": "Garrett Whitlock"}},
+    }
+    fallback["competitions"][0]["situation"] = players
+    update = {
+        "header": {"competitions": [{"status": {"type": {"state": "in"}}}]},
+        "situation": {"batter": {}, "pitcher": {}, "balls": 2},
+    }
+
+    merged = _event_update(update, fallback)
+
+    assert merged["competitions"][0]["situation"]["batter"] == players["batter"]
+    assert merged["competitions"][0]["situation"]["pitcher"] == players["pitcher"]
+
+
 def test_espn_event_update_preserves_final_state() -> None:
     fallback = _event("game-1", "2026-08-16T18:00:00Z", state="post")
     update = {
