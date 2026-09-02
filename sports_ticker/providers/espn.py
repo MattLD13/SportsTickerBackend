@@ -1114,8 +1114,31 @@ def _event_update(payload: Any, fallback: Mapping[str, Any]) -> Mapping[str, Any
             scoreboard_situation,
             update_situation,
         )
+        merged_competition["situation"] = _merge_mlb_situation(
+            scoreboard_situation,
+            merged_competition["situation"],
+        )
     event["competitions"] = [merged_competition]
     return event
+
+
+def _merge_mlb_situation(
+    base: Mapping[str, Any], merged: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Retain scoreboard athlete names when Fastcast supplies matching IDs only."""
+
+    result = dict(merged)
+    for role in ("batter", "pitcher"):
+        original = _mapping(base.get(role))
+        current = _mapping(merged.get(role))
+        if not original or not current:
+            continue
+        original_id = _mlb_person_id(original)
+        current_id = _mlb_person_id(current)
+        if original_id and current_id and original_id != current_id:
+            continue
+        result[role] = _merge_mapping(original, current)
+    return result
 
 
 def _event_competition(payload: Any) -> Mapping[str, Any]:
