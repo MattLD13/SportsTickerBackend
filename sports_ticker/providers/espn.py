@@ -68,6 +68,9 @@ _FASTCAST_EVENT_STALE_SECONDS = 5.0
 _FULL_SCOREBOARD_REFRESH_THRESHOLD = 5
 _FULL_SCOREBOARD_DISCOVERY_INTERVAL = 60.0
 _LIVE_DETAIL_WORKERS = 2
+_MLB_SCHEDULE_CACHE_SECONDS = 60.0
+_MLB_SCHEDULE_URL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={}&hydrate=team"
+_MLB_LIVE_FEED_URL = "https://statsapi.mlb.com/api/v1.1/game/{}/feed/live"
 _COLLEGE_FOOTBALL_RANKINGS_URL = (
     "https://site.web.api.espn.com/apis/site/v2/sports/football/college-football/"
     "rankings?region=us&lang=en"
@@ -224,6 +227,8 @@ class EspnScoreboardProvider:
         self._scoreboard_inflight: dict[str, Event] = {}
         self._event_scoreboard_cache: dict[tuple[str, str], _RawEventScoreboardResponse] = {}
         self._event_scoreboard_inflight: dict[tuple[str, str], Event] = {}
+        self._mlb_event_keys: dict[str, tuple[str, str, date]] = {}
+        self._mlb_schedule_cache: dict[str, tuple[float, dict[tuple[str, str], str]]] = {}
         self._league_schedules: dict[tuple[str, str, date], _LeagueSchedule] = {}
         self._rankings_cache: tuple[float, dict[str, dict[str, str]]] | None = None
         self._ncaa_school_index_cache: tuple[float, dict[str, str]] | None = None
@@ -712,7 +717,9 @@ class EspnScoreboardProvider:
             payload = self.client.get_json(request_url, timeout=self.timeout)
             if self._fastcast is not None:
                 self._fastcast.prime(league, payload)
-            return _events(payload)
+            events = _events(payload)
+            self._remember_mlb_events(league, events)
+            return events
 
         response = self._cached_scoreboard(request_url)
         if response.error:
@@ -722,7 +729,9 @@ class EspnScoreboardProvider:
             )
         if self._fastcast is not None and response.payload is not None:
             self._fastcast.prime(league, response.payload)
-        return response.events or ()
+        events = response.events or ()
+        self._remember_mlb_events(league, events)
+        return events
 
     def _read_event_scoreboard(
         self,
@@ -762,14 +771,97 @@ class EspnScoreboardProvider:
         if fallback_url and fallback_url != request_url:
             try:
                 payload = self.client.get_json(fallback_url, timeout=self.timeout)
-                return _event_payload(payload)
+                fallback_event = _event_payload(payload)
+                if _mlb_has_boxscore(fallback_event):
+                    return fallback_event
+                event = fallback_event or event
             except Exception:
-                if event:
-                    return event
-                raise
+                pass
+        if league == "mlb":
+            statsapi_event = self._read_mlb_statsapi_event(event_id)
+            if statsapi_event:
+                return statsapi_event
         if event:
             return event
         raise RuntimeError(f"{league} event detail request failed for {event_id}")
+
+    def _remember_mlb_events(
+        self, league: str, events: Sequence[Mapping[str, Any]]
+    ) -> None:
+        """Index MLB ESPN events by their teams and UTC start date."""
+
+        if league != "mlb":
+            return
+        for event in events:
+            event_id = str(event.get("id") or "").strip()
+            date_text = str(event.get("date") or "").strip()
+            competition = _first_mapping(event.get("competitions"))
+            competitors = _competitors(competition.get("competitors"))
+            away = _find_side(competitors, "away")
+            home = _find_side(competitors, "home")
+            away_abbr = str(_mapping(away.get("team")).get("abbreviation") or "").strip().upper()
+            home_abbr = str(_mapping(home.get("team")).get("abbreviation") or "").strip().upper()
+            if event_id and away_abbr and home_abbr and len(date_text) >= 10:
+                try:
+                    game_date = date.fromisoformat(date_text[:10])
+                except ValueError:
+                    continue
+                self._mlb_event_keys[event_id] = (away_abbr, home_abbr, game_date)
+
+    def _read_mlb_statsapi_event(self, event_id: str) -> Mapping[str, Any]:
+        """Read one MLB live feed after ESPN summary endpoints omit player rows."""
+
+        event_key = self._mlb_event_keys.get(str(event_id).strip())
+        if event_key is None:
+            return {}
+        away_abbr, home_abbr, event_date = event_key
+        game_pk = self._mlb_game_pk(away_abbr, home_abbr, event_date)
+        if not game_pk:
+            return {}
+        try:
+            payload = self.client.get_json(
+                _MLB_LIVE_FEED_URL.format(game_pk),
+                timeout=self.timeout,
+            )
+        except Exception:
+            return {}
+        return _mlb_statsapi_summary(payload, str(event_id).strip())
+
+    def _mlb_game_pk(self, away_abbr: str, home_abbr: str, event_date: date) -> str:
+        """Match one ESPN MLB event to its MLB StatsAPI game identifier."""
+
+        for schedule_date in (event_date, event_date - timedelta(days=1)):
+            schedule_key = schedule_date.isoformat()
+            now = self._monotonic()
+            cached = self._mlb_schedule_cache.get(schedule_key)
+            if cached is None or now - cached[0] >= _MLB_SCHEDULE_CACHE_SECONDS:
+                try:
+                    payload = self.client.get_json(
+                        _MLB_SCHEDULE_URL.format(schedule_key),
+                        timeout=self.timeout,
+                    )
+                except Exception:
+                    continue
+                games: dict[tuple[str, str], str] = {}
+                for day in _sequence(_mapping(payload).get("dates")):
+                    for game in _sequence(_mapping(day).get("games")):
+                        teams = _mapping(game).get("teams")
+                        away = _mapping(_mapping(teams).get("away")).get("team")
+                        home = _mapping(_mapping(teams).get("home")).get("team")
+                        key = (
+                            str(_mapping(away).get("abbreviation") or "").strip().upper(),
+                            str(_mapping(home).get("abbreviation") or "").strip().upper(),
+                        )
+                        game_pk = str(_mapping(game).get("gamePk") or "").strip()
+                        if key[0] and key[1] and game_pk:
+                            games[key] = game_pk
+                self._mlb_schedule_cache[schedule_key] = (now, games)
+            else:
+                games = cached[1]
+            found = games.get((away_abbr, home_abbr))
+            if found:
+                return found
+        return ""
 
     def _cached_scoreboard(self, request_url: str) -> _RawScoreboardResponse:
         """Read one scoreboard URL once per freshness window, including temporary failures."""
@@ -1927,6 +2019,117 @@ def _mlb_event_details(payload: Any) -> dict[str, Any]:
     }
     result.update(_mlb_last_pitch(summary, situation))
     return {key: value for key, value in result.items() if value not in (None, "")}
+
+
+def _mlb_statsapi_summary(payload: Any, event_id: str) -> dict[str, Any]:
+    """Adapt one MLB StatsAPI live feed to the ESPN summary shape used downstream."""
+
+    source = _mapping(payload)
+    live = _mapping(source.get("liveData"))
+    plays_data = _mapping(live.get("plays"))
+    current = _mapping(plays_data.get("currentPlay"))
+    matchup = _mapping(current.get("matchup"))
+    linescore = _mapping(live.get("linescore"))
+    count = _mapping(current.get("count"))
+    offense = _mapping(linescore.get("offense"))
+    batter = _statsapi_player_ref(matchup.get("batter"))
+    pitcher = _statsapi_player_ref(matchup.get("pitcher"))
+    play_id = str(_mapping(current.get("about")).get("atBatIndex") or "").strip()
+    situation = {
+        "balls": count.get("balls", 0),
+        "strikes": count.get("strikes", 0),
+        "outs": linescore.get("outs", count.get("outs", 0)),
+        "onFirst": bool(offense.get("first")),
+        "onSecond": bool(offense.get("second")),
+        "onThird": bool(offense.get("third")),
+        "batter": batter,
+        "pitcher": pitcher,
+    }
+    if play_id:
+        situation["lastPlay"] = {"id": play_id}
+    plays = []
+    if current:
+        pitch_data = _mapping(current.get("pitchData"))
+        pitch_type = _mapping(_mapping(current.get("details")).get("type"))
+        plays.append({
+            "id": play_id,
+            "pitchVelocity": pitch_data.get("startSpeed"),
+            "pitchType": {
+                "abbreviation": pitch_type.get("code"),
+                "text": pitch_type.get("description") or pitch_type.get("shortDescription"),
+            },
+        })
+    return {
+        "id": event_id,
+        "situation": situation,
+        "plays": plays,
+        "boxscore": _statsapi_boxscore(_mapping(live.get("boxscore"))),
+    }
+
+
+def _statsapi_player_ref(value: Any) -> dict[str, Any]:
+    """Convert one StatsAPI matchup player into an ESPN-compatible reference."""
+
+    player = _mapping(value)
+    identifier = str(player.get("id") or "").strip()
+    name = str(player.get("fullName") or "").strip()
+    return {
+        "playerId": identifier,
+        "athlete": {"id": identifier, "displayName": name},
+    } if identifier or name else {}
+
+
+def _statsapi_boxscore(boxscore: Mapping[str, Any]) -> dict[str, Any]:
+    """Convert StatsAPI game player rows into the compact ESPN stat blocks."""
+
+    teams: list[dict[str, Any]] = []
+    for side in ("away", "home"):
+        team = _mapping(_mapping(boxscore.get("teams")).get(side))
+        batting_rows: list[dict[str, Any]] = []
+        pitching_rows: list[dict[str, Any]] = []
+        for player in _mapping(team.get("players")).values():
+            record = _mapping(player)
+            person = _mapping(record.get("person"))
+            identifier = str(person.get("id") or "").strip()
+            athlete = {
+                "id": identifier,
+                "displayName": person.get("fullName"),
+            }
+            stats = _mapping(record.get("stats"))
+            batting = _mapping(stats.get("batting"))
+            if identifier and batting:
+                batting_rows.append({
+                    "athlete": athlete,
+                    "stats": [
+                        batting.get("hits"),
+                        batting.get("atBats"),
+                        batting.get("avg"),
+                    ],
+                })
+            pitching = _mapping(stats.get("pitching"))
+            if identifier and pitching:
+                pitching_rows.append({
+                    "athlete": athlete,
+                    "stats": [
+                        pitching.get("numberOfPitches")
+                        or pitching.get("pitchesThrown")
+                        or pitching.get("pitches"),
+                    ],
+                })
+        statistics: list[dict[str, Any]] = []
+        if batting_rows:
+            statistics.append({
+                "keys": ["hits", "atBats", "avg"],
+                "athletes": batting_rows,
+            })
+        if pitching_rows:
+            statistics.append({
+                "keys": ["pitches"],
+                "athletes": pitching_rows,
+            })
+        if statistics:
+            teams.append({"statistics": statistics})
+    return {"players": teams}
 
 
 def _mlb_situation_player_name(value: Any) -> str:

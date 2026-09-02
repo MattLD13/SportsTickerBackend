@@ -15,6 +15,7 @@ from sports_ticker.providers.espn import (
     _event_update,
     _event_scoring_details,
     _mlb_event_details,
+    _mlb_statsapi_summary,
 )
 
 
@@ -1453,3 +1454,41 @@ def test_espn_mlb_summary_retries_api_host_when_web_host_has_no_boxscore() -> No
     assert len(client.urls) == 2
     assert "site.api.espn.com" in client.urls[1]
     assert _mlb_event_details(event)["pitcher_pitches"] == "47"
+
+
+def test_espn_mlb_statsapi_feed_supplies_live_player_stats() -> None:
+    summary = _mlb_statsapi_summary({
+        "liveData": {
+            "plays": {
+                "currentPlay": {
+                    "about": {"atBatIndex": 7},
+                    "count": {"balls": 1, "strikes": 2},
+                    "matchup": {
+                        "batter": {"id": 10, "fullName": "Austin Wells"},
+                        "pitcher": {"id": 20, "fullName": "Gerrit Cole"},
+                    },
+                    "pitchData": {"startSpeed": 96.4},
+                    "details": {"type": {"code": "FF", "description": "Four-Seam Fastball"}},
+                },
+            },
+            "linescore": {"outs": 1, "offense": {"first": {"id": 30}}},
+            "boxscore": {"teams": {"home": {"players": {
+                "ID10": {"person": {"id": 10, "fullName": "Austin Wells"}, "stats": {
+                    "batting": {"hits": 2, "atBats": 4, "avg": ".250"},
+                }},
+                "ID20": {"person": {"id": 20, "fullName": "Gerrit Cole"}, "stats": {
+                    "pitching": {"numberOfPitches": 47},
+                }},
+            }}, "away": {"players": {}}}},
+        },
+    }, "game-1")
+
+    details = _mlb_event_details(summary)
+
+    assert details["batter_name"] == "Austin Wells"
+    assert details["batter_h"] == "2"
+    assert details["batter_ab"] == "4"
+    assert details["batter_avg"] == ".250"
+    assert details["pitcher_name"] == "Gerrit Cole"
+    assert details["pitcher_pitches"] == "47"
+    assert details["last_pitch_type"] == "4S Fastball"
