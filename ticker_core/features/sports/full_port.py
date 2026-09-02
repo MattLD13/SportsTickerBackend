@@ -821,8 +821,8 @@ class SportsMixin:
             info_left_cx  = W // 2 - info_lane_spread
             info_right_cx = W // 2 + info_lane_spread
 
-            bat_lines = [f"BAT {batter_name}" if batter_name else "BAT", batter_hits_ab_line, batter_avg_line]
-            pit_lines = [f"PIT {pitcher_name}" if pitcher_name else "PIT", pitch_count_line, pitch_info_line]
+            bat_lines = [batter_name, batter_hits_ab_line, batter_avg_line]
+            pit_lines = [pitcher_name, pitch_count_line, pitch_info_line]
 
             if home_batting and not away_batting:
                 _draw_info_block(info_left_cx, bat_lines)
