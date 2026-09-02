@@ -1990,6 +1990,11 @@ def _mlb_event_details(payload: Any) -> dict[str, Any]:
     pitcher = players.get(pitcher_id, {})
     scoreboard_batter_stats = baseball_player_stats(batter_ref)
     scoreboard_pitcher_stats = baseball_player_stats(pitcher_ref)
+    pitch_count = (
+        _mlb_value(pitcher.get("pitching"), "pitches")
+        or scoreboard_pitcher_stats.get("pitches", "")
+        or _mlb_pitcher_pitches(summary, pitcher_id)
+    )
     batter_name = str(
         batter.get("name") or _mlb_situation_player_name(batter_ref)
     ).strip()
@@ -2017,10 +2022,7 @@ def _mlb_event_details(payload: Any) -> dict[str, Any]:
             or scoreboard_batter_stats.get("avg", "")
         ),
         "pitcher_name": pitcher_name,
-        "pitcher_pitches": (
-            _mlb_value(pitcher.get("pitching"), "pitches")
-            or scoreboard_pitcher_stats.get("pitches", "")
-        ),
+        "pitcher_pitches": pitch_count,
     }
     result.update(_mlb_last_pitch(summary, situation))
     return {key: value for key, value in result.items() if value not in (None, "")}
@@ -2211,6 +2213,35 @@ def _mlb_last_pitch(summary: Mapping[str, Any], situation: Mapping[str, Any]) ->
         "last_pitch_speed": speed,
         "last_pitch_type": _mlb_pitch_label(full, abbreviation),
     }
+
+
+def _mlb_pitcher_pitches(summary: Mapping[str, Any], pitcher_id: str) -> str:
+    """Count completed pitches for the active pitcher from summary play records."""
+
+    if not pitcher_id:
+        return ""
+    pitches_by_at_bat: dict[str, int] = {}
+    for play in _sequence(summary.get("plays")):
+        record = _mapping(play)
+        participants = _sequence(record.get("participants"))
+        participant_ids = {
+            _mlb_person_id(participant)
+            for participant in participants
+            if str(_mapping(participant).get("type") or "").strip().lower() == "pitcher"
+        }
+        if pitcher_id not in participant_ids:
+            continue
+        try:
+            pitch_number = int(record.get("atBatPitchNumber"))
+        except (TypeError, ValueError):
+            continue
+        at_bat_id = str(record.get("atBatId") or record.get("id") or "").strip()
+        if at_bat_id:
+            pitches_by_at_bat[at_bat_id] = max(
+                pitches_by_at_bat.get(at_bat_id, 0), pitch_number
+            )
+    total = sum(pitches_by_at_bat.values())
+    return str(total) if total else ""
 
 
 def _mlb_pitch_label(full: str, abbreviation: str) -> str:

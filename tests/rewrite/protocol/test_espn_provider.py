@@ -1380,6 +1380,28 @@ def test_espn_mlb_event_details_keep_scoreboard_batter_stats_without_boxscore() 
     assert details["batter_ab"] == "4"
 
 
+def test_espn_mlb_event_details_count_pitcher_throws_from_summary_plays() -> None:
+    details = _mlb_event_details({
+        "situation": {
+            "batter": {"playerId": "10", "summary": "1-2"},
+            "pitcher": {"playerId": "20"},
+        },
+        "plays": [
+            {"atBatId": "a", "atBatPitchNumber": 1, "participants": [{
+                "type": "pitcher", "athlete": {"id": "20"},
+            }]},
+            {"atBatId": "a", "atBatPitchNumber": 2, "participants": [{
+                "type": "pitcher", "athlete": {"id": "20"},
+            }]},
+            {"atBatId": "b", "atBatPitchNumber": 1, "participants": [{
+                "type": "pitcher", "athlete": {"id": "20"},
+            }]},
+        ],
+    })
+
+    assert details["pitcher_pitches"] == "3"
+
+
 def test_espn_mlb_event_details_use_due_up_and_last_play_between_innings() -> None:
     details = _mlb_event_details({
         "situation": {
