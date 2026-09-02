@@ -183,7 +183,7 @@ def display_situation(
     if league in _FOOTBALL:
         return _football_situation(source, possession, home_abbr, away_abbr)
     if league == "mlb":
-        return {
+        result = {
             "balls": _integer(source.get("balls")),
             "strikes": _integer(source.get("strikes")),
             "outs": _integer(source.get("outs")),
@@ -192,6 +192,11 @@ def display_situation(
             "onThird": bool(source.get("onThird")),
             "possession": possession,
         }
+        for role in ("batter", "pitcher"):
+            name = _baseball_player_name(source.get(role))
+            if name:
+                result[f"{role}_name"] = name
+        return result
     if league == "nhl":
         return {
             "possession": possession,
@@ -261,6 +266,8 @@ _LIVE_PLAY_KEYS = frozenset(
         "onFirst",
         "onSecond",
         "onThird",
+        "batter_name",
+        "pitcher_name",
         "powerPlay",
         "emptyNet",
         "emptyNetSide",
@@ -277,6 +284,20 @@ def _baseball_batting_team(status: str, home_abbr: str, away_abbr: str) -> str:
     if normalized.startswith("bottom") or normalized.startswith("bot"):
         return home_abbr
     return ""
+
+
+def _baseball_player_name(value: Any) -> str:
+    """Read one live MLB player name from the scoreboard situation."""
+
+    player = _mapping(value)
+    athlete = _mapping(player.get("athlete"))
+    return str(
+        athlete.get("displayName")
+        or athlete.get("fullName")
+        or player.get("displayName")
+        or player.get("fullName")
+        or ""
+    ).strip()
 
 
 def _football_situation(

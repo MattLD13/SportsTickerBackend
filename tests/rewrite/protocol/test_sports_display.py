@@ -33,6 +33,24 @@ def test_active_team_belongs_to_the_backend_sports_contract() -> None:
     assert baseball_bottom.data["situation"]["activeTeam"] == "HOM"
 
 
+def test_baseball_projects_live_player_names_from_scoreboard_situation() -> None:
+    event = _event(
+        "Top 5th",
+        {
+            "balls": 2,
+            "strikes": 1,
+            "outs": 1,
+            "batter": {"athlete": {"displayName": "Aaron Judge"}},
+            "pitcher": {"athlete": {"displayName": "Garrett Whitlock"}},
+        },
+    )
+
+    baseball = SportsDisplayProjector().project(_item("baseball", "mlb"), event)
+
+    assert baseball.data["situation"]["batter_name"] == "Aaron Judge"
+    assert baseball.data["situation"]["pitcher_name"] == "Garrett Whitlock"
+
+
 @pytest.mark.parametrize(
     ("possession", "yard_line", "expected"),
     (("2", 80, False), ("2", 20, True), ("1", 20, False), ("1", 80, True)),
