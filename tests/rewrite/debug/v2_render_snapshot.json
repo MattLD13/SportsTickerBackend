@@ -57,6 +57,12 @@
             "balls": 3,
             "strikes": 2,
             "outs": 2,
+            "batter_name": "Aaron Judge",
+            "batter_h": "2",
+            "batter_ab": "4",
+            "batter_avg": ".298",
+            "pitcher_name": "Garrett Whitlock",
+            "pitcher_pitches": "82",
             "last_pitch_speed": 96,
             "last_pitch_type": "4S Fastball"
           }
