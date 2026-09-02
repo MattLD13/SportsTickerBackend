@@ -778,6 +778,7 @@ class EspnScoreboardProvider:
             except Exception:
                 pass
         if league == "mlb":
+            self._remember_mlb_events(league, (event,))
             statsapi_event = self._read_mlb_statsapi_event(event_id)
             if statsapi_event:
                 return statsapi_event
@@ -794,8 +795,11 @@ class EspnScoreboardProvider:
             return
         for event in events:
             event_id = str(event.get("id") or "").strip()
-            date_text = str(event.get("date") or "").strip()
-            competition = _first_mapping(event.get("competitions"))
+            header = _mapping(event.get("header"))
+            date_text = str(event.get("date") or header.get("date") or "").strip()
+            competition = _first_mapping(
+                event.get("competitions") or header.get("competitions")
+            )
             competitors = _competitors(competition.get("competitors"))
             away = _find_side(competitors, "away")
             home = _find_side(competitors, "home")
