@@ -1698,9 +1698,13 @@ def _mlb_api_summary_url(request_url: str) -> str:
 
 
 def _mlb_has_boxscore(payload: Mapping[str, Any]) -> bool:
-    """Return whether an MLB summary contains player rows for stat extraction."""
+    """Return whether an MLB summary contains stats for its active players."""
 
-    return bool(_mlb_players(_mapping(payload.get("boxscore"))))
+    details = _mlb_event_details(payload)
+    return any(
+        key in details
+        for key in ("batter_h", "batter_ab", "batter_avg", "pitcher_pitches")
+    )
 
 
 def _parse_college_football_rankings(payload: Any) -> dict[str, dict[str, str]]:
@@ -2097,13 +2101,15 @@ def _statsapi_boxscore(boxscore: Mapping[str, Any]) -> dict[str, Any]:
             }
             stats = _mapping(record.get("stats"))
             batting = _mapping(stats.get("batting"))
-            if identifier and batting:
+            season_stats = _mapping(record.get("seasonStats"))
+            season_batting = _mapping(season_stats.get("batting"))
+            if identifier and (batting or season_batting):
                 batting_rows.append({
                     "athlete": athlete,
                     "stats": [
                         batting.get("hits"),
                         batting.get("atBats"),
-                        batting.get("avg"),
+                        batting.get("avg") or season_batting.get("avg"),
                     ],
                 })
             pitching = _mapping(stats.get("pitching"))
