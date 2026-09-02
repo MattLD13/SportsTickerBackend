@@ -192,8 +192,22 @@ def display_situation(
             "onThird": bool(source.get("onThird")),
             "possession": possession,
         }
+        batter = source.get("batter") or _first_mapping(source.get("dueUp"))
+        batter_stats = baseball_player_stats(batter)
+        for key, target in (
+            ("hits", "batter_h"),
+            ("atBats", "batter_ab"),
+            ("avg", "batter_avg"),
+        ):
+            if batter_stats.get(key) not in (None, ""):
+                result[target] = batter_stats[key]
+        pitcher_stats = baseball_player_stats(source.get("pitcher"))
+        if pitcher_stats.get("pitches") not in (None, ""):
+            result["pitcher_pitches"] = pitcher_stats["pitches"]
         for role in ("batter", "pitcher"):
             name = _baseball_player_name(source.get(role))
+            if role == "batter" and not name:
+                name = _baseball_player_name(_first_mapping(source.get("dueUp")))
             if name:
                 result[f"{role}_name"] = name
         return result
@@ -267,7 +281,13 @@ _LIVE_PLAY_KEYS = frozenset(
         "onSecond",
         "onThird",
         "batter_name",
+        "batter_h",
+        "batter_ab",
+        "batter_avg",
         "pitcher_name",
+        "pitcher_pitches",
+        "last_pitch_speed",
+        "last_pitch_type",
         "powerPlay",
         "emptyNet",
         "emptyNetSide",
@@ -298,6 +318,41 @@ def _baseball_player_name(value: Any) -> str:
         or player.get("fullName")
         or ""
     ).strip()
+
+
+def baseball_player_stats(value: Any) -> dict[str, str]:
+    """Read available MLB player stats from scoreboard situation data."""
+
+    player = _mapping(value)
+    stats: dict[str, str] = {}
+    sources = [
+        player,
+        _mapping(player.get("stats")),
+        _mapping(player.get("statistics")),
+        _mapping(player.get("batting")),
+        _mapping(player.get("pitching")),
+    ]
+    aliases = {
+        "hits": ("hits", "H"),
+        "atBats": ("atBats", "AB", "at_bats"),
+        "avg": ("avg", "AVG", "average"),
+        "pitches": ("pitches", "pitchCount", "pitch_count"),
+    }
+    for target, keys in aliases.items():
+        for source in sources:
+            for key in keys:
+                value = source.get(key)
+                if value not in (None, ""):
+                    stats[target] = str(value).strip()
+                    break
+            if target in stats:
+                break
+    summary = str(player.get("summary") or "").strip()
+    match = re.match(r"^(\d+)\s*-\s*(\d+)\b", summary)
+    if match:
+        stats.setdefault("hits", match.group(1))
+        stats.setdefault("atBats", match.group(2))
+    return stats
 
 
 def _football_situation(

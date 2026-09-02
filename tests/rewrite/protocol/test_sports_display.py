@@ -51,6 +51,43 @@ def test_baseball_projects_live_player_names_from_scoreboard_situation() -> None
     assert baseball.data["situation"]["pitcher_name"] == "Garrett Whitlock"
 
 
+def test_baseball_projects_next_batter_when_between_innings() -> None:
+    event = _event(
+        "Mid 4th",
+        {
+            "balls": 0,
+            "strikes": 0,
+            "outs": 0,
+            "dueUp": [{"athlete": {"displayName": "Vaughn Grissom"}}],
+        },
+    )
+
+    baseball = SportsDisplayProjector().project(_item("baseball", "mlb"), event)
+
+    assert baseball.data["situation"]["batter_name"] == "Vaughn Grissom"
+
+
+def test_baseball_projects_scoreboard_batter_stats() -> None:
+    event = _event(
+        "Top 5th",
+        {
+            "balls": 1,
+            "strikes": 2,
+            "outs": 1,
+            "batter": {
+                "athlete": {"displayName": "Austin Wells"},
+                "summary": "2-4, R",
+            },
+            "pitcher": {"athlete": {"displayName": "Garrett Acton"}},
+        },
+    )
+
+    baseball = SportsDisplayProjector().project(_item("baseball", "mlb"), event)
+
+    assert baseball.data["situation"]["batter_h"] == "2"
+    assert baseball.data["situation"]["batter_ab"] == "4"
+
+
 @pytest.mark.parametrize(
     ("possession", "yard_line", "expected"),
     (("2", 80, False), ("2", 20, True), ("1", 20, False), ("1", 80, True)),

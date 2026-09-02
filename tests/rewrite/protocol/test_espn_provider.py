@@ -1357,6 +1357,56 @@ def test_espn_mlb_event_details_use_live_situation_names_without_boxscore_rows()
     assert details["pitcher_name"] == "Garrett Acton"
 
 
+def test_espn_mlb_event_details_keep_scoreboard_batter_stats_without_boxscore() -> None:
+    details = _mlb_event_details({
+        "competitions": [{
+            "situation": {
+                "batter": {
+                    "athlete": {"displayName": "Austin Wells"},
+                    "summary": "2-4, R",
+                },
+                "pitcher": {
+                    "athlete": {"displayName": "Garrett Acton"},
+                },
+                "balls": 1,
+                "strikes": 2,
+                "outs": 1,
+            },
+        }],
+    })
+
+    assert details["batter_h"] == "2"
+    assert details["batter_ab"] == "4"
+
+
+def test_espn_mlb_event_details_use_due_up_and_last_play_between_innings() -> None:
+    details = _mlb_event_details({
+        "situation": {
+            "balls": 0,
+            "strikes": 0,
+            "outs": 0,
+            "dueUp": [{"playerId": "10"}],
+            "lastPlay": {"id": "play-1"},
+        },
+        "plays": [{
+            "id": "play-1",
+            "participants": [
+                {"type": "pitcher", "athlete": {"id": "20", "displayName": "Gerrit Cole"}},
+                {"type": "batter", "athlete": {"id": "30", "displayName": "Aaron Judge"}},
+            ],
+        }],
+        "boxscore": {"players": [{"statistics": [
+            {"keys": ["atBats"], "athletes": [{"athlete": {"id": "10", "displayName": "Vaughn Grissom"}, "stats": ["0"]}]},
+            {"keys": ["pitches"], "athletes": [{"athlete": {"id": "20", "displayName": "Gerrit Cole"}, "stats": ["47"]}]},
+        ]}]},
+    })
+
+    assert details["batter_name"] == "Vaughn Grissom"
+    assert details["pitcher_name"] == "Gerrit Cole"
+    assert details["batter_ab"] == "0"
+    assert details["pitcher_pitches"] == "47"
+
+
 def test_espn_mlb_uses_summary_event_detail_url() -> None:
     assert _event_detail_url(
         "mlb", "https://example.test/baseball/mlb/scoreboard?dates=20260829"

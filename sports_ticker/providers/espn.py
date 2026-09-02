@@ -26,6 +26,7 @@ from .score_alerts import ScoreAlertTracker, alerts_for_settings
 from .sports_display import (
     SportsDisplayProjector,
     assign_active_team,
+    baseball_player_stats,
     display_situation,
     normalize_rank,
     soccer_event,
@@ -66,6 +67,7 @@ _SOURCE_CACHE_SECONDS = 5.0
 _FASTCAST_EVENT_STALE_SECONDS = 5.0
 _FULL_SCOREBOARD_REFRESH_THRESHOLD = 5
 _FULL_SCOREBOARD_DISCOVERY_INTERVAL = 60.0
+_LIVE_DETAIL_WORKERS = 2
 _COLLEGE_FOOTBALL_RANKINGS_URL = (
     "https://site.web.api.espn.com/apis/site/v2/sports/football/college-football/"
     "rankings?region=us&lang=en"
@@ -415,7 +417,11 @@ class EspnScoreboardProvider:
         ncaa_logo_future: Any | None = None
         workers = min(
             8,
-            max(1, len(refresh_leagues) + len(live_refreshes), _FULL_SCOREBOARD_REFRESH_THRESHOLD - 1),
+            max(
+                1,
+                len(refresh_leagues),
+                min(_LIVE_DETAIL_WORKERS, len(live_refreshes)),
+            ),
         )
         with ThreadPoolExecutor(
             max_workers=workers,
@@ -1834,16 +1840,24 @@ def _mlb_event_details(payload: Any) -> dict[str, Any]:
     )
     if not situation:
         return {}
-    batter_id = _mlb_person_id(situation.get("batter"))
-    pitcher_id = _mlb_person_id(situation.get("pitcher"))
+    batter_ref = situation.get("batter")
+    if not _mlb_person_id(batter_ref) and not _mlb_situation_player_name(batter_ref):
+        batter_ref = _first_mapping(situation.get("dueUp"))
+    pitcher_ref = situation.get("pitcher")
+    if not _mlb_person_id(pitcher_ref) and not _mlb_situation_player_name(pitcher_ref):
+        pitcher_ref = _mlb_latest_play_participant(summary, "pitcher")
+    batter_id = _mlb_person_id(batter_ref)
+    pitcher_id = _mlb_person_id(pitcher_ref)
     players = _mlb_players(_mapping(summary.get("boxscore")))
     batter = players.get(batter_id, {})
     pitcher = players.get(pitcher_id, {})
+    scoreboard_batter_stats = baseball_player_stats(batter_ref)
+    scoreboard_pitcher_stats = baseball_player_stats(pitcher_ref)
     batter_name = str(
-        batter.get("name") or _mlb_situation_player_name(situation.get("batter"))
+        batter.get("name") or _mlb_situation_player_name(batter_ref)
     ).strip()
     pitcher_name = str(
-        pitcher.get("name") or _mlb_situation_player_name(situation.get("pitcher"))
+        pitcher.get("name") or _mlb_situation_player_name(pitcher_ref)
     ).strip()
     result: dict[str, Any] = {
         "balls": _mlb_number(situation.get("balls")),
@@ -1853,11 +1867,23 @@ def _mlb_event_details(payload: Any) -> dict[str, Any]:
         "onSecond": bool(situation.get("onSecond")),
         "onThird": bool(situation.get("onThird")),
         "batter_name": batter_name,
-        "batter_h": _mlb_value(batter.get("batting"), "hits"),
-        "batter_ab": _mlb_value(batter.get("batting"), "atBats"),
-        "batter_avg": _mlb_value(batter.get("batting"), "avg"),
+        "batter_h": (
+            _mlb_value(batter.get("batting"), "hits")
+            or scoreboard_batter_stats.get("hits", "")
+        ),
+        "batter_ab": (
+            _mlb_value(batter.get("batting"), "atBats")
+            or scoreboard_batter_stats.get("atBats", "")
+        ),
+        "batter_avg": (
+            _mlb_value(batter.get("batting"), "avg")
+            or scoreboard_batter_stats.get("avg", "")
+        ),
         "pitcher_name": pitcher_name,
-        "pitcher_pitches": _mlb_value(pitcher.get("pitching"), "pitches"),
+        "pitcher_pitches": (
+            _mlb_value(pitcher.get("pitching"), "pitches")
+            or scoreboard_pitcher_stats.get("pitches", "")
+        ),
     }
     result.update(_mlb_last_pitch(summary, situation))
     return {key: value for key, value in result.items() if value not in (None, "")}
@@ -1875,6 +1901,19 @@ def _mlb_situation_player_name(value: Any) -> str:
         or player.get("fullName")
         or ""
     ).strip()
+
+
+def _mlb_latest_play_participant(
+    summary: Mapping[str, Any], role: str
+) -> Mapping[str, Any]:
+    """Return the latest MLB play participant for one player role."""
+
+    wanted = str(role).strip().lower()
+    for play in reversed(_sequence(summary.get("plays"))):
+        for participant in _sequence(_mapping(play).get("participants")):
+            if str(_mapping(participant).get("type") or "").strip().lower() == wanted:
+                return _mapping(participant)
+    return {}
 
 
 def _mlb_players(boxscore: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
@@ -1937,7 +1976,11 @@ def _mlb_pitch_label(full: str, abbreviation: str) -> str:
 
 
 def _mlb_person_id(value: Any) -> str:
-    return str(_mapping(value).get("playerId") or _mapping(value).get("id") or "").strip()
+    player = _mapping(value)
+    athlete = _mapping(player.get("athlete"))
+    return str(
+        player.get("playerId") or player.get("id") or athlete.get("id") or ""
+    ).strip()
 
 
 def _mlb_value(values: Any, key: str) -> str:
