@@ -63,6 +63,35 @@ def test_baseball_compact_and_pinned_frames_have_panel_geometry(renderer: Sports
     assert pinned.size == (384, 32)
 
 
+def test_pinned_baseball_frame_renders_batter_and_pitcher_names(renderer: SportsRenderer) -> None:
+    game = {
+        "sport": "mlb",
+        "state": "in",
+        "status": "Bottom 7th",
+        "away_abbr": "NYY",
+        "home_abbr": "BOS",
+        "away_score": 2,
+        "home_score": 1,
+        "situation": {
+            "activeTeam": "BOS",
+            "batter_name": "Austin Wells",
+            "pitcher_name": "Garrett Acton",
+            "batter_h": "2",
+            "batter_ab": "4",
+            "batter_avg": ".250",
+            "pitcher_pitches": "24",
+        },
+    }
+
+    without_names = {**game, "situation": {key: value for key, value in game["situation"].items() if "_name" not in key}}
+
+    named = renderer.render_full(game)
+    unlabeled = renderer.render_full(without_names)
+
+    assert named.size == (384, 32)
+    assert named.tobytes() != unlabeled.tobytes()
+
+
 def test_football_active_team_changes_the_live_context_position(renderer: SportsRenderer) -> None:
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
     base = {
