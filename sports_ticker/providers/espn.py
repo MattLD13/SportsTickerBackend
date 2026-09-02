@@ -738,12 +738,38 @@ class EspnScoreboardProvider:
             return {}
         request_url = template.format(event_id)
         if not cache_source:
-            return _event_payload(self.client.get_json(request_url, timeout=self.timeout))
+            return self._read_event_payload(league, event_id, request_url)
 
         response = self._cached_event_scoreboard((league, event_id), request_url)
         if response.error:
             raise RuntimeError(response.error)
         return response.payload or {}
+
+    def _read_event_payload(
+        self, league: str, event_id: str, request_url: str
+    ) -> Mapping[str, Any]:
+        """Read one event payload and retry MLB detail data through ESPN's API host."""
+
+        try:
+            payload = self.client.get_json(request_url, timeout=self.timeout)
+            event = _event_payload(payload)
+        except Exception:
+            event = {}
+        if league != "mlb" or _mlb_has_boxscore(event):
+            if event:
+                return event
+        fallback_url = _mlb_api_summary_url(request_url) if league == "mlb" else ""
+        if fallback_url and fallback_url != request_url:
+            try:
+                payload = self.client.get_json(fallback_url, timeout=self.timeout)
+                return _event_payload(payload)
+            except Exception:
+                if event:
+                    return event
+                raise
+        if event:
+            return event
+        raise RuntimeError(f"{league} event detail request failed for {event_id}")
 
     def _cached_scoreboard(self, request_url: str) -> _RawScoreboardResponse:
         """Read one scoreboard URL once per freshness window, including temporary failures."""
@@ -821,8 +847,7 @@ class EspnScoreboardProvider:
         response: _RawEventScoreboardResponse
         try:
             try:
-                payload = self.client.get_json(request_url, timeout=self.timeout)
-                event = _event_payload(payload)
+                event = self._read_event_payload(key[0], key[1], request_url)
             except Exception as error:
                 response = _RawEventScoreboardResponse(
                     payload=None,
@@ -1569,6 +1594,21 @@ def _event_detail_url(league: str, scoreboard_url: str) -> str:
         scoreboard_root = endpoint.removesuffix("/scoreboard")
         return f"{scoreboard_root}/summary?event={{}}"
     return f"{endpoint}/{{}}"
+
+
+def _mlb_api_summary_url(request_url: str) -> str:
+    """Return ESPN's API-host equivalent for one MLB summary URL."""
+
+    return request_url.replace(
+        "site.web.api.espn.com",
+        "site.api.espn.com",
+    )
+
+
+def _mlb_has_boxscore(payload: Mapping[str, Any]) -> bool:
+    """Return whether an MLB summary contains player rows for stat extraction."""
+
+    return bool(_mlb_players(_mapping(payload.get("boxscore"))))
 
 
 def _parse_college_football_rankings(payload: Any) -> dict[str, dict[str, str]]:

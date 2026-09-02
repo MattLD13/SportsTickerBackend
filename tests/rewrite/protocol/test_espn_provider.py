@@ -1414,3 +1414,42 @@ def test_espn_mlb_uses_summary_event_detail_url() -> None:
     assert _event_detail_url(
         "nfl", "https://example.test/football/nfl/scoreboard"
     ) == "https://example.test/football/nfl/scoreboard/{}"
+
+
+def test_espn_mlb_summary_retries_api_host_when_web_host_has_no_boxscore() -> None:
+    class SummaryClient:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        def get_json(self, url: str, *, timeout: float):
+            del timeout
+            self.urls.append(url)
+            if "site.web.api.espn.com" in url:
+                return {"header": {"id": "game-1", "competitions": [{}]}}
+            return {
+                "header": {"id": "game-1", "competitions": [{}]},
+                "boxscore": {"players": [{"statistics": [{
+                    "keys": ["pitches"],
+                    "athletes": [{
+                        "athlete": {"id": "20", "displayName": "Gerrit Cole"},
+                        "stats": ["47"],
+                    }],
+                }]}]},
+                "situation": {"pitcher": {"playerId": "20"}},
+            }
+
+    client = SummaryClient()
+    provider = EspnScoreboardProvider(
+        {"mlb": "https://site.web.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"},
+        client=client,
+    )
+
+    event = provider._read_event_payload(
+        "mlb",
+        "game-1",
+        "https://site.web.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event=game-1",
+    )
+
+    assert len(client.urls) == 2
+    assert "site.api.espn.com" in client.urls[1]
+    assert _mlb_event_details(event)["pitcher_pitches"] == "47"
