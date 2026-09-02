@@ -1426,7 +1426,9 @@ def test_espn_mlb_summary_retries_api_host_when_web_host_has_no_boxscore() -> No
             del timeout
             self.urls.append(url)
             if "site.web.api.espn.com" in url:
-                return {"header": {"id": "game-1", "competitions": [{}]}}
+                return {"header": {"id": "game-1", "competitions": [{
+                    "situation": {"batter": {"playerId": "10", "summary": "1-2"}},
+                }]}}
             return {
                 "header": {"id": "game-1", "competitions": [{}]},
                 "boxscore": {"players": [{"statistics": [{

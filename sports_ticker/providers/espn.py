@@ -1701,10 +1701,7 @@ def _mlb_has_boxscore(payload: Mapping[str, Any]) -> bool:
     """Return whether an MLB summary contains stats for its active players."""
 
     details = _mlb_event_details(payload)
-    return any(
-        key in details
-        for key in ("batter_h", "batter_ab", "batter_avg", "pitcher_pitches")
-    )
+    return "batter_avg" in details or "pitcher_pitches" in details
 
 
 def _parse_college_football_rankings(payload: Any) -> dict[str, dict[str, str]]:
