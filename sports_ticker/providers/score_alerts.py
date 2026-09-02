@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import re
 from threading import Lock
 from time import time
 from typing import Any, Callable
@@ -40,7 +41,11 @@ def _number(value: object) -> int | None:
         return None
 
 
-def _describe(sport: object, delta: int) -> tuple[str, str]:
+def _describe(
+    sport: object,
+    delta: int,
+    scoring_play: Mapping[str, Any] | None = None,
+) -> tuple[str, str]:
     family = sport_family(sport)
     if family == "football":
         if delta >= 6:
@@ -51,12 +56,40 @@ def _describe(sport: object, delta: int) -> tuple[str, str]:
             return "safety", "SAFETY"
         return "extra_point", "EXTRA POINT"
     if family == "baseball":
-        if delta >= 4:
-            return "grand_slam", "GRAND SLAM"
-        if delta == 3:
-            return "three_run_hr", "3-RUN HOME RUN"
-        if delta == 2:
-            return "two_run_hr", "2-RUN HOME RUN"
+        play_text = " ".join(
+            str(scoring_play.get(key) or "")
+            for key in ("type", "kind", "scoring_type", "text")
+        ).lower() if scoring_play else ""
+        home_run = bool(
+            re.search(r"\b(home run|homer|homered|homers)\b", play_text)
+        )
+        if home_run:
+            runs = _number(scoring_play.get("score_value")) if scoring_play else None
+            runs = runs if runs is not None else delta
+            if runs >= 4 or "grand slam" in play_text:
+                return "grand_slam", "GRAND SLAM"
+            if runs == 3:
+                return "three_run_hr", "3-RUN HOME RUN"
+            if runs == 2:
+                return "two_run_hr", "2-RUN HOME RUN"
+            return "home_run", "HOME RUN"
+        scoring_type = re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            str(scoring_play.get("type") or scoring_play.get("kind") or "").lower(),
+        ).strip() if scoring_play else ""
+        baseball_types = {
+            "single": ("single", "SINGLE"),
+            "double": ("double", "DOUBLE"),
+            "triple": ("triple", "TRIPLE"),
+            "sacrifice fly": ("sacrifice_fly", "SAC FLY"),
+            "sacrifice bunt": ("sacrifice_bunt", "SAC BUNT"),
+            "walk": ("walk", "WALK"),
+            "intentional walk": ("intentional_walk", "INTENTIONAL WALK"),
+            "hit by pitch": ("hit_by_pitch", "HIT BY PITCH"),
+        }
+        if scoring_type in baseball_types:
+            return baseball_types[scoring_type]
         return "run", "RUN SCORES"
     if family == "hockey":
         return "goal", "GOAL"
@@ -132,31 +165,40 @@ def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str
                         return f"{scorer} {strength}"[:24]
                     return scorer[:24]
 
-    scoring_plays = situation.get("scoring_plays") or game.get("scoring_plays")
-    if isinstance(scoring_plays, (list, tuple)) and scoring_plays:
-        matching = [
-            play for play in scoring_plays
-            if isinstance(play, Mapping)
-            and str(play.get("team") or play.get("side") or "").lower()
-            in {str(game.get(f"{side}_abbr") or side).lower(), side}
-        ]
-        if matching:
-            play = matching[-1]
-            scorer = str(play.get("scorer") or play.get("player") or "").strip().upper()
-            scoring_type = str(play.get("type") or play.get("kind") or "").strip().upper()
-            text = str(play.get("text") or "").strip().upper()
-            if scorer and scoring_type and scoring_type not in scorer:
-                return f"{scorer} {scoring_type}"[:24]
-            if scorer:
-                return scorer[:24]
-            if text:
-                return text[:24]
+    play = _latest_scoring_play(game, situation, side)
+    if play is not None:
+        scorer = str(play.get("scorer") or play.get("player") or "").strip().upper()
+        scoring_type = str(play.get("type") or play.get("kind") or "").strip().upper()
+        text = str(play.get("text") or "").strip().upper()
+        if scorer and scoring_type and scoring_type not in scorer:
+            return f"{scorer} {scoring_type}"[:24]
+        if scorer:
+            return scorer[:24]
+        if text:
+            return text[:24]
 
     last_play = str(situation.get("last_play") or game.get("last_play") or "").strip()
     if last_play:
         return last_play[:24].upper()
 
     return ""
+
+
+def _latest_scoring_play(
+    game: Mapping[str, Any], situation: Mapping[str, Any], side: str
+) -> Mapping[str, Any] | None:
+    """Return the latest normalized scoring play for one team."""
+
+    scoring_plays = situation.get("scoring_plays") or game.get("scoring_plays")
+    if not isinstance(scoring_plays, (list, tuple)):
+        return None
+    team = str(game.get(f"{side}_abbr") or side).lower()
+    matching = [
+        play for play in scoring_plays
+        if isinstance(play, Mapping)
+        and str(play.get("team") or play.get("side") or "").lower() in {team, side}
+    ]
+    return matching[-1] if matching else None
 
 
 class ScoreAlertTracker:
@@ -209,7 +251,10 @@ class ScoreAlertTracker:
                     delta = new_score - old_score
                     if delta <= 0:
                         continue
-                    kind, headline = _describe(sport, delta)
+                    sit = game.get("situation")
+                    situation = sit if isinstance(sit, Mapping) else {}
+                    scoring_play = _latest_scoring_play(game, situation, side)
+                    kind, headline = _describe(sport, delta, scoring_play)
                     detail = _extract_alert_detail(sport, game, side)
                     other = "away" if side == "home" else "home"
                     self._alerts.append(

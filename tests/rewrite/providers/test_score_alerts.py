@@ -51,6 +51,101 @@ def test_score_alert_enrichment_details() -> None:
     assert mlb_alert["detail"] == "JUDGE HOME RUN"
 
 
+def test_mlb_score_alert_does_not_infer_home_run_from_runs_scored() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    tracker.ingest([
+        {
+            "kind": "scoreboard",
+            "id": "mlb-single",
+            "sport": "mlb",
+            "state": "in",
+            "home_abbr": "BOS",
+            "away_abbr": "NYY",
+            "home_score": 0,
+            "away_score": 0,
+        },
+        {
+            "kind": "scoreboard",
+            "id": "mlb-sacrifice-fly",
+            "sport": "mlb",
+            "state": "in",
+            "home_abbr": "BOS",
+            "away_abbr": "NYY",
+            "home_score": 0,
+            "away_score": 0,
+        },
+    ])
+    tracker.ingest([
+        {
+            "kind": "scoreboard",
+            "id": "mlb-single",
+            "sport": "mlb",
+            "state": "in",
+            "home_abbr": "BOS",
+            "away_abbr": "NYY",
+            "home_score": 0,
+            "away_score": 2,
+            "situation": {
+                "scoring_plays": [{
+                    "team": "NYY",
+                    "type": "Single",
+                    "score_value": 2,
+                }],
+            },
+        },
+        {
+            "kind": "scoreboard",
+            "id": "mlb-sacrifice-fly",
+            "sport": "mlb",
+            "state": "in",
+            "home_abbr": "BOS",
+            "away_abbr": "NYY",
+            "home_score": 0,
+            "away_score": 1,
+            "situation": {
+                "scoring_plays": [{
+                    "team": "NYY",
+                    "type": "Sacrifice Fly",
+                    "score_value": 1,
+                }],
+            },
+        },
+    ])
+
+    alerts = tracker.recent()
+    assert [alert["headline"] for alert in alerts] == ["SINGLE", "SAC FLY"]
+
+
+def test_mlb_score_alert_uses_verified_home_run_type() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    baseline = {
+        "kind": "scoreboard",
+        "id": "mlb-home-run",
+        "sport": "mlb",
+        "state": "in",
+        "home_abbr": "BOS",
+        "away_abbr": "NYY",
+        "home_score": 0,
+        "away_score": 0,
+    }
+    tracker.ingest([baseline])
+    tracker.ingest([
+        {
+            **baseline,
+            "away_score": 2,
+            "situation": {
+                "scoring_plays": [{
+                    "team": "NYY",
+                    "type": "Home Run",
+                    "score_value": 2,
+                }],
+            },
+        }
+    ])
+
+    assert tracker.recent()[0]["headline"] == "2-RUN HOME RUN"
+
+
 def test_score_alerts_filtering_and_team_matching() -> None:
     tracker = ScoreAlertTracker(clock=lambda: 300.0)
 

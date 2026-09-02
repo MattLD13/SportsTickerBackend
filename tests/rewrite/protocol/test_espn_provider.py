@@ -11,8 +11,10 @@ from sports_ticker.domain import DisplaySettings
 from sports_ticker.providers.espn import (
     EspnScoreboardProvider,
     _scoreboard_url_for_dates,
+    _event_detail_url,
     _event_update,
     _event_scoring_details,
+    _mlb_event_details,
 )
 
 
@@ -568,6 +570,48 @@ def test_espn_live_refresh_reads_one_event_scoreboard_for_one_live_game_in_large
     live_item = next(item for item in result.content if item.id == "game-0")
     assert live_item.data["state"] == "in"
     assert live_item.data["home_score"] == "1"
+
+
+def test_espn_mlb_live_refresh_reads_summary_details_for_dense_slate() -> None:
+    events = [_event(f"mlb-{index}", "2026-08-16T18:00:00Z", state="in") for index in range(4)]
+
+    class MlbSummaryClient(RecordingClient):
+        def get_json(self, url: str, *, timeout: float):
+            del timeout
+            self.urls.append(url)
+            if "/summary?event=" in url:
+                event_id = parse_qs(urlsplit(url).query)["event"][0]
+                event = next(item for item in events if item["id"] == event_id)
+                return {
+                    "header": {
+                        "id": event_id,
+                        "competitions": event["competitions"],
+                    },
+                    "plays": [{
+                        "team": {"abbreviation": "DAL"},
+                        "alternativeType": {"text": "Single"},
+                        "shortText": "A single scored one run.",
+                        "scoringPlay": True,
+                        "scoreValue": 1,
+                    }],
+                }
+            return {"events": events}
+
+    client = MlbSummaryClient({})
+    provider = EspnScoreboardProvider(
+        {"mlb": "https://example.test/baseball/mlb/scoreboard"},
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch_for_ticker(
+        "ticker-mlb",
+        DisplaySettings(active_sports={"mlb": True}),
+    )
+
+    assert sum("/summary?event=" in url for url in client.urls) == 4
+    live_item = next(item for item in result.content if item.id == "mlb-0")
+    assert live_item.data["situation"]["scoring_plays"][0]["type"] == "Single"
 
 
 def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None:
@@ -1209,3 +1253,78 @@ def test_espn_event_scoring_details_normalize_team_and_scorer() -> None:
         "type": "Home Run",
         "text": "Aaron Judge homers to left field",
     }]
+
+
+def test_espn_mlb_scoring_details_use_summary_play_type_and_run_count() -> None:
+    payload = {
+        "header": {
+            "competitions": [{
+                "competitors": [
+                    {"homeAway": "home", "team": {"id": "10", "abbreviation": "BOS"}},
+                    {"homeAway": "away", "team": {"id": "20", "abbreviation": "NYY"}},
+                ]
+            }]
+        },
+        "plays": [{
+            "team": {"id": "20"},
+            "participants": [{"type": "batter", "athlete": {"id": "123"}}],
+            "alternativeType": {"text": "Single"},
+            "type": {"text": "Play Result"},
+            "shortText": "Wells singled to left, two runs scored.",
+            "scoringPlay": True,
+            "scoreValue": 2,
+        }],
+        "boxscore": {
+            "players": [{
+                "statistics": [{
+                    "keys": ["atBats"],
+                    "athletes": [{
+                        "athlete": {"id": "123", "displayName": "Austin Wells"},
+                        "stats": ["1"],
+                    }],
+                }],
+            }],
+        },
+    }
+
+    details = _event_scoring_details(
+        payload,
+        {"sport": "mlb", "home_abbr": "BOS", "away_abbr": "NYY"},
+    )
+
+    assert details["scoring_plays"] == [{
+        "team": "NYY",
+        "scorer": "WELLS",
+        "player": "WELLS",
+        "type": "Single",
+        "text": "Wells singled to left, two runs scored.",
+        "score_value": 2,
+    }]
+
+
+def test_espn_mlb_event_details_use_live_situation_names_without_boxscore_rows() -> None:
+    details = _mlb_event_details({
+        "situation": {
+            "batter": {
+                "athlete": {"displayName": "Austin Wells"},
+            },
+            "pitcher": {
+                "athlete": {"fullName": "Garrett Acton"},
+            },
+            "balls": 2,
+            "strikes": 1,
+            "outs": 0,
+        },
+    })
+
+    assert details["batter_name"] == "Austin Wells"
+    assert details["pitcher_name"] == "Garrett Acton"
+
+
+def test_espn_mlb_uses_summary_event_detail_url() -> None:
+    assert _event_detail_url(
+        "mlb", "https://example.test/baseball/mlb/scoreboard?dates=20260829"
+    ) == "https://example.test/baseball/mlb/summary?event={}"
+    assert _event_detail_url(
+        "nfl", "https://example.test/football/nfl/scoreboard"
+    ) == "https://example.test/football/nfl/scoreboard/{}"

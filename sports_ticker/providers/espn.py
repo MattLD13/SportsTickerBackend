@@ -204,8 +204,8 @@ class EspnScoreboardProvider:
             if str(league).strip() and str(url).strip()
         }
         self.scoreboard_urls = MappingProxyType(urls)
-        self._event_scoreboard_urls = {
-            league: _event_scoreboard_url(url) for league, url in urls.items()
+        self._event_detail_urls = {
+            league: _event_detail_url(league, url) for league, url in urls.items()
         }
         self.client = client or UrllibJsonHttpClient()
         self.timeout = float(timeout)
@@ -360,7 +360,7 @@ class EspnScoreboardProvider:
             elif _league_needs_refresh(schedule_events, current):
                 cached_events[league] = schedule_events
                 discovery_ages[league] = cached.discovery_at
-                if self._fastcast_active(league):
+                if self._fastcast_active(league) and league != "mlb":
                     live_events = _unique_live_events(schedule_events, current)
                     stale_live_events = self._stale_fastcast_events(
                         league,
@@ -371,7 +371,7 @@ class EspnScoreboardProvider:
                     if not stale_live_events:
                         continue
                     if (
-                        not self._event_scoreboard_urls.get(league)
+                        not self._event_detail_urls.get(league)
                         or len(stale_live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD
                     ):
                         refresh_leagues.append((league, url))
@@ -389,7 +389,7 @@ class EspnScoreboardProvider:
                             )
                             for event in stale_live_events
                         )
-                elif self._event_scoreboard_urls.get(league):
+                elif self._event_detail_urls.get(league):
                     live_events = _unique_live_events(schedule_events, current)
                     if len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
                         refresh_leagues.append((league, url))
@@ -482,10 +482,13 @@ class EspnScoreboardProvider:
                         event_id = str(event.get("id") or "").strip()
                         if event_id:
                             live_update_payloads.setdefault((league, event_id), event)
-                    if self._fastcast_active(league):
+                    if self._fastcast_active(league) and league != "mlb":
                         live_detail_suppressed.add(league)
-                    elif self._event_scoreboard_urls.get(league):
-                        if len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
+                    elif self._event_detail_urls.get(league):
+                        if (
+                            len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD
+                            and league != "mlb"
+                        ):
                             live_detail_suppressed.add(league)
                         elif cache_schedule:
                             for event in live_events:
@@ -724,7 +727,7 @@ class EspnScoreboardProvider:
     ) -> Mapping[str, Any]:
         """Read one live event from ESPN's compact single-event scoreboard resource."""
 
-        template = self._event_scoreboard_urls.get(league)
+        template = self._event_detail_urls.get(league)
         if not template:
             return {}
         request_url = template.format(event_id)
@@ -869,7 +872,7 @@ class EspnScoreboardProvider:
 
         if str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}:
             return item
-        template = self._event_scoreboard_urls.get(league)
+        template = self._event_detail_urls.get(league)
         if not template:
             return item
 
@@ -929,7 +932,7 @@ class EspnScoreboardProvider:
             (index, item)
             for index, item in indexed
             if str(item.data.get("state") or "").lower() in {"in", "half", "crit"}
-            and str(item.data.get("sport") or "") in self._event_scoreboard_urls
+            and str(item.data.get("sport") or "") in self._event_detail_urls
             and not (
                 suppressed_update_ids
                 and (str(item.data.get("sport") or ""), item.id) in suppressed_update_ids
@@ -1032,7 +1035,7 @@ def _event_payload(payload: Any) -> Mapping[str, Any]:
     """Extract one event from ESPN's single-event scoreboard response."""
 
     source = _mapping(payload)
-    if source.get("id"):
+    if source.get("id") or _mapping(source.get("header")).get("id"):
         return source
     events = _events(source)
     event = next((item for item in events if _mapping(item).get("id")), None)
@@ -1103,7 +1106,9 @@ def _event_update(payload: Any, fallback: Mapping[str, Any]) -> Mapping[str, Any
         competition.get("competitors"),
     )
     scoreboard_situation = _mapping(scoreboard_competition.get("situation"))
-    update_situation = _mapping(source.get("situation"))
+    update_situation = _mapping(source.get("situation")) or _mapping(
+        competition.get("situation")
+    )
     if scoreboard_situation or update_situation:
         merged_competition["situation"] = _merge_mapping(
             scoreboard_situation,
@@ -1527,10 +1532,13 @@ def _normalize_team_name(value: Any) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", text))
 
 
-def _event_scoreboard_url(scoreboard_url: str) -> str:
-    """Derive ESPN's compact single-event scoreboard endpoint from one league URL."""
+def _event_detail_url(league: str, scoreboard_url: str) -> str:
+    """Derive the ESPN live-detail endpoint for one league."""
 
     endpoint = scoreboard_url.split("?", 1)[0].rstrip("/")
+    if league == "mlb":
+        scoreboard_root = endpoint.removesuffix("/scoreboard")
+        return f"{scoreboard_root}/summary?event={{}}"
     return f"{endpoint}/{{}}"
 
 
@@ -1651,6 +1659,7 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
     competition = _event_competition(summary)
     home_abbr = str(item.get("home_abbr") or "")
     away_abbr = str(item.get("away_abbr") or "")
+    league = str(item.get("sport") or "").strip().lower()
     raw_scoring = _sequence(summary.get("scoringPlays"))
     records = raw_scoring or _event_plays(summary)
     scoring_plays: list[dict[str, Any]] = []
@@ -1675,22 +1684,28 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
         team = _event_team_abbr(play, competition, home_abbr, away_abbr)
         if not team:
             continue
-        athlete = _event_player(play)
+        athlete = _event_player(play, summary)
         scoring_type = str(
             _mapping(play.get("scoringType")).get("displayName")
+            or (
+                _mapping(play.get("alternativeType")).get("text")
+                if league == "mlb"
+                else ""
+            )
             or _mapping(play.get("type")).get("text")
             or play.get("scoringType")
             or ""
         ).strip()
-        scoring_plays.append(
-            {
-                "team": team,
-                "scorer": athlete,
-                "player": athlete,
-                "type": scoring_type[:18],
-                "text": text[:48],
-            }
-        )
+        normalized = {
+            "team": team,
+            "scorer": athlete,
+            "player": athlete,
+            "type": scoring_type[:18],
+            "text": text[:48],
+        }
+        if league == "mlb" and play.get("scoreValue") not in (None, ""):
+            normalized["score_value"] = play.get("scoreValue")
+        scoring_plays.append(normalized)
     return {"scoring_plays": scoring_plays} if scoring_plays else {}
 
 
@@ -1714,7 +1729,9 @@ def _event_team_abbr(
     return ""
 
 
-def _event_player(play: Mapping[str, Any]) -> str:
+def _event_player(
+    play: Mapping[str, Any], summary: Mapping[str, Any] | None = None
+) -> str:
     """Return the scorer or carded player's compact surname."""
 
     athlete = _mapping(play.get("athlete") or play.get("player"))
@@ -1725,6 +1742,27 @@ def _event_player(play: Mapping[str, Any]) -> str:
         or play.get("playerName")
         or ""
     ).strip()
+    if not text:
+        for participant in _sequence(play.get("participants")):
+            record = _mapping(participant)
+            if str(record.get("type") or "").strip().lower() != "batter":
+                continue
+            participant_athlete = _mapping(record.get("athlete"))
+            text = str(
+                participant_athlete.get("displayName")
+                or participant_athlete.get("shortName")
+                or ""
+            ).strip()
+            if not text and summary:
+                identifier = str(participant_athlete.get("id") or "").strip()
+                text = str(
+                    _mlb_players(_mapping(summary.get("boxscore")))
+                    .get(identifier, {})
+                    .get("name")
+                    or ""
+                ).strip()
+            if text:
+                break
     return text.split()[-1].upper()[:12] if text else ""
 
 
@@ -1767,7 +1805,10 @@ def _mlb_event_details(payload: Any) -> dict[str, Any]:
     """Extract the small live MLB detail set used by the full panel."""
 
     summary = _mapping(payload)
-    situation = _mapping(summary.get("situation"))
+    competition = _event_competition(summary)
+    situation = _mapping(summary.get("situation")) or _mapping(
+        competition.get("situation")
+    )
     if not situation:
         return {}
     batter_id = _mlb_person_id(situation.get("batter"))
@@ -1775,6 +1816,12 @@ def _mlb_event_details(payload: Any) -> dict[str, Any]:
     players = _mlb_players(_mapping(summary.get("boxscore")))
     batter = players.get(batter_id, {})
     pitcher = players.get(pitcher_id, {})
+    batter_name = str(
+        batter.get("name") or _mlb_situation_player_name(situation.get("batter"))
+    ).strip()
+    pitcher_name = str(
+        pitcher.get("name") or _mlb_situation_player_name(situation.get("pitcher"))
+    ).strip()
     result: dict[str, Any] = {
         "balls": _mlb_number(situation.get("balls")),
         "strikes": _mlb_number(situation.get("strikes")),
@@ -1782,15 +1829,29 @@ def _mlb_event_details(payload: Any) -> dict[str, Any]:
         "onFirst": bool(situation.get("onFirst")),
         "onSecond": bool(situation.get("onSecond")),
         "onThird": bool(situation.get("onThird")),
-        "batter_name": batter.get("name", ""),
+        "batter_name": batter_name,
         "batter_h": _mlb_value(batter.get("batting"), "hits"),
         "batter_ab": _mlb_value(batter.get("batting"), "atBats"),
         "batter_avg": _mlb_value(batter.get("batting"), "avg"),
-        "pitcher_name": pitcher.get("name", ""),
+        "pitcher_name": pitcher_name,
         "pitcher_pitches": _mlb_value(pitcher.get("pitching"), "pitches"),
     }
     result.update(_mlb_last_pitch(summary, situation))
     return {key: value for key, value in result.items() if value not in (None, "")}
+
+
+def _mlb_situation_player_name(value: Any) -> str:
+    """Read a live batter or pitcher name directly from ESPN situation data."""
+
+    player = _mapping(value)
+    athlete = _mapping(player.get("athlete"))
+    return str(
+        athlete.get("displayName")
+        or athlete.get("fullName")
+        or player.get("displayName")
+        or player.get("fullName")
+        or ""
+    ).strip()
 
 
 def _mlb_players(boxscore: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
