@@ -31,7 +31,8 @@ _BIG_KINDS = frozenset(
         "penalty_shot",
         "power_play_goal",
         "safety",
-        "game_final",
+        "lead_taking_dunk",
+        "game_winning_dunk",
     )
 )
 _MAX_ALERTS = 64
@@ -405,6 +406,18 @@ def _latest_scoring_play(
     return None
 
 
+def _is_basketball_dunk(scoring_play: Mapping[str, Any] | None) -> bool:
+    """Identify a basketball dunk from the provider play description."""
+
+    if not scoring_play:
+        return False
+    play_text = " ".join(
+        str(scoring_play.get(key) or "")
+        for key in ("type", "event_type", "text")
+    ).lower()
+    return "dunk" in play_text
+
+
 class ScoreAlertTracker:
     """Keep score memory across scoreboard polls and release recent alerts."""
 
@@ -508,21 +521,30 @@ class ScoreAlertTracker:
                         }
                     )
 
+                sit = game.get("situation")
+                situation = sit if isinstance(sit, Mapping) else {}
                 for side, new_score, old_score in (("home", home, previous[0]), ("away", away, previous[1])):
                     delta = new_score - old_score
                     if delta <= 0:
                         continue
-                    if family == "basketball" and (not lead_change or game_ending):
-                        continue
-                    sit = game.get("situation")
-                    situation = sit if isinstance(sit, Mapping) else {}
                     scoring_play = _latest_scoring_play(game, situation, side)
+                    if family == "basketball":
+                        other_side = "away" if side == "home" else "home"
+                        other_old = previous[1] if side == "home" else previous[0]
+                        other_new = away if side == "home" else home
+                        winning_score = new_score > other_new and old_score <= other_old
+                        if game_ending and not (winning_score and scoring_play):
+                            continue
+                        if not game_ending and not lead_change:
+                            continue
                     kind, headline = _describe(sport, delta, scoring_play)
+                    if family == "basketball" and _is_basketball_dunk(scoring_play):
+                        if game_ending:
+                            kind, headline = "game_winning_dunk", "GAME WINNING DUNK"
+                        elif lead_change:
+                            kind, headline = "lead_taking_dunk", "LEAD TAKING DUNK"
                     detail = _extract_alert_detail(sport, game, side)
                     append_alert(side, kind, headline, detail, delta)
-                if game_ending:
-                    winner = "home" if home >= away else "away"
-                    append_alert(winner, "game_final", "FINAL", "", 0)
             self._scores = {key: value for key, value in self._scores.items() if key in current_ids}
             self._alerts = self._alerts[-_MAX_ALERTS:]
 

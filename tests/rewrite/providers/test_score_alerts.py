@@ -117,32 +117,53 @@ def test_basketball_score_alerts_only_report_lead_changes_and_final_scores() -> 
     alerts = tracker.recent()
     assert len(alerts) == 2
     assert alerts[-1]["team_abbr"] == "CLE"
-    assert alerts[-1]["headline"] == "DUNK"
+    assert alerts[-1]["headline"] == "LEAD TAKING DUNK"
     assert alerts[-1]["points"] == 2
 
     tracker.ingest([{
         **baseline,
         "state": "post",
         "home_score": 14,
-        "away_score": 14,
+        "away_score": 13,
         "situation": {"scoring_plays": [{
-            "team": "NY", "scorer": "BRUNSON", "type": "Free Throw",
-            "score_value": 1,
+            "team": "CLE", "scorer": "MOBLEY", "type": "Dunk",
+            "score_value": 2,
         }]},
     }])
     alerts = tracker.recent()
-    assert len(alerts) == 3
-    assert alerts[-1]["headline"] == "FINAL"
-    assert alerts[-1]["detail"] == ""
-    assert alerts[-1]["points"] == 0
+    assert len(alerts) == 2
+    assert alerts[-1]["headline"] == "LEAD TAKING DUNK"
+    assert alerts[-1]["points"] == 2
 
     tracker.ingest([{
         **baseline,
         "state": "post",
         "home_score": 14,
-        "away_score": 14,
+        "away_score": 13,
     }])
-    assert len(tracker.recent()) == 3
+    assert len(tracker.recent()) == 2
+
+    final_tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    final_baseline = {
+        **baseline,
+        "id": "nba-final-dunk",
+        "home_score": 100,
+        "away_score": 101,
+    }
+    final_tracker.ingest([final_baseline])
+    final_tracker.ingest([{
+        **final_baseline,
+        "state": "post",
+        "home_score": 102,
+        "situation": {"scoring_plays": [{
+            "team": "CLE", "scorer": "MOBLEY", "type": "Dunk",
+            "score_value": 2,
+        }]},
+    }])
+    final_alerts = final_tracker.recent()
+    assert len(final_alerts) == 1
+    assert final_alerts[0]["headline"] == "GAME WINNING DUNK"
+    assert final_alerts[0]["points"] == 2
 
 
 def test_mlb_score_alert_detail_shows_player_stats_and_last_pitch() -> None:
