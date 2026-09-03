@@ -348,6 +348,31 @@ def test_espn_overlapping_date_payloads_do_not_duplicate_events() -> None:
     assert [item.id for item in result.content] == ["same-game"]
 
 
+def test_espn_cfb_group_overlap_does_not_duplicate_events() -> None:
+    crossover = _event(
+        "same-cfb-game",
+        "2026-08-16T05:00:00Z",
+        home_conference_id="4",
+        away_conference_id="31",
+    )
+    client = RecordingClient(
+        {"20260815-20260816": {"events": [crossover]}}
+    )
+    provider = EspnScoreboardProvider(
+        {
+            "ncf_fbs": "https://example.test/football/college-football/scoreboard?groups=80",
+            "ncf_fcs": "https://example.test/football/college-football/scoreboard?groups=81",
+        },
+        client=client,
+        now=lambda: datetime(2026, 8, 16, 6, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch(_settings())
+
+    assert [item.id for item in result.content] == ["same-cfb-game"]
+    assert result.content[0].data["sport"] == "ncf_fbs"
+
+
 def test_espn_empty_date_response_is_healthy_and_empty() -> None:
     provider = EspnScoreboardProvider(
         {"nfl": "https://example.test/football/nfl/scoreboard"},

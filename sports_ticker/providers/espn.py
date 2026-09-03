@@ -331,7 +331,7 @@ class EspnScoreboardProvider:
             self._fastcast.start()
         items: list[ContentItem] = []
         errors: list[str] = []
-        seen_events: set[tuple[str, str]] = set()
+        seen_event_ids: set[str] = set()
         active_leagues = tuple(
             (league, url)
             for league, url in self.scoreboard_urls.items()
@@ -574,10 +574,10 @@ class EspnScoreboardProvider:
             events = events_by_league.get(league, ())
             for event in events:
                 event_id = str(event.get("id") or "").strip()
-                if event_id and (league, event_id) in seen_events:
+                if event_id and event_id in seen_event_ids:
                     continue
                 if event_id:
-                    seen_events.add((league, event_id))
+                    seen_event_ids.add(event_id)
                 if not _is_current_event(
                     event,
                     timezone_name=settings.timezone,
