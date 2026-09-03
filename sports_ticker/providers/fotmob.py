@@ -24,7 +24,6 @@ _MATCHES_URL = "https://www.fotmob.com/api/data/matches"
 _DETAIL_URL = "https://www.fotmob.com/api/data/matchDetails?matchId={match_id}"
 _LIVE_DETAIL_SECONDS = 5.0
 _SOURCE_CACHE_SECONDS = 5.0
-_DENSE_LIVE_DETAIL_THRESHOLD = 5
 _MAX_NONLIVE_DETAIL_WARM = 8
 _MAX_COLOR_DETAIL_MATCHES = 32
 _SOCCER_ABBREVIATIONS = {
@@ -329,8 +328,7 @@ class FotMobSoccerProvider:
     ) -> None:
         """Warm sparse live and capped non-live details without delaying scores."""
 
-        live = [match for _, match in records if _match_state(match) in {"in", "half"}]
-        live_targets = live if len(live) < _DENSE_LIVE_DETAIL_THRESHOLD else []
+        live_targets = [match for _, match in records if _match_state(match) in {"in", "half"}]
         nonlive = [
             match
             for _, match in records
@@ -658,11 +656,16 @@ def _situation(detail: Mapping[str, Any] | None) -> dict[str, object]:
         if bool(source.get("isPenaltyShootoutEvent")):
             shootout["home" if is_home else "away"].append("goal" if event_type == "goal" else "miss")
         elif event_type == "goal":
+            shotmap = _mapping(source.get("shotmapEvent"))
             goal_events.append(soccer_event(
                 is_home=is_home,
                 player=player,
                 minute=minute,
                 own_goal=bool(source.get("ownGoal")) or "own" in str(source.get("subType") or "").lower(),
+                assist=source.get("assistInput") or source.get("assistStr") or "",
+                goal_type=source.get("goalDescription") or "",
+                shot_type=shotmap.get("shotType") or "",
+                expected_goals=shotmap.get("expectedGoals"),
             ))
         elif event_type == "card" and "red" in str(source.get("card") or "").lower():
             red_cards.append(soccer_event(is_home=is_home, player=player, minute=minute))

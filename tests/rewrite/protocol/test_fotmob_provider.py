@@ -190,6 +190,34 @@ def test_fotmob_soccer_events_match_the_v1_renderer_contract() -> None:
     ]
 
 
+def test_fotmob_soccer_goal_keeps_assist_and_shot_facts() -> None:
+    situation = _situation({
+        "content": {"matchFacts": {"events": {"events": [{
+            "type": "Goal",
+            "isHome": True,
+            "time": 46,
+            "player": {"name": "Viktor Gyokeres"},
+            "assistInput": "Eberechi Eze",
+            "goalDescription": "Header",
+            "shotmapEvent": {
+                "shotType": "Header",
+                "expectedGoals": 0.46,
+            },
+        }]}}}
+    })
+
+    assert situation["goal_events"] == [{
+        "is_home": True,
+        "player": "GYOKERES",
+        "time": "46'",
+        "own_goal": False,
+        "assist": "EZE",
+        "goal_type": "HEADER",
+        "shot_type": "HEADER",
+        "expected_goals": 0.46,
+    }]
+
+
 def test_fotmob_keeps_final_match_details_until_the_display_window_closes() -> None:
     match = {"status": {"started": True, "finished": True, "reason": {"short": "FT"}}}
 
@@ -556,7 +584,7 @@ def test_fotmob_color_detail_requests_are_bounded(live_count: int) -> None:
 
     assert result.health.healthy
     assert client.match_requests == 2
-    assert client.detail_requests == min(live_count, 32)
+    assert client.detail_requests == live_count
 
 
 def test_fotmob_caps_pregame_and_final_detail_warming_per_source_window() -> None:

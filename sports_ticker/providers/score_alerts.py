@@ -29,11 +29,13 @@ _BIG_KINDS = frozenset(
         "shorthanded",
         "empty_net",
         "penalty_shot",
+        "power_play_goal",
         "safety",
     )
 )
 _MAX_ALERTS = 64
 _MAX_AGE = 45.0
+_BASKETBALL_ALERT_COOLDOWN = 60.0
 
 
 def _number(value: object) -> int | None:
@@ -50,6 +52,38 @@ def _describe(
 ) -> tuple[str, str]:
     family = sport_family(sport)
     if family == "football":
+        play_text = " ".join(
+            str(scoring_play.get(key) or "")
+            for key in ("type", "event_type", "scoring_type", "text")
+        ).lower() if scoring_play else ""
+        successful_two_point = (
+            "two-point conversion" in play_text
+            and "failed" not in play_text
+        )
+        if "interception return touchdown" in play_text:
+            return "pick_six", "PICK SIX"
+        if "fumble return touchdown" in play_text or "fumble recovery" in play_text:
+            return "fumble_td", "FUMBLE TD"
+        if "kickoff return touchdown" in play_text:
+            return "kick_return_td", "KICK RETURN TD"
+        if "punt return touchdown" in play_text or (
+            "punt" in play_text and "touchdown" in play_text
+        ):
+            return "punt_return_td", "PUNT RETURN TD"
+        if "blocked field goal" in play_text and "touchdown" in play_text:
+            return "blocked_fg_td", "BLOCKED FG TD"
+        if "passing touchdown" in play_text:
+            return "passing_td", "PASS TD +2PT" if successful_two_point else "PASS TD"
+        if "rushing touchdown" in play_text:
+            return "rushing_td", "RUSH TD +2PT" if successful_two_point else "RUSH TD"
+        if successful_two_point and delta == 2:
+            return "two_point", "2-POINT CONV"
+        if "field goal" in play_text:
+            return "field_goal", "FIELD GOAL"
+        if "safety" in play_text:
+            return "safety", "SAFETY"
+        if "extra point" in play_text or "pat" in play_text:
+            return "extra_point", "EXTRA POINT"
         if delta >= 6:
             return "touchdown", "TOUCHDOWN"
         if delta == 3:
@@ -121,10 +155,45 @@ def _describe(
             return baseball_types[scoring_type]
         return "run", "RUN SCORES"
     if family == "hockey":
+        play_text = " ".join(
+            str(scoring_play.get(key) or "")
+            for key in ("type", "event_type", "strength", "text")
+        ).lower().replace("-", " ") if scoring_play else ""
+        if "empty net" in play_text or str(scoring_play.get("strength") if scoring_play else "").upper() in {"ENG", "EMPTY NET"}:
+            return "empty_net", "EMPTY NET GOAL"
+        if "shorthanded" in play_text or str(scoring_play.get("strength") if scoring_play else "").upper() in {"SHG", "SHORT-HANDED"}:
+            return "shorthanded", "SHORTHANDED GOAL"
+        if "power play" in play_text or str(scoring_play.get("strength") if scoring_play else "").upper() in {"PPG", "POWER PLAY"}:
+            return "power_play_goal", "POWER PLAY GOAL"
+        if "penalty shot" in play_text:
+            return "penalty_shot", "PENALTY SHOT"
         return "goal", "GOAL"
     if family == "basketball":
-        return ("three", "3-POINTER") if delta >= 3 else ("bucket", "BUCKET")
+        play_text = " ".join(
+            str(scoring_play.get(key) or "")
+            for key in ("type", "event_type", "text")
+        ).lower() if scoring_play else ""
+        points = _number(scoring_play.get("score_value")) if scoring_play else None
+        if "free throw" in play_text:
+            return "free_throw", "FREE THROW"
+        if "three point" in play_text or "3-point" in play_text or points == 3:
+            return "three", "3-POINTER"
+        if "dunk" in play_text:
+            return "dunk", "DUNK"
+        if "layup" in play_text or "finger roll" in play_text:
+            return "layup", "LAYUP"
+        return "bucket", "BUCKET"
     if family == "soccer":
+        play_text = " ".join(
+            str(scoring_play.get(key) or "")
+            for key in ("type", "event_type", "goal_type", "text")
+        ).lower() if scoring_play else ""
+        if "own goal" in play_text:
+            return "own_goal", "OWN GOAL"
+        if "penalty" in play_text:
+            return "penalty_goal", "PENALTY GOAL"
+        if "header" in play_text:
+            return "header_goal", "HEADER GOAL"
         return "goal", "GOAL"
     return "score", f"+{delta}"
 
@@ -157,19 +226,26 @@ def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str
                 own_goal = bool(last_g.get("own_goal"))
                 g_type = str(last_g.get("goal_type") or last_g.get("type") or "").strip().upper()
 
-                parts: list[str] = []
-                if player:
-                    parts.append(player)
-                if minute:
-                    parts.append(minute)
+                base = " ".join(part for part in (player, minute) if part).strip()
+                typed = base
                 if own_goal:
-                    parts.append("(OG)")
+                    typed = f"{base} (OG)".strip()
                 elif g_type in {"PEN", "PENALTY", "HEADER", "FREE KICK", "VOLLEY"}:
-                    parts.append(f"({g_type[:3] if g_type == 'PENALTY' else g_type})")
-                elif last_g.get("assist"):
-                    parts.append(f"({str(last_g['assist']).strip().upper()})")
-                if parts:
-                    return " ".join(parts)[:24]
+                    typed = f"{base} ({g_type[:3] if g_type == 'PENALTY' else g_type})".strip()
+                assist = str(last_g.get("assist") or "").strip().upper()
+                candidates = [
+                    f"{base} A:{assist}".strip() if assist else "",
+                    typed,
+                    base,
+                    player,
+                ]
+                for candidate in candidates:
+                    if candidate and len(candidate) <= 24:
+                        return candidate
+                if candidates[0]:
+                    return candidates[0][:24].rstrip()
+                if typed:
+                    return typed[:24].rstrip()
 
     if family == "hockey":
         scoring_plays = situation.get("scoring_plays") or game.get("scoring_plays")
@@ -191,10 +267,37 @@ def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str
                 ]
                 if scorer:
                     if assists:
-                        return f"{scorer} ({', '.join(assists[:2])})"[:24]
+                        for count in (2, 1):
+                            candidate = f"{scorer} ({', '.join(assists[:count])})"
+                            if len(candidate) <= 24:
+                                return candidate
+                        return scorer[:24]
                     if strength in {"PPG", "SHG", "ENG", "OTG"}:
                         return f"{scorer} {strength}"[:24]
                     return scorer[:24]
+
+    if family in {"football", "basketball"}:
+        play = _latest_scoring_play(game, situation, side)
+        if play is not None:
+            scorer = str(play.get("scorer") or play.get("player") or "").strip().upper()
+            if scorer:
+                if family == "football":
+                    yards = str(play.get("yards") or "").strip()
+                    passer = str(play.get("passer") or "").strip().upper()
+                    event_type = str(play.get("event_type") or play.get("type") or "").upper()
+                    if "PASS" in event_type and passer:
+                        return f"{scorer} {yards}YD {passer}".strip()[:24]
+                    if yards:
+                        return f"{scorer} {yards}YD"[:24]
+                    return scorer[:24]
+                points = _number(play.get("score_value"))
+                play_text = " ".join(
+                    str(play.get(key) or "") for key in ("type", "event_type", "text")
+                ).lower()
+                shot = "3PT" if "three point" in play_text or points == 3 else "FT" if "free throw" in play_text else "DUNK" if "dunk" in play_text else "2PT"
+                assists = [str(value).strip().upper() for value in play.get("assists", ()) if str(value).strip()]
+                suffix = f" A:{assists[0]}" if assists else ""
+                return f"{scorer} {shot}{suffix}"[:24]
 
     play = _latest_scoring_play(game, situation, side)
     if play is not None:
@@ -282,7 +385,24 @@ def _latest_scoring_play(
         if isinstance(play, Mapping)
         and str(play.get("team") or play.get("side") or "").lower() in {team, side}
     ]
-    return matching[-1] if matching else None
+    if matching:
+        return matching[-1]
+    if sport_family(game.get("sport")) == "soccer":
+        goal_events = situation.get("goal_events") or game.get("goal_events")
+        if isinstance(goal_events, (list, tuple)):
+            is_home = side == "home"
+            for event in reversed(goal_events):
+                if not isinstance(event, Mapping) or bool(event.get("is_home")) != is_home:
+                    continue
+                return {
+                    "team": game.get(f"{side}_abbr") or side,
+                    "scorer": event.get("player") or "",
+                    "type": event.get("goal_type") or "Goal",
+                    "goal_type": event.get("goal_type") or "",
+                    "text": event.get("goal_type") or "Goal",
+                    "assist": event.get("assist") or "",
+                }
+    return None
 
 
 class ScoreAlertTracker:
@@ -293,11 +413,14 @@ class ScoreAlertTracker:
         self._lock = Lock()
         self._scores: dict[str, tuple[int, int, str]] = {}
         self._alerts: list[dict[str, Any]] = []
+        self._basketball_baselines: dict[tuple[str, str], int] = {}
+        self._basketball_last_alert: dict[tuple[str, str], float] = {}
 
     def prime(self, games: Sequence[Mapping[str, Any]]) -> None:
         """Set a complete source baseline without creating score alerts."""
 
         scores: dict[str, tuple[int, int, str]] = {}
+        basketball_baselines: dict[tuple[str, str], int] = {}
         for game in games:
             if str(game.get("kind") or game.get("type") or "") != "scoreboard":
                 continue
@@ -307,8 +430,13 @@ class ScoreAlertTracker:
             if not game_id or home is None or away is None:
                 continue
             scores[game_id] = (home, away, str(game.get("status") or ""))
+            if sport_family(game.get("sport")) == "basketball":
+                basketball_baselines[(game_id, "home")] = home
+                basketball_baselines[(game_id, "away")] = away
         with self._lock:
             self._scores = scores
+            self._basketball_baselines = basketball_baselines
+            self._basketball_last_alert.clear()
 
     def ingest(self, games: Sequence[Mapping[str, Any]]) -> None:
         """Compare one complete scoreboard observation with the prior poll."""
@@ -335,6 +463,17 @@ class ScoreAlertTracker:
                     delta = new_score - old_score
                     if delta <= 0:
                         continue
+                    if sport_family(sport) == "basketball":
+                        basketball_key = (game_id, side)
+                        baseline = self._basketball_baselines.setdefault(
+                            basketball_key, old_score
+                        )
+                        last_alert = self._basketball_last_alert.get(basketball_key)
+                        if last_alert is not None and now - last_alert < _BASKETBALL_ALERT_COOLDOWN:
+                            continue
+                        delta = new_score - baseline
+                        if delta <= 0:
+                            continue
                     sit = game.get("situation")
                     situation = sit if isinstance(sit, Mapping) else {}
                     scoring_play = _latest_scoring_play(game, situation, side)
@@ -369,7 +508,19 @@ class ScoreAlertTracker:
                             "away_conference_id": game.get("away_conference_id", ""),
                         }
                     )
+                    if sport_family(sport) == "basketball":
+                        basketball_key = (game_id, side)
+                        self._basketball_baselines[basketball_key] = new_score
+                        self._basketball_last_alert[basketball_key] = now
             self._scores = {key: value for key, value in self._scores.items() if key in current_ids}
+            self._basketball_baselines = {
+                key: value for key, value in self._basketball_baselines.items()
+                if key[0] in current_ids
+            }
+            self._basketball_last_alert = {
+                key: value for key, value in self._basketball_last_alert.items()
+                if key[0] in current_ids
+            }
             self._alerts = self._alerts[-_MAX_ALERTS:]
 
     def recent(self, *, max_age: float = _MAX_AGE, delay: float = 0.0) -> tuple[dict[str, Any], ...]:

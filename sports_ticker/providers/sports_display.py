@@ -603,18 +603,31 @@ def soccer_event(
     player: object,
     minute: object,
     own_goal: bool = False,
+    assist: object = "",
+    goal_type: object = "",
+    shot_type: object = "",
+    expected_goals: object = "",
 ) -> dict[str, Any]:
     """Return the V1-equivalent goal or card event consumed by both panel layouts."""
 
     name = str(player or "").strip()
     surname = name.split()[-1].upper()[:8] if name else ""
     clock = str(minute or "").strip()
-    return {
+    result = {
         "is_home": bool(is_home),
         "player": surname,
         "time": clock,
         "own_goal": bool(own_goal),
     }
+    if str(assist or "").strip():
+        result["assist"] = str(assist).strip().split()[-1].upper()[:12]
+    if str(goal_type or "").strip():
+        result["goal_type"] = str(goal_type).strip().upper()[:12]
+    if str(shot_type or "").strip():
+        result["shot_type"] = str(shot_type).strip().upper()[:12]
+    if expected_goals not in (None, ""):
+        result["expected_goals"] = expected_goals
+    return result
 
 
 def _boolean_any(source: Mapping[str, Any], *keys: str) -> bool:

@@ -1709,13 +1709,12 @@ def _normalize_team_name(value: Any) -> str:
 
 
 def _event_detail_url(league: str, scoreboard_url: str) -> str:
-    """Derive the ESPN live-detail endpoint for one league."""
+    """Derive the ESPN summary endpoint that carries live scoring facts."""
 
     endpoint = scoreboard_url.split("?", 1)[0].rstrip("/")
-    if league == "mlb":
-        scoreboard_root = endpoint.removesuffix("/scoreboard")
-        return f"{scoreboard_root}/summary?event={{}}"
-    return f"{endpoint}/{{}}"
+    del league
+    scoreboard_root = endpoint.removesuffix("/scoreboard")
+    return f"{scoreboard_root}/summary?event={{}}"
 
 
 def _mlb_api_summary_url(request_url: str) -> str:
@@ -1813,11 +1812,14 @@ def _soccer_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, An
         if "goal" not in text and "red" not in text:
             continue
         team = _event_team_abbr(play, competition, home_abbr, away_abbr)
+        participants = _event_participant_names(play, summary)
         event = soccer_event(
             is_home=team == home_abbr,
             player=_event_player(play),
             minute=_event_clock(play),
             own_goal="own goal" in text,
+            assist=participants[1] if len(participants) > 1 else "",
+            goal_type=_soccer_goal_type(text),
         )
         if "goal" in text:
             goals.append(event)
@@ -1839,7 +1841,7 @@ def _event_plays(summary: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
     """Return event-like records without depending on one ESPN shape."""
 
     records: list[Mapping[str, Any]] = []
-    for key in ("scoringPlays", "plays", "events"):
+    for key in ("scoringPlays", "plays", "events", "keyEvents"):
         records.extend(_mapping(value) for value in _sequence(summary.get(key)))
     return tuple(record for record in records if record)
 
@@ -1897,6 +1899,7 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
             play.get("event_type")
             or play.get("eventType")
             or alternative_type.get("type")
+            or (scoring_type if league == "mlb" else play_type_text)
             or scoring_type
             or ""
         ).strip()
@@ -1921,9 +1924,50 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
             "text": text[:48],
         }
         raw_score_value = play.get("scoreValue", play.get("score_value"))
-        if league == "mlb" and raw_score_value not in (None, ""):
+        if raw_score_value not in (None, ""):
             normalized["score_value"] = raw_score_value
-            rbi_value = max(rbi_value, _mlb_number(raw_score_value))
+            if league == "mlb":
+                rbi_value = max(rbi_value, _mlb_number(raw_score_value))
+        participant_names = _event_participant_names(play, summary)
+        if participant_names and not athlete:
+            normalized["scorer"] = _compact_event_name(participant_names[0])
+            normalized["player"] = normalized["scorer"]
+        if not athlete and not participant_names:
+            text_player = _event_text_player(text)
+            if text_player:
+                normalized["scorer"] = text_player
+                normalized["player"] = text_player
+        if league in {"nba", "march_madness", "nhl"} and len(participant_names) > 1:
+            normalized["assists"] = tuple(
+                _compact_event_name(name) for name in participant_names[1:]
+            )
+        if league == "nhl":
+            strength = _mapping(play.get("strength"))
+            strength_text = str(
+                strength.get("abbreviation") or strength.get("text") or ""
+            ).strip()
+            if strength_text:
+                normalized["strength"] = strength_text
+            shot_info = _mapping(play.get("shotInfo"))
+            shot_type = str(shot_info.get("text") or "").strip()
+            if shot_type and shot_type.lower() != "none":
+                normalized["shot_type"] = shot_type
+        if league in {"nfl", "ncf_fbs", "ncf_fcs"}:
+            yards = _event_yards(text)
+            if yards is not None:
+                normalized["yards"] = yards
+            passer = _event_passer(text)
+            if passer:
+                normalized["passer"] = passer
+        clock = _event_clock(play)
+        period = _mapping(play.get("period"))
+        period_text = str(period.get("displayValue") or period.get("number") or "").strip()
+        if league in {"nfl", "ncf_fbs", "ncf_fcs"} and period_text.isdigit():
+            period_text = f"Q{period_text}"
+        if clock:
+            normalized["clock"] = clock
+        if period_text:
+            normalized["period"] = period_text
         if league == "mlb":
             normalized.update(_mlb_play_metrics(play))
             if scorer_id:
@@ -1978,27 +2022,134 @@ def _event_player(
         or ""
     ).strip()
     if not text:
-        for participant in _sequence(play.get("participants")):
-            record = _mapping(participant)
-            if str(record.get("type") or "").strip().lower() != "batter":
-                continue
+        preferred = {
+            "scorer", "shooter", "batter", "kicker", "rusher", "receiver",
+            "goal-scorer", "goal scorer", "player",
+        }
+        participants = tuple(_mapping(value) for value in _sequence(play.get("participants")))
+        ordered = tuple(
+            record for record in participants
+            if str(record.get("type") or "").strip().lower() in preferred
+        ) + tuple(
+            record for record in participants
+            if str(record.get("type") or "").strip().lower() not in preferred
+        )
+        athletes = _event_boxscore_athletes(summary) if summary else {}
+        for record in ordered:
             participant_athlete = _mapping(record.get("athlete"))
-            text = str(
-                participant_athlete.get("displayName")
-                or participant_athlete.get("shortName")
-                or ""
-            ).strip()
-            if not text and summary:
-                identifier = str(participant_athlete.get("id") or "").strip()
-                text = str(
-                    _mlb_players(_mapping(summary.get("boxscore")))
-                    .get(identifier, {})
-                    .get("name")
-                    or ""
-                ).strip()
+            text = _event_person_name(participant_athlete, athletes)
             if text:
                 break
-    return text.split()[-1].upper()[:12] if text else ""
+    return _compact_event_name(text)
+
+
+def _event_boxscore_athletes(
+    summary: Mapping[str, Any] | None,
+) -> dict[str, str]:
+    """Index ESPN boxscore athlete names for play participant IDs."""
+
+    if not summary:
+        return {}
+    result: dict[str, str] = {}
+    boxscore = _mapping(summary.get("boxscore"))
+    for group in _sequence(boxscore.get("players")):
+        for statistics in _sequence(_mapping(group).get("statistics")):
+            for record in _sequence(_mapping(statistics).get("athletes")):
+                athlete = _mapping(_mapping(record).get("athlete"))
+                identifier = str(athlete.get("id") or "").strip()
+                name = str(
+                    athlete.get("displayName")
+                    or athlete.get("fullName")
+                    or athlete.get("shortName")
+                    or ""
+                ).strip()
+                if identifier and name:
+                    result[identifier] = name
+    return result
+
+
+def _event_person_name(
+    athlete: Mapping[str, Any],
+    boxscore_athletes: Mapping[str, str],
+) -> str:
+    """Return one full play participant name from inline or boxscore data."""
+
+    return str(
+        athlete.get("displayName")
+        or athlete.get("fullName")
+        or athlete.get("shortName")
+        or boxscore_athletes.get(str(athlete.get("id") or "").strip())
+        or ""
+    ).strip()
+
+
+def _event_participant_names(
+    play: Mapping[str, Any],
+    summary: Mapping[str, Any] | None,
+) -> tuple[str, ...]:
+    """Return scorer-first full participant names from one ESPN play."""
+
+    athletes = _event_boxscore_athletes(summary)
+    result: list[str] = []
+    for participant in _sequence(play.get("participants")):
+        name = _event_person_name(_mapping(_mapping(participant).get("athlete")), athletes)
+        if name and name not in result:
+            result.append(name)
+    return tuple(result)
+
+
+def _compact_event_name(value: object) -> str:
+    """Return one participant surname for a narrow alert detail line."""
+
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    parts = text.replace(".", "").split()
+    if len(parts) > 1 and parts[-1].upper() in {"JR", "SR", "II", "III", "IV", "V"}:
+        return f"{parts[-2]} {parts[-1]}".upper()[:12]
+    return parts[-1].upper()[:12]
+
+
+def _event_yards(text: str) -> int | None:
+    """Read a scoring-play yard count from ESPN text."""
+
+    match = re.search(r"\b(\d+)\s+Yd\b", text, re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
+def _event_passer(text: str) -> str:
+    """Read a quarterback name from one ESPN passing touchdown description."""
+
+    match = re.search(r"\bpass from\s+([^()]+)", text, re.IGNORECASE)
+    return _compact_event_name(match.group(1)) if match else ""
+
+
+def _event_text_player(text: str) -> str:
+    """Read the primary scorer from ESPN scoring text without participants."""
+
+    prefix = text.split("(", 1)[0].strip()
+    match = re.match(r"(.+?)\s+\d+\s+Yd\b", prefix, re.IGNORECASE)
+    if match:
+        return _compact_event_name(match.group(1))
+    match = re.search(r"(?:,|^)\s*([^,]+?)\s+returns?\s+for\s+\d+\s+yds?\s+for\s+a\s+TD", text, re.IGNORECASE)
+    if match:
+        return _compact_event_name(match.group(1))
+    return ""
+
+
+def _soccer_goal_type(text: str) -> str:
+    """Read a compact soccer goal type from event text."""
+
+    lower = text.lower()
+    for label, needle in (
+        ("PENALTY", "penalty"),
+        ("HEADER", "header"),
+        ("FREE KICK", "free kick"),
+        ("VOLLEY", "volley"),
+    ):
+        if needle in lower:
+            return label
+    return ""
 
 
 def _event_clock(play: Mapping[str, Any]) -> str:

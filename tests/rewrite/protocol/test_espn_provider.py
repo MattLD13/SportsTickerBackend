@@ -16,6 +16,7 @@ from sports_ticker.providers.espn import (
     _event_scoring_details,
     _mlb_event_details,
     _mlb_statsapi_summary,
+    _soccer_event_details,
 )
 
 
@@ -83,6 +84,9 @@ class RecordingClient:
             self.ncaa_school_urls.append(url)
             return self.ncaa_schools
         self.urls.append(url)
+        if "/summary?event=" in url:
+            event_id = parse_qs(urlsplit(url).query)["event"][0]
+            return self.event_updates.get(event_id, {})
         if "/scoreboard/" in url:
             event_id = url.rstrip("/").rsplit("/", 1)[-1]
             payload = self.event_updates.get(event_id, {})
@@ -436,7 +440,7 @@ def test_espn_raw_reads_share_across_active_masks_and_timezones() -> None:
     assert {item.data["sport"] for item in nfl_result.content} == {"nfl"}
     assert {item.data["sport"] for item in both_result.content} == {"nfl", "mlb"}
     assert sum("/scoreboard" in url and "/scoreboard/" not in url for url in client.urls) == 2
-    assert sum("/scoreboard/" in url for url in client.urls) == 1
+    assert sum("/summary?event=" in url for url in client.urls) == 1
 
 
 def test_espn_raw_failure_backoff_is_shared_across_ticker_views() -> None:
@@ -592,7 +596,7 @@ def test_espn_live_refresh_reads_one_event_scoreboard_for_one_live_game_in_large
     result = provider.fetch_for_ticker("ticker-two", _settings())
 
     assert sum("/scoreboard" in url and "/scoreboard/" not in url for url in client.urls) == 1
-    assert sum("/scoreboard/" in url for url in client.urls) == 1
+    assert sum("/summary?event=" in url for url in client.urls) == 1
     live_item = next(item for item in result.content if item.id == "game-0")
     assert live_item.data["state"] == "in"
     assert live_item.data["home_score"] == "1"
@@ -719,7 +723,7 @@ def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None
     assert live_item.data["state"] == "in"
     assert live_item.data["home_score"] == "7"
     assert len(client.urls) == 1
-    assert all("/scoreboard/" not in url for url in client.urls)
+    assert all("/summary?event=" not in url for url in client.urls)
 
 
 def test_espn_stale_fastcast_game_uses_one_targeted_http_refresh() -> None:
@@ -812,13 +816,13 @@ def test_espn_stale_fastcast_game_uses_one_targeted_http_refresh() -> None:
     live_item = next(item for item in result.content if item.id == "game-1")
     assert live_item.data["home_score"] == "8"
     assert sum("/scoreboard" in url and "/scoreboard/" not in url for url in client.urls) == 1
-    assert sum("/scoreboard/" in url for url in client.urls) == 1
+    assert sum("/summary?event=" in url for url in client.urls) == 1
 
     monotonic[0] = 7.0
     next_result = provider.fetch_for_ticker("ticker-three", _settings())
     next_live_item = next(item for item in next_result.content if item.id == "game-1")
     assert next_live_item.data["home_score"] == "8"
-    assert sum("/scoreboard/" in url for url in client.urls) == 1
+    assert sum("/summary?event=" in url for url in client.urls) == 1
 
 
 def test_espn_five_live_games_use_one_scoreboard_refresh() -> None:
@@ -895,7 +899,7 @@ def test_espn_sparse_event_scoreboard_requests_deduplicate_event_ids() -> None:
 
     provider.fetch_for_ticker("ticker-one", _settings())
 
-    assert sum("/scoreboard/" in url for url in client.urls) == 1
+    assert sum("/summary?event=" in url for url in client.urls) == 1
 
 
 def test_espn_event_update_preserves_scoreboard_fields_and_live_state() -> None:
@@ -1014,9 +1018,16 @@ def test_espn_event_scoreboard_failure_keeps_scoreboard_healthy() -> None:
         def get_json(self, url: str, *, timeout: float):
             del timeout
             self.urls.append(url)
-            if "/scoreboard/" in url:
-                event_id = url.rstrip("/").rsplit("/", 1)[-1]
-                return event_scoreboard(event_id)
+            if "/summary?event=" in url:
+                event_id = parse_qs(urlsplit(url).query)["event"][0]
+                event = event_scoreboard(event_id)
+                return {
+                    "header": {
+                        "id": event_id,
+                        "competitions": event["competitions"],
+                    },
+                    "scoringPlays": [],
+                }
             event = events[0] if "/football/" in url else events[1]
             return {"events": [event]}
 
@@ -1318,6 +1329,94 @@ def test_espn_event_scoring_details_normalize_team_and_scorer() -> None:
     }]
 
 
+def test_espn_event_scoring_details_extract_football_metadata_without_participants() -> None:
+    details = _event_scoring_details(
+        {
+            "header": {"competitions": [{"competitors": [
+                {"homeAway": "home", "team": {"id": "10", "abbreviation": "NYG"}},
+                {"homeAway": "away", "team": {"id": "20", "abbreviation": "DAL"}},
+            ]}]},
+            "scoringPlays": [{
+                "team": {"id": "10"},
+                "type": {"text": "Rushing Touchdown"},
+                "scoringType": {"displayName": "Touchdown"},
+                "text": "Javonte Williams 1 Yd Rush (Graham Gano Kick)",
+                "period": {"displayValue": "1st"},
+                "clock": {"displayValue": "5:32"},
+            }],
+        },
+        {"sport": "nfl", "home_abbr": "NYG", "away_abbr": "DAL"},
+    )
+
+    play = details["scoring_plays"][0]
+    assert play["scorer"] == "WILLIAMS"
+    assert play["event_type"] == "Rushing Touchdown"
+    assert play["yards"] == 1
+    assert play["period"] == "1st"
+
+
+def test_espn_event_scoring_details_resolve_basketball_participants() -> None:
+    details = _event_scoring_details(
+        {
+            "header": {"competitions": [{"competitors": [
+                {"homeAway": "home", "team": {"id": "10", "abbreviation": "CLE"}},
+                {"homeAway": "away", "team": {"id": "20", "abbreviation": "NY"}},
+            ]}]},
+            "plays": [{
+                "team": {"id": "10"},
+                "type": {"text": "Jump Shot"},
+                "text": "Evan Mobley makes 25-foot three point jumper",
+                "scoreValue": 3,
+                "participants": [
+                    {"athlete": {"id": "123"}},
+                    {"athlete": {"id": "456"}},
+                ],
+            }],
+            "boxscore": {"players": [{"statistics": [{"athletes": [
+                {"athlete": {"id": "123", "displayName": "Evan Mobley"}},
+                {"athlete": {"id": "456", "displayName": "Donovan Mitchell"}},
+            ]}]}]},
+        },
+        {"sport": "nba", "home_abbr": "CLE", "away_abbr": "NY"},
+    )
+
+    play = details["scoring_plays"][0]
+    assert play["scorer"] == "MOBLEY"
+    assert play["assists"] == ("MITCHELL",)
+    assert play["score_value"] == 3
+
+
+def test_espn_soccer_details_keep_goal_type_and_assist() -> None:
+    details = _soccer_event_details(
+        {
+            "header": {"competitions": [{"competitors": [
+                {"homeAway": "home", "team": {"id": "10", "abbreviation": "ARS"}},
+                {"homeAway": "away", "team": {"id": "20", "abbreviation": "NFO"}},
+            ]}]},
+            "keyEvents": [{
+                "type": {"text": "Goal"},
+                "text": "Goal! Arsenal 1, Nottingham Forest 0. Saka Header. Assisted by Odegaard.",
+                "team": {"id": "10"},
+                "participants": [
+                    {"athlete": {"displayName": "Bukayo Saka"}},
+                    {"athlete": {"displayName": "Martin Odegaard"}},
+                ],
+                "clock": {"displayValue": "38'"},
+            }],
+        },
+        {"sport": "soccer_epl", "home_abbr": "ARS", "away_abbr": "NFO"},
+    )
+
+    assert details["goal_events"] == [{
+        "is_home": True,
+        "player": "SAKA",
+        "time": "38'",
+        "own_goal": False,
+        "assist": "ODEGAARD",
+        "goal_type": "HEADER",
+    }]
+
+
 def test_espn_mlb_scoring_details_use_summary_play_type_and_run_count() -> None:
     payload = {
         "header": {
@@ -1467,7 +1566,7 @@ def test_espn_mlb_uses_summary_event_detail_url() -> None:
     ) == "https://example.test/baseball/mlb/summary?event={}"
     assert _event_detail_url(
         "nfl", "https://example.test/football/nfl/scoreboard"
-    ) == "https://example.test/football/nfl/scoreboard/{}"
+    ) == "https://example.test/football/nfl/summary?event={}"
 
 
 def test_espn_mlb_summary_retries_api_host_when_web_host_has_no_boxscore() -> None:

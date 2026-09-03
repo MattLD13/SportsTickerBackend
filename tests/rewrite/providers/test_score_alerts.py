@@ -20,7 +20,7 @@ def test_score_alert_enrichment_details() -> None:
     nhl_alerts = tracker.recent()
     assert len(nhl_alerts) == 1
     assert nhl_alerts[0]["team_abbr"] == "NYR"
-    assert nhl_alerts[0]["headline"] == "GOAL"
+    assert nhl_alerts[0]["headline"] == "POWER PLAY GOAL"
     assert nhl_alerts[0]["detail"] == "PANARIN (FOX, ZIBANEJAD)"
 
     # 2. Soccer header goal
@@ -49,6 +49,70 @@ def test_score_alert_enrichment_details() -> None:
     tracker.ingest([game_mlb_p2])
     mlb_alert = next(a for a in tracker.recent() if a["sport"] == "mlb")
     assert mlb_alert["detail"] == "JUDGE"
+
+
+def test_football_score_alert_uses_the_scoring_play() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    baseline = {
+        "kind": "scoreboard", "id": "nfl-detail", "sport": "nfl", "state": "in",
+        "home_abbr": "NYG", "away_abbr": "DAL", "home_score": 0, "away_score": 0,
+    }
+    tracker.ingest([baseline])
+    tracker.ingest([{
+        **baseline,
+        "home_score": 7,
+        "situation": {"scoring_plays": [{
+            "team": "NYG", "scorer": "WILLIAMS", "type": "Touchdown",
+            "event_type": "Rushing Touchdown", "text": "Williams 1 Yd Rush",
+            "yards": 1,
+        }]},
+    }])
+
+    alert = tracker.recent()[0]
+    assert alert["headline"] == "RUSH TD"
+    assert alert["detail"] == "WILLIAMS 1YD"
+
+
+def test_basketball_score_alerts_coalesce_for_one_minute() -> None:
+    now = [100.0]
+    tracker = ScoreAlertTracker(clock=lambda: now[0])
+    baseline = {
+        "kind": "scoreboard", "id": "nba-coalesced", "sport": "nba", "state": "in",
+        "home_abbr": "CLE", "away_abbr": "NY", "home_score": 0, "away_score": 0,
+    }
+    tracker.ingest([baseline])
+    tracker.ingest([{
+        **baseline,
+        "home_score": 2,
+        "situation": {"scoring_plays": [{
+            "team": "CLE", "scorer": "MOBLEY", "type": "Turnaround Fade Away Jump Shot",
+            "score_value": 2,
+        }]},
+    }])
+    now[0] = 120.0
+    tracker.ingest([{
+        **baseline,
+        "home_score": 5,
+        "situation": {"scoring_plays": [{
+            "team": "CLE", "scorer": "MITCHELL", "type": "Jump Shot",
+            "text": "Mitchell makes 25-foot three point jumper", "score_value": 3,
+        }]},
+    }])
+    assert len(tracker.recent()) == 1
+    now[0] = 161.0
+    tracker.ingest([{
+        **baseline,
+        "home_score": 7,
+        "situation": {"scoring_plays": [{
+            "team": "CLE", "scorer": "MITCHELL", "type": "Jump Shot",
+            "text": "Mitchell makes 25-foot three point jumper", "score_value": 3,
+        }]},
+    }])
+
+    alerts = tracker.recent(max_age=100.0)
+    assert len(alerts) == 2
+    assert alerts[-1]["headline"] == "3-POINTER"
+    assert alerts[-1]["points"] == 5
 
 
 def test_mlb_score_alert_detail_shows_player_stats_and_last_pitch() -> None:
