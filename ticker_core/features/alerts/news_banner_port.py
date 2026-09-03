@@ -34,9 +34,20 @@ UP = (60, 205, 95)
 DOWN = (235, 75, 75)
 _NEWS_KIND_STYLES = {
     "TRADE": ((255, 176, 20), "TRADE"),
+    "MAJOR": ((255, 145, 35), "MAJOR"),
+    "BLOCKBUSTER": ((245, 70, 170), "BLOCK"),
     "SIGNING": ((60, 205, 95), "SIGN"),
     "EXTENSION": ((170, 120, 255), "EXTEND"),
     "INJURY": ((235, 75, 75), "INJURY"),
+    "WAIVER": ((70, 190, 255), "WAIVER"),
+    "DFA": ((255, 95, 55), "DFA"),
+    "RELEASE": ((170, 180, 195), "RELEASE"),
+    "OPTION": ((155, 115, 245), "OPTION"),
+    "RECALL": ((55, 210, 150), "RECALL"),
+    "ACTIVATED": ((50, 200, 205), "ACTIVE"),
+    "SUSPENSION": ((235, 55, 75), "SUSPEND"),
+    "RETIREMENT": ((225, 225, 235), "RETIRE"),
+    "NO_TENDER": ((220, 135, 45), "NON-TEND"),
 }
 
 TEXT_COLS = 35          # characters per line at a 5px advance in 178px
@@ -78,7 +89,8 @@ def _readable(color):
 def _news_kind_style(item):
     """Return the accent and compact label for one sports news kind."""
 
-    kind = str(item.get("kind") or "NEWS").strip().upper()
+    impact_tier = str(item.get("impact_tier") or "").strip().upper()
+    kind = impact_tier if impact_tier in _NEWS_KIND_STYLES else str(item.get("kind") or "NEWS").strip().upper()
     return _NEWS_KIND_STYLES.get(kind, ((139, 147, 163), kind[:6]))
 
 
@@ -143,7 +155,7 @@ class NewsBannerMixin:
         x = 14 + len(kind) * 5
         from_abbr = str(item.get('from_abbr', ''))[:4]
         to_abbr = str(item.get('to_abbr', ''))[:4]
-        if kind == "TRADE" and from_abbr and to_abbr:
+        if str(item.get("kind") or "").strip().upper() == "TRADE" and from_abbr and to_abbr:
             x = draw_hybrid_text(d, x, y, from_abbr, from_color)
             self._draw_banner_arrow(d, x + 4, y + 2, 13, from_color, to_color)
             chip_x = x + 23

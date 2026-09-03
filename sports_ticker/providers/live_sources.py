@@ -32,7 +32,8 @@ _NEWS_RUMOR_MARKERS = re.compile(
     re.IGNORECASE,
 )
 _NEWS_TRADE_MARKER = re.compile(
-    r"\b(?:trade(?:s|d)?\s+for|traded\s+to|acquire[sd]?|land(?:s|ed)?|"
+    r"\b(?:trad(?:e|es|ed|ing)?\b.{0,80}\b(?:for|to)\b|"
+    r"in\s+trade\s+with\b|acquire[sd]?|land(?:s|ed)?|"
     r"send(?:s|ing)?\b.{0,80}\bto\b)",
     re.IGNORECASE,
 )
@@ -48,6 +49,45 @@ _NEWS_INJURY_MARKER = re.compile(
     r"\b(?:injured|will\s+miss|miss(?:es|ed)?|ruled\s+out|out\s+for|"
     r"return\s+from\s+\d+-day\s+il|placed\s+on\s+(?:the\s+)?il|"
     r"undergo(?:ing)?\s+surgery|surgery|concussion|fracture|broken)\b",
+    re.IGNORECASE,
+)
+_NEWS_WAIVER_MARKER = re.compile(
+    r"\b(?:place[sd]?\b.{0,80}\bon\s+waivers?|put\b.{0,80}\bon\s+waivers?|"
+    r"claimed\b.{0,80}\boff\s+waivers?|"
+    r"clears?\s+waivers?|passes?\s+through\s+waivers?)\b",
+    re.IGNORECASE,
+)
+_NEWS_DFA_MARKER = re.compile(
+    r"\b(?:designat(?:e|ed|es|ing)\b.{0,80}\bfor\s+assignment|dfa['’]?d|dfa)\b",
+    re.IGNORECASE,
+)
+_NEWS_RELEASE_MARKER = re.compile(
+    r"\b(?:outright\s+released?|released?\s+by|released?\s+from\s+the\s+team|"
+    r"cut\s+by)\b",
+    re.IGNORECASE,
+)
+_NEWS_OPTION_MARKER = re.compile(
+    r"\b(?:option(?:ed)?\b.{0,80}\bto|sent\b.{0,80}\bto\s+(?:triple|double)-a|outrighted)\b",
+    re.IGNORECASE,
+)
+_NEWS_RECALL_MARKER = re.compile(
+    r"\b(?:recall(?:ed)?\b|call(?:ed)?\s+up|promoted\s+from\s+triple-a|returns?\s+to\s+the\s+majors)\b",
+    re.IGNORECASE,
+)
+_NEWS_ACTIVATION_MARKER = re.compile(
+    r"\b(?:activat(?:e|ed|es|ing)|reinstat(?:e|ed|es|ing))\b.{0,80}\bfrom\s+(?:the\s+)?(?:\d+-day\s+)?(?:il|injured\s+list)\b",
+    re.IGNORECASE,
+)
+_NEWS_SUSPENSION_MARKER = re.compile(
+    r"\b(?:suspend(?:ed|s|ing)?|suspension)\b",
+    re.IGNORECASE,
+)
+_NEWS_RETIREMENT_MARKER = re.compile(
+    r"\b(?:retires?|retirement|calls?\s+it\s+a\s+career)\b",
+    re.IGNORECASE,
+)
+_NEWS_NO_TENDER_MARKER = re.compile(
+    r"\b(?:non[- ]tender(?:ed)?|no[- ]tender(?:ed)?)\b",
     re.IGNORECASE,
 )
 _ETF_LOGO_DOMAINS = {
@@ -496,7 +536,7 @@ class EspnNewsSource:
         self._timeout = _timeout(timeout)
         self._refresh_seconds = _timeout(refresh_seconds)
         self._background = bool(background)
-        self._cache: dict[tuple[str, ...], tuple[dict[str, object], ...]] = {}
+        self._cache: tuple[dict[str, object], ...] = ()
         self._last_started: dict[tuple[str, ...], float] = {}
         self._refreshing: set[tuple[str, ...]] = set()
         self._lock = Lock()
@@ -504,41 +544,39 @@ class EspnNewsSource:
     def fetch(self, settings: DisplaySettings) -> Mapping[str, object]:
         """Return cached followed-team headlines and refresh them outside polling."""
 
-        if settings.mode != "sports" or not settings.my_teams:
+        if settings.mode != "sports":
             return {"news": []}
         followed = tuple(sorted({str(value).strip().lower() for value in settings.my_teams if str(value).strip()}))
-        if not followed:
-            return {"news": []}
         if self._background:
-            self._start_refresh(followed)
+            self._start_refresh()
             with self._lock:
-                return {"news": list(self._cache.get(followed, ())) }
-        return {"news": list(self._fetch_news(followed))}
+                records = self._cache
+        else:
+            records = self._fetch_news()
+        return {"news": list(_filter_news_for_ticker(records, set(followed)))}
 
-    def _start_refresh(self, followed: tuple[str, ...]) -> None:
+    def _start_refresh(self) -> None:
         now = monotonic()
         with self._lock:
-            if followed in self._refreshing or now - self._last_started.get(followed, float("-inf")) < self._refresh_seconds:
+            cache_key = ("all",)
+            if cache_key in self._refreshing or now - self._last_started.get(cache_key, float("-inf")) < self._refresh_seconds:
                 return
-            self._last_started[followed] = now
-            self._refreshing.add(followed)
-        Thread(target=self._refresh, args=(followed,), name="ticker-news-refresh", daemon=True).start()
+            self._last_started[cache_key] = now
+            self._refreshing.add(cache_key)
+        Thread(target=self._refresh, name="ticker-news-refresh", daemon=True).start()
 
-    def _refresh(self, followed: tuple[str, ...]) -> None:
+    def _refresh(self) -> None:
         try:
-            records = self._fetch_news(followed)
+            records = self._fetch_news()
             with self._lock:
-                self._cache[followed] = records
+                self._cache = records
         finally:
             with self._lock:
-                self._refreshing.discard(followed)
+                self._refreshing.discard(("all",))
 
-    def _fetch_news(self, followed: tuple[str, ...]) -> tuple[dict[str, object], ...]:
-        followed_set = set(followed)
+    def _fetch_news(self) -> tuple[dict[str, object], ...]:
         records: list[dict[str, object]] = []
         for league, url in self._news_urls.items():
-            if not any(value.startswith(f"{league}:") for value in followed_set):
-                continue
             try:
                 payload = self._client.get_json(url, timeout=self._timeout)
             except Exception:
@@ -547,7 +585,7 @@ class EspnNewsSource:
             if not isinstance(articles, Sequence) or isinstance(articles, (str, bytes)):
                 continue
             for article in articles:
-                record = _classify_espn_news_article(article, league, followed_set)
+                record = _classify_espn_news_article(article, league, set())
                 if record is None:
                     continue
                 article_id = str(record.pop("source_id"))
@@ -556,6 +594,26 @@ class EspnNewsSource:
                 record.pop("source_headline", None)
                 records.append(record)
         return tuple(records[:24])
+
+
+def _filter_news_for_ticker(
+    records: Sequence[Mapping[str, object]],
+    followed: set[str],
+) -> tuple[Mapping[str, object], ...]:
+    """Broadcast blockbusters and keep other sports news on followed teams."""
+
+    visible: list[Mapping[str, object]] = []
+    for record in records:
+        if str(record.get("distribution") or "followed_teams") == "global":
+            visible.append(record)
+            continue
+        sport = str(record.get("sport") or "").strip().casefold()
+        teams = record.get("teams")
+        if not isinstance(teams, Sequence) or isinstance(teams, (str, bytes)):
+            continue
+        if any(f"{sport}:{str(team).strip().casefold()}" in followed for team in teams):
+            visible.append(record)
+    return tuple(visible)
 
 
 def _article_team_records(article: Mapping[str, object]) -> tuple[tuple[str, str], ...]:
@@ -638,12 +696,10 @@ def _classify_espn_news_article(
     athletes = _article_athletes(article)
     if not teams or not athletes:
         return None
-    followed_teams = tuple(
-        abbreviation
+    if followed and not any(
+        f"{league}:{abbreviation.casefold()}" in followed
         for abbreviation, _name in teams
-        if f"{league}:{abbreviation.casefold()}" in followed
-    )
-    if not followed_teams:
+    ):
         return None
 
     kind = ""
@@ -654,7 +710,7 @@ def _classify_espn_news_article(
         if len(teams) < 2:
             return None
         sends_to = re.search(
-            r"\b(?:traded|sent|sends?)\b.{0,80}\bto\b",
+            r"\b(?:traded?|trading|sent|sends?)\b.{0,80}\bto\b",
             headline,
             re.IGNORECASE,
         )
@@ -664,6 +720,33 @@ def _classify_espn_news_article(
             to_abbr, from_abbr = teams[0][0], teams[1][0]
         kind = "TRADE"
         compact_prefix = "ACQUIRE"
+    elif _NEWS_WAIVER_MARKER.search(headline):
+        kind = "WAIVER"
+        compact_prefix = "WAIVER"
+    elif _NEWS_DFA_MARKER.search(headline):
+        kind = "DFA"
+        compact_prefix = "DFA"
+    elif _NEWS_NO_TENDER_MARKER.search(headline):
+        kind = "NO_TENDER"
+        compact_prefix = "NON-TENDER"
+    elif _NEWS_ACTIVATION_MARKER.search(headline):
+        kind = "ACTIVATED"
+        compact_prefix = "ACTIVE"
+    elif _NEWS_RECALL_MARKER.search(headline):
+        kind = "RECALL"
+        compact_prefix = "RECALL"
+    elif _NEWS_OPTION_MARKER.search(headline):
+        kind = "OPTION"
+        compact_prefix = "OPTION"
+    elif _NEWS_SUSPENSION_MARKER.search(headline):
+        kind = "SUSPENSION"
+        compact_prefix = "SUSPEND"
+    elif _NEWS_RETIREMENT_MARKER.search(headline):
+        kind = "RETIREMENT"
+        compact_prefix = "RETIRE"
+    elif _NEWS_RELEASE_MARKER.search(headline):
+        kind = "RELEASE"
+        compact_prefix = "RELEASE"
     elif _NEWS_EXTENSION_MARKER.search(headline):
         kind = "EXTENSION"
         compact_prefix = "EXTENSION"
@@ -676,6 +759,7 @@ def _classify_espn_news_article(
     else:
         return None
 
+    impact_score, impact_tier = _news_impact(searchable, kind, teams)
     names = " + ".join(athletes[:2])
     if len(athletes) > 2:
         names += " + ..."
@@ -690,6 +774,11 @@ def _classify_espn_news_article(
         "text": f"{compact_prefix} {names}".strip(),
         "teams": [abbreviation for abbreviation, _name in teams],
         "athletes": list(athletes),
+        "impact_score": impact_score,
+        "impact_tier": impact_tier,
+        "distribution": "global"
+        if kind == "TRADE" and impact_tier in {"BLOCKBUSTER", "MAJOR"}
+        else "followed_teams",
         "verification": "source_report",
         "source_headline": headline,
         "source_id": str(article.get("id") or article.get("link") or headline),
@@ -701,6 +790,40 @@ def _classify_espn_news_article(
         ),
         "published_at": str(article.get("published") or article.get("lastModified") or ""),
     }
+
+
+def _news_impact(
+    searchable: str,
+    kind: str,
+    teams: Sequence[tuple[str, str]],
+) -> tuple[int, str]:
+    """Score confirmed transaction scope from source language and structure."""
+
+    if kind != "TRADE":
+        return 0, "NORMAL"
+    text = searchable.casefold()
+    score = 0
+    if re.search(r"\b(?:blockbuster|gargantuan|franchise[- ]changing|superstar|all-world)\b", text):
+        score += 40
+    if re.search(r"\b(?:mvp|cy young|all-star|all-pro|all nba|all-nba|champion|captain)\b", text):
+        score += 30
+    if re.search(r"\b(?:two-time|three-time|four-time|five-time|six-time|ten-time|former)\b", text):
+        score += 10
+    if re.search(r"\b(?:highest-paid|record-setting)\b|\$\s*\d{2,3}\s*million\b|\b\d+[- ]year,?\s*\$\s*\d{2,3}\s*million\b", text):
+        score += 15
+    if re.search(r"\b(?:\d+\s+first-round|\d+(?:st|nd|rd|th)[- ]round|multiple\s+first-round|top prospect|prospect haul|massive haul|big prospect haul)\b", text):
+        score += 15
+    if re.search(r"\b(?:no\.\s*1 overall|cornerstone)\b", text):
+        score += 15
+    if re.search(r"\b(?:\d+[- ]player|\d+[- ]team|multi-team|three-team|four-team|seven-team)\b", text):
+        score += 10
+    if len(teams) >= 3:
+        score += 5
+    if score >= 60:
+        return min(score, 100), "BLOCKBUSTER"
+    if score >= 25:
+        return min(score, 100), "MAJOR"
+    return min(score, 100), "NORMAL"
 
 
 def _article_abbreviations(article: Mapping[str, object]) -> tuple[str, ...]:
