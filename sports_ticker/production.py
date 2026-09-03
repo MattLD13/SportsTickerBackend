@@ -29,12 +29,14 @@ from sports_ticker.providers import (
     HybridWeatherProvider,
     WeatherLocationResolver,
     RacingProvider,
+    NewsProvider,
     StockProvider,
 )
 from sports_ticker.providers.espn_fastcast import EspnFastcastSource, fastcast_topic
 from sports_ticker.providers.live_sources import (
     ClockProvider,
     EspnGolfSource,
+    EspnNewsSource,
     FinnhubStockSource,
     FlightRadarSource,
 )
@@ -52,6 +54,7 @@ _INTERVALS: Final = {
     "flights": 30.0,
     "music": 0.6,
     "clock": 3600.0,
+    "news": 30.0,
 }
 
 
@@ -144,9 +147,14 @@ def _providers(spotify: SpotifyIntegrationService) -> dict[str, object]:
     fastcast = EspnFastcastSource(
         {league: fastcast_topic(url) for league, url in scoreboard_urls.items()}
     )
+    news_urls = {
+        league: f"{_ESPN_BASE}/{path}/news"
+        for league, path in TEAM_CATALOG_PATHS.items()
+    }
     return {
         "espn": EspnScoreboardProvider(scoreboard_urls, fastcast=fastcast),
         "fotmob": FotMobSoccerProvider(FOTMOB_LEAGUES),
+        "news": NewsProvider(EspnNewsSource(news_urls)),
         "weather": HybridWeatherProvider(),
         "golf": GolfProvider(EspnGolfSource()),
         "racing": RacingProvider(LiveRacingSource()),
@@ -186,6 +194,10 @@ def _provider_settings_key(name: str):
             settings.score_alerts,
             settings.live_delay_mode,
             settings.live_delay_seconds,
+        )
+    if name == "news":
+        return lambda settings: _sports_key(settings, TEAM_CATALOG_PATHS) + (
+            settings.my_teams,
         )
     if name == "golf":
         return lambda settings: (settings.timezone, settings.active_sports.get("golf", True))

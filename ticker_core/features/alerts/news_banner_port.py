@@ -32,6 +32,12 @@ AMBER = (255, 176, 20)      # sports news
 CYAN = (70, 175, 255)       # stock news
 UP = (60, 205, 95)
 DOWN = (235, 75, 75)
+_NEWS_KIND_STYLES = {
+    "TRADE": ((255, 176, 20), "TRADE"),
+    "SIGNING": ((60, 205, 95), "SIGN"),
+    "EXTENSION": ((170, 120, 255), "EXTEND"),
+    "INJURY": ((235, 75, 75), "INJURY"),
+}
 
 TEXT_COLS = 35          # characters per line at a 5px advance in 178px
 
@@ -67,6 +73,13 @@ def _readable(color):
         return color
     factor = 95.0 / max(1.0, lum)
     return tuple(min(255, int(c * factor)) for c in color)
+
+
+def _news_kind_style(item):
+    """Return the accent and compact label for one sports news kind."""
+
+    kind = str(item.get("kind") or "NEWS").strip().upper()
+    return _NEWS_KIND_STYLES.get(kind, ((139, 147, 163), kind[:6]))
 
 
 def wrap_lines(text, cols=TEXT_COLS, max_lines=2):
@@ -113,32 +126,34 @@ class NewsBannerMixin:
         d.polygon([(tip, y - 2), (tip, y + 3), (tip + 3, y + 1)], fill=end_color)
 
     def _draw_trade_banner(self, item):
-        """A trade: both clubs in the header, the detail underneath."""
+        """Draw one structured sports news item."""
         img = Image.new("RGBA", (BANNER_W, PANEL_H), (8, 9, 12, 255))
         d = ImageDraw.Draw(img, "RGBA")
 
         from_color = _readable(_hex_rgb(item.get('from_color')))
         to_color = _readable(_hex_rgb(item.get('to_color')))
-        kind = str(item.get('kind') or 'TRADE')[:6]
+        accent, kind = _news_kind_style(item)
 
-        d.rectangle([0, 0, 2, PANEL_H], fill=AMBER)
+        d.rectangle([0, 0, 2, PANEL_H], fill=accent)
         d.rectangle([4, 0, BANNER_W, 10], fill=(22, 24, 30))
-        d.rectangle([6, 1, 8 + len(kind) * 5, 9], fill=AMBER)
+        d.rectangle([6, 1, 8 + len(kind) * 5, 9], fill=accent)
         draw_tiny_text(d, 8, 3, kind, (10, 10, 12))
 
-        # The old club is plain coloured text. The new club sits in a filled
-        # chip. Two clubs often share a colour family, and VAN to NYR is navy on
-        # navy: an arrow between two identical blues says nothing. The chip
-        # carries the destination colour as a block, so the move reads even then.
         y = 2
-        x = draw_hybrid_text(d, 14 + len(kind) * 5, y, str(item.get('from_abbr', ''))[:4], from_color)
-        self._draw_banner_arrow(d, x + 4, y + 2, 13, from_color, to_color)
-        chip_x = x + 23
+        x = 14 + len(kind) * 5
+        from_abbr = str(item.get('from_abbr', ''))[:4]
         to_abbr = str(item.get('to_abbr', ''))[:4]
-        chip_w = len(to_abbr) * 5 + 5
+        if kind == "TRADE" and from_abbr and to_abbr:
+            x = draw_hybrid_text(d, x, y, from_abbr, from_color)
+            self._draw_banner_arrow(d, x + 4, y + 2, 13, from_color, to_color)
+            chip_x = x + 23
+        else:
+            chip_x = x
+        chip_abbr = to_abbr or from_abbr
+        chip_w = len(chip_abbr) * 5 + 5
         d.rectangle([chip_x, y - 1, chip_x + chip_w, y + 8], fill=to_color)
         lum = 0.2126 * to_color[0] + 0.7152 * to_color[1] + 0.0722 * to_color[2]
-        draw_hybrid_text(d, chip_x + 3, y, to_abbr,
+        draw_hybrid_text(d, chip_x + 3, y, chip_abbr,
                          (10, 10, 12) if lum > 150 else (255, 255, 255))
 
         d.line([(4, 11), (BANNER_W, 11)], fill=(52, 56, 66))

@@ -60,21 +60,78 @@ class NewsClient:
             "articles": [
                 {
                     "id": "article-1",
-                    "headline": "Giants prepare for Sunday matchup",
-                    "categories": [{"team": {"abbreviation": "NYG"}}],
-                }
+                    "type": "HeadlineNews",
+                    "headline": "New Jersey Devils trade for Predators forward Evangelista",
+                    "categories": [
+                        {"type": "team", "team": {"abbreviation": "NJD", "displayName": "New Jersey Devils"}},
+                        {"type": "team", "team": {"abbreviation": "NSH", "displayName": "Nashville Predators"}},
+                        {"type": "athlete", "description": "Luke Evangelista"},
+                    ],
+                },
+                {
+                    "id": "article-2",
+                    "type": "HeadlineNews",
+                    "headline": "Sources: Rockets' Amen Thompson agrees to 5-year extension",
+                    "categories": [
+                        {"type": "team", "team": {"abbreviation": "HOU", "displayName": "Houston Rockets"}},
+                        {"type": "athlete", "description": "Amen Thompson"},
+                    ],
+                },
+                {
+                    "id": "article-3",
+                    "type": "HeadlineNews",
+                    "headline": "Pirates rookie Konnor Griffin eyes Friday return from 60-day IL",
+                    "categories": [
+                        {"type": "team", "team": {"abbreviation": "PIT", "displayName": "Pittsburgh Pirates"}},
+                        {"type": "athlete", "description": "Konnor Griffin"},
+                    ],
+                },
+                {
+                    "id": "article-4",
+                    "type": "HeadlineNews",
+                    "headline": "Blues name Thomas captain despite last season's trade rumors",
+                    "categories": [
+                        {"type": "team", "team": {"abbreviation": "STL", "displayName": "St. Louis Blues"}},
+                        {"type": "athlete", "description": "Robert Thomas"},
+                    ],
+                },
+                {
+                    "id": "article-5",
+                    "type": "Story",
+                    "headline": "Fantasy football trade updates and rankings",
+                    "categories": [
+                        {"type": "team", "team": {"abbreviation": "NYG", "displayName": "New York Giants"}},
+                        {"type": "athlete", "description": "Cam Skattebo"},
+                    ],
+                },
+                {
+                    "id": "article-6",
+                    "type": "HeadlineNews",
+                    "headline": "Giants' Cam Skattebo says he mulled retiring after 2025 injury",
+                    "categories": [
+                        {"type": "team", "team": {"abbreviation": "NYG", "displayName": "New York Giants"}},
+                        {"type": "athlete", "description": "Cam Skattebo"},
+                    ],
+                },
             ]
         }
 
 
 def test_espn_news_source_produces_half_panel_payload_for_followed_team():
     source = EspnNewsSource(
-        {"nfl": "https://example.test/nfl/news"},
+        {"nhl": "https://example.test/nhl/news"},
         client=NewsClient(),
         background=False,
     )
-    records = source.fetch(DisplaySettings(my_teams=("nfl:NYG",)))
+    records = source.fetch(
+        DisplaySettings(my_teams=("nhl:NJD", "nhl:HOU", "nhl:PIT", "nhl:STL"))
+    )
 
+    assert [record["kind"] for record in records["news"]] == ["TRADE", "EXTENSION", "INJURY"]
     assert records["news"][0]["domain"] == "sports"
-    assert records["news"][0]["from_abbr"] == "NYG"
-    assert records["news"][0]["text"] == "Giants prepare for Sunday matchup"
+    assert records["news"][0]["from_abbr"] == "NSH"
+    assert records["news"][0]["to_abbr"] == "NJD"
+    assert records["news"][0]["text"] == "ACQUIRE Luke Evangelista"
+    assert records["news"][1]["to_abbr"] == "HOU"
+    assert records["news"][1]["text"] == "EXTENSION Amen Thompson"
+    assert records["news"][2]["kind"] == "INJURY"

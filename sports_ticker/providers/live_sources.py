@@ -25,6 +25,31 @@ from .http import JsonHttpClient, UrllibJsonHttpClient
 ESPN_GOLF_URL = "https://site.web.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard"
 FINNHUB_QUOTE_URL = "https://finnhub.io/api/v1/quote"
 FINNHUB_CANDLE_URL = "https://finnhub.io/api/v1/stock/candle"
+_ESPN_NEWS_TYPES = frozenset(("headlinenews",))
+_NEWS_RUMOR_MARKERS = re.compile(
+    r"\b(?:rumou?r|interest(?:ed)?|could|would|might|may|potential|possible|"
+    r"explore|consider(?:ing)?|target(?:ing)?|eyeing|monitor(?:ing)?|buzz)\b",
+    re.IGNORECASE,
+)
+_NEWS_TRADE_MARKER = re.compile(
+    r"\b(?:trade(?:s|d)?\s+for|traded\s+to|acquire[sd]?|land(?:s|ed)?|"
+    r"send(?:s|ing)?\b.{0,80}\bto\b)",
+    re.IGNORECASE,
+)
+_NEWS_EXTENSION_MARKER = re.compile(
+    r"\b(?:extension|re-?sign(?:s|ed)?|agrees?\s+to\s+.{0,35}\b(?:deal|contract))\b",
+    re.IGNORECASE,
+)
+_NEWS_SIGNING_MARKER = re.compile(
+    r"\b(?:sign(?:s|ed)?|agrees?\s+to\s+.{0,35}\bdeal|joins?)\b",
+    re.IGNORECASE,
+)
+_NEWS_INJURY_MARKER = re.compile(
+    r"\b(?:injured|will\s+miss|miss(?:es|ed)?|ruled\s+out|out\s+for|"
+    r"return\s+from\s+\d+-day\s+il|placed\s+on\s+(?:the\s+)?il|"
+    r"undergo(?:ing)?\s+surgery|surgery|concussion|fracture|broken)\b",
+    re.IGNORECASE,
+)
 _ETF_LOGO_DOMAINS = {
     "QQQ": "invesco.com",
     "SPY": "spdrs.com",
@@ -522,39 +547,168 @@ class EspnNewsSource:
             if not isinstance(articles, Sequence) or isinstance(articles, (str, bytes)):
                 continue
             for article in articles:
-                if not isinstance(article, Mapping):
+                record = _classify_espn_news_article(article, league, followed_set)
+                if record is None:
                     continue
-                headline = str(article.get("headline") or article.get("title") or "").strip()
-                if not headline:
-                    continue
-                teams = tuple(
-                    team
-                    for team in _article_abbreviations(article)
-                    if f"{league}:{team.lower()}" in followed_set
-                )
-                if not teams:
-                    continue
-                article_id = str(article.get("id") or article.get("link") or headline)
+                article_id = str(record.pop("source_id"))
                 identifier = hashlib.sha1(f"{league}:{article_id}".encode()).hexdigest()[:20]
-                records.append(
-                    {
-                        "id": identifier,
-                        "kind": "NEWS",
-                        "domain": "sports",
-                        "sport": league,
-                        "from_abbr": teams[0],
-                        "to_abbr": "",
-                        "from_color": "#8B93A3",
-                        "to_color": "#8B93A3",
-                        "text": headline,
-                        "teams": list(teams),
-                    }
-                )
+                record["id"] = identifier
+                record.pop("source_headline", None)
+                records.append(record)
         return tuple(records[:24])
+
+
+def _article_team_records(article: Mapping[str, object]) -> tuple[tuple[str, str], ...]:
+    """Return explicit ESPN team abbreviations in source order."""
+
+    categories = article.get("categories")
+    if not isinstance(categories, Sequence) or isinstance(categories, (str, bytes)):
+        return ()
+    teams: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for category in categories:
+        if not isinstance(category, Mapping) or str(category.get("type") or "").lower() != "team":
+            continue
+        team = category.get("team")
+        team_data = team if isinstance(team, Mapping) else {}
+        abbreviation = str(
+            team_data.get("abbreviation")
+            or category.get("abbreviation")
+            or ""
+        ).strip().upper()
+        if not 2 <= len(abbreviation) <= 4 or not abbreviation.isalnum() or abbreviation in seen:
+            continue
+        name = str(
+            team_data.get("displayName")
+            or team_data.get("shortDisplayName")
+            or category.get("description")
+            or abbreviation
+        ).strip()
+        teams.append((abbreviation, name))
+        seen.add(abbreviation)
+    return tuple(teams)
+
+
+def _article_athletes(article: Mapping[str, object]) -> tuple[str, ...]:
+    """Return explicit ESPN athlete names without guessing from article text."""
+
+    categories = article.get("categories")
+    if not isinstance(categories, Sequence) or isinstance(categories, (str, bytes)):
+        return ()
+    athletes: list[str] = []
+    seen: set[str] = set()
+    for category in categories:
+        if not isinstance(category, Mapping) or str(category.get("type") or "").lower() != "athlete":
+            continue
+        athlete = category.get("athlete")
+        athlete_data = athlete if isinstance(athlete, Mapping) else {}
+        name = str(
+            athlete_data.get("displayName")
+            or athlete_data.get("shortName")
+            or category.get("description")
+            or ""
+        ).strip()
+        key = name.casefold()
+        if name and key not in seen:
+            athletes.append(name)
+            seen.add(key)
+    return tuple(athletes)
+
+
+def _classify_espn_news_article(
+    article: object,
+    league: str,
+    followed: set[str],
+) -> dict[str, object] | None:
+    """Build one conservative sports-news record or reject the article."""
+
+    if not isinstance(article, Mapping):
+        return None
+    article_type = str(article.get("type") or "").strip().lower()
+    if article_type not in _ESPN_NEWS_TYPES:
+        return None
+    headline = str(article.get("headline") or article.get("title") or "").strip()
+    description = str(article.get("description") or "").strip()
+    if not headline:
+        return None
+    searchable = f"{headline} {description}"
+    if _NEWS_RUMOR_MARKERS.search(searchable):
+        return None
+    teams = _article_team_records(article)
+    athletes = _article_athletes(article)
+    if not teams or not athletes:
+        return None
+    followed_teams = tuple(
+        abbreviation
+        for abbreviation, _name in teams
+        if f"{league}:{abbreviation.casefold()}" in followed
+    )
+    if not followed_teams:
+        return None
+
+    kind = ""
+    from_abbr = ""
+    to_abbr = teams[0][0]
+    compact_prefix = ""
+    if _NEWS_TRADE_MARKER.search(headline):
+        if len(teams) < 2:
+            return None
+        sends_to = re.search(
+            r"\b(?:traded|sent|sends?)\b.{0,80}\bto\b",
+            headline,
+            re.IGNORECASE,
+        )
+        if sends_to:
+            from_abbr, to_abbr = teams[0][0], teams[1][0]
+        else:
+            to_abbr, from_abbr = teams[0][0], teams[1][0]
+        kind = "TRADE"
+        compact_prefix = "ACQUIRE"
+    elif _NEWS_EXTENSION_MARKER.search(headline):
+        kind = "EXTENSION"
+        compact_prefix = "EXTENSION"
+    elif _NEWS_SIGNING_MARKER.search(headline):
+        kind = "SIGNING"
+        compact_prefix = "SIGN"
+    elif _NEWS_INJURY_MARKER.search(headline):
+        kind = "INJURY"
+        compact_prefix = "STATUS"
+    else:
+        return None
+
+    names = " + ".join(athletes[:2])
+    if len(athletes) > 2:
+        names += " + ..."
+    return {
+        "kind": kind,
+        "domain": "sports",
+        "sport": league,
+        "from_abbr": from_abbr,
+        "to_abbr": to_abbr,
+        "from_color": "#8B93A3",
+        "to_color": "#8B93A3",
+        "text": f"{compact_prefix} {names}".strip(),
+        "teams": [abbreviation for abbreviation, _name in teams],
+        "athletes": list(athletes),
+        "verification": "source_report",
+        "source_headline": headline,
+        "source_id": str(article.get("id") or article.get("link") or headline),
+        "source_url": str(
+            ((article.get("links") or {}).get("web") or {}).get("href")
+            if isinstance(article.get("links"), Mapping)
+            and isinstance((article.get("links") or {}).get("web"), Mapping)
+            else ""
+        ),
+        "published_at": str(article.get("published") or article.get("lastModified") or ""),
+    }
 
 
 def _article_abbreviations(article: Mapping[str, object]) -> tuple[str, ...]:
     """Collect explicit ESPN team abbreviations without guessing from prose."""
+
+    teams = _article_team_records(article)
+    if teams:
+        return tuple(abbreviation for abbreviation, _name in teams)
 
     values: set[str] = set()
 
