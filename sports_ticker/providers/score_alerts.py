@@ -31,11 +31,11 @@ _BIG_KINDS = frozenset(
         "penalty_shot",
         "power_play_goal",
         "safety",
+        "game_final",
     )
 )
 _MAX_ALERTS = 64
 _MAX_AGE = 45.0
-_BASKETBALL_ALERT_COOLDOWN = 60.0
 
 
 def _number(value: object) -> int | None:
@@ -411,16 +411,13 @@ class ScoreAlertTracker:
     def __init__(self, *, clock: Callable[[], float] = time) -> None:
         self._clock = clock
         self._lock = Lock()
-        self._scores: dict[str, tuple[int, int, str]] = {}
+        self._scores: dict[str, tuple[int, int, str, str]] = {}
         self._alerts: list[dict[str, Any]] = []
-        self._basketball_baselines: dict[tuple[str, str], int] = {}
-        self._basketball_last_alert: dict[tuple[str, str], float] = {}
 
     def prime(self, games: Sequence[Mapping[str, Any]]) -> None:
         """Set a complete source baseline without creating score alerts."""
 
-        scores: dict[str, tuple[int, int, str]] = {}
-        basketball_baselines: dict[tuple[str, str], int] = {}
+        scores: dict[str, tuple[int, int, str, str]] = {}
         for game in games:
             if str(game.get("kind") or game.get("type") or "") != "scoreboard":
                 continue
@@ -429,14 +426,14 @@ class ScoreAlertTracker:
             away = _number(game.get("away_score"))
             if not game_id or home is None or away is None:
                 continue
-            scores[game_id] = (home, away, str(game.get("status") or ""))
-            if sport_family(game.get("sport")) == "basketball":
-                basketball_baselines[(game_id, "home")] = home
-                basketball_baselines[(game_id, "away")] = away
+            scores[game_id] = (
+                home,
+                away,
+                str(game.get("status") or ""),
+                str(game.get("state") or "").lower(),
+            )
         with self._lock:
             self._scores = scores
-            self._basketball_baselines = basketball_baselines
-            self._basketball_last_alert.clear()
 
     def ingest(self, games: Sequence[Mapping[str, Any]]) -> None:
         """Compare one complete scoreboard observation with the prior poll."""
@@ -455,30 +452,32 @@ class ScoreAlertTracker:
                 current_ids.add(game_id)
                 status = str(game.get("status") or "")
                 previous = self._scores.get(game_id)
-                self._scores[game_id] = (home, away, status)
-                if previous is None or str(game.get("state") or "").lower() not in _LIVE_STATES:
-                    continue
                 sport = str(game.get("sport") or "").lower()
-                for side, new_score, old_score in (("home", home, previous[0]), ("away", away, previous[1])):
-                    delta = new_score - old_score
-                    if delta <= 0:
-                        continue
-                    if sport_family(sport) == "basketball":
-                        basketball_key = (game_id, side)
-                        baseline = self._basketball_baselines.setdefault(
-                            basketball_key, old_score
-                        )
-                        last_alert = self._basketball_last_alert.get(basketball_key)
-                        if last_alert is not None and now - last_alert < _BASKETBALL_ALERT_COOLDOWN:
-                            continue
-                        delta = new_score - baseline
-                        if delta <= 0:
-                            continue
-                    sit = game.get("situation")
-                    situation = sit if isinstance(sit, Mapping) else {}
-                    scoring_play = _latest_scoring_play(game, situation, side)
-                    kind, headline = _describe(sport, delta, scoring_play)
-                    detail = _extract_alert_detail(sport, game, side)
+                family = sport_family(sport)
+                state = str(game.get("state") or "").lower()
+                self._scores[game_id] = (home, away, status, state)
+                if previous is None or (
+                    state not in _LIVE_STATES
+                    and not (family == "basketball" and state in {"post", "final"})
+                ):
+                    continue
+                lead_change = (
+                    family == "basketball"
+                    and (previous[0] - previous[1]) * (home - away) < 0
+                )
+                game_ending = (
+                    family == "basketball"
+                    and state in {"post", "final"}
+                    and previous[3] not in {"post", "final"}
+                )
+
+                def append_alert(
+                    side: str,
+                    kind: str,
+                    headline: str,
+                    detail: str,
+                    points: int,
+                ) -> None:
                     other = "away" if side == "home" else "home"
                     self._alerts.append(
                         {
@@ -490,7 +489,7 @@ class ScoreAlertTracker:
                             "kind": kind,
                             "headline": headline,
                             "detail": detail,
-                            "points": delta,
+                            "points": points,
                             "big": kind in _BIG_KINDS,
                             "team_abbr": str(game.get(f"{side}_abbr") or "").upper(),
                             "team_logo": game.get(f"{side}_logo", ""),
@@ -508,19 +507,23 @@ class ScoreAlertTracker:
                             "away_conference_id": game.get("away_conference_id", ""),
                         }
                     )
-                    if sport_family(sport) == "basketball":
-                        basketball_key = (game_id, side)
-                        self._basketball_baselines[basketball_key] = new_score
-                        self._basketball_last_alert[basketball_key] = now
+
+                for side, new_score, old_score in (("home", home, previous[0]), ("away", away, previous[1])):
+                    delta = new_score - old_score
+                    if delta <= 0:
+                        continue
+                    if family == "basketball" and (not lead_change or game_ending):
+                        continue
+                    sit = game.get("situation")
+                    situation = sit if isinstance(sit, Mapping) else {}
+                    scoring_play = _latest_scoring_play(game, situation, side)
+                    kind, headline = _describe(sport, delta, scoring_play)
+                    detail = _extract_alert_detail(sport, game, side)
+                    append_alert(side, kind, headline, detail, delta)
+                if game_ending:
+                    winner = "home" if home >= away else "away"
+                    append_alert(winner, "game_final", "FINAL", "", 0)
             self._scores = {key: value for key, value in self._scores.items() if key in current_ids}
-            self._basketball_baselines = {
-                key: value for key, value in self._basketball_baselines.items()
-                if key[0] in current_ids
-            }
-            self._basketball_last_alert = {
-                key: value for key, value in self._basketball_last_alert.items()
-                if key[0] in current_ids
-            }
             self._alerts = self._alerts[-_MAX_ALERTS:]
 
     def recent(self, *, max_age: float = _MAX_AGE, delay: float = 0.0) -> tuple[dict[str, Any], ...]:

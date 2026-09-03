@@ -73,46 +73,76 @@ def test_football_score_alert_uses_the_scoring_play() -> None:
     assert alert["detail"] == "WILLIAMS 1YD"
 
 
-def test_basketball_score_alerts_coalesce_for_one_minute() -> None:
-    now = [100.0]
-    tracker = ScoreAlertTracker(clock=lambda: now[0])
+def test_basketball_score_alerts_only_report_lead_changes_and_final_scores() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
     baseline = {
         "kind": "scoreboard", "id": "nba-coalesced", "sport": "nba", "state": "in",
-        "home_abbr": "CLE", "away_abbr": "NY", "home_score": 0, "away_score": 0,
+        "home_abbr": "CLE", "away_abbr": "NY", "home_score": 10, "away_score": 8,
     }
     tracker.ingest([baseline])
     tracker.ingest([{
         **baseline,
-        "home_score": 2,
+        "home_score": 12,
         "situation": {"scoring_plays": [{
             "team": "CLE", "scorer": "MOBLEY", "type": "Turnaround Fade Away Jump Shot",
             "score_value": 2,
         }]},
     }])
-    now[0] = 120.0
-    tracker.ingest([{
-        **baseline,
-        "home_score": 5,
-        "situation": {"scoring_plays": [{
-            "team": "CLE", "scorer": "MITCHELL", "type": "Jump Shot",
-            "text": "Mitchell makes 25-foot three point jumper", "score_value": 3,
-        }]},
-    }])
-    assert len(tracker.recent()) == 1
-    now[0] = 161.0
-    tracker.ingest([{
-        **baseline,
-        "home_score": 7,
-        "situation": {"scoring_plays": [{
-            "team": "CLE", "scorer": "MITCHELL", "type": "Jump Shot",
-            "text": "Mitchell makes 25-foot three point jumper", "score_value": 3,
-        }]},
-    }])
+    assert tracker.recent() == ()
 
-    alerts = tracker.recent(max_age=100.0)
+    tracker.ingest([{
+        **baseline,
+        "home_score": 12,
+        "away_score": 13,
+        "situation": {"scoring_plays": [{
+            "team": "NY", "scorer": "BRUNSON", "type": "Jump Shot",
+            "text": "Brunson makes 25-foot three point jumper", "score_value": 3,
+        }]},
+    }])
+    alerts = tracker.recent()
+    assert len(alerts) == 1
+    assert alerts[0]["team_abbr"] == "NY"
+    assert alerts[0]["headline"] == "3-POINTER"
+    assert alerts[0]["points"] == 5
+
+    tracker.ingest([{
+        **baseline,
+        "home_score": 14,
+        "away_score": 13,
+        "situation": {"scoring_plays": [{
+            "team": "CLE", "scorer": "MOBLEY", "type": "Dunk",
+            "score_value": 2,
+        }]},
+    }])
+    alerts = tracker.recent()
     assert len(alerts) == 2
-    assert alerts[-1]["headline"] == "3-POINTER"
-    assert alerts[-1]["points"] == 5
+    assert alerts[-1]["team_abbr"] == "CLE"
+    assert alerts[-1]["headline"] == "DUNK"
+    assert alerts[-1]["points"] == 2
+
+    tracker.ingest([{
+        **baseline,
+        "state": "post",
+        "home_score": 14,
+        "away_score": 14,
+        "situation": {"scoring_plays": [{
+            "team": "NY", "scorer": "BRUNSON", "type": "Free Throw",
+            "score_value": 1,
+        }]},
+    }])
+    alerts = tracker.recent()
+    assert len(alerts) == 3
+    assert alerts[-1]["headline"] == "FINAL"
+    assert alerts[-1]["detail"] == ""
+    assert alerts[-1]["points"] == 0
+
+    tracker.ingest([{
+        **baseline,
+        "state": "post",
+        "home_score": 14,
+        "away_score": 14,
+    }])
+    assert len(tracker.recent()) == 3
 
 
 def test_mlb_score_alert_detail_shows_player_stats_and_last_pitch() -> None:
@@ -293,12 +323,12 @@ def test_score_alerts_filtering_and_team_matching() -> None:
 
     tracker.ingest([
         {"kind": "scoreboard", "id": "g1", "sport": "nhl", "state": "in", "home_abbr": "NYR", "away_abbr": "BOS", "home_score": 0, "away_score": 0},
-        {"kind": "scoreboard", "id": "nba-1", "sport": "nba", "state": "in", "home_abbr": "NYK", "away_abbr": "BOS", "home_score": 100, "away_score": 98},
+        {"kind": "scoreboard", "id": "nba-1", "sport": "nba", "state": "in", "home_abbr": "NYK", "away_abbr": "BOS", "home_score": 100, "away_score": 102},
         {"kind": "scoreboard", "id": "soc-1", "sport": "soccer_mls", "state": "in", "home_abbr": "SEA", "away_abbr": "VAN", "home_score": 0, "away_score": 0},
     ])
     tracker.ingest([
         {"kind": "scoreboard", "id": "g1", "sport": "nhl", "state": "in", "home_abbr": "NYR", "away_abbr": "BOS", "home_score": 1, "away_score": 0},
-        {"kind": "scoreboard", "id": "nba-1", "sport": "nba", "state": "in", "home_abbr": "NYK", "away_abbr": "BOS", "home_score": 103, "away_score": 98},
+        {"kind": "scoreboard", "id": "nba-1", "sport": "nba", "state": "in", "home_abbr": "NYK", "away_abbr": "BOS", "home_score": 103, "away_score": 102},
         {"kind": "scoreboard", "id": "soc-1", "sport": "soccer_mls", "state": "in", "home_abbr": "SEA", "away_abbr": "VAN", "home_score": 1, "away_score": 0},
     ])
     raw_alerts = tracker.recent()
