@@ -113,7 +113,41 @@ def test_mlb_score_alert_does_not_infer_home_run_from_runs_scored() -> None:
     ])
 
     alerts = tracker.recent()
-    assert [alert["headline"] for alert in alerts] == ["SINGLE", "SAC FLY"]
+    assert [alert["headline"] for alert in alerts] == ["RBI SINGLE", "SAC FLY"]
+
+
+def test_mlb_score_alert_distinguishes_scoring_play_results() -> None:
+    cases = (
+        ("single", {"type": "Single", "rbi": 1, "score_value": 1}, "RBI SINGLE"),
+        ("double", {"type": "Double", "rbi": 1, "score_value": 1}, "RBI DOUBLE"),
+        ("sac-fly", {"type": "Sacrifice Fly", "rbi": 1, "score_value": 1}, "SAC FLY"),
+        ("walk-off", {"type": "Single", "rbi": 1, "score_value": 1, "walk_off": True}, "WALK OFF RBI SINGLE"),
+        ("home-run", {"type": "Home Run", "score_value": 1}, "HOME RUN"),
+        ("two-run-home-run", {"type": "Home Run", "score_value": 2}, "2-RUN HOME RUN"),
+    )
+
+    for game_id, play, expected in cases:
+        tracker = ScoreAlertTracker(clock=lambda: 100.0)
+        baseline = {
+            "kind": "scoreboard",
+            "id": f"mlb-{game_id}",
+            "sport": "mlb",
+            "state": "in",
+            "home_abbr": "BOS",
+            "away_abbr": "NYY",
+            "home_score": 4 if game_id == "walk-off" else 0,
+            "away_score": 4 if game_id == "walk-off" else 0,
+        }
+        tracker.ingest([baseline])
+        updated = {
+            **baseline,
+            "home_score": 5 if game_id == "walk-off" else baseline["home_score"],
+            "away_score": 1 if game_id != "walk-off" else baseline["away_score"],
+            "situation": {"scoring_plays": [{"team": "BOS" if game_id == "walk-off" else "NYY", "scorer": "Judge", **play}]},
+        }
+        tracker.ingest([updated])
+
+        assert tracker.recent()[0]["headline"] == expected
 
 
 def test_mlb_score_alert_uses_verified_home_run_type() -> None:

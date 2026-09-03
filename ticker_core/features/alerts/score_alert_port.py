@@ -17,6 +17,7 @@ import re
 from PIL import Image, ImageDraw, ImageFont
 
 from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text
+from ticker_core.runtime.model import DEFAULT_SCORE_ALERT_DURATION
 
 PANEL_W = 384
 PANEL_H = 32
@@ -37,12 +38,9 @@ def load_monospace_font(size, bold=False):
                 continue
     return ImageFont.load_default()
 
-# Phase lengths in seconds. The wipes are short enough to read as a slam rather
-# than a transition; the hold is what the viewer actually looks at.
+# Phase lengths in seconds. The runtime owns the full eight-second residence.
 WIPE_IN = 0.40
 WIPE_OUT = 0.35
-HOLD_NORMAL = 3.4
-HOLD_BIG = 5.4
 
 # Split-flap headline. Letters land left to right as the shutters finish
 # opening, which buys a second of motion in the part of the frame the eye is
@@ -74,8 +72,7 @@ def _luma(color):
 
 def score_alert_duration(alert):
     """Total on-screen time for one alert, in seconds."""
-    hold = HOLD_BIG if (alert or {}).get('big') else HOLD_NORMAL
-    return WIPE_IN + hold + WIPE_OUT
+    return DEFAULT_SCORE_ALERT_DURATION
 
 
 class ScoreAlertMixin:

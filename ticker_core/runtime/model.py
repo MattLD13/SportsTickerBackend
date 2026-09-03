@@ -11,6 +11,10 @@ from typing import Any
 from ticker_core._enum import StrEnum
 from ticker_core.platform.wifi import WiFiSetupState
 
+
+DEFAULT_SCORE_ALERT_DURATION = 8.0
+
+
 class FrameKind(StrEnum):
     """Name one controller action for one frame."""
 
@@ -149,7 +153,7 @@ class RuntimeConfig:
     static_hold: float = 8.0
     alert_max_age: float = 60.0
     alert_dedupe_age: float = 600.0
-    alert_duration: float = 4.0
+    alert_duration: float = DEFAULT_SCORE_ALERT_DURATION
     news_max_age: float = 300.0
     news_dedupe_age: float = 3600.0
     news_duration: float = 6.0

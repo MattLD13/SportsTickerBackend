@@ -1,6 +1,6 @@
 """Verify baseball inning markers in score-alert banners."""
 
-from ticker_core.features.alerts.score_alert_port import PreparedScoreAlertRenderer
+from ticker_core.features.alerts.score_alert_port import PreparedScoreAlertRenderer, score_alert_duration
 from ticker_core.rendering import load_default_font_set
 
 
@@ -24,3 +24,8 @@ def test_baseball_alert_keeps_final_status_without_an_inning_marker() -> None:
     renderer = PreparedScoreAlertRenderer(load_default_font_set(), EmptyLogos())
 
     assert renderer._alert_status_label({"sport": "mlb", "status": "Final"}) == ("", "FINAL")
+
+
+def test_score_alert_render_duration_matches_runtime_residence() -> None:
+    assert score_alert_duration({"big": False}) == 8.0
+    assert score_alert_duration({"big": True}) == 8.0

@@ -17,6 +17,8 @@ _LIVE_STATES = frozenset(("in", "half", "crit"))
 _BIG_KINDS = frozenset(
     (
         "walk_off",
+        "walk_off_rbi_single",
+        "walk_off_rbi_double",
         "grand_slam",
         "three_run_hr",
         "hat_trick",
@@ -58,7 +60,7 @@ def _describe(
     if family == "baseball":
         play_text = " ".join(
             str(scoring_play.get(key) or "")
-            for key in ("type", "kind", "scoring_type", "text")
+            for key in ("type", "kind", "scoring_type", "event_type", "text")
         ).lower() if scoring_play else ""
         home_run = bool(
             re.search(r"\b(home run|homer|homered|homers)\b", play_text)
@@ -76,8 +78,22 @@ def _describe(
         scoring_type = re.sub(
             r"[^a-z0-9]+",
             " ",
-            str(scoring_play.get("type") or scoring_play.get("kind") or "").lower(),
+            str(
+                scoring_play.get("type")
+                or scoring_play.get("kind")
+                or scoring_play.get("event_type")
+                or ""
+            ).lower(),
         ).strip() if scoring_play else ""
+        if scoring_type in {"sac fly", "sacrifice fly"}:
+            scoring_type = "sacrifice fly"
+        if scoring_type in {"sac bunt", "sacrifice bunt"}:
+            scoring_type = "sacrifice bunt"
+        if scoring_type == "sacrifice":
+            if "sacrifice fly" in play_text:
+                scoring_type = "sacrifice fly"
+            elif "sacrifice bunt" in play_text:
+                scoring_type = "sacrifice bunt"
         baseball_types = {
             "single": ("single", "SINGLE"),
             "double": ("double", "DOUBLE"),
@@ -88,6 +104,19 @@ def _describe(
             "intentional walk": ("intentional_walk", "INTENTIONAL WALK"),
             "hit by pitch": ("hit_by_pitch", "HIT BY PITCH"),
         }
+        if scoring_type in {"single", "double"} and scoring_play:
+            runs = _number(scoring_play.get("score_value")) or 0
+            is_rbi = bool(scoring_play.get("rbi")) or runs > 0
+            if is_rbi:
+                if scoring_play.get("walk_off"):
+                    return (
+                        "walk_off_rbi_single" if scoring_type == "single" else "walk_off_rbi_double",
+                        "WALK OFF RBI SINGLE" if scoring_type == "single" else "WALK OFF RBI DOUBLE",
+                    )
+                return (
+                    "rbi_single" if scoring_type == "single" else "rbi_double",
+                    "RBI SINGLE" if scoring_type == "single" else "RBI DOUBLE",
+                )
         if scoring_type in baseball_types:
             return baseball_types[scoring_type]
         return "run", "RUN SCORES"

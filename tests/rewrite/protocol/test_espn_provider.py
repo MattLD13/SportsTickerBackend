@@ -1313,6 +1313,7 @@ def test_espn_event_scoring_details_normalize_team_and_scorer() -> None:
         "scorer": "JUDGE",
         "player": "JUDGE",
         "type": "Home Run",
+        "event_type": "Home Run",
         "text": "Aaron Judge homers to left field",
     }]
 
@@ -1359,8 +1360,11 @@ def test_espn_mlb_scoring_details_use_summary_play_type_and_run_count() -> None:
         "scorer": "WELLS",
         "player": "WELLS",
         "type": "Single",
+        "event_type": "Single",
         "text": "Wells singled to left, two runs scored.",
         "score_value": 2,
+        "rbi": 2,
+        "walk_off": False,
     }]
 
 
@@ -1505,8 +1509,71 @@ def test_espn_mlb_summary_retries_api_host_when_web_host_has_no_boxscore() -> No
     assert _mlb_event_details(event)["pitcher_pitches"] == "47"
 
 
+def test_espn_mlb_statsapi_fallback_keeps_espn_event_shell_and_scoring_history() -> None:
+    class FallbackClient:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        def get_json(self, url: str, *, timeout: float):
+            del timeout
+            self.urls.append(url)
+            if "schedule?sportId" in url:
+                return {"dates": [{"games": [{
+                    "gamePk": 823337,
+                    "teams": {
+                        "away": {"team": {"abbreviation": "SF"}},
+                        "home": {"team": {"abbreviation": "PIT"}},
+                    },
+                }]}]}
+            if "feed/live" in url:
+                return {
+                    "gameData": {"teams": {"away": {"abbreviation": "SF"}, "home": {"abbreviation": "PIT"}}},
+                    "liveData": {
+                        "plays": {
+                            "currentPlay": {"about": {"atBatIndex": 3}, "matchup": {
+                                "batter": {"id": 10, "fullName": "Jung Hoo Lee"},
+                                "pitcher": {"id": 20, "fullName": "Blade Tidwell"},
+                            }},
+                            "allPlays": [{
+                                "about": {"halfInning": "top", "inning": 7, "isScoringPlay": True},
+                                "matchup": {"batter": {"id": 10, "fullName": "Jung Hoo Lee"}},
+                                "result": {"event": "Double", "eventType": "double", "rbi": 1, "awayScore": 1, "homeScore": 0},
+                            }],
+                        },
+                        "linescore": {},
+                        "boxscore": {"teams": {"away": {"players": {}}, "home": {"players": {}}}},
+                    },
+                }
+            return {"header": {"id": "game-1", "date": "2026-09-03T16:00:00Z", "competitions": [{
+                "competitors": [
+                    {"homeAway": "home", "team": {"id": "pit", "abbreviation": "PIT"}},
+                    {"homeAway": "away", "team": {"id": "sf", "abbreviation": "SF"}},
+                ],
+            }]}}
+
+    client = FallbackClient()
+    provider = EspnScoreboardProvider(
+        {"mlb": "https://site.web.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"},
+        client=client,
+    )
+
+    event = provider._read_event_payload(
+        "mlb",
+        "game-1",
+        "https://site.web.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event=game-1",
+    )
+
+    assert any("feed/live" in url for url in client.urls)
+    assert event["header"]["id"] == "game-1"
+    assert _event_scoring_details(event, {"sport": "mlb", "home_abbr": "PIT", "away_abbr": "SF"})["scoring_plays"][0]["type"] == "Double"
+
+
 def test_espn_mlb_statsapi_feed_supplies_live_player_stats() -> None:
     summary = _mlb_statsapi_summary({
+        "gameData": {"teams": {
+            "away": {"abbreviation": "NYY"},
+            "home": {"abbreviation": "BOS"},
+        }},
         "liveData": {
             "plays": {
                 "currentPlay": {
@@ -1519,6 +1586,20 @@ def test_espn_mlb_statsapi_feed_supplies_live_player_stats() -> None:
                     "pitchData": {"startSpeed": 96.4},
                     "details": {"type": {"code": "FF", "description": "Four-Seam Fastball"}},
                 },
+                "allPlays": [
+                    {
+                        "about": {"halfInning": "top", "inning": 5, "isScoringPlay": True},
+                        "matchup": {"batter": {"id": 10, "fullName": "Austin Wells"}},
+                        "result": {
+                            "event": "Double",
+                            "eventType": "double",
+                            "description": "Wells doubled to right, Judge scored.",
+                            "rbi": 1,
+                            "awayScore": 1,
+                            "homeScore": 0,
+                        },
+                    },
+                ],
             },
             "linescore": {"outs": 1, "offense": {"first": {"id": 30}}},
             "boxscore": {"teams": {"home": {"players": {
@@ -1541,3 +1622,38 @@ def test_espn_mlb_statsapi_feed_supplies_live_player_stats() -> None:
     assert details["pitcher_name"] == "Gerrit Cole"
     assert details["pitcher_pitches"] == "47"
     assert details["last_pitch_type"] == "4S Fastball"
+    assert summary["scoringPlays"][0]["team"] == "NYY"
+    assert summary["scoringPlays"][0]["type"] == "Double"
+    assert summary["scoringPlays"][0]["score_value"] == 1
+
+
+def test_espn_mlb_scoring_details_preserve_rbi_type_from_live_play() -> None:
+    details = _event_scoring_details(
+        {
+            "header": {"competitions": [{"competitors": [
+                {"homeAway": "home", "team": {"id": "home-id", "abbreviation": "BOS"}},
+                {"homeAway": "away", "team": {"id": "away-id", "abbreviation": "NYY"}},
+            ]}]},
+            "plays": [{
+                "team": {"id": "away-id"},
+                "text": "Lee doubled to right, Cox scored.",
+                "alternativeType": {"text": "Double", "type": "double"},
+                "scoreValue": 1,
+                "scoringPlay": True,
+                "participants": [{"type": "batter", "athlete": {"displayName": "Jung Hoo Lee"}}],
+            }],
+        },
+        {"sport": "mlb", "home_abbr": "BOS", "away_abbr": "NYY"},
+    )
+
+    assert details["scoring_plays"] == [{
+        "team": "NYY",
+        "scorer": "LEE",
+        "player": "LEE",
+        "type": "Double",
+        "event_type": "double",
+        "text": "Lee doubled to right, Cox scored.",
+        "score_value": 1,
+        "rbi": 1,
+        "walk_off": False,
+    }]

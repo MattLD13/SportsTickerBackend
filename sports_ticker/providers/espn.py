@@ -764,24 +764,29 @@ class EspnScoreboardProvider:
             event = _event_payload(payload)
         except Exception:
             event = {}
-        if league != "mlb" or _mlb_has_boxscore(event):
-            if event:
-                return event
+        if league != "mlb" and event:
+            return event
+        if league == "mlb" and event and _mlb_has_boxscore(event):
+            return event
         fallback_url = _mlb_api_summary_url(request_url) if league == "mlb" else ""
         if fallback_url and fallback_url != request_url:
             try:
                 payload = self.client.get_json(fallback_url, timeout=self.timeout)
                 fallback_event = _event_payload(payload)
                 if _mlb_has_boxscore(fallback_event):
-                    return fallback_event
-                event = fallback_event or event
+                    return _merge_mlb_detail_payload(event, fallback_event)
+                event = (
+                    _merge_mlb_detail_payload(event, fallback_event)
+                    if event and fallback_event
+                    else fallback_event or event
+                )
             except Exception:
                 pass
         if league == "mlb":
             self._remember_mlb_events(league, (event,))
             statsapi_event = self._read_mlb_statsapi_event(event_id)
             if statsapi_event:
-                return statsapi_event
+                return _merge_mlb_detail_payload(event, statsapi_event)
         if event:
             return event
         raise RuntimeError(f"{league} event detail request failed for {event_id}")
@@ -794,13 +799,15 @@ class EspnScoreboardProvider:
         if league != "mlb":
             return
         for event in events:
-            event_id = str(event.get("id") or "").strip()
             header = _mapping(event.get("header"))
+            event_id = str(event.get("id") or header.get("id") or "").strip()
             date_text = str(event.get("date") or header.get("date") or "").strip()
             competition = _first_mapping(
                 event.get("competitions") or header.get("competitions")
             )
-            competitors = _competitors(competition.get("competitors"))
+            competitors = tuple(
+                _mapping(value) for value in _sequence(competition.get("competitors"))
+            )
             away = _find_side(competitors, "away")
             home = _find_side(competitors, "home")
             away_abbr = str(_mapping(away.get("team")).get("abbreviation") or "").strip().upper()
@@ -1247,6 +1254,25 @@ def _event_update(payload: Any, fallback: Mapping[str, Any]) -> Mapping[str, Any
         )
     event["competitions"] = [merged_competition]
     return event
+
+
+def _merge_mlb_detail_payload(
+    base: Mapping[str, Any], enrichment: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Keep ESPN score fields while adding StatsAPI live detail fields."""
+
+    merged = dict(base)
+    for key in ("boxscore", "plays", "scoringPlays"):
+        value = enrichment.get(key)
+        if value:
+            merged[key] = value
+    situation = _mapping(enrichment.get("situation"))
+    if situation:
+        merged["situation"] = _merge_mapping(
+            _mapping(base.get("situation")),
+            situation,
+        )
+    return merged
 
 
 def _merge_mlb_situation(
@@ -1702,10 +1728,10 @@ def _mlb_api_summary_url(request_url: str) -> str:
 
 
 def _mlb_has_boxscore(payload: Mapping[str, Any]) -> bool:
-    """Return whether an MLB summary contains stats for its active players."""
+    """Return whether an MLB summary contains both active player stat groups."""
 
     details = _mlb_event_details(payload)
-    return "batter_avg" in details or "pitcher_pitches" in details
+    return "batter_avg" in details and "pitcher_pitches" in details
 
 
 def _parse_college_football_rankings(payload: Any) -> dict[str, dict[str, str]]:
@@ -1850,6 +1876,10 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
         team = _event_team_abbr(play, competition, home_abbr, away_abbr)
         if not team:
             continue
+        play_type = play.get("type")
+        play_type_text = _mapping(play_type).get("text")
+        if not play_type_text and isinstance(play_type, str):
+            play_type_text = play_type
         athlete = _event_player(play, summary)
         scoring_type = str(
             _mapping(play.get("scoringType")).get("displayName")
@@ -1858,19 +1888,39 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
                 if league == "mlb"
                 else ""
             )
-            or _mapping(play.get("type")).get("text")
+            or play_type_text
             or play.get("scoringType")
             or ""
         ).strip()
+        alternative_type = _mapping(play.get("alternativeType"))
+        event_type = str(
+            play.get("event_type")
+            or play.get("eventType")
+            or alternative_type.get("type")
+            or scoring_type
+            or ""
+        ).strip()
+        rbi = play.get("rbi")
+        rbi_value = _mlb_number(rbi) if league == "mlb" and rbi not in (None, "") else 0
         normalized = {
             "team": team,
             "scorer": athlete,
             "player": athlete,
             "type": scoring_type[:18],
+            "event_type": event_type[:18],
             "text": text[:48],
         }
         if league == "mlb" and play.get("scoreValue") not in (None, ""):
             normalized["score_value"] = play.get("scoreValue")
+            rbi_value = max(rbi_value, _mlb_number(play.get("scoreValue")))
+        if league == "mlb":
+            if rbi_value or re.search(r"\b(single|double)\w*\b.*\bscored\b", text, re.IGNORECASE):
+                normalized["rbi"] = rbi_value or 1
+            normalized["walk_off"] = bool(
+                play.get("walk_off")
+                or play.get("walkOff")
+                or re.search(r"\bwalk[- ]off\b", text, re.IGNORECASE)
+            )
         scoring_plays.append(normalized)
     return {"scoring_plays": scoring_plays} if scoring_plays else {}
 
@@ -2066,12 +2116,97 @@ def _mlb_statsapi_summary(payload: Any, event_id: str) -> dict[str, Any]:
                 "text": pitch_type.get("description") or pitch_type.get("shortDescription"),
             },
         })
+    game_teams = _mapping(_mapping(source.get("gameData")).get("teams"))
+    away_abbr = str(_mapping(game_teams.get("away")).get("abbreviation") or "").strip().upper()
+    home_abbr = str(_mapping(game_teams.get("home")).get("abbreviation") or "").strip().upper()
+    scoring_plays = _statsapi_scoring_plays(
+        _sequence(plays_data.get("allPlays")),
+        away_abbr=away_abbr,
+        home_abbr=home_abbr,
+    )
     return {
         "id": event_id,
         "situation": situation,
         "plays": plays,
+        "scoringPlays": scoring_plays,
         "boxscore": _statsapi_boxscore(_mapping(live.get("boxscore"))),
     }
+
+
+def _statsapi_scoring_plays(
+    plays: Sequence[Any],
+    *,
+    away_abbr: str,
+    home_abbr: str,
+) -> list[dict[str, Any]]:
+    """Convert StatsAPI scoring at-bats into the shared alert fact shape."""
+
+    previous_away = 0
+    previous_home = 0
+    result: list[dict[str, Any]] = []
+    for raw_play in plays:
+        play = _mapping(raw_play)
+        about = _mapping(play.get("about"))
+        outcome = _mapping(play.get("result"))
+        away_score = _optional_mlb_number(outcome.get("awayScore"))
+        home_score = _optional_mlb_number(outcome.get("homeScore"))
+        delta = 0
+        if away_score is not None:
+            delta = max(delta, away_score - previous_away)
+        if home_score is not None:
+            delta = max(delta, home_score - previous_home)
+        rbi = _optional_mlb_number(outcome.get("rbi")) or 0
+        is_scoring = bool(about.get("isScoringPlay") or delta > 0 or rbi > 0)
+        if is_scoring:
+            half = str(about.get("halfInning") or "").strip().lower()
+            team = home_abbr if half == "bottom" else away_abbr
+            batter = _mapping(_mapping(play.get("matchup")).get("batter"))
+            batter_name = str(batter.get("fullName") or "").strip()
+            event_type = str(
+                outcome.get("event") or outcome.get("eventType") or ""
+            ).strip()
+            walk_off = bool(
+                about.get("isWalkOff")
+                or outcome.get("isWalkOff")
+                or re.search(r"\bwalk[- ]off\b", str(outcome.get("description") or ""), re.IGNORECASE)
+                or (
+                    half == "bottom"
+                    and _mlb_number(about.get("inning")) >= 9
+                    and home_score is not None
+                    and home_score > away_score
+                    and previous_home <= previous_away
+                )
+            )
+            result.append({
+                "team": team,
+                "scorer": batter_name,
+                "player": batter_name,
+                "athlete": {"displayName": batter_name},
+                "type": event_type[:18],
+                "event_type": str(outcome.get("eventType") or event_type)[:18],
+                "text": str(outcome.get("description") or "")[:48],
+                "rbi": rbi or delta or 1,
+                "score_value": delta or rbi or 1,
+                "walk_off": walk_off,
+                "inning": about.get("inning"),
+                "half_inning": half,
+            })
+        if away_score is not None:
+            previous_away = away_score
+        if home_score is not None:
+            previous_home = home_score
+    return result
+
+
+def _optional_mlb_number(value: Any) -> int | None:
+    """Read an optional StatsAPI score without turning missing values into zero."""
+
+    if value in (None, ""):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _statsapi_player_ref(value: Any) -> dict[str, Any]:

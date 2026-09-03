@@ -9,14 +9,14 @@ from ticker_core.runtime import FrameKind, RuntimeConfig, StripLayout, StripSegm
 pytestmark = pytest.mark.critical
 
 
-def _response(*, mode: str = "sports", presentation: str = "rotation", state: str = "in") -> TickerResponse:
+def _response(*, mode: str = "sports", presentation: str = "rotation", state: str = "in", alerts: tuple[dict, ...] = ()) -> TickerResponse:
     return TickerResponse.from_payload(
         {
             "api_version": "v2",
             "snapshot": {"ticker_id": "ticker-1", "revision": 1, "observed_at": "2026-08-11T00:00:00+00:00", "stale": False},
             "settings": {"mode": mode, "sports_presentation": presentation, "pinned_content_id": "game", "brightness": 75, "scroll_speed": 0.04, "inverted": True},
             "content": {"sports": [{"id": "game", "family": "sports", "kind": "scoreboard", "is_shown": True, "data": {"sport": "nfl", "state": state}}]},
-            "events": {"alerts": [], "news": []}, "health": {"provider": "refresh", "healthy": True, "error": None},
+            "events": {"alerts": [{"event_id": alert["id"], "kind": "score", "payload": alert} for alert in alerts], "news": []}, "health": {"provider": "refresh", "healthy": True, "error": None},
             "meta": {"pairing": {"paired": True, "code": None}},
         }
     )
@@ -116,3 +116,34 @@ def test_disconnect_keeps_content_until_the_cache_expiry() -> None:
     assert runtime.next_frame().connection_lost is True
     clock[0] = 5.1
     assert runtime.next_frame().kind is FrameKind.OFFLINE
+
+
+def test_score_alert_stays_on_the_led_for_eight_seconds() -> None:
+    clock = [0.0]
+    runtime = _runtime(clock)
+    runtime.accept_response(_response(alerts=({"id": "alert-1", "headline": "RBI SINGLE"},)))
+
+    assert runtime.next_frame().kind is FrameKind.SCORE_ALERT
+    clock[0] = 7.99
+    assert runtime.next_frame().kind is FrameKind.SCORE_ALERT
+    clock[0] = 8.0
+    assert runtime.next_frame().kind is not FrameKind.SCORE_ALERT
+
+
+def test_score_alerts_queue_in_fifo_order_for_full_residence() -> None:
+    clock = [0.0]
+    runtime = _runtime(clock)
+    runtime.accept_response(_response(alerts=(
+        {"id": "alert-1", "headline": "RBI SINGLE"},
+        {"id": "alert-2", "headline": "2-RUN HOME RUN"},
+    )))
+
+    assert runtime.next_frame().alert["id"] == "alert-1"
+    clock[0] = 7.99
+    assert runtime.next_frame().alert["id"] == "alert-1"
+    clock[0] = 8.0
+    assert runtime.next_frame().alert["id"] == "alert-2"
+    clock[0] = 15.99
+    assert runtime.next_frame().alert["id"] == "alert-2"
+    clock[0] = 16.0
+    assert runtime.next_frame().kind is not FrameKind.SCORE_ALERT

@@ -3,6 +3,7 @@
 from .model import (
     Content,
     ContentClassification,
+    DEFAULT_SCORE_ALERT_DURATION,
     FrameDecision,
     FrameKind,
     ModeRequest,
@@ -19,6 +20,7 @@ __all__ = [
     "Content",
     "CANONICAL_MODES",
     "ContentClassification",
+    "DEFAULT_SCORE_ALERT_DURATION",
     "FrameDecision",
     "FrameKind",
     "FramePacer",

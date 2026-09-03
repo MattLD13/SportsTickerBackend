@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 
 from ticker_core.features.sports.renderer import LogoSource, pixel_text
 from ticker_core.rendering import FontSet
+from ticker_core.runtime.model import DEFAULT_SCORE_ALERT_DURATION
 
 from .news_banner_port import PreparedNewsBannerRenderer
 from .score_alert_port import PreparedScoreAlertRenderer
@@ -20,8 +21,6 @@ PANEL_W = 384
 PANEL_H = 32
 WIPE_IN = 0.40
 WIPE_OUT = 0.35
-HOLD_NORMAL = 3.4
-HOLD_BIG = 5.4
 SLIDE = 0.30
 BANNER_W = 192
 
@@ -50,7 +49,7 @@ def _luma(color: tuple[int, int, int]) -> float:
 
 def score_alert_duration(alert: Mapping[str, Any] | None) -> float:
     """Return the full visible duration for one score alert."""
-    return WIPE_IN + (HOLD_BIG if (alert or {}).get("big") else HOLD_NORMAL) + WIPE_OUT
+    return DEFAULT_SCORE_ALERT_DURATION
 
 
 def news_banner_duration(item: Mapping[str, Any] | None) -> float:
