@@ -134,11 +134,13 @@ def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str
 
     sit = game.get("situation")
     situation = sit if isinstance(sit, Mapping) else {}
+    family = sport_family(sport)
+    if family == "baseball":
+        return _baseball_alert_detail(game, situation, side)
     explicit = str(situation.get("detail") or game.get("detail") or "").strip()
     if explicit:
         return explicit[:24].upper()
 
-    family = sport_family(sport)
     is_home = (side == "home")
 
     if family == "soccer":
@@ -211,6 +213,59 @@ def _extract_alert_detail(sport: str, game: Mapping[str, Any], side: str) -> str
         return last_play[:24].upper()
 
     return ""
+
+
+def _baseball_alert_detail(
+    game: Mapping[str, Any], situation: Mapping[str, Any], side: str
+) -> str:
+    """Build compact MLB player context without repeating the alert headline."""
+
+    play = _latest_scoring_play(game, situation, side)
+    if play is None:
+        return ""
+    player = str(play.get("scorer") or play.get("player") or "").strip().upper()
+    if not player:
+        return ""
+    play_text = " ".join(
+        str(play.get(key) or "") for key in ("type", "event_type", "text")
+    ).lower()
+    if re.search(r"\b(home run|homer|homered|homers)\b", play_text):
+        metrics: list[str] = []
+        distance = _compact_metric(play.get("home_run_distance"))
+        exit_velocity = _compact_metric(play.get("exit_velocity"))
+        launch_angle = _compact_metric(play.get("launch_angle"))
+        if distance:
+            metrics.append(f"{distance}FT")
+        if exit_velocity:
+            metrics.append(f"{exit_velocity}EV")
+        if launch_angle:
+            metrics.append(f"{launch_angle}LA")
+        if metrics:
+            separator = " | " if len(metrics) > 1 else " "
+            return f"{player} {metrics[0]}{separator}{' '.join(metrics[1:])}"[:24]
+    parts = [player]
+    hits = str(play.get("player_h") or "").strip()
+    at_bats = str(play.get("player_ab") or "").strip()
+    average = str(play.get("player_avg") or "").strip()
+    if hits or at_bats:
+        parts.append(f"{hits or '-'}/{at_bats or '-'}")
+    if average:
+        parts.append(average[1:] if average.startswith("0.") else average)
+    speed = str(play.get("pitch_speed") or situation.get("last_pitch_speed") or "").strip()
+    pitch = str(play.get("pitch_type") or situation.get("last_pitch_type") or "").strip()
+    if speed or pitch:
+        parts.extend(("|", speed, pitch))
+    return " ".join(part for part in parts if part).upper()[:24]
+
+
+def _compact_metric(value: object) -> str:
+    """Round one Statcast metric for the narrow LED detail line."""
+
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+    return str(int(round(number))) if number.is_integer() or abs(number) >= 10 else f"{number:.1f}".rstrip("0").rstrip(".")
 
 
 def _latest_scoring_play(

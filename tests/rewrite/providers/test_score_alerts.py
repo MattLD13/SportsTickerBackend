@@ -48,7 +48,51 @@ def test_score_alert_enrichment_details() -> None:
     }
     tracker.ingest([game_mlb_p2])
     mlb_alert = next(a for a in tracker.recent() if a["sport"] == "mlb")
-    assert mlb_alert["detail"] == "JUDGE HOME RUN"
+    assert mlb_alert["detail"] == "JUDGE"
+
+
+def test_mlb_score_alert_detail_shows_player_stats_and_last_pitch() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    baseline = {
+        "kind": "scoreboard", "id": "mlb-detail", "sport": "mlb", "state": "in",
+        "home_abbr": "PIT", "away_abbr": "SF", "home_score": 4, "away_score": 0,
+    }
+    tracker.ingest([baseline])
+    tracker.ingest([{
+        **baseline,
+        "away_score": 1,
+        "situation": {
+            "scoring_plays": [{
+                "team": "SF", "scorer": "Lee", "type": "Double",
+                "player_h": "2", "player_ab": "4", "player_avg": ".298",
+            }],
+            "last_pitch_speed": "96",
+            "last_pitch_type": "Slider",
+        },
+    }])
+
+    assert tracker.recent()[0]["detail"] == "LEE 2/4 .298 | 96 SLIDER"
+
+
+def test_mlb_home_run_detail_shows_statcast_metrics() -> None:
+    tracker = ScoreAlertTracker(clock=lambda: 100.0)
+    baseline = {
+        "kind": "scoreboard", "id": "mlb-home-run-detail", "sport": "mlb", "state": "in",
+        "home_abbr": "HOU", "away_abbr": "CWS", "home_score": 0, "away_score": 0,
+    }
+    tracker.ingest([baseline])
+    tracker.ingest([{
+        **baseline,
+        "home_score": 2,
+        "situation": {"scoring_plays": [{
+            "team": "HOU", "scorer": "Altuve", "type": "Home Run",
+            "home_run_distance": 353, "exit_velocity": 93.9, "launch_angle": 37,
+        }]},
+    }])
+
+    alert = tracker.recent()[0]
+    assert alert["headline"] == "2-RUN HOME RUN"
+    assert alert["detail"] == "ALTUVE 353FT | 94EV 37LA"
 
 
 def test_mlb_score_alert_does_not_infer_home_run_from_runs_scored() -> None:

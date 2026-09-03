@@ -1359,12 +1359,14 @@ def test_espn_mlb_scoring_details_use_summary_play_type_and_run_count() -> None:
         "team": "NYY",
         "scorer": "WELLS",
         "player": "WELLS",
+        "player_id": "123",
         "type": "Single",
         "event_type": "Single",
         "text": "Wells singled to left, two runs scored.",
         "score_value": 2,
         "rbi": 2,
         "walk_off": False,
+        "player_ab": "1",
     }]
 
 
@@ -1598,6 +1600,20 @@ def test_espn_mlb_statsapi_feed_supplies_live_player_stats() -> None:
                             "awayScore": 1,
                             "homeScore": 0,
                         },
+                        "playEvents": [{
+                            "details": {"type": {"description": "Four-Seam Fastball"}},
+                            "pitchData": {
+                                "startSpeed": 94.8,
+                                "breaks": {"spinRate": 2231},
+                                "extension": 5.64,
+                            },
+                            "hitData": {
+                                "totalDistance": 353,
+                                "launchSpeed": 93.9,
+                                "launchAngle": 37,
+                                "trajectory": "fly_ball",
+                            },
+                        }],
                     },
                 ],
             },
@@ -1625,6 +1641,10 @@ def test_espn_mlb_statsapi_feed_supplies_live_player_stats() -> None:
     assert summary["scoringPlays"][0]["team"] == "NYY"
     assert summary["scoringPlays"][0]["type"] == "Double"
     assert summary["scoringPlays"][0]["score_value"] == 1
+    assert summary["scoringPlays"][0]["home_run_distance"] == 353
+    assert summary["scoringPlays"][0]["exit_velocity"] == 93.9
+    assert summary["scoringPlays"][0]["launch_angle"] == 37
+    assert summary["scoringPlays"][0]["pitch_speed"] == 94.8
 
 
 def test_espn_mlb_scoring_details_preserve_rbi_type_from_live_play() -> None:

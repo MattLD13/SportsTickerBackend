@@ -1902,6 +1902,16 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
         ).strip()
         rbi = play.get("rbi")
         rbi_value = _mlb_number(rbi) if league == "mlb" and rbi not in (None, "") else 0
+        scorer_id = str(play.get("player_id") or "").strip() or _mlb_person_id(play)
+        if league == "mlb" and not scorer_id:
+            scorer_id = next(
+                (
+                    _mlb_person_id(_mapping(_mapping(participant).get("athlete")))
+                    for participant in _sequence(play.get("participants"))
+                    if str(_mapping(participant).get("type") or "").strip().lower() == "batter"
+                ),
+                "",
+            )
         normalized = {
             "team": team,
             "scorer": athlete,
@@ -1910,10 +1920,19 @@ def _event_scoring_details(payload: Any, item: Mapping[str, Any]) -> dict[str, A
             "event_type": event_type[:18],
             "text": text[:48],
         }
-        if league == "mlb" and play.get("scoreValue") not in (None, ""):
-            normalized["score_value"] = play.get("scoreValue")
-            rbi_value = max(rbi_value, _mlb_number(play.get("scoreValue")))
+        raw_score_value = play.get("scoreValue", play.get("score_value"))
+        if league == "mlb" and raw_score_value not in (None, ""):
+            normalized["score_value"] = raw_score_value
+            rbi_value = max(rbi_value, _mlb_number(raw_score_value))
         if league == "mlb":
+            normalized.update(_mlb_play_metrics(play))
+            if scorer_id:
+                normalized["player_id"] = scorer_id
+                batter_stats = _mlb_players(_mapping(summary.get("boxscore"))).get(scorer_id, {}).get("batting", {})
+                for source_key, target_key in (("hits", "player_h"), ("atBats", "player_ab"), ("avg", "player_avg")):
+                    value = batter_stats.get(source_key)
+                    if value not in (None, ""):
+                        normalized[target_key] = value
             if rbi_value or re.search(r"\b(single|double)\w*\b.*\bscored\b", text, re.IGNORECASE):
                 normalized["rbi"] = rbi_value or 1
             normalized["walk_off"] = bool(
@@ -2161,6 +2180,7 @@ def _statsapi_scoring_plays(
             half = str(about.get("halfInning") or "").strip().lower()
             team = home_abbr if half == "bottom" else away_abbr
             batter = _mapping(_mapping(play.get("matchup")).get("batter"))
+            batter_id = str(batter.get("id") or "").strip()
             batter_name = str(batter.get("fullName") or "").strip()
             event_type = str(
                 outcome.get("event") or outcome.get("eventType") or ""
@@ -2179,9 +2199,10 @@ def _statsapi_scoring_plays(
             )
             result.append({
                 "team": team,
+                "player_id": batter_id,
                 "scorer": batter_name,
                 "player": batter_name,
-                "athlete": {"displayName": batter_name},
+                "athlete": {"id": batter_id, "displayName": batter_name},
                 "type": event_type[:18],
                 "event_type": str(outcome.get("eventType") or event_type)[:18],
                 "text": str(outcome.get("description") or "")[:48],
@@ -2191,11 +2212,49 @@ def _statsapi_scoring_plays(
                 "inning": about.get("inning"),
                 "half_inning": half,
             })
+            result[-1].update(_mlb_play_metrics(play))
         if away_score is not None:
             previous_away = away_score
         if home_score is not None:
             previous_home = home_score
     return result
+
+
+def _mlb_play_metrics(play: Mapping[str, Any]) -> dict[str, Any]:
+    """Read Statcast hit and pitch metrics from one MLB play or pitch event."""
+
+    direct = {
+        key: play.get(key)
+        for key in (
+            "home_run_distance",
+            "exit_velocity",
+            "launch_angle",
+            "pitch_speed",
+            "pitch_type",
+            "spin_rate",
+            "release_extension",
+        )
+        if play.get(key) not in (None, "")
+    }
+    for event in reversed(_sequence(play.get("playEvents"))):
+        source = _mapping(event)
+        hit = _mapping(source.get("hitData"))
+        pitch = _mapping(source.get("pitchData"))
+        details = _mapping(source.get("details"))
+        pitch_type = _mapping(details.get("type"))
+        values = {
+            "home_run_distance": hit.get("totalDistance"),
+            "exit_velocity": hit.get("launchSpeed"),
+            "launch_angle": hit.get("launchAngle"),
+            "pitch_speed": pitch.get("startSpeed"),
+            "pitch_type": pitch_type.get("description") or pitch_type.get("code"),
+            "spin_rate": _mapping(pitch.get("breaks")).get("spinRate"),
+            "release_extension": pitch.get("extension"),
+        }
+        for key, value in values.items():
+            if key not in direct and value not in (None, ""):
+                direct[key] = value
+    return direct
 
 
 def _optional_mlb_number(value: Any) -> int | None:
