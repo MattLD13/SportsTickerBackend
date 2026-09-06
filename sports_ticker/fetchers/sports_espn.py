@@ -283,6 +283,7 @@ class SportsEspnMixin:
                         sit.get('lastPlay'),
                         home_abbr=h_ab, away_abbr=a_ab,
                         home_id=h['team'].get('id'), away_id=a['team'].get('id'),
+                        plays=data.get('plays'),
                     ),
 
                     'situation': {
@@ -348,11 +349,16 @@ class SportsEspnMixin:
                             or int(game_obj['situation'].get('pitcher_pitches', 0) or 0) == 0
                             or int(game_obj['situation'].get('last_pitch_speed', 0) or 0) == 0
                             or not game_obj['situation'].get('last_pitch_type')
+                            or not game_obj['last_play'].get('text')
+                            or game_obj['last_play'].get('score_value') in (None, 0)
                         )
                         if need_enrich:
                             _enriched = self._mlb_enrich_live_from_summary(gid, game_obj['situation'])
                             if _enriched:
+                                _enriched_last_play = _enriched.pop('last_play', None)
                                 game_obj['situation'].update(_enriched)
+                                if _enriched_last_play:
+                                    game_obj['last_play'] = _enriched_last_play
 
                     # Always include challenge fields for MLB (live/final/pinned UI consistency).
                     self._mlb_apply_challenge_fields(
