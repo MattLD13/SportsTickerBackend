@@ -419,6 +419,15 @@ class SportsMlbMixin:
             [sit.get('batterStats'), sit, batter_obj],
             {'atBats', 'ab'}
         )
+        # The scoreboard situation uses compact summaries such as "1-4, HR,
+        # RBI, R" even when it omits batterStats entirely. This is a reliable
+        # fallback for the live at-bat line and prevents the renderer from
+        # depending on the summary endpoint for H/AB.
+        batter_summary = str(batter_obj.get('summary') or '').strip() if isinstance(batter_obj, dict) else ''
+        h_ab = re.match(r'^\s*(\d+)\s*[-/]\s*(\d+)\b', batter_summary)
+        if h_ab:
+            batter_h = batter_h or h_ab.group(1)
+            batter_ab = batter_ab or h_ab.group(2)
         pitcher_pitches = self._mlb_find_stat_value(
             [sit.get('pitcherStats'), sit, pitcher_obj],
             {'pitchCount', 'numberOfPitches', 'pitches', 'totalPitches'}

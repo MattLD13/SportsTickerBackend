@@ -193,3 +193,18 @@ def test_mlb_id_only_last_play_resolves_the_scoring_play():
     assert normalized['text'] == play['text']
     assert normalized['athlete'] == 'Sanoja'
     assert normalized['score_value'] == 2
+
+
+def test_mlb_scoreboard_situation_summary_supplies_hitter_line():
+    from sports_ticker.fetchers.sports_mlb import SportsMlbMixin
+
+    fetcher = object.__new__(SportsMlbMixin)
+    situation = {
+        'batter': {'playerId': 36018, 'summary': '1-4, HR, RBI, R'},
+        'pitcher': {'playerId': 41432, 'summary': '0.2 IP, 0 ER, 0 H, 2 K, 0 BB'},
+        'lastPlay': {'id': 'next', 'scoreValue': 0},
+    }
+    stats = fetcher._mlb_extract_situation_stats(situation)
+
+    assert stats['batter_h'] == '1'
+    assert stats['batter_ab'] == '4'

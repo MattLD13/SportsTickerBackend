@@ -165,6 +165,8 @@ class SportsEspnMixin:
                 if gst == 'pre' and any(x in s_disp for x in ['1st', '2nd', '3rd', 'OT', 'Half', 'Qtr', 'Inning']):
                     if "FINAL" not in s_disp.upper():
                         gst = 'in'
+                if league_key == 'mlb' and gst == 'pre' and re.search(r'\b(?:top|bot|mid|end)\s+\d+', s_disp, re.I):
+                    gst = 'in'
 
                 is_suspended = False
                 susp_keywords = ["Suspended", "Postponed", "Canceled", "Delayed", "Delay", "PPD"]
@@ -339,20 +341,13 @@ class SportsEspnMixin:
                         'last_pitch_type_full': _last_pitch_type_full,
                     })
 
-                    # ESPN scoreboard often omits MLB batter/pitcher stat fields.
-                    # Enrich from per-game summary for live/half games when these are blank.
+                    # ESPN scoreboard stats are a partial, changing view. The
+                    # summary endpoint is the authoritative MLB source, and is
+                    # internally cached, so refresh it for every live MLB game.
+                    # This avoids silently serving a stale mix of scoreboard
+                    # and summary fields when ESPN changes one payload shape.
                     if gst in ('in', 'half'):
-                        need_enrich = (
-                            not game_obj['situation'].get('batter_avg')
-                            or not game_obj['situation'].get('batter_h')
-                            or not game_obj['situation'].get('batter_ab')
-                            or int(game_obj['situation'].get('pitcher_pitches', 0) or 0) == 0
-                            or int(game_obj['situation'].get('last_pitch_speed', 0) or 0) == 0
-                            or not game_obj['situation'].get('last_pitch_type')
-                            or not game_obj['last_play'].get('text')
-                            or game_obj['last_play'].get('score_value') in (None, 0)
-                        )
-                        if need_enrich:
+                        if league_key == 'mlb':
                             _enriched = self._mlb_enrich_live_from_summary(gid, game_obj['situation'])
                             if _enriched:
                                 _enriched_last_play = _enriched.pop('last_play', None)
