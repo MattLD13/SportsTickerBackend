@@ -1,11 +1,8 @@
 import math
 import time
-from PIL import Image, ImageDraw, ImageStat
-
-from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
-
-PANEL_W = 384
-PANEL_H = 32
+from PIL import Image, ImageDraw
+from ..config import PANEL_W, PANEL_H
+from ..fonts import draw_tiny_text, draw_hybrid_text, normalize_special_chars
 
 # Width of the darkened band at each edge of a full-bleed card. Anything drawn
 # underneath it has to reach the edge without introducing brightness of its own,
@@ -1101,108 +1098,3 @@ class SportsMixin:
         px_r = W - px_l
         d.line([(px_l, H * 0.33), (px_l, H * 0.67)], fill=(220, 220, 220, 165), width=1)
         d.line([(px_r, H * 0.33), (px_r, H * 0.67)], fill=(220, 220, 220, 165), width=1)
-
-
-class PreparedSportsFullRenderer(SportsMixin):
-    """Provide the explicit dependencies for full sports rendering."""
-
-    def __init__(self, fonts, logos):
-        self.big_font = fonts.big
-        self.clock_giant = fonts.clock
-        self.tiny = fonts.tiny
-        self.tiny_small = fonts.tiny_small
-        self.micro = fonts.micro
-        self.font = fonts.normal
-        self._logos = logos
-
-    def get_logo(self, url, size):
-        """Return a prepared logo and never fetch from the renderer."""
-        return self._logos.get(str(url) if url else None, size)
-
-    def draw_outlined_text(self, draw, x, y, text, font, fill, outline, anchor="mm"):
-        """Draw a deterministic one-pixel text outline."""
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                if dx or dy:
-                    draw.text((x + dx, y + dy), text, font=font, fill=outline, anchor=anchor)
-        draw.text((x, y), text, font=font, fill=fill, anchor=anchor)
-
-    def get_team_color(self, game, side="home"):
-        """Return the configured team colour or a logo average."""
-        value = game.get(f"{side}_color")
-        if value:
-            try:
-                value = str(value).lstrip("#")
-                return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
-            except (TypeError, ValueError):
-                pass
-        logo = self.get_logo(game.get(f"{side}_logo"), (24, 24))
-        if logo:
-            return tuple(int(value) for value in ImageStat.Stat(logo).mean[:3])
-        return (60, 60, 60)
-
-    @staticmethod
-    def _parse_hex_color(value):
-        """Parse one RGB hex value."""
-        try:
-            value = str(value or "").strip().lstrip("#")
-            if len(value) == 6:
-                return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
-        except ValueError:
-            pass
-        return None
-
-    @staticmethod
-    def _is_near_black(color, lum_threshold=24, max_threshold=42, chroma_threshold=16):
-        """Identify colours that disappear on the panel."""
-        if not color or len(color) < 3:
-            return True
-        red, green, blue = (int(value) for value in color[:3])
-        luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue
-        return (max(red, green, blue) <= max_threshold and luma <= lum_threshold) or (max(red, green, blue) <= max_threshold + 6 and luma <= lum_threshold + 4 and max(red, green, blue) - min(red, green, blue) <= chroma_threshold)
-
-    @staticmethod
-    def _is_near_white(color, lum_threshold=236, min_channel_threshold=226):
-        """Identify colours that remove contrast."""
-        if not color or len(color) < 3:
-            return False
-        red, green, blue = (int(value) for value in color[:3])
-        return 0.2126 * red + 0.7152 * green + 0.0722 * blue >= lum_threshold or min(red, green, blue) >= min_channel_threshold
-
-    def _resolve_challenge_strip_color(self, game, side, fallback):
-        """Resolve one readable challenge strip colour."""
-        primary = self._parse_hex_color(game.get(f"{side}_color"))
-        if primary and not self._is_near_black(primary):
-            return primary
-        alternate = self._parse_hex_color(game.get(f"{side}_alt_color"))
-        if alternate and not self._is_near_black(alternate) and not self._is_near_white(alternate):
-            return alternate
-        return alternate or primary or fallback
-
-    @staticmethod
-    def shorten_status(status, sport=""):
-        """Return the controller status abbreviation."""
-        if not status:
-            return ""
-        if any(word in str(status).lower() for word in ("delay", "delayed", "suspended", "postponed", "canceled", "ppd")):
-            return str(status).title()
-        text = str(status).upper().replace(" - ", " ").replace("/OT", " OT").replace("HALFTIME", "HALF")
-        for old, new in (("TOP ", "^"), ("BOTTOM ", "V"), ("BOT ", "V")):
-            text = text.replace(old, new)
-        if text.startswith("END "):
-            return text
-        for number in ("10", "11", "12", "1", "2", "3", "4", "5", "6", "7", "8", "9"):
-            for suffix in ("TH", "ST", "ND", "RD"):
-                text = text.replace(f"{number}{suffix}", number)
-        text = text.replace("1ST", "P1").replace("2ND", "P2").replace("3RD", "P3").replace("4TH", "P4").replace("FULL TIME", "FT")
-        for period in ("P1", "P2", "P3", "P4", "Q1", "Q2", "Q3", "Q4", "OT"):
-            text = text.replace(f"{period} ", f"{period}~")
-        return text
-
-    @staticmethod
-    def draw_bat(draw, cx, by):
-        """Draw the compact baseball bat marker."""
-        draw.rectangle([cx - 2, by, cx + 1, by + 7], fill=(220, 180, 120))
-        draw.rectangle([cx - 1, by + 8, cx, by + 9], fill=(220, 180, 120))
-        draw.rectangle([cx - 1, by + 10, cx, by + 15], fill=(180, 135, 65))
-        draw.rectangle([cx - 2, by + 16, cx + 1, by + 17], fill=(150, 105, 40))
