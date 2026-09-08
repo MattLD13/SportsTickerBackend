@@ -27,13 +27,15 @@ class WeatherMixin:
         cx, cy, radius = x + 7, y + 7, 10
         lit = (184, 184, 184)
         highlight = (232, 232, 232)
-        crater = (104, 104, 104)
-        crater_light = (145, 145, 145)
+        crater_dark = (88, 88, 88)
+        crater = (112, 112, 112)
+        crater_light = (150, 150, 150)
 
         crater_patches = (
-            (-5, -4, 2), (-2, -5, 1), (2, -4, 2), (5, -2, 1),
-            (-5, 0, 1), (-2, 1, 2), (2, 1, 1), (4, 4, 2),
-            (-3, 5, 1), (0, 4, 1),
+            (-6, -5, 2), (-2, -6, 1), (2, -6, 2), (6, -4, 1),
+            (-7, -1, 1), (-4, -1, 2), (-1, -2, 1), (3, -2, 2),
+            (7, 1, 1), (-6, 3, 2), (-2, 4, 1), (2, 3, 2),
+            (6, 5, 2), (-2, 7, 1), (1, 6, 1),
         )
 
         for py in range(cy - radius, cy + radius + 1):
@@ -50,7 +52,12 @@ class WeatherMixin:
                 for crater_x, crater_y, crater_r in crater_patches:
                     distance = (px - cx - crater_x) ** 2 + (py - cy - crater_y) ** 2
                     if distance <= crater_r * crater_r:
-                        color = crater if distance % 2 else crater_light
+                        if distance == crater_r * crater_r:
+                            color = crater_dark
+                        elif distance <= max(1, (crater_r - 1) ** 2):
+                            color = crater_light if distance % 2 else crater
+                        else:
+                            color = crater
                         break
                 if color == lit and (px + 2 * py) % 13 == 0:
                     color = highlight
