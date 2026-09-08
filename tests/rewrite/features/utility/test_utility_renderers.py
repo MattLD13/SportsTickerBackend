@@ -43,14 +43,7 @@ def test_clear_weather_uses_moon_at_night() -> None:
 
     assert (255, 200, 0, 255) in day_pixels
     assert (255, 200, 0, 255) not in night_pixels
-    assert (202, 216, 240, 255) in night_pixels
-
-    renderer = PreparedWeatherRenderer(fonts, context.now)
-    new_moon = 947182494.0
-    half_cycle = 29.530588853 * 86400.0 / 2.0
-    assert renderer.moon_phase(new_moon) == 0.0
-    assert abs(renderer.moon_phase(new_moon + half_cycle) - 0.5) < 1e-12
-
+    assert (184, 184, 184, 255) in night_pixels
 
 def test_media_and_flight_keep_explicit_animation_state() -> None:
     """Render representative media, golf, and flight panels."""

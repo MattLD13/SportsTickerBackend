@@ -22,24 +22,14 @@ TREND_STYLES = {
 
 class WeatherMixin:
 
-    @staticmethod
-    def moon_phase(timestamp):
-        """Return the lunar age as a fraction of one synodic month."""
-        synodic_month = 29.530588853
-        known_new_moon = 947182494.0
-        age_days = (float(timestamp) - known_new_moon) / 86400.0
-        return (age_days / synodic_month) % 1.0
-
-    def draw_moon_pixel_art(self, d, x, y, phase, t=0.0):
-        """Draw a large stepped pixel moon with phase shading and crater detail."""
+    def draw_moon_pixel_art(self, d, x, y):
+        """Draw a large stepped grayscale pixel moon with crater detail."""
         cx, cy, radius = x + 8, y + 7, 8
-        shadow = (4, 9, 27)
-        halo = (55, 78, 145)
-        lit = (202, 216, 240)
-        highlight = (235, 239, 255)
-        crater = (112, 132, 168)
-        crater_light = (178, 193, 219)
-        phase = float(phase) % 1.0
+        halo = (112, 112, 112)
+        lit = (184, 184, 184)
+        highlight = (232, 232, 232)
+        crater = (104, 104, 104)
+        crater_light = (145, 145, 145)
 
         # Small crossed sparkles echo the reference pixel art without turning
         # the moon into another sun icon.
@@ -63,21 +53,14 @@ class WeatherMixin:
                 ny = (py - cy) / float(radius)
                 if nx * nx + ny * ny > 1.0:
                     continue
-                if phase < 0.03 or phase > 0.97:
-                    is_lit = phase > 0.97
-                elif phase <= 0.5:
-                    is_lit = nx >= math.cos(math.tau * phase)
-                else:
-                    is_lit = nx <= math.cos(math.tau * phase)
-                color = lit if is_lit else shadow
-                if is_lit:
-                    for crater_x, crater_y, crater_r in crater_patches:
-                        distance = (px - cx - crater_x) ** 2 + (py - cy - crater_y) ** 2
-                        if distance <= crater_r * crater_r:
-                            color = crater if distance % 2 else crater_light
-                            break
-                    if color == lit and (px + 2 * py) % 13 == 0:
-                        color = highlight
+                color = lit
+                for crater_x, crater_y, crater_r in crater_patches:
+                    distance = (px - cx - crater_x) ** 2 + (py - cy - crater_y) ** 2
+                    if distance <= crater_r * crater_r:
+                        color = crater if distance % 2 else crater_light
+                        break
+                if color == lit and (px + 2 * py) % 13 == 0:
+                    color = highlight
                 d.point((px, py), fill=color)
 
     def draw_weather_pixel_art(self, d, icon_name, x, y, t=None):
@@ -152,7 +135,7 @@ class WeatherMixin:
             d.ellipse((x+4, y+5, x+15, y+13), fill=(165, 170, 185))
             d.ellipse((x+3, y+3, x+13, y+11), fill=(215, 218, 230))
         elif 'moon' in icon:
-            self.draw_moon_pixel_art(d, x, y, self.moon_phase(t), t=t)
+            self.draw_moon_pixel_art(d, x, y)
         else:
             d.ellipse((x+5, y+1, x+12, y+8), fill=SUN_Y)
             d.point((x+11, y+1), fill=SUN_Y)
