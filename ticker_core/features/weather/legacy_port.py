@@ -41,18 +41,32 @@ class PreparedWeatherRenderer:
         age_days = (float(timestamp) - known_new_moon) / 86400.0
         return (age_days / synodic_month) % 1.0
 
-    def draw_moon_pixel_art(self, d, x, y, phase):
-        """Draw a small pixel moon with a calculated phase and subtle craters."""
-        cx, cy, radius = x + 8, y + 7, 6
-        shadow = (2, 7, 24)
+    def draw_moon_pixel_art(self, d, x, y, phase, t=0.0):
+        """Draw a large stepped pixel moon with phase shading and crater detail."""
+        cx, cy, radius = x + 8, y + 7, 8
+        shadow = (4, 9, 27)
         halo = (55, 78, 145)
-        lit = (226, 235, 255)
-        highlight = (246, 242, 212)
-        crater = (164, 183, 222)
+        lit = (202, 216, 240)
+        highlight = (235, 239, 255)
+        crater = (112, 132, 168)
+        crater_light = (178, 193, 219)
         phase = float(phase) % 1.0
 
-        for hx, hy in ((cx - 7, cy), (cx + 7, cy), (cx, cy - 7), (cx, cy + 7)):
-            d.point((hx, hy), fill=halo)
+        # Small crossed sparkles echo the reference pixel art without turning
+        # the moon into another sun icon.
+        for sx, sy in ((cx - 9, cy - 5), (cx + 9, cy - 4),
+                       (cx - 8, cy + 7), (cx + 9, cy + 6)):
+            d.point((sx, sy), fill=halo)
+            d.point((sx - 1, sy - 1), fill=halo)
+            d.point((sx + 1, sy + 1), fill=halo)
+            d.point((sx - 1, sy + 1), fill=halo)
+            d.point((sx + 1, sy - 1), fill=halo)
+
+        crater_patches = (
+            (-5, -4, 2), (-2, -5, 1), (2, -4, 2), (5, -2, 1),
+            (-5, 0, 1), (-2, 1, 2), (2, 1, 1), (4, 4, 2),
+            (-3, 5, 1), (0, 4, 1),
+        )
 
         for py in range(cy - radius, cy + radius + 1):
             for px in range(cx - radius, cx + radius + 1):
@@ -68,10 +82,12 @@ class PreparedWeatherRenderer:
                     is_lit = nx <= math.cos(math.tau * phase)
                 color = lit if is_lit else shadow
                 if is_lit:
-                    if ((px - cx + 3) ** 2 + (py - cy + 2) ** 2 <= 3
-                            or (px - cx - 2) ** 2 + (py - cy - 2) ** 2 <= 2):
-                        color = crater
-                    elif (px + 2 * py) % 11 == 0:
+                    for crater_x, crater_y, crater_r in crater_patches:
+                        distance = (px - cx - crater_x) ** 2 + (py - cy - crater_y) ** 2
+                        if distance <= crater_r * crater_r:
+                            color = crater if distance % 2 else crater_light
+                            break
+                    if color == lit and (px + 2 * py) % 13 == 0:
                         color = highlight
                 d.point((px, py), fill=color)
 
@@ -147,7 +163,7 @@ class PreparedWeatherRenderer:
             d.ellipse((x+4, y+5, x+15, y+13), fill=(165, 170, 185))
             d.ellipse((x+3, y+3, x+13, y+11), fill=(215, 218, 230))
         elif 'moon' in icon:
-            self.draw_moon_pixel_art(d, x, y, self.moon_phase(t))
+            self.draw_moon_pixel_art(d, x, y, self.moon_phase(t), t=t)
         else:
             d.ellipse((x+5, y+1, x+12, y+8), fill=SUN_Y)
             d.point((x+11, y+1), fill=SUN_Y)

@@ -43,7 +43,7 @@ def test_clear_weather_uses_moon_at_night() -> None:
 
     assert (255, 200, 0, 255) in day_pixels
     assert (255, 200, 0, 255) not in night_pixels
-    assert (226, 235, 255, 255) in night_pixels
+    assert (202, 216, 240, 255) in night_pixels
 
     renderer = PreparedWeatherRenderer(fonts, context.now)
     new_moon = 947182494.0
