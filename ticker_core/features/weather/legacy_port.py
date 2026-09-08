@@ -36,21 +36,10 @@ class PreparedWeatherRenderer:
     def draw_moon_pixel_art(self, d, x, y):
         """Draw a large stepped grayscale pixel moon with crater detail."""
         cx, cy, radius = x + 8, y + 7, 8
-        halo = (112, 112, 112)
         lit = (184, 184, 184)
         highlight = (232, 232, 232)
         crater = (104, 104, 104)
         crater_light = (145, 145, 145)
-
-        # Small crossed sparkles echo the reference pixel art without turning
-        # the moon into another sun icon.
-        for sx, sy in ((cx - 9, cy - 5), (cx + 9, cy - 4),
-                       (cx - 8, cy + 7), (cx + 9, cy + 6)):
-            d.point((sx, sy), fill=halo)
-            d.point((sx - 1, sy - 1), fill=halo)
-            d.point((sx + 1, sy + 1), fill=halo)
-            d.point((sx - 1, sy + 1), fill=halo)
-            d.point((sx + 1, sy - 1), fill=halo)
 
         crater_patches = (
             (-5, -4, 2), (-2, -5, 1), (2, -4, 2), (5, -2, 1),
