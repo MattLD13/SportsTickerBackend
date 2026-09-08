@@ -274,7 +274,7 @@ class PreparedWeatherRenderer:
             if 'rain'  in ic: return (0, 4, 14)
             return (2, 2, 7)
 
-        def draw_amb(icon, rx, ry, rw, rh, t, dim=1.0, density=1.0, wind=0.0):
+        def draw_amb(icon, rx, ry, rw, rh, t, dim=1.0, density=1.0, wind=0.0, mask_moon=False):
             ic = icon.lower()
             n = max(2, rw // 20)
             if 'sun' in ic and dim > 0.05:
@@ -288,6 +288,8 @@ class PreparedWeatherRenderer:
                     sy = ry + int(_sy[j] * rh / 32)
                     bv = int(max(0, math.sin(t * _sp[j] + _ph[j])) ** 2 * 230 * dim)
                     if bv > 15 and not (74 <= sx <= 121):
+                        if mask_moon and 0 <= sx <= 23 and 5 <= sy <= 31:
+                            continue
                         d.point((sx, sy), fill=(bv, bv, int(bv * 0.88)))
             if 'storm' in ic:
                 fp = t % 6.0
@@ -384,7 +386,8 @@ class PreparedWeatherRenderer:
             # Night only: the twinkle reads as stars against a dark sky, but as
             # speckle against a bright one. Thinned by cloud rather than shining
             # straight through it.
-            draw_amb('sun', 0, 0, left_w, 32, anim_t, dim=1.0 - (cloud or 0.0))
+            draw_amb('sun', 0, 0, left_w, 32, anim_t,
+                     dim=1.0 - (cloud or 0.0), mask_moon=icon_for_render == 'moon')
         d.line((left_w, 0, left_w, 31), fill=DEEP_BLUE)
 
         location_name = normalize_special_chars(str(game.get('away_abbr', 'CITY')).upper()).strip()
