@@ -1,10 +1,9 @@
 import math
+import time
 from datetime import datetime
 from PIL import Image, ImageDraw
-from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
-
-PANEL_W = 384
-PANEL_H = 32
+from ..config import PANEL_W, PANEL_H
+from ..fonts import draw_tiny_text, draw_hybrid_text, normalize_special_chars
 
 
 # Forecast temperature trend. `gain` scales the edge brightness, `step` draws
@@ -21,17 +20,7 @@ TREND_STYLES = {
 }
 
 
-class PreparedWeatherRenderer:
-    """Render the deployed weather layout with explicit render time."""
-
-    def __init__(self, fonts, now: datetime):
-        self.big_font = fonts.big
-        self.tiny = fonts.tiny
-        self._now = now
-
-    def _time(self) -> float:
-        """Return the supplied animation clock."""
-        return self._now.timestamp()
+class WeatherMixin:
 
     @staticmethod
     def moon_phase(timestamp):
@@ -77,7 +66,7 @@ class PreparedWeatherRenderer:
 
     def draw_weather_pixel_art(self, d, icon_name, x, y, t=None):
         if t is None:
-            t = self._time()
+            t = time.time()
         icon = str(icon_name).lower()
         SUN_Y = (255, 200, 0); CLOUD_W = (205, 210, 220); RAIN_B = (60, 130, 255); SNOW_W = (210, 235, 255)
         if 'sun' in icon or 'clear' in icon:
@@ -171,7 +160,7 @@ class PreparedWeatherRenderer:
         stats = sit.get('stats', {}) or {}
         forecast = sit.get('forecast', []) or []
         cur_icon = sit.get('icon', 'cloud')
-        anim_t = self._time()
+        anim_t = time.time()
         DEEP_BLUE = (18, 45, 95)
 
         # Sky conditions. Every field is optional: the backend and the Pi deploy
@@ -188,11 +177,11 @@ class PreparedWeatherRenderer:
             except (TypeError, ValueError, IndexError):
                 return None
 
-        now_h = self._now.hour
+        now_h = datetime.now().hour
         obs_m = _minutes(sit.get('obs_time'))
         # The observation timestamp is local to the weather location, so comparing
         # it against sunrise/sunset avoids reconciling the Pi's timezone.
-        now_m = obs_m if obs_m is not None else now_h * 60 + self._now.minute
+        now_m = obs_m if obs_m is not None else now_h * 60 + datetime.now().minute
         sunrise_m = _minutes(sit.get('sunrise'))
         sunset_m = _minutes(sit.get('sunset'))
 
@@ -558,7 +547,7 @@ class PreparedWeatherRenderer:
             if i == 0:
                 day_str = 'TODAY'
             else:
-                day_str = (self._now + __import__('datetime').timedelta(days=i)).strftime('%a').upper()
+                day_str = time.strftime('%a', time.localtime(time.time() + i * 86400)).upper()
             day_w = len(day_str) * 5
             day_x = cx + max(0, ((col_right - cx + 1) - day_w) // 2)
             lbl_col = (255, 255, 255) if i == 0 else (110, 160, 220)

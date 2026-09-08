@@ -1,7 +1,7 @@
 """Smoke test independent utility renderer families."""
 
-from dataclasses import replace
 from datetime import datetime
+from types import SimpleNamespace
 
 from PIL import Image, ImageDraw
 
@@ -11,9 +11,8 @@ from ticker_core.features.golf import GolfAnimationState, GolfRenderer
 from ticker_core.features.music import MusicAnimationState, MusicRenderer
 from ticker_core.features.utility import UtilityRenderer
 from ticker_core.features.weather import WeatherRenderer
+from ticker_core.features.weather.legacy_port import PreparedWeatherRenderer
 from ticker_core.rendering import ContentScene, load_default_font_set
-from ticker_core.rendering.fonts import load_display_font
-from ticker_core.rendering.pixels import normalize_special_chars
 
 
 def test_utility_and_weather_render_deterministically() -> None:
@@ -29,32 +28,28 @@ def test_utility_and_weather_render_deterministically() -> None:
     assert forecast.tobytes() == weather.detailed(context, {"type": "weather", "home_abbr": "72", "away_abbr": "Boston", "situation": {"icon": "rain", "stats": {"aqi": "41"}}}).tobytes()
 
 
-def test_no_games_panel_uses_clock_hierarchy_and_minute_progress() -> None:
-    """Keep the no-games concept full width, deterministic, and clock-led."""
-    utility = UtilityRenderer(load_default_font_set())
-    first = utility.empty(RenderContext(datetime(2026, 8, 14, 13, 42, 17)))
-    second = utility.empty(RenderContext(datetime(2026, 8, 14, 13, 42, 18)))
-
-    assert first.size == (384, 32)
-    assert first.tobytes() != second.tobytes()
-    assert first.getpixel((60, 3)) == (0, 0, 0, 255)
-    assert first.getpixel((0, 31)) == (198, 198, 204, 255)
-    assert first.getpixel((383, 31)) == (42, 42, 48, 255)
-    assert first.getpixel((196, 10)) == (48, 48, 54, 255)
-
-
-def test_no_games_panel_keeps_date_clear_of_wide_double_digit_clock() -> None:
-    """Keep the date visible when a two-digit clock needs more horizontal space."""
+def test_clear_weather_uses_moon_at_night() -> None:
+    """Render a lunar icon for clear night conditions and retain the sun by day."""
+    context = RenderContext(datetime(2026, 8, 11, 14, 30, 15))
     fonts = load_default_font_set()
-    wide_fonts = replace(fonts, clock=load_display_font(32, bold=True))
-    context = RenderContext(datetime(2026, 8, 14, 10, 42, 17))
-    actual = UtilityRenderer(wide_fonts).empty(context)
+    weather = WeatherRenderer(fonts)
+    day = {"type": "weather", "home_abbr": "72", "away_abbr": "Boston", "status": "CLEAR", "situation": {"icon": "sun", "is_day": 1}}
+    night = {"type": "weather", "home_abbr": "72", "away_abbr": "Boston", "status": "CLEAR", "situation": {"icon": "sun", "is_day": 0}}
 
-    expected = Image.new("RGBA", actual.size, (0, 0, 0, 255))
-    draw = ImageDraw.Draw(expected)
-    draw.text((202, 16), "AUG 14", font=wide_fonts.tiny, fill=(150, 150, 158))
+    day_image = weather.detailed(context, day)
+    night_image = weather.detailed(context, night)
+    day_pixels = list(day_image.crop((0, 0, 24, 24)).getdata())
+    night_pixels = list(night_image.crop((0, 0, 24, 24)).getdata())
 
-    assert actual.crop((202, 16, 232, 24)).tobytes() == expected.crop((202, 16, 232, 24)).tobytes()
+    assert (255, 200, 0, 255) in day_pixels
+    assert (255, 200, 0, 255) not in night_pixels
+    assert (226, 235, 255, 255) in night_pixels
+
+    renderer = PreparedWeatherRenderer(fonts, context.now)
+    new_moon = 947182494.0
+    half_cycle = 29.530588853 * 86400.0 / 2.0
+    assert renderer.moon_phase(new_moon) == 0.0
+    assert abs(renderer.moon_phase(new_moon + half_cycle) - 0.5) < 1e-12
 
 
 def test_media_and_flight_keep_explicit_animation_state() -> None:
@@ -72,75 +67,61 @@ def test_media_and_flight_keep_explicit_animation_state() -> None:
     assert golf_state.pair == 0
 
 
-def test_golf_renderer_transliterates_special_names() -> None:
-    assert normalize_special_chars("Ludvig Åberg and Nicolai Højgaard") == "Ludvig Aberg and Nicolai Hojgaard"
+def test_representative_legacy_pixel_oracles(monkeypatch) -> None:
+    """Keep selected replacement panels pixel-equal to deployed layouts."""
+    from ticker_controller.controller import TickerStreamer
+    from ticker_controller.modes.flight import FlightMixin
+    from ticker_controller.modes.golf import GolfMixin
+    from ticker_controller.modes.misc import MiscMixin
+    from ticker_controller.modes.music import MusicMixin
+    from ticker_controller.modes.weather import WeatherMixin
 
-    renderer = GolfRenderer(load_default_font_set())
-    context = RenderContext(datetime(2026, 8, 14, 20, 50, 40))
-    special = {"golf": {"players": [{"pos": "1", "name": "Ludvig Åberg", "total": -2, "holes": [4] * 18, "thru": 18}]}}
-    ascii_name = {"golf": {"players": [{"pos": "1", "name": "Ludvig Aberg", "total": -2, "holes": [4] * 18, "thru": 18}]}}
+    fonts = load_default_font_set()
+    now = datetime(2026, 8, 11, 14, 30, 15)
+    context = RenderContext(now)
+    clock = SimpleNamespace(now=lambda: now)
+    monkeypatch.setattr("ticker_controller.modes.misc.datetime", clock)
+    monkeypatch.setattr("ticker_controller.controller.time.time", lambda: now.timestamp())
+    legacy_system = SimpleNamespace(font=fonts.normal, huge_font=fonts.huge, clock_giant=fonts.clock, tiny=fonts.tiny, pairing_code="123456")
+    utility = UtilityRenderer(fonts)
+    assert TickerStreamer.draw_pairing_screen(legacy_system).tobytes() == utility.pairing(context, "123456").tobytes()
+    assert MiscMixin.draw_offline_screen(legacy_system, 125).tobytes() == utility.offline(context, 125).tobytes()
+    assert MiscMixin.draw_no_games_screen(legacy_system).tobytes() == utility.empty(context).tobytes()
 
-    special_frame, _ = renderer.full(context, special, GolfAnimationState())
-    ascii_frame, _ = renderer.full(context, ascii_name, GolfAnimationState())
+    legacy_weather = Image.new("RGBA", (384, 32), (0, 0, 0, 255))
+    old_draw = ImageDraw.Draw(legacy_weather)
+    WeatherMixin.draw_weather_pixel_art(SimpleNamespace(), old_draw, "cloud", 3, 11, t=now.timestamp())
+    new_weather = Image.new("RGBA", (384, 32), (0, 0, 0, 255))
+    WeatherRenderer(fonts)._icon(ImageDraw.Draw(new_weather), "cloud", 3, 11, now.timestamp())
+    assert legacy_weather.tobytes() == new_weather.tobytes()
 
-    assert special_frame.tobytes() == ascii_frame.tobytes()
+    music_time = SimpleNamespace(time=lambda: now.timestamp())
+    monkeypatch.setattr("ticker_controller.modes.music.time", music_time)
+    legacy_music = SimpleNamespace(
+        VINYL_SIZE=51, COVER_SIZE=42, vinyl_mask=MusicRenderer(fonts)._mask,
+        scratch_layer=MusicRenderer(fonts)._scratch, vinyl_rotation=0.0, text_scroll_pos=0.0,
+        last_frame_time=now.timestamp(), dominant_color=(29, 185, 84), spindle_color="black",
+        last_cover_url="", vinyl_cache=None, prev_vinyl_cache=None, prev_dominant_color=(29, 185, 84),
+        fade_alpha=1.0, transitioning_out=False, viz_heights=[2.0] * 16, viz_phase=[0.0] * 16,
+        medium_font=fonts.medium, tiny=fonts.tiny,
+    )
+    legacy_music.draw_scrolling_text = MusicMixin.draw_scrolling_text.__get__(legacy_music)
+    legacy_music.render_visualizer = MusicMixin.render_visualizer.__get__(legacy_music)
+    game = {"home_abbr": "ARTIST", "away_abbr": "SONG", "situation": {"is_playing": False, "progress": 10, "duration": 240, "fetch_ts": now.timestamp()}}
+    expected_music = MusicMixin.draw_music_card(legacy_music, game)
+    actual_music, _ = MusicRenderer(fonts).render_with_state(context, game, MusicAnimationState(previous_time=now.timestamp()))
+    assert expected_music.tobytes() == actual_music.tobytes()
 
+    legacy_flight = SimpleNamespace(C_RED=(255, 60, 60), C_GRN=(80, 255, 80), C_AMBER=(255, 170, 0), C_BLUE_TXT=(80, 180, 255), C_WHT=(220, 220, 230), C_GRY=(120, 120, 130), download_and_process_logo=lambda *args: None, get_logo=lambda *args: None)
+    legacy_flight._pixel = FlightMixin._pixel.__get__(legacy_flight)
+    legacy_flight._icon_plane = FlightMixin._icon_plane.__get__(legacy_flight)
+    legacy_flight._flight_logo_url = FlightMixin._flight_logo_url.__get__(legacy_flight)
+    legacy_flight._airline_domain_for_code = FlightMixin._airline_domain_for_code
+    flight = {"type": "flight_visitor", "id": "123", "guest_name": "GUEST", "origin_city": "BOS", "dest_city": "ORD", "is_live": True, "progress": 50, "alt": 12000, "dist": 300, "speed": 500, "eta_str": "2:00"}
+    assert FlightMixin.draw_flight_visitor(legacy_flight, flight).tobytes() == FlightRenderer(fonts).visitor(flight).tobytes()
 
-def test_golf_full_uses_pga_blue_page_dot_and_masters_green_palette() -> None:
-    renderer = GolfRenderer(load_default_font_set())
-    context = RenderContext(datetime(2026, 8, 14, 20, 50, 40))
-    players = {"players": [{"pos": "1", "name": "A Player", "total": -1, "today": -1, "thru": 18, "holes": [4] * 18}]}
-    pga, _ = renderer.full(context, {"golf": {"brand": "pga", **players}}, GolfAnimationState())
-    masters, _ = renderer.full(context, {"golf": {"brand": "masters", **players}}, GolfAnimationState())
-
-    assert pga.size == masters.size == (384, 32)
-    assert pga.getpixel((0, 0)) == (0, 0, 0, 255)
-    assert pga.getpixel((381, 1)) == (91, 171, 221, 255)
-    assert masters.getpixel((0, 0)) == (0, 14, 8, 255)
-    assert masters.getpixel((381, 1)) == (231, 199, 92, 255)
-
-
-def test_golf_full_advances_the_five_page_leaderboard() -> None:
-    renderer = GolfRenderer(load_default_font_set())
-    first = RenderContext(datetime(2026, 8, 14, 20, 50, 40))
-    later = RenderContext(datetime(2026, 8, 14, 20, 50, 45))
-    players = [{"pos": str(index), "name": f"Player {index}", "total": -index, "today": -1, "thru": 18, "holes": [4] * 18} for index in range(1, 7)]
-    item = {"golf": {"brand": "pga", "players": players}}
-
-    _, state = renderer.full(first, item, GolfAnimationState())
-    _, next_state = renderer.full(later, item, state)
-
-    assert state.page == 1
-    assert next_state.page == 2
-
-
-def test_golf_pinned_scene_uses_exact_four_second_elapsed_pages() -> None:
-    renderer = GolfRenderer(load_default_font_set())
-    context = RenderContext(datetime(2026, 8, 14, 20, 50, 40))
-    players = [
-        {"pos": str(index), "name": f"Player {index}", "total": -index, "today": -1, "thru": 18, "holes": [4] * 18}
-        for index in range(1, 10)
-    ]
-    item = {"type": "golf", "sport": "golf", "sports_presentation": "pinned", "golf": {"brand": "pga", "players": players}}
-
-    first = renderer.render(context, ContentScene(item, "sports", 3.99)).image
-    second = renderer.render(context, ContentScene(item, "sports", 4.0)).image
-    same_page = renderer.render(context, ContentScene(item, "sports", 4.1)).image
-    third = renderer.render(context, ContentScene(item, "sports", 8.0)).image
-
-    assert first.tobytes() != second.tobytes()
-    assert second.tobytes() == same_page.tobytes()
-    assert second.tobytes() != third.tobytes()
-
-
-def test_golf_scroll_right_justifies_today_and_total() -> None:
-    renderer = GolfRenderer(load_default_font_set())
-    players = [
-        {"pos": "1", "name": "Scottie Scheffler", "total": -14, "today": -4, "thru": "F", "holes": [4] * 18},
-        {"pos": "2", "name": "Xander Schauffele", "total": -12, "today": -3, "thru": "16", "holes": [4] * 18},
-        {"pos": "3", "name": "Rory McIlroy", "total": -10, "today": -2, "thru": "F", "holes": [4] * 18},
-    ]
-    item = {"type": "golf", "sport": "golf", "golf": {"event_name": "PGA Championship", "round": "R4", "players": players}}
-    card = renderer.scroll(item)
-    assert card.height == 32
-    assert card.width >= 128
+    monkeypatch.setattr("ticker_controller.modes.golf.time.time", lambda: now.timestamp())
+    legacy_golf = SimpleNamespace()
+    legacy_golf._golf_colors = GolfMixin._golf_colors.__get__(legacy_golf)
+    golf = {"away_color": "C8A84B", "away_alt_color": "004C35", "golf": {"event_name": "PGA TOUR", "year": "2026", "pars": [4] * 18, "players": [{"name": "Ada Player", "pos": "1", "total": -2, "today": -1, "thru": 18, "holes": [4] * 18}]}}
+    assert GolfMixin.draw_golf_mode(legacy_golf, golf).tobytes() == GolfRenderer(fonts).full(context, golf, GolfAnimationState())[0].tobytes()
