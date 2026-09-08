@@ -35,7 +35,7 @@ class PreparedWeatherRenderer:
 
     def draw_moon_pixel_art(self, d, x, y):
         """Draw a large stepped grayscale pixel moon with crater detail."""
-        cx, cy, radius = x + 8, y + 7, 8
+        cx, cy, radius = x + 7, y + 7, 10
         lit = (184, 184, 184)
         highlight = (232, 232, 232)
         crater = (104, 104, 104)
@@ -52,6 +52,10 @@ class PreparedWeatherRenderer:
                 nx = (px - cx) / float(radius)
                 ny = (py - cy) / float(radius)
                 if nx * nx + ny * ny > 1.0:
+                    continue
+                # Flatten the four diagonal corners so no isolated pixel sticks
+                # out of the stepped lunar silhouette.
+                if abs(px - cx) >= radius - 3 and abs(py - cy) >= radius - 3:
                     continue
                 color = lit
                 for crater_x, crater_y, crater_r in crater_patches:
