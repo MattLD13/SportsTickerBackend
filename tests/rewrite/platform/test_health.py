@@ -24,6 +24,8 @@ def test_health_collector_reports_snapshot_and_caches_build(tmp_path: Path):
     assert first.temperature_c == 42.1
     assert second.build == "r100+abc123"
     assert len(calls) == 2
+    assert calls[0][:2] == ["git", "-c"]
+    assert calls[0][2].startswith("safe.directory=")
 
 
 def test_health_collector_reports_wifi_lifecycle(tmp_path: Path):

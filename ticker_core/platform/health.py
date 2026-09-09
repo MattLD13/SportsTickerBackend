@@ -67,7 +67,7 @@ class HealthCollector:
 
     def _git(self, arguments: Sequence[str]) -> str:
         result = self._run(
-            ["git", *arguments],
+            ["git", "-c", f"safe.directory={self._repository.resolve()}", *arguments],
             cwd=self._repository,
             stderr=subprocess.DEVNULL,
             timeout=5,
