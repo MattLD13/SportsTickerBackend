@@ -88,16 +88,64 @@ def test_fan_duel_joke_ad_is_server_enabled_at_45_seconds() -> None:
         f"sports:fan-dual-joke-ad-{index}"
         for index in range(1, 7)
     ]
-    assert [item["data"]["headline"] for item in ads] == [
+    assert [index for index, item in enumerate(enabled["sports"]) if item["kind"] == "fan_duel_joke_ad"] == [6, 13, 20, 27, 34, 41]
+    assert all(item["is_shown"] is True for item in ads)
+    assert len({item["data"]["headline"] for item in ads}) == 6
+    assert len({item["data"]["tagline"] for item in ads}) == 6
+    assert all(item["data"]["campaign"] for item in ads)
+    assert all(item["data"]["style"] for item in ads)
+    assert all("{" not in item["data"]["tagline"] for item in ads)
+
+    repeat = select_display_content(
+        content,
+        {
+            "mode": "sports",
+            "sports_filter": "all",
+            "live_delay_mode": True,
+            "live_delay_seconds": 45,
+        },
+    )
+    assert [item for item in repeat["sports"] if item["kind"] == "fan_duel_joke_ad"] == ads
+
+    twelve_ads = [
+        item
+        for item in select_display_content(
+            {
+                "sports": content["sports"] + [
+                    {
+                        "id": f"game-extra-{index}",
+                        "family": "sports",
+                        "kind": "scoreboard",
+                        "is_shown": True,
+                        "data": {"sport": "nfl", "state": "in", "away_abbr": "NYG", "home_abbr": "DAL"},
+                    }
+                    for index in range(36)
+                ]
+            },
+            {
+                "mode": "sports",
+                "sports_filter": "all",
+                "live_delay_mode": True,
+                "live_delay_seconds": 45,
+            },
+        )["sports"]
+        if item["kind"] == "fan_duel_joke_ad"
+    ]
+    assert len(twelve_ads) == 12
+    assert {item["data"]["headline"] for item in twelve_ads} == {
         "POLYMARKET",
-        "FAN DUAL",
+        "FANDUEL",
         "DRAFTKINGS",
         "BETMGM",
         "PRIZEPICKS",
         "UNDERDOG",
-    ]
-    assert [index for index, item in enumerate(enabled["sports"]) if item["kind"] == "fan_duel_joke_ad"] == [6, 13, 20, 27, 34, 41]
-    assert all(item["is_shown"] is True for item in ads)
+        "CAESARS SPORTSBOOK",
+        "BET365",
+        "FANATICS SPORTSBOOK",
+        "HARD ROCK BET",
+        "KALSHI",
+        "BALLY BET",
+    }
 
     toggle_off = select_display_content(
         content,

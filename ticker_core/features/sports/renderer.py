@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 
 from ticker_core.context import RenderContext
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
-from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text
+from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text, normalize_special_chars
 
 from .full_port import PreparedSportsFullRenderer
 from .stadium_port import PreparedStadiumRenderer
@@ -18,7 +18,8 @@ from .stadium_port import PreparedStadiumRenderer
 PANEL_W = 384
 PANEL_H = 32
 LOGO_SIZE = 22
-FAN_DUAL_AD_WIDTH = 174
+FAN_DUAL_AD_MIN_WIDTH = 112
+FAN_DUAL_AD_MAX_WIDTH = 160
 
 
 class LogoSource(Protocol):
@@ -50,6 +51,24 @@ def _is_fan_dual_joke_ad(game: Mapping[str, Any]) -> bool:
     """Return if one scene owns the opt-in parody-card renderer."""
 
     return str(game.get("type") or game.get("kind") or "").strip().lower() == "fan_duel_joke_ad"
+
+
+def _fan_dual_ad_width(game: Mapping[str, Any]) -> int:
+    """Return a compact width for one parody card."""
+
+    lines = (
+        game.get("headline", "FANDUEL"),
+        game.get("tagline", ""),
+        game.get("detail", "PARODY / NO BETS"),
+    )
+    largest = max(
+        (len(normalize_special_chars(line)) * 5 for line in lines),
+        default=0,
+    )
+    return max(
+        FAN_DUAL_AD_MIN_WIDTH,
+        min(FAN_DUAL_AD_MAX_WIDTH, 32 + largest + 4),
+    )
 
 
 PIXELS: dict[str, tuple[str, ...]] = {
@@ -162,7 +181,7 @@ class SportsRenderer:
     def _render_fan_dual_joke_ad(self, game: Mapping[str, Any]) -> Image.Image:
         """Render the clearly unofficial sports-rotation parody card."""
 
-        width = FAN_DUAL_AD_WIDTH
+        width = _fan_dual_ad_width(game)
         background = _hex(game.get("background"), (16, 28, 42))
         accent = _hex(game.get("accent"), (24, 210, 110))
         image = Image.new("RGB", (width, PANEL_H), background)
@@ -175,7 +194,7 @@ class SportsRenderer:
         else:
             draw.ellipse((9, 8, 26, 25), outline=accent, width=2)
             draw_hybrid_text(draw, 15, 13, "S", accent)
-        draw_hybrid_text(draw, 32, 3, game.get("headline", "FAN DUAL"), (255, 255, 255))
+        draw_hybrid_text(draw, 32, 3, game.get("headline", "FANDUEL"), (255, 255, 255))
         draw_tiny_text(draw, 32, 13, game.get("tagline", "ODDS? JUST SCORES."), accent)
         draw_tiny_text(draw, 32, 22, game.get("detail", "PARODY / NO BETS"), (150, 170, 185))
         return image

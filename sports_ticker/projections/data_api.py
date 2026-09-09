@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, time
+import hashlib
 from typing import Any
 
 from ..domain import CONTENT_FAMILIES, ContentItem, DisplaySettings, TickerSnapshot
@@ -17,27 +18,45 @@ _MODE_FAMILIES = {
     "sports": _SPORTS_FAMILIES,
 }
 _FAN_DUEL_JOKE_AD_ID = "sports:fan-dual-joke-ad"
-_FAN_DUEL_JOKE_ADS: tuple[dict[str, str], ...] = (
+_FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     {
         "brand": "POLYMARKET",
-        "campaign": "The World's Largest Prediction Market",
-        "tagline": "TRADE ON THIS SCROLL",
+        "campaign": "Questions Are Everything",
+        "style": "market",
+        "taglines": (
+            "SCROLL ENDS? 2% YES",
+            "MARKET: ONE MORE LOOP",
+            "SILENCE ODDS: ZERO",
+            "{away} MARKET? NO.",
+        ),
         "logo": "https://www.google.com/s2/favicons?domain=polymarket.com&sz=64",
         "background": "#080b12",
         "accent": "#2e5cff",
     },
     {
-        "brand": "FAN DUAL",
-        "campaign": "Kick of Destiny 2",
-        "tagline": "KICK OF DESTINY?",
+        "brand": "FANDUEL",
+        "campaign": "Kick of Destiny 3",
+        "style": "kick",
+        "taglines": (
+            "KICK OF DESTINY? MISS",
+            "FANDUEL? FANS TIED.",
+            "LIVE ODDS: NEXT TYPO",
+            "{away}/{home}: WIDE LEFT",
+        ),
         "logo": "https://www.google.com/s2/favicons?domain=fanduel.com&sz=64",
         "background": "#071b2e",
         "accent": "#1696ff",
     },
     {
         "brand": "DRAFTKINGS",
-        "campaign": "Practice Safe Bets",
-        "tagline": "PRACTICE SAFE SCROLLS",
+        "campaign": "Take Your Game Anywhere",
+        "style": "psa",
+        "taglines": (
+            "THE CROWN IS BUFFERING",
+            "TAKE TICKER ANYWHERE",
+            "ROYAL ODDS. BAD WIFI.",
+            "{away} TO {home}: KING?",
+        ),
         "logo": "https://www.google.com/s2/favicons?domain=draftkings.com&sz=64",
         "background": "#071c12",
         "accent": "#00a94f",
@@ -45,7 +64,13 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, str], ...] = (
     {
         "brand": "BETMGM",
         "campaign": "Make It Legendary",
-        "tagline": "MAKE IT LEGENDARY",
+        "style": "legendary",
+        "taglines": (
+            "MAKE IT LEGENDARY-ISH",
+            "LEGENDS LOUNGE: FULL",
+            "GOLD TEXT. BAD PICKS.",
+            "{away_score}-{home_score}: LEGEND",
+        ),
         "logo": "https://www.google.com/s2/favicons?domain=betmgm.com&sz=64",
         "background": "#11100d",
         "accent": "#d4af37",
@@ -53,18 +78,114 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, str], ...] = (
     {
         "brand": "PRIZEPICKS",
         "campaign": "Run Your Game",
-        "tagline": "RUN YOUR GAME?",
+        "style": "neon",
+        "taglines": (
+            "RUN GAME. WALK DOG.",
+            "MORE? LESS? ASK TICK.",
+            "GROUP CHAT PICKED IT",
+            "{away}/{home}: PICK?",
+        ),
         "logo": "https://www.google.com/s2/favicons?domain=prizepicks.com&sz=64",
-        "background": "#211326",
-        "accent": "#ff5da2",
+        "background": "#101c14",
+        "accent": "#a7ff00",
     },
     {
         "brand": "UNDERDOG",
-        "campaign": "Higher or lower?",
-        "tagline": "HIGHER OR LOWER?",
+        "campaign": "Unleash Your Dog",
+        "style": "dog",
+        "taglines": (
+            "UNLEASH DOG. FETCH.",
+            "HIGHER? LOWER? BARK.",
+            "DOG ATE OUR PARLAY.",
+            "FETCH {away}. BARK.",
+        ),
         "logo": "https://www.google.com/s2/favicons?domain=underdogfantasy.com&sz=64",
         "background": "#1e130c",
         "accent": "#f47b20",
+    },
+    {
+        "brand": "CAESARS SPORTSBOOK",
+        "campaign": "Caesar & Cleo",
+        "style": "roman",
+        "taglines": (
+            "BET LIKE CAESAR. NAP.",
+            "EMPEROR HAS NO LOCKS.",
+            "HAIL THE BONUS TYPO.",
+            "{home}: DECREE?",
+        ),
+        "logo": "https://www.google.com/s2/favicons?domain=caesars.com&sz=64",
+        "background": "#1d0b0b",
+        "accent": "#e0bd66",
+    },
+    {
+        "brand": "BET365",
+        "campaign": "Never Ordinary Moments",
+        "style": "365",
+        "taglines": (
+            "NEVER ORDINARY. OFF.",
+            "NO ORDINARY TYPOS.",
+            "365 DAYS. BAD PICKS.",
+            "{away}: NO ORDINARY",
+        ),
+        "logo": "https://www.google.com/s2/favicons?domain=bet365.com&sz=64",
+        "background": "#06220f",
+        "accent": "#0acb58",
+    },
+    {
+        "brand": "FANATICS SPORTSBOOK",
+        "campaign": "Bet on Kendall",
+        "style": "fanatics",
+        "taglines": (
+            "KURSE PICKED OUR FONT",
+            "JERSEY DROP: MISSED",
+            "FANCASH? TAKES COINS.",
+            "{away}: FAN MODE",
+        ),
+        "logo": "https://www.google.com/s2/favicons?domain=fanatics.com&sz=64",
+        "background": "#17100a",
+        "accent": "#ff5b1f",
+    },
+    {
+        "brand": "HARD ROCK BET",
+        "campaign": "Roll With Us",
+        "style": "rock",
+        "taglines": (
+            "ROLL WITH US. SCROLL.",
+            "NOT THE HOUSE. LEDS.",
+            "BET PARTY: NO INVITE.",
+            "{home} ROCKS? MAYBE.",
+        ),
+        "logo": "https://www.google.com/s2/favicons?domain=hardrock.bet&sz=64",
+        "background": "#17120b",
+        "accent": "#f4c542",
+    },
+    {
+        "brand": "KALSHI",
+        "campaign": "Trade on Anything",
+        "style": "exchange",
+        "taglines": (
+            "TRADE ANYTHING. THIS.",
+            "KALSHI! TOO LOUD.",
+            "MORE FORECASTS.",
+            "{away}/{home}: TRADE?",
+        ),
+        "logo": "https://www.google.com/s2/favicons?domain=kalshi.com&sz=64",
+        "background": "#0b1020",
+        "accent": "#6da0ff",
+    },
+    {
+        "brand": "BALLY BET",
+        "campaign": "More Than a Name",
+        "style": "bally",
+        "taglines": (
+            "MORE NAME. LESS PX.",
+            "BALLY BET: MORE BALLY.",
+            "NO-STRESS. BAD FONT.",
+            "{home} SAYS MAYBE",
+        ),
+        "logo": "https://www.google.com/s2/favicons?domain=ballybet.com&sz=64",
+        "background": "#180a0c",
+        "accent": "#f14343",
     },
 )
 
@@ -202,15 +323,75 @@ def _insert_fan_duel_joke_ads(items: list[dict[str, Any]]) -> list[dict[str, Any
     result: list[dict[str, Any]] = []
     visible_count = 0
     ad_index = 0
+    seed = _fan_duel_joke_seed(items)
+    brand_order = sorted(
+        range(len(_FAN_DUEL_JOKE_ADS)),
+        key=lambda index: _stable_ad_number(seed, f"brand:{index}"),
+    )
+    used_taglines: set[str] = set()
     for item in items:
         result.append(item)
         if not bool(item.get("is_shown", True)):
             continue
         visible_count += 1
         if visible_count % 6 == 0:
-            result.append(_fan_duel_joke_ad(ad_index))
+            result.append(
+                _fan_duel_joke_ad(
+                    ad_index,
+                    item,
+                    seed,
+                    brand_order,
+                    used_taglines,
+                )
+            )
             ad_index += 1
     return result
+
+
+def _fan_duel_joke_seed(items: Iterable[Mapping[str, Any]]) -> str:
+    """Return a stable seed for one visible sports collection."""
+
+    visible_ids = sorted(
+        str(item.get("id") or "").strip()
+        for item in items
+        if bool(item.get("is_shown", True)) and str(item.get("id") or "").strip()
+    )
+    return "|".join(visible_ids) or "sports"
+
+
+def _stable_ad_number(seed: str, label: str) -> int:
+    """Return a repeatable number for pseudo-random ad ordering."""
+
+    digest = hashlib.sha256(f"{seed}:{label}".encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big")
+
+
+def _ad_team_label(value: Any, fallback: str) -> str:
+    """Return a short ticker-safe team label."""
+
+    label = str(value or fallback).strip().upper()
+    return label[:6] or fallback
+
+
+def _ad_game_values(item: Mapping[str, Any]) -> dict[str, str]:
+    """Return game values that parody taglines can safely reference."""
+
+    data = _item_data(item)
+    return {
+        "away": _ad_team_label(data.get("away_abbr") or data.get("away_team"), "AWAY"),
+        "home": _ad_team_label(data.get("home_abbr") or data.get("home_team"), "HOME"),
+        "away_score": str(data.get("away_score", data.get("as", 0))).strip(),
+        "home_score": str(data.get("home_score", data.get("hs", 0))).strip(),
+    }
+
+
+def _resolve_ad_tagline(template: Any, item: Mapping[str, Any]) -> str:
+    """Resolve a catalog tagline against one scoreboard item."""
+
+    text = str(template)
+    for key, value in _ad_game_values(item).items():
+        text = text.replace(f"{{{key}}}", value)
+    return text
 
 
 def _fan_duel_joke_ads_enabled(settings: Mapping[str, Any]) -> bool:
@@ -224,10 +405,34 @@ def _fan_duel_joke_ads_enabled(settings: Mapping[str, Any]) -> bool:
         return False
 
 
-def _fan_duel_joke_ad(index: int) -> dict[str, Any]:
-    """Return one rotating opt-in parody card for the sports rotation."""
+def _fan_duel_joke_ad(
+    index: int,
+    anchor_item: Mapping[str, Any],
+    seed: str,
+    brand_order: Sequence[int],
+    used_taglines: set[str],
+) -> dict[str, Any]:
+    """Return one stable pseudo-random parody card for the sports rotation."""
 
-    ad = _FAN_DUEL_JOKE_ADS[index % len(_FAN_DUEL_JOKE_ADS)]
+    brand_index = brand_order[index % len(brand_order)]
+    ad = _FAN_DUEL_JOKE_ADS[brand_index]
+    tagline_order = sorted(
+        range(len(ad["taglines"])),
+        key=lambda tagline_index: _stable_ad_number(
+            seed,
+            f"tagline:{index}:{tagline_index}",
+        ),
+    )
+    chosen_tagline = next(
+        (
+            _resolve_ad_tagline(ad["taglines"][tagline_index], anchor_item)
+            for tagline_index in tagline_order
+            if _resolve_ad_tagline(ad["taglines"][tagline_index], anchor_item)
+            not in used_taglines
+        ),
+        _resolve_ad_tagline(ad["taglines"][tagline_order[0]], anchor_item),
+    )
+    used_taglines.add(chosen_tagline)
     return {
         "id": f"{_FAN_DUEL_JOKE_AD_ID}-{index + 1}",
         "family": "sports",
@@ -239,7 +444,8 @@ def _fan_duel_joke_ad(index: int) -> dict[str, Any]:
             "status": "JOKE AD",
             "headline": ad["brand"],
             "campaign": ad["campaign"],
-            "tagline": ad["tagline"],
+            "style": ad["style"],
+            "tagline": chosen_tagline,
             "detail": "PARODY / NO BETS",
             "logo": ad["logo"],
             "background": ad["background"],

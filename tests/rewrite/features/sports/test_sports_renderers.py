@@ -41,17 +41,19 @@ def test_fan_duel_joke_ad_renders_as_a_compact_scroll_card(sports: SportsRendere
     item = {
         "type": "fan_duel_joke_ad",
         "sport": "sports",
-        "headline": "FAN DUAL",
+        "headline": "FANDUEL",
         "tagline": "ODDS? JUST SCORES.",
         "detail": "PARODY / NO BETS",
+        "style": "kick",
         "background": "#101c2a",
         "accent": "#18d26e",
     }
 
     image = sports.render(context, ContentScene(item=item, mode="sports")).image
 
-    assert image.size == (174, 32)
-    assert image.getbbox() == (0, 0, 174, 32)
+    assert 112 <= image.width <= 160
+    assert image.height == 32
+    assert image.getbbox() == (0, 0, image.width, 32)
     assert image.tobytes() == sports.render(context, ContentScene(item=item, mode="sports")).image.tobytes()
 
 
