@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from sports_ticker.domain import DisplaySettings
+from sports_ticker.domain import ContentItem, DisplaySettings
 from sports_ticker.providers.espn import (
     EspnScoreboardProvider,
     _scoreboard_url_for_dates,
@@ -1487,6 +1487,97 @@ def test_espn_mlb_event_details_use_live_situation_names_without_boxscore_rows()
 
     assert details["batter_name"] == "Austin Wells"
     assert details["pitcher_name"] == "Garrett Acton"
+
+
+def test_espn_mlb_live_details_survive_failed_refresh_and_clear_at_final() -> None:
+    provider = EspnScoreboardProvider(
+        {"mlb": "https://example.test/baseball/mlb/scoreboard"},
+    )
+    item = ContentItem(
+        id="game-1",
+        family="sports",
+        kind="scoreboard",
+        data={
+            "sport": "mlb",
+            "state": "in",
+            "status": "Top 5th",
+            "home_abbr": "BOS",
+            "away_abbr": "NYY",
+            "situation": {"balls": 0, "strikes": 0, "outs": 0},
+        },
+    )
+    update = {
+        "situation": {
+            "batter": {
+                "playerId": "10",
+                "athlete": {"displayName": "Austin Wells"},
+            },
+            "pitcher": {
+                "playerId": "20",
+                "athlete": {"displayName": "Gerrit Cole"},
+            },
+            "balls": 2,
+            "strikes": 1,
+            "outs": 1,
+        },
+        "boxscore": {"players": [{"statistics": [
+            {
+                "keys": ["hits", "atBats", "avg"],
+                "athletes": [{
+                    "athlete": {"id": "10", "displayName": "Austin Wells"},
+                    "stats": ["2", "4", ".250"],
+                }],
+            },
+            {
+                "keys": ["pitches", "era"],
+                "athletes": [{
+                    "athlete": {"id": "20", "displayName": "Gerrit Cole"},
+                    "stats": ["47", "3.12"],
+                }],
+            },
+        ]}]},
+        "absChallenges": {
+            "away": {"remaining": 1, "usedFailed": 1},
+            "home": {"remaining": 2, "usedFailed": 0},
+        },
+    }
+    key = ("mlb", "game-1")
+
+    first = provider._enrich_live_items(
+        (item,),
+        update_payloads={key: update},
+        attempted_update_ids={key},
+    )[0]
+    second = provider._enrich_live_items(
+        (item,),
+        update_payloads={},
+        attempted_update_ids={key},
+    )[0]
+
+    for current in (first, second):
+        situation = current.data["situation"]
+        assert situation["batter_name"] == "Austin Wells"
+        assert situation["batter_h"] == "2"
+        assert situation["batter_ab"] == "4"
+        assert situation["pitcher_name"] == "Gerrit Cole"
+        assert situation["pitcher_pitches"] == "47"
+        assert situation["home_challenges"] == 2
+        assert situation["away_challenges"] == 1
+
+    finished = ContentItem(
+        id="game-1",
+        family="sports",
+        kind="scoreboard",
+        data={**dict(item.data), "state": "post", "status": "Final"},
+    )
+    provider._enrich_live_items((finished,))
+    after_final = provider._enrich_live_items(
+        (item,),
+        update_payloads={},
+        attempted_update_ids={key},
+    )[0]
+
+    assert "batter_name" not in after_final.data.get("situation", {})
 
 
 def test_espn_mlb_event_details_keep_scoreboard_batter_stats_without_boxscore() -> None:
