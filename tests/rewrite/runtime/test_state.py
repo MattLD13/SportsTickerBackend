@@ -9,23 +9,43 @@ from ticker_core.runtime import FrameKind, RuntimeConfig, StripLayout, StripSegm
 pytestmark = pytest.mark.critical
 
 
-def _response(*, mode: str = "sports", presentation: str = "rotation", state: str = "in", alerts: tuple[dict, ...] = ()) -> TickerResponse:
+def _response(
+    *,
+    mode: str = "sports",
+    presentation: str = "rotation",
+    state: str = "in",
+    alerts: tuple[dict, ...] = (),
+    game_count: int = 1,
+    live_delay_mode: bool = False,
+    live_delay_seconds: int = 0,
+) -> TickerResponse:
+    games = [
+        {
+            "id": "game" if index == 0 else f"game-{index}",
+            "family": "sports",
+            "kind": "scoreboard",
+            "is_shown": True,
+            "data": {"sport": "nfl", "state": state},
+        }
+        for index in range(game_count)
+    ]
     return TickerResponse.from_payload(
         {
             "api_version": "v2",
             "snapshot": {"ticker_id": "ticker-1", "revision": 1, "observed_at": "2026-08-11T00:00:00+00:00", "stale": False},
-            "settings": {"mode": mode, "sports_presentation": presentation, "pinned_content_id": "game", "brightness": 75, "scroll_speed": 0.04, "inverted": True},
-            "content": {"sports": [{"id": "game", "family": "sports", "kind": "scoreboard", "is_shown": True, "data": {"sport": "nfl", "state": state}}]},
+            "settings": {"mode": mode, "sports_presentation": presentation, "pinned_content_id": "game" if presentation == "pinned" else "", "live_delay_mode": live_delay_mode, "live_delay_seconds": live_delay_seconds, "brightness": 75, "scroll_speed": 0.04, "inverted": True},
+            "content": {"sports": games},
             "events": {"alerts": [{"event_id": alert["id"], "kind": "score", "payload": alert} for alert in alerts], "news": []}, "health": {"provider": "refresh", "healthy": True, "error": None},
             "meta": {"pairing": {"paired": True, "code": None}},
         }
     )
 
 
-def _runtime(clock: list[float]) -> TickerRuntime:
+def _runtime(clock: list[float], wall=None) -> TickerRuntime:
+    wall_time = wall or datetime(2026, 8, 11, tzinfo=timezone.utc)
     return TickerRuntime(
         monotonic=lambda: clock[0],
-        wall_clock=lambda: datetime(2026, 8, 11, tzinfo=timezone.utc),
+        wall_clock=lambda: wall_time[0] if isinstance(wall_time, list) else wall_time,
         config=RuntimeConfig(offline_after=10),
     )
 
@@ -92,6 +112,53 @@ def test_pinned_animation_survives_payload_refresh_and_empty_strip_install() -> 
     assert frame.kind is FrameKind.STATIC
     assert frame.content_elapsed == 12.0
     assert frame.content is not None and frame.content.data["state"] == "post"
+
+
+def test_april_fools_ads_are_controller_only_and_ignore_live_delay() -> None:
+    clock = [0.0]
+    wall = [datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)]
+    runtime = _runtime(clock, wall)
+    response = _response(game_count=12, live_delay_mode=False, live_delay_seconds=0)
+
+    snapshot = runtime.accept_response(response)
+    ads = [item for item in snapshot.content if item.type == "fan_duel_joke_ad"]
+
+    assert not any(item.kind == "fan_duel_joke_ad" for item in response.content)
+    assert len(ads) == 4
+    assert [index for index, item in enumerate(snapshot.content) if item.type == "fan_duel_joke_ad"] == [3, 7, 11, 15]
+    assert all(item.data["detail"] == "PARODY" for item in ads)
+    assert all(item.data["tagline"] != "KALSHI" for item in ads)
+
+
+def test_april_fools_ads_change_at_midnight_and_stop_after_april_first() -> None:
+    clock = [0.0]
+    wall = [datetime(2026, 3, 31, 23, 59, tzinfo=timezone.utc)]
+    runtime = _runtime(clock, wall)
+    response = _response(game_count=6)
+
+    snapshot = runtime.accept_response(response)
+    assert not any(item.type == "fan_duel_joke_ad" for item in snapshot.content)
+
+    wall[0] = datetime(2026, 4, 1, 0, 0, tzinfo=timezone.utc)
+    assert runtime.refresh_local_date() is True
+    april_snapshot = runtime.snapshot
+    assert april_snapshot is not None
+    assert len([item for item in april_snapshot.content if item.type == "fan_duel_joke_ad"]) == 2
+    assert april_snapshot.strip_key != snapshot.strip_key
+
+    wall[0] = datetime(2026, 4, 2, 0, 0, tzinfo=timezone.utc)
+    assert runtime.refresh_local_date() is True
+    assert not any(item.type == "fan_duel_joke_ad" for item in runtime.snapshot.content)
+
+
+def test_april_fools_ads_do_not_enter_pinned_presentation() -> None:
+    clock = [0.0]
+    wall = [datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)]
+    runtime = _runtime(clock, wall)
+
+    snapshot = runtime.accept_response(_response(presentation="pinned", game_count=6))
+
+    assert not any(item.type == "fan_duel_joke_ad" for item in snapshot.content)
 
 
 def test_flights_and_airports_have_separate_content_classes() -> None:

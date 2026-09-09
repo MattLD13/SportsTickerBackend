@@ -313,6 +313,57 @@ def test_static_frame_skips_unchanged_build_and_present(tmp_path) -> None:
         application.close()
 
 
+def test_april_fools_hardware_cards_refresh_when_the_day_changes(tmp_path) -> None:
+    """Refresh controller-owned cards at midnight without a backend revision."""
+
+    clock = [0.0]
+    wall = [datetime(2026, 3, 31, 23, 59, tzinfo=timezone.utc)]
+    runtime = TickerRuntime(monotonic=lambda: clock[0], wall_clock=lambda: wall[0])
+    assets = Assets()
+    viewport = Viewport()
+    application = TickerApplication(
+        client=Client(),
+        poller=IdlePoller(),
+        cache=ShortTermContentCache(tmp_path / "content.json"),
+        assets=assets,
+        runtime=runtime,
+        viewport=viewport,
+        frames=Frames(),
+        pacer=FramePacer(lambda: 0.0),
+        sink=Sink(),
+        commands=Commands(),
+        device_id="ticker-1",
+        repository=tmp_path,
+        wall_clock=lambda: wall[0],
+    )
+    source = payload()
+    source["content"]["sports"] = [
+        {
+            "id": f"game-{index}",
+            "family": "sports",
+            "kind": "scoreboard",
+            "is_shown": True,
+            "data": {"sport": "nfl", "state": "in"},
+        }
+        for index in range(6)
+    ]
+    response = TickerResponse.from_payload(source)
+    try:
+        application.start()
+        application._events.put(PollSucceeded(response))
+        application.step()
+        assert not any(item.type == "fan_duel_joke_ad" for item in runtime.snapshot.content)
+
+        wall[0] = datetime(2026, 4, 1, 0, 0, tzinfo=timezone.utc)
+        application.step()
+
+        assert len([item for item in runtime.snapshot.content if item.type == "fan_duel_joke_ad"]) == 2
+        assert viewport.updates == 2
+        assert len(assets.payloads) == 2
+    finally:
+        application.close()
+
+
 def test_delta_prefetches_only_changed_asset_scenes(tmp_path) -> None:
     """Keep full payload asset scans outside ordinary live score updates."""
 

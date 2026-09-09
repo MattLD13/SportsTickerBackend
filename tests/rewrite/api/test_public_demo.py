@@ -52,7 +52,6 @@ def test_public_demo_stays_available_without_controller_access(tmp_path) -> None
     finally:
         app.extensions["sports_ticker.backend_application"].close()
 
-
 def test_public_demo_sports_uses_live_snapshot_independent_of_ticker_mode(tmp_path) -> None:
     from datetime import datetime, timezone
     from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
@@ -116,7 +115,7 @@ def test_public_demo_sports_uses_live_snapshot_independent_of_ticker_mode(tmp_pa
         app.extensions["sports_ticker.backend_application"].close()
 
 
-def test_public_demo_sports_keeps_server_ad_eligibility(tmp_path) -> None:
+def test_public_demo_sports_keeps_hardware_ads_off_server(tmp_path) -> None:
     from datetime import datetime, timezone
     from sports_ticker.dashboard_v2 import routes
     from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
@@ -173,54 +172,13 @@ def test_public_demo_sports_keeps_server_ad_eligibility(tmp_path) -> None:
 
         with app.app_context():
             content = routes._live_sports_content()
-        ads = [
-            item for item in content["sports"]
-            if item["kind"] == "fan_duel_joke_ad"
-        ]
-        assert len(ads) == 2
-        assert [
-            index for index, item in enumerate(content["sports"])
-            if item["kind"] == "fan_duel_joke_ad"
-        ] == [3, 7]
+        assert all(
+            item["kind"] != "fan_duel_joke_ad"
+            for item in content["sports"]
+        )
 
         response = client.get("/api/preview/strip.png?mode=sports")
         assert response.status_code == 200
         assert Image.open(BytesIO(response.data)).size[1] == 32
     finally:
         app.extensions["sports_ticker.backend_application"].close()
-
-
-def test_public_preview_restores_content_identity_for_ad_renderer(monkeypatch) -> None:
-    from types import SimpleNamespace
-
-    from sports_ticker.dashboard_v2 import routes
-
-    seen = []
-
-    class Catalog:
-        def render(self, context, scene):
-            del context
-            seen.append(dict(scene.item))
-            return SimpleNamespace(image=Image.new("RGB", (112, 32), "black"))
-
-    monkeypatch.setattr(routes, "_preview_catalog", lambda: Catalog())
-    routes._render_preview(
-        {
-            "sports": [{
-                "id": "sports:real-campaign-ad-1",
-                "family": "sports",
-                "kind": "fan_duel_joke_ad",
-                "is_shown": True,
-                "data": {"headline": "FANDUEL", "tagline": "HUNCHES"},
-            }],
-        },
-        "sports",
-    )
-
-    assert seen == [{
-        "headline": "FANDUEL",
-        "tagline": "HUNCHES",
-        "id": "sports:real-campaign-ad-1",
-        "type": "fan_duel_joke_ad",
-        "sport": "sports",
-    }]

@@ -91,7 +91,6 @@ class DisplaySettings:
     sports_filter: str = "all"
     sports_presentation: str = "rotation"
     pinned_content_id: str = ""
-    fan_duel_joke_ad: bool = False
     brightness: float = 100.0
     inverted: bool = False
     timezone: str = ""
@@ -166,7 +165,6 @@ class DisplaySettings:
         object.__setattr__(self, "sports_filter", sports_filter)
         object.__setattr__(self, "sports_presentation", sports_presentation)
         object.__setattr__(self, "pinned_content_id", pinned_content_id)
-        object.__setattr__(self, "fan_duel_joke_ad", bool(self.fan_duel_joke_ad))
         object.__setattr__(self, "brightness", float(self.brightness))
         object.__setattr__(self, "inverted", bool(self.inverted))
         object.__setattr__(self, "timezone", str(self.timezone).strip())

@@ -439,7 +439,6 @@ struct TickerState: Codable, Sendable {
     var active_sports: [String: Bool]
     var mode: String
     var sports_filter: String
-    var fan_duel_joke_ad: Bool
     var scroll_seamless: Bool
     var my_teams: [String]
     var debug_mode: Bool
@@ -463,7 +462,7 @@ struct TickerState: Codable, Sendable {
     var sports_presentation: String
     var pinned_content_id: String
     enum CodingKeys: String, CodingKey {
-        case active_sports, mode, sports_filter, fan_duel_joke_ad, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id, track_flight_id, track_guest_name, airport_code_iata, airport_code_icao, airport_name, flight_submode, pinned_game, pinned_games, sports_presentation, pinned_content_id
+        case active_sports, mode, sports_filter, scroll_seamless, my_teams, debug_mode, custom_date, scroll_speed, show_debug_options, weather_location, weather_city, weather_lat, weather_lon, ticker_id, track_flight_id, track_guest_name, airport_code_iata, airport_code_icao, airport_name, flight_submode, pinned_game, pinned_games, sports_presentation, pinned_content_id
     }
     
     // === 1. ROBUST DECODER ===
@@ -482,7 +481,6 @@ struct TickerState: Codable, Sendable {
             flight_submode = (try? container.decode(String.self, forKey: .flight_submode)) ?? "airport"
         }
         sports_filter = (try? container.decode(String.self, forKey: .sports_filter)) ?? "all"
-        fan_duel_joke_ad = (try? container.decode(Bool.self, forKey: .fan_duel_joke_ad)) ?? false
         scroll_seamless = (try? container.decode(Bool.self, forKey: .scroll_seamless)) ?? false
         my_teams = (try? container.decode([String].self, forKey: .my_teams)) ?? []
         debug_mode = (try? container.decode(Bool.self, forKey: .debug_mode)) ?? false
@@ -523,14 +521,13 @@ struct TickerState: Codable, Sendable {
     }
     
     // === 2. BETTER DEFAULTS (Fixes "NFL Only" bug) ===
-    init(active_sports: [String: Bool]? = nil, mode: String = "sports", sports_filter: String = "all", fan_duel_joke_ad: Bool = false, scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil, track_flight_id: String = "", track_guest_name: String = "", airport_code_iata: String = "EWR", airport_code_icao: String = "KEWR", airport_name: String = "Newark", flight_submode: String = "airport", pinned_game: String? = nil, pinned_games: [String] = [], sports_presentation: String = "rotation", pinned_content_id: String = "") {
+    init(active_sports: [String: Bool]? = nil, mode: String = "sports", sports_filter: String = "all", scroll_seamless: Bool = false, my_teams: [String] = [], debug_mode: Bool = false, custom_date: String? = nil, scroll_speed: Double = 5.0, show_debug_options: Bool = false, weather_location: String = "New York", weather_city: String = "New York", weather_lat: Double = 40.7128, weather_lon: Double = -74.0060, ticker_id: String? = nil, track_flight_id: String = "", track_guest_name: String = "", airport_code_iata: String = "EWR", airport_code_icao: String = "KEWR", airport_name: String = "Newark", flight_submode: String = "airport", pinned_game: String? = nil, pinned_games: [String] = [], sports_presentation: String = "rotation", pinned_content_id: String = "") {
         
         // Default to ALL sports if none provided
         self.active_sports = active_sports ?? TickerState.defaultActiveSports
         
         self.mode = mode
         self.sports_filter = sports_filter
-        self.fan_duel_joke_ad = fan_duel_joke_ad
         self.scroll_seamless = scroll_seamless
         self.my_teams = my_teams
         self.debug_mode = debug_mode
@@ -778,7 +775,6 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     @Published var state: TickerState = TickerState(
             active_sports: nil, // This will now trigger the "All Sports" default
             mode: "sports",
-            fan_duel_joke_ad: false,
             scroll_seamless: false,
             my_teams: [],
             debug_mode: false,
@@ -1311,7 +1307,6 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
             "my_teams": sharedMyTeams ?? state.my_teams,
             "mode": state.mode,
             "sports_filter": state.sports_filter,
-            "fan_duel_joke_ad": state.fan_duel_joke_ad,
             "sports_presentation": pinned.isEmpty ? "rotation" : "pinned",
             "pinned_content_id": pinned,
             "brightness": brightness ?? activeSettings?.brightness ?? 100,
@@ -3684,29 +3679,6 @@ struct SettingsView: View {
                     }
                 }.padding(.horizontal)
 
-                if vm.activeTicker != nil {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("SPORTS EXTRAS").font(.caption).bold().foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Toggle("Fan Dual joke ad (45s delay only)", isOn: Binding(
-                                get: { vm.state.fan_duel_joke_ad },
-                                set: { value in
-                                    vm.isEditing = true
-                                    vm.state.fan_duel_joke_ad = value
-                                    vm.startBurstPolling()
-                                    vm.saveSettings()
-                                }
-                            ))
-                            .toggleStyle(SwitchToggleStyle(tint: .green))
-                            Text("Adds one clearly unofficial parody card after every six sports cards when live delay is exactly 45 seconds.")
-                                .font(.caption)
-                                .foregroundStyle(.gray)
-                        }
-                        .padding()
-                        .liquidGlass()
-                    }.padding(.horizontal)
-                }
-                
                 if vm.state.show_debug_options == true {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("DEBUG").font(.caption).bold().foregroundStyle(.secondary)

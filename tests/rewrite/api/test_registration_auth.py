@@ -95,7 +95,7 @@ def test_partial_display_settings_patch_preserves_other_ticker_controls(tmp_path
         enabled = client.patch(
             "/api/v2/tickers/pi-settings",
             headers=headers,
-            json={"display_settings": {"inverted": True, "fan_duel_joke_ad": True}},
+            json={"display_settings": {"inverted": True, "score_alerts": False}},
         )
         assert enabled.status_code == 200
         shared_update = client.patch(
@@ -107,7 +107,8 @@ def test_partial_display_settings_patch_preserves_other_ticker_controls(tmp_path
         assert shared_update.status_code == 200
         settings = shared_update.get_json()["display_settings"]
         assert settings["inverted"] is True
-        assert settings["fan_duel_joke_ad"] is True
+        assert settings["score_alerts"] is False
+        assert "fan_duel_joke_ad" not in settings
         assert settings["my_teams"] == ["nfl:DAL"]
     finally:
         app.extensions["sports_ticker.backend_application"].close()

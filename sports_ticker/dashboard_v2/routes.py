@@ -219,7 +219,6 @@ def _live_sports_content() -> dict[str, list[dict[str, object]]]:
         sports_presentation="rotation",
         sports_filter="all",
         pinned_content_id="",
-        fan_duel_joke_ad=ticker_settings.fan_duel_joke_ad,
         live_delay_mode=ticker_settings.live_delay_mode,
         live_delay_seconds=ticker_settings.live_delay_seconds,
     )

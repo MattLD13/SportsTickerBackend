@@ -200,6 +200,7 @@ class TickerApplication:
         if not self._started:
             self.start()
         self.process_events()
+        self._refresh_local_hardware_content()
         self._install_completed_cards()
         self._refresh_cards_after_asset_change()
         self._install_completed_cards()
@@ -421,11 +422,12 @@ class TickerApplication:
             self._logger.record_issue("cache_restore", error)
             return
         self._assets.prefetch_payload(response)
-        self._runtime.accept_cached_response(
+        current = self._runtime.accept_cached_response(
             response,
             stale_for=self._cache.age(entry),
             expires_in=self._cache.remaining(entry),
         )
+        self._prefetch_runtime_assets(current)
         self._disconnected = True
         self._last_response = response
         self._refresh_viewport()
@@ -451,10 +453,20 @@ class TickerApplication:
         self._logger.record_payload(response)
         self._assets.prefetch_payload(response if asset_source is None else asset_source)
         current = self._runtime.accept_response(response)
+        self._prefetch_runtime_assets(current)
         self._disconnected = False
         self._pending_reboot_id = response.reboot_request_id
         self._last_response = response
         del previous
+        self._refresh_viewport(current)
+
+    def _refresh_local_hardware_content(self) -> None:
+        """Refresh local calendar-controlled cards before the next frame."""
+
+        if not self._runtime.refresh_local_date():
+            return
+        current = self._runtime.snapshot
+        self._prefetch_runtime_assets(current)
         self._refresh_viewport(current)
 
     def _handle_failure(self, event: PollFailed) -> None:
@@ -486,6 +498,12 @@ class TickerApplication:
             self._runtime.mode,
         )
         self._runtime.install_strip(current.strip_key, layout)
+
+    def _prefetch_runtime_assets(self, snapshot) -> None:
+        """Prefetch assets introduced by controller-owned content."""
+
+        if snapshot is not None and any(item.type == "fan_duel_joke_ad" for item in snapshot.content):
+            self._assets.prefetch_payload(snapshot.content)
 
     def _install_completed_cards(self) -> None:
         """Commit one rendered card at a frame boundary."""

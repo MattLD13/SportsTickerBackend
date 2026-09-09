@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import date, datetime
 import hashlib
 import json
 from types import MappingProxyType
 from typing import Any, TypeVar
+
+from ticker_core.features.sports.ads import compose_april_fools_ads, is_hardware_ad
 
 from .model import (
     Content,
@@ -190,6 +192,10 @@ class TickerRuntime:
         self._disconnected_at: float | None = None
         self._content_expires_at: float | None = None
         self._snapshot: PayloadSnapshot | None = None
+        self._source_content: tuple[Content, ...] = ()
+        self._sports_presentation = "rotation"
+        self._pinned_content_id = ""
+        self._hardware_content_date: date | None = None
         self._classification = ContentClassification((), ())
         self._mode = "sports"
         self._mode_override: str | None = None
@@ -246,7 +252,12 @@ class TickerRuntime:
         self._mode_override = selected
         self._mode_requests.append(ModeRequest(selected))
         if self._snapshot is not None:
-            self._classification = classify_content(self._snapshot.content, self._mode)
+            self._classification = classify_content(
+                self._snapshot.content,
+                self._mode,
+                sports_presentation=self._sports_presentation,
+                pinned_content_id=self._pinned_content_id,
+            )
         self._clear_strip()
 
     def take_mode_request(self) -> ModeRequest | None:
@@ -325,6 +336,18 @@ class TickerRuntime:
             self._mode = server_mode
         elif server_mode == self._mode_override:
             self._mode_override = None
+        self._sports_presentation = str(_value(settings, "sports_presentation", "rotation")).lower()
+        self._pinned_content_id = str(_value(settings, "pinned_content_id", ""))
+        self._source_content = tuple(item for item in content if not is_hardware_ad(item))
+        local_now = self._wall_clock()
+        content = compose_april_fools_ads(
+            self._source_content,
+            local_now,
+            mode=self._mode,
+            sports_presentation=self._sports_presentation,
+            pinned_content_id=self._pinned_content_id,
+        )
+        self._hardware_content_date = local_now.date()
         brightness = _brightness(_value(settings, "brightness", 100))
         scroll_interval = _interval(_value(settings, "scroll_speed", 0.05), 0.05)
         snapshot = PayloadSnapshot(
@@ -346,8 +369,8 @@ class TickerRuntime:
         classification = classify_content(
             content,
             self._mode,
-            sports_presentation=str(_value(settings, "sports_presentation", "rotation")).lower(),
-            pinned_content_id=str(_value(settings, "pinned_content_id", "")),
+            sports_presentation=self._sports_presentation,
+            pinned_content_id=self._pinned_content_id,
         )
         self._classification = classification
         preserve_pinned_animation = (
@@ -373,6 +396,39 @@ class TickerRuntime:
                 self._update_request_pending = True
                 self._update_started_at = now
         return snapshot
+
+    def refresh_local_date(self) -> bool:
+        """Refresh local hardware-only content when the calendar day changes."""
+
+        snapshot = self._snapshot
+        if snapshot is None:
+            return False
+        local_now = self._wall_clock()
+        if self._hardware_content_date == local_now.date():
+            return False
+        content = compose_april_fools_ads(
+            self._source_content,
+            local_now,
+            mode=self._mode,
+            sports_presentation=self._sports_presentation,
+            pinned_content_id=self._pinned_content_id,
+        )
+        self._hardware_content_date = local_now.date()
+        if content == snapshot.content:
+            return False
+        self._snapshot = replace(
+            snapshot,
+            strip_key=f"{snapshot.key}:hardware-content:{local_now.date().isoformat()}",
+            content=content,
+        )
+        self._classification = classify_content(
+            content,
+            self._mode,
+            sports_presentation=self._sports_presentation,
+            pinned_content_id=self._pinned_content_id,
+        )
+        self._clear_strip()
+        return True
 
     def install_strip(self, strip_key: str, strip: StripLayout | None) -> bool:
         """Install a completed strip only for the current payload."""
