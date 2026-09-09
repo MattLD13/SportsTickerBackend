@@ -48,13 +48,13 @@ def _dark(color: tuple[int, int, int], factor: float = 0.5) -> tuple[int, int, i
 
 
 def _is_sports_ad(game: Mapping[str, Any]) -> bool:
-    """Return if one scene owns the source-backed campaign-card renderer."""
+    """Return if one scene owns the campaign-parody renderer."""
 
     return str(game.get("type") or game.get("kind") or "").strip().lower() == "fan_duel_joke_ad"
 
 
 def _sports_ad_width(game: Mapping[str, Any]) -> int:
-    """Return a compact width for one source-backed campaign card."""
+    """Return a compact width for one campaign-parody card."""
 
     lines = (
         game.get("headline", "FANDUEL"),
@@ -179,7 +179,7 @@ class SportsRenderer:
         return legacy_image.convert("RGB")
 
     def _render_sports_ad(self, game: Mapping[str, Any]) -> Image.Image:
-        """Render a compact recreation of a source-backed sports campaign card."""
+        """Render a compact recreation of a sourced or filler sports campaign card."""
 
         width = _sports_ad_width(game)
         background = _hex(game.get("background"), (16, 28, 42))
@@ -188,6 +188,9 @@ class SportsRenderer:
         draw = ImageDraw.Draw(image)
         draw.rectangle((0, 0, width - 1, PANEL_H - 1), outline=_dark(accent, 0.35))
         draw.rectangle((0, 0, 3, PANEL_H - 1), fill=accent)
+        logo_plate = str(game.get("logo_plate") or "").strip()
+        if logo_plate:
+            draw.rectangle((7, 5, 28, 26), fill=_hex(logo_plate, (255, 255, 255)))
         logo = self._logos.get(str(game.get("logo") or ""), (18, 18))
         if logo is not None:
             image.paste(logo, (9, 7), logo)

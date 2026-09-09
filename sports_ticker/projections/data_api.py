@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime, time
-import hashlib
+import random
 from typing import Any
 
 from ..domain import CONTENT_FAMILIES, ContentItem, DisplaySettings, TickerSnapshot
@@ -18,6 +18,8 @@ _MODE_FAMILIES = {
     "sports": _SPORTS_FAMILIES,
 }
 _SPORTS_AD_ID = "sports:real-campaign-ad"
+_SPORTS_AD_INTERVAL = 3
+_SPORTS_AD_REPEAT_WINDOW = 3
 _SPORTS_ADS: tuple[dict[str, Any], ...] = (
     {
         "brand": "POLYMARKET",
@@ -28,6 +30,12 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
                 "copy": "QUESTIONS ARE EVERYTHING",
                 "source_url": "https://www.ispot.tv/ad/gcmj/polymarket-predictions-questions-are-everything",
                 "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Ticker Intermission",
+                "copy": "ASK THE LED AGAIN",
+                "source_url": None,
+                "source_type": "parody",
             },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=polymarket.com&sz=64",
@@ -58,15 +66,21 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
             },
             {
                 "campaign": "Last Call for Football",
-                "copy": "PLAY YOUR GAME",
-                "source_url": "https://www.ispot.tv/ad/gOWy/fanduel-sportsbook-super-bowl-2026-last-call-for-football-final-words-ft-rob-gronkowski",
-                "source_type": "ad_archive",
+                "copy": "PLAY YOUR AD BREAK.",
+                "source_url": None,
+                "source_type": "parody",
             },
             {
                 "campaign": "Hunches",
                 "copy": "HUNCHES",
                 "source_url": "https://www.fanduel.com/about/news/fanduel-upgrades-betting-experience-for-nfl-kickoff-and-offers-fans-best-place-to-bet-on-hunches",
                 "source_type": "official",
+            },
+            {
+                "campaign": "Ticker Intermission",
+                "copy": "ODDS? JUST VIBES.",
+                "source_url": None,
+                "source_type": "parody",
             },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=fanduel.com&sz=64",
@@ -79,9 +93,9 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
         "spots": (
             {
                 "campaign": "All the Sports You Love",
-                "copy": "ALL THE SPORTS YOU LOVE",
-                "source_url": "https://www.ispot.tv/ad/BiYc/draftkings-sportsbook-all-the-sports-you-love",
-                "source_type": "ad_archive",
+                "copy": "ALL THE ADS YOU LOVE.",
+                "source_url": None,
+                "source_type": "parody",
             },
             {
                 "campaign": "Football Gods",
@@ -91,9 +105,15 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
             },
             {
                 "campaign": "All About Sweat",
-                "copy": "NO SWEAT BET",
-                "source_url": "https://www.ispot.tv/ad/5uCP/draftkings-all-about-sweat-featuring-kevin-hart-patrick-ewing",
-                "source_type": "ad_archive",
+                "copy": "NO SWEAT. SAME REGRET.",
+                "source_url": None,
+                "source_type": "parody",
+            },
+            {
+                "campaign": "Ticker Intermission",
+                "copy": "THE CROWN IS BUFFERING",
+                "source_url": None,
+                "source_type": "parody",
             },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=draftkings.com&sz=64",
@@ -112,9 +132,9 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
             },
             {
                 "campaign": "IT'S ON",
-                "copy": "IT'S ON",
-                "source_url": "https://sports.betmgm.com/en/blog/nfl/jamie-foxx-betmgm-its-on-peter-berg-bm01/",
-                "source_type": "official",
+                "copy": "IT'S ON. AGAIN.",
+                "source_url": None,
+                "source_type": "parody",
             },
             {
                 "campaign": "The King of Sportsbooks",
@@ -128,6 +148,12 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
                 "source_url": "https://www.ispot.tv/product/6kT",
                 "source_type": "ad_archive",
             },
+            {
+                "campaign": "Ticker Intermission",
+                "copy": "GOLD TEXT. BAD PICKS.",
+                "source_url": None,
+                "source_type": "parody",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=betmgm.com&sz=64",
         "background": "#11100d",
@@ -139,9 +165,9 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
         "spots": (
             {
                 "campaign": "Run Your Game",
-                "copy": "RUN YOUR GAME",
-                "source_url": "https://www.prizepicks.com/press-news/prizepicks-debuts-run-your-game-commercial-series-featuring-joe-budden-druski-and-suga-sean-omalley",
-                "source_type": "official",
+                "copy": "RUN YOUR AD BREAK.",
+                "source_url": None,
+                "source_type": "parody",
             },
             {
                 "campaign": "You Already Know",
@@ -156,10 +182,10 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
                 "source_type": "ad_archive",
             },
             {
-                "campaign": "Get in the Action",
-                "copy": "GET IN THE ACTION",
-                "source_url": "https://www.ispot.tv/product/SYi",
-                "source_type": "ad_archive",
+                "campaign": "Ticker Intermission",
+                "copy": "GROUP CHAT PICKED IT",
+                "source_url": None,
+                "source_type": "parody",
             },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=prizepicks.com&sz=64",
@@ -184,9 +210,9 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
             },
             {
                 "campaign": "Playoff Picks",
-                "copy": "PLAYOFF PICKS",
-                "source_url": "https://www.ispot.tv/brands/5Ud/underdog",
-                "source_type": "ad_archive",
+                "copy": "PLAYOFF PICKS. SURE.",
+                "source_url": None,
+                "source_type": "parody",
             },
             {
                 "campaign": "Make Picks Right Now",
@@ -194,8 +220,15 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
                 "source_url": "https://www.ispot.tv/brands/5Ud/underdog",
                 "source_type": "ad_archive",
             },
+            {
+                "campaign": "Ticker Intermission",
+                "copy": "DOG ATE OUR PARLAY.",
+                "source_url": None,
+                "source_type": "parody",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=underdogfantasy.com&sz=64",
+        "logo_plate": "#ffffff",
         "background": "#1e130c",
         "accent": "#f47b20",
     },
@@ -216,10 +249,10 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
                 "source_type": "ad_archive",
             },
             {
-                "campaign": "Your Palace Awaits",
-                "copy": "YOUR PALACE AWAITS",
-                "source_url": "https://www.ispot.tv/ad/5kBB/caesars-palace-online-casino-something-remarkable",
-                "source_type": "ad_archive",
+                "campaign": "Ticker Intermission",
+                "copy": "HAIL THE BONUS DRAMA.",
+                "source_url": None,
+                "source_type": "parody",
             },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=caesars.com&sz=64",
@@ -238,15 +271,21 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
             },
             {
                 "campaign": "Never Ordinary Moments",
-                "copy": "NEVER ORDINARY",
+                "copy": "NEVER ORDINARY MOMENTS",
                 "source_url": "https://news.bet365.com/en-us/video/never-ordinary-moments-with-commanders-lb-khaleke-hudson/2024011119461981195",
                 "source_type": "official",
             },
             {
                 "campaign": "In-Play Betting",
-                "copy": "IN-PLAY BETTING",
-                "source_url": "https://www.ispot.tv/product/fOt",
-                "source_type": "ad_archive",
+                "copy": "IN-PLAY. STILL LOSING.",
+                "source_url": None,
+                "source_type": "parody",
+            },
+            {
+                "campaign": "Ticker Intermission",
+                "copy": "365 DAYS. BAD PICKS.",
+                "source_url": None,
+                "source_type": "parody",
             },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=bet365.com&sz=64",
@@ -275,8 +314,15 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
                 "source_url": "https://www.ispot.tv/ad/SYmR/fanatics-sportsbook-town-hall-fancash-featuring-luke-wilson",
                 "source_type": "ad_archive",
             },
+            {
+                "campaign": "Ticker Intermission",
+                "copy": "FANCASH? CASH-ISH.",
+                "source_url": None,
+                "source_type": "parody",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=fanatics.com&sz=64",
+        "logo_plate": "#ffffff",
         "background": "#17100a",
         "accent": "#ff5b1f",
     },
@@ -297,16 +343,16 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
                 "source_type": "official",
             },
             {
-                "campaign": "Roll With Us",
-                "copy": "BET $5, GET $100",
-                "source_url": "https://www.ispot.tv/ad/ft4_/hard-rock-bet-roll-with-us-bet-5-get-100-featuring-post-malone-song-by-mop",
-                "source_type": "ad_archive",
+                "campaign": "You Did It, Florida",
+                "copy": "YOU DID IT. WE MADE ADS.",
+                "source_url": None,
+                "source_type": "parody",
             },
             {
-                "campaign": "You Did It, Florida",
-                "copy": "YOU DID IT, FLORIDA",
-                "source_url": "https://www.hardrock.bet/news/sports-betting-is-now-legal-in-florida-with-hard-rock-bet/",
-                "source_type": "official",
+                "campaign": "Ticker Intermission",
+                "copy": "ROLL WITH US. SCROLL.",
+                "source_url": None,
+                "source_type": "parody",
             },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=hardrock.bet&sz=64",
@@ -318,16 +364,28 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
         "style": "exchange",
         "spots": (
             {
-                "campaign": "J Balvin",
-                "copy": "KALSHI",
+                "campaign": "Servicio a la Habitación",
+                "copy": "SERVICIO A LA HABITACION",
                 "source_url": "https://news.kalshi.com/p/kalshi-j-balvin-advertising-campaign",
                 "source_type": "official",
             },
             {
-                "campaign": "Giannis and Grease",
-                "copy": "KALSHI",
-                "source_url": "https://news.kalshi.com/p/kalshi-giannis-antetokounmpo-pro-basketball-finals-ad-grease",
-                "source_type": "official",
+                "campaign": "Your Opinion: Basketball",
+                "copy": "YOUR OPINION: BASKETBALL",
+                "source_url": "https://www.ispot.tv/ad/gD8I/kalshi-predictions-your-opinion-basketball",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Giant Wide Receiver Hands",
+                "copy": "GIANT RECEIVER HANDS",
+                "source_url": "https://www.ispot.tv/ad/g5a2/kalshi-giant-wide-receiver-hands",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Ticker Intermission",
+                "copy": "FORECAST: MORE ADS.",
+                "source_url": None,
+                "source_type": "parody",
             },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=kalshi.com&sz=64",
@@ -340,15 +398,15 @@ _SPORTS_ADS: tuple[dict[str, Any], ...] = (
         "spots": (
             {
                 "campaign": "More Than a Name",
-                "copy": "MORE THAN A NAME",
-                "source_url": "https://www.ispot.tv/brands/BMv/bally-bet",
-                "source_type": "ad_archive",
+                "copy": "MORE THAN A NAME. AN AD.",
+                "source_url": None,
+                "source_type": "parody",
             },
             {
-                "campaign": "NFL: Boost Your Gameday",
-                "copy": "BOOST YOUR GAMEDAY",
-                "source_url": "https://www.ispot.tv/ad/BlQS/bally-bet-sportsbook-nfl-boost-your-gameday-100-profit-boost",
-                "source_type": "ad_archive",
+                "campaign": "Ticker Intermission",
+                "copy": "NO STRESS. JUST BAD BEATS.",
+                "source_url": None,
+                "source_type": "parody",
             },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=ballybet.com&sz=64",
@@ -486,51 +544,55 @@ def _sports_item(item: Mapping[str, Any], settings: Mapping[str, Any]) -> dict[s
 
 
 def _insert_sports_ads(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Insert one source-backed campaign card after each six visible sports cards."""
+    """Insert one fresh random campaign card after each three visible sports cards."""
 
     result: list[dict[str, Any]] = []
     visible_count = 0
     ad_index = 0
-    seed = _sports_ad_seed(items)
-    brand_order = sorted(
-        range(len(_SPORTS_ADS)),
-        key=lambda index: _stable_ad_number(seed, f"brand:{index}"),
-    )
+    rng = _sports_ad_rng()
+    brand_pool: list[int] = []
+    recent_brands: list[int] = []
     used_copies: set[str] = set()
     for item in items:
         result.append(item)
         if not bool(item.get("is_shown", True)):
             continue
         visible_count += 1
-        if visible_count % 6 == 0:
+        if visible_count % _SPORTS_AD_INTERVAL == 0:
+            if not brand_pool:
+                brand_pool = _random_brand_order(rng)
+            eligible_brands = [
+                brand_index
+                for brand_index in brand_pool
+                if brand_index not in recent_brands
+            ] or brand_pool
+            brand_index = rng.choice(eligible_brands)
+            brand_pool.remove(brand_index)
             result.append(
                 _sports_ad(
                     ad_index,
-                    seed,
-                    brand_order,
+                    rng,
+                    brand_index,
                     used_copies,
                 )
             )
+            recent_brands = [*recent_brands, brand_index][-_SPORTS_AD_REPEAT_WINDOW:]
             ad_index += 1
     return result
 
 
-def _sports_ad_seed(items: Iterable[Mapping[str, Any]]) -> str:
-    """Return a stable seed for one visible sports collection."""
+def _sports_ad_rng() -> random.Random:
+    """Return a fresh random source for one server projection."""
 
-    visible_ids = sorted(
-        str(item.get("id") or "").strip()
-        for item in items
-        if bool(item.get("is_shown", True)) and str(item.get("id") or "").strip()
-    )
-    return "|".join(visible_ids) or "sports"
+    return random.SystemRandom()
 
 
-def _stable_ad_number(seed: str, label: str) -> int:
-    """Return a repeatable number for pseudo-random ad ordering."""
+def _random_brand_order(rng: random.Random) -> list[int]:
+    """Return a shuffled brand pool for the next ad cycle."""
 
-    digest = hashlib.sha256(f"{seed}:{label}".encode("utf-8")).digest()
-    return int.from_bytes(digest[:8], "big")
+    order = list(range(len(_SPORTS_ADS)))
+    rng.shuffle(order)
+    return order
 
 
 def _sports_ads_enabled(settings: Mapping[str, Any]) -> bool:
@@ -546,29 +608,19 @@ def _sports_ads_enabled(settings: Mapping[str, Any]) -> bool:
 
 def _sports_ad(
     index: int,
-    seed: str,
-    brand_order: Sequence[int],
+    rng: random.Random,
+    brand_index: int,
     used_copies: set[str],
 ) -> dict[str, Any]:
-    """Return one stable pseudo-random source-backed card for the sports rotation."""
+    """Return one randomly selected sourced or filler card for the sports rotation."""
 
-    brand_index = brand_order[index % len(brand_order)]
     ad = _SPORTS_ADS[brand_index]
-    spot_order = sorted(
-        range(len(ad["spots"])),
-        key=lambda spot_index: _stable_ad_number(
-            seed,
-            f"spot:{index}:{spot_index}",
-        ),
+    available_spots = tuple(
+        spot
+        for spot in ad["spots"]
+        if str(spot["copy"]) not in used_copies
     )
-    chosen_spot = next(
-        (
-            ad["spots"][spot_index]
-            for spot_index in spot_order
-            if str(ad["spots"][spot_index]["copy"]) not in used_copies
-        ),
-        ad["spots"][spot_order[0]],
-    )
+    chosen_spot = rng.choice(available_spots or ad["spots"])
     used_copies.add(str(chosen_spot["copy"]))
     return {
         "id": f"{_SPORTS_AD_ID}-{index + 1}",
@@ -584,9 +636,10 @@ def _sports_ad(
             "style": ad["style"],
             "tagline": chosen_spot["copy"],
             "detail": "PARODY",
-            "source_url": chosen_spot["source_url"],
+            "source_url": chosen_spot.get("source_url"),
             "source_type": chosen_spot["source_type"],
             "logo": ad["logo"],
+            "logo_plate": ad.get("logo_plate"),
             "background": ad["background"],
             "accent": ad["accent"],
         },
