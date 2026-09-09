@@ -617,6 +617,7 @@ def _display_settings_value(settings: DisplaySettings) -> dict[str, Any]:
         "sports_filter": settings.sports_filter,
         "sports_presentation": settings.sports_presentation,
         "pinned_content_id": settings.pinned_content_id,
+        "fan_duel_joke_ad": settings.fan_duel_joke_ad,
         "brightness": settings.brightness,
         "inverted": settings.inverted,
         "timezone": settings.timezone,

@@ -16,6 +16,57 @@ _SPORTS_FAMILIES = frozenset(("sports", "golf", "racing"))
 _MODE_FAMILIES = {
     "sports": _SPORTS_FAMILIES,
 }
+_FAN_DUEL_JOKE_AD_ID = "sports:fan-dual-joke-ad"
+_FAN_DUEL_JOKE_ADS: tuple[dict[str, str], ...] = (
+    {
+        "brand": "POLYMARKET",
+        "campaign": "The World's Largest Prediction Market",
+        "tagline": "TRADE ON THIS SCROLL",
+        "logo": "https://www.google.com/s2/favicons?domain=polymarket.com&sz=64",
+        "background": "#080b12",
+        "accent": "#2e5cff",
+    },
+    {
+        "brand": "FAN DUAL",
+        "campaign": "Kick of Destiny 2",
+        "tagline": "KICK OF DESTINY?",
+        "logo": "https://www.google.com/s2/favicons?domain=fanduel.com&sz=64",
+        "background": "#071b2e",
+        "accent": "#1696ff",
+    },
+    {
+        "brand": "DRAFTKINGS",
+        "campaign": "Practice Safe Bets",
+        "tagline": "PRACTICE SAFE SCROLLS",
+        "logo": "https://www.google.com/s2/favicons?domain=draftkings.com&sz=64",
+        "background": "#071c12",
+        "accent": "#00a94f",
+    },
+    {
+        "brand": "BETMGM",
+        "campaign": "Make It Legendary",
+        "tagline": "MAKE IT LEGENDARY",
+        "logo": "https://www.google.com/s2/favicons?domain=betmgm.com&sz=64",
+        "background": "#11100d",
+        "accent": "#d4af37",
+    },
+    {
+        "brand": "PRIZEPICKS",
+        "campaign": "Run Your Game",
+        "tagline": "RUN YOUR GAME?",
+        "logo": "https://www.google.com/s2/favicons?domain=prizepicks.com&sz=64",
+        "background": "#211326",
+        "accent": "#ff5da2",
+    },
+    {
+        "brand": "UNDERDOG",
+        "campaign": "Higher or lower?",
+        "tagline": "HIGHER OR LOWER?",
+        "logo": "https://www.google.com/s2/favicons?domain=underdogfantasy.com&sz=64",
+        "background": "#1e130c",
+        "accent": "#f47b20",
+    },
+)
 
 
 def project_data_v2(
@@ -73,6 +124,7 @@ def _settings_value(settings: DisplaySettings) -> dict[str, Any]:
         "sports_filter": settings.sports_filter,
         "sports_presentation": settings.sports_presentation,
         "pinned_content_id": settings.pinned_content_id,
+        "fan_duel_joke_ad": settings.fan_duel_joke_ad,
         "brightness": settings.brightness,
         "inverted": settings.inverted,
         "timezone": settings.timezone,
@@ -118,6 +170,8 @@ def select_display_content(
             family: [_sports_item(item, settings) for item in items]
             for family, items in selected.items()
         }
+        if _fan_duel_joke_ads_enabled(settings) and selected.get("sports") and not settings.get("pinned_content_id"):
+            selected["sports"] = _insert_fan_duel_joke_ads(selected["sports"])
     elif mode == "stock":
         selected["stock"] = _market_items(selected.get("stock", ()), settings)
     return selected
@@ -140,6 +194,58 @@ def _sports_item(item: Mapping[str, Any], settings: Mapping[str, Any]) -> dict[s
         visible = visible and _is_my_team_game(projected, settings)
     projected["is_shown"] = visible
     return projected
+
+
+def _insert_fan_duel_joke_ads(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Insert one rotating parody card after each six visible sports cards."""
+
+    result: list[dict[str, Any]] = []
+    visible_count = 0
+    ad_index = 0
+    for item in items:
+        result.append(item)
+        if not bool(item.get("is_shown", True)):
+            continue
+        visible_count += 1
+        if visible_count % 6 == 0:
+            result.append(_fan_duel_joke_ad(ad_index))
+            ad_index += 1
+    return result
+
+
+def _fan_duel_joke_ads_enabled(settings: Mapping[str, Any]) -> bool:
+    """Return if the joke cards have the required opt-in and live delay."""
+
+    if not bool(settings.get("fan_duel_joke_ad")) or not bool(settings.get("live_delay_mode")):
+        return False
+    try:
+        return abs(float(settings.get("live_delay_seconds", 0)) - 45.0) < 0.001
+    except (TypeError, ValueError):
+        return False
+
+
+def _fan_duel_joke_ad(index: int) -> dict[str, Any]:
+    """Return one rotating opt-in parody card for the sports rotation."""
+
+    ad = _FAN_DUEL_JOKE_ADS[index % len(_FAN_DUEL_JOKE_ADS)]
+    return {
+        "id": f"{_FAN_DUEL_JOKE_AD_ID}-{index + 1}",
+        "family": "sports",
+        "kind": "fan_duel_joke_ad",
+        "is_shown": True,
+        "data": {
+            "sport": "sports",
+            "state": "pre",
+            "status": "JOKE AD",
+            "headline": ad["brand"],
+            "campaign": ad["campaign"],
+            "tagline": ad["tagline"],
+            "detail": "PARODY / NO BETS",
+            "logo": ad["logo"],
+            "background": ad["background"],
+            "accent": ad["accent"],
+        },
+    }
 
 
 def _market_items(

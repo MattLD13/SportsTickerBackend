@@ -36,6 +36,9 @@ class AssetPlanner:
                 _add(requests, item.get("team_logo"), "logo", size)
         for key in ("from_logo", "to_logo"):
             _add(requests, item.get(key), "logo", (24, 24))
+        if item_type == "fan_duel_joke_ad":
+            _add(requests, item.get("logo"), "logo", (18, 18))
+            return
         if item_type == "music" or sport == "music" or family == "music" or kind in {"music", "spotify"}:
             for key in ("cover", "last_cover", "home_logo", "last_logo", "artwork", "cover_url", "album_art"):
                 _add(requests, item.get(key), "logo", (42, 42))

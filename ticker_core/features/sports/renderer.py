@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 
 from ticker_core.context import RenderContext
 from ticker_core.rendering import ContentScene, FontSet, RenderedContent
-from ticker_core.rendering.pixels import draw_hybrid_text
+from ticker_core.rendering.pixels import draw_hybrid_text, draw_tiny_text
 
 from .full_port import PreparedSportsFullRenderer
 from .stadium_port import PreparedStadiumRenderer
@@ -18,6 +18,7 @@ from .stadium_port import PreparedStadiumRenderer
 PANEL_W = 384
 PANEL_H = 32
 LOGO_SIZE = 22
+FAN_DUAL_AD_WIDTH = 174
 
 
 class LogoSource(Protocol):
@@ -43,6 +44,12 @@ def _hex(value: Any, fallback: tuple[int, int, int] = (80, 80, 80)) -> tuple[int
 
 def _dark(color: tuple[int, int, int], factor: float = 0.5) -> tuple[int, int, int]:
     return tuple(int(channel * (1 - factor)) for channel in color)
+
+
+def _is_fan_dual_joke_ad(game: Mapping[str, Any]) -> bool:
+    """Return if one scene owns the opt-in parody-card renderer."""
+
+    return str(game.get("type") or game.get("kind") or "").strip().lower() == "fan_duel_joke_ad"
 
 
 PIXELS: dict[str, tuple[str, ...]] = {
@@ -147,8 +154,31 @@ class SportsRenderer:
 
     def render_card(self, game: Mapping[str, Any]) -> Image.Image:
         """Render one 32 pixel stadium score card."""
+        if _is_fan_dual_joke_ad(game):
+            return self._render_fan_dual_joke_ad(game)
         legacy_image, _ = self._stadium.render(dict(game))
         return legacy_image.convert("RGB")
+
+    def _render_fan_dual_joke_ad(self, game: Mapping[str, Any]) -> Image.Image:
+        """Render the clearly unofficial sports-rotation parody card."""
+
+        width = FAN_DUAL_AD_WIDTH
+        background = _hex(game.get("background"), (16, 28, 42))
+        accent = _hex(game.get("accent"), (24, 210, 110))
+        image = Image.new("RGB", (width, PANEL_H), background)
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((0, 0, width - 1, PANEL_H - 1), outline=_dark(accent, 0.35))
+        draw.rectangle((0, 0, 3, PANEL_H - 1), fill=accent)
+        logo = self._logos.get(str(game.get("logo") or ""), (18, 18))
+        if logo is not None:
+            image.paste(logo, (9, 7), logo)
+        else:
+            draw.ellipse((9, 8, 26, 25), outline=accent, width=2)
+            draw_hybrid_text(draw, 15, 13, "S", accent)
+        draw_hybrid_text(draw, 32, 3, game.get("headline", "FAN DUAL"), (255, 255, 255))
+        draw_tiny_text(draw, 32, 13, game.get("tagline", "ODDS? JUST SCORES."), accent)
+        draw_tiny_text(draw, 32, 22, game.get("detail", "PARODY / NO BETS"), (150, 170, 185))
+        return image
 
     def _render_card_implementation(self, game: Mapping[str, Any]) -> Image.Image:
         """Render a card without the exact stadium port."""

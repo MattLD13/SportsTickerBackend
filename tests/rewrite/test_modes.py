@@ -54,3 +54,85 @@ def test_sports_filter_marks_cards_without_removing_them_from_the_app_feed() -> 
     classified = classify_content(response.content, "sports", sports_presentation="pinned", pinned_content_id="scheduled")
 
     assert [item.id for item in classified.static] == ["scheduled"]
+
+
+def test_fan_duel_joke_ad_is_opt_in_and_stays_out_of_pinned_display() -> None:
+    content = {
+        "sports": [
+            {
+                "id": f"game-{index}",
+                "family": "sports",
+                "kind": "scoreboard",
+                "is_shown": True,
+                "data": {"sport": "nfl", "state": "in", "away_abbr": "NYG", "home_abbr": "DAL"},
+            }
+            for index in range(36)
+        ]
+    }
+
+    disabled = select_display_content(content, {"mode": "sports", "sports_filter": "all"})
+    assert all(item["kind"] != "fan_duel_joke_ad" for item in disabled["sports"])
+
+    enabled = select_display_content(
+        content,
+        {
+            "mode": "sports",
+            "sports_filter": "all",
+            "fan_duel_joke_ad": True,
+            "live_delay_mode": True,
+            "live_delay_seconds": 45,
+        },
+    )
+    ads = [item for item in enabled["sports"] if item["kind"] == "fan_duel_joke_ad"]
+    assert len(ads) == 6
+    assert [item["id"] for item in ads] == [
+        f"sports:fan-dual-joke-ad-{index}"
+        for index in range(1, 7)
+    ]
+    assert [item["data"]["headline"] for item in ads] == [
+        "POLYMARKET",
+        "FAN DUAL",
+        "DRAFTKINGS",
+        "BETMGM",
+        "PRIZEPICKS",
+        "UNDERDOG",
+    ]
+    assert [index for index, item in enumerate(enabled["sports"]) if item["kind"] == "fan_duel_joke_ad"] == [6, 13, 20, 27, 34, 41]
+    assert all(item["is_shown"] is True for item in ads)
+
+    disabled_delay = select_display_content(
+        content,
+        {
+            "mode": "sports",
+            "sports_filter": "all",
+            "fan_duel_joke_ad": True,
+            "live_delay_mode": True,
+            "live_delay_seconds": 60,
+        },
+    )
+    assert all(item["kind"] != "fan_duel_joke_ad" for item in disabled_delay["sports"])
+
+    disabled_mode = select_display_content(
+        content,
+        {
+            "mode": "sports",
+            "sports_filter": "all",
+            "fan_duel_joke_ad": True,
+            "live_delay_mode": False,
+            "live_delay_seconds": 45,
+        },
+    )
+    assert all(item["kind"] != "fan_duel_joke_ad" for item in disabled_mode["sports"])
+
+    pinned = select_display_content(
+        content,
+        {
+            "mode": "sports",
+            "sports_filter": "all",
+            "pinned_content_id": "game-0",
+            "fan_duel_joke_ad": True,
+            "live_delay_mode": True,
+            "live_delay_seconds": 45,
+        },
+    )
+    assert all(item["kind"] != "fan_duel_joke_ad" for item in pinned["sports"])

@@ -36,6 +36,25 @@ def test_scoreboard_is_deterministic_and_32_pixels_high(sports: SportsRenderer) 
     assert first.tobytes() == second.tobytes()
 
 
+def test_fan_duel_joke_ad_renders_as_a_compact_scroll_card(sports: SportsRenderer) -> None:
+    context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
+    item = {
+        "type": "fan_duel_joke_ad",
+        "sport": "sports",
+        "headline": "FAN DUAL",
+        "tagline": "ODDS? JUST SCORES.",
+        "detail": "PARODY / NO BETS",
+        "background": "#101c2a",
+        "accent": "#18d26e",
+    }
+
+    image = sports.render(context, ContentScene(item=item, mode="sports")).image
+
+    assert image.size == (174, 32)
+    assert image.getbbox() == (0, 0, 174, 32)
+    assert image.tobytes() == sports.render(context, ContentScene(item=item, mode="sports")).image.tobytes()
+
+
 @pytest.mark.parametrize(
     ("status", "situation"),
     [

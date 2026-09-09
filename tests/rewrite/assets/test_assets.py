@@ -270,6 +270,7 @@ def test_content_cache_store_does_not_wait_for_disk(tmp_path) -> None:
 def test_planner_extracts_every_family_without_mode_filtering() -> None:
     content = [
         {"id": "game", "home_logo": "sports-home", "away_logo": "sports-away"},
+        {"id": "joke-ad", "kind": "fan_duel_joke_ad", "logo": "brand-logo"},
         {"id": "music", "type": "music", "home_logo": "album", "next_logos": ["next-album"]},
         {"id": "flight", "type": "flight_visitor", "airline_logo": "airline"},
         {"id": "race", "type": "racing", "sport": "nascar", "nascar": {"drivers": [{"team_logo": "team", "car_illustration": "https://nascar.com/car.jpg"}]}},
@@ -279,6 +280,7 @@ def test_planner_extracts_every_family_without_mode_filtering() -> None:
 
     signatures = {(request.url, request.processor, request.size) for request in plan.requests}
     assert ("sports-home", "logo", (24, 24)) in signatures
+    assert ("brand-logo", "logo", (18, 18)) in signatures
     assert ("album", "logo", (42, 42)) in signatures
     assert ("next-album", "logo", (42, 42)) in signatures
     assert ("airline", "logo", (24, 24)) in signatures
