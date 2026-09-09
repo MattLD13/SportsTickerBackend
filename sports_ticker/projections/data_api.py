@@ -214,9 +214,9 @@ def _insert_fan_duel_joke_ads(items: list[dict[str, Any]]) -> list[dict[str, Any
 
 
 def _fan_duel_joke_ads_enabled(settings: Mapping[str, Any]) -> bool:
-    """Return if the joke cards have the required opt-in and live delay."""
+    """Return if server-side joke cards have the required live delay."""
 
-    if not bool(settings.get("fan_duel_joke_ad")) or not bool(settings.get("live_delay_mode")):
+    if not bool(settings.get("live_delay_mode")):
         return False
     try:
         return abs(float(settings.get("live_delay_seconds", 0)) - 45.0) < 0.001

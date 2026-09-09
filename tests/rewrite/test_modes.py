@@ -56,7 +56,7 @@ def test_sports_filter_marks_cards_without_removing_them_from_the_app_feed() -> 
     assert [item.id for item in classified.static] == ["scheduled"]
 
 
-def test_fan_duel_joke_ad_is_opt_in_and_stays_out_of_pinned_display() -> None:
+def test_fan_duel_joke_ad_is_server_enabled_at_45_seconds() -> None:
     content = {
         "sports": [
             {
@@ -78,7 +78,6 @@ def test_fan_duel_joke_ad_is_opt_in_and_stays_out_of_pinned_display() -> None:
         {
             "mode": "sports",
             "sports_filter": "all",
-            "fan_duel_joke_ad": True,
             "live_delay_mode": True,
             "live_delay_seconds": 45,
         },
@@ -99,6 +98,18 @@ def test_fan_duel_joke_ad_is_opt_in_and_stays_out_of_pinned_display() -> None:
     ]
     assert [index for index, item in enumerate(enabled["sports"]) if item["kind"] == "fan_duel_joke_ad"] == [6, 13, 20, 27, 34, 41]
     assert all(item["is_shown"] is True for item in ads)
+
+    toggle_off = select_display_content(
+        content,
+        {
+            "mode": "sports",
+            "sports_filter": "all",
+            "fan_duel_joke_ad": False,
+            "live_delay_mode": True,
+            "live_delay_seconds": 45,
+        },
+    )
+    assert [item["kind"] for item in toggle_off["sports"]].count("fan_duel_joke_ad") == 6
 
     disabled_delay = select_display_content(
         content,
