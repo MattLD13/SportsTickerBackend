@@ -645,6 +645,105 @@ def test_espn_mlb_live_refresh_reads_summary_details_for_dense_slate() -> None:
     assert live_item.data["situation"]["scoring_plays"][0]["type"] == "Single"
 
 
+def test_espn_mlb_dense_live_refresh_keeps_details_after_schedule_refresh() -> None:
+    events = [
+        _event(f"mlb-{index}", "2026-08-16T18:00:00Z", state="in")
+        for index in range(5)
+    ]
+    updates = {
+        event["id"]: {
+            "header": {
+                "id": event["id"],
+                "competitions": event["competitions"],
+            },
+            "situation": {
+                "batter": {
+                    "playerId": "10",
+                    "athlete": {"displayName": "Austin Wells"},
+                },
+                "pitcher": {
+                    "playerId": "20",
+                    "athlete": {"displayName": "Gerrit Cole"},
+                },
+                "balls": 1,
+                "strikes": 2,
+                "outs": 1,
+            },
+            "boxscore": {
+                "players": [{
+                    "statistics": [
+                        {
+                            "keys": ["hits", "atBats", "avg"],
+                            "athletes": [{
+                                "athlete": {
+                                    "id": "10",
+                                    "displayName": "Austin Wells",
+                                },
+                                "stats": ["2", "4", ".250"],
+                            }],
+                        },
+                        {
+                            "keys": ["pitches", "era"],
+                            "athletes": [{
+                                "athlete": {
+                                    "id": "20",
+                                    "displayName": "Gerrit Cole",
+                                },
+                                "stats": ["47", "3.12"],
+                            }],
+                        },
+                    ],
+                }],
+            },
+            "plays": [{
+                "id": "pitch-1",
+                "pitchVelocity": 96,
+                "pitchType": {
+                    "abbreviation": "FF",
+                    "text": "Four-Seam Fastball",
+                },
+            }],
+        }
+        for event in events
+    }
+
+    class DenseMlbClient(RecordingClient):
+        def get_json(self, url: str, *, timeout: float):
+            del timeout
+            self.urls.append(url)
+            if "/summary?event=" in url:
+                event_id = parse_qs(urlsplit(url).query)["event"][0]
+                return updates[event_id]
+            return {"events": events}
+
+    client = DenseMlbClient({})
+    current = [datetime(2026, 8, 16, 18, 1, tzinfo=timezone.utc)]
+    monotonic = [0.0]
+    provider = EspnScoreboardProvider(
+        {"mlb": "https://example.test/baseball/mlb/scoreboard"},
+        client=client,
+        now=lambda: current[0],
+        monotonic=lambda: monotonic[0],
+    )
+    settings = DisplaySettings(active_sports={"mlb": True})
+
+    first = provider.fetch_for_ticker("ticker-mlb", settings)
+    monotonic[0] = 6.0
+    second = provider.fetch_for_ticker("ticker-mlb", settings)
+
+    for result in (first, second):
+        live_item = next(item for item in result.content if item.id == "mlb-0")
+        situation = live_item.data["situation"]
+        assert situation["batter_name"] == "Austin Wells"
+        assert situation["batter_h"] == "2"
+        assert situation["batter_ab"] == "4"
+        assert situation["batter_avg"] == ".250"
+        assert situation["pitcher_pitches"] == "47"
+        assert situation["pitcher_era"] == "3.12"
+        assert situation["last_pitch_speed"] == 96
+        assert situation["last_pitch_type"] == "4S Fastball"
+
+
 def test_espn_fastcast_updates_live_game_without_an_event_http_request() -> None:
     scheduled = _event("game-1", "2026-08-16T18:00:00Z")
     live = deepcopy(scheduled)

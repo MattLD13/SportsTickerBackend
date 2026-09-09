@@ -436,7 +436,8 @@ class EspnScoreboardProvider:
                     live_events = _unique_live_events(schedule_events, current)
                     if len(live_events) >= _FULL_SCOREBOARD_REFRESH_THRESHOLD:
                         refresh_leagues.append((league, url))
-                        live_detail_suppressed.add(league)
+                        if league != "mlb":
+                            live_detail_suppressed.add(league)
                     else:
                         live_refreshes.extend(
                             _LiveRefresh(league=league, event=event)
