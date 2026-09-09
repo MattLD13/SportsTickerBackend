@@ -68,6 +68,23 @@ _FASTCAST_EVENT_STALE_SECONDS = 5.0
 _FULL_SCOREBOARD_REFRESH_THRESHOLD = 5
 _FULL_SCOREBOARD_DISCOVERY_INTERVAL = 60.0
 _LIVE_DETAIL_WORKERS = 2
+_MLB_LIVE_DETAIL_CACHE_KEYS = frozenset(
+    {
+        "batter_name",
+        "batter_h",
+        "batter_ab",
+        "batter_avg",
+        "pitcher_name",
+        "pitcher_pitches",
+        "pitcher_era",
+        "last_pitch_speed",
+        "last_pitch_type",
+        "home_challenges",
+        "home_challenges_used",
+        "away_challenges",
+        "away_challenges_used",
+    }
+)
 _MLB_SCHEDULE_CACHE_SECONDS = 60.0
 _MLB_SCHEDULE_URL = "https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={}&hydrate=team"
 _MLB_LIVE_FEED_URL = "https://statsapi.mlb.com/api/v1.1/game/{}/feed/live"
@@ -173,6 +190,15 @@ class _LiveRefresh:
     fastcast_updated_at: float | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _MlbLiveDetailCache:
+    """Keep one last-known live MLB detail set for one active event."""
+
+    values: Mapping[str, Any]
+    batter_id: str = ""
+    pitcher_id: str = ""
+
+
 class _ScoreboardReadError(RuntimeError):
     """Identify whether one cached scoreboard error came from transport or schema parsing."""
 
@@ -235,6 +261,7 @@ class EspnScoreboardProvider:
         self._scoreboard_inflight: dict[str, Event] = {}
         self._event_scoreboard_cache: dict[tuple[str, str], _RawEventScoreboardResponse] = {}
         self._event_scoreboard_inflight: dict[tuple[str, str], Event] = {}
+        self._mlb_live_detail_cache: dict[str, _MlbLiveDetailCache] = {}
         self._mlb_event_keys: dict[str, tuple[str, str, date]] = {}
         self._mlb_schedule_cache: dict[str, tuple[float, dict[tuple[str, str], str]]] = {}
         self._league_schedules: dict[tuple[str, str, date], _LeagueSchedule] = {}
@@ -243,6 +270,7 @@ class EspnScoreboardProvider:
         self._fastcast = fastcast
         self._source_cache_lock = RLock()
         self._raw_cache_lock = RLock()
+        self._mlb_live_detail_cache_lock = RLock()
 
     def fetch(self, settings: DisplaySettings) -> ProviderResult:
         """Fetch current scoreboard events from each configured active league."""
@@ -1018,6 +1046,8 @@ class EspnScoreboardProvider:
         """Add detailed live facts after scoreboard projection completes."""
 
         if str(item.data.get("state") or "").lower() not in {"in", "half", "crit"}:
+            if league == "mlb":
+                self._clear_mlb_live_detail(item.id)
             return item
         template = self._event_detail_urls.get(league)
         if not template:
@@ -1027,7 +1057,9 @@ class EspnScoreboardProvider:
             try:
                 update = self._read_event_scoreboard(league, item.id, cache_source=True)
             except Exception:
-                return item
+                if league != "mlb":
+                    return item
+                update = {}
         details = _event_scoring_details(update, item.data)
         details.update(
             _mlb_event_details(update)
@@ -1043,6 +1075,8 @@ class EspnScoreboardProvider:
                 away_abbr=str(item.data.get("away_abbr") or ""),
             )
         )
+        if league == "mlb":
+            details = self._merge_mlb_live_details(item.id, update, details)
         if not details:
             return item
         data = dict(item.data)
@@ -1064,6 +1098,62 @@ class EspnScoreboardProvider:
             data=data,
         )
 
+    def _merge_mlb_live_details(
+        self,
+        event_id: str,
+        update: Any,
+        details: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Keep successful MLB detail fields through partial live polls."""
+
+        batter_id, pitcher_id = _mlb_live_player_ids(update)
+        with self._mlb_live_detail_cache_lock:
+            cached = self._mlb_live_detail_cache.get(event_id)
+            if cached is not None and not _mlb_live_detail_cache_matches(
+                cached,
+                batter_id=batter_id,
+                pitcher_id=pitcher_id,
+                details=details,
+            ):
+                cached = None
+                self._mlb_live_detail_cache.pop(event_id, None)
+            fresh = {
+                key: value
+                for key, value in details.items()
+                if key in _MLB_LIVE_DETAIL_CACHE_KEYS and value not in (None, "")
+            }
+            if fresh:
+                values = dict(cached.values) if cached is not None else {}
+                values.update(fresh)
+                cached = _MlbLiveDetailCache(
+                    values=values,
+                    batter_id=batter_id or (cached.batter_id if cached else ""),
+                    pitcher_id=pitcher_id or (cached.pitcher_id if cached else ""),
+                )
+                self._mlb_live_detail_cache[event_id] = cached
+            retained = dict(cached.values) if cached is not None else {}
+        retained.update(details)
+        return retained
+
+    def _clear_mlb_live_detail(self, event_id: str) -> None:
+        """Remove cached MLB details after one event leaves live state."""
+
+        with self._mlb_live_detail_cache_lock:
+            self._mlb_live_detail_cache.pop(event_id, None)
+
+    def _prune_mlb_live_detail_cache(self, items: Sequence[ContentItem]) -> None:
+        """Remove cached MLB details for events explicitly observed outside live state."""
+
+        observed_states = {
+            item.id: str(item.data.get("state") or "").lower()
+            for item in items
+            if str(item.data.get("sport") or "") == "mlb"
+        }
+        with self._mlb_live_detail_cache_lock:
+            for event_id, state in observed_states.items():
+                if state not in {"in", "half", "crit"}:
+                    self._mlb_live_detail_cache.pop(event_id, None)
+
     def _enrich_live_items(
         self,
         items: Sequence[ContentItem],
@@ -1074,6 +1164,9 @@ class EspnScoreboardProvider:
     ) -> list[ContentItem]:
         """Fetch live game details concurrently without blocking other scoreboards."""
 
+        self._prune_mlb_live_detail_cache(items)
+        provided_updates = update_payloads or {}
+        attempted_updates = attempted_update_ids or set()
         indexed = list(enumerate(items))
         targets = [
             (index, item)
@@ -1085,9 +1178,10 @@ class EspnScoreboardProvider:
                 and (str(item.data.get("sport") or ""), item.id) in suppressed_update_ids
             )
             and not (
-                attempted_update_ids
-                and (str(item.data.get("sport") or ""), item.id) in attempted_update_ids
-                and (str(item.data.get("sport") or ""), item.id) not in (update_payloads or {})
+                attempted_updates
+                and (str(item.data.get("sport") or ""), item.id) in attempted_updates
+                and (str(item.data.get("sport") or ""), item.id) not in provided_updates
+                and str(item.data.get("sport") or "") != "mlb"
             )
         ]
         if not targets:
@@ -1100,8 +1194,12 @@ class EspnScoreboardProvider:
                     self._enrich_live_item,
                     str(item.data.get("sport") or ""),
                     item,
-                    update=(update_payloads or {}).get(
-                        (str(item.data.get("sport") or ""), item.id)
+                    update=(
+                        provided_updates[(str(item.data.get("sport") or ""), item.id)]
+                        if (str(item.data.get("sport") or ""), item.id) in provided_updates
+                        else {}
+                        if (str(item.data.get("sport") or ""), item.id) in attempted_updates
+                        else None
                     ),
                 ): index
                 for index, item in targets
@@ -2289,6 +2387,48 @@ def _mlb_event_details(payload: Any) -> dict[str, Any]:
     result.update(_mlb_last_pitch(summary, situation))
     result.update(_mlb_abs_challenge_fields(summary))
     return {key: value for key, value in result.items() if value not in (None, "")}
+
+
+def _mlb_live_player_ids(payload: Any) -> tuple[str, str]:
+    """Read the active MLB batter and pitcher identifiers from one detail payload."""
+
+    summary = _mapping(payload)
+    competition = _event_competition(summary)
+    situation = _mapping(summary.get("situation")) or _mapping(
+        competition.get("situation")
+    )
+    batter_ref = situation.get("batter")
+    if not _mlb_person_id(batter_ref) and not _mlb_situation_player_name(batter_ref):
+        batter_ref = _first_mapping(situation.get("dueUp"))
+    pitcher_ref = situation.get("pitcher")
+    if not _mlb_person_id(pitcher_ref) and not _mlb_situation_player_name(pitcher_ref):
+        pitcher_ref = _mlb_latest_play_participant(summary, "pitcher")
+    return _mlb_person_id(batter_ref), _mlb_person_id(pitcher_ref)
+
+
+def _mlb_live_detail_cache_matches(
+    cached: _MlbLiveDetailCache,
+    *,
+    batter_id: str,
+    pitcher_id: str,
+    details: Mapping[str, Any],
+) -> bool:
+    """Reject cached player facts after the active MLB batter or pitcher changes."""
+
+    for role, current_id, name_key in (
+        ("batter", batter_id, "batter_name"),
+        ("pitcher", pitcher_id, "pitcher_name"),
+    ):
+        prior_id = cached.batter_id if role == "batter" else cached.pitcher_id
+        if current_id and prior_id:
+            if current_id != prior_id:
+                return False
+            continue
+        current_name = str(details.get(name_key) or "").strip()
+        prior_name = str(cached.values.get(name_key) or "").strip()
+        if current_name and prior_name and current_name != prior_name:
+            return False
+    return True
 
 
 def _mlb_abs_challenge_fields(payload: Any) -> dict[str, int]:
