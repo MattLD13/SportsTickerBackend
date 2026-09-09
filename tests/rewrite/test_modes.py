@@ -56,7 +56,7 @@ def test_sports_filter_marks_cards_without_removing_them_from_the_app_feed() -> 
     assert [item.id for item in classified.static] == ["scheduled"]
 
 
-def test_fan_duel_joke_ad_is_server_enabled_at_45_seconds() -> None:
+def test_source_backed_ad_is_server_enabled_at_45_seconds() -> None:
     content = {
         "sports": [
             {
@@ -85,7 +85,7 @@ def test_fan_duel_joke_ad_is_server_enabled_at_45_seconds() -> None:
     ads = [item for item in enabled["sports"] if item["kind"] == "fan_duel_joke_ad"]
     assert len(ads) == 6
     assert [item["id"] for item in ads] == [
-        f"sports:fan-dual-joke-ad-{index}"
+        f"sports:real-campaign-ad-{index}"
         for index in range(1, 7)
     ]
     assert [index for index, item in enumerate(enabled["sports"]) if item["kind"] == "fan_duel_joke_ad"] == [6, 13, 20, 27, 34, 41]
@@ -94,6 +94,9 @@ def test_fan_duel_joke_ad_is_server_enabled_at_45_seconds() -> None:
     assert len({item["data"]["tagline"] for item in ads}) == 6
     assert all(item["data"]["campaign"] for item in ads)
     assert all(item["data"]["style"] for item in ads)
+    assert all(item["data"]["source_url"].startswith("https://") for item in ads)
+    assert all(item["data"]["source_type"] in {"official", "ad_archive"} for item in ads)
+    assert all(item["data"]["detail"] == "PARODY" for item in ads)
     assert all("{" not in item["data"]["tagline"] for item in ads)
 
     repeat = select_display_content(

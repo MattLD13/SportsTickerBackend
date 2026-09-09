@@ -17,17 +17,18 @@ _SPORTS_FAMILIES = frozenset(("sports", "golf", "racing"))
 _MODE_FAMILIES = {
     "sports": _SPORTS_FAMILIES,
 }
-_FAN_DUEL_JOKE_AD_ID = "sports:fan-dual-joke-ad"
-_FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
+_SPORTS_AD_ID = "sports:real-campaign-ad"
+_SPORTS_ADS: tuple[dict[str, Any], ...] = (
     {
         "brand": "POLYMARKET",
-        "campaign": "Questions Are Everything",
         "style": "market",
-        "taglines": (
-            "SCROLL ENDS? 2% YES",
-            "MARKET: ONE MORE LOOP",
-            "SILENCE ODDS: ZERO",
-            "{away} MARKET? NO.",
+        "spots": (
+            {
+                "campaign": "Questions Are Everything",
+                "copy": "QUESTIONS ARE EVERYTHING",
+                "source_url": "https://www.ispot.tv/ad/gcmj/polymarket-predictions-questions-are-everything",
+                "source_type": "ad_archive",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=polymarket.com&sz=64",
         "background": "#080b12",
@@ -35,13 +36,38 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     },
     {
         "brand": "FANDUEL",
-        "campaign": "Kick of Destiny 3",
         "style": "kick",
-        "taglines": (
-            "KICK OF DESTINY? MISS",
-            "FANDUEL? FANS TIED.",
-            "LIVE ODDS: NEXT TYPO",
-            "{away}/{home}: WIDE LEFT",
+        "spots": (
+            {
+                "campaign": "Kick of Destiny 3",
+                "copy": "MAY THE BEST MANNING WIN",
+                "source_url": "https://www.ispot.tv/ad/TInL/fanduel-elis-destiny-bet-5-get-200-featuring-peyton-manning-eli-manning",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Kick of Destiny 3: Best Sunday",
+                "copy": "AMERICA'S #1 SPORTSBOOK",
+                "source_url": "https://www.ispot.tv/ad/TZjJ/fanduel-super-bowl-2025-kick-of-destiny-3-best-sunday-ft-peyton-manning-eli-manning",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Make Every Moment More",
+                "copy": "MAKE EVERY MOMENT MORE",
+                "source_url": "https://www.ispot.tv/ad/qVkE/fanduel-make-every-moment-mean-more",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Last Call for Football",
+                "copy": "PLAY YOUR GAME",
+                "source_url": "https://www.ispot.tv/ad/gOWy/fanduel-sportsbook-super-bowl-2026-last-call-for-football-final-words-ft-rob-gronkowski",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Hunches",
+                "copy": "HUNCHES",
+                "source_url": "https://www.fanduel.com/about/news/fanduel-upgrades-betting-experience-for-nfl-kickoff-and-offers-fans-best-place-to-bet-on-hunches",
+                "source_type": "official",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=fanduel.com&sz=64",
         "background": "#071b2e",
@@ -49,13 +75,26 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     },
     {
         "brand": "DRAFTKINGS",
-        "campaign": "Take Your Game Anywhere",
         "style": "psa",
-        "taglines": (
-            "THE CROWN IS BUFFERING",
-            "TAKE TICKER ANYWHERE",
-            "ROYAL ODDS. BAD WIFI.",
-            "{away} TO {home}: KING?",
+        "spots": (
+            {
+                "campaign": "All the Sports You Love",
+                "copy": "ALL THE SPORTS YOU LOVE",
+                "source_url": "https://www.ispot.tv/ad/BiYc/draftkings-sportsbook-all-the-sports-you-love",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Football Gods",
+                "copy": "THE CROWN IS YOURS",
+                "source_url": "https://www.ispot.tv/ad/fl5v/draftkings-sportsbook-football-gods",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "All About Sweat",
+                "copy": "NO SWEAT BET",
+                "source_url": "https://www.ispot.tv/ad/5uCP/draftkings-all-about-sweat-featuring-kevin-hart-patrick-ewing",
+                "source_type": "ad_archive",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=draftkings.com&sz=64",
         "background": "#071c12",
@@ -63,13 +102,32 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     },
     {
         "brand": "BETMGM",
-        "campaign": "Make It Legendary",
         "style": "legendary",
-        "taglines": (
-            "MAKE IT LEGENDARY-ISH",
-            "LEGENDS LOUNGE: FULL",
-            "GOLD TEXT. BAD PICKS.",
-            "{away_score}-{home_score}: LEGEND",
+        "spots": (
+            {
+                "campaign": "Make It Legendary",
+                "copy": "MAKE IT LEGENDARY",
+                "source_url": "https://casino.betmgm.com/en/blog/press/betmgm-unveils-first-major-corporate-brand-repositioning-with-make-it-legendary-campaign/",
+                "source_type": "official",
+            },
+            {
+                "campaign": "IT'S ON",
+                "copy": "IT'S ON",
+                "source_url": "https://sports.betmgm.com/en/blog/nfl/jamie-foxx-betmgm-its-on-peter-berg-bm01/",
+                "source_type": "official",
+            },
+            {
+                "campaign": "The King of Sportsbooks",
+                "copy": "THE KING OF SPORTSBOOKS",
+                "source_url": "https://www.ispot.tv/ad/bkia/betmgm-nothing-is-better-than-a-win-1000-risk-free-first-bet-ft-jamie-foxx",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Every Snap Is Showtime",
+                "copy": "EVERY SNAP IS SHOWTIME",
+                "source_url": "https://www.ispot.tv/product/6kT",
+                "source_type": "ad_archive",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=betmgm.com&sz=64",
         "background": "#11100d",
@@ -77,13 +135,32 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     },
     {
         "brand": "PRIZEPICKS",
-        "campaign": "Run Your Game",
         "style": "neon",
-        "taglines": (
-            "RUN GAME. WALK DOG.",
-            "MORE? LESS? ASK TICK.",
-            "GROUP CHAT PICKED IT",
-            "{away}/{home}: PICK?",
+        "spots": (
+            {
+                "campaign": "Run Your Game",
+                "copy": "RUN YOUR GAME",
+                "source_url": "https://www.prizepicks.com/press-news/prizepicks-debuts-run-your-game-commercial-series-featuring-joe-budden-druski-and-suga-sean-omalley",
+                "source_type": "official",
+            },
+            {
+                "campaign": "You Already Know",
+                "copy": "YOU ALREADY KNOW",
+                "source_url": "https://www.ispot.tv/ad/fOCf/prizepicks-sportsbook-you-already-know-bet-5-get-50",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Lock In",
+                "copy": "LOCK IN",
+                "source_url": "https://www.ispot.tv/brands/6kX/prizepicks",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Get in the Action",
+                "copy": "GET IN THE ACTION",
+                "source_url": "https://www.ispot.tv/product/SYi",
+                "source_type": "ad_archive",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=prizepicks.com&sz=64",
         "background": "#101c14",
@@ -91,13 +168,32 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     },
     {
         "brand": "UNDERDOG",
-        "campaign": "Unleash Your Dog",
         "style": "dog",
-        "taglines": (
-            "UNLEASH DOG. FETCH.",
-            "HIGHER? LOWER? BARK.",
-            "DOG ATE OUR PARLAY.",
-            "FETCH {away}. BARK.",
+        "spots": (
+            {
+                "campaign": "Unleash Your Dog",
+                "copy": "UNLEASH YOUR DOG",
+                "source_url": "https://www.underdogsports.com/news/underdog-unleashes-paul-walter-hauser-as-the-dog-in-new-national-campaign-and-brand-platform",
+                "source_type": "official",
+            },
+            {
+                "campaign": "Turn Your Takes Into Cash",
+                "copy": "TURN YOUR TAKES INTO CASH",
+                "source_url": "https://www.ispot.tv/brands/5Ud/underdog",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Playoff Picks",
+                "copy": "PLAYOFF PICKS",
+                "source_url": "https://www.ispot.tv/brands/5Ud/underdog",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Make Picks Right Now",
+                "copy": "MAKE PICKS RIGHT NOW",
+                "source_url": "https://www.ispot.tv/brands/5Ud/underdog",
+                "source_type": "ad_archive",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=underdogfantasy.com&sz=64",
         "background": "#1e130c",
@@ -105,13 +201,26 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     },
     {
         "brand": "CAESARS SPORTSBOOK",
-        "campaign": "Caesar & Cleo",
         "style": "roman",
-        "taglines": (
-            "BET LIKE CAESAR. NAP.",
-            "EMPEROR HAS NO LOCKS.",
-            "HAIL THE BONUS TYPO.",
-            "{home}: DECREE?",
+        "spots": (
+            {
+                "campaign": "We Are All Caesars",
+                "copy": "WE ARE ALL CAESARS",
+                "source_url": "https://www.ispot.tv/ad/OQ77/caesars-sportsbook-we-are-all-caesars-featuring-jb-smoove",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Rule the World",
+                "copy": "RULE THE WORLD",
+                "source_url": "https://www.ispot.tv/ad/OUEt/caesars-sportsbook-rule-the-world-featuring-jb-smoove",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "Your Palace Awaits",
+                "copy": "YOUR PALACE AWAITS",
+                "source_url": "https://www.ispot.tv/ad/5kBB/caesars-palace-online-casino-something-remarkable",
+                "source_type": "ad_archive",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=caesars.com&sz=64",
         "background": "#1d0b0b",
@@ -119,13 +228,26 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     },
     {
         "brand": "BET365",
-        "campaign": "Never Ordinary Moments",
         "style": "365",
-        "taglines": (
-            "NEVER ORDINARY. OFF.",
-            "NO ORDINARY TYPOS.",
-            "365 DAYS. BAD PICKS.",
-            "{away}: NO ORDINARY",
+        "spots": (
+            {
+                "campaign": "Winning Is Everything",
+                "copy": "WINNING IS EVERYTHING",
+                "source_url": "https://news.bet365.com/en-us/article/bet365-launches-winning-is-everything-brand-campaign-across-the-us-and-canada/2026031316172972579",
+                "source_type": "official",
+            },
+            {
+                "campaign": "Never Ordinary Moments",
+                "copy": "NEVER ORDINARY",
+                "source_url": "https://news.bet365.com/en-us/video/never-ordinary-moments-with-commanders-lb-khaleke-hudson/2024011119461981195",
+                "source_type": "official",
+            },
+            {
+                "campaign": "In-Play Betting",
+                "copy": "IN-PLAY BETTING",
+                "source_url": "https://www.ispot.tv/product/fOt",
+                "source_type": "ad_archive",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=bet365.com&sz=64",
         "background": "#06220f",
@@ -133,13 +255,26 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     },
     {
         "brand": "FANATICS SPORTSBOOK",
-        "campaign": "Bet on Kendall",
         "style": "fanatics",
-        "taglines": (
-            "KURSE PICKED OUR FONT",
-            "JERSEY DROP: MISSED",
-            "FANCASH? TAKES COINS.",
-            "{away}: FAN MODE",
+        "spots": (
+            {
+                "campaign": "Bet on Kendall",
+                "copy": "BET ON KENDALL",
+                "source_url": "https://investor.fanatics.com/news/news-details/2026/Kendall-Jenner-Puts-the-Internets-Favorite-Kurse-to-the-Test-in-Fanatics-Sportsbooks--Fanatics-Studios-First-Big-Game-Ad-2026-BRx2zMg4eA/default.aspx",
+                "source_type": "official",
+            },
+            {
+                "campaign": "Bet on Kendall",
+                "copy": "KURSED?",
+                "source_url": "https://investor.fanatics.com/news/news-details/2026/Kendall-Jenner-Puts-the-Internets-Favorite-Kurse-to-the-Test-in-Fanatics-Sportsbooks--Fanatics-Studios-First-Big-Game-Ad-2026-BRx2zMg4eA/default.aspx",
+                "source_type": "official",
+            },
+            {
+                "campaign": "Town Hall: FanCash",
+                "copy": "TOWN HALL: FANCASH",
+                "source_url": "https://www.ispot.tv/ad/SYmR/fanatics-sportsbook-town-hall-fancash-featuring-luke-wilson",
+                "source_type": "ad_archive",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=fanatics.com&sz=64",
         "background": "#17100a",
@@ -147,13 +282,32 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     },
     {
         "brand": "HARD ROCK BET",
-        "campaign": "Roll With Us",
         "style": "rock",
-        "taglines": (
-            "ROLL WITH US. SCROLL.",
-            "NOT THE HOUSE. LEDS.",
-            "BET PARTY: NO INVITE.",
-            "{home} ROCKS? MAYBE.",
+        "spots": (
+            {
+                "campaign": "Roll With Us",
+                "copy": "ROLL WITH US",
+                "source_url": "https://www.hardrock.bet/about-us/",
+                "source_type": "official",
+            },
+            {
+                "campaign": "The Hard Rock Bet Party",
+                "copy": "THE HARD ROCK BET PARTY",
+                "source_url": "https://www.hardrock.bet/news/hard-rock-bet-invites-fans-to-the-hard-rock-bet-party/",
+                "source_type": "official",
+            },
+            {
+                "campaign": "Roll With Us",
+                "copy": "BET $5, GET $100",
+                "source_url": "https://www.ispot.tv/ad/ft4_/hard-rock-bet-roll-with-us-bet-5-get-100-featuring-post-malone-song-by-mop",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "You Did It, Florida",
+                "copy": "YOU DID IT, FLORIDA",
+                "source_url": "https://www.hardrock.bet/news/sports-betting-is-now-legal-in-florida-with-hard-rock-bet/",
+                "source_type": "official",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=hardrock.bet&sz=64",
         "background": "#17120b",
@@ -161,13 +315,20 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     },
     {
         "brand": "KALSHI",
-        "campaign": "Trade on Anything",
         "style": "exchange",
-        "taglines": (
-            "TRADE ANYTHING. THIS.",
-            "KALSHI! TOO LOUD.",
-            "MORE FORECASTS.",
-            "{away}/{home}: TRADE?",
+        "spots": (
+            {
+                "campaign": "J Balvin",
+                "copy": "KALSHI",
+                "source_url": "https://news.kalshi.com/p/kalshi-j-balvin-advertising-campaign",
+                "source_type": "official",
+            },
+            {
+                "campaign": "Giannis and Grease",
+                "copy": "KALSHI",
+                "source_url": "https://news.kalshi.com/p/kalshi-giannis-antetokounmpo-pro-basketball-finals-ad-grease",
+                "source_type": "official",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=kalshi.com&sz=64",
         "background": "#0b1020",
@@ -175,13 +336,20 @@ _FAN_DUEL_JOKE_ADS: tuple[dict[str, Any], ...] = (
     },
     {
         "brand": "BALLY BET",
-        "campaign": "More Than a Name",
         "style": "bally",
-        "taglines": (
-            "MORE NAME. LESS PX.",
-            "BALLY BET: MORE BALLY.",
-            "NO-STRESS. BAD FONT.",
-            "{home} SAYS MAYBE",
+        "spots": (
+            {
+                "campaign": "More Than a Name",
+                "copy": "MORE THAN A NAME",
+                "source_url": "https://www.ispot.tv/brands/BMv/bally-bet",
+                "source_type": "ad_archive",
+            },
+            {
+                "campaign": "NFL: Boost Your Gameday",
+                "copy": "BOOST YOUR GAMEDAY",
+                "source_url": "https://www.ispot.tv/ad/BlQS/bally-bet-sportsbook-nfl-boost-your-gameday-100-profit-boost",
+                "source_type": "ad_archive",
+            },
         ),
         "logo": "https://www.google.com/s2/favicons?domain=ballybet.com&sz=64",
         "background": "#180a0c",
@@ -291,8 +459,8 @@ def select_display_content(
             family: [_sports_item(item, settings) for item in items]
             for family, items in selected.items()
         }
-        if _fan_duel_joke_ads_enabled(settings) and selected.get("sports") and not settings.get("pinned_content_id"):
-            selected["sports"] = _insert_fan_duel_joke_ads(selected["sports"])
+        if _sports_ads_enabled(settings) and selected.get("sports") and not settings.get("pinned_content_id"):
+            selected["sports"] = _insert_sports_ads(selected["sports"])
     elif mode == "stock":
         selected["stock"] = _market_items(selected.get("stock", ()), settings)
     return selected
@@ -317,18 +485,18 @@ def _sports_item(item: Mapping[str, Any], settings: Mapping[str, Any]) -> dict[s
     return projected
 
 
-def _insert_fan_duel_joke_ads(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Insert one rotating parody card after each six visible sports cards."""
+def _insert_sports_ads(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Insert one source-backed campaign card after each six visible sports cards."""
 
     result: list[dict[str, Any]] = []
     visible_count = 0
     ad_index = 0
-    seed = _fan_duel_joke_seed(items)
+    seed = _sports_ad_seed(items)
     brand_order = sorted(
-        range(len(_FAN_DUEL_JOKE_ADS)),
+        range(len(_SPORTS_ADS)),
         key=lambda index: _stable_ad_number(seed, f"brand:{index}"),
     )
-    used_taglines: set[str] = set()
+    used_copies: set[str] = set()
     for item in items:
         result.append(item)
         if not bool(item.get("is_shown", True)):
@@ -336,19 +504,18 @@ def _insert_fan_duel_joke_ads(items: list[dict[str, Any]]) -> list[dict[str, Any
         visible_count += 1
         if visible_count % 6 == 0:
             result.append(
-                _fan_duel_joke_ad(
+                _sports_ad(
                     ad_index,
-                    item,
                     seed,
                     brand_order,
-                    used_taglines,
+                    used_copies,
                 )
             )
             ad_index += 1
     return result
 
 
-def _fan_duel_joke_seed(items: Iterable[Mapping[str, Any]]) -> str:
+def _sports_ad_seed(items: Iterable[Mapping[str, Any]]) -> str:
     """Return a stable seed for one visible sports collection."""
 
     visible_ids = sorted(
@@ -366,36 +533,8 @@ def _stable_ad_number(seed: str, label: str) -> int:
     return int.from_bytes(digest[:8], "big")
 
 
-def _ad_team_label(value: Any, fallback: str) -> str:
-    """Return a short ticker-safe team label."""
-
-    label = str(value or fallback).strip().upper()
-    return label[:6] or fallback
-
-
-def _ad_game_values(item: Mapping[str, Any]) -> dict[str, str]:
-    """Return game values that parody taglines can safely reference."""
-
-    data = _item_data(item)
-    return {
-        "away": _ad_team_label(data.get("away_abbr") or data.get("away_team"), "AWAY"),
-        "home": _ad_team_label(data.get("home_abbr") or data.get("home_team"), "HOME"),
-        "away_score": str(data.get("away_score", data.get("as", 0))).strip(),
-        "home_score": str(data.get("home_score", data.get("hs", 0))).strip(),
-    }
-
-
-def _resolve_ad_tagline(template: Any, item: Mapping[str, Any]) -> str:
-    """Resolve a catalog tagline against one scoreboard item."""
-
-    text = str(template)
-    for key, value in _ad_game_values(item).items():
-        text = text.replace(f"{{{key}}}", value)
-    return text
-
-
-def _fan_duel_joke_ads_enabled(settings: Mapping[str, Any]) -> bool:
-    """Return if server-side joke cards have the required live delay."""
+def _sports_ads_enabled(settings: Mapping[str, Any]) -> bool:
+    """Return if server-side campaign cards have the required live delay."""
 
     if not bool(settings.get("live_delay_mode")):
         return False
@@ -405,48 +544,48 @@ def _fan_duel_joke_ads_enabled(settings: Mapping[str, Any]) -> bool:
         return False
 
 
-def _fan_duel_joke_ad(
+def _sports_ad(
     index: int,
-    anchor_item: Mapping[str, Any],
     seed: str,
     brand_order: Sequence[int],
-    used_taglines: set[str],
+    used_copies: set[str],
 ) -> dict[str, Any]:
-    """Return one stable pseudo-random parody card for the sports rotation."""
+    """Return one stable pseudo-random source-backed card for the sports rotation."""
 
     brand_index = brand_order[index % len(brand_order)]
-    ad = _FAN_DUEL_JOKE_ADS[brand_index]
-    tagline_order = sorted(
-        range(len(ad["taglines"])),
-        key=lambda tagline_index: _stable_ad_number(
+    ad = _SPORTS_ADS[brand_index]
+    spot_order = sorted(
+        range(len(ad["spots"])),
+        key=lambda spot_index: _stable_ad_number(
             seed,
-            f"tagline:{index}:{tagline_index}",
+            f"spot:{index}:{spot_index}",
         ),
     )
-    chosen_tagline = next(
+    chosen_spot = next(
         (
-            _resolve_ad_tagline(ad["taglines"][tagline_index], anchor_item)
-            for tagline_index in tagline_order
-            if _resolve_ad_tagline(ad["taglines"][tagline_index], anchor_item)
-            not in used_taglines
+            ad["spots"][spot_index]
+            for spot_index in spot_order
+            if str(ad["spots"][spot_index]["copy"]) not in used_copies
         ),
-        _resolve_ad_tagline(ad["taglines"][tagline_order[0]], anchor_item),
+        ad["spots"][spot_order[0]],
     )
-    used_taglines.add(chosen_tagline)
+    used_copies.add(str(chosen_spot["copy"]))
     return {
-        "id": f"{_FAN_DUEL_JOKE_AD_ID}-{index + 1}",
+        "id": f"{_SPORTS_AD_ID}-{index + 1}",
         "family": "sports",
         "kind": "fan_duel_joke_ad",
         "is_shown": True,
         "data": {
             "sport": "sports",
             "state": "pre",
-            "status": "JOKE AD",
+            "status": "SPORTS AD",
             "headline": ad["brand"],
-            "campaign": ad["campaign"],
+            "campaign": chosen_spot["campaign"],
             "style": ad["style"],
-            "tagline": chosen_tagline,
-            "detail": "PARODY / NO BETS",
+            "tagline": chosen_spot["copy"],
+            "detail": "PARODY",
+            "source_url": chosen_spot["source_url"],
+            "source_type": chosen_spot["source_type"],
             "logo": ad["logo"],
             "background": ad["background"],
             "accent": ad["accent"],

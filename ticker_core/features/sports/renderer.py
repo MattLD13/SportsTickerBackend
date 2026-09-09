@@ -18,8 +18,8 @@ from .stadium_port import PreparedStadiumRenderer
 PANEL_W = 384
 PANEL_H = 32
 LOGO_SIZE = 22
-FAN_DUAL_AD_MIN_WIDTH = 112
-FAN_DUAL_AD_MAX_WIDTH = 160
+SPORTS_AD_MIN_WIDTH = 112
+SPORTS_AD_MAX_WIDTH = 160
 
 
 class LogoSource(Protocol):
@@ -47,27 +47,27 @@ def _dark(color: tuple[int, int, int], factor: float = 0.5) -> tuple[int, int, i
     return tuple(int(channel * (1 - factor)) for channel in color)
 
 
-def _is_fan_dual_joke_ad(game: Mapping[str, Any]) -> bool:
-    """Return if one scene owns the opt-in parody-card renderer."""
+def _is_sports_ad(game: Mapping[str, Any]) -> bool:
+    """Return if one scene owns the source-backed campaign-card renderer."""
 
     return str(game.get("type") or game.get("kind") or "").strip().lower() == "fan_duel_joke_ad"
 
 
-def _fan_dual_ad_width(game: Mapping[str, Any]) -> int:
-    """Return a compact width for one parody card."""
+def _sports_ad_width(game: Mapping[str, Any]) -> int:
+    """Return a compact width for one source-backed campaign card."""
 
     lines = (
         game.get("headline", "FANDUEL"),
         game.get("tagline", ""),
-        game.get("detail", "PARODY / NO BETS"),
+        game.get("detail", "PARODY"),
     )
     largest = max(
         (len(normalize_special_chars(line)) * 5 for line in lines),
         default=0,
     )
     return max(
-        FAN_DUAL_AD_MIN_WIDTH,
-        min(FAN_DUAL_AD_MAX_WIDTH, 32 + largest + 4),
+        SPORTS_AD_MIN_WIDTH,
+        min(SPORTS_AD_MAX_WIDTH, 32 + largest + 4),
     )
 
 
@@ -173,15 +173,15 @@ class SportsRenderer:
 
     def render_card(self, game: Mapping[str, Any]) -> Image.Image:
         """Render one 32 pixel stadium score card."""
-        if _is_fan_dual_joke_ad(game):
-            return self._render_fan_dual_joke_ad(game)
+        if _is_sports_ad(game):
+            return self._render_sports_ad(game)
         legacy_image, _ = self._stadium.render(dict(game))
         return legacy_image.convert("RGB")
 
-    def _render_fan_dual_joke_ad(self, game: Mapping[str, Any]) -> Image.Image:
-        """Render the clearly unofficial sports-rotation parody card."""
+    def _render_sports_ad(self, game: Mapping[str, Any]) -> Image.Image:
+        """Render a compact recreation of a source-backed sports campaign card."""
 
-        width = _fan_dual_ad_width(game)
+        width = _sports_ad_width(game)
         background = _hex(game.get("background"), (16, 28, 42))
         accent = _hex(game.get("accent"), (24, 210, 110))
         image = Image.new("RGB", (width, PANEL_H), background)
@@ -195,8 +195,8 @@ class SportsRenderer:
             draw.ellipse((9, 8, 26, 25), outline=accent, width=2)
             draw_hybrid_text(draw, 15, 13, "S", accent)
         draw_hybrid_text(draw, 32, 3, game.get("headline", "FANDUEL"), (255, 255, 255))
-        draw_tiny_text(draw, 32, 13, game.get("tagline", "ODDS? JUST SCORES."), accent)
-        draw_tiny_text(draw, 32, 22, game.get("detail", "PARODY / NO BETS"), (150, 170, 185))
+        draw_tiny_text(draw, 32, 13, game.get("tagline", "MAKE EVERY MOMENT MORE"), accent)
+        draw_tiny_text(draw, 32, 22, game.get("detail", "PARODY"), (150, 170, 185))
         return image
 
     def _render_card_implementation(self, game: Mapping[str, Any]) -> Image.Image:

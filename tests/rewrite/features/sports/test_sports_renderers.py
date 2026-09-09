@@ -36,14 +36,14 @@ def test_scoreboard_is_deterministic_and_32_pixels_high(sports: SportsRenderer) 
     assert first.tobytes() == second.tobytes()
 
 
-def test_fan_duel_joke_ad_renders_as_a_compact_scroll_card(sports: SportsRenderer) -> None:
+def test_source_backed_ad_renders_as_a_compact_scroll_card(sports: SportsRenderer) -> None:
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
     item = {
         "type": "fan_duel_joke_ad",
         "sport": "sports",
         "headline": "FANDUEL",
-        "tagline": "ODDS? JUST SCORES.",
-        "detail": "PARODY / NO BETS",
+        "tagline": "HUNCHES",
+        "detail": "PARODY",
         "style": "kick",
         "background": "#101c2a",
         "accent": "#18d26e",
