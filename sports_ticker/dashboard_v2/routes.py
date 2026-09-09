@@ -207,14 +207,21 @@ def _demo_modes() -> list[dict[str, str]]:
 
 
 def _live_sports_content() -> dict[str, list[dict[str, object]]]:
-    """Return the first current sports projection that contains display items."""
+    """Return the first current sports projection with ticker delay settings."""
 
     application = current_app.extensions["sports_ticker.backend_application"]
+    tickers = application.list_tickers()
+    ticker_settings = tickers[0].display_settings if tickers else DisplaySettings()
     canonical_settings = DisplaySettings(
+        active_sports=ticker_settings.active_sports,
+        my_teams=ticker_settings.my_teams,
         mode="sports",
         sports_presentation="rotation",
         sports_filter="all",
         pinned_content_id="",
+        fan_duel_joke_ad=ticker_settings.fan_duel_joke_ad,
+        live_delay_mode=ticker_settings.live_delay_mode,
+        live_delay_seconds=ticker_settings.live_delay_seconds,
     )
     with application.snapshot_store._lock:
         snapshots = list(application.snapshot_store._snapshots.values())
@@ -228,12 +235,7 @@ def _live_sports_content() -> dict[str, list[dict[str, object]]]:
         )
         content = select_display_content(
             projected["content"],
-            {
-                "mode": "sports",
-                "sports_filter": "all",
-                "sports_presentation": "rotation",
-                "pinned_content_id": "",
-            },
+            _selection_settings(canonical_settings, "sports"),
         )
         items = [
             item for records in content.values() for item in records
@@ -361,14 +363,22 @@ def _display_content(application, ticker_id: str, *, mode: str | None = None) ->
     )
     return select_display_content(
         projected["content"],
-        {
-            "mode": str(mode).strip().lower(),
-            "sports_filter": "all",
-            "sports_presentation": "rotation",
-            "pinned_content_id": "",
-        },
+        _selection_settings(display_settings, str(mode).strip().lower()),
         allowed_modes=ticker.profile.capabilities.modes,
     )
+
+
+def _selection_settings(settings: DisplaySettings, mode: str) -> dict[str, object]:
+    """Return the selection facts required by a dashboard projection."""
+
+    return {
+        "mode": mode,
+        "sports_filter": "all",
+        "sports_presentation": "rotation",
+        "pinned_content_id": "",
+        "live_delay_mode": settings.live_delay_mode,
+        "live_delay_seconds": settings.live_delay_seconds,
+    }
 
 
 class _PreviewAssets:
@@ -466,7 +476,13 @@ def _render_preview(content: dict[str, list[dict[str, object]]], mode: str) -> I
         return image
     catalog = _preview_catalog()
     context = RenderContext(datetime.now())
-    cards = [catalog.render(context, ContentScene(dict(item.get("data") or {}), mode)).image.convert("RGBA") for item in items]
+    cards = []
+    for item in items:
+        scene = dict(item.get("data") or {})
+        scene.setdefault("id", item.get("id", ""))
+        scene.setdefault("type", item.get("kind", ""))
+        scene.setdefault("sport", item.get("family", ""))
+        cards.append(catalog.render(context, ContentScene(scene, mode)).image.convert("RGBA"))
     if mode != "sports":
         return cards[0].convert("RGB")
     width = sum(card.width + 1 for card in cards)

@@ -115,3 +115,112 @@ def test_public_demo_sports_uses_live_snapshot_independent_of_ticker_mode(tmp_pa
     finally:
         app.extensions["sports_ticker.backend_application"].close()
 
+
+def test_public_demo_sports_keeps_server_ad_eligibility(tmp_path) -> None:
+    from datetime import datetime, timezone
+    from sports_ticker.dashboard_v2 import routes
+    from sports_ticker.domain import ContentItem, DisplaySettings, TickerSnapshot
+    from sports_ticker.fleet import PairingState
+
+    app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
+    try:
+        client = app.test_client()
+        registration = client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "test-device", "name": "Living Room", "metadata": {}},
+        ).get_json()
+        ticker_id = registration["ticker_id"]
+        backend = app.extensions["sports_ticker.backend_application"]
+        settings = DisplaySettings(
+            mode="sports",
+            live_delay_mode=True,
+            live_delay_seconds=45,
+        )
+        backend.repository.update_ticker(
+            ticker_id,
+            display_settings=settings,
+            pairing=PairingState(paired=True),
+        )
+        games = tuple(
+            ContentItem(
+                id=f"mlb-real-{index}",
+                family="sports",
+                kind="scoreboard",
+                data={
+                    "type": "scoreboard",
+                    "sport": "mlb",
+                    "away_abbr": "BOS",
+                    "away_score": index,
+                    "home_abbr": "NYY",
+                    "home_score": index,
+                    "state": "in",
+                    "status": "TOP 8TH",
+                },
+            )
+            for index in range(6)
+        )
+        backend.snapshot_store.replace(
+            TickerSnapshot(
+                ticker_id=ticker_id,
+                revision=1,
+                observed_at=datetime.now(timezone.utc),
+                content=games,
+                alerts=(),
+                news=(),
+                effective_settings=settings,
+            )
+        )
+
+        with app.app_context():
+            content = routes._live_sports_content()
+        ads = [
+            item for item in content["sports"]
+            if item["kind"] == "fan_duel_joke_ad"
+        ]
+        assert len(ads) == 2
+        assert [
+            index for index, item in enumerate(content["sports"])
+            if item["kind"] == "fan_duel_joke_ad"
+        ] == [3, 7]
+
+        response = client.get("/api/preview/strip.png?mode=sports")
+        assert response.status_code == 200
+        assert Image.open(BytesIO(response.data)).size[1] == 32
+    finally:
+        app.extensions["sports_ticker.backend_application"].close()
+
+
+def test_public_preview_restores_content_identity_for_ad_renderer(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from sports_ticker.dashboard_v2 import routes
+
+    seen = []
+
+    class Catalog:
+        def render(self, context, scene):
+            del context
+            seen.append(dict(scene.item))
+            return SimpleNamespace(image=Image.new("RGB", (112, 32), "black"))
+
+    monkeypatch.setattr(routes, "_preview_catalog", lambda: Catalog())
+    routes._render_preview(
+        {
+            "sports": [{
+                "id": "sports:real-campaign-ad-1",
+                "family": "sports",
+                "kind": "fan_duel_joke_ad",
+                "is_shown": True,
+                "data": {"headline": "FANDUEL", "tagline": "HUNCHES"},
+            }],
+        },
+        "sports",
+    )
+
+    assert seen == [{
+        "headline": "FANDUEL",
+        "tagline": "HUNCHES",
+        "id": "sports:real-campaign-ad-1",
+        "type": "fan_duel_joke_ad",
+        "sport": "sports",
+    }]
