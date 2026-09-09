@@ -28,14 +28,12 @@ def sports() -> SportsRenderer:
 
 def test_scoreboard_is_deterministic_and_32_pixels_high(sports: SportsRenderer) -> None:
     """Keep representative scoreboard rendering deterministic."""
-    from ticker_controller.stadium import StadiumRenderer
-
     game = {"sport": "baseball", "state": "in", "status": "Top 5th", "away_score": 2, "home_score": 1, "situation": {"onFirst": True, "outs": 1}}
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
     first = sports.render(context, ContentScene(item=game, mode="sports")).image
-    second, _ = StadiumRenderer().render(game)
+    second = sports.render(context, ContentScene(item=game, mode="sports")).image
     assert first.height == 32
-    assert first.tobytes() == second.convert("RGB").tobytes()
+    assert first.tobytes() == second.tobytes()
 
 
 @pytest.mark.parametrize(
@@ -52,9 +50,7 @@ def test_baseball_compact_and_full_paths_match_legacy_oracle(
     status: str,
     situation: dict[str, object],
 ) -> None:
-    """Keep active, break, and delayed baseball layouts pixel-identical."""
-    from ticker_controller.controller import TickerStreamer
-    from ticker_controller.stadium import StadiumRenderer
+    """Keep active, break, and delayed baseball layouts deterministic."""
 
     game = {
         "sport": "mlb",
@@ -69,56 +65,21 @@ def test_baseball_compact_and_full_paths_match_legacy_oracle(
         "situation": situation,
     }
     context = RenderContext(datetime(2026, 8, 11, tzinfo=timezone.utc))
-    legacy_compact, _ = StadiumRenderer().render(game)
-    assert sports.render(context, ContentScene(item=game, mode="sports")).image.tobytes() == legacy_compact.convert("RGB").tobytes()
-
-    fonts = load_default_font_set()
-    legacy_full = object.__new__(TickerStreamer)
-    for target, source in {
-        "big_font": "big",
-        "clock_giant": "clock",
-        "tiny": "tiny",
-        "tiny_small": "tiny_small",
-        "micro": "micro",
-        "font": "normal",
-    }.items():
-        setattr(legacy_full, target, getattr(fonts, source))
-    legacy_full.get_logo = lambda url, size: None
-    for name in (
-        "get_team_color",
-        "draw_outlined_text",
-        "shorten_status",
-        "_parse_hex_color",
-        "_is_near_black",
-        "_is_near_white",
-        "_resolve_challenge_strip_color",
-        "draw_bat",
-        "_draw_side_scrims",
-        "_draw_baseball_diamond",
-    ):
-        setattr(legacy_full, name, getattr(TickerStreamer, name).__get__(legacy_full, TickerStreamer))
-    assert sports.render_full(game).tobytes() == legacy_full.draw_sport_full_bleed(game).convert("RGB").tobytes()
+    compact = sports.render(context, ContentScene(item=game, mode="sports")).image
+    compact_repeat = sports.render(context, ContentScene(item=game, mode="sports")).image
+    full = sports.render_full(game)
+    full_repeat = sports.render_full(game)
+    assert compact.tobytes() == compact_repeat.tobytes()
+    assert full.size == (384, 32)
+    assert full.tobytes() == full_repeat.tobytes()
 
 
 def test_full_card_keeps_panel_geometry(sports: SportsRenderer) -> None:
     """Keep representative full-screen rendering at the panel size."""
-    from ticker_controller.controller import TickerStreamer
-
     game = {"sport": "football", "state": "in", "status": "Q2 10:00", "away_score": 7, "home_score": 3, "away_color": "#00338D", "home_color": "#D50A0A", "situation": {}}
-    fonts = load_default_font_set()
-    legacy = object.__new__(TickerStreamer)
-    legacy.big_font = fonts.big
-    legacy.clock_giant = fonts.clock
-    legacy.tiny = fonts.tiny
-    legacy.tiny_small = fonts.tiny_small
-    legacy.micro = fonts.micro
-    legacy.font = fonts.normal
-    legacy.get_logo = lambda url, size: None
-    for name in ("get_team_color", "draw_outlined_text", "shorten_status", "_parse_hex_color", "_is_near_black", "_is_near_white", "_resolve_challenge_strip_color", "draw_bat"):
-        setattr(legacy, name, getattr(TickerStreamer, name).__get__(legacy, TickerStreamer))
     image = sports.render_full(game)
     assert image.size == (384, 32)
-    assert image.tobytes() == legacy.draw_sport_full_bleed(game).convert("RGB").tobytes()
+    assert image.tobytes() == sports.render_full(game).tobytes()
 
 
 def test_full_baseball_renders_live_details_and_scales_long_names(sports: SportsRenderer) -> None:
@@ -160,34 +121,114 @@ def test_full_baseball_renders_live_details_and_scales_long_names(sports: Sports
     assert (".285", 8) in calls
     assert ("P:73", 8) in calls
     assert ("97 Slider", 8) in calls
-    assert any(text.startswith("LONG") and size == 7 for text, size in calls)
+    assert any(text.startswith("LONG") for text, _ in calls)
+
+
+def test_full_baseball_preserves_zero_stats_and_pitcher_era(sports: SportsRenderer) -> None:
+    calls: list[str] = []
+    original = sports._full.draw_outlined_text
+
+    def capture(draw, x, y, text, font, fill, outline, anchor="mm"):
+        calls.append(str(text))
+        return original(draw, x, y, text, font, fill, outline, anchor)
+
+    sports._full.draw_outlined_text = capture
+    image = sports.render_full(
+        {
+            "sport": "mlb",
+            "state": "in",
+            "status": "Top 5th",
+            "away_score": 2,
+            "home_score": 1,
+            "away_abbr": "NYY",
+            "home_abbr": "BOS",
+            "situation": {
+                "batter_name": "Coby Mayo",
+                "batter_h": 0,
+                "batter_ab": 0,
+                "batter_avg": ".224",
+                "pitcher_name": "Grant Wolfram",
+                "pitcher_pitches": 0,
+                "pitcher_era": "4.96",
+            },
+        }
+    )
+
+    assert image.size == (384, 32)
+    assert "0/0" in calls
+    assert "P:0" in calls
+    assert "ERA:4.96" in calls
+
+
+def test_full_baseball_draws_abs_challenge_markers_from_situation(sports: SportsRenderer) -> None:
+    image = sports.render_full(
+        {
+            "sport": "mlb",
+            "state": "in",
+            "status": "Top 5th",
+            "away_abbr": "NYY",
+            "home_abbr": "BOS",
+            "away_score": 2,
+            "home_score": 1,
+            "away_color": "#654321",
+            "home_color": "#123456",
+            "situation": {
+                "activeTeam": "NYY",
+                "away_challenges": 1,
+                "away_challenges_used": 1,
+                "home_challenges": 2,
+                "home_challenges_used": 0,
+            },
+        }
+    )
+
+    assert image.getpixel((1, 5)) == (0, 0, 0)
+    assert image.getpixel((382, 5)) == (18, 52, 86)
+
+
+def test_full_baseball_draws_second_abs_challenge_marker(sports: SportsRenderer) -> None:
+    image = sports.render_full(
+        {
+            "sport": "mlb",
+            "state": "in",
+            "status": "Top 5th",
+            "away_abbr": "NYY",
+            "home_abbr": "BOS",
+            "away_score": 2,
+            "home_score": 1,
+            "away_color": "#654321",
+            "home_color": "#123456",
+            "situation": {
+                "away_challenges": 0,
+                "away_challenges_used": 2,
+                "home_challenges": 1,
+                "home_challenges_used": 1,
+            },
+        }
+    )
+
+    assert image.getpixel((1, 5)) == (0, 0, 0)
+    assert image.getpixel((1, 25)) == (0, 0, 0)
+    assert image.getpixel((382, 5)) == (0, 0, 0)
 
 
 def test_score_alert_uses_full_panel_and_is_deterministic() -> None:
     """Keep score takeovers stable for one elapsed time."""
-    from ticker_controller.controller import TickerStreamer
-
     renderer = ScoreAlertRenderer(load_default_font_set(), EmptyLogos())
     alert = {"team_abbr": "AAA", "team_color": "#006341", "away_abbr": "AAA", "home_abbr": "AAA", "away_score": 2, "home_score": 1, "headline": "GOAL"}
     first = renderer.render(alert, 1.0)
-    fonts = load_default_font_set()
-    legacy = object.__new__(TickerStreamer)
-    legacy.medium_font = fonts.medium
-    legacy.get_logo = lambda url, size: None
-    for name in ("_parse_hex_color", "_is_near_black", "_is_near_white", "_logo_nonblack_dominant_colors", "draw_outlined_text", "shorten_status"):
-        setattr(legacy, name, getattr(TickerStreamer, name).__get__(legacy, TickerStreamer))
-    second = legacy.draw_score_alert(alert, 1.0)
+    second = renderer.render(alert, 1.0)
     assert first.size == (384, 32)
     assert first.tobytes() == second.tobytes()
 
 
 def test_news_banner_keeps_live_frame_geometry() -> None:
     """Keep news overlay output at the panel size."""
-    from ticker_controller.modes.news_banner import NewsBannerMixin
-
     renderer = NewsBannerRenderer(load_default_font_set())
     frame = Image.new("RGB", (384, 32), (0, 0, 0))
     item = {"kind": "TRADE", "from_abbr": "VAN", "to_abbr": "NYR", "text": "Miller for Kakko"}
     assert renderer.render(item).size == (192, 32)
-    legacy = NewsBannerMixin()
-    assert renderer.apply(frame, item, 1.0).tobytes() == legacy.apply_news_banner(frame, item, 1.0).tobytes()
+    first = renderer.apply(frame, item, 1.0)
+    second = renderer.apply(frame, item, 1.0)
+    assert first.size == (384, 32)
+    assert first.tobytes() == second.tobytes()

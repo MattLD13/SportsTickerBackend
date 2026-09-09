@@ -14,6 +14,7 @@ from sports_ticker.providers.espn import (
     _event_detail_url,
     _event_update,
     _event_scoring_details,
+    _mlb_has_boxscore,
     _mlb_event_details,
     _mlb_statsapi_summary,
     _soccer_event_details,
@@ -1669,11 +1670,37 @@ def test_espn_mlb_statsapi_fallback_keeps_espn_event_shell_and_scoring_history()
     assert _event_scoring_details(event, {"sport": "mlb", "home_abbr": "PIT", "away_abbr": "SF"})["scoring_plays"][0]["type"] == "Double"
 
 
+def test_espn_mlb_statsapi_matching_accepts_team_abbreviation_aliases() -> None:
+    class ScheduleClient:
+        def get_json(self, url: str, *, timeout: float):
+            del timeout
+            assert "schedule?sportId" in url
+            return {"dates": [{"games": [{
+                "gamePk": 824551,
+                "teams": {
+                    "away": {"team": {"abbreviation": "PIT"}},
+                    "home": {"team": {"abbreviation": "CWS"}},
+                },
+            }]}]}
+
+    provider = EspnScoreboardProvider(
+        {"mlb": "https://example.test/baseball/mlb/scoreboard"},
+        client=ScheduleClient(),
+        monotonic=lambda: 0.0,
+    )
+
+    assert provider._mlb_game_pk("PIT", "CHW", datetime(2026, 9, 8, tzinfo=timezone.utc).date()) == "824551"
+
+
 def test_espn_mlb_statsapi_feed_supplies_live_player_stats() -> None:
     summary = _mlb_statsapi_summary({
         "gameData": {"teams": {
             "away": {"abbreviation": "NYY"},
             "home": {"abbreviation": "BOS"},
+        }, "absChallenges": {
+            "hasChallenges": True,
+            "away": {"usedSuccessful": 0, "usedFailed": 1, "remaining": 1},
+            "home": {"usedSuccessful": 1, "usedFailed": 0, "remaining": 2},
         }},
         "liveData": {
             "plays": {
@@ -1736,6 +1763,11 @@ def test_espn_mlb_statsapi_feed_supplies_live_player_stats() -> None:
     assert details["batter_avg"] == ".250"
     assert details["pitcher_name"] == "Gerrit Cole"
     assert details["pitcher_pitches"] == "47"
+    assert details["away_challenges"] == 1
+    assert details["away_challenges_used"] == 1
+    assert details["home_challenges"] == 2
+    assert details["home_challenges_used"] == 0
+    assert details["last_pitch_speed"] == 96
     assert details["last_pitch_type"] == "4S Fastball"
     assert summary["scoringPlays"][0]["team"] == "NYY"
     assert summary["scoringPlays"][0]["type"] == "Double"
@@ -1744,6 +1776,106 @@ def test_espn_mlb_statsapi_feed_supplies_live_player_stats() -> None:
     assert summary["scoringPlays"][0]["exit_velocity"] == 93.9
     assert summary["scoringPlays"][0]["launch_angle"] == 37
     assert summary["scoringPlays"][0]["pitch_speed"] == 94.8
+
+
+def test_espn_mlb_event_details_keep_last_pitch_when_last_play_starts_at_bat() -> None:
+    details = _mlb_event_details({
+        "situation": {
+            "lastPlay": {"id": "start"},
+            "batter": {"playerId": "10"},
+            "pitcher": {"playerId": "20"},
+        },
+        "plays": [
+            {"id": "pitch", "pitchVelocity": 92, "pitchType": {"abbreviation": "FF"}},
+            {"id": "start", "participants": []},
+        ],
+        "boxscore": {"players": [{"statistics": [
+            {"keys": ["hits", "atBats", "avg"], "athletes": [
+                {"athlete": {"id": "10", "displayName": "Coby Mayo"}, "stats": ["0", "0", ".224"]},
+            ]},
+            {"keys": ["pitches", "ERA"], "athletes": [
+                {"athlete": {"id": "20", "displayName": "Grant Wolfram"}, "stats": ["0", "4.96"]},
+            ]},
+        ]}]},
+    })
+
+    assert details["pitcher_pitches"] == "0"
+    assert details["pitcher_era"] == "4.96"
+    assert details["last_pitch_speed"] == 92
+    assert details["last_pitch_type"] == "4S Fastball"
+
+
+def test_espn_mlb_summary_requires_active_player_names_and_real_pitch_context() -> None:
+    assert not _mlb_has_boxscore({
+        "situation": {
+            "batter": {"playerId": "10", "summary": "0-0"},
+            "pitcher": {"playerId": "20"},
+        },
+        "boxscore": {"players": [{"statistics": [
+            {"keys": ["pitches", "ERA"], "athletes": [
+                {"athlete": {"id": "20"}, "stats": ["0", "4.96"]},
+            ]},
+        ]}]},
+    })
+
+
+def test_espn_mlb_statsapi_play_events_supply_zero_count_era_and_latest_pitch() -> None:
+    summary = _mlb_statsapi_summary({
+        "gameData": {"teams": {
+            "away": {"abbreviation": "NYY"},
+            "home": {"abbreviation": "BOS"},
+        }},
+        "liveData": {
+            "plays": {
+                "currentPlay": {
+                    "about": {"atBatIndex": 9},
+                    "count": {"balls": 0, "strikes": 0},
+                    "matchup": {
+                        "batter": {"id": 10, "fullName": "Coby Mayo"},
+                        "pitcher": {"id": 20, "fullName": "Grant Wolfram"},
+                    },
+                    "playEvents": [],
+                },
+                "allPlays": [{
+                    "about": {"atBatIndex": 8},
+                    "matchup": {
+                        "batter": {"id": 30, "fullName": "Aaron Judge"},
+                        "pitcher": {"id": 40, "fullName": "Gerrit Cole"},
+                    },
+                    "playEvents": [{
+                        "isPitch": True,
+                        "type": "pitch",
+                        "pitchNumber": 4,
+                        "playId": "pitch-8-4",
+                        "details": {"type": {"code": "FF", "description": "Four-Seam Fastball"}},
+                        "pitchData": {"startSpeed": 93.4},
+                    }],
+                }],
+            },
+            "linescore": {"outs": 1},
+            "boxscore": {"teams": {
+                "home": {"players": {
+                    "ID10": {"person": {"id": 10, "fullName": "Coby Mayo"}, "stats": {
+                        "batting": {"hits": 0, "atBats": 0, "avg": ".224"},
+                    }},
+                    "ID20": {"person": {"id": 20, "fullName": "Grant Wolfram"},
+                        "stats": {"pitching": {"inningsPitched": "0.0"}},
+                        "seasonStats": {"pitching": {"era": "4.96"}},
+                    },
+                }},
+                "away": {"players": {}},
+            }},
+        },
+    }, "game-1")
+
+    details = _mlb_event_details(summary)
+
+    assert details["batter_h"] == "0"
+    assert details["batter_ab"] == "0"
+    assert details["pitcher_pitches"] == "0"
+    assert details["pitcher_era"] == "4.96"
+    assert details["last_pitch_speed"] == 93
+    assert details["last_pitch_type"] == "4S Fastball"
 
 
 def test_espn_mlb_scoring_details_preserve_rbi_type_from_live_play() -> None:

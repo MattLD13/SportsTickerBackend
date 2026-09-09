@@ -202,8 +202,9 @@ def display_situation(
             if batter_stats.get(key) not in (None, ""):
                 result[target] = batter_stats[key]
         pitcher_stats = baseball_player_stats(source.get("pitcher"))
-        if pitcher_stats.get("pitches") not in (None, ""):
-            result["pitcher_pitches"] = pitcher_stats["pitches"]
+        for key, target in (("pitches", "pitcher_pitches"), ("era", "pitcher_era")):
+            if pitcher_stats.get(key) not in (None, ""):
+                result[target] = pitcher_stats[key]
         for role in ("batter", "pitcher"):
             name = _baseball_player_name(source.get(role))
             if role == "batter" and not name:
@@ -286,6 +287,11 @@ _LIVE_PLAY_KEYS = frozenset(
         "batter_avg",
         "pitcher_name",
         "pitcher_pitches",
+        "pitcher_era",
+        "home_challenges",
+        "home_challenges_used",
+        "away_challenges",
+        "away_challenges_used",
         "last_pitch_speed",
         "last_pitch_type",
         "powerPlay",
@@ -337,6 +343,7 @@ def baseball_player_stats(value: Any) -> dict[str, str]:
         "atBats": ("atBats", "AB", "at_bats"),
         "avg": ("avg", "AVG", "average"),
         "pitches": ("pitches", "pitchCount", "pitch_count"),
+        "era": ("era", "ERA"),
     }
     for target, keys in aliases.items():
         for source in sources:

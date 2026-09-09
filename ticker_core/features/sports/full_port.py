@@ -498,10 +498,12 @@ class SportsMixin:
             # Full-mode MLB spec:
             # - 4px-wide full-height connected team-color strip
             # - each lost challenge draws a 2x14 box inside that strip
-            _h_rem  = game.get('home_challenges')
-            _h_used = game.get('home_challenges_used')
-            _a_rem  = game.get('away_challenges')
-            _a_used = game.get('away_challenges_used')
+            # Situation fields keep source-team ownership. The display swaps
+            # team fields above, so the source away team owns the left strip.
+            _left_rem  = sit.get('away_challenges')
+            _left_used = sit.get('away_challenges_used')
+            _right_rem  = sit.get('home_challenges')
+            _right_used = sit.get('home_challenges_used')
 
             home_ch_clr = self._resolve_challenge_strip_color(game, 'home', home_clr)
             away_ch_clr = self._resolve_challenge_strip_color(game, 'away', away_clr)
@@ -543,8 +545,8 @@ class SportsMixin:
                 if lost_count >= 2:
                     d.rectangle([box_x0, bot_y0, box_x1, bot_y1], fill=(0, 0, 0, 0))
 
-            _draw_challenge_bar(0,     3,   _h_rem, _h_used, home_ch_clr)
-            _draw_challenge_bar(W - 4, W - 1, _a_rem, _a_used, away_ch_clr)
+            _draw_challenge_bar(0,     3,   _left_rem, _left_used, home_ch_clr)
+            _draw_challenge_bar(W - 4, W - 1, _right_rem, _right_used, away_ch_clr)
 
             # ── Step 3: logos ────────────────────────────────────────────────
             LOGO_SZ  = 24
@@ -655,7 +657,10 @@ class SportsMixin:
                 return last.upper()[:max_chars]
 
             def _trim_line(raw, max_chars=15):
-                return str(raw or '').strip()[:max_chars]
+                return '' if raw is None else str(raw).strip()[:max_chars]
+
+            def _value_text(raw):
+                return '' if raw is None else str(raw).strip()
 
             def _compact_pitch_name(full_type, abbr_type):
                 txt = str(full_type or '').strip()
@@ -716,16 +721,17 @@ class SportsMixin:
             batter_h     = sit.get('batter_h', '')
             batter_ab    = sit.get('batter_ab', '')
             pit_pitches  = sit.get('pitcher_pitches', 0)
+            pitcher_era  = sit.get('pitcher_era')
             last_spd     = sit.get('last_pitch_speed', 0)
             last_abbr    = sit.get('last_pitch_type_abbr', '') or sit.get('last_pitch_type', '')
             last_full    = sit.get('last_pitch_type_full', '')
 
-            batter_avg_txt = str(batter_avg or '').strip()
+            batter_avg_txt = _value_text(batter_avg)
             if batter_avg_txt.startswith('0.'):
                 batter_avg_txt = batter_avg_txt[1:]
 
-            batter_h_txt = str(batter_h or '').strip()
-            batter_ab_txt = str(batter_ab or '').strip()
+            batter_h_txt = _value_text(batter_h)
+            batter_ab_txt = _value_text(batter_ab)
             if batter_h_txt and batter_ab_txt:
                 batter_hits_ab_line = f"{batter_h_txt}/{batter_ab_txt}"
             elif batter_h_txt:
@@ -740,9 +746,8 @@ class SportsMixin:
             else:
                 batter_avg_line = ''
 
-            pitch_count_line = ''
-            if str(pit_pitches).strip() and str(pit_pitches).strip() != '0':
-                pitch_count_line = f"P:{pit_pitches}"
+            pitch_count_txt = _value_text(pit_pitches)
+            pitch_count_line = f"P:{pitch_count_txt}" if pitch_count_txt else ''
 
             pitch_type_line = _compact_pitch_name(last_full, last_abbr)
             if str(last_spd).strip() and str(last_spd).strip() != '0' and pitch_type_line:
@@ -751,6 +756,12 @@ class SportsMixin:
                 pitch_info_line = f"{last_spd} MPH"
             else:
                 pitch_info_line = pitch_type_line
+
+            era_txt = _value_text(pitcher_era)
+            if era_txt in {'-', '-.--', 'N/A', 'n/a'}:
+                era_txt = ''
+            if not pitch_info_line and era_txt:
+                pitch_info_line = f"ERA:{era_txt}"
 
             # Prefer backend possession marker; fall back to inning state.
             # home_ab is now the visual-left (actual away) team after the home/away swap.
