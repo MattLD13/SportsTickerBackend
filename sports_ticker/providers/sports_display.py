@@ -60,7 +60,7 @@ class SportsDisplayProjector:
         if league == "march_madness":
             data.update(_seeds(competition))
         elif league in _COLLEGE_FOOTBALL:
-            data.update(_football_ranks(competition, football_rankings, league=league))
+            data.update(_football_ranks(competition, football_rankings))
         return ContentItem(
             id=item.id,
             family=item.family,
@@ -498,17 +498,15 @@ def _seeds(competition: Mapping[str, Any]) -> dict[str, str]:
 def _football_ranks(
     competition: Mapping[str, Any],
     football_rankings: Mapping[str, str] | None = None,
-    *,
-    league: str = "",
 ) -> dict[str, str]:
-    """Project ESPN college football rankings into the shared display contract."""
+    """Project NCAA college football rankings into the shared display contract."""
 
     competitors = _competitors(competition.get("competitors"))
     home = _find_side(competitors, "home")
     away = _find_side(competitors, "away")
     return {
-        "home_rank": _rank(home, football_rankings, league=league),
-        "away_rank": _rank(away, football_rankings, league=league),
+        "home_rank": _rank(home, football_rankings),
+        "away_rank": _rank(away, football_rankings),
     }
 
 
@@ -520,28 +518,19 @@ def _seed(competitor: Mapping[str, Any]) -> str:
 def _rank(
     competitor: Mapping[str, Any],
     football_rankings: Mapping[str, str] | None = None,
-    *,
-    league: str = "",
 ) -> str:
-    """Return one ESPN ranking, excluding the provider's unranked sentinel."""
+    """Return one NCAA ranking, excluding the provider's unranked sentinel."""
 
     team = _mapping(competitor.get("team"))
     team_id = str(team.get("id") or competitor.get("id") or "").strip()
-    if league == "ncf_fcs":
-        return normalize_rank((football_rankings or {}).get(team_id))
-
-    value = _mapping(competitor.get("curatedRank")).get("current")
-    rank = normalize_rank(value)
-    if rank:
-        return rank
     return normalize_rank((football_rankings or {}).get(team_id))
 
 
 def normalize_rank(value: object) -> str:
-    """Normalize one ranking value and discard ESPN's unranked sentinel."""
+    """Normalize one ranking value and discard its unranked sentinel."""
 
     try:
-        number = int(float(value))
+        number = int(float(str(value or "").strip().lstrip("Tt")))
     except (TypeError, ValueError):
         return ""
     return str(number) if 0 < number < 99 else ""

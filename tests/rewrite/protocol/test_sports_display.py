@@ -106,15 +106,19 @@ def test_football_red_zone_only_marks_the_opponents_end_zone(
     assert football.data["situation"]["isRedZone"] is expected
 
 
-def test_college_football_projects_current_team_rankings() -> None:
+def test_college_football_projects_external_team_rankings() -> None:
     event = _event("2nd quarter", {})
     event["competitions"][0]["competitors"][0]["curatedRank"] = {"current": 12}
     event["competitions"][0]["competitors"][1]["curatedRank"] = {"current": 4}
 
-    football = SportsDisplayProjector().project(_item("college", "ncf_fbs"), event)
+    football = SportsDisplayProjector().project(
+        _item("college", "ncf_fbs"),
+        event,
+        football_rankings={"1": "8", "2": "7"},
+    )
 
-    assert football.data["home_rank"] == "12"
-    assert football.data["away_rank"] == "4"
+    assert football.data["home_rank"] == "8"
+    assert football.data["away_rank"] == "7"
 
 
 def test_college_football_uses_external_ranking_when_scoreboard_has_no_rank() -> None:

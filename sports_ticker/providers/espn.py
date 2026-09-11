@@ -96,13 +96,13 @@ _MLB_TEAM_ABBREVIATION_ALIASES = MappingProxyType(
         "CWS": "CHW",
     }
 )
-_COLLEGE_FOOTBALL_RANKINGS_URL = (
-    "https://site.web.api.espn.com/apis/site/v2/sports/football/college-football/"
-    "rankings?region=us&lang=en"
+_NCAA_COLLEGE_FOOTBALL_RANKING_URLS = MappingProxyType(
+    {
+        "ncf_fbs": "https://ncaa-api.henrygd.me/rankings/football/fbs/associated-press",
+        "ncf_fcs": "https://ncaa-api.henrygd.me/rankings/football/fcs/stats-perform-fcs-top-25",
+    }
 )
 _RANKINGS_CACHE_SECONDS = 300.0
-_FBS_RANKING_IDS = frozenset(("1", "2"))
-_FCS_RANKING_IDS = frozenset(("20",))
 _NCAA_SCHOOLS_INDEX_URL = "https://ncaa-api.henrygd.me/schools-index"
 _NCAA_LOGO_CACHE_SECONDS = 86400.0
 _NCAA_LOGO_FAILURE_RETRY_SECONDS = 60.0
@@ -608,7 +608,11 @@ class EspnScoreboardProvider:
             if _needs_ncaa_logo_lookup(active_leagues, events_by_league):
                 ncaa_logo_future = pool.submit(self._read_ncaa_school_index)
 
-        football_rankings = rankings_future.result() if rankings_future is not None else {}
+        ranking_names = rankings_future.result() if rankings_future is not None else {}
+        football_rankings = _resolve_college_football_rankings(
+            ranking_names,
+            events_by_league,
+        )
         ncaa_logo_index = ncaa_logo_future.result() if ncaa_logo_future is not None else {}
         failed_sources = len(failed_leagues)
         suppressed_live_update_ids = {
@@ -671,21 +675,23 @@ class EspnScoreboardProvider:
         return self._fastcast is not None and self._fastcast.active(league)
 
     def _read_college_football_rankings(self) -> dict[str, dict[str, str]]:
-        """Read cached FBS and FCS ranking polls without affecting scoreboard health."""
+        """Read cached NCAA AP and Stats Perform polls without affecting scoreboard health."""
 
         now = self._monotonic()
         with self._raw_cache_lock:
             cached = self._rankings_cache
             if cached is not None and 0 <= now - cached[0] < _RANKINGS_CACHE_SECONDS:
                 return cached[1]
-        try:
-            payload = self.client.get_json(
-                _COLLEGE_FOOTBALL_RANKINGS_URL,
-                timeout=self.timeout,
-            )
-            rankings = _parse_college_football_rankings(payload)
-        except Exception:
-            rankings = {"ncf_fbs": {}, "ncf_fcs": {}}
+        rankings = {
+            league: {}
+            for league in _NCAA_COLLEGE_FOOTBALL_RANKING_URLS
+        }
+        for league, url in _NCAA_COLLEGE_FOOTBALL_RANKING_URLS.items():
+            try:
+                payload = self.client.get_json(url, timeout=self.timeout)
+                rankings[league] = _parse_ncaa_college_football_rankings(payload)
+            except Exception:
+                continue
         with self._raw_cache_lock:
             self._rankings_cache = (self._monotonic(), rankings)
         return rankings
@@ -1881,26 +1887,79 @@ def _mlb_has_boxscore(payload: Mapping[str, Any]) -> bool:
     )
 
 
-def _parse_college_football_rankings(payload: Any) -> dict[str, dict[str, str]]:
-    """Map ESPN FBS and FCS poll entries to team identifiers."""
+_COLLEGE_RANKING_NAME_ALIASES = MappingProxyType(
+    {
+        "southern cal": "usc",
+        "southern california": "usc",
+        "miami fl": "miami",
+        "miami florida": "miami",
+        "pitt": "pittsburgh",
+        "uconn": "connecticut",
+    }
+)
 
-    result: dict[str, dict[str, str]] = {"ncf_fbs": {}, "ncf_fcs": {}}
-    for poll in _sequence(_mapping(payload).get("rankings")):
-        source = _mapping(poll)
-        poll_id = str(source.get("id") or "").strip()
-        if poll_id in _FBS_RANKING_IDS:
-            league = "ncf_fbs"
-        elif poll_id in _FCS_RANKING_IDS:
-            league = "ncf_fcs"
-        else:
+
+def _parse_ncaa_college_football_rankings(payload: Any) -> dict[str, str]:
+    """Map NCAA ranking rows to normalized school names."""
+
+    result: dict[str, str] = {}
+    for entry in _sequence(_mapping(payload).get("data")):
+        source = _mapping(entry)
+        rank = normalize_rank(source.get("RANK"))
+        if not rank:
             continue
-        for entry in _sequence(source.get("ranks")):
-            rank = normalize_rank(_mapping(entry).get("current"))
-            team = _mapping(_mapping(entry).get("team"))
-            team_id = str(team.get("id") or "").strip()
-            if rank and team_id and team_id not in result[league]:
-                result[league][team_id] = rank
+        for key in _college_ranking_name_keys(source.get("SCHOOL")):
+            result.setdefault(key, rank)
     return result
+
+
+def _college_ranking_name_keys(value: Any) -> tuple[str, ...]:
+    """Return conservative NCAA and ESPN school-name keys for one ranking row."""
+
+    text = re.sub(r"\s*\(\d+\)\s*$", "", str(value or ""))
+    normalized = _normalize_team_name(text)
+    if not normalized:
+        return ()
+    words = normalized.split()
+    if words[-1] == "st":
+        words[-1] = "state"
+    normalized = " ".join(words)
+    alias = _COLLEGE_RANKING_NAME_ALIASES.get(normalized)
+    return tuple(dict.fromkeys(key for key in (normalized, alias) if key))
+
+
+def _resolve_college_football_rankings(
+    rankings: Mapping[str, Mapping[str, str]],
+    events_by_league: Mapping[str, Sequence[Mapping[str, Any]]],
+) -> dict[str, dict[str, str]]:
+    """Resolve NCAA school names to ESPN team IDs carried by scoreboard events."""
+
+    resolved = {
+        league: {}
+        for league in _NCAA_COLLEGE_FOOTBALL_RANKING_URLS
+    }
+    for league, name_rankings in rankings.items():
+        if league not in resolved:
+            continue
+        for event in events_by_league.get(league, ()):
+            competition = _first_mapping(event.get("competitions"))
+            for competitor in _competitors(competition.get("competitors")):
+                team = _mapping(competitor.get("team"))
+                team_id = str(team.get("id") or competitor.get("id") or "").strip()
+                if not team_id:
+                    continue
+                rank = next(
+                    (
+                        name_rankings[key]
+                        for candidate in _team_name_candidates(team)
+                        for key in _college_ranking_name_keys(candidate)
+                        if key in name_rankings
+                    ),
+                    "",
+                )
+                if rank:
+                    resolved[league][team_id] = rank
+    return resolved
 
 
 def _nhl_event_details(payload: Any, item: Mapping[str, Any]) -> dict[str, Any]:

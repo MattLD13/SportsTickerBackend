@@ -64,14 +64,14 @@ class RecordingClient:
         responses: dict[str, dict],
         failures: set[str] | None = None,
         event_updates: dict[str, dict] | None = None,
-        rankings: dict | None = None,
+        ranking_responses: dict[str, dict] | None = None,
         ncaa_schools: list[dict] | None = None,
         grouped_responses: dict[str, dict[str, dict]] | None = None,
     ) -> None:
         self.responses = responses
         self.failures = failures or set()
         self.event_updates = event_updates or {}
-        self.rankings = rankings or {"rankings": []}
+        self.ranking_responses = ranking_responses or {}
         self.ncaa_schools = ncaa_schools or []
         self.grouped_responses = grouped_responses or {}
         self.urls: list[str] = []
@@ -82,7 +82,8 @@ class RecordingClient:
         del timeout
         if "/rankings" in url:
             self.ranking_urls.append(url)
-            return self.rankings
+            league = "ncf_fbs" if "/football/fbs/" in url else "ncf_fcs"
+            return self.ranking_responses.get(league, {"data": []})
         if "/schools-index" in url:
             self.ncaa_school_urls.append(url)
             return self.ncaa_schools
@@ -114,25 +115,23 @@ class RecordingClient:
 
 
 @pytest.mark.parametrize(
-    ("league", "team_id", "poll_id", "rank"),
-    (("ncf_fbs", "30", "1", 14), ("ncf_fcs", "2329", "20", 11)),
+    ("league", "team_id", "team_name", "rank"),
+    (("ncf_fbs", "30", "Duke", 14), ("ncf_fcs", "2329", "Lehigh", 11)),
 )
-def test_college_football_rankings_fill_scoreboard_sentinel(
+def test_ncaa_college_football_rankings_fill_scoreboard_sentinel(
     league: str,
     team_id: str,
-    poll_id: str,
+    team_name: str,
     rank: int,
 ) -> None:
     event = _event("ranked-game", "2026-08-16T15:00:00Z")
     competitor = event["competitions"][0]["competitors"][0]
-    competitor["team"]["id"] = team_id
+    competitor["team"].update({"id": team_id, "location": team_name})
     competitor["curatedRank"] = {"current": 99}
     client = RecordingClient(
         {"20260816-20260817": {"events": [event]}},
-        rankings={
-            "rankings": [
-                {"id": poll_id, "ranks": [{"current": rank, "team": {"id": team_id}}]}
-            ]
+        ranking_responses={
+            league: {"data": [{"RANK": str(rank), "SCHOOL": team_name}]},
         },
     )
     provider = EspnScoreboardProvider(
@@ -144,24 +143,28 @@ def test_college_football_rankings_fill_scoreboard_sentinel(
     result = provider.fetch(_settings())
 
     assert result.content[0].data["home_rank"] == str(rank)
-    assert len(client.ranking_urls) == 1
+    assert len(client.ranking_urls) == 2
+    assert any("/football/fbs/associated-press" in url for url in client.ranking_urls)
+    assert any("/football/fcs/stats-perform-fcs-top-25" in url for url in client.ranking_urls)
 
 
-def test_fcs_rankings_ignore_fbs_curated_rank_on_cross_division_game() -> None:
+def test_fcs_rankings_use_ncaa_stats_perform_on_cross_division_game() -> None:
     event = _event("fcs-cross-division", "2026-09-11T23:00:00Z")
     home = event["competitions"][0]["competitors"][0]
     away = event["competitions"][0]["competitors"][1]
-    home["team"].update({"id": "97", "displayName": "Louisville Cardinals"})
-    away["team"].update({"id": "222", "displayName": "Villanova Wildcats"})
+    home["team"].update(
+        {"id": "97", "location": "Louisville", "displayName": "Louisville Cardinals"}
+    )
+    away["team"].update(
+        {"id": "222", "location": "Villanova", "displayName": "Villanova Wildcats"}
+    )
     home["curatedRank"] = {"current": 24}
     away["curatedRank"] = {"current": 99}
     client = RecordingClient(
         {"20260911-20260912": {"events": [event]}},
-        rankings={
-            "rankings": [
-                {"id": "1", "ranks": [{"current": 24, "team": {"id": "97"}}]},
-                {"id": "20", "ranks": [{"current": 18, "team": {"id": "222"}}]},
-            ]
+        ranking_responses={
+            "ncf_fbs": {"data": [{"RANK": "24", "SCHOOL": "Louisville"}]},
+            "ncf_fcs": {"data": [{"RANK": "21", "SCHOOL": "Villanova"}]},
         },
     )
     provider = EspnScoreboardProvider(
@@ -174,7 +177,55 @@ def test_fcs_rankings_ignore_fbs_curated_rank_on_cross_division_game() -> None:
 
     data = result.content[0].data
     assert data["home_rank"] == ""
-    assert data["away_rank"] == "18"
+    assert data["away_rank"] == "21"
+
+
+def test_fbs_rankings_use_ncaa_ap_instead_of_espn_curated_rank() -> None:
+    event = _event("fbs-ncaa-rank", "2026-09-11T23:00:00Z")
+    home = event["competitions"][0]["competitors"][0]
+    home["team"].update(
+        {"id": "97", "location": "Louisville", "displayName": "Louisville Cardinals"}
+    )
+    home["curatedRank"] = {"current": 24}
+    client = RecordingClient(
+        {"20260911-20260912": {"events": [event]}},
+        ranking_responses={
+            "ncf_fbs": {"data": [{"RANK": "12", "SCHOOL": "Louisville"}]},
+            "ncf_fcs": {"data": []},
+        },
+    )
+    provider = EspnScoreboardProvider(
+        {"ncf_fbs": "https://example.test/football/college-football/scoreboard"},
+        client=client,
+        now=lambda: datetime(2026, 9, 11, 7, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch(_settings())
+
+    assert result.content[0].data["home_rank"] == "12"
+
+
+def test_ncaa_ranking_name_aliases_match_espn_team_names() -> None:
+    event = _event("fbs-ranking-alias", "2026-09-11T23:00:00Z")
+    home = event["competitions"][0]["competitors"][0]
+    home["team"].update({"id": "30", "location": "USC", "displayName": "USC Trojans"})
+    home["curatedRank"] = {"current": 24}
+    client = RecordingClient(
+        {"20260911-20260912": {"events": [event]}},
+        ranking_responses={
+            "ncf_fbs": {"data": [{"RANK": "T14", "SCHOOL": "Southern Cal (6)"}]},
+            "ncf_fcs": {"data": []},
+        },
+    )
+    provider = EspnScoreboardProvider(
+        {"ncf_fbs": "https://example.test/football/college-football/scoreboard"},
+        client=client,
+        now=lambda: datetime(2026, 9, 11, 7, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch(_settings())
+
+    assert result.content[0].data["home_rank"] == "14"
 
 
 def test_missing_college_logos_use_cached_ncaa_school_index() -> None:
@@ -397,17 +448,19 @@ def test_espn_cfb_group_overlap_prefers_fcs_ownership_without_duplicates() -> No
     )
     home = crossover["competitions"][0]["competitors"][0]
     away = crossover["competitions"][0]["competitors"][1]
-    home["team"].update({"id": "97", "displayName": "Louisville Cardinals"})
-    away["team"].update({"id": "222", "displayName": "Villanova Wildcats"})
+    home["team"].update(
+        {"id": "97", "location": "Louisville", "displayName": "Louisville Cardinals"}
+    )
+    away["team"].update(
+        {"id": "222", "location": "Villanova", "displayName": "Villanova Wildcats"}
+    )
     home["curatedRank"] = {"current": 24}
     away["curatedRank"] = {"current": 99}
     client = RecordingClient(
         {},
-        rankings={
-            "rankings": [
-                {"id": "1", "ranks": [{"current": 24, "team": {"id": "97"}}]},
-                {"id": "20", "ranks": [{"current": 18, "team": {"id": "222"}}]},
-            ]
+        ranking_responses={
+            "ncf_fbs": {"data": [{"RANK": "24", "SCHOOL": "Louisville"}]},
+            "ncf_fcs": {"data": [{"RANK": "21", "SCHOOL": "Villanova"}]},
         },
         grouped_responses={
             "80": {"20260815-20260816": {"events": [deepcopy(crossover)]}},
@@ -428,7 +481,7 @@ def test_espn_cfb_group_overlap_prefers_fcs_ownership_without_duplicates() -> No
     assert [item.id for item in result.content] == ["same-cfb-game"]
     assert result.content[0].data["sport"] == "ncf_fcs"
     assert result.content[0].data["home_rank"] == ""
-    assert result.content[0].data["away_rank"] == "18"
+    assert result.content[0].data["away_rank"] == "21"
 
 
 def test_espn_empty_date_response_is_healthy_and_empty() -> None:
