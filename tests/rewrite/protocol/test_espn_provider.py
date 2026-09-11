@@ -142,6 +142,36 @@ def test_college_football_rankings_fill_scoreboard_sentinel(
     assert len(client.ranking_urls) == 1
 
 
+def test_fcs_rankings_ignore_fbs_curated_rank_on_cross_division_game() -> None:
+    event = _event("fcs-cross-division", "2026-09-11T23:00:00Z")
+    home = event["competitions"][0]["competitors"][0]
+    away = event["competitions"][0]["competitors"][1]
+    home["team"].update({"id": "97", "displayName": "Louisville Cardinals"})
+    away["team"].update({"id": "222", "displayName": "Villanova Wildcats"})
+    home["curatedRank"] = {"current": 24}
+    away["curatedRank"] = {"current": 99}
+    client = RecordingClient(
+        {"20260911-20260912": {"events": [event]}},
+        rankings={
+            "rankings": [
+                {"id": "1", "ranks": [{"current": 24, "team": {"id": "97"}}]},
+                {"id": "20", "ranks": [{"current": 18, "team": {"id": "222"}}]},
+            ]
+        },
+    )
+    provider = EspnScoreboardProvider(
+        {"ncf_fcs": "https://example.test/football/college-football/scoreboard"},
+        client=client,
+        now=lambda: datetime(2026, 9, 11, 7, tzinfo=timezone.utc),
+    )
+
+    result = provider.fetch(_settings())
+
+    data = result.content[0].data
+    assert data["home_rank"] == ""
+    assert data["away_rank"] == "18"
+
+
 def test_missing_college_logos_use_cached_ncaa_school_index() -> None:
     event = _event("missing-logo-game", "2026-08-16T15:00:00Z")
     home = event["competitions"][0]["competitors"][0]["team"]
