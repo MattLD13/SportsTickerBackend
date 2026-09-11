@@ -66,12 +66,14 @@ class RecordingClient:
         event_updates: dict[str, dict] | None = None,
         rankings: dict | None = None,
         ncaa_schools: list[dict] | None = None,
+        grouped_responses: dict[str, dict[str, dict]] | None = None,
     ) -> None:
         self.responses = responses
         self.failures = failures or set()
         self.event_updates = event_updates or {}
         self.rankings = rankings or {"rankings": []}
         self.ncaa_schools = ncaa_schools or []
+        self.grouped_responses = grouped_responses or {}
         self.urls: list[str] = []
         self.ranking_urls: list[str] = []
         self.ncaa_school_urls: list[str] = []
@@ -105,6 +107,9 @@ class RecordingClient:
         dates = parse_qs(urlsplit(url).query)["dates"][0]
         if dates in self.failures:
             raise RuntimeError(f"failed {dates}")
+        groups = parse_qs(urlsplit(url).query).get("groups", [])
+        if groups and groups[0] in self.grouped_responses:
+            return self.grouped_responses[groups[0]].get(dates, {"events": []})
         return self.responses.get(dates, {"events": []})
 
 
@@ -383,15 +388,31 @@ def test_espn_overlapping_date_payloads_do_not_duplicate_events() -> None:
     assert [item.id for item in result.content] == ["same-game"]
 
 
-def test_espn_cfb_group_overlap_does_not_duplicate_events() -> None:
+def test_espn_cfb_group_overlap_prefers_fcs_ownership_without_duplicates() -> None:
     crossover = _event(
         "same-cfb-game",
         "2026-08-16T05:00:00Z",
         home_conference_id="4",
         away_conference_id="31",
     )
+    home = crossover["competitions"][0]["competitors"][0]
+    away = crossover["competitions"][0]["competitors"][1]
+    home["team"].update({"id": "97", "displayName": "Louisville Cardinals"})
+    away["team"].update({"id": "222", "displayName": "Villanova Wildcats"})
+    home["curatedRank"] = {"current": 24}
+    away["curatedRank"] = {"current": 99}
     client = RecordingClient(
-        {"20260815-20260816": {"events": [crossover]}}
+        {},
+        rankings={
+            "rankings": [
+                {"id": "1", "ranks": [{"current": 24, "team": {"id": "97"}}]},
+                {"id": "20", "ranks": [{"current": 18, "team": {"id": "222"}}]},
+            ]
+        },
+        grouped_responses={
+            "80": {"20260815-20260816": {"events": [deepcopy(crossover)]}},
+            "81": {"20260815-20260816": {"events": [deepcopy(crossover)]}},
+        },
     )
     provider = EspnScoreboardProvider(
         {
@@ -405,7 +426,9 @@ def test_espn_cfb_group_overlap_does_not_duplicate_events() -> None:
     result = provider.fetch(_settings())
 
     assert [item.id for item in result.content] == ["same-cfb-game"]
-    assert result.content[0].data["sport"] == "ncf_fbs"
+    assert result.content[0].data["sport"] == "ncf_fcs"
+    assert result.content[0].data["home_rank"] == ""
+    assert result.content[0].data["away_rank"] == "18"
 
 
 def test_espn_empty_date_response_is_healthy_and_empty() -> None:

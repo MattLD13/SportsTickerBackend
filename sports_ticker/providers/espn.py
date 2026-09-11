@@ -222,6 +222,16 @@ def _source_key(
     return settings.timezone, tuple(dates), enabled, conferences
 
 
+def _event_league_priority(league: str) -> int:
+    """Give duplicate college football events to the FCS feed before the FBS feed."""
+
+    if league == "ncf_fcs":
+        return 0
+    if league == "ncf_fbs":
+        return 1
+    return 2
+
+
 class EspnScoreboardProvider:
     """Fetch explicitly enabled ESPN scoreboard leagues into canonical content."""
 
@@ -607,7 +617,11 @@ class EspnScoreboardProvider:
             for event in events_by_league.get(league, ())
             if str(event.get("id") or "").strip() and _event_needs_live_refresh(event, current)
         }
-        for league, _url in active_leagues:
+        event_leagues = sorted(
+            active_leagues,
+            key=lambda entry: _event_league_priority(entry[0]),
+        )
+        for league, _url in event_leagues:
             events = events_by_league.get(league, ())
             for event in events:
                 event_id = str(event.get("id") or "").strip()
