@@ -148,7 +148,7 @@ def test_ncaa_college_football_rankings_fill_scoreboard_sentinel(
     assert any("/football/fcs/stats-perform-fcs-top-25" in url for url in client.ranking_urls)
 
 
-def test_fcs_rankings_use_ncaa_stats_perform_on_cross_division_game() -> None:
+def test_mixed_division_game_uses_each_team_ncaa_poll() -> None:
     event = _event("fcs-cross-division", "2026-09-11T23:00:00Z")
     home = event["competitions"][0]["competitors"][0]
     away = event["competitions"][0]["competitors"][1]
@@ -176,7 +176,7 @@ def test_fcs_rankings_use_ncaa_stats_perform_on_cross_division_game() -> None:
     result = provider.fetch(_settings())
 
     data = result.content[0].data
-    assert data["home_rank"] == ""
+    assert data["home_rank"] == "24"
     assert data["away_rank"] == "21"
 
 
@@ -480,7 +480,7 @@ def test_espn_cfb_group_overlap_prefers_fcs_ownership_without_duplicates() -> No
 
     assert [item.id for item in result.content] == ["same-cfb-game"]
     assert result.content[0].data["sport"] == "ncf_fcs"
-    assert result.content[0].data["home_rank"] == ""
+    assert result.content[0].data["home_rank"] == "24"
     assert result.content[0].data["away_rank"] == "21"
 
 

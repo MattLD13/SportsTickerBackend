@@ -643,7 +643,7 @@ class EspnScoreboardProvider:
                     item = self._display.project(
                         _content_item(league, event, ncaa_logo_index=ncaa_logo_index),
                         event,
-                        football_rankings=football_rankings.get(league, {}),
+                        football_rankings=football_rankings,
                     )
                     items.append(item)
                 except (KeyError, TypeError, ValueError) as exc:
@@ -1931,17 +1931,19 @@ def _college_ranking_name_keys(value: Any) -> tuple[str, ...]:
 def _resolve_college_football_rankings(
     rankings: Mapping[str, Mapping[str, str]],
     events_by_league: Mapping[str, Sequence[Mapping[str, Any]]],
-) -> dict[str, dict[str, str]]:
-    """Resolve NCAA school names to ESPN team IDs carried by scoreboard events."""
+) -> dict[str, str]:
+    """Resolve both NCAA polls to ESPN team IDs carried by scoreboard events."""
 
-    resolved = {
-        league: {}
+    resolved: dict[str, str] = {}
+    college_events = tuple(
+        event
         for league in _NCAA_COLLEGE_FOOTBALL_RANKING_URLS
-    }
+        for event in events_by_league.get(league, ())
+    )
     for league, name_rankings in rankings.items():
-        if league not in resolved:
+        if league not in _NCAA_COLLEGE_FOOTBALL_RANKING_URLS:
             continue
-        for event in events_by_league.get(league, ()):
+        for event in college_events:
             competition = _first_mapping(event.get("competitions"))
             for competitor in _competitors(competition.get("competitors")):
                 team = _mapping(competitor.get("team"))
@@ -1958,7 +1960,7 @@ def _resolve_college_football_rankings(
                     "",
                 )
                 if rank:
-                    resolved[league][team_id] = rank
+                    resolved.setdefault(team_id, rank)
     return resolved
 
 
