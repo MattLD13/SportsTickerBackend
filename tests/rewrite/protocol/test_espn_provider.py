@@ -1989,6 +1989,70 @@ def test_espn_mlb_statsapi_matching_accepts_team_abbreviation_aliases() -> None:
     assert provider._mlb_game_pk("PIT", "CHW", datetime(2026, 9, 8, tzinfo=timezone.utc).date()) == "824551"
 
 
+def test_espn_mlb_statsapi_matching_uses_full_start_time_for_cross_midnight_series() -> None:
+    class ScheduleClient:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        def get_json(self, url: str, *, timeout: float):
+            del timeout
+            self.urls.append(url)
+            schedule_date = parse_qs(urlsplit(url).query)["date"][0]
+            if schedule_date == "2026-09-11":
+                game = {
+                    "gamePk": 823012,
+                    "gameDate": "2026-09-12T00:15:00Z",
+                    "officialDate": "2026-09-11",
+                    "teams": {
+                        "away": {"team": {"abbreviation": "CWS"}},
+                        "home": {"team": {"abbreviation": "STL"}},
+                    },
+                }
+            else:
+                game = {
+                    "gamePk": 823009,
+                    "gameDate": "2026-09-12T23:15:00Z",
+                    "officialDate": "2026-09-12",
+                    "teams": {
+                        "away": {"team": {"abbreviation": "CWS"}},
+                        "home": {"team": {"abbreviation": "STL"}},
+                    },
+                }
+            return {"dates": [{"date": schedule_date, "games": [game]}]}
+
+    client = ScheduleClient()
+    provider = EspnScoreboardProvider(
+        {"mlb": "https://example.test/baseball/mlb/scoreboard"},
+        client=client,
+        monotonic=lambda: 0.0,
+    )
+    event_start = datetime(2026, 9, 12, 0, 15, tzinfo=timezone.utc)
+    provider._remember_mlb_events(
+        "mlb",
+        ({
+            "id": "cardinals",
+            "header": {
+                "competitions": [{
+                    "date": "2026-09-12T00:15:00Z",
+                    "competitors": [
+                        {"homeAway": "away", "team": {"abbreviation": "CHW"}},
+                        {"homeAway": "home", "team": {"abbreviation": "STL"}},
+                    ],
+                }],
+            },
+        },),
+    )
+    assert provider._mlb_event_keys["cardinals"].event_start == event_start
+
+    assert provider._mlb_game_pk(
+        "CHW",
+        "STL",
+        event_start.date(),
+        event_start=event_start,
+    ) == "823012"
+    assert len(client.urls) == 2
+
+
 def test_espn_mlb_statsapi_feed_supplies_live_player_stats() -> None:
     summary = _mlb_statsapi_summary({
         "gameData": {"teams": {

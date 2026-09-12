@@ -199,6 +199,26 @@ class _MlbLiveDetailCache:
     pitcher_id: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class _MlbEventKey:
+    """Keep the MLB teams and complete ESPN start time for one event."""
+
+    away_abbr: str
+    home_abbr: str
+    event_date: date
+    event_start: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _MlbScheduleGame:
+    """Keep one MLB schedule candidate without collapsing doubleheaders."""
+
+    game_pk: str
+    away_abbr: str
+    home_abbr: str
+    game_start: datetime | None = None
+
+
 class _ScoreboardReadError(RuntimeError):
     """Identify whether one cached scoreboard error came from transport or schema parsing."""
 
@@ -272,8 +292,10 @@ class EspnScoreboardProvider:
         self._event_scoreboard_cache: dict[tuple[str, str], _RawEventScoreboardResponse] = {}
         self._event_scoreboard_inflight: dict[tuple[str, str], Event] = {}
         self._mlb_live_detail_cache: dict[str, _MlbLiveDetailCache] = {}
-        self._mlb_event_keys: dict[str, tuple[str, str, date]] = {}
-        self._mlb_schedule_cache: dict[str, tuple[float, dict[tuple[str, str], str]]] = {}
+        self._mlb_event_keys: dict[str, _MlbEventKey] = {}
+        self._mlb_schedule_cache: dict[
+            str, tuple[float, tuple[_MlbScheduleGame, ...]]
+        ] = {}
         self._league_schedules: dict[tuple[str, str, date], _LeagueSchedule] = {}
         self._rankings_cache: tuple[float, dict[str, dict[str, str]]] | None = None
         self._ncaa_school_index_cache: tuple[float, dict[str, str]] | None = None
@@ -848,17 +870,22 @@ class EspnScoreboardProvider:
     def _remember_mlb_events(
         self, league: str, events: Sequence[Mapping[str, Any]]
     ) -> None:
-        """Index MLB ESPN events by their teams and UTC start date."""
+        """Index MLB ESPN events by their teams and complete start timestamp."""
 
         if league != "mlb":
             return
         for event in events:
             header = _mapping(event.get("header"))
             event_id = str(event.get("id") or header.get("id") or "").strip()
-            date_text = str(event.get("date") or header.get("date") or "").strip()
             competition = _first_mapping(
                 event.get("competitions") or header.get("competitions")
             )
+            date_text = str(
+                event.get("date")
+                or header.get("date")
+                or competition.get("date")
+                or ""
+            ).strip()
             competitors = tuple(
                 _mapping(value) for value in _sequence(competition.get("competitors"))
             )
@@ -871,7 +898,12 @@ class EspnScoreboardProvider:
                     game_date = date.fromisoformat(date_text[:10])
                 except ValueError:
                     continue
-                self._mlb_event_keys[event_id] = (away_abbr, home_abbr, game_date)
+                self._mlb_event_keys[event_id] = _MlbEventKey(
+                    away_abbr=away_abbr,
+                    home_abbr=home_abbr,
+                    event_date=game_date,
+                    event_start=_event_time(date_text),
+                )
 
     def _read_mlb_statsapi_event(self, event_id: str) -> Mapping[str, Any]:
         """Read one MLB live feed after ESPN summary endpoints omit player rows."""
@@ -879,8 +911,12 @@ class EspnScoreboardProvider:
         event_key = self._mlb_event_keys.get(str(event_id).strip())
         if event_key is None:
             return {}
-        away_abbr, home_abbr, event_date = event_key
-        game_pk = self._mlb_game_pk(away_abbr, home_abbr, event_date)
+        game_pk = self._mlb_game_pk(
+            event_key.away_abbr,
+            event_key.home_abbr,
+            event_key.event_date,
+            event_start=event_key.event_start,
+        )
         if not game_pk:
             return {}
         try:
@@ -892,9 +928,17 @@ class EspnScoreboardProvider:
             return {}
         return _mlb_statsapi_summary(payload, str(event_id).strip())
 
-    def _mlb_game_pk(self, away_abbr: str, home_abbr: str, event_date: date) -> str:
-        """Match one ESPN MLB event to its MLB StatsAPI game identifier."""
+    def _mlb_game_pk(
+        self,
+        away_abbr: str,
+        home_abbr: str,
+        event_date: date,
+        *,
+        event_start: datetime | None = None,
+    ) -> str:
+        """Match one ESPN MLB event to its closest StatsAPI game identifier."""
 
+        candidates: list[_MlbScheduleGame] = []
         for schedule_date in (event_date, event_date - timedelta(days=1)):
             schedule_key = schedule_date.isoformat()
             now = self._monotonic()
@@ -907,7 +951,7 @@ class EspnScoreboardProvider:
                     )
                 except Exception:
                     continue
-                games: dict[tuple[str, str], str] = {}
+                games: list[_MlbScheduleGame] = []
                 for day in _sequence(_mapping(payload).get("dates")):
                     for game in _sequence(_mapping(day).get("games")):
                         teams = _mapping(game).get("teams")
@@ -919,22 +963,42 @@ class EspnScoreboardProvider:
                         )
                         game_pk = str(_mapping(game).get("gamePk") or "").strip()
                         if key[0] and key[1] and game_pk:
-                            games[key] = game_pk
-                self._mlb_schedule_cache[schedule_key] = (now, games)
+                            games.append(
+                                _MlbScheduleGame(
+                                    game_pk=game_pk,
+                                    away_abbr=key[0],
+                                    home_abbr=key[1],
+                                    game_start=_event_time(
+                                        str(_mapping(game).get("gameDate") or "")
+                                    ),
+                                )
+                            )
+                self._mlb_schedule_cache[schedule_key] = (now, tuple(games))
             else:
                 games = cached[1]
-            found = next(
-                (
-                    game_pk
-                    for (scheduled_away, scheduled_home), game_pk in games.items()
-                    if _mlb_team_abbreviations_match(away_abbr, scheduled_away)
-                    and _mlb_team_abbreviations_match(home_abbr, scheduled_home)
-                ),
-                "",
+            candidates.extend(
+                game
+                for game in games
+                if _mlb_team_abbreviations_match(away_abbr, game.away_abbr)
+                and _mlb_team_abbreviations_match(home_abbr, game.home_abbr)
             )
-            if found:
-                return found
-        return ""
+        if not candidates:
+            return ""
+        if event_start is None:
+            return candidates[0].game_pk
+        reference = (
+            event_start.replace(tzinfo=timezone.utc)
+            if event_start.tzinfo is None
+            else event_start.astimezone(timezone.utc)
+        )
+        return min(
+            candidates,
+            key=lambda game: (
+                abs((game.game_start - reference).total_seconds())
+                if game.game_start is not None
+                else float("inf")
+            ),
+        ).game_pk
 
     def _cached_scoreboard(self, request_url: str) -> _RawScoreboardResponse:
         """Read one scoreboard URL once per freshness window, including temporary failures."""
