@@ -27,23 +27,22 @@ def _register_and_exchange(client, ticker_id: str) -> str:
     return exchange.get_json()["controller_token"]
 
 
-def test_schedule_routes_require_controller_and_persist_weekly_rules(tmp_path) -> None:
-    """Protect shared schedule mutations and persist both rule types."""
+def test_schedule_routes_use_the_server_fleet_and_persist_weekly_rules(tmp_path) -> None:
+    """Load and edit shared schedule rules from the server-owned fleet."""
 
     app = create_backend_application(tmp_path / "ticker.sqlite3", [], scheduler=None)
     try:
         client = app.test_client()
-        token = _register_and_exchange(client, "schedule-pi")
-        headers = {"Authorization": f"Bearer {token}"}
+        _register_and_exchange(client, "schedule-pi")
 
-        assert client.get("/api/v2/schedule").status_code == 401
-        assert client.get(
-            "/api/v2/schedule", headers={"Authorization": "Bearer invalid"}
-        ).status_code == 403
+        initial = client.get("/api/v2/schedule")
+        assert initial.status_code == 200
+        assert initial.get_json()["tickers"] == [
+            {"id": "schedule-pi", "name": "schedule-pi"}
+        ]
 
         block = client.post(
             "/api/v2/schedule/blocks",
-            headers=headers,
             json={
                 "day_group": "weekdays",
                 "start_minute": 480,
@@ -57,7 +56,6 @@ def test_schedule_routes_require_controller_and_persist_weekly_rules(tmp_path) -
 
         overlap = client.post(
             "/api/v2/schedule/blocks",
-            headers=headers,
             json={
                 "day_group": "weekdays",
                 "start_minute": 540,
@@ -70,13 +68,12 @@ def test_schedule_routes_require_controller_and_persist_weekly_rules(tmp_path) -
 
         condition = client.post(
             "/api/v2/schedule/conditions",
-            headers=headers,
             json={"kind": "live_games", "threshold": 2, "mode": "sports"},
         )
         assert condition.status_code == 201
         condition_id = condition.get_json()["id"]
 
-        document = client.get("/api/v2/schedule", headers=headers)
+        document = client.get("/api/v2/schedule")
         assert document.status_code == 200
         payload = document.get_json()
         assert payload["timezone_policy"] == "ticker"
@@ -85,13 +82,13 @@ def test_schedule_routes_require_controller_and_persist_weekly_rules(tmp_path) -
         assert [item["id"] for item in payload["conditions"]] == [condition_id]
 
         deleted = client.delete(
-            f"/api/v2/schedule/blocks/{block_id}", headers=headers
+            f"/api/v2/schedule/blocks/{block_id}"
         )
         assert deleted.status_code == 200
         assert client.delete(
-            f"/api/v2/schedule/conditions/{condition_id}", headers=headers
+            f"/api/v2/schedule/conditions/{condition_id}"
         ).status_code == 200
-        assert client.get("/api/v2/schedule", headers=headers).get_json()["blocks"] == {
+        assert client.get("/api/v2/schedule").get_json()["blocks"] == {
             "weekdays": [],
             "weekends": [],
         }

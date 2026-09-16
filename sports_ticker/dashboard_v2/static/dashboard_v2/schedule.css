@@ -1,4 +1,10 @@
 .schedule-intro { align-items: end; }
+.schedule-summary { grid-template-columns: 1fr repeat(4, minmax(100px, 150px)); }
+.server-tickers-panel { margin-bottom: 20px; }
+.server-ticker-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; padding: 14px 21px 18px; }
+.server-ticker { display: flex; min-width: 0; flex-direction: column; gap: 5px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }
+.server-ticker strong { overflow: hidden; color: var(--text); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.server-ticker small { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .schedule-layout { display: grid; grid-template-columns: 245px minmax(0, 1fr); gap: 20px; align-items: start; }
 .schedule-palette-panel, .timeline-panel, .conditions-panel { min-width: 0; }
 .schedule-palette { display: grid; gap: 8px; padding: 14px; }
@@ -31,4 +37,4 @@
 .conditions-panel { margin-top: 20px; }.condition-body { padding: 20px 21px 21px; }.condition-copy { max-width: 720px; margin: 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.55; }.condition-form { display: grid; grid-template-columns: minmax(140px, 200px) minmax(160px, 220px) auto; align-items: end; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }.condition-list { display: grid; gap: 8px; padding-top: 16px; }.condition-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(140px, 200px) auto auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }.condition-row strong { color: var(--amber); font-size: 12px; text-transform: uppercase; }.condition-row small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }.condition-row select { padding: 8px; }.condition-row .check-label { padding: 0; white-space: nowrap; }.condition-row .delete-condition { border: 0; background: transparent; color: var(--red); font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .is-disabled { opacity: .48; }
 @media (max-width: 980px) { .schedule-layout { grid-template-columns: 1fr; }.schedule-palette { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }.palette-help { margin-top: 0; }.condition-row { grid-template-columns: 1fr 180px auto auto; } }
-@media (max-width: 650px) { .schedule-intro { align-items: start; }.schedule-intro .button { width: 100%; text-align: center; }.condition-form { grid-template-columns: 1fr; }.condition-row { grid-template-columns: 1fr 1fr; }.condition-row .delete-condition { justify-self: start; }.condition-row .check-label { grid-column: 1 / -1; }.timeline-scroll { padding-left: 13px; padding-right: 13px; } }
+@media (max-width: 650px) { .schedule-intro { align-items: start; }.schedule-intro .button { width: 100%; text-align: center; }.schedule-summary { grid-template-columns: 1fr 1fr; }.condition-form { grid-template-columns: 1fr; }.condition-row { grid-template-columns: 1fr 1fr; }.condition-row .delete-condition { justify-self: start; }.condition-row .check-label { grid-column: 1 / -1; }.timeline-scroll { padding-left: 13px; padding-right: 13px; } }

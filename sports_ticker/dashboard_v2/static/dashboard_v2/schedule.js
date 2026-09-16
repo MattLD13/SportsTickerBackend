@@ -4,7 +4,6 @@
   const MODES = ["sports", "weather", "music", "flights", "airports", "stock", "clock"];
   const state = {
     document: null,
-    controllerToken: sessionStorage.getItem("sportsTicker.controllerToken") || "",
     selectedMode: "sports",
     dragging: null,
   };
@@ -17,15 +16,9 @@
     .replaceAll("'", "&#039;");
   const modeName = mode => String(mode || "").replaceAll("_", " ");
 
-  function controllerHeaders() {
-    const token = state.controllerToken.trim();
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
-
   async function api(path, options = {}) {
     const headers = {
       Accept: "application/json",
-      ...controllerHeaders(),
       ...(options.body ? { "Content-Type": "application/json" } : {}),
       ...(options.headers || {}),
     };
@@ -262,9 +255,14 @@
     renderAxis();
     renderBlocks();
     renderConditions();
+    const tickers = Array.isArray(state.document?.tickers) ? state.document.tickers : [];
     const liveGames = Number(state.document?.live_games || 0);
     const blocks = Object.values(state.document?.blocks || {}).flat().length;
     const conditions = state.document?.conditions?.length || 0;
+    $("[data-ticker-count]").textContent = tickers.length;
+    $("[data-ticker-list]").innerHTML = tickers.length
+      ? tickers.map(ticker => `<div class="server-ticker"><strong>${escapeHtml(ticker.name || "Ticker")}</strong><small class="mono">${escapeHtml(ticker.id)}</small></div>`).join("")
+      : '<div class="empty-state">No server tickers are registered.</div>';
     $("[data-live-games]").textContent = liveGames;
     $("[data-rule-count]").textContent = blocks + conditions;
     $("[data-schedule-summary]").textContent = `${blocks} time block${blocks === 1 ? "" : "s"} · ${conditions} live condition${conditions === 1 ? "" : "s"} · ${liveGames} live game${liveGames === 1 ? "" : "s"}`;
@@ -272,12 +270,12 @@
   }
 
   async function load() {
-    if (!state.controllerToken.trim() || state.dragging) return;
+    if (state.dragging) return;
     try {
       state.document = await api("/api/v2/schedule");
       render();
     } catch (error) {
-      $("[data-schedule-summary]").textContent = error.status === 401 ? "Enter a controller token to load the schedule" : error.message;
+      $("[data-schedule-summary]").textContent = error.message;
       $("[data-timeline-status]").textContent = "LOCKED";
       setFeedback(error.message, true);
     }
@@ -332,17 +330,6 @@
     selectMode(state.selectedMode);
   }
 
-  function bindAuth() {
-    $("[data-controller-token-form]").addEventListener("submit", event => {
-      event.preventDefault();
-      state.controllerToken = $("[data-controller-token]").value.trim();
-      sessionStorage.setItem("sportsTicker.controllerToken", state.controllerToken);
-      setFeedback(state.controllerToken ? "Controller token saved." : "Controller token cleared.");
-      load();
-    });
-    $("[data-controller-token]").value = state.controllerToken;
-  }
-
   $("[data-condition-form]").addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -358,7 +345,6 @@
     } catch (error) { setFeedback(error.message, true); }
   });
 
-  bindAuth();
   bindModePalette();
   renderAxis();
   load();

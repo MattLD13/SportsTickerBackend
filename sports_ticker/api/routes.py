@@ -126,12 +126,10 @@ def register_routes(
 
     @app.get("/api/v2/schedule")
     def get_schedule():
-        _require_schedule_controller(application)
         return jsonify(application.schedule_document())
 
     @app.post("/api/v2/schedule/blocks")
     def create_schedule_block():
-        _require_schedule_controller(application)
         payload = _json_object()
         values = _schedule_block_values(payload, require_all=True)
         block = application.create_schedule_block(**values)
@@ -139,7 +137,6 @@ def register_routes(
 
     @app.patch("/api/v2/schedule/blocks/<block_id>")
     def update_schedule_block(block_id: str):
-        _require_schedule_controller(application)
         payload = _json_object()
         values = _schedule_block_values(payload, require_all=False)
         try:
@@ -150,14 +147,12 @@ def register_routes(
 
     @app.delete("/api/v2/schedule/blocks/<block_id>")
     def delete_schedule_block(block_id: str):
-        _require_schedule_controller(application)
         if not application.delete_schedule_block(block_id):
             raise ApiError(f"schedule block not found: {block_id}", 404, "not_found")
         return jsonify({"deleted": True, "id": str(block_id).strip()})
 
     @app.post("/api/v2/schedule/conditions")
     def create_schedule_condition():
-        _require_schedule_controller(application)
         payload = _json_object()
         values = _schedule_condition_values(payload, require_all=True)
         condition = application.create_schedule_condition(**values)
@@ -165,7 +160,6 @@ def register_routes(
 
     @app.patch("/api/v2/schedule/conditions/<condition_id>")
     def update_schedule_condition(condition_id: str):
-        _require_schedule_controller(application)
         payload = _json_object()
         values = _schedule_condition_values(payload, require_all=False)
         try:
@@ -180,7 +174,6 @@ def register_routes(
 
     @app.delete("/api/v2/schedule/conditions/<condition_id>")
     def delete_schedule_condition(condition_id: str):
-        _require_schedule_controller(application)
         if not application.delete_schedule_condition(condition_id):
             raise ApiError(f"schedule condition not found: {condition_id}", 404, "not_found")
         return jsonify({"deleted": True, "id": str(condition_id).strip()})
@@ -630,14 +623,6 @@ def _controller_ticker_owner(application: BackendApplication, ticker_id: str) ->
     if not application.authorize_controller(identifier, token):
         raise ApiError("controller authorization is invalid", 403, "forbidden")
     return identifier
-
-
-def _require_schedule_controller(application: BackendApplication) -> None:
-    """Require one controller that owns at least one paired ticker."""
-
-    token = _controller_token()
-    if not application.list_tickers_for_controller(token):
-        raise ApiError("controller authorization is invalid", 403, "forbidden")
 
 
 def _controller_token() -> str:

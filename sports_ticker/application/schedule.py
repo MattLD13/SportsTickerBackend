@@ -52,6 +52,13 @@ class ScheduleService:
             "api_version": "v2",
             "timezone_policy": "ticker",
             "day_groups": list(SCHEDULE_DAY_GROUPS),
+            "tickers": [
+                {
+                    "id": ticker.ticker_id,
+                    "name": ticker.name,
+                }
+                for ticker in self._repository.list_tickers()
+            ],
             "blocks": grouped,
             "conditions": [
                 condition_to_mapping(condition)

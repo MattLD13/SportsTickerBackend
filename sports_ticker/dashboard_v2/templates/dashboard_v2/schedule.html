@@ -18,13 +18,8 @@
       <span class="status-dot is-ok"></span>
       <span>Weekly schedule</span>
       <span class="muted">/</span>
-      <span class="mono">ALL TICKERS</span>
+      <span class="mono">SERVER FLEET</span>
     </div>
-    <form class="controller-auth" data-controller-token-form>
-      <label class="sr-only" for="controller-token">Controller token</label>
-      <input id="controller-token" data-controller-token type="password" placeholder="Controller token" autocomplete="off">
-      <button class="button button-quiet button-small" type="submit">Use token</button>
-    </form>
   </header>
 
   <main class="shell schedule-shell">
@@ -38,10 +33,19 @@
     </section>
 
     <section class="health-strip schedule-summary" aria-label="Schedule status">
-      <div class="health-main"><span class="status-dot is-ok"></span><strong data-schedule-summary>Enter a controller token to load the schedule</strong></div>
+      <div class="health-main"><span class="status-dot is-ok"></span><strong data-schedule-summary>Loading server schedule</strong></div>
+      <div class="health-stat"><span>TICKERS</span><b data-ticker-count>—</b></div>
       <div class="health-stat"><span>TIMEZONE</span><b class="mono">TICKER LOCAL</b></div>
       <div class="health-stat"><span>LIVE GAMES</span><b data-live-games>—</b></div>
       <div class="health-stat"><span>RULES</span><b data-rule-count>—</b></div>
+    </section>
+
+    <section class="panel server-tickers-panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">SERVER FLEET</p><h2>Schedules apply to these tickers</h2></div>
+        <span class="pill is-ok">SERVER-OWNED</span>
+      </div>
+      <div class="server-ticker-list" data-ticker-list><div class="empty-state">Loading server tickers.</div></div>
     </section>
 
     <div class="schedule-layout">
