@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1018">
   <title>SportsTicker / schedule</title>
-  <link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='dashboard_v2/style.css') }}">
-  <link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='dashboard_v2/schedule.css') }}">
+  <link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='dashboard_v2/style.css', v=version_hash) }}">
+  <link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='dashboard_v2/schedule.css', v=version_hash) }}">
 </head>
 <body>
   <header class="topbar">
@@ -106,6 +106,6 @@
     <p class="global-feedback" data-schedule-feedback aria-live="polite"></p>
   </main>
 
-  <script src="{{ url_for('dashboard_v2.static', filename='dashboard_v2/schedule.js') }}"></script>
+  <script src="{{ url_for('dashboard_v2.static', filename='dashboard_v2/schedule.js', v=version_hash) }}"></script>
 </body>
 </html>

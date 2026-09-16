@@ -72,7 +72,10 @@ def index():
 def schedule():
     """Render the shared weekly schedule editor."""
 
-    return render_template("dashboard_v2/schedule.html")
+    return render_template(
+        "dashboard_v2/schedule.html",
+        version_hash=_version_hash(),
+    )
 
 
 @dashboard_v2.get("/demo")

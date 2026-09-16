@@ -199,7 +199,9 @@ def test_schedule_page_exposes_both_timeline_lanes_and_mode_palette(tmp_path) ->
         assert 'data-day-group="weekdays"' in source
         assert 'data-day-group="weekends"' in source
         assert 'data-mode="sports"' in source
-        assert 'src="/dashboard/static/dashboard_v2/schedule.js"' in source
+        assert 'href="/dashboard/static/dashboard_v2/style.css?v=' in source
+        assert 'href="/dashboard/static/dashboard_v2/schedule.css?v=' in source
+        assert 'src="/dashboard/static/dashboard_v2/schedule.js?v=' in source
         assert 'draggable="true"' not in source
         assert "schedule-pi" not in source
         assert client.get("/dashboard/static/dashboard_v2/schedule.js").status_code == 200
