@@ -1,0 +1,32 @@
+.schedule-intro { align-items: end; }
+.schedule-layout { display: grid; grid-template-columns: 245px minmax(0, 1fr); gap: 20px; align-items: start; }
+.schedule-palette-panel, .timeline-panel, .conditions-panel { min-width: 0; }
+.schedule-palette { display: grid; gap: 8px; padding: 14px; }
+.mode-chip { display: grid; grid-template-columns: 31px 1fr; gap: 10px; align-items: center; width: 100%; padding: 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-2); color: var(--text); text-align: left; transition: border-color .15s, background .15s, transform .15s; }
+.mode-chip:hover, .mode-chip.is-selected { border-color: var(--cyan); background: rgba(92, 225, 230, .1); transform: translateY(-1px); }
+.mode-chip-mark { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 4px; color: var(--bg); font-size: 11px; font-weight: 900; }
+.mode-chip strong, .mode-chip small { display: block; }
+.mode-chip strong { font-size: 11px; text-transform: uppercase; }
+.mode-chip small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.mode-sports .mode-chip-mark, .mode-sports { --mode-color: #73dfa4; }.mode-weather .mode-chip-mark, .mode-weather { --mode-color: #5ce1e6; }.mode-music .mode-chip-mark, .mode-music { --mode-color: #d899ff; }.mode-flights .mode-chip-mark, .mode-flights { --mode-color: #f5bd62; }.mode-airports .mode-chip-mark, .mode-airports { --mode-color: #8eb7ff; }.mode-stock .mode-chip-mark, .mode-stock { --mode-color: #ff9a79; }.mode-clock .mode-chip-mark, .mode-clock { --mode-color: #c5d0dc; }
+.mode-chip-mark { background: var(--mode-color); }
+.palette-help { margin: 0 14px 17px; padding: 11px; border: 1px dashed var(--line); color: var(--muted); font-size: 10px; line-height: 1.5; }.palette-help .mono { color: var(--amber); font-size: 9px; font-weight: 800; margin-right: 5px; }
+.timeline-heading { align-items: center; }
+.timeline-scroll { overflow-x: auto; padding: 18px 21px 0; }
+.timeline-axis { position: relative; min-width: 960px; height: 26px; margin-left: 112px; border-bottom: 1px solid var(--line); }
+.timeline-axis span { position: absolute; bottom: 7px; color: var(--dim); font: 9px "SFMono-Regular", Consolas, monospace; transform: translateX(-50%); }
+.timeline-lanes { min-width: 960px; }
+.schedule-lane { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 16px; min-height: 133px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.schedule-lane:last-child { border-bottom: 0; }
+.lane-heading { display: flex; flex-direction: column; gap: 5px; padding: 8px 0; }.lane-heading strong { color: var(--text); font-size: 12px; text-transform: uppercase; }.lane-heading small { color: var(--dim); font: 9px "SFMono-Regular", Consolas, monospace; }
+.lane-track { position: relative; min-height: 106px; border: 1px solid var(--line); border-radius: 4px; background-color: #0d151f; background-image: linear-gradient(to right, rgba(140, 154, 172, .13) 1px, transparent 1px), linear-gradient(to right, rgba(140, 154, 172, .07) 1px, transparent 1px); background-size: calc(100% / 12) 100%, calc(100% / 24) 100%; }
+.lane-track::after { position: absolute; inset: 0; border: 1px dashed rgba(92, 225, 230, .22); border-radius: 4px; content: ""; pointer-events: none; }
+.schedule-block { position: absolute; top: 15px; min-width: 34px; height: 75px; overflow: hidden; padding: 10px 25px 8px 11px; border: 1px solid var(--mode-color); border-left-width: 4px; border-radius: 4px; background: color-mix(in srgb, var(--mode-color) 15%, #111925); color: var(--text); cursor: grab; user-select: none; touch-action: none; z-index: 1; }
+.schedule-block:active { cursor: grabbing; }.schedule-block strong, .schedule-block small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.schedule-block strong { color: var(--mode-color); font-size: 11px; text-transform: uppercase; }.schedule-block small { margin-top: 7px; color: var(--muted); font: 9px "SFMono-Regular", Consolas, monospace; }
+.schedule-block .block-delete { position: absolute; top: 5px; right: 5px; width: 18px; height: 18px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); font-size: 15px; line-height: 18px; }.schedule-block .block-delete:hover { background: rgba(255, 119, 119, .17); color: var(--red); }
+.mode-sports { --mode-color: #73dfa4; }.mode-weather { --mode-color: #5ce1e6; }.mode-music { --mode-color: #d899ff; }.mode-flights { --mode-color: #f5bd62; }.mode-airports { --mode-color: #8eb7ff; }.mode-stock { --mode-color: #ff9a79; }.mode-clock { --mode-color: #c5d0dc; }
+.timeline-help { margin: 0; padding: 14px 21px 19px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.conditions-panel { margin-top: 20px; }.condition-body { padding: 20px 21px 21px; }.condition-copy { max-width: 720px; margin: 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.55; }.condition-form { display: grid; grid-template-columns: minmax(140px, 200px) minmax(160px, 220px) auto; align-items: end; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }.condition-list { display: grid; gap: 8px; padding-top: 16px; }.condition-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(140px, 200px) auto auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }.condition-row strong { color: var(--amber); font-size: 12px; text-transform: uppercase; }.condition-row small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }.condition-row select { padding: 8px; }.condition-row .check-label { padding: 0; white-space: nowrap; }.condition-row .delete-condition { border: 0; background: transparent; color: var(--red); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.is-disabled { opacity: .48; }
+@media (max-width: 980px) { .schedule-layout { grid-template-columns: 1fr; }.schedule-palette { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }.palette-help { margin-top: 0; }.condition-row { grid-template-columns: 1fr 180px auto auto; } }
+@media (max-width: 650px) { .schedule-intro { align-items: start; }.schedule-intro .button { width: 100%; text-align: center; }.condition-form { grid-template-columns: 1fr; }.condition-row { grid-template-columns: 1fr 1fr; }.condition-row .delete-condition { justify-self: start; }.condition-row .check-label { grid-column: 1 / -1; }.timeline-scroll { padding-left: 13px; padding-right: 13px; } }

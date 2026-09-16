@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1018">
+  <title>SportsTicker / schedule</title>
+  <link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='dashboard_v2/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('dashboard_v2.static', filename='dashboard_v2/schedule.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/dashboard" aria-label="SportsTicker v2 dashboard">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>SPORTSTICKER <em>V2</em></span>
+    </a>
+    <div class="top-status">
+      <span class="status-dot is-ok"></span>
+      <span>Weekly schedule</span>
+      <span class="muted">/</span>
+      <span class="mono">ALL TICKERS</span>
+    </div>
+    <form class="controller-auth" data-controller-token-form>
+      <label class="sr-only" for="controller-token">Controller token</label>
+      <input id="controller-token" data-controller-token type="password" placeholder="Controller token" autocomplete="off">
+      <button class="button button-quiet button-small" type="submit">Use token</button>
+    </form>
+  </header>
+
+  <main class="shell schedule-shell">
+    <section class="intro schedule-intro">
+      <div>
+        <p class="eyebrow">OPERATIONS / WEEKLY CONTROL</p>
+        <h1>Put the fleet on a rhythm.</h1>
+        <p class="lede">Drop a mode onto the weekday or weekend lane. Every ticker evaluates the rule in its own timezone. Live-game conditions take priority over time blocks.</p>
+      </div>
+      <a class="button button-quiet" href="/dashboard">Back to dashboard</a>
+    </section>
+
+    <section class="health-strip schedule-summary" aria-label="Schedule status">
+      <div class="health-main"><span class="status-dot is-ok"></span><strong data-schedule-summary>Enter a controller token to load the schedule</strong></div>
+      <div class="health-stat"><span>TIMEZONE</span><b class="mono">TICKER LOCAL</b></div>
+      <div class="health-stat"><span>LIVE GAMES</span><b data-live-games>—</b></div>
+      <div class="health-stat"><span>RULES</span><b data-rule-count>—</b></div>
+    </section>
+
+    <div class="schedule-layout">
+      <aside class="panel schedule-palette-panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">MODE PALETTE</p><h2>Drag a mode</h2></div>
+        </div>
+        <div class="schedule-palette" data-mode-palette>
+          <button class="mode-chip mode-sports" type="button" draggable="true" data-mode="sports"><span class="mode-chip-mark">S</span><span><strong>Sports</strong><small>Scores and alerts</small></span></button>
+          <button class="mode-chip mode-weather" type="button" draggable="true" data-mode="weather"><span class="mode-chip-mark">W</span><span><strong>Weather</strong><small>Local conditions</small></span></button>
+          <button class="mode-chip mode-music" type="button" draggable="true" data-mode="music"><span class="mode-chip-mark">M</span><span><strong>Music</strong><small>Spotify playback</small></span></button>
+          <button class="mode-chip mode-flights" type="button" draggable="true" data-mode="flights"><span class="mode-chip-mark">F</span><span><strong>Flights</strong><small>Tracked visitor</small></span></button>
+          <button class="mode-chip mode-airports" type="button" draggable="true" data-mode="airports"><span class="mode-chip-mark">A</span><span><strong>Airports</strong><small>Arrivals and departures</small></span></button>
+          <button class="mode-chip mode-stock" type="button" draggable="true" data-mode="stock"><span class="mode-chip-mark">$</span><span><strong>Stocks</strong><small>Market tape</small></span></button>
+          <button class="mode-chip mode-clock" type="button" draggable="true" data-mode="clock"><span class="mode-chip-mark">C</span><span><strong>Clock</strong><small>Time and date</small></span></button>
+        </div>
+        <div class="palette-help"><span class="mono">TIP</span> Select a chip, then click a lane. Dragging also works on desktop.</div>
+      </aside>
+
+      <section class="panel timeline-panel">
+        <div class="panel-heading timeline-heading">
+          <div><p class="eyebrow">RECURRING BLOCKS</p><h2>Weekly timeline</h2></div>
+          <span class="pill is-ok" data-timeline-status>READY</span>
+        </div>
+        <div class="timeline-scroll">
+          <div class="timeline-axis" aria-hidden="true" data-time-axis></div>
+          <div class="timeline-lanes">
+            <div class="schedule-lane" data-day-group="weekdays">
+              <div class="lane-heading"><strong>Weekdays</strong><small>MON — FRI</small></div>
+              <div class="lane-track" data-lane-track></div>
+            </div>
+            <div class="schedule-lane" data-day-group="weekends">
+              <div class="lane-heading"><strong>Weekends</strong><small>SAT — SUN</small></div>
+              <div class="lane-track" data-lane-track></div>
+            </div>
+          </div>
+        </div>
+        <p class="timeline-help">Blocks repeat indefinitely. Click a selected mode, or drag one, onto a lane. Each new block starts on a 15-minute boundary and lasts one hour.</p>
+      </section>
+    </div>
+
+    <section class="panel conditions-panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">CONDITIONAL MODE</p><h2>When live games reach a count</h2></div>
+        <span class="pill" data-condition-priority>CONDITIONS WIN</span>
+      </div>
+      <div class="condition-body">
+        <p class="condition-copy">A live-game rule applies to every ticker and overrides its time block. App mode selection still overrides both until the app returns the ticker to the server schedule.</p>
+        <form class="condition-form" data-condition-form>
+          <label>Live games at least<input name="threshold" type="number" min="1" step="1" value="1" required></label>
+          <label>Force mode<select name="mode"><option value="sports">Sports</option><option value="weather">Weather</option><option value="music">Music</option><option value="flights">Flights</option><option value="airports">Airports</option><option value="stock">Stocks</option><option value="clock">Clock</option></select></label>
+          <button class="button button-primary" type="submit">Add condition</button>
+        </form>
+        <div class="condition-list" data-condition-list><div class="empty-state">No live-game conditions configured.</div></div>
+      </div>
+    </section>
+
+    <p class="global-feedback" data-schedule-feedback aria-live="polite"></p>
+  </main>
+
+  <script src="{{ url_for('dashboard_v2.static', filename='dashboard_v2/schedule.js') }}"></script>
+</body>
+</html>

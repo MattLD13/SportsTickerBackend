@@ -68,6 +68,13 @@ def index():
     return render_template("dashboard_v2/index.html")
 
 
+@dashboard_v2.get("/schedule")
+def schedule():
+    """Render the shared weekly schedule editor."""
+
+    return render_template("dashboard_v2/schedule.html")
+
+
 @dashboard_v2.get("/demo")
 def demo():
     """Render the original full-screen panel demo from V2 snapshot data."""

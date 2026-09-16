@@ -17,6 +17,7 @@ from sports_ticker.application.composition import BackendApplication
 from sports_ticker.domain import DisplaySettings
 from sports_ticker.firmware import FirmwareManifest
 from sports_ticker.integrations import SpotifyIntegrationError
+from sports_ticker.application.schedule import block_to_mapping, condition_to_mapping
 
 
 class ApiError(Exception):
@@ -123,6 +124,67 @@ def register_routes(
         catalog = _catalog(application)
         return jsonify({"teams": list(catalog.teams(league_id))})
 
+    @app.get("/api/v2/schedule")
+    def get_schedule():
+        _require_schedule_controller(application)
+        return jsonify(application.schedule_document())
+
+    @app.post("/api/v2/schedule/blocks")
+    def create_schedule_block():
+        _require_schedule_controller(application)
+        payload = _json_object()
+        values = _schedule_block_values(payload, require_all=True)
+        block = application.create_schedule_block(**values)
+        return jsonify(block_to_mapping(block)), 201
+
+    @app.patch("/api/v2/schedule/blocks/<block_id>")
+    def update_schedule_block(block_id: str):
+        _require_schedule_controller(application)
+        payload = _json_object()
+        values = _schedule_block_values(payload, require_all=False)
+        try:
+            block = application.update_schedule_block(block_id, **values)
+        except KeyError as error:
+            raise ApiError(f"schedule block not found: {block_id}", 404, "not_found") from error
+        return jsonify(block_to_mapping(block))
+
+    @app.delete("/api/v2/schedule/blocks/<block_id>")
+    def delete_schedule_block(block_id: str):
+        _require_schedule_controller(application)
+        if not application.delete_schedule_block(block_id):
+            raise ApiError(f"schedule block not found: {block_id}", 404, "not_found")
+        return jsonify({"deleted": True, "id": str(block_id).strip()})
+
+    @app.post("/api/v2/schedule/conditions")
+    def create_schedule_condition():
+        _require_schedule_controller(application)
+        payload = _json_object()
+        values = _schedule_condition_values(payload, require_all=True)
+        condition = application.create_schedule_condition(**values)
+        return jsonify(condition_to_mapping(condition)), 201
+
+    @app.patch("/api/v2/schedule/conditions/<condition_id>")
+    def update_schedule_condition(condition_id: str):
+        _require_schedule_controller(application)
+        payload = _json_object()
+        values = _schedule_condition_values(payload, require_all=False)
+        try:
+            condition = application.update_schedule_condition(condition_id, **values)
+        except KeyError as error:
+            raise ApiError(
+                f"schedule condition not found: {condition_id}",
+                404,
+                "not_found",
+            ) from error
+        return jsonify(condition_to_mapping(condition))
+
+    @app.delete("/api/v2/schedule/conditions/<condition_id>")
+    def delete_schedule_condition(condition_id: str):
+        _require_schedule_controller(application)
+        if not application.delete_schedule_condition(condition_id):
+            raise ApiError(f"schedule condition not found: {condition_id}", 404, "not_found")
+        return jsonify({"deleted": True, "id": str(condition_id).strip()})
+
     @app.get("/api/v2/tickers")
     def list_tickers():
         token = _controller_token()
@@ -132,7 +194,7 @@ def register_routes(
         return jsonify(
             {
                 "tickers": [
-                    _ticker_value(item)
+                    _ticker_value(item, application)
                     for item in tickers
                 ]
             }
@@ -196,7 +258,7 @@ def register_routes(
                 "ticker_id": ticker.ticker_id,
                 "paired": bool(ticker.pairing is not None and ticker.pairing.paired),
                 "pairing_code": pairing_code,
-                "ticker": _ticker_value(ticker),
+                "ticker": _ticker_value(ticker, application),
             }
         ), 201 if created else 200
 
@@ -254,7 +316,7 @@ def register_routes(
     def get_ticker(ticker_id: str):
         identifier = _controller_ticker_owner(application, ticker_id)
         ticker = _require_ticker(application, identifier)
-        return jsonify(_ticker_value(ticker))
+        return jsonify(_ticker_value(ticker, application))
 
     @app.patch("/api/v2/tickers/<ticker_id>")
     def update_ticker(ticker_id: str):
@@ -262,7 +324,7 @@ def register_routes(
         payload = _json_object()
         changes = _patch_values(payload)
         ticker = application.update_ticker(identifier, **changes)
-        return jsonify(_ticker_value(ticker))
+        return jsonify(_ticker_value(ticker, application))
 
     @app.delete("/api/v2/tickers/<ticker_id>")
     def delete_ticker(ticker_id: str):
@@ -284,7 +346,7 @@ def register_routes(
     def ticker_heartbeat(ticker_id: str):
         payload = _json_object()
         ticker = application.heartbeat(_ticker_id(ticker_id), payload)
-        return jsonify(_ticker_value(ticker))
+        return jsonify(_ticker_value(ticker, application))
 
     @app.post("/api/v2/tickers/<ticker_id>/updates")
     def request_ticker_update(ticker_id: str):
@@ -302,7 +364,7 @@ def register_routes(
             if firmware_manifest.hardware != ticker.profile.hardware:
                 raise ApiError("firmware hardware does not match ticker hardware", 409, "firmware_incompatible")
         ticker = application.request_update(identifier, version)
-        return jsonify(_ticker_value(ticker)), 201
+        return jsonify(_ticker_value(ticker, application)), 201
 
     @app.get("/api/v2/tickers/<ticker_id>/firmware")
     def check_ticker_firmware(ticker_id: str):
@@ -447,7 +509,7 @@ def _json_object() -> dict[str, Any]:
 
 
 def _patch_values(payload: Mapping[str, Any]) -> dict[str, Any]:
-    _check_keys(payload, {"name", "display_settings", "settings", "pairing", "device"})
+    _check_keys(payload, {"name", "display_settings", "settings", "pairing", "device", "schedule_override"})
     if "display_settings" in payload and "settings" in payload:
         raise ApiError("provide display_settings or settings, not both", 400, "invalid_request")
     changes: dict[str, Any] = {}
@@ -461,6 +523,10 @@ def _patch_values(payload: Mapping[str, Any]) -> dict[str, Any]:
         changes["pairing"] = _optional_mapping(payload, "pairing")
     if "device" in payload:
         changes["device"] = _optional_mapping(payload, "device")
+    if "schedule_override" in payload:
+        if not isinstance(payload["schedule_override"], bool):
+            raise ApiError("schedule_override must be a boolean", 400, "invalid_request")
+        changes["schedule_override"] = payload["schedule_override"]
     return changes
 
 
@@ -566,6 +632,14 @@ def _controller_ticker_owner(application: BackendApplication, ticker_id: str) ->
     return identifier
 
 
+def _require_schedule_controller(application: BackendApplication) -> None:
+    """Require one controller that owns at least one paired ticker."""
+
+    token = _controller_token()
+    if not application.list_tickers_for_controller(token):
+        raise ApiError("controller authorization is invalid", 403, "forbidden")
+
+
 def _controller_token() -> str:
     """Read one bearer token without exposing its stored hash."""
 
@@ -585,7 +659,7 @@ def _require_deployment_token() -> None:
         raise ApiError("deployment authorization is required", 401, "unauthorized")
 
 
-def _ticker_value(ticker: Any) -> dict[str, Any]:
+def _ticker_value(ticker: Any, application: BackendApplication) -> dict[str, Any]:
     settings = ticker.display_settings
     pairing = ticker.pairing
     device = ticker.device
@@ -594,6 +668,7 @@ def _ticker_value(ticker: Any) -> dict[str, Any]:
         "name": ticker.name,
         "profile": ticker.profile.to_mapping(),
         "display_settings": _display_settings_value(settings),
+        "schedule_override": application.schedule_override(ticker.ticker_id),
         "pairing": None
         if pairing is None
         else {
@@ -606,6 +681,71 @@ def _ticker_value(ticker: Any) -> dict[str, Any]:
         "created_at": ticker.created_at,
         "updated_at": ticker.updated_at,
     }
+
+
+def _schedule_block_values(payload: Mapping[str, Any], *, require_all: bool) -> dict[str, Any]:
+    """Validate one schedule block request."""
+
+    _check_keys(
+        payload,
+        {"day_group", "start_minute", "end_minute", "mode", "enabled"},
+    )
+    required = {"day_group", "start_minute", "end_minute", "mode"}
+    if require_all:
+        missing = sorted(required - set(payload))
+        if missing:
+            raise ApiError(f"missing fields: {', '.join(missing)}", 400, "invalid_request")
+    values: dict[str, Any] = {}
+    if "day_group" in payload:
+        if not isinstance(payload["day_group"], str):
+            raise ApiError("day_group must be a string", 400, "invalid_request")
+        values["day_group"] = payload["day_group"]
+    for key in ("start_minute", "end_minute"):
+        if key not in payload:
+            continue
+        value = payload[key]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ApiError(f"{key} must be an integer", 400, "invalid_request")
+        values[key] = value
+    if "mode" in payload:
+        if not isinstance(payload["mode"], str):
+            raise ApiError("mode must be a string", 400, "invalid_request")
+        values["mode"] = payload["mode"]
+    if "enabled" in payload:
+        if not isinstance(payload["enabled"], bool):
+            raise ApiError("enabled must be a boolean", 400, "invalid_request")
+        values["enabled"] = payload["enabled"]
+    return values
+
+
+def _schedule_condition_values(payload: Mapping[str, Any], *, require_all: bool) -> dict[str, Any]:
+    """Validate one schedule condition request."""
+
+    _check_keys(payload, {"kind", "threshold", "mode", "enabled"})
+    required = {"kind", "threshold", "mode"}
+    if require_all:
+        missing = sorted(required - set(payload))
+        if missing:
+            raise ApiError(f"missing fields: {', '.join(missing)}", 400, "invalid_request")
+    values: dict[str, Any] = {}
+    if "kind" in payload:
+        if not isinstance(payload["kind"], str):
+            raise ApiError("kind must be a string", 400, "invalid_request")
+        values["kind"] = payload["kind"]
+    if "threshold" in payload:
+        value = payload["threshold"]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ApiError("threshold must be an integer", 400, "invalid_request")
+        values["threshold"] = value
+    if "mode" in payload:
+        if not isinstance(payload["mode"], str):
+            raise ApiError("mode must be a string", 400, "invalid_request")
+        values["mode"] = payload["mode"]
+    if "enabled" in payload:
+        if not isinstance(payload["enabled"], bool):
+            raise ApiError("enabled must be a boolean", 400, "invalid_request")
+        values["enabled"] = payload["enabled"]
+    return values
 
 
 def _display_settings_value(settings: DisplaySettings) -> dict[str, Any]:

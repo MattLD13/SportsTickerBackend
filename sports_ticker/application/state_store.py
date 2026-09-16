@@ -65,6 +65,12 @@ class SnapshotStore:
         with self._lock:
             return self._snapshots.get(ticker_id)
 
+    def list_snapshots(self) -> tuple[TickerSnapshot, ...]:
+        """Return the latest snapshot for every ticker."""
+
+        with self._lock:
+            return tuple(self._snapshots.values())
+
     def get_delayed(self, ticker_id: str, delay_seconds: float) -> TickerSnapshot | None:
         """Return the source snapshot at or before one requested delay point."""
 

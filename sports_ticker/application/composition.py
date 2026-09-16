@@ -20,6 +20,7 @@ from sports_ticker.projections import project_data_v2, select_display_content
 
 from .events import EventService, event_to_mapping
 from .scheduler import RefreshScheduler, SchedulerHealth
+from .schedule import ScheduleService
 from .state_store import SnapshotStore
 
 
@@ -36,6 +37,7 @@ class BackendApplication:
         spotify_service: object | None = None,
         catalog: object | None = None,
         weather_location_resolver: Callable[[str], Mapping[str, object] | None] | None = None,
+        schedule_service: ScheduleService | None = None,
         clock: Callable[[], float] = time.time,
         pairing_code_ttl_seconds: float = 600.0,
     ) -> None:
@@ -54,6 +56,11 @@ class BackendApplication:
         self._pairing_code_ttl_seconds = pairing_code_ttl_seconds
         self._close_lock = Lock()
         self._closed = False
+        self.schedule_service = schedule_service or ScheduleService(
+            repository,
+            snapshot_store,
+            clock=clock,
+        )
         self.event_service = EventService(
             repository,
             clock=clock,
@@ -281,8 +288,17 @@ class BackendApplication:
     def update_ticker(self, ticker_id: str, **changes: object) -> TickerRecord:
         """Apply one validated partial ticker update."""
 
+        schedule_override = changes.pop("schedule_override", None)
+        if schedule_override is not None and not isinstance(schedule_override, bool):
+            raise TypeError("schedule_override must be a boolean")
         changes = self._resolve_weather_location(changes)
-        return self.repository.update_ticker(ticker_id, **changes)
+        ticker = self.repository.update_ticker(ticker_id, **changes)
+        if schedule_override is not None:
+            self.schedule_service.set_schedule_override(
+                ticker.ticker_id,
+                schedule_override,
+            )
+        return self.repository.get_ticker(ticker.ticker_id)  # type: ignore[return-value]
 
     def _resolve_weather_location(self, changes: Mapping[str, object]) -> dict[str, object]:
         """Canonicalize a ZIP code before the repository stores weather settings."""
@@ -324,7 +340,68 @@ class BackendApplication:
         ticker = self.repository.get_ticker(ticker_id)
         if ticker is None:
             raise KeyError(f"ticker not found: {ticker_id}")
-        return ticker.display_settings
+        return self._effective_settings_for_ticker(ticker)
+
+    def schedule_document(self) -> dict[str, object]:
+        """Return the shared recurring schedule document."""
+
+        return self.schedule_service.document()
+
+    def schedule_status(self, ticker_id: str) -> dict[str, object]:
+        """Return one ticker's current schedule status."""
+
+        ticker = self.repository.get_ticker(ticker_id)
+        if ticker is None:
+            raise KeyError(f"ticker not found: {ticker_id}")
+        return self.schedule_service.status(
+            ticker.ticker_id,
+            ticker.display_settings,
+            allowed_modes=ticker.profile.capabilities.modes,
+        )
+
+    def schedule_override(self, ticker_id: str) -> bool:
+        """Return whether one ticker follows an app-owned mode override."""
+
+        return self.schedule_service.schedule_override(ticker_id)
+
+    def create_schedule_block(self, **values: object):
+        """Create one shared recurring schedule block."""
+
+        return self.schedule_service.create_block(**values)
+
+    def update_schedule_block(self, block_id: str, **values: object):
+        """Update one shared recurring schedule block."""
+
+        return self.schedule_service.update_block(block_id, **values)
+
+    def delete_schedule_block(self, block_id: str) -> bool:
+        """Delete one shared recurring schedule block."""
+
+        return self.schedule_service.delete_block(block_id)
+
+    def create_schedule_condition(self, **values: object):
+        """Create one shared recurring schedule condition."""
+
+        return self.schedule_service.create_condition(**values)
+
+    def update_schedule_condition(self, condition_id: str, **values: object):
+        """Update one shared recurring schedule condition."""
+
+        return self.schedule_service.update_condition(condition_id, **values)
+
+    def delete_schedule_condition(self, condition_id: str) -> bool:
+        """Delete one shared recurring schedule condition."""
+
+        return self.schedule_service.delete_condition(condition_id)
+
+    def _effective_settings_for_ticker(self, ticker: TickerRecord) -> DisplaySettings:
+        """Resolve shared schedule rules against one ticker's base settings."""
+
+        return self.schedule_service.effective_settings(
+            ticker.ticker_id,
+            ticker.display_settings,
+            allowed_modes=ticker.profile.capabilities.modes,
+        )
 
     def get_snapshot(self, ticker_id: str):
         """Return the latest immutable snapshot for one ticker."""
@@ -347,17 +424,22 @@ class BackendApplication:
         ticker = self.repository.get_ticker(identifier)
         if ticker is None:
             raise KeyError(f"ticker not found: {identifier}")
-        delayed = bool(ticker.display_settings.live_delay_mode)
+        effective_settings, schedule = self.schedule_service.resolve(
+            identifier,
+            ticker.display_settings,
+            allowed_modes=ticker.profile.capabilities.modes,
+        )
+        delayed = bool(effective_settings.live_delay_mode)
         if delayed:
             delayed_snapshot = self.snapshot_store.get_delayed(
                 identifier,
-                ticker.display_settings.live_delay_seconds,
+                effective_settings.live_delay_seconds,
             )
             if delayed_snapshot is not None:
                 snapshot = delayed_snapshot
         self.event_service.remove_expired()
         data = project_data_v2(
-            replace(snapshot, effective_settings=ticker.display_settings),
+            replace(snapshot, effective_settings=effective_settings),
             self.provider_health(),
             {"stale": False} if meta is None else meta,
         )
@@ -379,9 +461,10 @@ class BackendApplication:
             "code": None if pairing is None or pairing.paired else pairing.pairing_code,
         }
         data["meta"]["profile"] = ticker.profile.to_mapping()
+        data["meta"]["schedule"] = schedule
         data["meta"]["live_delay"] = {
             "enabled": delayed,
-            "seconds": ticker.display_settings.live_delay_seconds if delayed else 0,
+            "seconds": effective_settings.live_delay_seconds if delayed else 0,
         }
         commands = self._active_commands(ticker)
         for command in commands:
@@ -396,7 +479,7 @@ class BackendApplication:
                     data["meta"]["update"] = {"id": command_id, "version": version, "expires_at": command.get("expires_at")}
             elif command_type == "reboot":
                 data["meta"]["reboot"] = {"id": command_id, "expires_at": command.get("expires_at")}
-        visible_at = self._clock() - ticker.display_settings.live_delay_seconds if delayed else None
+        visible_at = self._clock() - effective_settings.live_delay_seconds if delayed else None
         events = self.event_service.pending(identifier, visible_at=visible_at)
         event_payload = data["events"]
         event_payload["alerts"] = list(event_payload["alerts"])

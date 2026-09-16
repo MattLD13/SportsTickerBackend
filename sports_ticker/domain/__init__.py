@@ -10,6 +10,12 @@ from .models import (
 )
 from .events import Event, News, NewsEvent, OverlayEvent, ScoreAlert, ScoreAlertEvent
 from .snapshot import SnapshotContent, SnapshotEvents, TickerSnapshot
+from .schedule import (
+    SCHEDULE_CONDITION_KINDS,
+    SCHEDULE_DAY_GROUPS,
+    ScheduleBlock,
+    ScheduleCondition,
+)
 
 __all__ = [
     "ContentItem",
@@ -25,6 +31,10 @@ __all__ = [
     "SnapshotContent",
     "SnapshotEvents",
     "TickerSnapshot",
+    "SCHEDULE_CONDITION_KINDS",
+    "SCHEDULE_DAY_GROUPS",
+    "ScheduleBlock",
+    "ScheduleCondition",
     "SPORTS_PRESENTATIONS",
     "SPORTS_FILTERS",
 ]

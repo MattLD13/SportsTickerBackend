@@ -4,6 +4,7 @@ from .composition import BackendApplication
 from .refresh import RefreshOutcome, RefreshService, refresh_ticker
 from .runtime import BackendRuntime, WaitStop, WaitStopPrimitive
 from .scheduler import RefreshScheduler, SchedulerHealth
+from .schedule import ScheduleService
 from .state_store import SnapshotStore
 
 __all__ = [
@@ -13,6 +14,7 @@ __all__ = [
     "RefreshScheduler",
     "RefreshService",
     "SchedulerHealth",
+    "ScheduleService",
     "SnapshotStore",
     "WaitStop",
     "WaitStopPrimitive",
