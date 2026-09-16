@@ -1678,15 +1678,14 @@ def _competitor_key(value: Mapping[str, Any]) -> tuple[str, str]:
 
 
 def _scoreboard_url_for_dates(scoreboard_url: str, dates: Sequence[date]) -> str:
-    """Add one explicit ESPN calendar date or inclusive range without dropping query values."""
+    """Add explicit ESPN calendar dates without dropping existing query values."""
 
     parsed = urlsplit(scoreboard_url)
     query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key != "dates"]
     values = tuple(dates)
     if not values:
         raise ValueError("dates must not be empty")
-    date_value = "-".join(day.strftime("%Y%m%d") for day in values)
-    query.append(("dates", date_value))
+    query.extend(("dates", day.strftime("%Y%m%d")) for day in values)
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
 
 
