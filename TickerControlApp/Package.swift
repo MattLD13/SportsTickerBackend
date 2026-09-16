@@ -10,7 +10,14 @@ let package = Package(
         .target(
             name: "TickerControlState",
             path: "TickerControl",
-            exclude: ["ContentView.swift", "TickerControlApp.swift", "Assets.xcassets"],
+            exclude: [
+                "ContentView.swift",
+                "TickerControlApp.swift",
+                "Assets.xcassets",
+                "TickerScheduleView.swift",
+                "TickerControl.entitlements",
+                "Models/TickerHardwareProfile.swift",
+            ],
             sources: ["DeviceListState.swift", "TickerScheduleModels.swift"]
         ),
         .testTarget(
