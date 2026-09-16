@@ -109,6 +109,14 @@ def _display_settings(value: DisplaySettings | Mapping[str, Any] | None) -> Disp
     )
 
 
+def _clear_incompatible_sports_pin(settings: dict[str, Any]) -> None:
+    """Clear pinned sports fields when a partial update changes the top-level mode."""
+
+    if str(settings.get("mode", "sports")).strip().lower() != "sports":
+        settings["sports_presentation"] = "rotation"
+        settings["pinned_content_id"] = ""
+
+
 def _pairing(value: PairingState | Mapping[str, Any] | None) -> PairingState | None:
     if value is None or isinstance(value, PairingState):
         return value
@@ -314,6 +322,37 @@ class TickerRepository:
                 );
                 """,
                 """
+                CREATE TABLE IF NOT EXISTS ticker_schedule_blocks (
+                    id TEXT PRIMARY KEY,
+                    ticker_id TEXT NOT NULL,
+                    days_of_week_json TEXT NOT NULL,
+                    start_minute INTEGER NOT NULL,
+                    end_minute INTEGER NOT NULL,
+                    mode TEXT NOT NULL,
+                    sports_filter TEXT,
+                    enabled INTEGER NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    FOREIGN KEY (ticker_id) REFERENCES tickers(ticker_id) ON DELETE CASCADE
+                );
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS ticker_schedule_conditions (
+                    id TEXT PRIMARY KEY,
+                    ticker_id TEXT NOT NULL,
+                    kind TEXT NOT NULL CHECK (kind IN ('live_games')),
+                    threshold INTEGER NOT NULL,
+                    operator TEXT NOT NULL CHECK (operator IN ('gt', 'gte')),
+                    when_mode TEXT NOT NULL,
+                    action_sports_filter TEXT NOT NULL,
+                    ignore_pinned INTEGER NOT NULL,
+                    enabled INTEGER NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    FOREIGN KEY (ticker_id) REFERENCES tickers(ticker_id) ON DELETE CASCADE
+                );
+                """,
+                """
                 CREATE TABLE IF NOT EXISTS ticker_schedule_overrides (
                     ticker_id TEXT PRIMARY KEY,
                     enabled INTEGER NOT NULL,
@@ -332,6 +371,15 @@ class TickerRepository:
             self._migrate_controller_group_locked()
             self._migrate_controller_session_group_locked()
             self._migrate_spotify_connections_locked()
+            self._migrate_schedule_override_expiry_locked()
+            self._connection.execute(
+                "CREATE INDEX IF NOT EXISTS ticker_schedule_blocks_ticker_day "
+                "ON ticker_schedule_blocks(ticker_id, start_minute, end_minute)"
+            )
+            self._connection.execute(
+                "CREATE INDEX IF NOT EXISTS ticker_schedule_conditions_ticker "
+                "ON ticker_schedule_conditions(ticker_id, threshold)"
+            )
             self._connection.execute(
                 "CREATE INDEX IF NOT EXISTS controller_sessions_group_id "
                 "ON controller_sessions(controller_group_id)"
@@ -375,6 +423,18 @@ class TickerRepository:
         )
         self._connection.execute("DROP TABLE spotify_connections")
         self._connection.execute("ALTER TABLE spotify_connections_next RENAME TO spotify_connections")
+
+    def _migrate_schedule_override_expiry_locked(self) -> None:
+        """Add the expiry timestamp used by temporary app schedule overrides."""
+
+        columns = {
+            str(row["name"])
+            for row in self._connection.execute("PRAGMA table_info(ticker_schedule_overrides)")
+        }
+        if "expires_at" not in columns:
+            self._connection.execute(
+                "ALTER TABLE ticker_schedule_overrides ADD COLUMN expires_at REAL NOT NULL DEFAULT 0"
+            )
 
     def _migrate_pairing_expiry_locked(self) -> None:
         """Add durable pairing expiry to databases created before the field existed."""
@@ -561,23 +621,25 @@ class TickerRepository:
             ).fetchall()
             return tuple(self._read_record(row) for row in rows)
 
-    def create_schedule_block(self, block: ScheduleBlock) -> ScheduleBlock:
-        """Persist one recurring schedule block."""
+    def create_ticker_schedule_block(self, block: ScheduleBlock) -> ScheduleBlock:
+        """Persist one recurring schedule block for one ticker."""
 
         if not isinstance(block, ScheduleBlock):
             raise TypeError("schedule block must be ScheduleBlock")
         with self._transaction():
             try:
                 self._connection.execute(
-                    "INSERT INTO schedule_blocks "
-                    "(id, day_group, start_minute, end_minute, mode, enabled, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO ticker_schedule_blocks "
+                    "(id, ticker_id, days_of_week_json, start_minute, end_minute, mode, sports_filter, "
+                    "enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         block.id,
-                        block.day_group,
+                        block.ticker_id,
+                        _dump(list(block.days_of_week)),
                         block.start_minute,
                         block.end_minute,
                         block.mode,
+                        block.sports_filter,
                         int(block.enabled),
                         block.created_at,
                         block.updated_at,
@@ -585,80 +647,93 @@ class TickerRepository:
                 )
             except sqlite3.IntegrityError as error:
                 raise ValueError(f"schedule block already exists: {block.id}") from error
-        return self.get_schedule_block(block.id)  # type: ignore[return-value]
+        return self.get_ticker_schedule_block(block.ticker_id, block.id)  # type: ignore[return-value]
 
-    def get_schedule_block(self, block_id: str) -> ScheduleBlock | None:
-        """Return one recurring schedule block."""
+    def get_ticker_schedule_block(self, ticker_id: str, block_id: str) -> ScheduleBlock | None:
+        """Return one ticker-owned recurring schedule block."""
 
+        owner = str(ticker_id).strip()
         identifier = str(block_id).strip()
         with self._lock:
             row = self._connection.execute(
-                "SELECT id, day_group, start_minute, end_minute, mode, enabled, created_at, updated_at "
-                "FROM schedule_blocks WHERE id = ?",
-                (identifier,),
+                "SELECT id, ticker_id, days_of_week_json, start_minute, end_minute, mode, sports_filter, "
+                "enabled, created_at, updated_at FROM ticker_schedule_blocks WHERE id = ? AND ticker_id = ?",
+                (identifier, owner),
             ).fetchone()
-        return _schedule_block_from_row(row) if row is not None else None
+        return _ticker_schedule_block_from_row(row) if row is not None else None
 
-    def list_schedule_blocks(self) -> tuple[ScheduleBlock, ...]:
-        """Return recurring schedule blocks in timeline order."""
+    def list_ticker_schedule_blocks(self, ticker_id: str) -> tuple[ScheduleBlock, ...]:
+        """Return one ticker's recurring blocks in weekly timeline order."""
 
+        owner = str(ticker_id).strip()
         with self._lock:
             rows = self._connection.execute(
-                "SELECT id, day_group, start_minute, end_minute, mode, enabled, created_at, updated_at "
-                "FROM schedule_blocks ORDER BY day_group, start_minute, end_minute, id"
+                "SELECT id, ticker_id, days_of_week_json, start_minute, end_minute, mode, sports_filter, "
+                "enabled, created_at, updated_at FROM ticker_schedule_blocks "
+                "WHERE ticker_id = ? ORDER BY start_minute, end_minute, id",
+                (owner,),
             ).fetchall()
-        return tuple(_schedule_block_from_row(row) for row in rows)
+        return tuple(_ticker_schedule_block_from_row(row) for row in rows)
 
-    def update_schedule_block(self, block: ScheduleBlock) -> ScheduleBlock:
-        """Replace one recurring schedule block."""
+    def update_ticker_schedule_block(self, block: ScheduleBlock) -> ScheduleBlock:
+        """Replace one ticker-owned recurring schedule block."""
 
         if not isinstance(block, ScheduleBlock):
             raise TypeError("schedule block must be ScheduleBlock")
         with self._transaction():
             cursor = self._connection.execute(
-                "UPDATE schedule_blocks SET day_group = ?, start_minute = ?, end_minute = ?, "
-                "mode = ?, enabled = ?, created_at = ?, updated_at = ? WHERE id = ?",
+                "UPDATE ticker_schedule_blocks SET days_of_week_json = ?, start_minute = ?, end_minute = ?, "
+                "mode = ?, sports_filter = ?, enabled = ?, created_at = ?, updated_at = ? "
+                "WHERE id = ? AND ticker_id = ?",
                 (
-                    block.day_group,
+                    _dump(list(block.days_of_week)),
                     block.start_minute,
                     block.end_minute,
                     block.mode,
+                    block.sports_filter,
                     int(block.enabled),
                     block.created_at,
                     block.updated_at,
                     block.id,
+                    block.ticker_id,
                 ),
             )
             if cursor.rowcount != 1:
                 raise KeyError(block.id)
-        return self.get_schedule_block(block.id)  # type: ignore[return-value]
+        return self.get_ticker_schedule_block(block.ticker_id, block.id)  # type: ignore[return-value]
 
-    def delete_schedule_block(self, block_id: str) -> bool:
-        """Delete one recurring schedule block."""
+    def delete_ticker_schedule_block(self, ticker_id: str, block_id: str) -> bool:
+        """Delete one ticker-owned recurring schedule block."""
 
+        owner = str(ticker_id).strip()
         identifier = str(block_id).strip()
         with self._transaction():
             cursor = self._connection.execute(
-                "DELETE FROM schedule_blocks WHERE id = ?", (identifier,)
+                "DELETE FROM ticker_schedule_blocks WHERE id = ? AND ticker_id = ?",
+                (identifier, owner),
             )
             return cursor.rowcount == 1
 
-    def create_schedule_condition(self, condition: ScheduleCondition) -> ScheduleCondition:
-        """Persist one recurring schedule condition."""
+    def create_ticker_schedule_condition(self, condition: ScheduleCondition) -> ScheduleCondition:
+        """Persist one recurring live-game condition for one ticker."""
 
         if not isinstance(condition, ScheduleCondition):
             raise TypeError("schedule condition must be ScheduleCondition")
         with self._transaction():
             try:
                 self._connection.execute(
-                    "INSERT INTO schedule_conditions "
-                    "(id, kind, threshold, mode, enabled, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO ticker_schedule_conditions "
+                    "(id, ticker_id, kind, threshold, operator, when_mode, action_sports_filter, "
+                    "ignore_pinned, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         condition.id,
+                        condition.ticker_id,
                         condition.kind,
                         condition.threshold,
-                        condition.mode,
+                        condition.operator,
+                        condition.when_mode,
+                        condition.action_sports_filter,
+                        int(condition.ignore_pinned),
                         int(condition.enabled),
                         condition.created_at,
                         condition.updated_at,
@@ -666,85 +741,122 @@ class TickerRepository:
                 )
             except sqlite3.IntegrityError as error:
                 raise ValueError(f"schedule condition already exists: {condition.id}") from error
-        return self.get_schedule_condition(condition.id)  # type: ignore[return-value]
+        return self.get_ticker_schedule_condition(condition.ticker_id, condition.id)  # type: ignore[return-value]
 
-    def get_schedule_condition(self, condition_id: str) -> ScheduleCondition | None:
-        """Return one recurring schedule condition."""
+    def get_ticker_schedule_condition(self, ticker_id: str, condition_id: str) -> ScheduleCondition | None:
+        """Return one ticker-owned recurring condition."""
 
+        owner = str(ticker_id).strip()
         identifier = str(condition_id).strip()
         with self._lock:
             row = self._connection.execute(
-                "SELECT id, kind, threshold, mode, enabled, created_at, updated_at "
-                "FROM schedule_conditions WHERE id = ?",
-                (identifier,),
+                "SELECT id, ticker_id, kind, threshold, operator, when_mode, action_sports_filter, "
+                "ignore_pinned, enabled, created_at, updated_at FROM ticker_schedule_conditions "
+                "WHERE id = ? AND ticker_id = ?",
+                (identifier, owner),
             ).fetchone()
-        return _schedule_condition_from_row(row) if row is not None else None
+        return _ticker_schedule_condition_from_row(row) if row is not None else None
 
-    def list_schedule_conditions(self) -> tuple[ScheduleCondition, ...]:
-        """Return recurring schedule conditions in priority order."""
+    def list_ticker_schedule_conditions(self, ticker_id: str) -> tuple[ScheduleCondition, ...]:
+        """Return one ticker's conditions in priority order."""
 
+        owner = str(ticker_id).strip()
         with self._lock:
             rows = self._connection.execute(
-                "SELECT id, kind, threshold, mode, enabled, created_at, updated_at "
-                "FROM schedule_conditions ORDER BY threshold, updated_at, id"
+                "SELECT id, ticker_id, kind, threshold, operator, when_mode, action_sports_filter, "
+                "ignore_pinned, enabled, created_at, updated_at FROM ticker_schedule_conditions "
+                "WHERE ticker_id = ? ORDER BY threshold, updated_at, id",
+                (owner,),
             ).fetchall()
-        return tuple(_schedule_condition_from_row(row) for row in rows)
+        return tuple(_ticker_schedule_condition_from_row(row) for row in rows)
 
-    def update_schedule_condition(self, condition: ScheduleCondition) -> ScheduleCondition:
-        """Replace one recurring schedule condition."""
+    def update_ticker_schedule_condition(self, condition: ScheduleCondition) -> ScheduleCondition:
+        """Replace one ticker-owned recurring condition."""
 
         if not isinstance(condition, ScheduleCondition):
             raise TypeError("schedule condition must be ScheduleCondition")
         with self._transaction():
             cursor = self._connection.execute(
-                "UPDATE schedule_conditions SET kind = ?, threshold = ?, mode = ?, enabled = ?, "
-                "created_at = ?, updated_at = ? WHERE id = ?",
+                "UPDATE ticker_schedule_conditions SET kind = ?, threshold = ?, operator = ?, when_mode = ?, "
+                "action_sports_filter = ?, ignore_pinned = ?, enabled = ?, created_at = ?, updated_at = ? "
+                "WHERE id = ? AND ticker_id = ?",
                 (
                     condition.kind,
                     condition.threshold,
-                    condition.mode,
+                    condition.operator,
+                    condition.when_mode,
+                    condition.action_sports_filter,
+                    int(condition.ignore_pinned),
                     int(condition.enabled),
                     condition.created_at,
                     condition.updated_at,
                     condition.id,
+                    condition.ticker_id,
                 ),
             )
             if cursor.rowcount != 1:
                 raise KeyError(condition.id)
-        return self.get_schedule_condition(condition.id)  # type: ignore[return-value]
+        return self.get_ticker_schedule_condition(condition.ticker_id, condition.id)  # type: ignore[return-value]
 
-    def delete_schedule_condition(self, condition_id: str) -> bool:
-        """Delete one recurring schedule condition."""
+    def delete_ticker_schedule_condition(self, ticker_id: str, condition_id: str) -> bool:
+        """Delete one ticker-owned recurring condition."""
 
+        owner = str(ticker_id).strip()
         identifier = str(condition_id).strip()
         with self._transaction():
             cursor = self._connection.execute(
-                "DELETE FROM schedule_conditions WHERE id = ?", (identifier,)
+                "DELETE FROM ticker_schedule_conditions WHERE id = ? AND ticker_id = ?",
+                (identifier, owner),
             )
             return cursor.rowcount == 1
 
-    def schedule_override_enabled(self, ticker_id: str) -> bool:
-        """Return whether one ticker has an app-owned mode override."""
+    def schedule_override_expires_at(self, ticker_id: str, *, now: float) -> float | None:
+        """Return one temporary override expiry and clear expired state."""
 
         identifier = str(ticker_id).strip()
-        with self._lock:
+        with self._transaction():
             row = self._connection.execute(
-                "SELECT enabled FROM ticker_schedule_overrides WHERE ticker_id = ?",
+                "SELECT expires_at FROM ticker_schedule_overrides WHERE ticker_id = ? AND enabled = 1",
                 (identifier,),
             ).fetchone()
-        return bool(row is not None and row["enabled"])
+            if row is None:
+                return None
+            expires_at = float(row["expires_at"])
+            if expires_at <= float(now):
+                self._connection.execute(
+                    "DELETE FROM ticker_schedule_overrides WHERE ticker_id = ?",
+                    (identifier,),
+                )
+                return None
+            return expires_at
 
-    def set_schedule_override(self, ticker_id: str, enabled: bool, *, now: float) -> bool:
-        """Set or clear one ticker's app-owned mode override."""
+    def schedule_override_enabled(self, ticker_id: str, *, now: float | None = None) -> bool:
+        """Return whether one ticker has a live temporary app override."""
+
+        timestamp = time.time() if now is None else float(now)
+        return self.schedule_override_expires_at(ticker_id, now=timestamp) is not None
+
+    def set_schedule_override(
+        self,
+        ticker_id: str,
+        enabled: bool,
+        *,
+        expires_at: float | None,
+        now: float,
+    ) -> bool:
+        """Set or clear one ticker's temporary app-owned schedule override."""
 
         identifier = str(ticker_id).strip()
         with self._transaction():
             self._require_ticker_locked(identifier)
             if enabled:
+                if expires_at is None or float(expires_at) <= float(now):
+                    raise ValueError("schedule override expiry must be in the future")
                 self._connection.execute(
-                    "INSERT INTO ticker_schedule_overrides (ticker_id, enabled, updated_at) "
-                    "VALUES (?, 1, ?) ON CONFLICT(ticker_id) DO UPDATE SET enabled = 1, updated_at = excluded.updated_at",
-                    (identifier, float(now)),
+                    "INSERT INTO ticker_schedule_overrides (ticker_id, enabled, updated_at, expires_at) "
+                    "VALUES (?, 1, ?, ?) ON CONFLICT(ticker_id) DO UPDATE SET enabled = 1, "
+                    "updated_at = excluded.updated_at, expires_at = excluded.expires_at",
+                    (identifier, float(now), float(expires_at)),
                 )
             else:
                 self._connection.execute(
@@ -822,6 +934,7 @@ class TickerRepository:
                 if isinstance(display_settings, Mapping):
                     merged_settings = _display_payload(current.display_settings)
                     merged_settings.update(display_settings)
+                    _clear_incompatible_sports_pin(merged_settings)
                     next_settings = _display_settings(merged_settings)
                 else:
                     next_settings = _display_settings(display_settings)  # type: ignore[arg-type]
@@ -829,6 +942,7 @@ class TickerRepository:
                 if isinstance(settings, Mapping):
                     merged_settings = _display_payload(current.display_settings)
                     merged_settings.update(settings)
+                    _clear_incompatible_sports_pin(merged_settings)
                     next_settings = _display_settings(merged_settings)
                 else:
                     next_settings = _display_settings(settings)  # type: ignore[arg-type]
@@ -1609,29 +1723,35 @@ class TickerRepository:
         return self.delete_ticker(ticker_id)
 
 
-def _schedule_block_from_row(row: sqlite3.Row) -> ScheduleBlock:
-    """Build one schedule block from a database row."""
+def _ticker_schedule_block_from_row(row: sqlite3.Row) -> ScheduleBlock:
+    """Build one ticker-owned schedule block from a database row."""
 
     return ScheduleBlock(
         id=row["id"],
-        day_group=row["day_group"],
+        ticker_id=row["ticker_id"],
+        days_of_week=tuple(json.loads(row["days_of_week_json"])),
         start_minute=row["start_minute"],
         end_minute=row["end_minute"],
         mode=row["mode"],
+        sports_filter=row["sports_filter"],
         enabled=bool(row["enabled"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
 
 
-def _schedule_condition_from_row(row: sqlite3.Row) -> ScheduleCondition:
-    """Build one schedule condition from a database row."""
+def _ticker_schedule_condition_from_row(row: sqlite3.Row) -> ScheduleCondition:
+    """Build one ticker-owned schedule condition from a database row."""
 
     return ScheduleCondition(
         id=row["id"],
+        ticker_id=row["ticker_id"],
         kind=row["kind"],
         threshold=row["threshold"],
-        mode=row["mode"],
+        operator=row["operator"],
+        when_mode=row["when_mode"],
+        action_sports_filter=row["action_sports_filter"],
+        ignore_pinned=bool(row["ignore_pinned"]),
         enabled=bool(row["enabled"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],

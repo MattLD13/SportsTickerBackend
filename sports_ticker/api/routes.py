@@ -124,60 +124,6 @@ def register_routes(
         catalog = _catalog(application)
         return jsonify({"teams": list(catalog.teams(league_id))})
 
-    @app.get("/api/v2/schedule")
-    def get_schedule():
-        return jsonify(application.schedule_document())
-
-    @app.post("/api/v2/schedule/blocks")
-    def create_schedule_block():
-        payload = _json_object()
-        values = _schedule_block_values(payload, require_all=True)
-        block = application.create_schedule_block(**values)
-        return jsonify(block_to_mapping(block)), 201
-
-    @app.patch("/api/v2/schedule/blocks/<block_id>")
-    def update_schedule_block(block_id: str):
-        payload = _json_object()
-        values = _schedule_block_values(payload, require_all=False)
-        try:
-            block = application.update_schedule_block(block_id, **values)
-        except KeyError as error:
-            raise ApiError(f"schedule block not found: {block_id}", 404, "not_found") from error
-        return jsonify(block_to_mapping(block))
-
-    @app.delete("/api/v2/schedule/blocks/<block_id>")
-    def delete_schedule_block(block_id: str):
-        if not application.delete_schedule_block(block_id):
-            raise ApiError(f"schedule block not found: {block_id}", 404, "not_found")
-        return jsonify({"deleted": True, "id": str(block_id).strip()})
-
-    @app.post("/api/v2/schedule/conditions")
-    def create_schedule_condition():
-        payload = _json_object()
-        values = _schedule_condition_values(payload, require_all=True)
-        condition = application.create_schedule_condition(**values)
-        return jsonify(condition_to_mapping(condition)), 201
-
-    @app.patch("/api/v2/schedule/conditions/<condition_id>")
-    def update_schedule_condition(condition_id: str):
-        payload = _json_object()
-        values = _schedule_condition_values(payload, require_all=False)
-        try:
-            condition = application.update_schedule_condition(condition_id, **values)
-        except KeyError as error:
-            raise ApiError(
-                f"schedule condition not found: {condition_id}",
-                404,
-                "not_found",
-            ) from error
-        return jsonify(condition_to_mapping(condition))
-
-    @app.delete("/api/v2/schedule/conditions/<condition_id>")
-    def delete_schedule_condition(condition_id: str):
-        if not application.delete_schedule_condition(condition_id):
-            raise ApiError(f"schedule condition not found: {condition_id}", 404, "not_found")
-        return jsonify({"deleted": True, "id": str(condition_id).strip()})
-
     @app.get("/api/v2/tickers")
     def list_tickers():
         token = _controller_token()
@@ -318,6 +264,77 @@ def register_routes(
         changes = _patch_values(payload)
         ticker = application.update_ticker(identifier, **changes)
         return jsonify(_ticker_value(ticker, application))
+
+    @app.get("/api/v2/tickers/<ticker_id>/schedule")
+    def get_ticker_schedule(ticker_id: str):
+        """Return the recurring schedule and effective status for one authorized ticker."""
+
+        identifier = _controller_ticker_owner(application, ticker_id)
+        return jsonify(application.schedule_document(identifier))
+
+    @app.post("/api/v2/tickers/<ticker_id>/schedule/blocks")
+    def create_ticker_schedule_block(ticker_id: str):
+        """Create one recurring block owned by the authorized ticker."""
+
+        identifier = _controller_ticker_owner(application, ticker_id)
+        values = _schedule_block_values(_json_object(), require_all=True)
+        block = application.create_schedule_block(identifier, **values)
+        return jsonify(block_to_mapping(block)), 201
+
+    @app.patch("/api/v2/tickers/<ticker_id>/schedule/blocks/<block_id>")
+    def update_ticker_schedule_block(ticker_id: str, block_id: str):
+        """Update one recurring block only when it belongs to the authorized ticker."""
+
+        identifier = _controller_ticker_owner(application, ticker_id)
+        values = _schedule_block_values(_json_object(), require_all=False)
+        try:
+            block = application.update_schedule_block(identifier, block_id, **values)
+        except KeyError as error:
+            raise ApiError(f"schedule block not found: {block_id}", 404, "not_found") from error
+        return jsonify(block_to_mapping(block))
+
+    @app.delete("/api/v2/tickers/<ticker_id>/schedule/blocks/<block_id>")
+    def delete_ticker_schedule_block(ticker_id: str, block_id: str):
+        """Delete one recurring block only when it belongs to the authorized ticker."""
+
+        identifier = _controller_ticker_owner(application, ticker_id)
+        if not application.delete_schedule_block(identifier, block_id):
+            raise ApiError(f"schedule block not found: {block_id}", 404, "not_found")
+        return jsonify({"deleted": True, "id": str(block_id).strip()})
+
+    @app.post("/api/v2/tickers/<ticker_id>/schedule/conditions")
+    def create_ticker_schedule_condition(ticker_id: str):
+        """Create one live-game condition owned by the authorized ticker."""
+
+        identifier = _controller_ticker_owner(application, ticker_id)
+        values = _schedule_condition_values(_json_object(), require_all=True)
+        condition = application.create_schedule_condition(identifier, **values)
+        return jsonify(condition_to_mapping(condition)), 201
+
+    @app.patch("/api/v2/tickers/<ticker_id>/schedule/conditions/<condition_id>")
+    def update_ticker_schedule_condition(ticker_id: str, condition_id: str):
+        """Update one live-game condition only when it belongs to the authorized ticker."""
+
+        identifier = _controller_ticker_owner(application, ticker_id)
+        values = _schedule_condition_values(_json_object(), require_all=False)
+        try:
+            condition = application.update_schedule_condition(identifier, condition_id, **values)
+        except KeyError as error:
+            raise ApiError(
+                f"schedule condition not found: {condition_id}",
+                404,
+                "not_found",
+            ) from error
+        return jsonify(condition_to_mapping(condition))
+
+    @app.delete("/api/v2/tickers/<ticker_id>/schedule/conditions/<condition_id>")
+    def delete_ticker_schedule_condition(ticker_id: str, condition_id: str):
+        """Delete one live-game condition only when it belongs to the authorized ticker."""
+
+        identifier = _controller_ticker_owner(application, ticker_id)
+        if not application.delete_schedule_condition(identifier, condition_id):
+            raise ApiError(f"schedule condition not found: {condition_id}", 404, "not_found")
+        return jsonify({"deleted": True, "id": str(condition_id).strip()})
 
     @app.delete("/api/v2/tickers/<ticker_id>")
     def delete_ticker(ticker_id: str):
@@ -654,6 +671,7 @@ def _ticker_value(ticker: Any, application: BackendApplication) -> dict[str, Any
         "profile": ticker.profile.to_mapping(),
         "display_settings": _display_settings_value(settings),
         "schedule_override": application.schedule_override(ticker.ticker_id),
+        "schedule_override_expires_at": application.schedule_override_expires_at(ticker.ticker_id),
         "pairing": None
         if pairing is None
         else {
@@ -669,22 +687,30 @@ def _ticker_value(ticker: Any, application: BackendApplication) -> dict[str, Any
 
 
 def _schedule_block_values(payload: Mapping[str, Any], *, require_all: bool) -> dict[str, Any]:
-    """Validate one schedule block request."""
+    """Validate one ticker-owned recurring weekly block request."""
 
-    _check_keys(
-        payload,
-        {"day_group", "start_minute", "end_minute", "mode", "enabled"},
-    )
-    required = {"day_group", "start_minute", "end_minute", "mode"}
+    allowed = {
+        "days_of_week",
+        "start_minute",
+        "end_minute",
+        "mode",
+        "sports_filter",
+        "enabled",
+    }
+    _check_keys(payload, allowed)
+    required = {"days_of_week", "start_minute", "end_minute", "mode"}
     if require_all:
         missing = sorted(required - set(payload))
         if missing:
             raise ApiError(f"missing fields: {', '.join(missing)}", 400, "invalid_request")
     values: dict[str, Any] = {}
-    if "day_group" in payload:
-        if not isinstance(payload["day_group"], str):
-            raise ApiError("day_group must be a string", 400, "invalid_request")
-        values["day_group"] = payload["day_group"]
+    if "days_of_week" in payload:
+        value = payload["days_of_week"]
+        if isinstance(value, (str, bytes)) or not isinstance(value, (list, tuple, set)):
+            raise ApiError("days_of_week must be an array", 400, "invalid_request")
+        if not value or any(isinstance(item, bool) or not isinstance(item, int) for item in value):
+            raise ApiError("days_of_week must contain integers", 400, "invalid_request")
+        values["days_of_week"] = list(value)
     for key in ("start_minute", "end_minute"):
         if key not in payload:
             continue
@@ -696,6 +722,11 @@ def _schedule_block_values(payload: Mapping[str, Any], *, require_all: bool) -> 
         if not isinstance(payload["mode"], str):
             raise ApiError("mode must be a string", 400, "invalid_request")
         values["mode"] = payload["mode"]
+    if "sports_filter" in payload:
+        value = payload["sports_filter"]
+        if value is not None and not isinstance(value, str):
+            raise ApiError("sports_filter must be a string or null", 400, "invalid_request")
+        values["sports_filter"] = value
     if "enabled" in payload:
         if not isinstance(payload["enabled"], bool):
             raise ApiError("enabled must be a boolean", 400, "invalid_request")
@@ -704,10 +735,19 @@ def _schedule_block_values(payload: Mapping[str, Any], *, require_all: bool) -> 
 
 
 def _schedule_condition_values(payload: Mapping[str, Any], *, require_all: bool) -> dict[str, Any]:
-    """Validate one schedule condition request."""
+    """Validate one ticker-owned live-game condition request."""
 
-    _check_keys(payload, {"kind", "threshold", "mode", "enabled"})
-    required = {"kind", "threshold", "mode"}
+    allowed = {
+        "kind",
+        "threshold",
+        "operator",
+        "when_mode",
+        "action_sports_filter",
+        "ignore_pinned",
+        "enabled",
+    }
+    _check_keys(payload, allowed)
+    required = {"kind", "threshold"}
     if require_all:
         missing = sorted(required - set(payload))
         if missing:
@@ -722,10 +762,16 @@ def _schedule_condition_values(payload: Mapping[str, Any], *, require_all: bool)
         if isinstance(value, bool) or not isinstance(value, int):
             raise ApiError("threshold must be an integer", 400, "invalid_request")
         values["threshold"] = value
-    if "mode" in payload:
-        if not isinstance(payload["mode"], str):
-            raise ApiError("mode must be a string", 400, "invalid_request")
-        values["mode"] = payload["mode"]
+    for key in ("operator", "when_mode", "action_sports_filter"):
+        if key not in payload:
+            continue
+        if not isinstance(payload[key], str):
+            raise ApiError(f"{key} must be a string", 400, "invalid_request")
+        values[key] = payload[key]
+    if "ignore_pinned" in payload:
+        if not isinstance(payload["ignore_pinned"], bool):
+            raise ApiError("ignore_pinned must be a boolean", 400, "invalid_request")
+        values["ignore_pinned"] = payload["ignore_pinned"]
     if "enabled" in payload:
         if not isinstance(payload["enabled"], bool):
             raise ApiError("enabled must be a boolean", 400, "invalid_request")

@@ -297,6 +297,7 @@ class BackendApplication:
             self.schedule_service.set_schedule_override(
                 ticker.ticker_id,
                 schedule_override,
+                settings=ticker.display_settings,
             )
         return self.repository.get_ticker(ticker.ticker_id)  # type: ignore[return-value]
 
@@ -342,10 +343,17 @@ class BackendApplication:
             raise KeyError(f"ticker not found: {ticker_id}")
         return self._effective_settings_for_ticker(ticker)
 
-    def schedule_document(self) -> dict[str, object]:
-        """Return the shared recurring schedule document."""
+    def schedule_document(self, ticker_id: str) -> dict[str, object]:
+        """Return one ticker's recurring schedule document."""
 
-        return self.schedule_service.document()
+        ticker = self.repository.get_ticker(ticker_id)
+        if ticker is None:
+            raise KeyError(f"ticker not found: {ticker_id}")
+        return self.schedule_service.document(
+            ticker.ticker_id,
+            ticker.display_settings,
+            allowed_modes=ticker.profile.capabilities.modes,
+        )
 
     def schedule_status(self, ticker_id: str) -> dict[str, object]:
         """Return one ticker's current schedule status."""
@@ -364,38 +372,43 @@ class BackendApplication:
 
         return self.schedule_service.schedule_override(ticker_id)
 
-    def create_schedule_block(self, **values: object):
-        """Create one shared recurring schedule block."""
+    def schedule_override_expires_at(self, ticker_id: str) -> float | None:
+        """Return one ticker's temporary app override expiry."""
 
-        return self.schedule_service.create_block(**values)
+        return self.schedule_service.schedule_override_expires_at(ticker_id)
 
-    def update_schedule_block(self, block_id: str, **values: object):
-        """Update one shared recurring schedule block."""
+    def create_schedule_block(self, ticker_id: str, **values: object):
+        """Create one ticker-owned recurring schedule block."""
 
-        return self.schedule_service.update_block(block_id, **values)
+        return self.schedule_service.create_block(ticker_id, **values)
 
-    def delete_schedule_block(self, block_id: str) -> bool:
-        """Delete one shared recurring schedule block."""
+    def update_schedule_block(self, ticker_id: str, block_id: str, **values: object):
+        """Update one ticker-owned recurring schedule block."""
 
-        return self.schedule_service.delete_block(block_id)
+        return self.schedule_service.update_block(ticker_id, block_id, **values)
 
-    def create_schedule_condition(self, **values: object):
-        """Create one shared recurring schedule condition."""
+    def delete_schedule_block(self, ticker_id: str, block_id: str) -> bool:
+        """Delete one ticker-owned recurring schedule block."""
 
-        return self.schedule_service.create_condition(**values)
+        return self.schedule_service.delete_block(ticker_id, block_id)
 
-    def update_schedule_condition(self, condition_id: str, **values: object):
-        """Update one shared recurring schedule condition."""
+    def create_schedule_condition(self, ticker_id: str, **values: object):
+        """Create one ticker-owned recurring schedule condition."""
 
-        return self.schedule_service.update_condition(condition_id, **values)
+        return self.schedule_service.create_condition(ticker_id, **values)
 
-    def delete_schedule_condition(self, condition_id: str) -> bool:
-        """Delete one shared recurring schedule condition."""
+    def update_schedule_condition(self, ticker_id: str, condition_id: str, **values: object):
+        """Update one ticker-owned recurring schedule condition."""
 
-        return self.schedule_service.delete_condition(condition_id)
+        return self.schedule_service.update_condition(ticker_id, condition_id, **values)
+
+    def delete_schedule_condition(self, ticker_id: str, condition_id: str) -> bool:
+        """Delete one ticker-owned recurring schedule condition."""
+
+        return self.schedule_service.delete_condition(ticker_id, condition_id)
 
     def _effective_settings_for_ticker(self, ticker: TickerRecord) -> DisplaySettings:
-        """Resolve shared schedule rules against one ticker's base settings."""
+        """Resolve one ticker's schedule rules against its base settings."""
 
         return self.schedule_service.effective_settings(
             ticker.ticker_id,

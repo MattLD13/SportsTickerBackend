@@ -12,7 +12,9 @@ from .events import Event, News, NewsEvent, OverlayEvent, ScoreAlert, ScoreAlert
 from .snapshot import SnapshotContent, SnapshotEvents, TickerSnapshot
 from .schedule import (
     SCHEDULE_CONDITION_KINDS,
-    SCHEDULE_DAY_GROUPS,
+    SCHEDULE_CONDITION_OPERATORS,
+    SCHEDULE_DAY_NAMES,
+    SCHEDULE_WEEKDAYS,
     ScheduleBlock,
     ScheduleCondition,
 )
@@ -32,7 +34,9 @@ __all__ = [
     "SnapshotEvents",
     "TickerSnapshot",
     "SCHEDULE_CONDITION_KINDS",
-    "SCHEDULE_DAY_GROUPS",
+    "SCHEDULE_CONDITION_OPERATORS",
+    "SCHEDULE_DAY_NAMES",
+    "SCHEDULE_WEEKDAYS",
     "ScheduleBlock",
     "ScheduleCondition",
     "SPORTS_PRESENTATIONS",

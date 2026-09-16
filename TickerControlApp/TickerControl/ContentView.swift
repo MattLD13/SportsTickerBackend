@@ -566,7 +566,10 @@ struct V2DataResponse: Decodable, Sendable {
             .filter { $0.type != "fan_duel_joke_ad" }
     }
 }
-struct V2DataMeta: Decodable, Sendable { let pairing: V2PairingMeta? }
+struct V2DataMeta: Decodable, Sendable {
+    let pairing: V2PairingMeta?
+    let schedule: TickerScheduleStatus?
+}
 struct V2PairingMeta: Decodable, Sendable { let paired: Bool; let code: String? }
 struct JSONValue: Codable, Sendable {
     let value: AnySendableValue
@@ -796,6 +799,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     @Published var weatherLocInput: String = "New York"
     @Published var connectionStatus: String = "Connecting..."
     @Published var statusColor: Color = .gray
+    @Published var scheduleActive: Bool = false
     @Published var spotifyStatus: String = "Checking Spotify..."
     @Published var spotifyAccountName: String?
     @Published var spotifyAccounts: [SpotifyAccount] = []
@@ -868,6 +872,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         games.removeAll()
         leagueOptions.removeAll()
         modeSymbols.removeAll()
+        scheduleActive = false
         isServerReachable = false
         fetchData()
         fetchLeagueOptions()
@@ -963,6 +968,229 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return request
+    }
+
+    private func scheduleRequest<T: Decodable>(
+        tickerID: String,
+        suffix: String,
+        method: String,
+        body: [String: Any]? = nil,
+        decode: T.Type,
+        completion: @escaping (Result<T, Error>) -> Void
+    ) {
+        guard let url = tickerURL(tickerID, suffix: suffix),
+              var request = authorizedRequest(url: url, method: method, tickerID: tickerID) else {
+            completion(.failure(TickerScheduleRequestError.authorization))
+            return
+        }
+        if let body {
+            do {
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            } catch {
+                completion(.failure(error))
+                return
+            }
+        }
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            let result: Result<T, Error>
+            if let error {
+                result = .failure(error)
+            } else if let httpResponse = response as? HTTPURLResponse,
+                      !(200...299).contains(httpResponse.statusCode) {
+                result = .failure(TickerScheduleRequestError.server("Schedule request failed (HTTP \(httpResponse.statusCode))."))
+            } else if let data {
+                do {
+                    result = .success(try JSONDecoder().decode(T.self, from: data))
+                } catch {
+                    result = .failure(error)
+                }
+            } else {
+                result = .failure(TickerScheduleRequestError.invalidResponse)
+            }
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }.resume()
+    }
+
+    private func scheduleMutation(
+        tickerID: String,
+        suffix: String,
+        method: String,
+        body: [String: Any]? = nil,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        scheduleRequest(
+            tickerID: tickerID,
+            suffix: suffix,
+            method: method,
+            body: body,
+            decode: TickerScheduleMutationResponse.self
+        ) { result in
+            completion(result.map { _ in () })
+        }
+    }
+
+    func fetchSchedule(
+        for tickerID: String,
+        completion: @escaping (Result<TickerScheduleResponse, Error>) -> Void
+    ) {
+        scheduleRequest(
+            tickerID: tickerID,
+            suffix: "/schedule",
+            method: "GET",
+            decode: TickerScheduleResponse.self,
+            completion: completion
+        )
+    }
+
+    func createScheduleBlock(
+        tickerID: String,
+        daysOfWeek: [Int],
+        startMinute: Int,
+        endMinute: Int,
+        mode: String,
+        sportsFilter: String?,
+        enabled: Bool = true,
+        completion: @escaping (Result<TickerScheduleBlock, Error>) -> Void
+    ) {
+        var body: [String: Any] = [
+            "days_of_week": daysOfWeek,
+            "start_minute": startMinute,
+            "end_minute": endMinute,
+            "mode": mode,
+            "enabled": enabled,
+        ]
+        body["sports_filter"] = sportsFilter ?? NSNull()
+        scheduleRequest(
+            tickerID: tickerID,
+            suffix: "/schedule/blocks",
+            method: "POST",
+            body: body,
+            decode: TickerScheduleBlock.self,
+            completion: completion
+        )
+    }
+
+    func updateScheduleBlock(
+        tickerID: String,
+        blockID: String,
+        daysOfWeek: [Int],
+        startMinute: Int,
+        endMinute: Int,
+        mode: String,
+        sportsFilter: String?,
+        enabled: Bool,
+        completion: @escaping (Result<TickerScheduleBlock, Error>) -> Void
+    ) {
+        var body: [String: Any] = [
+            "days_of_week": daysOfWeek,
+            "start_minute": startMinute,
+            "end_minute": endMinute,
+            "mode": mode,
+            "enabled": enabled,
+        ]
+        body["sports_filter"] = sportsFilter ?? NSNull()
+        scheduleRequest(
+            tickerID: tickerID,
+            suffix: "/schedule/blocks/\(blockID)",
+            method: "PATCH",
+            body: body,
+            decode: TickerScheduleBlock.self,
+            completion: completion
+        )
+    }
+
+    func deleteScheduleBlock(
+        tickerID: String,
+        blockID: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        scheduleMutation(
+            tickerID: tickerID,
+            suffix: "/schedule/blocks/\(blockID)",
+            method: "DELETE",
+            completion: completion
+        )
+    }
+
+    func createScheduleCondition(
+        tickerID: String,
+        threshold: Int,
+        `operator` conditionOperator: String,
+        enabled: Bool = true,
+        completion: @escaping (Result<TickerScheduleCondition, Error>) -> Void
+    ) {
+        let body: [String: Any] = [
+            "kind": "live_games",
+            "threshold": threshold,
+            "operator": conditionOperator,
+            "when_mode": "sports",
+            "action_sports_filter": "live",
+            "ignore_pinned": true,
+            "enabled": enabled,
+        ]
+        scheduleRequest(
+            tickerID: tickerID,
+            suffix: "/schedule/conditions",
+            method: "POST",
+            body: body,
+            decode: TickerScheduleCondition.self,
+            completion: completion
+        )
+    }
+
+    func updateScheduleCondition(
+        tickerID: String,
+        conditionID: String,
+        threshold: Int,
+        `operator` conditionOperator: String,
+        enabled: Bool,
+        completion: @escaping (Result<TickerScheduleCondition, Error>) -> Void
+    ) {
+        let body: [String: Any] = [
+            "threshold": threshold,
+            "operator": conditionOperator,
+            "when_mode": "sports",
+            "action_sports_filter": "live",
+            "ignore_pinned": true,
+            "enabled": enabled,
+        ]
+        scheduleRequest(
+            tickerID: tickerID,
+            suffix: "/schedule/conditions/\(conditionID)",
+            method: "PATCH",
+            body: body,
+            decode: TickerScheduleCondition.self,
+            completion: completion
+        )
+    }
+
+    func deleteScheduleCondition(
+        tickerID: String,
+        conditionID: String,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        scheduleMutation(
+            tickerID: tickerID,
+            suffix: "/schedule/conditions/\(conditionID)",
+            method: "DELETE",
+            completion: completion
+        )
+    }
+
+    func setScheduleOverride(
+        tickerID: String,
+        enabled: Bool,
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        scheduleMutation(
+            tickerID: tickerID,
+            suffix: "",
+            method: "PATCH",
+            body: ["schedule_override": enabled],
+            completion: completion
+        )
     }
     
     override init() {
@@ -1135,6 +1363,8 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
                 
                 DispatchQueue.main.async {
                     self.isServerReachable = true
+                    let scheduleSource = decoded.meta.schedule?.source ?? "base"
+                    self.scheduleActive = scheduleSource == "time" || scheduleSource == "condition"
                     
                     // Sports keeps every selected game. Other modes use their own content family.
                     let isSportsFilterMode = decoded.settings.mode == "sports"
@@ -1231,7 +1461,7 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
     }
     func sendPinnedGames() { saveSettings() }
     // === 4. SAVE SETTINGS (Write) ===
-    func saveSettings() {
+    func saveSettings(scheduleOverride: Bool = false) {
         self.isEditing = true   // LOCK: block polling while save is in-flight
         guard let validID = self.savedTickerID,
               let url = tickerURL(validID),
@@ -1241,7 +1471,11 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         }
         
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: ["display_settings": v2DisplaySettingsPayload()])
+            var payload: [String: Any] = ["display_settings": v2DisplaySettingsPayload()]
+            if scheduleOverride {
+                payload["schedule_override"] = true
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
             print("📤 Saving settings to \(url.absoluteString)")
             currentSaveTask?.cancel()
             currentSaveTask = URLSession.shared.dataTask(with: request) { data, response, error in
@@ -1429,6 +1663,11 @@ class TickerViewModel: NSObject, ObservableObject, ASWebAuthenticationPresentati
         if !isServerReachable { self.connectionStatus = "Server Offline"; self.statusColor = .red; return }
         // If we have devices OR a latched ID, we are effectively connected
         if devices.isEmpty && savedTickerID == nil { self.connectionStatus = "Server Online (No Ticker)"; self.statusColor = .orange; return }
+        if scheduleActive {
+            self.connectionStatus = "Connected • Schedule"
+            self.statusColor = .yellow
+            return
+        }
         self.connectionStatus = "Connected • \(self.games.count) Items"; self.statusColor = .green
     }
     
@@ -3157,13 +3396,13 @@ struct ModesView: View {
         }
         if target == "music" { vm.fetchSpotifyStatus() }
         vm.startBurstPolling()
-        vm.saveSettings()
+        vm.saveSettings(scheduleOverride: true)
     }
     private func setFlightSubmode(_ submode: String) {
         vm.state.mode = submode == "track" ? "flights" : "airports"
         vm.state.flight_submode = submode
         vm.startBurstPolling()
-        vm.saveSettings()
+        vm.saveSettings(scheduleOverride: true)
     }
     private func commitFlightNumber() {
         let flight = localFlightNumber.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
@@ -3837,6 +4076,7 @@ struct WiFiSetupView: View {
 struct DeviceRow: View {
     let device: TickerDevice
     @ObservedObject var vm: TickerViewModel
+    @State private var showSchedule = false
     
     @State private var brightness: Double
     @State private var speedInt: Double
@@ -3951,6 +4191,19 @@ struct DeviceRow: View {
                     
                     Text("Live Stream Delay").font(.caption)
                     Spacer()
+                    Button {
+                        showSchedule = true
+                    } label: {
+                        VStack(spacing: 2) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.headline)
+                            Text("Schedule")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.yellow)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Edit schedule")
                 }
                 
                 if device.settings.live_delay_mode == true {
@@ -3985,6 +4238,9 @@ struct DeviceRow: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(vm.pairCodeAlertMessage)
+        }
+        .sheet(isPresented: $showSchedule) {
+            TickerScheduleView(vm: vm, device: device, isPresented: $showSchedule)
         }
     }
 }
