@@ -2,6 +2,8 @@
   "use strict";
 
   const MODES = ["sports", "weather", "music", "flights", "airports", "stock", "clock"];
+  const MODE_MARKS = { sports: "S", weather: "W", music: "M", flights: "F", airports: "A", stock: "$", clock: "C" };
+  const MIN_BLOCK_MINUTES = 15;
   const state = {
     document: null,
     selectedMode: "sports",
@@ -15,6 +17,7 @@
     .replaceAll(">", "&gt;").replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
   const modeName = mode => String(mode || "").replaceAll("_", " ");
+  const modeMark = mode => MODE_MARKS[mode] || "?";
 
   async function api(path, options = {}) {
     const headers = {
@@ -94,10 +97,12 @@
         const start = Number(block.start_minute);
         const end = Number(block.end_minute);
         const width = Math.max(1, end - start);
-        return `<article class="schedule-block mode-${escapeHtml(block.mode)}" data-block-id="${escapeHtml(block.id)}" data-start="${start}" data-end="${end}" style="left:${(start / 1440) * 100}%;width:${(width / 1440) * 100}%" title="${escapeHtml(modeName(block.mode))} ${fmtMinute(start)}–${fmtMinute(end)}">
+        const density = width < 120 ? "compact" : "full";
+        return `<article class="schedule-block mode-${escapeHtml(block.mode)}" data-block-id="${escapeHtml(block.id)}" data-start="${start}" data-end="${end}" data-block-mode="${escapeHtml(block.mode)}" data-density="${density}" style="left:${(start / 1440) * 100}%;width:${(width / 1440) * 100}%" title="${escapeHtml(modeName(block.mode))} ${fmtMinute(start)}–${fmtMinute(end)}">
+          <span class="block-resize-handle block-resize-start" data-resize="start" role="separator" aria-label="Resize ${escapeHtml(modeName(block.mode))} start time"></span>
+          <div class="block-main"><span class="block-mark" aria-hidden="true">${escapeHtml(modeMark(block.mode))}</span><div class="block-copy"><strong>${escapeHtml(modeName(block.mode))}</strong><small data-block-time>${fmtMinute(start)} — ${fmtMinute(end)}</small></div></div>
           <button class="block-delete" type="button" data-delete-block aria-label="Delete ${escapeHtml(modeName(block.mode))} block">×</button>
-          <strong>${escapeHtml(modeName(block.mode))}</strong>
-          <small>${fmtMinute(start)} — ${fmtMinute(end)}</small>
+          <span class="block-resize-handle block-resize-end" data-resize="end" role="separator" aria-label="Resize ${escapeHtml(modeName(block.mode))} end time"></span>
         </article>`;
       }).join("");
       items.forEach(block => bindBlock($(`[data-block-id="${CSS.escape(block.id)}"]`, track), block));
@@ -106,6 +111,141 @@
         createBlockAt(group, minuteFromEvent(event, track), state.selectedMode);
       };
     });
+  }
+
+  function updateBlockPreview(block, start, end) {
+    const width = Math.max(1, end - start);
+    block.dataset.previewStart = String(start);
+    block.dataset.previewEnd = String(end);
+    block.style.left = `${(start / 1440) * 100}%`;
+    block.style.width = `${(width / 1440) * 100}%`;
+    block.dataset.density = width < 120 ? "compact" : "full";
+    block.title = `${modeName(block.dataset.blockMode)} ${fmtMinute(start)}–${fmtMinute(end)}`;
+    const time = $("[data-block-time]", block);
+    if (time) time.textContent = `${fmtMinute(start)} — ${fmtMinute(end)}`;
+  }
+
+  function beginBlockResize(event, block, source, edge) {
+    if (!["start", "end"].includes(edge) || !isPrimaryPointer(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const track = block.closest(".lane-track");
+    const handle = event.target.closest("[data-resize]");
+    if (!track || !handle) return;
+    const pointerId = event.pointerId;
+    const originalStart = Number(source.start_minute);
+    const originalEnd = Number(source.end_minute);
+    let currentStart = originalStart;
+    let currentEnd = originalEnd;
+    let moved = false;
+    state.dragging = { kind: "resize", pointerId };
+    block.classList.add("is-resizing");
+    handle.setPointerCapture?.(pointerId);
+    const move = moveEvent => {
+      if (moveEvent.pointerId !== pointerId) return;
+      moveEvent.preventDefault();
+      const minute = minuteFromEvent(moveEvent, track);
+      if (edge === "start") {
+        currentStart = Math.max(0, Math.min(originalEnd - MIN_BLOCK_MINUTES, minute));
+      } else {
+        currentEnd = Math.min(1440, Math.max(originalStart + MIN_BLOCK_MINUTES, minute));
+      }
+      moved = currentStart !== originalStart || currentEnd !== originalEnd;
+      updateBlockPreview(block, currentStart, currentEnd);
+    };
+    const finish = async finishEvent => {
+      if (finishEvent.pointerId !== pointerId) return;
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", finish);
+      handle.removeEventListener("pointercancel", finish);
+      state.dragging = null;
+      block.classList.remove("is-resizing");
+      releasePointer(handle, pointerId);
+      if (!moved || finishEvent.type === "pointercancel") {
+        if (moved) await load();
+        return;
+      }
+      try {
+        await api(`/api/v2/schedule/blocks/${encodeURIComponent(source.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ start_minute: currentStart, end_minute: currentEnd }),
+        });
+        setFeedback(`Schedule block resized to ${fmtMinute(currentStart)} — ${fmtMinute(currentEnd)}.`);
+        await load();
+      } catch (error) { setFeedback(error.message, true); await load(); }
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+  }
+
+  function beginBlockMove(event, block, source) {
+    event.preventDefault();
+    const track = block.closest(".lane-track");
+    if (!track) return;
+    const blockRect = block.getBoundingClientRect();
+    const start = Number(source.start_minute);
+    const duration = Number(source.end_minute) - start;
+    const pointerId = event.pointerId;
+    const grabOffset = event.clientX - blockRect.left;
+    let currentTrack = track;
+    let currentGroup = source.day_group;
+    let currentStart = start;
+    let moved = false;
+    state.dragging = { kind: "block", pointerId };
+    block.classList.add("is-dragging");
+    block.setPointerCapture?.(pointerId);
+    const move = moveEvent => {
+      if (moveEvent.pointerId !== pointerId) return;
+      const distance = Math.hypot(moveEvent.clientX - event.clientX, moveEvent.clientY - event.clientY);
+      if (!moved) {
+        if (distance < 5) return;
+        moved = true;
+      }
+      moveEvent.preventDefault();
+      const targetTrack = laneAtPoint(moveEvent.clientX, moveEvent.clientY) || currentTrack;
+      if (!targetTrack) return;
+      if (targetTrack !== currentTrack) {
+        targetTrack.appendChild(block);
+        currentTrack = targetTrack;
+        currentGroup = targetTrack.closest("[data-day-group]")?.dataset.dayGroup || currentGroup;
+      }
+      markDropTarget(currentTrack);
+      const rect = currentTrack.getBoundingClientRect();
+      const rawStart = ((moveEvent.clientX - rect.left - grabOffset) / rect.width) * 1440;
+      const nextStart = Math.max(0, Math.min(1440 - duration, snapMinute(rawStart)));
+      currentStart = nextStart;
+      updateBlockPreview(block, nextStart, nextStart + duration);
+    };
+    const finish = async finishEvent => {
+      if (finishEvent.pointerId !== pointerId) return;
+      block.removeEventListener("pointermove", move);
+      block.removeEventListener("pointerup", finish);
+      block.removeEventListener("pointercancel", finish);
+      state.dragging = null;
+      block.classList.remove("is-dragging");
+      clearDropTarget();
+      releasePointer(block, pointerId);
+      if (!moved || finishEvent.type === "pointercancel") {
+        if (moved) await load();
+        return;
+      }
+      try {
+        await api(`/api/v2/schedule/blocks/${encodeURIComponent(source.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            day_group: currentGroup,
+            start_minute: currentStart,
+            end_minute: currentStart + duration,
+          }),
+        });
+        setFeedback("Schedule block moved.");
+        await load();
+      } catch (error) { setFeedback(error.message, true); await load(); }
+    };
+    block.addEventListener("pointermove", move);
+    block.addEventListener("pointerup", finish);
+    block.addEventListener("pointercancel", finish);
   }
 
   function bindBlock(block, source) {
@@ -120,76 +260,13 @@
       } catch (error) { setFeedback(error.message, true); }
     });
     block.addEventListener("pointerdown", event => {
-      if (event.target.closest("button") || !isPrimaryPointer(event)) return;
-      event.preventDefault();
-      const track = block.closest(".lane-track");
-      if (!track) return;
-      const blockRect = block.getBoundingClientRect();
-      const start = Number(source.start_minute);
-      const duration = Number(source.end_minute) - start;
-      const pointerId = event.pointerId;
-      const grabOffset = event.clientX - blockRect.left;
-      let currentTrack = track;
-      let currentGroup = source.day_group;
-      let currentStart = start;
-      let moved = false;
-      state.dragging = { kind: "block", pointerId };
-      block.classList.add("is-dragging");
-      block.setPointerCapture?.(pointerId);
-      const move = moveEvent => {
-        if (moveEvent.pointerId !== pointerId) return;
-        const distance = Math.hypot(moveEvent.clientX - event.clientX, moveEvent.clientY - event.clientY);
-        if (!moved) {
-          if (distance < 5) return;
-          moved = true;
-        }
-        moveEvent.preventDefault();
-        const targetTrack = laneAtPoint(moveEvent.clientX, moveEvent.clientY) || currentTrack;
-        if (!targetTrack) return;
-        if (targetTrack !== currentTrack) {
-          targetTrack.appendChild(block);
-          currentTrack = targetTrack;
-          currentGroup = targetTrack.closest("[data-day-group]")?.dataset.dayGroup || currentGroup;
-        }
-        markDropTarget(currentTrack);
-        const rect = currentTrack.getBoundingClientRect();
-        const rawStart = ((moveEvent.clientX - rect.left - grabOffset) / rect.width) * 1440;
-        const nextStart = Math.max(0, Math.min(1440 - duration, snapMinute(rawStart)));
-        currentStart = nextStart;
-        block.dataset.previewStart = String(nextStart);
-        block.style.left = `${(nextStart / 1440) * 100}%`;
-        block.title = `${modeName(source.mode)} ${fmtMinute(nextStart)}–${fmtMinute(nextStart + duration)}`;
-        $("small", block).textContent = `${fmtMinute(nextStart)} — ${fmtMinute(nextStart + duration)}`;
-      };
-      const finish = async finishEvent => {
-        if (finishEvent.pointerId !== pointerId) return;
-        block.removeEventListener("pointermove", move);
-        block.removeEventListener("pointerup", finish);
-        block.removeEventListener("pointercancel", finish);
-        state.dragging = null;
-        block.classList.remove("is-dragging");
-        clearDropTarget();
-        releasePointer(block, pointerId);
-        if (!moved || finishEvent.type === "pointercancel") {
-          if (moved) await load();
-          return;
-        }
-        try {
-          await api(`/api/v2/schedule/blocks/${encodeURIComponent(source.id)}`, {
-            method: "PATCH",
-            body: JSON.stringify({
-              day_group: currentGroup,
-              start_minute: currentStart,
-              end_minute: currentStart + duration,
-            }),
-          });
-          setFeedback("Schedule block moved.");
-          await load();
-        } catch (error) { setFeedback(error.message, true); await load(); }
-      };
-      block.addEventListener("pointermove", move);
-      block.addEventListener("pointerup", finish);
-      block.addEventListener("pointercancel", finish);
+      const resizeHandle = event.target.closest?.("[data-resize]");
+      if (resizeHandle) {
+        beginBlockResize(event, block, source, resizeHandle.dataset.resize);
+        return;
+      }
+      if (event.target.closest?.("button") || !isPrimaryPointer(event)) return;
+      beginBlockMove(event, block, source);
     });
   }
 

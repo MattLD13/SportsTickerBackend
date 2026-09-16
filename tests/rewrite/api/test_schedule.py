@@ -54,6 +54,13 @@ def test_schedule_routes_use_the_server_fleet_and_persist_weekly_rules(tmp_path)
         assert block.status_code == 201
         block_id = block.get_json()["id"]
 
+        resized = client.patch(
+            f"/api/v2/schedule/blocks/{block_id}",
+            json={"end_minute": 720},
+        )
+        assert resized.status_code == 200
+        assert resized.get_json()["end_minute"] == 720
+
         overlap = client.post(
             "/api/v2/schedule/blocks",
             json={
@@ -207,8 +214,14 @@ def test_schedule_page_exposes_both_timeline_lanes_and_mode_palette(tmp_path) ->
         assert client.get("/dashboard/static/dashboard_v2/schedule.js").status_code == 200
         assert client.get("/dashboard/static/dashboard_v2/schedule.css").status_code == 200
         script = client.get("/dashboard/static/dashboard_v2/schedule.js").get_data(as_text=True)
+        stylesheet = client.get("/dashboard/static/dashboard_v2/schedule.css").get_data(as_text=True)
         assert 'button.addEventListener("pointerdown"' in script
         assert 'block.addEventListener("pointerdown"' in script
         assert "day_group: currentGroup" in script
+        assert 'data-resize="start"' in script
+        assert 'data-resize="end"' in script
+        assert "beginBlockResize" in script
+        assert "block-resize-handle" in stylesheet
+        assert "min-width: 1200px" in stylesheet
     finally:
         app.extensions["sports_ticker.backend_application"].close()
