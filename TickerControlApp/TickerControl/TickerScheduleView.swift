@@ -387,7 +387,7 @@ private struct ScheduleTimelineView: View {
         GeometryReader { proxy in
             let trackWidth = max(1, proxy.size.width - Self.timeGutter)
             HStack(spacing: 0) {
-                timeLabels(currentDate: currentDate)
+                timeLabels
                     .frame(width: Self.timeGutter, height: Self.timelineHeight)
                 ZStack(alignment: .topLeading) {
                     verticalGrid(width: trackWidth)
@@ -428,17 +428,19 @@ private struct ScheduleTimelineView: View {
         }
     }
 
-    private func timeLabels(currentDate: Date) -> some View {
-        ZStack(alignment: .topTrailing) {
+    private var timeLabels: some View {
+        ZStack(alignment: .topLeading) {
             ForEach(0...24, id: \.self) { index in
                 Text(Self.clock(index * 60))
                     .font(.caption2.monospacedDigit())
                     .foregroundColor(.secondary)
+                    .frame(width: Self.timeGutter - 8, alignment: .trailing)
                     .offset(y: y(for: index * 60) - 7)
             }
         }
-        .padding(.trailing, 8)
+        .frame(width: Self.timeGutter, height: Self.timelineHeight, alignment: .topLeading)
         .background(Color.black.opacity(0.08))
+        .clipped()
     }
 
     private func currentTimeIndicator(minute: Int, width: CGFloat) -> some View {
@@ -491,29 +493,32 @@ private struct ScheduleTimelineView: View {
     private func timelineBlock(_ occurrence: TimelineOccurrence, width: CGFloat) -> some View {
         let duration = occurrence.endMinute - occurrence.startMinute
         let blockHeight = max(40, CGFloat(duration) * Self.minuteHeight - 4)
-        return HStack(spacing: 0) {
+        return VStack(spacing: 0) {
             resizeHandle(edge: .start, occurrence: occurrence)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(occurrence.block.mode.capitalized)
-                    .font(.caption.bold())
-                    .lineLimit(1)
-                Text("\(Self.clock(occurrence.startMinute))–\(Self.clock(occurrence.endMinute))")
-                    .font(.caption2.monospacedDigit())
-                    .lineLimit(1)
+            HStack(spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(occurrence.block.mode.capitalized)
+                        .font(.caption.bold())
+                        .lineLimit(1)
+                    Text("\(Self.clock(occurrence.startMinute))–\(Self.clock(occurrence.endMinute))")
+                        .font(.caption2.monospacedDigit())
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .gesture(moveGesture(occurrence))
+                Menu {
+                    Button("Edit", action: { onEdit(occurrence.block) })
+                    Button("Delete", role: .destructive, action: { onDelete(occurrence.block) })
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.caption.bold())
+                        .frame(width: 28, height: 30)
+                }
+                .menuStyle(.borderlessButton)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Menu {
-                Button("Edit", action: { onEdit(occurrence.block) })
-                Button("Delete", role: .destructive, action: { onDelete(occurrence.block) })
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.caption.bold())
-                    .frame(width: 22, height: 30)
-            }
-            .menuStyle(.borderlessButton)
             resizeHandle(edge: .end, occurrence: occurrence)
         }
-        .padding(.vertical, 5)
         .padding(.horizontal, 4)
         .frame(width: max(0, width - 12), height: blockHeight)
         .foregroundColor(.white)
@@ -521,16 +526,15 @@ private struct ScheduleTimelineView: View {
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(modeColor(occurrence.block.mode), lineWidth: occurrence.isPreview ? 2 : 1))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .offset(x: 6, y: y(for: occurrence.startMinute) + 2)
-        .contentShape(Rectangle())
-        .gesture(moveGesture(occurrence))
         .opacity(occurrence.block.enabled ? 1 : 0.55)
     }
 
     private func resizeHandle(edge: ResizeEdge, occurrence: TimelineOccurrence) -> some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.7))
-            .frame(width: 8, height: 36)
-            .contentShape(Rectangle().inset(by: -5))
+        Capsule()
+            .fill(Color.white.opacity(0.8))
+            .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 10)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
             .gesture(resizeGesture(occurrence, edge: edge))
     }
 
