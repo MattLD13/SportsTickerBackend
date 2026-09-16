@@ -505,8 +505,6 @@ private struct ScheduleTimelineView: View {
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .gesture(moveGesture(occurrence))
                 Menu {
                     Button("Edit", action: { onEdit(occurrence.block) })
                     Button("Delete", role: .destructive, action: { onDelete(occurrence.block) })
@@ -517,6 +515,9 @@ private struct ScheduleTimelineView: View {
                 }
                 .menuStyle(.borderlessButton)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .gesture(moveGesture(occurrence))
             resizeHandle(edge: .end, occurrence: occurrence)
         }
         .padding(.horizontal, 4)
@@ -600,8 +601,6 @@ private struct ScheduleTimelineView: View {
     private func currentMinute(at date: Date) -> Int? {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: schedule?.timezone ?? "") ?? .current
-        let weekday = (calendar.component(.weekday, from: date) + 5) % 7
-        guard selectedDays.contains(weekday) else { return nil }
         let hour = calendar.component(.hour, from: date)
         let minute = calendar.component(.minute, from: date)
         return hour * 60 + minute
@@ -632,8 +631,11 @@ private struct ScheduleTimelineView: View {
     }
 
     private static func clock(_ minute: Int) -> String {
-        if minute == 1440 { return "24:00" }
-        return String(format: "%02d:%02d", (minute / 60) % 24, minute % 60)
+        let normalizedMinute = minute == 1440 ? 0 : minute
+        let hour = (normalizedMinute / 60) % 24
+        let displayHour = hour % 12 == 0 ? 12 : hour % 12
+        let meridiem = hour < 12 ? "AM" : "PM"
+        return String(format: "%d:%02d %@", displayHour, normalizedMinute % 60, meridiem)
     }
 
     private enum ResizeEdge {
