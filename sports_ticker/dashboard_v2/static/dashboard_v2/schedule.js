@@ -47,6 +47,13 @@
     return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
   }
 
+  function fmtDuration(value) {
+    const duration = Math.max(MIN_BLOCK_MINUTES, Math.round(Number(value) || MIN_BLOCK_MINUTES));
+    const hours = Math.floor(duration / 60);
+    const minutes = duration % 60;
+    return hours ? `${hours}h${minutes ? ` ${minutes}m` : ""}` : `${minutes}m`;
+  }
+
   function snapMinute(value) {
     return Math.max(0, Math.min(1440, Math.round(value / 15) * 15));
   }
@@ -100,7 +107,7 @@
         const density = width < 120 ? "compact" : "full";
         return `<article class="schedule-block mode-${escapeHtml(block.mode)}" data-block-id="${escapeHtml(block.id)}" data-start="${start}" data-end="${end}" data-block-mode="${escapeHtml(block.mode)}" data-density="${density}" style="left:${(start / 1440) * 100}%;width:${(width / 1440) * 100}%" title="${escapeHtml(modeName(block.mode))} ${fmtMinute(start)}–${fmtMinute(end)}">
           <span class="block-resize-handle block-resize-start" data-resize="start" role="separator" aria-label="Resize ${escapeHtml(modeName(block.mode))} start time"></span>
-          <div class="block-main"><span class="block-mark" aria-hidden="true">${escapeHtml(modeMark(block.mode))}</span><div class="block-copy"><strong>${escapeHtml(modeName(block.mode))}</strong><small data-block-time>${fmtMinute(start)} — ${fmtMinute(end)}</small></div></div>
+          <div class="block-main"><span class="block-mark" aria-hidden="true">${escapeHtml(modeMark(block.mode))}</span><div class="block-copy"><strong>${escapeHtml(modeName(block.mode))}</strong><small data-block-time>${fmtMinute(start)} — ${fmtMinute(end)}</small></div><span class="block-compact-time" data-block-duration>${fmtDuration(width)}</span></div>
           <button class="block-delete" type="button" data-delete-block aria-label="Delete ${escapeHtml(modeName(block.mode))} block">×</button>
           <span class="block-resize-handle block-resize-end" data-resize="end" role="separator" aria-label="Resize ${escapeHtml(modeName(block.mode))} end time"></span>
         </article>`;
@@ -123,6 +130,8 @@
     block.title = `${modeName(block.dataset.blockMode)} ${fmtMinute(start)}–${fmtMinute(end)}`;
     const time = $("[data-block-time]", block);
     if (time) time.textContent = `${fmtMinute(start)} — ${fmtMinute(end)}`;
+    const duration = $("[data-block-duration]", block);
+    if (duration) duration.textContent = fmtDuration(width);
   }
 
   function beginBlockResize(event, block, source, edge) {
