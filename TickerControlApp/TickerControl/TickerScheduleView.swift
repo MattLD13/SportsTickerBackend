@@ -202,9 +202,12 @@ struct TickerScheduleView: View {
         vm.deleteScheduleBlock(tickerID: device.id, blockID: block.id) { result in
             switch result {
             case .success:
-                loadSchedule()
+                updateLocalSchedule { blocks in
+                    blocks.filter { $0.id != block.id }
+                }
             case .failure(let error):
                 errorMessage = error.localizedDescription
+                loadSchedule()
             }
         }
     }
@@ -232,8 +235,10 @@ struct TickerScheduleView: View {
             sportsFilter: mode == "sports" ? "all" : nil
         ) { result in
             switch result {
-            case .success:
-                loadSchedule()
+            case .success(let created):
+                updateLocalSchedule { blocks in
+                    blocks + [created]
+                }
             case .failure(let error):
                 errorMessage = error.localizedDescription
             }
@@ -246,6 +251,22 @@ struct TickerScheduleView: View {
         startMinute: Int,
         endMinute: Int
     ) {
+        let optimisticBlock = TickerScheduleBlock(
+            id: block.id,
+            ticker_id: block.ticker_id,
+            days_of_week: daysOfWeek,
+            day_names: dayNames(for: daysOfWeek),
+            start_minute: startMinute,
+            end_minute: endMinute,
+            mode: block.mode,
+            sports_filter: block.sports_filter,
+            enabled: block.enabled,
+            created_at: block.created_at,
+            updated_at: Date().timeIntervalSince1970
+        )
+        updateLocalSchedule { blocks in
+            blocks.map { $0.id == block.id ? optimisticBlock : $0 }
+        }
         vm.updateScheduleBlock(
             tickerID: device.id,
             blockID: block.id,
@@ -257,13 +278,42 @@ struct TickerScheduleView: View {
             enabled: block.enabled
         ) { result in
             switch result {
-            case .success:
-                loadSchedule()
+            case .success(let updated):
+                updateLocalSchedule { blocks in
+                    blocks.map { $0.id == updated.id ? updated : $0 }
+                }
             case .failure(let error):
                 errorMessage = error.localizedDescription
                 loadSchedule()
             }
         }
+    }
+
+    private func updateLocalSchedule(_ transform: ([TickerScheduleBlock]) -> [TickerScheduleBlock]) {
+        guard let current = schedule else { return }
+        let blocks = transform(current.blocks)
+        let days = current.days.map { day in
+            TickerScheduleDay(
+                day_of_week: day.day_of_week,
+                name: day.name,
+                blocks: blocks.filter { $0.days_of_week.contains(day.day_of_week) }
+            )
+        }
+        schedule = TickerScheduleResponse(
+            api_version: current.api_version,
+            ticker_id: current.ticker_id,
+            timezone: current.timezone,
+            days: days,
+            blocks: blocks,
+            conditions: current.conditions,
+            live_games: current.live_games,
+            effective: current.effective
+        )
+    }
+
+    private func dayNames(for days: [Int]) -> [String] {
+        let names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        return days.sorted().compactMap { names.indices.contains($0) ? names[$0] : nil }
     }
 }
 
@@ -403,6 +453,7 @@ private struct ScheduleTimelineView: View {
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y
             } action: { _, offset in
+                guard interaction == nil, gestureStart == nil else { return }
                 let cycleHeight = Self.timelineHeight
                 if offset < cycleHeight * 0.65 || offset > cycleHeight * 3.35 {
                     DispatchQueue.main.async {
@@ -536,6 +587,8 @@ private struct ScheduleTimelineView: View {
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .gesture(moveGesture(occurrence))
                 Menu {
                     Button("Edit", action: { onEdit(occurrence.block) })
                     Button("Delete", role: .destructive, action: { onDelete(occurrence.block) })
@@ -547,8 +600,6 @@ private struct ScheduleTimelineView: View {
                 .menuStyle(.borderlessButton)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .gesture(moveGesture(occurrence))
             resizeHandle(edge: .end, occurrence: occurrence)
         }
         .padding(.horizontal, 4)
