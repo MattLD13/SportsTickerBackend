@@ -6,7 +6,7 @@
     document: null,
     controllerToken: sessionStorage.getItem("sportsTicker.controllerToken") || "",
     selectedMode: "sports",
-    draggingBlock: false,
+    dragging: null,
   };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -61,6 +61,28 @@
     $$("[data-mode]").forEach(button => button.classList.toggle("is-selected", button.dataset.mode === mode));
   }
 
+  function isPrimaryPointer(event) {
+    return event.isPrimary !== false && (event.pointerType !== "mouse" || event.button === 0);
+  }
+
+  function laneAtPoint(clientX, clientY) {
+    const target = document.elementFromPoint(clientX, clientY);
+    return target?.closest?.("[data-lane-track]") || null;
+  }
+
+  function clearDropTarget() {
+    $$('[data-lane-track].is-drop-target').forEach(track => track.classList.remove("is-drop-target"));
+  }
+
+  function markDropTarget(track) {
+    clearDropTarget();
+    track?.classList.add("is-drop-target");
+  }
+
+  function releasePointer(target, pointerId) {
+    if (target?.hasPointerCapture?.(pointerId)) target.releasePointerCapture(pointerId);
+  }
+
   function renderAxis() {
     const axis = $("[data-time-axis]");
     axis.innerHTML = Array.from({ length: 13 }, (_, index) => {
@@ -85,13 +107,7 @@
           <small>${fmtMinute(start)} — ${fmtMinute(end)}</small>
         </article>`;
       }).join("");
-      items.forEach(block => bindBlock($("[data-block-id=\"${CSS.escape(block.id)}\"]", track), block));
-      track.ondragover = event => event.preventDefault();
-      track.ondrop = event => {
-        event.preventDefault();
-        const mode = event.dataTransfer?.getData("text/mode") || state.selectedMode;
-        createBlockAt(group, minuteFromEvent(event, track), mode);
-      };
+      items.forEach(block => bindBlock($(`[data-block-id="${CSS.escape(block.id)}"]`, track), block));
       track.onclick = event => {
         if (event.target.closest(".schedule-block")) return;
         createBlockAt(group, minuteFromEvent(event, track), state.selectedMode);
@@ -111,39 +127,72 @@
       } catch (error) { setFeedback(error.message, true); }
     });
     block.addEventListener("pointerdown", event => {
-      if (event.target.closest("button")) return;
+      if (event.target.closest("button") || !isPrimaryPointer(event)) return;
       event.preventDefault();
       const track = block.closest(".lane-track");
-      const rect = track.getBoundingClientRect();
+      if (!track) return;
+      const blockRect = block.getBoundingClientRect();
       const start = Number(source.start_minute);
       const duration = Number(source.end_minute) - start;
-      state.draggingBlock = true;
-      block.setPointerCapture(event.pointerId);
+      const pointerId = event.pointerId;
+      const grabOffset = event.clientX - blockRect.left;
+      let currentTrack = track;
+      let currentGroup = source.day_group;
+      let currentStart = start;
+      let moved = false;
+      state.dragging = { kind: "block", pointerId };
+      block.classList.add("is-dragging");
+      block.setPointerCapture?.(pointerId);
       const move = moveEvent => {
-        const rawDelta = ((moveEvent.clientX - event.clientX) / rect.width) * 1440;
-        const delta = Math.round(rawDelta / 15) * 15;
-        const nextStart = Math.max(0, Math.min(1440 - duration, start + delta));
+        if (moveEvent.pointerId !== pointerId) return;
+        const distance = Math.hypot(moveEvent.clientX - event.clientX, moveEvent.clientY - event.clientY);
+        if (!moved) {
+          if (distance < 5) return;
+          moved = true;
+        }
+        moveEvent.preventDefault();
+        const targetTrack = laneAtPoint(moveEvent.clientX, moveEvent.clientY) || currentTrack;
+        if (!targetTrack) return;
+        if (targetTrack !== currentTrack) {
+          targetTrack.appendChild(block);
+          currentTrack = targetTrack;
+          currentGroup = targetTrack.closest("[data-day-group]")?.dataset.dayGroup || currentGroup;
+        }
+        markDropTarget(currentTrack);
+        const rect = currentTrack.getBoundingClientRect();
+        const rawStart = ((moveEvent.clientX - rect.left - grabOffset) / rect.width) * 1440;
+        const nextStart = Math.max(0, Math.min(1440 - duration, snapMinute(rawStart)));
+        currentStart = nextStart;
         block.dataset.previewStart = String(nextStart);
         block.style.left = `${(nextStart / 1440) * 100}%`;
         block.title = `${modeName(source.mode)} ${fmtMinute(nextStart)}–${fmtMinute(nextStart + duration)}`;
         $("small", block).textContent = `${fmtMinute(nextStart)} — ${fmtMinute(nextStart + duration)}`;
       };
       const finish = async finishEvent => {
+        if (finishEvent.pointerId !== pointerId) return;
         block.removeEventListener("pointermove", move);
         block.removeEventListener("pointerup", finish);
         block.removeEventListener("pointercancel", finish);
-        state.draggingBlock = false;
-        const nextStart = Number(block.dataset.previewStart ?? start);
-        if (nextStart === start) return;
+        state.dragging = null;
+        block.classList.remove("is-dragging");
+        clearDropTarget();
+        releasePointer(block, pointerId);
+        if (!moved || finishEvent.type === "pointercancel") {
+          if (moved) await load();
+          return;
+        }
         try {
           await api(`/api/v2/schedule/blocks/${encodeURIComponent(source.id)}`, {
             method: "PATCH",
-            body: JSON.stringify({ start_minute: nextStart, end_minute: nextStart + duration }),
+            body: JSON.stringify({
+              day_group: currentGroup,
+              start_minute: currentStart,
+              end_minute: currentStart + duration,
+            }),
           });
           setFeedback("Schedule block moved.");
           await load();
         } catch (error) { setFeedback(error.message, true); await load(); }
-        if (block.hasPointerCapture(finishEvent.pointerId)) block.releasePointerCapture(finishEvent.pointerId);
       };
       block.addEventListener("pointermove", move);
       block.addEventListener("pointerup", finish);
@@ -223,7 +272,7 @@
   }
 
   async function load() {
-    if (!state.controllerToken.trim() || state.draggingBlock) return;
+    if (!state.controllerToken.trim() || state.dragging) return;
     try {
       state.document = await api("/api/v2/schedule");
       render();
@@ -237,10 +286,47 @@
   function bindModePalette() {
     $$('[data-mode]').forEach(button => {
       button.addEventListener("click", () => selectMode(button.dataset.mode));
-      button.addEventListener("dragstart", event => {
-        selectMode(button.dataset.mode);
-        event.dataTransfer.setData("text/mode", button.dataset.mode);
-        event.dataTransfer.effectAllowed = "copy";
+      button.addEventListener("pointerdown", event => {
+        if (!isPrimaryPointer(event)) return;
+        const pointerId = event.pointerId;
+        const originX = event.clientX;
+        const originY = event.clientY;
+        let moved = false;
+        state.dragging = { kind: "palette", pointerId };
+        button.classList.add("is-dragging");
+        button.setPointerCapture?.(pointerId);
+        const move = moveEvent => {
+          if (moveEvent.pointerId !== pointerId) return;
+          const distance = Math.hypot(moveEvent.clientX - originX, moveEvent.clientY - originY);
+          if (!moved) {
+            if (distance < 5) return;
+            moved = true;
+          }
+          moveEvent.preventDefault();
+          markDropTarget(laneAtPoint(moveEvent.clientX, moveEvent.clientY));
+        };
+        const finish = async finishEvent => {
+          if (finishEvent.pointerId !== pointerId) return;
+          button.removeEventListener("pointermove", move);
+          button.removeEventListener("pointerup", finish);
+          button.removeEventListener("pointercancel", finish);
+          state.dragging = null;
+          button.classList.remove("is-dragging");
+          const targetTrack = laneAtPoint(finishEvent.clientX, finishEvent.clientY);
+          clearDropTarget();
+          releasePointer(button, pointerId);
+          if (!moved || finishEvent.type === "pointercancel") return;
+          if (!targetTrack) {
+            setFeedback("Drop the mode on a weekday or weekend lane.", true);
+            return;
+          }
+          const lane = targetTrack.closest("[data-day-group]");
+          const group = lane?.dataset.dayGroup;
+          if (group) await createBlockAt(group, minuteFromEvent(finishEvent, targetTrack), button.dataset.mode);
+        };
+        button.addEventListener("pointermove", move);
+        button.addEventListener("pointerup", finish);
+        button.addEventListener("pointercancel", finish);
       });
     });
     selectMode(state.selectedMode);
