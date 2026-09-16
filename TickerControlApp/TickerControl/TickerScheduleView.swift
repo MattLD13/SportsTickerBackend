@@ -272,6 +272,9 @@ private struct ScheduleTimelineView: View {
     private static let minuteHeight: CGFloat = 0.8
     private static let timelineHeight: CGFloat = 1152
     private static let timeGutter: CGFloat = 52
+    private static let cycleCount = 5
+    private static let centerCycle = 2
+    private static let nowAnchorID = "schedule-now-anchor"
     private static let minimumBlockMinutes = 15
 
     let schedule: TickerScheduleResponse?
@@ -284,6 +287,7 @@ private struct ScheduleTimelineView: View {
     let onUpdate: (TickerScheduleBlock, [Int], Int, Int) -> Void
 
     @State private var interaction: TimelineInteraction?
+    @State private var gestureStart: TimelineInteraction?
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -297,10 +301,7 @@ private struct ScheduleTimelineView: View {
 
             modePalette
 
-            ScrollView(.vertical) {
-                verticalTimeline(currentDate: currentDate)
-                    .padding(.bottom, 8)
-            }
+            verticalTimeline(currentDate: currentDate)
             .frame(height: 500)
             .background(Color.black.opacity(0.18))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -384,6 +385,35 @@ private struct ScheduleTimelineView: View {
     }
 
     private func verticalTimeline(currentDate: Date) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                VStack(spacing: 0) {
+                    ForEach(0..<Self.cycleCount, id: \.self) { cycle in
+                        timelineCanvas(currentDate: cycle == Self.centerCycle ? currentDate : nil)
+                            .id("schedule-cycle-\(cycle)")
+                    }
+                }
+            }
+            .scrollIndicators(.visible)
+            .onAppear {
+                DispatchQueue.main.async {
+                    proxy.scrollTo(Self.nowAnchorID, anchor: .center)
+                }
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y
+            } action: { _, offset in
+                let cycleHeight = Self.timelineHeight
+                if offset < cycleHeight * 0.65 || offset > cycleHeight * 3.35 {
+                    DispatchQueue.main.async {
+                        proxy.scrollTo(Self.nowAnchorID, anchor: .center)
+                    }
+                }
+            }
+        }
+    }
+
+    private func timelineCanvas(currentDate: Date?) -> some View {
         GeometryReader { proxy in
             let trackWidth = max(1, proxy.size.width - Self.timeGutter)
             HStack(spacing: 0) {
@@ -396,8 +426,9 @@ private struct ScheduleTimelineView: View {
                             let minute = max(0, min(1440, minute(for: value.location.y)))
                             onCreate(Array(selectedDays).sorted(), snapMinute(minute), selectedMode)
                         })
-                    if let currentMinute = currentMinute(at: currentDate) {
+                    if let currentDate, let currentMinute = currentMinute(at: currentDate) {
                         currentTimeIndicator(minute: currentMinute, width: trackWidth)
+                            .id(Self.nowAnchorID)
                     }
                     ForEach(occurrences()) { occurrence in
                         timelineBlock(occurrence, width: trackWidth)
@@ -542,9 +573,20 @@ private struct ScheduleTimelineView: View {
     private func moveGesture(_ occurrence: TimelineOccurrence) -> some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { value in
-                let duration = occurrence.endMinute - occurrence.startMinute
+                let base: TimelineInteraction
+                if let gestureStart, gestureStart.blockID == occurrence.block.id {
+                    base = gestureStart
+                } else {
+                    base = TimelineInteraction(
+                        blockID: occurrence.block.id,
+                        startMinute: occurrence.startMinute,
+                        endMinute: occurrence.endMinute
+                    )
+                    self.gestureStart = base
+                }
+                let duration = base.endMinute - base.startMinute
                 let delta = snapMinute(minute(for: value.translation.height))
-                let nextStart = max(0, min(1440 - duration, occurrence.startMinute + delta))
+                let nextStart = max(0, min(1440 - duration, base.startMinute + delta))
                 interaction = TimelineInteraction(
                     blockID: occurrence.block.id,
                     startMinute: nextStart,
@@ -559,13 +601,24 @@ private struct ScheduleTimelineView: View {
     private func resizeGesture(_ occurrence: TimelineOccurrence, edge: ResizeEdge) -> some Gesture {
         DragGesture(minimumDistance: 2)
             .onChanged { value in
-                var start = occurrence.startMinute
-                var end = occurrence.endMinute
+                let base: TimelineInteraction
+                if let gestureStart, gestureStart.blockID == occurrence.block.id {
+                    base = gestureStart
+                } else {
+                    base = TimelineInteraction(
+                        blockID: occurrence.block.id,
+                        startMinute: occurrence.startMinute,
+                        endMinute: occurrence.endMinute
+                    )
+                    self.gestureStart = base
+                }
+                var start = base.startMinute
+                var end = base.endMinute
                 let minuteDelta = snapMinute(minute(for: value.translation.height))
                 if edge == .start {
-                    start = max(0, min(end - Self.minimumBlockMinutes, occurrence.startMinute + minuteDelta))
+                    start = max(0, min(end - Self.minimumBlockMinutes, base.startMinute + minuteDelta))
                 } else {
-                    end = min(1440, max(start + Self.minimumBlockMinutes, occurrence.endMinute + minuteDelta))
+                    end = min(1440, max(start + Self.minimumBlockMinutes, base.endMinute + minuteDelta))
                 }
                 interaction = TimelineInteraction(
                     blockID: occurrence.block.id,
@@ -579,11 +632,16 @@ private struct ScheduleTimelineView: View {
     }
 
     private func finishInteraction(for occurrence: TimelineOccurrence) {
-        guard let interaction, interaction.blockID == occurrence.block.id else { return }
-        defer { self.interaction = nil }
-        let days = occurrence.block.days_of_week
-        guard interaction.startMinute != occurrence.startMinute || interaction.endMinute != occurrence.endMinute else { return }
-        onUpdate(occurrence.block, days, interaction.startMinute, interaction.endMinute)
+        guard let interaction,
+              let gestureStart,
+              interaction.blockID == occurrence.block.id,
+              gestureStart.blockID == occurrence.block.id else { return }
+        defer {
+            self.interaction = nil
+            self.gestureStart = nil
+        }
+        guard interaction.startMinute != gestureStart.startMinute || interaction.endMinute != gestureStart.endMinute else { return }
+        onUpdate(occurrence.block, occurrence.block.days_of_week, interaction.startMinute, interaction.endMinute)
     }
 
     private func snapMinute(_ value: Int) -> Int {
