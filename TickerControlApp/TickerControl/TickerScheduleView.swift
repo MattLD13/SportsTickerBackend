@@ -444,6 +444,7 @@ private struct ScheduleTimelineView: View {
                     }
                 }
             }
+            .scrollDisabled(interaction != nil || gestureStart != nil)
             .scrollIndicators(.visible)
             .onAppear {
                 DispatchQueue.main.async {
