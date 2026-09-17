@@ -8,6 +8,7 @@ struct TickerScheduleView: View {
     @State private var schedule: TickerScheduleResponse?
     @State private var selectedMode = "sports"
     @State private var selectedDays: Set<Int> = [0]
+    @State private var isTimelineInteracting = false
     @State private var editingBlock: TickerScheduleBlock?
     @State private var editingCondition: TickerScheduleCondition?
     @State private var showingBlockEditor = false
@@ -62,6 +63,7 @@ struct TickerScheduleView: View {
                         supportedModes: supportedModes,
                         selectedDays: $selectedDays,
                         selectedMode: $selectedMode,
+                        isInteracting: $isTimelineInteracting,
                         onCreate: createBlock,
                         onEdit: { block in
                             editingBlock = block
@@ -150,6 +152,7 @@ struct TickerScheduleView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
+            .scrollDisabled(isTimelineInteracting)
             .background(Color.black.opacity(0.18).ignoresSafeArea())
             .navigationTitle("Schedule")
             .navigationBarTitleDisplayMode(.inline)
@@ -331,6 +334,7 @@ private struct ScheduleTimelineView: View {
     let supportedModes: [String]
     @Binding var selectedDays: Set<Int>
     @Binding var selectedMode: String
+    @Binding var isInteracting: Bool
     let onCreate: ([Int], Int, String) -> Void
     let onEdit: (TickerScheduleBlock) -> Void
     let onDelete: (TickerScheduleBlock) -> Void
@@ -478,6 +482,12 @@ private struct ScheduleTimelineView: View {
                             let minute = max(0, min(1440, minute(for: value.location.y)))
                             onCreate(Array(selectedDays).sorted(), snapMinute(minute), selectedMode)
                         })
+                        .dropDestination(for: String.self) { items, location in
+                            guard let mode = items.first, supportedModes.contains(mode) else { return false }
+                            let minute = max(0, min(1440, minute(for: location.y)))
+                            onCreate(Array(selectedDays).sorted(), snapMinute(minute), mode)
+                            return true
+                        }
                     if let currentDate, let currentMinute = currentMinute(at: currentDate) {
                         currentTimeIndicator(minute: currentMinute, width: trackWidth)
                             .id(Self.nowAnchorID)
@@ -488,12 +498,6 @@ private struct ScheduleTimelineView: View {
                 }
                 .frame(width: trackWidth, height: Self.timelineHeight)
                 .contentShape(Rectangle())
-                .dropDestination(for: String.self) { items, location in
-                    guard let mode = items.first, supportedModes.contains(mode) else { return false }
-                    let minute = max(0, min(1440, minute(for: location.y)))
-                    onCreate(Array(selectedDays).sorted(), snapMinute(minute), mode)
-                    return true
-                }
             }
         }
         .frame(height: Self.timelineHeight)
@@ -587,9 +591,9 @@ private struct ScheduleTimelineView: View {
                         .font(.caption2.monospacedDigit())
                         .lineLimit(1)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
-                .gesture(moveGesture(occurrence))
+                .highPriorityGesture(moveGesture(occurrence))
                 Menu {
                     Button("Edit", action: { onEdit(occurrence.block) })
                     Button("Delete", role: .destructive, action: { onDelete(occurrence.block) })
@@ -619,11 +623,11 @@ private struct ScheduleTimelineView: View {
             .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 10)
             .padding(.horizontal, 8)
             .contentShape(Rectangle())
-            .gesture(resizeGesture(occurrence, edge: edge))
+            .highPriorityGesture(resizeGesture(occurrence, edge: edge))
     }
 
     private func moveGesture(_ occurrence: TimelineOccurrence) -> some Gesture {
-        DragGesture(minimumDistance: 4)
+        DragGesture(minimumDistance: 0)
             .onChanged { value in
                 let base: TimelineInteraction
                 if let gestureStart, gestureStart.blockID == occurrence.block.id {
@@ -636,6 +640,7 @@ private struct ScheduleTimelineView: View {
                     )
                     self.gestureStart = base
                 }
+                isInteracting = true
                 let duration = base.endMinute - base.startMinute
                 let delta = snapMinute(minute(for: value.translation.height))
                 let nextStart = max(0, min(1440 - duration, base.startMinute + delta))
@@ -651,7 +656,7 @@ private struct ScheduleTimelineView: View {
     }
 
     private func resizeGesture(_ occurrence: TimelineOccurrence, edge: ResizeEdge) -> some Gesture {
-        DragGesture(minimumDistance: 2)
+        DragGesture(minimumDistance: 0)
             .onChanged { value in
                 let base: TimelineInteraction
                 if let gestureStart, gestureStart.blockID == occurrence.block.id {
@@ -664,6 +669,7 @@ private struct ScheduleTimelineView: View {
                     )
                     self.gestureStart = base
                 }
+                isInteracting = true
                 var start = base.startMinute
                 var end = base.endMinute
                 let minuteDelta = snapMinute(minute(for: value.translation.height))
@@ -691,6 +697,7 @@ private struct ScheduleTimelineView: View {
         defer {
             self.interaction = nil
             self.gestureStart = nil
+            isInteracting = false
         }
         guard interaction.startMinute != gestureStart.startMinute || interaction.endMinute != gestureStart.endMinute else { return }
         onUpdate(occurrence.block, occurrence.block.days_of_week, interaction.startMinute, interaction.endMinute)
@@ -1057,3 +1064,138 @@ private struct ScheduleConditionEditor: View {
         }
     }
 }
+
+#if DEBUG
+struct ScheduleInteractionTestView: View {
+    @State private var schedule = ScheduleInteractionTestFixture.schedule
+    @State private var selectedDays: Set<Int> = [0]
+    @State private var selectedMode = "sports"
+    @State private var isTimelineInteracting = false
+    @State private var lastMutation = "Ready"
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Schedule interaction test")
+                        .font(.title2.bold())
+                    Text(lastMutation)
+                        .font(.caption.monospaced())
+                        .foregroundColor(.secondary)
+                    ScheduleTimelineView(
+                        schedule: schedule,
+                        supportedModes: ["sports"],
+                        selectedDays: $selectedDays,
+                        selectedMode: $selectedMode,
+                        isInteracting: $isTimelineInteracting,
+                        onCreate: { days, start, mode in
+                            lastMutation = "Create \(mode) at \(start)"
+                        },
+                        onEdit: { block in
+                            lastMutation = "Edit \(block.id)"
+                        },
+                        onDelete: { block in
+                            schedule = ScheduleInteractionTestFixture.replacing(
+                                schedule,
+                                blocks: schedule.blocks.filter { $0.id != block.id }
+                            )
+                            lastMutation = "Deleted \(block.id)"
+                        },
+                        onUpdate: { block, days, start, end in
+                            let updated = ScheduleInteractionTestFixture.updated(block, days: days, start: start, end: end)
+                            schedule = ScheduleInteractionTestFixture.replacing(
+                                schedule,
+                                blocks: schedule.blocks.map { $0.id == block.id ? updated : $0 }
+                            )
+                            lastMutation = "Updated \(start)–\(end)"
+                        }
+                    )
+                    .padding(16)
+                    .liquidGlass()
+                }
+                .padding()
+            }
+            .scrollDisabled(isTimelineInteracting)
+            .navigationTitle("Local test")
+        }
+    }
+}
+
+private enum ScheduleInteractionTestFixture {
+    static let block = TickerScheduleBlock(
+        id: "local-test-block",
+        ticker_id: "local-test-ticker",
+        days_of_week: [0],
+        day_names: ["monday"],
+        start_minute: 1260,
+        end_minute: 1380,
+        mode: "sports",
+        sports_filter: "all",
+        enabled: true,
+        created_at: 0,
+        updated_at: 0
+    )
+
+    static let schedule: TickerScheduleResponse = {
+        let days = (0..<7).map { day in
+            TickerScheduleDay(
+                day_of_week: day,
+                name: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"][day],
+                blocks: day == 0 ? [block] : []
+            )
+        }
+        let effective = try! JSONDecoder().decode(
+            TickerScheduleStatus.self,
+            from: Data("""
+            {"active":true,"override":false,"source":"time","mode":"sports","sports_filter":"all","sports_presentation":"rotation","live_games":0,"timezone":"America/New_York","local_day":"monday","local_time":"21:00","rule_id":"local-test-block","scheduled_mode":"sports","scheduled_sports_filter":"all"}
+            """.utf8)
+        )
+        return TickerScheduleResponse(
+            api_version: "v2",
+            ticker_id: "local-test-ticker",
+            timezone: "America/New_York",
+            days: days,
+            blocks: [block],
+            conditions: [],
+            live_games: 0,
+            effective: effective
+        )
+    }()
+
+    static func updated(_ block: TickerScheduleBlock, days: [Int], start: Int, end: Int) -> TickerScheduleBlock {
+        TickerScheduleBlock(
+            id: block.id,
+            ticker_id: block.ticker_id,
+            days_of_week: days,
+            day_names: days.sorted().map { ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"][$0] },
+            start_minute: start,
+            end_minute: end,
+            mode: block.mode,
+            sports_filter: block.sports_filter,
+            enabled: block.enabled,
+            created_at: block.created_at,
+            updated_at: Date().timeIntervalSince1970
+        )
+    }
+
+    static func replacing(_ schedule: TickerScheduleResponse, blocks: [TickerScheduleBlock]) -> TickerScheduleResponse {
+        let days = schedule.days.map { day in
+            TickerScheduleDay(
+                day_of_week: day.day_of_week,
+                name: day.name,
+                blocks: blocks.filter { $0.days_of_week.contains(day.day_of_week) }
+            )
+        }
+        return TickerScheduleResponse(
+            api_version: schedule.api_version,
+            ticker_id: schedule.ticker_id,
+            timezone: schedule.timezone,
+            days: days,
+            blocks: blocks,
+            conditions: schedule.conditions,
+            live_games: schedule.live_games,
+            effective: schedule.effective
+        )
+    }
+}
+#endif
